@@ -1,0 +1,116 @@
+version: 2
+
+project_name: my-awesome-cli
+
+builds:
+  - id: my-awesome-cli
+    main: ./cmd/my-awesome-cli
+    binary: my-awesome-cli
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, windows, darwin]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: my-awesome-cli-archive
+    ids: [my-awesome-cli]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "my-awesome-cli-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - "README.md"
+      - "LICENSE"
+      - src: "completions/*"
+        dst: "completions"
+      - src: "man/man1/*"
+        dst: "man/man1"
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+
+brews:
+  - ids: [my-awesome-cli-archive]
+    name: my-awesome-cli
+    repository:
+      owner: arthur-debert
+      name: homebrew-tools
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    # Fixed: Always use Formula directory (the debug conditional was causing issues)
+    directory: Formula
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    homepage: "https://github.com/arthur-debert/my-awesome-cli"
+    description: "Description of your CLI tool"
+    license: "MIT"
+    test: |
+      system "#{bin}/my-awesome-cli --help"
+    install: |
+      bin.install "my-awesome-cli"
+      
+      # Install shell completions
+      bash_completion.install "completions/my-awesome-cli.bash" if File.exist?("completions/my-awesome-cli.bash")
+      zsh_completion.install "completions/_my-awesome-cli" if File.exist?("completions/_my-awesome-cli")
+      fish_completion.install "completions/my-awesome-cli.fish" if File.exist?("completions/my-awesome-cli.fish")
+      
+      # Install man page
+      man1.install "man/man1/my-awesome-cli.1.gz" if File.exist?("man/man1/my-awesome-cli.1.gz")
+
+# nFPM packages (deb, rpm, etc.)
+# https://goreleaser.com/customization/nfpm/
+nfpms:
+  - id: my-awesome-cli
+    builds: [my-awesome-cli]
+    formats: [deb, rpm, apk]
+    package_name: my-awesome-cli
+    file_name_template: "my-awesome-cli_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: "https://github.com/arthur-debert/my-awesome-cli"
+    maintainer: "Arthur Debert <arthur@debert.xyz>"
+    description: "Description of your CLI tool"
+    license: "MIT"
+    section: utils
+    priority: optional
+    contents:
+      # Man page
+      - src: man/man1/my-awesome-cli.1.gz
+        dst: /usr/share/man/man1/my-awesome-cli.1.gz
+        file_info:
+          mode: 0644
+      # Bash completion
+      - src: completions/my-awesome-cli.bash
+        dst: /usr/share/bash-completion/completions/my-awesome-cli
+        file_info:
+          mode: 0644
+      # Zsh completion
+      - src: completions/_my-awesome-cli
+        dst: /usr/share/zsh/site-functions/_my-awesome-cli
+        file_info:
+          mode: 0644
+      # Fish completion
+      - src: completions/my-awesome-cli.fish
+        dst: /usr/share/fish/vendor_completions.d/my-awesome-cli.fish
+        file_info:
+          mode: 0644
+
+env:
+  - PKG_NAME={{ .Env.PKG_NAME }}

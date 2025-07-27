@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}${BOLD}🐳 Testing Debian package...${NC}"
+echo
+
+# Check if Docker is available
+if ! command -v docker &> /dev/null; then
+    echo -e "${RED}❌ Docker is not installed${NC}"
+    echo "Please install Docker to test Debian packages"
+    exit 1
+fi
+
+# Check if dist directory exists
+if [ ! -d "dist" ]; then
+    echo -e "${YELLOW}📦 Building release packages first...${NC}"
+    
+    # Check if goreleaser is available
+    if ! command -v goreleaser &> /dev/null; then
+        echo -e "${RED}❌ GoReleaser is not installed${NC}"
+        echo "Please install GoReleaser: brew install goreleaser"
+        exit 1
+    fi
+    
+    # Build packages
+    goreleaser release --snapshot --skip=publish --clean
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}❌ Package build failed${NC}"
+        exit 1
+    fi
+fi
+
+# Check if .deb files exist
+DEB_COUNT=$(find dist -name "*.deb" 2>/dev/null | wc -l)
+if [ "$DEB_COUNT" -eq 0 ]; then
+    echo -e "${RED}❌ No .deb files found in dist/${NC}"
+    echo "Run: goreleaser release --snapshot --skip=publish --clean"
+    exit 1
+fi
+
+echo -e "${BLUE}Found $DEB_COUNT Debian package(s)${NC}"
+ls -la dist/*.deb
+
+# Build Docker test image
+echo
+echo -e "${BLUE}Building Docker test image...${NC}"
+docker build -f Dockerfile.deb-test -t my-awesome-cli-deb-test .
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Docker build failed${NC}"
+    exit 1
+fi
+
+# Run package tests
+echo
+echo -e "${BLUE}Running package tests...${NC}"
+docker run --rm my-awesome-cli-deb-test
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}❌ Package tests failed${NC}"
+    exit 1
+fi
+
+# Additional tests for different architectures
+echo
+echo -e "${BLUE}Testing installation paths...${NC}"
+docker run --rm my-awesome-cli-deb-test bash -c "
+    echo '=== Binary location ===' && which my-awesome-cli &&
+    echo '=== Package info ===' && dpkg -l | grep my-awesome-cli &&
+    echo '=== Installed files ===' && dpkg -L my-awesome-cli | head -20
+"
+
+echo
+echo -e "${GREEN}${BOLD}✅ Debian package tests passed!${NC}"
+
+# Optional: Test on different Ubuntu versions
+if [[ "${TEST_ALL_UBUNTU:-}" == "true" ]]; then
+    echo
+    echo -e "${BLUE}Testing on multiple Ubuntu versions...${NC}"
+    
+    for VERSION in 20.04 22.04 24.04; do
+        echo -e "${YELLOW}Testing Ubuntu $VERSION...${NC}"
+        
+        # Create temporary Dockerfile
+        sed "s/FROM ubuntu:latest/FROM ubuntu:$VERSION/" Dockerfile.deb-test > Dockerfile.deb-test.$VERSION
+        
+        # Build and test
+        docker build -f Dockerfile.deb-test.$VERSION -t my-awesome-cli-deb-test-$VERSION . &&
+        docker run --rm my-awesome-cli-deb-test-$VERSION &&
+        rm Dockerfile.deb-test.$VERSION
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ Ubuntu $VERSION${NC}"
+        else
+            echo -e "${RED}✗ Ubuntu $VERSION${NC}"
+        fi
+    done
+fi

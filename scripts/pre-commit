@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Get the directory where this script is actually located (resolve symlinks)
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Function to install the pre-commit hook
+install_hook() {
+    local git_hooks_dir="$PROJECT_ROOT/.git/hooks"
+    local hook_file="$git_hooks_dir/pre-commit"
+
+    if [ ! -d "$git_hooks_dir" ]; then
+        echo "Error: .git/hooks directory not found. Are you in a git repository?"
+        exit 1
+    fi
+
+    if [ -f "$hook_file" ]; then
+        echo "Pre-commit hook already exists. Backing up to pre-commit.backup"
+        mv "$hook_file" "$hook_file.backup"
+    fi
+
+    # Create a symlink to this script
+    ln -s "$SCRIPT_DIR/pre-commit" "$hook_file"
+    chmod +x "$hook_file"
+
+    echo "✅ Pre-commit hook installed successfully!"
+    echo "The hook will run linting and tests before each commit."
+}
+
+# Function to uninstall the pre-commit hook
+uninstall_hook() {
+    local git_hooks_dir="$PROJECT_ROOT/.git/hooks"
+    local hook_file="$git_hooks_dir/pre-commit"
+    local backup_file="$hook_file.backup"
+
+    if [ ! -f "$hook_file" ]; then
+        echo "No pre-commit hook found to uninstall."
+        return 0
+    fi
+
+    # Remove the hook
+    rm "$hook_file"
+
+    # Restore backup if it exists
+    if [ -f "$backup_file" ]; then
+        mv "$backup_file" "$hook_file"
+        echo "✅ Pre-commit hook uninstalled and backup restored."
+    else
+        echo "✅ Pre-commit hook uninstalled."
+    fi
+}
+
+# Function to run the actual pre-commit checks
+run_checks() {
+    # Colors for output
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    NC='\033[0m' # No Color
+
+    echo "🔍 Running pre-commit checks:"
+
+    # Set PROJECT_ROOT for the lint and test scripts
+    export PROJECT_ROOT
+
+    # Track overall success
+    overall_success=true
+
+    # Run lint (suppress output)
+    if "${PROJECT_ROOT}"/scripts/lint >/dev/null 2>&1; then
+        echo -e "    ${GREEN}✓ Linting${NC}"
+    else
+        echo -e "    ${RED}✗ Linting (See scripts/lint for more info.)${NC}"
+        overall_success=false
+    fi
+
+    # Run tests (suppress output)
+    if "${PROJECT_ROOT}"/scripts/test >/dev/null 2>&1; then
+        echo -e "    ${GREEN}✓ Tests${NC}"
+    else
+        echo -e "    ${RED}✗ Tests (See scripts/test for more info.)${NC}"
+        overall_success=false
+    fi
+
+    echo "" # Add blank line before final result
+
+    # Exit based on overall result
+    if [ "$overall_success" = true ]; then
+        echo -e "${GREEN}✓ All pre-commit checks passed!${NC}"
+        exit 0
+    else
+        echo -e "${RED}✗ Pre-commit checks failed!${NC}"
+        exit 1
+    fi
+}
+
+# Main script logic
+case "${1:-}" in
+"install")
+    install_hook
+    ;;
+"uninstall")
+    uninstall_hook
+    ;;
+"")
+    # No arguments - run the checks (this is the actual hook behavior)
+    run_checks
+    ;;
+*)
+    echo "Usage: $0 [install|uninstall]"
+    echo ""
+    echo "Commands:"
+    echo "  install    Install the pre-commit git hook"
+    echo "  uninstall  Uninstall the pre-commit git hook"
+    echo "  (no args)  Run pre-commit checks (used by git hook)"
+    exit 1
+    ;;
+esac

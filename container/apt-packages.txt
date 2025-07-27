@@ -1,0 +1,10 @@
+golang
+build-essential
+git
+curl
+wget
+make
+gcc
+g++
+libc6-dev
+pkg-config

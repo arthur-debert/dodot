@@ -1,0 +1,35 @@
+.github/ GitHub configuration and workflows
+.github/workflows/go.yml CI workflow for testing and building
+.github/workflows/release.yml Release workflow using GoReleaser
+.github/workflows/todo-to-issue.yml Converts TODO comments to GitHub issues
+.goreleaser.yml GoReleaser configuration for multi-platform builds
+Dockerfile.deb-test Docker configuration for testing Debian packages
+LICENSE Project license file
+README.md Project documentation and usage guide
+cmd/ Command-line application entry points
+cmd/my-awesome-cli/ Main application package
+cmd/my-awesome-cli/main.go Application entry point with version variables
+cmd/my-awesome-cli/root.go Root command and CLI structure
+docs/ Documentation directory
+docs/dev/ Development-specific documentation
+go.mod Go module definition and dependencies
+pkg/ Public packages that can be imported
+pkg/logging/ Structured logging with zerolog
+scripts/ Development and build scripts
+scripts/build Build script with version embedding
+scripts/cloc-go Count lines of Go code
+scripts/gen-completion Generate shell completions
+scripts/gen-manpage Generate man pages
+scripts/lint Run Go linting tools
+scripts/pre-commit Git pre-commit hook
+scripts/release-new Interactive release automation
+scripts/test Run tests
+scripts/test-deb Test Debian package with Docker
+scripts/test-with-cov Run tests with coverage reporting
+.copier/ Copier template configuration
+.envrc Environment variables and direnv configuration
+.gitignore Git ignore patterns
+bin/ Compiled binaries (git ignored)
+dist/ Release artifacts (git ignored)
+tmp/ Temporary files (git ignored)
+local/ Local development files (git ignored)

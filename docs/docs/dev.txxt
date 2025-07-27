@@ -1,0 +1,9 @@
+Development
+
+
+The dodot app uses lual for logging and, by default will log to /tmp/dodot.log debug level messages.
+
+code should create loggers and use them as in : 
+
+local logger = require("lual").logger() -- creates a logger instance
+logger.debug () -- use as usual

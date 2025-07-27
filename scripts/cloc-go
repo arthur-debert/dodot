@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+
+# Default to "pkg" if no arguments provided
+if [[ $# -eq 0 ]]; then
+    DIRS=("pkg")
+else
+    DIRS=("$@")
+fi
+
+# Variables to store the grand totals
+GRAND_TOTAL_FILES=0
+GRAND_TOTAL_BLANK=0
+GRAND_TOTAL_COMMENT=0
+GRAND_TOTAL_CODE=0
+GRAND_TOTAL_TEST_CODE=0
+
+# Print the header
+echo "----------------------------------------------------------------------"
+printf "%-32s %10s %10s %10s %10s\n" "" "go files" "comment" "code" "tests"
+echo "----------------------------------------------------------------------"
+
+# Process each directory
+for TARGET_PATH in "${DIRS[@]}"; do
+    # Convert to absolute path if it's a relative path
+    if [[ ! "$TARGET_PATH" = /* ]]; then
+        TARGET_PATH="$(pwd)/$TARGET_PATH"
+    fi
+
+    # Check if path exists
+    if [[ ! -d "$TARGET_PATH" ]]; then
+        echo "Error: Directory '$TARGET_PATH' does not exist"
+        continue
+    fi
+
+    # Temporary files to store cloc output
+    CODE_OUTPUT=$(mktemp)
+    TEST_OUTPUT=$(mktemp)
+
+    # Run cloc for code files (excluding tests)
+    cloc "$TARGET_PATH" --not-match-f='_test\.go$' --quiet --csv >"$CODE_OUTPUT"
+
+    # Run cloc for test files only
+    cloc "$TARGET_PATH" --match-f='_test\.go$' --quiet --csv >"$TEST_OUTPUT"
+
+    # Function to parse cloc CSV output and extract Go stats
+    parse_cloc_output() {
+        local file="$1"
+        # Look for the "Go" language line in CSV format
+        # CSV format: files,language,blank,comment,code
+        grep "^[0-9]*,Go," "$file" 2>/dev/null | head -1 | cut -d',' -f1,3,4,5
+    }
+
+    # Parse the outputs
+    CODE_STATS=$(parse_cloc_output "$CODE_OUTPUT")
+    TEST_STATS=$(parse_cloc_output "$TEST_OUTPUT")
+
+    # Extract individual values
+    if [[ -n "$CODE_STATS" ]]; then
+        CODE_FILES=$(echo "$CODE_STATS" | cut -d',' -f1)
+        CODE_BLANK=$(echo "$CODE_STATS" | cut -d',' -f2)
+        CODE_COMMENT=$(echo "$CODE_STATS" | cut -d',' -f3)
+        CODE_CODE=$(echo "$CODE_STATS" | cut -d',' -f4)
+    else
+        CODE_FILES=0
+        CODE_BLANK=0
+        CODE_COMMENT=0
+        CODE_CODE=0
+    fi
+
+    if [[ -n "$TEST_STATS" ]]; then
+        TEST_FILES=$(echo "$TEST_STATS" | cut -d',' -f1)
+        TEST_BLANK=$(echo "$TEST_STATS" | cut -d',' -f2)
+        TEST_COMMENT=$(echo "$TEST_STATS" | cut -d',' -f3)
+        TEST_CODE=$(echo "$TEST_STATS" | cut -d',' -f4)
+    else
+        TEST_FILES=0
+        TEST_BLANK=0
+        TEST_COMMENT=0
+        TEST_CODE=0
+    fi
+
+    # Calculate directory totals for display
+    DIR_TOTAL_FILES=$((CODE_FILES + TEST_FILES))
+    # Remove debug output
+
+    # Print the directory stats with test code as a separate column
+    # Truncate target path if it's too long
+    DISPLAY_PATH="$TARGET_PATH"
+    if [ ${#DISPLAY_PATH} -gt 32 ]; then
+        DISPLAY_PATH="...${DISPLAY_PATH: -29}"
+    fi
+    printf "%-32s %10s %10s %10s %10s\n" "$DISPLAY_PATH" "$CODE_FILES" "$CODE_COMMENT" "$CODE_CODE" "$TEST_CODE"
+
+    # Add to grand totals
+    GRAND_TOTAL_FILES=$((GRAND_TOTAL_FILES + CODE_FILES))
+    GRAND_TOTAL_BLANK=$((GRAND_TOTAL_BLANK + CODE_BLANK + TEST_BLANK))
+    GRAND_TOTAL_COMMENT=$((GRAND_TOTAL_COMMENT + CODE_COMMENT))
+    GRAND_TOTAL_CODE=$((GRAND_TOTAL_CODE + CODE_CODE))
+    GRAND_TOTAL_TEST_CODE=$((GRAND_TOTAL_TEST_CODE + TEST_CODE))
+
+    # Clean up temp files
+    rm -f "$CODE_OUTPUT" "$TEST_OUTPUT"
+done
+
+# Print the totals
+echo "----------------------------------------------------------------------"
+printf "%-32s %10s %10s %10s %10s\n" "SUM:" "$GRAND_TOTAL_FILES" "$GRAND_TOTAL_COMMENT" "$GRAND_TOTAL_CODE" "$GRAND_TOTAL_TEST_CODE"
+echo "----------------------------------------------------------------------"

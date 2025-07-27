@@ -1,0 +1,314 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Release automation script with interactive version bumping
+# This script helps create new version tags by bumping major, minor, or patch versions
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Default values
+BUMP_TYPE=""
+SKIP_CONFIRMATION=false
+DRY_RUN=false
+
+# Function to display usage
+usage() {
+    echo "Usage: $0 [--major|--minor|--patch] [--yes] [--dry-run]"
+    echo ""
+    echo "Options:"
+    echo "  --major    Bump major version (X.y.z -> X+1.0.0)"
+    echo "  --minor    Bump minor version (x.Y.z -> x.Y+1.0)"
+    echo "  --patch    Bump patch version (x.y.Z -> x.y.Z+1)"
+    echo "  --yes      Skip confirmation prompts"
+    echo "  --dry-run  Show what would be done without actually doing it"
+    echo "  --help     Show this help message"
+    echo ""
+    echo "If no bump type is specified, you will be prompted to choose."
+    echo ""
+    echo "Examples:"
+    echo "  $0                    # Interactive mode"
+    echo "  $0 --patch            # Bump patch version"
+    echo "  $0 --minor --yes      # Bump minor version without confirmation"
+    echo "  $0 --major --dry-run  # Preview major version bump"
+}
+
+# Function to get the latest version tag
+get_latest_version() {
+    git tag --list 'v*.*.*' --sort=-version:refname | head -1
+}
+
+# Function to parse version components
+parse_version() {
+    local version="$1"
+    version=${version#v}
+    IFS='.' read -r major minor patch <<<"$version"
+
+    if ! [[ "$major" =~ ^[0-9]+$ ]] || ! [[ "$minor" =~ ^[0-9]+$ ]] || ! [[ "$patch" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}❌ Invalid version format: $1${NC}" >&2
+        echo "Expected format: vX.Y.Z where X, Y, Z are numbers" >&2
+        exit 1
+    fi
+
+    echo "$major $minor $patch"
+}
+
+# Function to calculate bumped version
+calculate_bumped_version() {
+    local major="$1"
+    local minor="$2"
+    local patch="$3"
+    local bump_type="$4"
+
+    case "$bump_type" in
+    "major")
+        major=$((major + 1))
+        minor=0
+        patch=0
+        ;;
+    "minor")
+        minor=$((minor + 1))
+        patch=0
+        ;;
+    "patch")
+        patch=$((patch + 1))
+        ;;
+    *)
+        echo -e "${RED}❌ Invalid bump type: $bump_type${NC}" >&2
+        exit 1
+        ;;
+    esac
+
+    echo "v$major.$minor.$patch"
+}
+
+# Function to prompt for bump type and return the new version
+prompt_for_bump_type() {
+    local current_version="$1"
+    local major="$2"
+    local minor="$3"
+    local patch="$4"
+
+    # Calculate what each bump would result in
+    local patch_version=$(calculate_bumped_version "$major" "$minor" "$patch" "patch")
+    local minor_version=$(calculate_bumped_version "$major" "$minor" "$patch" "minor")
+    local major_version=$(calculate_bumped_version "$major" "$minor" "$patch" "major")
+
+    echo -e "${BLUE}Current version: ${BOLD}$current_version${NC}" >&2
+    echo >&2
+    echo -e "${BLUE}Select version bump:${NC}" >&2
+    echo -e "  ${BOLD}1)${NC} Patch: $current_version → ${GREEN}$patch_version${NC}" >&2
+    echo -e "  ${BOLD}2)${NC} Minor: $current_version → ${GREEN}$minor_version${NC}" >&2
+    echo -e "  ${BOLD}3)${NC} Major: $current_version → ${GREEN}$major_version${NC}" >&2
+    echo >&2
+
+    local choice
+    while true; do
+        read -p "Enter choice (1/2/3 or p/n/m): " choice </dev/tty
+        echo >&2 # Add newline after input
+
+        case $choice in
+        1 | p | P) echo "patch"; break ;;
+        2 | n | N) echo "minor"; break ;;
+        3 | m | M) echo "major"; break ;;
+        *)
+            echo -e "${YELLOW}Invalid choice. Please enter 1, 2, or 3${NC}" >&2
+            ;;
+        esac
+    done
+}
+
+# Function to get new version (handles both CLI flags and interactive prompts)
+get_new_version() {
+    local latest_version="$1"
+
+    # Parse current version
+    read -r major minor patch <<<"$(parse_version "$latest_version")"
+
+    # Determine bump type
+    local bump_type="$BUMP_TYPE"
+    if [ -z "$bump_type" ]; then
+        bump_type=$(prompt_for_bump_type "$latest_version" "$major" "$minor" "$patch")
+    fi
+
+    # Calculate and return new version
+    calculate_bumped_version "$major" "$minor" "$patch" "$bump_type"
+}
+
+# Function to confirm action
+confirm() {
+    local message="$1"
+    if [ "$SKIP_CONFIRMATION" = true ]; then
+        return 0
+    fi
+
+    echo -e "${YELLOW}$message${NC}" >&2
+    local reply
+    read -p "Continue? (y/N): " reply </dev/tty
+    echo >&2
+    if [[ ! $reply =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}❌ Cancelled by user${NC}" >&2
+        exit 1
+    fi
+}
+
+# Function to create and push the version tag
+bump_and_push() {
+    local new_version="$1"
+
+    echo -e "${BLUE}${BOLD}📈 Preparing release $new_version${NC}"
+    echo
+
+    # Show what will be done
+    echo -e "${BLUE}This will:${NC}"
+    echo -e "  • Create git tag: ${GREEN}$new_version${NC}"
+    echo -e "  • Push tag to: ${GREEN}origin${NC}"
+    echo -e "  • Trigger GitHub Actions release workflow"
+    echo
+
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${YELLOW}🔍 DRY RUN - No changes will be made${NC}"
+        echo
+        echo -e "Would execute:"
+        echo -e "  ${BLUE}git tag -a $new_version -m \"Release $new_version\"${NC}"
+        echo -e "  ${BLUE}git push origin $new_version${NC}"
+        echo
+        echo -e "${GREEN}✅ Dry run completed${NC}"
+        exit 0
+    fi
+
+    # Confirm the new version
+    confirm "🚀 Create and push tag $new_version?"
+
+    # Create the tag
+    echo -e "${BLUE}🏷️  Creating tag $new_version...${NC}"
+    git tag -a "$new_version" -m "Release $new_version"
+    echo -e "${GREEN}✅ Git tag created${NC}"
+
+    # Push the tag
+    echo -e "${BLUE}📤 Pushing tag to remote...${NC}"
+    git push origin "$new_version"
+    echo -e "${GREEN}✅ Tag pushed${NC}"
+
+    # Get repository information
+    local repo_url=$(git config --get remote.origin.url)
+    local repo_path=$(echo "$repo_url" | sed 's/.*github.com[:/]\([^.]*\).*/\1/')
+
+    # Success message
+    echo
+    echo -e "${GREEN}${BOLD}🎉 Successfully created release $new_version!${NC}"
+    echo
+    echo -e "${BLUE}GitHub Actions will now:${NC}"
+    echo -e "  • Build the binaries"
+    echo -e "  • Create GitHub release"
+    echo -e "  • Upload release artifacts"
+    echo -e "  • Update Homebrew formula"
+    echo -e "  • Publish packages (deb, rpm, apk)"
+    echo
+    echo -e "${YELLOW}📊 Monitor the release at:${NC}"
+    echo -e "   ${BLUE}https://github.com/$repo_path/actions${NC}"
+    echo
+    echo -e "${YELLOW}📦 View release when ready:${NC}"
+    echo -e "   ${BLUE}https://github.com/$repo_path/releases/tag/$new_version${NC}"
+}
+
+# MAIN SCRIPT EXECUTION
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+    --major)
+        BUMP_TYPE="major"
+        shift
+        ;;
+    --minor)
+        BUMP_TYPE="minor"
+        shift
+        ;;
+    --patch)
+        BUMP_TYPE="patch"
+        shift
+        ;;
+    --yes | -y)
+        SKIP_CONFIRMATION=true
+        shift
+        ;;
+    --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+    --help | -h)
+        usage
+        exit 0
+        ;;
+    *)
+        echo -e "${RED}❌ Unknown option: $1${NC}" >&2
+        echo >&2
+        usage
+        exit 1
+        ;;
+    esac
+done
+
+# Show header
+echo -e "${BLUE}${BOLD}🚀 my-awesome-cli Release Tool${NC}"
+echo
+
+# Pre-flight checks
+echo -e "${BLUE}Running pre-flight checks...${NC}"
+
+# Check git repository
+if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo -e "${RED}❌ Not in a git repository${NC}" >&2
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Git repository"
+
+# Check for uncommitted changes
+if ! git diff-index --quiet HEAD --; then
+    echo -e "${RED}❌ You have uncommitted changes${NC}" >&2
+    echo >&2
+    echo -e "${YELLOW}Uncommitted files:${NC}" >&2
+    git status --porcelain | head -10 >&2
+    echo >&2
+    echo "Please commit or stash your changes first." >&2
+    exit 1
+fi
+echo -e "${GREEN}✓${NC} Working directory clean"
+
+# Branch check
+current_branch=$(git branch --show-current)
+if [ "$current_branch" != "main" ] && [ "$current_branch" != "master" ]; then
+    echo -e "${YELLOW}⚠️  On branch '$current_branch' (not main/master)${NC}"
+    if [ "$SKIP_CONFIRMATION" = false ]; then
+        confirm "Continue releasing from '$current_branch'?"
+    fi
+else
+    echo -e "${GREEN}✓${NC} On branch $current_branch"
+fi
+
+# Fetch latest tags
+echo -e "${GREEN}✓${NC} Fetching latest tags..."
+git fetch --tags --quiet
+
+echo
+
+# Get latest version
+latest_version=$(get_latest_version)
+if [ -z "$latest_version" ]; then
+    echo -e "${YELLOW}ℹ️  No existing version tags found${NC}"
+    echo -e "${BLUE}Starting from v0.0.0${NC}"
+    latest_version="v0.0.0"
+    echo
+fi
+
+# Get the new version (either from flags or user prompt)
+new_version=$(get_new_version "$latest_version")
+
+# Create and push the tag
+bump_and_push "$new_version"

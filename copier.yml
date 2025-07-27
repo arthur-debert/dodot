@@ -1,0 +1,203 @@
+# Golang CLI Template Configuration for Copier
+
+# Module description for dynamic listing
+module_description: "Complete Go CLI application with Cobra, build scripts, and GitHub Actions"
+
+# Template metadata - only process .jinja files
+_templates_suffix: ".jinja"
+_envops:
+  block_start_string: "{%"
+  block_end_string: "%}"
+  variable_start_string: "{{"
+  variable_end_string: "}}"
+
+# Store answers file in .copier directory
+_answers_file: ".copier/.copier-answers.golang-cli.yml"
+
+# Exclude files that shouldn't be copied to the destination
+_exclude:
+  - "**/*.bak"
+  - ".goreleaser.yml.template"
+
+# Questions specific to Golang CLI projects
+project_name:
+  type: str
+  help: What is your project name?
+  default: "My Awesome CLI"
+
+package_name:
+  type: str
+  help: What is the package/binary name?
+  default: "{{ project_name.lower().strip().replace(' ', '-').replace('_', '-') }}"
+
+github_user:
+  type: str
+  help: What is your GitHub username?
+  default: "arthur-debert"
+
+author_name:
+  type: str
+  help: What is your full name?
+  default: "Arthur Debert"
+
+author_email:
+  type: str
+  help: What is your email address?
+  default: "arthur@debert.xyz"
+
+description:
+  type: str
+  help: Brief description of your CLI tool
+  default: "Description of your CLI tool"
+
+license:
+  type: str
+  help: What license to use?
+  choices:
+    - MIT
+    - Apache-2.0
+    - GPL-3.0
+    - BSD-3-Clause
+  default: MIT
+
+go_version:
+  type: str
+  help: Go version to use
+  default: "1.23"
+
+year:
+  type: int
+  help: Copyright year
+  default: "{{ 2024 }}"
+
+# Post-generation tasks for Golang CLI
+_tasks:
+  - command: |
+      # Setting up standard project structure
+      # Create standard directories
+      mkdir -p local/prompts docs/dev
+
+      # Create .gitkeep for prompts directory
+      cat > local/prompts/.gitkeep << 'EOF'
+      # This file ensures the prompts directory is tracked by git
+      # The local/ directory is for development-specific files and should be in .gitignore  
+      # This prompts/ subdirectory can contain AI prompts, templates, or other local development resources
+      EOF
+
+      # Create development documentation
+      cat > docs/dev/README.md << 'EOF'
+      # Development Documentation
+
+      This directory contains development-specific documentation for the {{ package_name }} project.
+
+      ## Structure
+
+      - `README.md` - This file, overview of development documentation
+      - Additional development guides and documentation can be added here
+
+      ## Placeholder
+
+      This is a placeholder file. Add your development documentation, guides, and notes here as the project grows.
+
+      ## Common Topics
+
+      Consider documenting:
+      - Development setup and environment
+      - Architecture decisions and patterns
+      - Debugging guides
+      - Performance considerations
+      - Deployment procedures
+      - Contributing guidelines for developers
+      EOF
+
+  - command: |
+      # Creating universal .envrc file
+      cat > .envrc << 'EOF'
+      #!/bin/bash
+
+      # Universal project environment variables
+      export PROJECT_ROOT="$PWD"
+      export PKG_NAME="{{ package_name }}"
+      export GH_USER="{{ github_user }}"
+      export GH_URL="https://github.com/{{ github_user }}/{{ package_name }}"
+
+      # Derived URLs
+      export GH_REPO="{{ github_user }}/{{ package_name }}"
+      export GH_CLONE_URL="git@github.com:{{ github_user }}/{{ package_name }}.git"
+
+      # Add project's bin directory to PATH
+      export PATH="$PROJECT_ROOT/bin:$PATH"
+
+      # Go-specific environment
+      export GOPATH="${GOPATH:-$HOME/go}"
+      export PATH="$PATH:$GOPATH/bin"
+
+      # Development tools
+      if command -v direnv >/dev/null 2>&1; then
+          echo "✅ direnv loaded for {{ package_name }}"
+      else
+          echo "💡 Install direnv for automatic environment loading: brew install direnv"
+      fi
+      EOF
+
+      chmod +x .envrc
+
+  - command: |
+      # Rename cmd directory from placeholder to actual package name
+      if [ -d "cmd/PKG_NAME_PLACEHOLDER" ]; then
+          mv "cmd/PKG_NAME_PLACEHOLDER" "cmd/{{ package_name }}"
+      fi
+    description: "Renaming template directories to use actual package name"
+
+  - command: |
+      # Make all scripts executable
+      chmod +x scripts/*
+    description: "Making scripts executable"
+
+  - command: |
+      # Initializing git repository
+      if [ ! -d ".git" ]; then
+          git init
+      fi
+      git add .
+      git commit -m "Initial commit for {{ package_name }}" || echo "Git commit skipped"
+
+  - command: |
+      # Installing pre-commit hooks
+      if [ -f "scripts/pre-commit" ]; then
+          ./scripts/pre-commit install || echo "Pre-commit hook installation failed"
+      fi
+
+  - command: |
+      # Setting up direnv
+      direnv allow || echo "direnv allow failed - install direnv with: brew install direnv"
+
+  - command: |
+      # Installing Go dependencies
+      go mod tidy || echo "Go mod tidy failed"
+
+  - command: |
+      # Testing the build
+      ./scripts/build || echo "Build test failed"
+      
+  - command: |
+      # Create additional directories
+      mkdir -p dist tmp .copier
+      
+      # Move copier-related files to .copier directory
+      if [ -f "copier.yml" ]; then
+          mv copier.yml .copier/ 2>/dev/null || true
+      fi
+      
+      # Move template usage to docs
+      if [ -f "TEMPLATE_USAGE.md" ]; then
+          mkdir -p docs
+          mv TEMPLATE_USAGE.md docs/ 2>/dev/null || true
+      fi
+      
+      # Clean up the .copier-answers file from root if it exists
+      if [ -f ".copier-answers.yml.jinja" ]; then
+          rm -f .copier-answers.yml.jinja
+      fi
+      
+      echo "✅ Project structure organized"

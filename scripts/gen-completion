@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Always build the binary to ensure it's for the current platform
+echo "Building my-awesome-cli..."
+./scripts/build
+
+# Create completions directory
+mkdir -p completions
+
+# Generate completions
+echo "Generating bash completion..."
+./my-awesome-cli completion bash > completions/my-awesome-cli.bash
+
+echo "Generating zsh completion..."
+./my-awesome-cli completion zsh > completions/_my-awesome-cli
+
+echo "Generating fish completion..."
+./my-awesome-cli completion fish > completions/my-awesome-cli.fish
+
+echo "✅ Completions generated in completions/"

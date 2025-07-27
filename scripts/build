@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}${BOLD}🔨 Building my-awesome-cli...${NC}"
+echo
+
+# Get version information from git
+VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE=$(date -u '+%Y-%m-%d_%H:%M:%S')
+
+# Show build information
+echo -e "${BLUE}Build Information:${NC}"
+echo -e "  Version: ${BOLD}$VERSION${NC}"
+echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
+echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
+echo
+
+# Build all packages first
+echo -e "${BLUE}Building all packages...${NC}"
+if go build -v ./...; then
+    echo -e "${GREEN}✅ All packages built successfully${NC}"
+else
+    echo -e "${RED}❌ Package build failed${NC}"
+    exit 1
+fi
+
+# Set up LDFLAGS for version embedding
+LDFLAGS="-s -w"
+LDFLAGS="$LDFLAGS -X main.version=$VERSION"
+LDFLAGS="$LDFLAGS -X main.commit=$COMMIT"
+LDFLAGS="$LDFLAGS -X main.buildDate=$BUILD_DATE"
+
+# Build the main binary
+echo
+echo -e "${BLUE}Building CLI binary...${NC}"
+if go build -ldflags "$LDFLAGS" -o my-awesome-cli ./cmd/my-awesome-cli; then
+    echo -e "${GREEN}✅ Binary built successfully: ./my-awesome-cli${NC}"
+else
+    echo -e "${RED}❌ Binary build failed${NC}"
+    exit 1
+fi
+
+# Run tests if not skipped
+if [[ "${SKIP_TESTS:-}" != "true" ]]; then
+    echo
+    echo -e "${YELLOW}Running tests...${NC}"
+    if go test ./... -short; then
+        echo -e "${GREEN}✅ All tests passed${NC}"
+    else
+        echo -e "${RED}❌ Tests failed${NC}"
+        exit 1
+    fi
+else
+    echo
+    echo -e "${YELLOW}⚠️  Tests skipped (SKIP_TESTS=true)${NC}"
+fi
+
+# Verify the binary works
+echo
+echo -e "${BLUE}Verifying binary...${NC}"
+if ./my-awesome-cli --version >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Binary verification passed${NC}"
+    # Show actual version output
+    echo -e "${BLUE}Version output:${NC}"
+    ./my-awesome-cli --version || true
+elif ./my-awesome-cli --help >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Binary verification passed (via --help)${NC}"
+else
+    echo -e "${RED}❌ Binary verification failed${NC}"
+    exit 1
+fi
+
+# Create symlink in bin directory if it doesn't exist
+if [ ! -d "bin" ]; then
+    mkdir -p bin
+fi
+if [ ! -e "bin/my-awesome-cli" ]; then
+    ln -sf "../my-awesome-cli" "bin/my-awesome-cli"
+    echo -e "${GREEN}✅ Created symlink in bin/my-awesome-cli${NC}"
+fi
+
+echo
+echo -e "${GREEN}${BOLD}🎉 Build completed successfully!${NC}"
+echo -e "${BLUE}Binary location: ${BOLD}./my-awesome-cli${NC}"

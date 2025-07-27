@@ -1,0 +1,25 @@
+name: "TODO to Issue"
+on: 
+  push:
+    branches: [main]
+
+permissions:
+  issues: write
+  repository-projects: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: TODO to Issue
+        uses: alstr/todo-to-issue-action@v5.0
+        env:
+          ACTIONS_STEP_DEBUG: true
+        with:
+          CLOSE_ISSUES: false
+          AUTO_P: true

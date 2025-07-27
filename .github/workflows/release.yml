@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Set environment variables
+        run: |
+          echo "PKG_NAME=my-awesome-cli" >> $GITHUB_ENV
+          echo "GH_USER=arthur-debert" >> $GITHUB_ENV
+          echo "GIT_REPO=arthur-debert/my-awesome-cli" >> $GITHUB_ENV
+
+      - name: Generate completions and man pages
+        run: |
+          if [ -f scripts/gen-completion ]; then
+            ./scripts/gen-completion
+          fi
+          if [ -f scripts/gen-manpage ]; then
+            ./scripts/gen-manpage
+          fi
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          PKG_NAME: my-awesome-cli 
