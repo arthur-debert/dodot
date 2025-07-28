@@ -1,0 +1,121 @@
+            Power-ups in Dodot
+
+This document lists all the power-ups available in dodot, their purpose, and
+the actions they generate. Power-ups are the core functionality providers in
+dodot - they take matched files and generate actions to be executed.
+
+
+1. Shell Add Path Power-up (shell_add_path)
+
+    Purpose: Adds directories to the system PATH environment variable for
+    different shells. This enables executables in pack bin directories to be
+    available system-wide.
+
+    Trigger: Typically triggered by a "bin" directory in a pack.
+
+    Options:
+    - bin_dir: Explicit directory to add to PATH (overrides matched files)
+    - shell: Target shell (bash, zsh, fish, etc.) - auto-detected if not specified
+    - prepend: Whether to add to beginning of PATH (default: false)
+
+    Generated Action:
+    - Type: shell_add_path
+    - Modifies shell configuration to include the specified directory in PATH
+
+
+2. Brew Power-up (brew)
+
+    Purpose: Processes Brewfiles to install Homebrew packages. Enables
+    declarative package management for macOS and Linux systems using Homebrew.
+
+    Trigger: Files named "Brewfile" in a pack.
+
+    Options: None currently implemented.
+
+    Generated Action:
+    - Type: brew_install
+    - References the Brewfile for processing
+    - Note: In future versions, will parse Brewfile and create individual
+      brew install commands
+
+
+3. Shell Profile Power-up (shell_profile)
+
+    Purpose: Manages shell profile modifications including sourcing files,
+    appending content, or exporting environment variables. This is how dodot
+    integrates shell configurations like aliases, functions, and environment
+    settings.
+
+    Trigger: Files like "alias.sh", "env.sh", or other shell configuration files.
+
+    Options:
+    - shell: Target shell (auto-detected if not specified)
+    - action_type: How to integrate the file
+        - "source": Source the file from profile (default)
+        - "append": Append file contents to profile
+        - "export_vars": Parse and export as environment variables
+    - profile_preference: Which profile file to modify (e.g., ".bashrc" vs ".bash_profile")
+    - export_prefix: Prefix for exported variables (only for export_vars)
+    - order: Numeric order for multiple profile modifications (default: 50)
+
+    Generated Action:
+    - Type: shell_source
+    - Modifies the appropriate shell profile file to integrate the configuration
+
+
+4. Script Runner Power-up (script_runner)
+
+    Purpose: Executes installation or setup scripts within packs. This allows
+    packs to perform custom setup operations like downloading additional files,
+    compiling software, or running configuration commands.
+
+    Trigger: Files named "install.sh" or similar setup scripts.
+
+    Options:
+    - args: Command line arguments to pass to the script
+    - env: Environment variables to set when running the script
+    - order: Execution order when multiple scripts exist (default: 100)
+
+    Generated Action:
+    - Type: script_run
+    - Executes the script with specified working directory and environment
+    - Note: Scripts should be idempotent as they run on every deployment
+
+
+5. Symlink Power-up (symlink)
+
+    Purpose: Creates symbolic links from pack files to target locations in the
+    filesystem. This is the primary mechanism for deploying configuration files
+    like .vimrc, .gitconfig, etc.
+
+    Trigger: Various files that need to be linked (e.g., "vimrc", "gitconfig").
+
+    Options:
+    - target_dir: Where to create the symlink (default: "~")
+    - create_dirs: Create parent directories if needed (default: true)
+    - overwrite: Replace existing files/links (default: false)
+    - backup: Backup existing files before overwriting (default: false)
+
+    Behavior:
+    - Files linked to home (~) get a dot prefix (e.g., vimrc -> .vimrc)
+    - Directories linked to home keep their original name
+    - Files/dirs linked to subdirectories keep their original name
+
+    Generated Action:
+    - Type: link
+    - Creates a symbolic link from source to target with specified options
+
+
+Design Notes:
+
+    All power-ups follow the same pattern:
+    1. They receive matched files from triggers
+    2. They validate their inputs
+    3. They generate high-level action descriptions
+    4. They never directly modify the filesystem
+
+    This design enables:
+    - Easy testing through pure functions
+    - Clear separation of concerns
+    - Predictable behavior
+    - Safe error handling and potential rollback
