@@ -1,0 +1,84 @@
+# AI Assistant Module
+
+This module provides containerized AI coding assistants with secure, isolated execution environments for your project.
+
+## What You Get
+
+### 🤖 AI Assistants
+
+- **Claude Code** - Anthropic's AI coding assistant
+
+
+
+### 📁 Project Structure
+```
+ai-assistant/
+├── containers/
+│   ├── base/               # Base Docker images with assistants
+│   └── compose.sh          # Dynamic dependency composition
+├── scripts/
+│   ├── run.sh             # Main launcher script
+│   └── test.sh            # Module testing script
+└── config/
+    └── defaults.yaml      # Configuration defaults
+```
+
+### 🛡️ Security Features
+- **Full container isolation** - AI assistants can only access your project directory
+- **Read-only secrets mounting** - API keys are protected
+- **No host system access** - Prevents escape to your main system
+- **Configurable permissions** - Control what the assistant can do
+
+### 🚀 Dynamic Module Support
+The container automatically includes dependencies from other genx modules:
+
+- Detects and includes dependencies from modules like `golang-cli`, `python-cli`, etc.
+
+- Builds project-specific Docker images with all required tools
+- Caches images for fast startup
+
+### ⚡ Features
+- **Multiple assistant support** - Switch between different AI assistants
+- **Project-aware containers** - Includes your project's language tools
+
+- **Secrets management** - Secure API key handling via environment variables
+- **Persistent workspace** - Your project is mounted at `/workspace`
+
+## Quick Start Commands
+
+```bash
+# Run the default assistant
+./ai-assistant/scripts/run.sh
+
+# Run with specific modules
+./ai-assistant/scripts/run.sh --modules=golang-cli,python-cli
+
+# Rebuild container (after adding new dependencies)
+./ai-assistant/scripts/run.sh --rebuild
+
+# Run with GPU support
+./ai-assistant/scripts/run.sh --gpu
+
+# Test the installation
+./ai-assistant/scripts/test.sh
+```
+
+## Configuration
+
+- **Project**: .
+- **Secrets path**: $HOME/.config/ai-assistants/secrets
+- **Base image**: Ubuntu 24.04
+
+
+## Environment Variables
+
+The container has access to these API keys (if set in your secrets file):
+- `ANTHROPIC_API_KEY`
+- `GOOGLE_API_KEY` 
+- `OPENAI_API_KEY`
+- `GITHUB_TOKEN`
+
+## Prerequisites
+
+- Docker must be installed and running
+- API keys configured in your secrets file

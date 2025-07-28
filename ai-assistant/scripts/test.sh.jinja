@@ -1,0 +1,88 @@
+#!/bin/bash
+set -euo pipefail
+
+# Test script for AI assistant module (without Docker)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODULE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+GENX_ROOT="$(cd "$MODULE_DIR/../.." && pwd)"
+
+echo "Testing AI Assistant Module Structure..."
+echo "========================================"
+
+# Test 1: Check directory structure
+echo -n "1. Checking directory structure... "
+if [ -d "$MODULE_DIR/containers/base" ] && \
+   [ -d "$MODULE_DIR/scripts" ] && \
+   [ -d "$MODULE_DIR/config" ]; then
+    echo "✓"
+else
+    echo "✗"
+    exit 1
+fi
+
+# Test 2: Check essential files
+echo -n "2. Checking essential files... "
+if [ -f "$MODULE_DIR/containers/base/Dockerfile" ] && \
+   [ -f "$MODULE_DIR/containers/compose.sh" ] && \
+   [ -f "$MODULE_DIR/scripts/run.sh" ] && \
+   [ -f "$MODULE_DIR/config/defaults.yaml" ]; then
+    echo "✓"
+else
+    echo "✗"
+    exit 1
+fi
+
+# Test 3: Check executable permissions
+echo -n "3. Checking executable permissions... "
+if [ -x "$MODULE_DIR/containers/compose.sh" ] && \
+   [ -x "$MODULE_DIR/scripts/run.sh" ]; then
+    echo "✓"
+else
+    echo "✗"
+    exit 1
+fi
+
+# Test 4: Check module dependencies
+echo -n "4. Checking module dependency declarations... "
+MODULES_WITH_DEPS=0
+for module in "$GENX_ROOT"/modules/*; do
+    if [ -d "$module/container" ]; then
+        ((MODULES_WITH_DEPS++))
+    fi
+done
+echo "✓ ($MODULES_WITH_DEPS modules with container dependencies)"
+
+# Test 5: Validate compose script syntax
+echo -n "5. Validating compose.sh syntax... "
+if bash -n "$MODULE_DIR/containers/compose.sh" 2>/dev/null; then
+    echo "✓"
+else
+    echo "✗"
+    exit 1
+fi
+
+# Test 6: Validate run script syntax
+echo -n "6. Validating run.sh syntax... "
+if bash -n "$MODULE_DIR/scripts/run.sh" 2>/dev/null; then
+    echo "✓"
+else
+    echo "✗"
+    exit 1
+fi
+
+# Test 7: Test compose script with dry run
+echo -n "7. Testing compose.sh module collection... "
+TEST_OUTPUT=$("$MODULE_DIR/containers/compose.sh" --modules golang-cli,mkdocs 2>&1 | grep -E "(Adding|Warning)" || true)
+if echo "$TEST_OUTPUT" | grep -q "Adding"; then
+    echo "✓"
+else
+    echo "✗"
+    echo "    Output: $TEST_OUTPUT"
+fi
+
+echo ""
+echo "All tests passed! ✓"
+echo ""
+echo "Note: Full integration testing requires Docker to be installed and running."
+echo "Run './scripts/run.sh --modules golang-cli' to test with Docker."

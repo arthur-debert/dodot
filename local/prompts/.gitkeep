@@ -1,0 +1,3 @@
+# This file ensures the prompts directory is tracked by git
+# The local/ directory is for development-specific files and should be in .gitignore  
+# This prompts/ subdirectory can contain AI prompts, templates, or other local development resources

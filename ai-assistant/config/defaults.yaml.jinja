@@ -1,0 +1,56 @@
+# Default configuration for AI Assistant module - .
+
+# Container settings
+container:
+  base_image: "ubuntu:24.04"
+  user: "assistant"
+  workspace: "/workspace"
+  project_name: "."
+  
+# Volume mounts
+volumes:
+  # Current working directory is always mounted
+  workspace:
+    host: "."
+    container: "/workspace"
+    mode: "rw"
+  
+  # Secrets volume (if SECRETS_PATH is set)
+  secrets:
+    host: "$HOME/.config/ai-assistants/secrets"
+    container: "/secrets"
+    mode: "ro"
+
+# Environment variables to pass through
+environment:
+  - "ANTHROPIC_API_KEY"
+  - "GOOGLE_API_KEY"
+  - "OPENAI_API_KEY"
+  - "GITHUB_TOKEN"
+  - "SSH_AUTH_SOCK"
+
+# GPU support
+gpu:
+  enabled: false
+  devices: "all"
+
+# Network settings
+network:
+  mode: "bridge"
+  dns:
+    - "8.8.8.8"
+    - "8.8.4.4"
+
+# Assistant settings
+assistants:
+
+  claude-code:
+    command: "claude-code"
+    install_method: "npm"
+    package: "@anthropic-ai/claude-code"
+
+  
+
+
+# Default assistant
+default_assistant: "claude-code"

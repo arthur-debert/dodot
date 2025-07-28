@@ -1,0 +1,225 @@
+            Introduction To Dodot
+
+dodot is a dotfiles manager with a very opinionated design. it aims to be
+small, simple, flexible at the cost of adhering to some design decisions. 
+
+dodot has special features for macos users that are quite unique, but will work
+on any unix based system (those will be done in v2)
+
+this document outlines the design choices and their consequences both in the
+code and usage.
+
+
+The TLDR:
+
+    1. Versioning is left to git
+    2. No installs, only deployments.No updates, changes are always live, users can edit their dotfiles away they see fit, no workflow changes.
+    3.- No state: there is no actual install with state for configuration, which radically simplify the code and usage.
+    4. Complete (almost) freedom for users on how to structure their files.
+    5. Dead simple operation, there is one command.
+
+
+1. The Overall Design
+
+    1.1. The Big Picture
+        This seems like common sense and obvious choices, but surprisingly no other
+        dotfiles managers are designed like this, so we built one that is. 
+
+        Principles 1,2 and 3 quite interlined in practice, so let's go over the
+        design. Adhering to 1, we conclude that there will be a path under  your source
+        control with your dotfiles, and that you will use git to manage it.
+
+        This could still mean that there are commands that installs and manages changes
+        back from the live machine into the source controlled path and vice versa, as
+        some managers do.
+
+        But combining with 2, no updates, changes are always live, this means that the
+        files under source control **are** the very files deployed. Hence, changes are
+        always live and always reflected in source control, since they are the same
+        things.
+
+        The way to do that is to use symlinks: the file in source control acts as the
+        link source. There is nothing to "update" as a change in a config file is live
+        on the system (a running shell might need to source again but the file is
+        live).
+
+        This is how there is no install, only deployments, which are just linking paths
+        in your system into the source controlled repository.
+
+    1.2. File structure: How does dodot processes your files? 
+
+
+        1.2.1 Directories as Packs
+
+            You organize related configuration under directories. The criteria is
+            up to you. Common setups will feature things like a specific software
+            (like a neovim directory for you vim files ), workflows (like
+            python-dev) or machines (macos-laptop), it's really up to you.
+
+            You point dodot, to where your dotfiles are with the $DOTFILES_ROOT
+            variable, and dodot will consider each of the dirs in that path as a
+            group of files, a pack in dodot's parlance.
+
+        1.2.1 What's in a pack
+
+            Inside a pack you can have many types of files, and dodot has
+            several tools to leverage that.
+
+            The main thing is that dodot works by file naming conventions. For
+            example if a pack has a "bin" directory in it, dodot will add it to
+            the system path. If there is an alias.sh file in it, those will be
+            added to your shell and so on.
+
+            The file names convention is pretty straightforward, but if that
+            doesn't work for you, a .dodot.toml file in your pack can map these
+            names into anything you want.
+
+        In short: you group configs as you see fit under directories under your
+        dotfiles root. Inside each directory, files and directories will
+        trigger dodot to do various things, which you can customize with a
+        .dodot.toml file if needed.
+
+
+2. Operation and trade-offs.
+
+    Now we can paint a fuller picture of how dodot works. By running: 
+
+        $ dodot deploy -- no path, deploy everything in DOTFILES_ROOT
+        $ dodot deploy <pack path> -- only a pack
+
+    Dodot will link files that are to be linked (like a .vimrc) and for the
+    other more complex shell related things, create that intermediate layer of
+    symlinks under dodot control to your actual shell files (like the path for
+    bin, or alias.sh) that gets executed on shell login.
+
+    Thus we arrive at principles 3 and 5: no state , nothing to learn. This
+    model, as nice and simple as it is, does pose significant restrictions on
+    functionality, so it's worth going over them.
+
+    For starters, there is no controlled mechanism of deploy changes. You make a
+    change to an alias.sh already deploy, and the next shell login will pick
+    that up. If you have expectations of a more controlled flow where changes
+    get reviewed / picked to be live, dodot won't work for you.
+
+    Additionally, there is no versioning or querying. The assumption here is
+    that any configuration versioning will be done at the source code level, not through dodot. 
+
+    This has some consequences for how updates are picked up too. As we've
+    seen, changes to a deployed alias.sh are live right away. However, say that
+    your neovim pack does not have an alias.sh file, and you deploy it. Later,
+    you add an alias.sh. That will not be live until a deployment, as no links
+    were crated to your alias.sh file since there was none. This is more of an
+    edge case, and it's why dodot has a --auto-fill-pack options that will
+    create empty such files if asked. In this case, there will be a link on
+    deployment and changes will be picked up.
+
+    The other and probably more relevant trade off here needs more context.
+    a few  dodot actions, like running a install.sh file or brew installing
+    what's in a Brewfile in you packs, do RUN things.
+
+    As dodot does not manages state, this means that every time you deploy that
+    pack, install.sh will be ran and homebrew will install the Brewfile's
+    content. Note that this si not on every shell login, but when you deploy
+    that pack through dodot. 
+
+    Brew is pretty smart about this, and this is pretty safe. The install.sh
+    however needs to be written with this restriction in mind. You can always
+    do things like write a file flag when the first run is done and nor run
+        subsequent times fi that file is present, but it's up to you.
+
+
+3. Power-Ups, Triggers and Matchers
+
+    Internally, dodot is written by separating power-ups (something dodot can do
+    such as adding bin to your path or including shell aliases) to triggers
+    (the condition that activates the power ups, like a file with a specific
+    name being present). The matches configuration links triggers to power-ups.
+
+    In this way, power-ups, the functionality that users are interested in are
+    independent of how they get trigger. This also allows us to write a small
+    and focused set of triggers (like a file name trigger). And the matching
+    config links these too, and allows, for example, a .dodot.toml to update
+    this config for any  given pack.
+
+
+    This menas that power-ups authors and code does not have to know about how
+    matching takes place or do any of the file handling there, they get the
+    content they are interested in (say the alias.sh or the bin path) without
+    needing to know of the internals.
+
+
+4. File Handling, actions and the synthetic file system
+
+    As we've seen almos of all dodot will work through creating links. Some
+    exceptions, like Brewfiles and install.sh are just shelling out , but
+    everything else will be done through linking / copying/ creating files.
+
+    Doing file system operation is always a delicate things: the APIs are very
+    inconsistent (files, dirs, links), it's easy to make mistakes and very hard
+    to test.
+
+    That's where the other core design principles of dodot comes in. Power-ups
+    don't actually do anything on the their own. They *never* alter the file
+    system in any way. 
+
+    Instead, they return actions, a list of descriptions of file system
+    operations to be done, like add this path to the user's path and link this
+    path to the user's home dir. This makes writing power-ups much easier, as testing them and safer.
+
+    But that has only pushed the issue into later. This is true, but even so,
+    it has clear benefits for the system's design. Here's what happens next:
+    actions are composed of lower level file system changes descriptions, like
+    writing "PATH=:<somepath" to a file. This step transform the high livel
+    actions that are great for the power up code to work with into a sequence
+    of discrete and simple file system operations. But we still don't run
+    these, that is nothing is actually happening at the file system level.
+
+    That is obviously not very useful, having nothing happen. That's where
+    go-synthfs comes in. Synthfs is a go library that takes in descriptions of
+    changes to a file system and executes them.
+
+    Being well written and tested, from our perspective we can say that dodot's
+    job is to produce the right file operations descriptions for synthfs and
+    assume it generates the desired changes.
+
+    This has a huge benefit for dodot: all of our code can be written and
+    tested as pure functions. 
+
+    This is a layer design in which: 
+        - synthfs can translate simple fs changes descriptions into fs changes
+        - the actions -> ops system will translate high level actions into
+          synthfs operations
+        - power-ups: will receive the marcher's content, freeing from having to
+          search / get these and outputting a sequence of actions, high livel
+          descriptions of what's to be done.
+
+    This makes each step much simpler. In other managers, the power up kind of
+    code would have to know about how to iterate through the users dotfiles and
+    get what it wants, than know all about where the user config dirs or home
+    usage is and do all the low level, hard to test, risky file system
+    operations on its on.
+
+    With dodot's design, each part leverages the others and makes writing new
+    things (a new power-up or a new trigger) very simple and easy to test.
+
+
+5. Putting it all together
+
+    Now we can describe how dodot works. When a user deploys a pack: 
+
+        1. dodot will iterate the matcher's config for that pack. The Matcher
+           will run the triggers and store result in MatcherResults.
+        2. we iterate through the matcher results, which contain the power up
+           interested in that positive match
+        3. we run all power-ups, which are passed their matcher results (which
+           contains the data needed for them do work) and return actions.
+        4. we iterate on the actions -> operations transformation and now have
+           a list of fs operations to run
+        5. we use synthfs to execute these operations.
+
+    The special case of deploying multiple packs or the entire dotfiles dir,
+    will just iterate these.
+
+
+
+

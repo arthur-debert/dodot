@@ -1,0 +1,145 @@
+#!/bin/bash
+set -euo pipefail
+
+# Main entry point for running containerized AI assistants
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODULE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+COMPOSE_SCRIPT="$MODULE_DIR/containers/compose.sh"
+
+# Default values
+MODULES=""
+IMAGE_NAME=".-ai-assistant"
+REBUILD=false
+GPU_SUPPORT=""
+ASSISTANT="claude-code"
+
+# Help function
+show_help() {
+    cat << EOF
+Usage: $0 [OPTIONS]
+
+Run AI assistants in a containerized environment with project-specific dependencies.
+
+OPTIONS:
+    --modules MODULE1,MODULE2   Comma-separated list of modules to include
+    --rebuild                   Force rebuild of Docker image
+    --gpu                       Enable GPU support (if available)
+    --assistant NAME            Choose assistant: claude-code or gemini-cli (default: claude-code)
+    -h, --help                  Show this help message
+
+EXAMPLES:
+    $0 --modules golang-cli,python-cli
+    $0 --modules rust-cli --gpu --assistant gemini-cli
+    $0 --rebuild --modules nodejs-cli
+
+EOF
+}
+
+# Check if Docker is available
+if ! command -v docker &> /dev/null; then
+    echo "Error: Docker is not installed or not in PATH"
+    echo "Please install Docker from https://docs.docker.com/get-docker/"
+    exit 1
+fi
+
+if ! docker info &> /dev/null; then
+    echo "Error: Docker daemon is not running"
+    echo "Please start Docker and try again"
+    exit 1
+fi
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --modules)
+            MODULES="$2"
+            shift 2
+            ;;
+        --rebuild)
+            REBUILD=true
+            shift
+            ;;
+        --gpu)
+            GPU_SUPPORT="--gpus all"
+            shift
+            ;;
+        --assistant)
+            ASSISTANT="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+done
+
+# Create unique image name based on modules
+if [ -n "$MODULES" ]; then
+    MODULE_HASH=$(echo "$MODULES" | md5sum | cut -c1-8)
+    IMAGE_NAME="genx-ai-assistant-${MODULE_HASH}"
+fi
+
+# Check if image exists or rebuild requested
+if [ "$REBUILD" = true ] || ! docker images | grep -q "$IMAGE_NAME"; then
+    echo "Building Docker image..."
+    "$COMPOSE_SCRIPT" --modules "$MODULES" --image-name "$IMAGE_NAME"
+else
+    echo "Using existing image: $IMAGE_NAME"
+fi
+
+# Prepare Docker run command
+DOCKER_CMD="docker run -it --rm"
+
+# Add GPU support if requested
+if [ -n "$GPU_SUPPORT" ]; then
+    DOCKER_CMD="$DOCKER_CMD $GPU_SUPPORT"
+fi
+
+# Mount current directory as workspace
+DOCKER_CMD="$DOCKER_CMD -v $(pwd):/workspace"
+
+# Mount secrets if available
+if [ -n "${SECRETS_PATH:-}" ] && [ -f "$SECRETS_PATH" ]; then
+    echo "Mounting secrets from: $SECRETS_PATH"
+    DOCKER_CMD="$DOCKER_CMD -v $SECRETS_PATH:/secrets:ro"
+    DOCKER_CMD="$DOCKER_CMD --env-file $SECRETS_PATH"
+fi
+
+# Set working directory
+DOCKER_CMD="$DOCKER_CMD -w /workspace"
+
+# Add image and command
+DOCKER_CMD="$DOCKER_CMD $IMAGE_NAME"
+
+# Determine which assistant to run
+case $ASSISTANT in
+    claude-code)
+        echo "Starting Claude Code in container..."
+        DOCKER_CMD="$DOCKER_CMD claude-code"
+        ;;
+    gemini-cli)
+        echo "Starting Gemini CLI in container..."
+        DOCKER_CMD="$DOCKER_CMD gemini-cli"
+        ;;
+    bash|shell)
+        echo "Starting bash shell in container..."
+        DOCKER_CMD="$DOCKER_CMD /bin/bash"
+        ;;
+    *)
+        echo "Unknown assistant: $ASSISTANT"
+        exit 1
+        ;;
+esac
+
+# Show final command for debugging
+echo "Running: $DOCKER_CMD"
+
+# Execute
+eval $DOCKER_CMD

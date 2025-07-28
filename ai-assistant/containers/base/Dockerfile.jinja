@@ -1,0 +1,53 @@
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
+    build-essential \
+    python3 \
+    python3-pip \
+    python3-venv \
+    nodejs \
+    npm \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for running assistants
+RUN useradd -m -s /bin/bash assistant && \
+    echo "assistant ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+
+# Install Claude Code CLI
+RUN npm install -g @anthropic-ai/claude-code
+
+
+
+
+# Create workspace directory
+RUN mkdir -p /workspace && chown assistant:assistant /workspace
+
+# Switch to non-root user
+USER assistant
+WORKDIR /workspace
+
+# Set up environment
+ENV PATH="/home/assistant/.local/bin:${PATH}"
+
+# Placeholder for APT packages from modules
+ARG APT_PACKAGES=""
+RUN if [ -n "$APT_PACKAGES" ]; then \
+    sudo apt-get update && \
+    sudo apt-get install -y $APT_PACKAGES && \
+    sudo rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# Default command
+CMD ["/bin/bash"]

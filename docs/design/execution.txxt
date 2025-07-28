@@ -1,6 +1,8 @@
 dodot Implementation and Execution
 ================================
 
+NOTE: this is the doc for the old, lua based implementation. It's available as
+a reference but is not to be taken as a literal doc for this version.
 1. Overview 
     
     This document covers the implementation side of dodot. Read docs/concepts-and-design.txxt for the conceptual reasoning.

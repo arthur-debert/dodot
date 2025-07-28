@@ -1,0 +1,92 @@
+#!/bin/bash
+set -euo pipefail
+
+# Script to dynamically compose Docker images based on module dependencies
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GENX_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+BASE_DOCKERFILE="$SCRIPT_DIR/base/Dockerfile"
+
+# Parse arguments
+MODULES=""
+IMAGE_NAME="genx-ai-assistant"
+BUILD_ARGS=""
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --modules)
+            MODULES="$2"
+            shift 2
+            ;;
+        --image-name)
+            IMAGE_NAME="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+    esac
+done
+
+# Temporary files
+TEMP_DIR=$(mktemp -d)
+TEMP_DOCKERFILE="$TEMP_DIR/Dockerfile"
+APT_PACKAGES_FILE="$TEMP_DIR/apt-packages.txt"
+
+# Cleanup on exit
+trap "rm -rf $TEMP_DIR" EXIT
+
+# Start with base Dockerfile
+cp "$BASE_DOCKERFILE" "$TEMP_DOCKERFILE"
+
+# Collect APT packages from modules
+if [ -n "$MODULES" ]; then
+    IFS=',' read -ra MODULE_ARRAY <<< "$MODULES"
+    
+    for module in "${MODULE_ARRAY[@]}"; do
+        # First check in genx modules directory
+        module_path="$GENX_ROOT/modules/$module"
+        
+        # If not found, check for local container directory (for projects using modules)
+        if [ ! -d "$module_path" ] && [ "$module" == "golang-cli" ] && [ -d "$(pwd)/container" ]; then
+            module_path="$(pwd)"
+            echo "Using local project container configuration"
+        elif [ ! -d "$module_path" ]; then
+            echo "Warning: Module '$module' not found at $module_path"
+            continue
+        fi
+        
+        # Collect APT packages
+        apt_file="$module_path/container/apt-packages.txt"
+        if [ -f "$apt_file" ]; then
+            echo "Adding APT packages from $module"
+            cat "$apt_file" >> "$APT_PACKAGES_FILE"
+        fi
+        
+        # Append Dockerfile fragments
+        fragment_file="$module_path/container/Dockerfile.fragment"
+        if [ -f "$fragment_file" ]; then
+            echo "Adding Dockerfile fragment from $module"
+            echo "" >> "$TEMP_DOCKERFILE"
+            echo "# From module: $module" >> "$TEMP_DOCKERFILE"
+            cat "$fragment_file" >> "$TEMP_DOCKERFILE"
+        fi
+    done
+fi
+
+# Build Docker image with collected packages
+if [ -f "$APT_PACKAGES_FILE" ]; then
+    # Remove duplicates and empty lines
+    APT_PACKAGES=$(sort -u "$APT_PACKAGES_FILE" | grep -v '^$' | tr '\n' ' ')
+    BUILD_ARGS="--build-arg APT_PACKAGES=\"$APT_PACKAGES\""
+fi
+
+echo "Building Docker image: $IMAGE_NAME"
+echo "Modules: ${MODULES:-none}"
+echo "Additional APT packages: ${APT_PACKAGES:-none}"
+
+# Build the image
+eval docker build $BUILD_ARGS -t "$IMAGE_NAME" -f "$TEMP_DOCKERFILE" "$SCRIPT_DIR"
+
+echo "Successfully built image: $IMAGE_NAME"

@@ -8,7 +8,8 @@ This document explains the design and decisions behind its implementation.
 
 The Problem Definition
 
-    Configuration files are relevant and extensive enough to be source controlled. Setting up new 
+    Configuring tools is a great productivity and accessibility leverage, but it can be time consuming.
+    hence, it's worth saving the effort under source control. Configuring new
     machines or environments easily, being able to revert or examine history, disaster resilience, 
     and even running small variations in parallel are all valuable capabilities.
 
@@ -20,7 +21,7 @@ The Problem Definition
 
 Yet Another One?
 
-    Yes, unfortunately. While many dotfile managers exist, dodot takes a unique approach focused on 
+    Yes, unfortunately. While many dotfiles managers exist, dodot takes a unique approach focused on 
     simplicity and directness.
 
 
@@ -28,22 +29,31 @@ dodot's Approach
 
     For starters: versioning is for version control. 
     
-    1. Users should edit their configs as they always have
-    2. No other tooling for editing or reloading: always done with no publishing/updating step.
+        1. Users should edit their configs as they always have
+        2. No other tooling for editing or reloading: always done with no publishing/updating step.
 
-    3. Simplicity: no state, ever. dodot is stateless and does things in a naive and straightforward manner.
+        3. Simplicity: no state, ever. dodot is stateless and does things in a naive and straightforward manner.
 
     This is probably as straightforward as it gets, and yet most managers differ significantly from 
     this approach.
 
     The key is the heavy usage of symlinks. In the simple case of a config being a file, that's it.
 
-    In the case of shell customizations, it does get a bit trickier, as many parts will customize 
+    In the case of shell customization, it does get a bit trickier, as many parts will customize 
     the shell.
 
     What dodot does is to create a directory that symlinks these various files in an ordered manner. 
     When you edit any of these, there is no extra step, and yet they remain under source control. 
     There are some caveats and edge cases to this, but in practice it works remarkably well.
+
+    That is: 
+
+        - your shell profiles has a line that runs dodot, which will handle
+          shell customization.
+        - this lines executes a dodot shell script that sources packs,
+          aliases, vars, path, etc.
+        - dodot will create a directory for each thing (like aliases) and in
+          it, create symlinks to your packs with the actual files
 
 Deployments, Not Installs
 
