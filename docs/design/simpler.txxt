@@ -13,8 +13,8 @@ code and usage.
 The TLDR:
 
     1. Versioning is left to git
-    2. No installs, only deployments.No updates, changes are always live, users can edit their dotfiles away they see fit, no workflow changes.
-    3.- No state: there is no actual install with state for configuration, which radically simplify the code and usage.
+    2. No installs, only deployments. No updates, changes are always live, users can edit their dotfiles as they see fit, no workflow changes.
+    3. No state: there is no actual install with state for configuration, which radically simplifies the code and usage.
     4. Complete (almost) freedom for users on how to structure their files.
     5. Dead simple operation, there is one command.
 
@@ -53,14 +53,15 @@ The TLDR:
 
             You organize related configuration under directories. The criteria is
             up to you. Common setups will feature things like a specific software
-            (like a neovim directory for you vim files ), workflows (like
-            python-dev) or machines (macos-laptop), it's really up to you.
+            (like a neovim directory for your vim files), workflows (like
+            python-dev) or machines (macos-laptop for macOS-specific configurations 
+            that you would only deploy on macOS machines), it's really up to you.
 
-            You point dodot, to where your dotfiles are with the $DOTFILES_ROOT
+            You point dodot to where your dotfiles are with the $DOTFILES_ROOT
             variable, and dodot will consider each of the dirs in that path as a
             group of files, a pack in dodot's parlance.
 
-        1.2.1 What's in a pack
+        1.2.2 What's in a pack
 
             Inside a pack you can have many types of files, and dodot has
             several tools to leverage that.
@@ -107,25 +108,31 @@ The TLDR:
     This has some consequences for how updates are picked up too. As we've
     seen, changes to a deployed alias.sh are live right away. However, say that
     your neovim pack does not have an alias.sh file, and you deploy it. Later,
-    you add an alias.sh. That will not be live until a deployment, as no links
-    were crated to your alias.sh file since there was none. This is more of an
-    edge case, and it's why dodot has a --auto-fill-pack options that will
-    create empty such files if asked. In this case, there will be a link on
-    deployment and changes will be picked up.
+    you add an alias.sh. That will not be live until a redeployment, as no links
+    were created to your alias.sh file since there was none. 
+    
+    Another example: you deploy a pack that has no "bin" directory. Later, you
+    create a bin directory with scripts in that pack. Those scripts won't be in
+    your PATH until you redeploy that pack, since the bin directory didn't exist
+    during the initial deployment.
+    
+    This is more of an edge case, and it's why dodot has a --auto-fill-pack 
+    option that will create empty such files if asked. In this case, there will 
+    be a link on deployment and changes will be picked up.
 
     The other and probably more relevant trade off here needs more context.
     a few  dodot actions, like running a install.sh file or brew installing
     what's in a Brewfile in you packs, do RUN things.
 
-    As dodot does not manages state, this means that every time you deploy that
-    pack, install.sh will be ran and homebrew will install the Brewfile's
-    content. Note that this si not on every shell login, but when you deploy
+    As dodot does not manage state, this means that every time you deploy that
+    pack, install.sh will be run and homebrew will install the Brewfile's
+    content. Note that this is not on every shell login, but when you deploy
     that pack through dodot. 
 
     Brew is pretty smart about this, and this is pretty safe. The install.sh
     however needs to be written with this restriction in mind. You can always
-    do things like write a file flag when the first run is done and nor run
-        subsequent times fi that file is present, but it's up to you.
+    do things like write a file flag when the first run is done and not run
+    subsequent times if that file is present, but it's up to you.
 
 
 3. Power-Ups, Triggers and Matchers
@@ -142,7 +149,7 @@ The TLDR:
     this config for any  given pack.
 
 
-    This menas that power-ups authors and code does not have to know about how
+    This means that power-ups authors and code does not have to know about how
     matching takes place or do any of the file handling there, they get the
     content they are interested in (say the alias.sh or the bin path) without
     needing to know of the internals.
@@ -150,26 +157,33 @@ The TLDR:
 
 4. File Handling, actions and the synthetic file system
 
-    As we've seen almos of all dodot will work through creating links. Some
-    exceptions, like Brewfiles and install.sh are just shelling out , but
-    everything else will be done through linking / copying/ creating files.
+    As we've seen almost all of dodot will work through creating links. Some
+    exceptions, like Brewfiles and install.sh are just shelling out, but
+    everything else will be done through linking/copying/creating files.
 
-    Doing file system operation is always a delicate things: the APIs are very
+    Doing file system operations is always a delicate thing: the APIs are very
     inconsistent (files, dirs, links), it's easy to make mistakes and very hard
     to test.
 
-    That's where the other core design principles of dodot comes in. Power-ups
-    don't actually do anything on the their own. They *never* alter the file
+    That's where the other core design principle of dodot comes in. Power-ups
+    don't actually do anything on their own. They *never* alter the file
     system in any way. 
 
     Instead, they return actions, a list of descriptions of file system
     operations to be done, like add this path to the user's path and link this
-    path to the user's home dir. This makes writing power-ups much easier, as testing them and safer.
+    path to the user's home dir. This makes writing power-ups much easier, safer,
+    and easier to test.
+    
+    Multiple power-ups can work with the same file without conflicts. When 
+    translating actions into operations, dodot isolates power-ups to prevent
+    conflicts. For example, multiple power-ups might append to the same shell
+    configuration file, and dodot ensures these operations don't interfere with
+    each other.
 
     But that has only pushed the issue into later. This is true, but even so,
     it has clear benefits for the system's design. Here's what happens next:
     actions are composed of lower level file system changes descriptions, like
-    writing "PATH=:<somepath" to a file. This step transform the high livel
+    writing "PATH=:<somepath>" to a file. This step transforms the high level
     actions that are great for the power up code to work with into a sequence
     of discrete and simple file system operations. But we still don't run
     these, that is nothing is actually happening at the file system level.
@@ -180,24 +194,27 @@ The TLDR:
 
     Being well written and tested, from our perspective we can say that dodot's
     job is to produce the right file operations descriptions for synthfs and
-    assume it generates the desired changes.
+    assume it generates the desired changes. Synthfs also provides limited but
+    useful rollback facilities, which dodot leverages for basic error recovery.
+    However, dodot does not attempt complex rollback scenarios as reliable 
+    rollback of arbitrary filesystem operations is inherently impossible.
 
     This has a huge benefit for dodot: all of our code can be written and
     tested as pure functions. 
 
-    This is a layer design in which: 
+    This is a layered design in which: 
         - synthfs can translate simple fs changes descriptions into fs changes
         - the actions -> ops system will translate high level actions into
           synthfs operations
-        - power-ups: will receive the marcher's content, freeing from having to
-          search / get these and outputting a sequence of actions, high livel
+        - power-ups: will receive the matcher's content, freeing them from having to
+          search/get these and outputting a sequence of actions, high level
           descriptions of what's to be done.
 
     This makes each step much simpler. In other managers, the power up kind of
     code would have to know about how to iterate through the users dotfiles and
-    get what it wants, than know all about where the user config dirs or home
-    usage is and do all the low level, hard to test, risky file system
-    operations on its on.
+    get what it wants, then know all about where the user config dirs or home
+    directory is and do all the low level, hard to test, risky file system
+    operations on its own.
 
     With dodot's design, each part leverages the others and makes writing new
     things (a new power-up or a new trigger) very simple and easy to test.
@@ -208,17 +225,17 @@ The TLDR:
     Now we can describe how dodot works. When a user deploys a pack: 
 
         1. dodot will iterate the matcher's config for that pack. The Matcher
-           will run the triggers and store result in MatcherResults.
-        2. we iterate through the matcher results, which contain the power up
+           will run the triggers and store results in MatcherResults.
+        2. we iterate through the matcher results, which contain the power-ups
            interested in that positive match
         3. we run all power-ups, which are passed their matcher results (which
-           contains the data needed for them do work) and return actions.
+           contains the data needed for them to work) and return actions.
         4. we iterate on the actions -> operations transformation and now have
            a list of fs operations to run
         5. we use synthfs to execute these operations.
 
-    The special case of deploying multiple packs or the entire dotfiles dir,
-    will just iterate these.
+    The special case of deploying multiple packs or the entire dotfiles dir
+    will just iterate these steps for each pack.
 
 
 
