@@ -123,13 +123,7 @@ dodot Implementation and Execution
 
             These exercise most required triggers and actions without being extensive.
 
-        b. No Customization Initially
-
-            The koanf library allows us to normalize user customization in a clean way. 
-            Initially we work without customization but keep interfaces for GetMergedConfig(). 
-            Later we can change these to actually use koanf.
-
-        c. Registry System
+        b. Registry System
 
             All matchers, triggers, actions, and power-ups will be user-extensible through 
             a registry system. 
