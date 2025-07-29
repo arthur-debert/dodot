@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -143,24 +146,53 @@ var manCmd = &cobra.Command{
 }
 
 var deployCmd = &cobra.Command{
-	Use:   "deploy",
+	Use:   "deploy [packs...]",
 	Short: "Deploy dotfiles to the system",
 	Long: `Deploy processes all packs in your dotfiles directory and creates
-the necessary symlinks, installs packages, and performs other configured actions.`,
+the necessary symlinks, installs packages, and performs other configured actions.
+
+If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := logging.GetLogger("cmd.deploy")
 		logger.Info().
 			Bool("dryRun", dryRun).
+			Strs("packs", args).
 			Msg("Starting deploy")
 
-		// TODO: Implement actual deploy logic by calling the pipeline
-		// For now, just log what would happen
-		logger.Info().Msg("Deploy command not yet implemented")
-		
-		if dryRun {
-			logger.Info().Msg("Running in dry-run mode - no changes will be made")
+		dotfilesRoot, err := getDotfilesRoot()
+		if err != nil {
+			return err
 		}
 
+		// Run the pipeline
+		candidates, err := core.GetPackCandidates(dotfilesRoot)
+		if err != nil {
+			return err
+		}
+
+		packs, err := core.GetPacks(candidates)
+		if err != nil {
+			return err
+		}
+
+		// The rest of the pipeline will be called here once implemented
+		// For now, just log the packs that were found
+		for _, pack := range packs {
+			logger.Info().
+				Str("pack", pack.Name).
+				Int("priority", pack.Priority).
+				Msg("Loaded pack")
+		}
+
+		logger.Info().Msg("Deploy command finished")
 		return nil
 	},
+}
+
+func getDotfilesRoot() (string, error) {
+	root := os.Getenv("DOTFILES_ROOT")
+	if root == "" {
+		return "", errors.New(errors.ErrInvalidInput, "DOTFILES_ROOT environment variable not set")
+	}
+	return root, nil
 } 
