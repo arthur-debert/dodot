@@ -30,11 +30,14 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 		config.PowerUpOptions = make(map[string]map[string]interface{})
 	}
 
-	// Set defaults for matcher enabled state
+	// Set defaults for matcher enabled state and initialize maps
 	for i := range config.Matchers {
 		if config.Matchers[i].Enabled == nil {
 			enabled := true
 			config.Matchers[i].Enabled = &enabled
+		}
+		if config.Matchers[i].PowerUpOptions == nil {
+			config.Matchers[i].PowerUpOptions = make(map[string]interface{})
 		}
 	}
 
@@ -48,6 +51,9 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 
 // FileExists is a helper to check if a file exists
 func FileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
