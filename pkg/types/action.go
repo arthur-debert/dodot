@@ -27,6 +27,12 @@ const (
 	
 	// ActionTypeRun executes a command
 	ActionTypeRun ActionType = "run"
+	
+	// ActionTypeBrew processes a Brewfile
+	ActionTypeBrew ActionType = "brew"
+	
+	// ActionTypeInstall runs an install script
+	ActionTypeInstall ActionType = "install"
 )
 
 // Action represents a high-level operation to be performed.

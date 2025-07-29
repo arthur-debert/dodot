@@ -61,6 +61,11 @@ func (p *SymlinkPowerUp) Description() string {
 	return "Creates symbolic links from dotfiles to target locations"
 }
 
+// RunMode returns whether this power-up runs once or many times
+func (p *SymlinkPowerUp) RunMode() types.RunMode {
+	return types.RunModeMany
+}
+
 // Process takes a group of trigger matches and generates symlink actions
 func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	logger := logging.GetLogger("powerups.symlink")

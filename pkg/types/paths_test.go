@@ -237,6 +237,42 @@ func TestGetInitScriptPath(t *testing.T) {
 	testutil.AssertEqual(t, expected, result)
 }
 
+func TestGetInstallDir(t *testing.T) {
+	origDataDir := os.Getenv("DODOT_DATA_DIR")
+	t.Cleanup(func() {
+		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
+	})
+
+	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
+	expected := "/test/data/install"
+	result := GetInstallDir()
+	
+	if runtime.GOOS == "windows" {
+		result = strings.ReplaceAll(result, "\\", "/")
+		expected = strings.ReplaceAll(expected, "\\", "/")
+	}
+	
+	testutil.AssertEqual(t, expected, result)
+}
+
+func TestGetBrewfileDir(t *testing.T) {
+	origDataDir := os.Getenv("DODOT_DATA_DIR")
+	t.Cleanup(func() {
+		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
+	})
+
+	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
+	expected := "/test/data/brewfile"
+	result := GetBrewfileDir()
+	
+	if runtime.GOOS == "windows" {
+		result = strings.ReplaceAll(result, "\\", "/")
+		expected = strings.ReplaceAll(expected, "\\", "/")
+	}
+	
+	testutil.AssertEqual(t, expected, result)
+}
+
 // Test all directories with consistent data dir
 func TestAllDirectoriesConsistent(t *testing.T) {
 	origDataDir := os.Getenv("DODOT_DATA_DIR")
@@ -262,6 +298,8 @@ func TestAllDirectoriesConsistent(t *testing.T) {
 		{"GetShellSourceDir", GetShellSourceDir, filepath.Join(deployedBase, "shell_source")},
 		{"GetShellDir", GetShellDir, filepath.Join(baseDir, "shell")},
 		{"GetInitScriptPath", GetInitScriptPath, filepath.Join(baseDir, "shell", "dodot-init.sh")},
+		{"GetInstallDir", GetInstallDir, filepath.Join(baseDir, "install")},
+		{"GetBrewfileDir", GetBrewfileDir, filepath.Join(baseDir, "brewfile")},
 	}
 
 	for _, tt := range tests {
@@ -290,6 +328,8 @@ func TestPathsAreAbsolute(t *testing.T) {
 		GetShellSourceDir(),
 		GetShellDir(),
 		GetInitScriptPath(),
+		GetInstallDir(),
+		GetBrewfileDir(),
 	}
 
 	for i, path := range paths {
@@ -321,5 +361,7 @@ func BenchmarkAllPathFunctions(b *testing.B) {
 		_ = GetShellSourceDir()
 		_ = GetShellDir()
 		_ = GetInitScriptPath()
+		_ = GetInstallDir()
+		_ = GetBrewfileDir()
 	}
 }

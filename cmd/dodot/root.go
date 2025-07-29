@@ -15,6 +15,7 @@ import (
 var (
 	verbosity int
 	dryRun    bool
+	force     bool
 
 	rootCmd = &cobra.Command{
 		Use:   "dodot",
@@ -51,6 +52,9 @@ func init() {
 	
 	// Dry-run flag
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes without executing them")
+	
+	// Force flag
+	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "Force execution of run-once power-ups even if already executed")
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/dodot/config.toml)")
 
@@ -161,6 +165,7 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 		logger := logging.GetLogger("cmd.deploy")
 		logger.Info().
 			Bool("dryRun", dryRun).
+			Bool("force", force).
 			Strs("packs", args).
 			Msg("Starting deploy")
 
@@ -180,7 +185,13 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 			return err
 		}
 
-		// The rest of the pipeline will be called here once implemented
+		// The rest of the pipeline will be called here once implemented:
+		// 1. GetFiringTriggers(packs) - scan files and match triggers
+		// 2. GetActions(matches) - process matches through matchers and power-ups
+		// 3. FilterRunOnceActions(actions, force) - filter out already-executed run-once actions
+		// 4. GetFsOps(actions) - convert actions to filesystem operations
+		// 5. Execute operations through synthfs
+		
 		// For now, just log the packs that were found
 		for _, pack := range packs {
 			logger.Info().
