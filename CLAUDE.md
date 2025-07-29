@@ -55,7 +55,7 @@ dodot is a stateless dotfiles manager built around four key components:
 
 1. **Triggers** - Pattern-matching engines that scan files and directories within packs
 2. **Matchers** - Configuration objects that bind triggers to power-ups
-3. **Power-ups** - Action generators that process matched files (symlink, brew, shell_profile, etc.)
+3. **Power-ups** - Action generators that process matched files (symlink, brewfile, install_script, shell_profile, etc.)
 4. **Actions** - High-level descriptions of operations to be performed
 
 ### Key Design Principles

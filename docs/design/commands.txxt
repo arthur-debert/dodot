@@ -11,14 +11,18 @@
 
     1.1 Install
 
-        Install is a superste of deploy, that is, after installing a pack it will
+        Install is a superset of deploy, that is, after installing a pack it will
         be deployed. Install will run all commands with run = once mode, which are
         reserved for install commands, as one does not wish to run them multiple
-        times , be it to avoid the time penalty or the risk of install.sh scripts
+        times, be it to avoid the time penalty or the risk of install.sh scripts
         not being safe to execute multiple times.
 
         Currently, this includes the install and brewfile power-ups, but any other
         run once power-up would be included.
+
+        The --force flag can be used to force re-execution of run-once power-ups,
+        even if they have already been executed. This is useful when you need to
+        refresh installations or troubleshoot issues.
 
         Internally, once we've ran the once power-ups we will deploy, as not
         deploying a pack you have just installed would be counter intuitive to
