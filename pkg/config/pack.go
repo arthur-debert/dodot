@@ -43,6 +43,7 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 
 	logger.Debug().
 		Int("matchers", len(config.Matchers)).
+		Bool("skip", config.Skip).
 		Bool("disabled", config.Disabled).
 		Msg("Pack config loaded")
 

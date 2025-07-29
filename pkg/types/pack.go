@@ -29,7 +29,10 @@ type PackConfig struct {
 	// Priority overrides the default pack priority
 	Priority int `toml:"priority"`
 	
-	// Disabled indicates if this pack should be skipped
+	// Skip indicates if this pack should be skipped (same as Disabled)
+	Skip bool `toml:"skip"`
+	
+	// Disabled indicates if this pack should be skipped (deprecated, use Skip)
 	Disabled bool `toml:"disabled"`
 	
 	// Matchers contains custom matcher configurations for this pack

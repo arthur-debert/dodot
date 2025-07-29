@@ -102,11 +102,13 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 			continue
 		}
 
-		// Skip disabled packs
-		if pack.Config.Disabled {
+		// Skip disabled packs (check both skip and disabled for compatibility)
+		if pack.Config.Skip || pack.Config.Disabled {
 			logger.Info().
 				Str("pack", pack.Name).
-				Msg("Pack is disabled, skipping")
+				Bool("skip", pack.Config.Skip).
+				Bool("disabled", pack.Config.Disabled).
+				Msg("Pack is skipped/disabled")
 			continue
 		}
 
@@ -199,5 +201,120 @@ func shouldIgnore(name string) bool {
 		}
 	}
 	return false
+}
+
+// ValidatePack checks if a directory is a valid pack
+func ValidatePack(packPath string) error {
+	logger := logging.GetLogger("core.packs")
+	
+	// Check if path exists
+	info, err := os.Stat(packPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return errors.Wrap(err, errors.ErrNotFound, "pack directory does not exist").
+				WithDetail("path", packPath)
+		}
+		return errors.Wrap(err, errors.ErrFileAccess, "cannot access pack directory").
+			WithDetail("path", packPath)
+	}
+	
+	// Check if it's a directory
+	if !info.IsDir() {
+		return errors.New(errors.ErrPackInvalid, "pack path is not a directory").
+			WithDetail("path", packPath)
+	}
+	
+	// Check if it has a .dodot.toml with skip=true
+	configPath := filepath.Join(packPath, ".dodot.toml")
+	if config.FileExists(configPath) {
+		packConfig, err := loadPackConfig(configPath)
+		if err != nil {
+			// Config exists but is invalid
+			return errors.Wrap(err, errors.ErrConfigLoad, "invalid pack configuration").
+				WithDetail("path", packPath).
+				WithDetail("configPath", configPath)
+		}
+		
+		if packConfig.Skip || packConfig.Disabled {
+			return errors.New(errors.ErrPackSkipped, "pack is marked as skip/disabled").
+				WithDetail("path", packPath).
+				WithDetail("skip", packConfig.Skip).
+				WithDetail("disabled", packConfig.Disabled)
+		}
+	}
+	
+	// Check if directory is empty
+	entries, err := os.ReadDir(packPath)
+	if err != nil {
+		return errors.Wrap(err, errors.ErrFileAccess, "cannot read pack directory").
+			WithDetail("path", packPath)
+	}
+	
+	// An empty directory is not a valid pack
+	if len(entries) == 0 {
+		return errors.New(errors.ErrPackEmpty, "pack directory is empty").
+			WithDetail("path", packPath)
+	}
+	
+	logger.Debug().Str("path", packPath).Msg("Pack validation successful")
+	return nil
+}
+
+// SelectPacks filters a list of packs by name
+func SelectPacks(allPacks []types.Pack, selectedNames []string) ([]types.Pack, error) {
+	logger := logging.GetLogger("core.packs")
+	
+	if len(selectedNames) == 0 {
+		// No selection means all packs
+		return allPacks, nil
+	}
+	
+	// Create a map for quick lookup
+	packMap := make(map[string]types.Pack)
+	for _, pack := range allPacks {
+		packMap[pack.Name] = pack
+	}
+	
+	var selected []types.Pack
+	var notFound []string
+	
+	for _, name := range selectedNames {
+		if pack, exists := packMap[name]; exists {
+			selected = append(selected, pack)
+			logger.Debug().Str("name", name).Msg("Selected pack")
+		} else {
+			notFound = append(notFound, name)
+		}
+	}
+	
+	if len(notFound) > 0 {
+		return nil, errors.New(errors.ErrPackNotFound, "pack(s) not found").
+			WithDetail("notFound", notFound).
+			WithDetail("available", getPackNames(allPacks))
+	}
+	
+	// Maintain the original priority order
+	sort.Slice(selected, func(i, j int) bool {
+		if selected[i].Priority != selected[j].Priority {
+			return selected[i].Priority > selected[j].Priority
+		}
+		return selected[i].Name < selected[j].Name
+	})
+	
+	logger.Info().
+		Int("selected", len(selected)).
+		Int("total", len(allPacks)).
+		Msg("Selected packs")
+	
+	return selected, nil
+}
+
+// getPackNames returns a list of pack names
+func getPackNames(packs []types.Pack) []string {
+	names := make([]string, len(packs))
+	for i, pack := range packs {
+		names[i] = pack.Name
+	}
+	return names
 }
 

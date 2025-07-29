@@ -28,6 +28,8 @@ const (
 	ErrPackNotFound ErrorCode = "PACK_NOT_FOUND"
 	ErrPackInvalid  ErrorCode = "PACK_INVALID"
 	ErrPackAccess   ErrorCode = "PACK_ACCESS"
+	ErrPackSkipped  ErrorCode = "PACK_SKIPPED"
+	ErrPackEmpty    ErrorCode = "PACK_EMPTY"
 	
 	// Trigger errors
 	ErrTriggerNotFound ErrorCode = "TRIGGER_NOT_FOUND"

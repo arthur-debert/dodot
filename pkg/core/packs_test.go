@@ -178,6 +178,25 @@ powerup = "symlink"
 			},
 		},
 		{
+			name: "skip pack with skip=true",
+			setup: func(t *testing.T) []string {
+				root := testutil.TempDir(t, "dotfiles")
+				
+				// Enabled pack
+				pack1 := testutil.CreateDir(t, root, "enabled-pack")
+				
+				// Skipped pack
+				pack2 := testutil.CreateDir(t, root, "skipped-pack")
+				testutil.CreateFile(t, pack2, ".dodot.toml", "skip = true")
+				
+				return []string{pack1, pack2}
+			},
+			expectedCount: 1,
+			validate: func(t *testing.T, packs []types.Pack) {
+				testutil.AssertEqual(t, "enabled-pack", packs[0].Name)
+			},
+		},
+		{
 			name: "skip disabled pack",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
@@ -485,4 +504,220 @@ func BenchmarkGetPacks(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func TestValidatePack(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(t *testing.T) string
+		wantErr bool
+		errCode errors.ErrorCode
+	}{
+		{
+			name: "valid pack directory",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				pack := testutil.CreateDir(t, root, "valid-pack")
+				testutil.CreateFile(t, pack, "alias.sh", "alias ll='ls -la'")
+				return pack
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid pack with config",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				pack := testutil.CreateDir(t, root, "configured-pack")
+				testutil.CreateFile(t, pack, ".dodot.toml", "description = \"Test\"")
+				testutil.CreateFile(t, pack, "file.txt", "content")
+				return pack
+			},
+			wantErr: false,
+		},
+		{
+			name: "pack with skip=true",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				pack := testutil.CreateDir(t, root, "skipped-pack")
+				testutil.CreateFile(t, pack, ".dodot.toml", "skip = true")
+				return pack
+			},
+			wantErr: true,
+			errCode: errors.ErrPackSkipped,
+		},
+		{
+			name: "pack with disabled=true",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				pack := testutil.CreateDir(t, root, "disabled-pack")
+				testutil.CreateFile(t, pack, ".dodot.toml", "disabled = true")
+				return pack
+			},
+			wantErr: true,
+			errCode: errors.ErrPackSkipped,
+		},
+		{
+			name: "empty directory",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				pack := testutil.CreateDir(t, root, "empty-pack")
+				return pack
+			},
+			wantErr: true,
+			errCode: errors.ErrPackEmpty,
+		},
+		{
+			name: "non-existent directory",
+			setup: func(t *testing.T) string {
+				return "/non/existent/pack"
+			},
+			wantErr: true,
+			errCode: errors.ErrNotFound,
+		},
+		{
+			name: "file instead of directory",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				file := testutil.CreateFile(t, root, "file.txt", "content")
+				return file
+			},
+			wantErr: true,
+			errCode: errors.ErrPackInvalid,
+		},
+		{
+			name: "invalid config",
+			setup: func(t *testing.T) string {
+				root := testutil.TempDir(t, "dotfiles")
+				pack := testutil.CreateDir(t, root, "bad-config-pack")
+				testutil.CreateFile(t, pack, ".dodot.toml", "invalid = [toml")
+				return pack
+			},
+			wantErr: true,
+			errCode: errors.ErrConfigLoad,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			packPath := tt.setup(t)
+			
+			err := ValidatePack(packPath)
+			
+			if tt.wantErr {
+				testutil.AssertError(t, err)
+				if tt.errCode != "" {
+					testutil.AssertTrue(t, errors.IsErrorCode(err, tt.errCode),
+						"expected error code %s, got %s", tt.errCode, errors.GetErrorCode(err))
+				}
+			} else {
+				testutil.AssertNoError(t, err)
+			}
+		})
+	}
+}
+
+func TestSelectPacks(t *testing.T) {
+	// Create test packs
+	createTestPacks := func() []types.Pack {
+		return []types.Pack{
+			{Name: "vim", Priority: 10},
+			{Name: "shell", Priority: 5},
+			{Name: "bin", Priority: 0},
+			{Name: "config", Priority: 0},
+		}
+	}
+
+	tests := []struct {
+		name          string
+		allPacks      []types.Pack
+		selectedNames []string
+		expectedNames []string
+		wantErr       bool
+		errCode       errors.ErrorCode
+	}{
+		{
+			name:          "select all when no names provided",
+			allPacks:      createTestPacks(),
+			selectedNames: []string{},
+			expectedNames: []string{"vim", "shell", "bin", "config"},
+			wantErr:       false,
+		},
+		{
+			name:          "select specific packs",
+			allPacks:      createTestPacks(),
+			selectedNames: []string{"vim", "bin"},
+			expectedNames: []string{"vim", "bin"},
+			wantErr:       false,
+		},
+		{
+			name:          "maintain priority order",
+			allPacks:      createTestPacks(),
+			selectedNames: []string{"bin", "vim", "shell"},
+			expectedNames: []string{"vim", "shell", "bin"}, // Should be sorted by priority
+			wantErr:       false,
+		},
+		{
+			name:          "error on non-existent pack",
+			allPacks:      createTestPacks(),
+			selectedNames: []string{"vim", "non-existent"},
+			wantErr:       true,
+			errCode:       errors.ErrPackNotFound,
+		},
+		{
+			name:          "error on multiple non-existent packs",
+			allPacks:      createTestPacks(),
+			selectedNames: []string{"fake1", "vim", "fake2"},
+			wantErr:       true,
+			errCode:       errors.ErrPackNotFound,
+		},
+		{
+			name:          "empty pack list",
+			allPacks:      []types.Pack{},
+			selectedNames: []string{"anything"},
+			wantErr:       true,
+			errCode:       errors.ErrPackNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			selected, err := SelectPacks(tt.allPacks, tt.selectedNames)
+			
+			if tt.wantErr {
+				testutil.AssertError(t, err)
+				if tt.errCode != "" {
+					testutil.AssertTrue(t, errors.IsErrorCode(err, tt.errCode),
+						"expected error code %s, got %s", tt.errCode, errors.GetErrorCode(err))
+				}
+				
+				// Check error details
+				if tt.errCode == errors.ErrPackNotFound {
+					details := errors.GetErrorDetails(err)
+					testutil.AssertNotNil(t, details["notFound"])
+					testutil.AssertNotNil(t, details["available"])
+				}
+			} else {
+				testutil.AssertNoError(t, err)
+				testutil.AssertEqual(t, len(tt.expectedNames), len(selected))
+				
+				for i, name := range tt.expectedNames {
+					testutil.AssertEqual(t, name, selected[i].Name,
+						"pack at index %d", i)
+				}
+			}
+		})
+	}
+}
+
+func TestGetPackNames(t *testing.T) {
+	packs := []types.Pack{
+		{Name: "pack1"},
+		{Name: "pack2"},
+		{Name: "pack3"},
+	}
+	
+	names := getPackNames(packs)
+	expected := []string{"pack1", "pack2", "pack3"}
+	
+	testutil.AssertSliceEqual(t, expected, names)
 }
