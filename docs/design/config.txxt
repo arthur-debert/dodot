@@ -1,0 +1,30 @@
+                Dodotl configuration
+
+
+We will here list what the conifguration for .dodot.toml entails inside pack
+dirs.
+
+
+1. skip = boolean (default: false)
+
+    If set to true, dodot will stop processing the pack altogether. 
+    Even if the file has further configuration, a skip = true will 
+
+2. filename : skip, override:<powerup>
+
+    Example: 
+
+        other-alias.sh: override:alias
+
+    This directive allows users to either skip a file (as in don't process that),
+    or to manually point to the power-up that this file should be passed to.
+
+    A few important points: 
+        - the link power-up will symlink all files not used by the other
+          power-ups. If skip is set for a file, this also skips the file for
+          the link power-up as well.
+        - override: <power-up name>
+
+
+    
+

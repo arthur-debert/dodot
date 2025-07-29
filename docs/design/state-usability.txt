@@ -1,0 +1,19 @@
+Read the ./overview.txxt and powerups-list.txxt for reference.
+
+
+I'm looking for feedback on how far to push the "no-state" design principle.
+
+First, my rationale: dotfiles managers fall largely into two camps: the complete
+unified packages and the YOLO shell scripts.
+
+the former provide this really integrated experience, but invariably they
+overlap with source control and package managers. that is they embrace the
+handling / listing of changes and they have various facilities for installing /
+updating / partial executions of config packages.
+
+the latter are some degrees of shell scripts that copy , link and run files
+with little structure, control, safety or consistency.
+
+dodot aims for a sweet spot that : 
+- let's git handle the source control 
+- forgo the packager manager aspect entirely by  a simple and safe model.
