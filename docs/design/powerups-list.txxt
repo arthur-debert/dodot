@@ -23,20 +23,23 @@ dodot - they take matched files and generate actions to be executed.
     - Modifies shell configuration to include the specified directory in PATH
 
 
-2. Brew Power-up (brew)
+2. Brewfile Power-up (brewfile)
 
     Purpose: Processes Brewfiles to install Homebrew packages. Enables
     declarative package management for macOS and Linux systems using Homebrew.
+    This is a run-once power-up that tracks execution via sentinel files.
 
     Trigger: Files named "Brewfile" in a pack.
 
     Options: None currently implemented.
 
+    Run Mode: Run-once (executes only when Brewfile changes)
+
     Generated Action:
-    - Type: brew_install
+    - Type: brew
     - References the Brewfile for processing
-    - Note: In future versions, will parse Brewfile and create individual
-      brew install commands
+    - Creates sentinel file with checksum to track execution
+    - Skipped if already executed unless --force flag is used
 
 
 3. Shell Profile Power-up (shell_profile)
@@ -63,23 +66,25 @@ dodot - they take matched files and generate actions to be executed.
     - Modifies the appropriate shell profile file to integrate the configuration
 
 
-4. Script Runner Power-up (script_runner)
+4. Install Script Power-up (install_script)
 
     Purpose: Executes installation or setup scripts within packs. This allows
     packs to perform custom setup operations like downloading additional files,
-    compiling software, or running configuration commands.
+    compiling software, or running configuration commands. This is a run-once
+    power-up that tracks execution via sentinel files.
 
-    Trigger: Files named "install.sh" or similar setup scripts.
+    Trigger: Files named "install.sh" in a pack.
 
-    Options:
-    - args: Command line arguments to pass to the script
-    - env: Environment variables to set when running the script
-    - order: Execution order when multiple scripts exist (default: 100)
+    Options: None currently implemented.
+
+    Run Mode: Run-once (executes only when install.sh changes)
 
     Generated Action:
-    - Type: script_run
-    - Executes the script with specified working directory and environment
-    - Note: Scripts should be idempotent as they run on every deployment
+    - Type: install
+    - Executes the script with pack's directory as working directory
+    - Creates sentinel file with checksum to track execution
+    - Skipped if already executed unless --force flag is used
+    - Scripts should still be idempotent for safety
 
 
 5. Symlink Power-up (symlink)
@@ -132,3 +137,26 @@ Design Notes:
 
 
 
+Run-Once Power-ups:
+
+    Some power-ups (currently Brewfile and Install Script) are marked as
+    "run-once" power-ups. These have special behavior:
+
+    1. Execution Tracking: They create sentinel files in DODOT_DATA_DIR with
+       checksums of their source files to track execution state.
+
+    2. Change Detection: If the source file changes (checksum differs), the
+       power-up will run again to apply the updates.
+
+    3. Force Flag: The --force flag bypasses sentinel checks and forces
+       re-execution of run-once power-ups.
+
+    4. Status Reporting: The dodot_status shell function shows which run-once
+       power-ups have been executed.
+
+    Sentinel file locations:
+    - Brewfile: $DODOT_DATA_DIR/brewfile/<pack>
+    - Install Script: $DODOT_DATA_DIR/install/<pack>
+
+    This design prevents expensive operations (like Homebrew installs) from
+    running repeatedly while still allowing updates when files change.

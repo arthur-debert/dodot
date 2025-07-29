@@ -54,3 +54,13 @@ func GetShellDir() string {
 func GetInitScriptPath() string {
 	return filepath.Join(GetShellDir(), "dodot-init.sh")
 }
+
+// GetInstallDir returns the install scripts sentinel directory
+func GetInstallDir() string {
+	return filepath.Join(GetDodotDataDir(), "install")
+}
+
+// GetBrewfileDir returns the brewfile sentinel directory
+func GetBrewfileDir() string {
+	return filepath.Join(GetDodotDataDir(), "brewfile")
+}

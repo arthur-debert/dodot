@@ -86,6 +86,10 @@ func ConvertAction(action types.Action) ([]types.Operation, error) {
 		// They're handled separately during execution
 		logger.Debug().Msg("Run actions are not converted to file operations")
 		return nil, nil
+	case types.ActionTypeBrew:
+		return convertBrewAction(action)
+	case types.ActionTypeInstall:
+		return convertInstallAction(action)
 	default:
 		return nil, errors.Newf(errors.ErrActionInvalid, "unknown action type: %s", action.Type)
 	}
@@ -331,4 +335,89 @@ func expandHome(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+// convertBrewAction converts a brew action to operations
+func convertBrewAction(action types.Action) ([]types.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source (Brewfile path)")
+	}
+
+	// Get checksum from metadata
+	checksum, ok := action.Metadata["checksum"].(string)
+	if !ok || checksum == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires checksum in metadata")
+	}
+
+	pack, ok := action.Metadata["pack"].(string)
+	if !ok || pack == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires pack in metadata")
+	}
+
+	// Create sentinel file with checksum
+	sentinelPath := filepath.Join(types.GetBrewfileDir(), pack)
+	
+	ops := []types.Operation{
+		// Ensure sentinel directory exists
+		{
+			Type:        types.OperationCreateDir,
+			Target:      types.GetBrewfileDir(),
+			Description: "Create brewfile sentinel directory",
+		},
+		// Write sentinel file with checksum
+		{
+			Type:        types.OperationWriteFile,
+			Target:      sentinelPath,
+			Content:     checksum,
+			Mode:        uint32Ptr(0644),
+			Description: fmt.Sprintf("Create brewfile sentinel for %s", pack),
+		},
+	}
+
+	return ops, nil
+}
+
+// convertInstallAction converts an install action to operations
+func convertInstallAction(action types.Action) ([]types.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "install action requires source (install script path)")
+	}
+
+	// Get checksum from metadata
+	checksum, ok := action.Metadata["checksum"].(string)
+	if !ok || checksum == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "install action requires checksum in metadata")
+	}
+
+	pack, ok := action.Metadata["pack"].(string)
+	if !ok || pack == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "install action requires pack in metadata")
+	}
+
+	// Create sentinel file with checksum
+	sentinelPath := filepath.Join(types.GetInstallDir(), pack)
+	
+	ops := []types.Operation{
+		// Ensure sentinel directory exists
+		{
+			Type:        types.OperationCreateDir,
+			Target:      types.GetInstallDir(),
+			Description: "Create install sentinel directory",
+		},
+		// Write sentinel file with checksum
+		{
+			Type:        types.OperationWriteFile,
+			Target:      sentinelPath,
+			Content:     checksum,
+			Mode:        uint32Ptr(0644),
+			Description: fmt.Sprintf("Create install sentinel for %s", pack),
+		},
+	}
+
+	return ops, nil
+}
+
+// Helper to create uint32 pointer
+func uint32Ptr(v uint32) *uint32 {
+	return &v
 }
