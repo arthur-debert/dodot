@@ -24,17 +24,17 @@ type Pack struct {
 // PackConfig represents configuration options for a pack
 type PackConfig struct {
 	// Description overrides the pack description
-	Description string
+	Description string `toml:"description"`
 	
 	// Priority overrides the default pack priority
-	Priority int
+	Priority int `toml:"priority"`
 	
 	// Disabled indicates if this pack should be skipped
-	Disabled bool
+	Disabled bool `toml:"disabled"`
 	
 	// Matchers contains custom matcher configurations for this pack
-	Matchers []MatcherConfig
+	Matchers []MatcherConfig `toml:"matchers"`
 	
 	// PowerUpOptions contains pack-specific options for power-ups
-	PowerUpOptions map[string]map[string]interface{}
+	PowerUpOptions map[string]map[string]interface{} `toml:"powerup_options"`
 }
