@@ -1,0 +1,145 @@
+                        TXXT PRIMER
+                        
+
+A quick guide to formatting structured text with txxt
+
+
+1. Sessions and Hierarchy
+
+    Sessions structure your document hierarchically using numbers and indentation.
+    Each level needs proper indentation (4 spaces per level).
+
+    
+    1.1 Basic Numbered Sessions
+    
+        Content is indented from the session title.
+        
+        
+        1.1.1 Deeper Nesting
+        
+            You can go arbitrarily deep with proper indentation.
+            
+            
+        1.1.2 Another Subsection
+        
+            Sessions at the same level share the same indentation.
+    
+    
+    1.2 Session Title Rules
+    
+        - Preceded by two blank lines (or use UPPERCASE or ruler ----)
+        - Followed by one blank line
+        - Numbers can be any style: 1. or 1.1 or a. or i.
+    
+
+2. Session Content Formatting
+
+    All content aligns to the session baseline (this indentation level).
+    
+    Paragraphs sit at the baseline. Multiple paragraphs are separated
+    by blank lines.
+    
+        - Lists are indented +1 from baseline (4 spaces)
+        - This prevents ambiguity with dialog dashes
+        
+        -- code
+            // Verbatim blocks also +1 indented
+            const example = "txxt format";
+        -- javascript
+    
+    Everything that's not a paragraph needs the +1 indentation.
+
+
+3. Lists
+
+    Lists must be indented from the session baseline.
+    
+    
+    3.1 Unordered Lists
+    
+        Basic flat list:
+        
+            - First item
+            - Second item
+            - Third item
+        
+        Nested unordered:
+        
+            - Fruits
+                - Apples
+                - Bananas
+                - Oranges
+            - Vegetables
+                - Carrots
+                - Broccoli
+
+
+    3.2 Ordered Lists
+    
+        Basic numbered:
+        
+            1. First step
+            2. Second step
+            3. Third step
+        
+        Nested ordered:
+        
+            1. Planning Phase
+                1. Requirements
+                2. Design
+                3. Review
+            2. Implementation Phase
+                1. Development
+                2. Testing
+
+
+4. Verbatim Blocks
+
+    Code and preformatted text use the -- marker.
+    
+        -- title goes here
+            const greeting = "Hello, txxt!";
+            console.log(greeting);
+        -- javascript
+    
+    Parts of a verbatim block:
+    
+        - Opening marker: -- with optional title
+        - Content: indented from the marker
+        - Closing marker: -- with optional language
+    
+    Without language (callout block):
+    
+        -- Important Note
+            Remember to always indent your code blocks
+            from the marker line!
+        --
+
+
+5. Inline Formatting
+
+    Text can be formatted inline using simple markers.
+    
+    *Bold text* uses asterisks - *multiple words work too*.
+    
+    _Italic text_ uses underscores - _also multiple words_.
+    
+    You can nest them: *bold with _italic inside_ works*.
+    
+    References use square brackets:
+    
+        - Files: [./document.txxt] or [/path/to/file.txxt]
+        - URLs: [example.com] or [https://example.com]
+        - Sections: [#2.1] refers to section 2.1
+        - Footnotes: [1] refers to item 1 in the last section
+    
+    The word before a reference becomes its anchor text.
+
+
+Key Differences from Markdown
+
+    - Sessions require double blank lines (not # headers)
+    - Lists MUST be indented from baseline
+    - Code blocks use -- markers (not ```)
+    - No spaces between inline markers and content
+    - References are always [bracketed], no (text)[url] syntax
