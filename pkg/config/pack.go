@@ -25,26 +25,16 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 		return types.PackConfig{}, fmt.Errorf("failed to parse TOML: %w", err)
 	}
 
-	// Initialize maps if nil
-	if config.PowerUpOptions == nil {
-		config.PowerUpOptions = make(map[string]map[string]interface{})
-	}
-
-	// Set defaults for matcher enabled state and initialize maps
-	for i := range config.Matchers {
-		if config.Matchers[i].Enabled == nil {
-			enabled := true
-			config.Matchers[i].Enabled = &enabled
-		}
-		if config.Matchers[i].PowerUpOptions == nil {
-			config.Matchers[i].PowerUpOptions = make(map[string]interface{})
-		}
+	// Initialize Files map if nil
+	if config.Files == nil {
+		config.Files = make(map[string]string)
 	}
 
 	logger.Debug().
-		Int("matchers", len(config.Matchers)).
 		Bool("skip", config.Skip).
 		Bool("disabled", config.Disabled).
+		Bool("ignore", config.Ignore).
+		Int("fileRules", len(config.Files)).
 		Msg("Pack config loaded")
 
 	return config, nil

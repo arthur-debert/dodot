@@ -158,13 +158,9 @@ func TestGetPacks(t *testing.T) {
 				pack := testutil.CreateDir(t, root, "configured-pack")
 				
 				config := `
-description = "A configured pack"
-priority = 10
-
-[[matchers]]
-trigger = "filename"
-pattern = "*.conf"
-powerup = "symlink"
+[files]
+"test.conf" = "symlink"
+"*.bak" = "ignore"
 `
 				testutil.CreateFile(t, pack, ".dodot.toml", config)
 				return []string{pack}
@@ -172,9 +168,9 @@ powerup = "symlink"
 			expectedCount: 1,
 			validate: func(t *testing.T, packs []types.Pack) {
 				pack := packs[0]
-				testutil.AssertEqual(t, "A configured pack", pack.Description)
-				testutil.AssertEqual(t, 10, pack.Priority)
-				testutil.AssertEqual(t, 1, len(pack.Config.Matchers))
+				testutil.AssertEqual(t, 2, len(pack.Config.Files))
+				testutil.AssertEqual(t, "symlink", pack.Config.Files["test.conf"])
+				testutil.AssertEqual(t, "ignore", pack.Config.Files["*.bak"])
 			},
 		},
 		{
@@ -216,31 +212,21 @@ powerup = "symlink"
 			},
 		},
 		{
-			name: "sort by priority and name",
+			name: "sort by name alphabetically",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
 				
-				// Low priority pack
 				pack1 := testutil.CreateDir(t, root, "zebra-pack")
-				testutil.CreateFile(t, pack1, ".dodot.toml", "priority = 1")
-				
-				// High priority pack
 				pack2 := testutil.CreateDir(t, root, "alpha-pack")
-				testutil.CreateFile(t, pack2, ".dodot.toml", "priority = 10")
-				
-				// Same high priority pack (should sort by name)
 				pack3 := testutil.CreateDir(t, root, "beta-pack")
-				testutil.CreateFile(t, pack3, ".dodot.toml", "priority = 10")
-				
-				// Default priority (0)
 				pack4 := testutil.CreateDir(t, root, "default-pack")
 				
 				return []string{pack1, pack2, pack3, pack4}
 			},
 			expectedCount: 4,
 			validate: func(t *testing.T, packs []types.Pack) {
-				// Expected order: alpha (10), beta (10), zebra (1), default (0)
-				expectedOrder := []string{"alpha-pack", "beta-pack", "zebra-pack", "default-pack"}
+				// Expected alphabetical order
+				expectedOrder := []string{"alpha-pack", "beta-pack", "default-pack", "zebra-pack"}
 				for i, name := range expectedOrder {
 					testutil.AssertEqual(t, name, packs[i].Name,
 						"pack at index %d", i)
@@ -295,90 +281,63 @@ func TestLoadPackConfig(t *testing.T) {
 		{
 			name: "complete config",
 			toml: `
-description = "Test pack"
-priority = 5
+skip = false
 disabled = false
+ignore = false
 
-[[matchers]]
-name = "vim-files"
-trigger = "filename"
-powerup = "symlink"
-pattern = ".*vim*"
-target = "$HOME"
-priority = 10
-
-[[matchers]]
-trigger = "directory"
-powerup = "bin"
-pattern = "bin"
-
-[powerup_options]
-[powerup_options.symlink]
-force = true
-backup = true
+[files]
+"test.vim" = "symlink"
+"*.bak" = "ignore"
+"setup.sh" = "install"
 `,
 			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertEqual(t, "Test pack", config.Description)
-				testutil.AssertEqual(t, 5, config.Priority)
+				testutil.AssertFalse(t, config.Skip)
 				testutil.AssertFalse(t, config.Disabled)
-				testutil.AssertEqual(t, 2, len(config.Matchers))
-				
-				// First matcher
-				m1 := config.Matchers[0]
-				testutil.AssertEqual(t, "vim-files", m1.Name)
-				testutil.AssertEqual(t, "filename", m1.Trigger)
-				testutil.AssertEqual(t, "symlink", m1.PowerUp)
-				testutil.AssertEqual(t, ".*vim*", m1.Pattern)
-				testutil.AssertEqual(t, "$HOME", m1.Target)
-				testutil.AssertEqual(t, 10, m1.Priority)
-				
-				// Second matcher
-				m2 := config.Matchers[1]
-				testutil.AssertEqual(t, "directory", m2.Trigger)
-				testutil.AssertEqual(t, "bin", m2.PowerUp)
-				
-				// PowerUp options
-				symlinkOpts := config.PowerUpOptions["symlink"]
-				testutil.AssertNotNil(t, symlinkOpts)
-				testutil.AssertEqual(t, true, symlinkOpts["force"].(bool))
-				testutil.AssertEqual(t, true, symlinkOpts["backup"].(bool))
+				testutil.AssertFalse(t, config.Ignore)
+				testutil.AssertEqual(t, 3, len(config.Files))
+				testutil.AssertEqual(t, "symlink", config.Files["test.vim"])
+				testutil.AssertEqual(t, "ignore", config.Files["*.bak"])
+				testutil.AssertEqual(t, "install", config.Files["setup.sh"])
 			},
 		},
 		{
 			name: "minimal config",
-			toml: `description = "Minimal"`,
+			toml: ``,
 			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertEqual(t, "Minimal", config.Description)
-				testutil.AssertEqual(t, 0, config.Priority)
+				testutil.AssertFalse(t, config.Skip)
 				testutil.AssertFalse(t, config.Disabled)
-				testutil.AssertEqual(t, 0, len(config.Matchers))
+				testutil.AssertFalse(t, config.Ignore)
+				testutil.AssertEqual(t, 0, len(config.Files))
 			},
 		},
 		{
-			name: "matcher with options",
+			name: "skip variations",
 			toml: `
-[[matchers]]
-trigger = "filename"
-powerup = "symlink"
-
-[matchers.options]
-caseSensitive = false
-recursive = true
-
-[matchers.trigger_options]
-pattern = "*.conf"
-
-[matchers.powerup_options]
-target = "$HOME/.config"
+skip = true
 `,
 			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertEqual(t, 1, len(config.Matchers))
-				m := config.Matchers[0]
-				
-				// Check that options are parsed (even if not used in current impl)
-				testutil.AssertNotNil(t, m.Options)
-				testutil.AssertNotNil(t, m.TriggerOptions)
-				testutil.AssertNotNil(t, m.PowerUpOptions)
+				testutil.AssertTrue(t, config.Skip)
+				testutil.AssertTrue(t, config.ShouldSkip())
+			},
+		},
+		{
+			name: "disabled variation",
+			toml: `
+disabled = true
+`,
+			validate: func(t *testing.T, config types.PackConfig) {
+				testutil.AssertTrue(t, config.Disabled)
+				testutil.AssertTrue(t, config.ShouldSkip())
+			},
+		},
+		{
+			name: "ignore variation",
+			toml: `
+ignore = true
+`,
+			validate: func(t *testing.T, config types.PackConfig) {
+				testutil.AssertTrue(t, config.Ignore)
+				testutil.AssertTrue(t, config.ShouldSkip())
 			},
 		},
 		{
@@ -620,10 +579,10 @@ func TestSelectPacks(t *testing.T) {
 	// Create test packs
 	createTestPacks := func() []types.Pack {
 		return []types.Pack{
-			{Name: "vim", Priority: 10},
-			{Name: "shell", Priority: 5},
-			{Name: "bin", Priority: 0},
-			{Name: "config", Priority: 0},
+			{Name: "vim"},
+			{Name: "shell"},
+			{Name: "bin"},
+			{Name: "config"},
 		}
 	}
 
@@ -646,14 +605,14 @@ func TestSelectPacks(t *testing.T) {
 			name:          "select specific packs",
 			allPacks:      createTestPacks(),
 			selectedNames: []string{"vim", "bin"},
-			expectedNames: []string{"vim", "bin"},
+			expectedNames: []string{"bin", "vim"}, // Alphabetical order
 			wantErr:       false,
 		},
 		{
-			name:          "maintain priority order",
+			name:          "maintain alphabetical order",
 			allPacks:      createTestPacks(),
-			selectedNames: []string{"bin", "vim", "shell"},
-			expectedNames: []string{"vim", "shell", "bin"}, // Should be sorted by priority
+			selectedNames: []string{"vim", "bin", "shell"},
+			expectedNames: []string{"bin", "shell", "vim"}, // Should be sorted alphabetically
 			wantErr:       false,
 		},
 		{
@@ -720,4 +679,71 @@ func TestGetPackNames(t *testing.T) {
 	expected := []string{"pack1", "pack2", "pack3"}
 	
 	testutil.AssertSliceEqual(t, expected, names)
+}
+
+func TestGetFileAction(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   types.PackConfig
+		filename string
+		expected string
+	}{
+		{
+			name:     "empty config",
+			config:   types.PackConfig{},
+			filename: "test.txt",
+			expected: "",
+		},
+		{
+			name: "exact match",
+			config: types.PackConfig{
+				Files: map[string]string{
+					"test.txt": "ignore",
+					"app.sh":   "install",
+				},
+			},
+			filename: "test.txt",
+			expected: "ignore",
+		},
+		{
+			name: "glob pattern match",
+			config: types.PackConfig{
+				Files: map[string]string{
+					"*.bak":    "ignore",
+					"*.sh":     "install",
+					"init.vim": "symlink",
+				},
+			},
+			filename: "backup.bak",
+			expected: "ignore",
+		},
+		{
+			name: "exact match takes precedence over pattern",
+			config: types.PackConfig{
+				Files: map[string]string{
+					"*.txt":      "ignore",
+					"special.txt": "symlink",
+				},
+			},
+			filename: "special.txt",
+			expected: "symlink",
+		},
+		{
+			name: "no match",
+			config: types.PackConfig{
+				Files: map[string]string{
+					"*.bak": "ignore",
+				},
+			},
+			filename: "test.txt",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.GetFileAction(tt.filename)
+			testutil.AssertEqual(t, tt.expected, result)
+		})
+	}
 }

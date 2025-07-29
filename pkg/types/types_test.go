@@ -169,21 +169,15 @@ func TestActionTypes(t *testing.T) {
 
 func TestPackStructure(t *testing.T) {
 	pack := Pack{
-		Name:        "test-pack",
-		Path:        "/path/to/pack",
-		Description: "A test pack",
-		Priority:    5,
+		Name: "test-pack",
+		Path: "/path/to/pack",
 		Config: PackConfig{
-			Description: "Override description",
-			Priority:    10,
-			Disabled:    false,
-			Matchers: []MatcherConfig{
-				{
-					Name:    "test-matcher",
-					Trigger: "filename",
-					PowerUp: "symlink",
-					Pattern: "*.conf",
-				},
+			Skip:     false,
+			Disabled: false,
+			Ignore:   false,
+			Files: map[string]string{
+				"test.conf": "symlink",
+				"*.bak":     "ignore",
 			},
 		},
 		Metadata: map[string]interface{}{
@@ -196,12 +190,21 @@ func TestPackStructure(t *testing.T) {
 		t.Errorf("Pack.Name = %s, want test-pack", pack.Name)
 	}
 	
-	if pack.Config.Priority != 10 {
-		t.Errorf("Pack.Config.Priority = %d, want 10", pack.Config.Priority)
+	if pack.Config.ShouldSkip() {
+		t.Error("Pack.Config.ShouldSkip() = true, want false")
 	}
 	
-	if len(pack.Config.Matchers) != 1 {
-		t.Errorf("Pack.Config.Matchers length = %d, want 1", len(pack.Config.Matchers))
+	if len(pack.Config.Files) != 2 {
+		t.Errorf("Pack.Config.Files length = %d, want 2", len(pack.Config.Files))
+	}
+	
+	// Test file action
+	if action := pack.Config.GetFileAction("test.conf"); action != "symlink" {
+		t.Errorf("GetFileAction(test.conf) = %s, want symlink", action)
+	}
+	
+	if action := pack.Config.GetFileAction("backup.bak"); action != "ignore" {
+		t.Errorf("GetFileAction(backup.bak) = %s, want ignore", action)
 	}
 }
 
