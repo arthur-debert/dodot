@@ -1,0 +1,16 @@
+mode: set
+github.com/arthur-debert/dodot/pkg/config/pack.go:15.66,19.16 3 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:19.16,21.3 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:23.2,24.54 2 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:24.54,26.3 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:29.2,29.34 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:29.34,31.3 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:34.2,34.33 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:34.33,35.40 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:35.40,38.4 2 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:39.3,39.47 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:39.47,41.4 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:44.2,49.20 2 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:53.35,55.16 2 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:55.16,57.3 1 1
+github.com/arthur-debert/dodot/pkg/config/pack.go:58.2,58.22 1 1
