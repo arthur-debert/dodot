@@ -1,16 +1,15 @@
 package core
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog/log"
 )
 
@@ -160,7 +159,7 @@ func loadPack(packPath string) (types.Pack, error) {
 
 	// Load pack configuration if it exists
 	configPath := filepath.Join(packPath, ".dodot.toml")
-	if fileExists(configPath) {
+	if config.FileExists(configPath) {
 		config, err := loadPackConfig(configPath)
 		if err != nil {
 			return types.Pack{}, errors.Wrap(err, errors.ErrConfigLoad, "failed to load pack config").
@@ -180,7 +179,7 @@ func loadPack(packPath string) (types.Pack, error) {
 
 	logger.Debug().
 		Str("name", pack.Name).
-		Bool("hasConfig", fileExists(configPath)).
+		Bool("hasConfig", config.FileExists(configPath)).
 		Msg("Pack loaded successfully")
 
 	return pack, nil
@@ -188,37 +187,7 @@ func loadPack(packPath string) (types.Pack, error) {
 
 // loadPackConfig reads and parses a pack's .dodot.toml configuration file
 func loadPackConfig(configPath string) (types.PackConfig, error) {
-	logger := log.With().Str("configPath", configPath).Logger()
-	
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return types.PackConfig{}, fmt.Errorf("failed to read config file: %w", err)
-	}
-
-	var config types.PackConfig
-	if err := toml.Unmarshal(data, &config); err != nil {
-		return types.PackConfig{}, fmt.Errorf("failed to parse TOML: %w", err)
-	}
-
-	// Initialize maps if nil
-	if config.PowerUpOptions == nil {
-		config.PowerUpOptions = make(map[string]map[string]interface{})
-	}
-
-	// Set defaults for matcher enabled state
-	for i := range config.Matchers {
-		if config.Matchers[i].Enabled == nil {
-			enabled := true
-			config.Matchers[i].Enabled = &enabled
-		}
-	}
-
-	logger.Debug().
-		Int("matchers", len(config.Matchers)).
-		Bool("disabled", config.Disabled).
-		Msg("Pack config loaded")
-
-	return config, nil
+	return config.LoadPackConfig(configPath)
 }
 
 // shouldIgnore checks if a name matches any ignore pattern
@@ -232,8 +201,3 @@ func shouldIgnore(name string) bool {
 	return false
 }
 
-// fileExists is a helper to check if a file exists
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
