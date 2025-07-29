@@ -2,7 +2,11 @@ package core
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -42,6 +46,14 @@ type StatusPacksOptions struct {
 	DotfilesRoot string
 	// PackNames is a list of specific packs to check status for. If empty, all packs are checked.
 	PackNames []string
+}
+
+// FillPackOptions defines the options for the FillPack command.
+type FillPackOptions struct {
+	// DotfilesRoot is the path to the root of the dotfiles directory.
+	DotfilesRoot string
+	// PackName is the name of the pack to fill with template files.
+	PackName string
 }
 
 // ListPacks finds all available packs in the dotfiles root.
@@ -307,5 +319,124 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	}
 
 	log.Info().Str("command", "StatusPacks").Int("packCount", len(result.Packs)).Msg("Command finished")
+	return result, nil
+}
+
+// FillPack adds placeholder files for power-ups to an existing pack.
+func FillPack(opts FillPackOptions) (*types.FillResult, error) {
+	log := logging.GetLogger("core.commands")
+	log.Debug().Str("command", "FillPack").Str("pack", opts.PackName).Msg("Executing command")
+
+	// 1. Get all packs to verify the pack exists
+	candidates, err := GetPackCandidates(opts.DotfilesRoot)
+	if err != nil {
+		return nil, err
+	}
+	allPacks, err := GetPacks(candidates)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Find the specific pack
+	var targetPack *types.Pack
+	for _, p := range allPacks {
+		if p.Name == opts.PackName {
+			targetPack = &p
+			break
+		}
+	}
+	if targetPack == nil {
+		return nil, errors.Newf(errors.ErrPackNotFound, "pack %q not found", opts.PackName)
+	}
+
+	// 3. Create placeholder files
+	result := &types.FillResult{
+		PackName:     opts.PackName,
+		FilesCreated: []string{},
+	}
+
+	// Define template files for each power-up
+	templates := []struct {
+		filename string
+		content  string
+	}{
+		{
+			filename: "aliases.sh",
+			content: `#!/usr/bin/env sh
+# Shell aliases for ` + opts.PackName + ` pack
+# Add your aliases below
+
+# Example:
+# alias ll='ls -la'
+`,
+		},
+		{
+			filename: "install.sh",
+			content: `#!/usr/bin/env bash
+# Installation script for ` + opts.PackName + ` pack
+# This script runs once during 'dodot install'
+
+set -euo pipefail
+
+echo "Installing ` + opts.PackName + ` pack..."
+
+# Add your installation commands below
+`,
+		},
+		{
+			filename: "Brewfile",
+			content: `# Homebrew dependencies for ` + opts.PackName + ` pack
+# This file is processed during 'dodot install'
+
+# Examples:
+# brew 'git'
+# brew 'tmux'
+# cask 'visual-studio-code'
+`,
+		},
+		{
+			filename: "path.sh",
+			content: `#!/usr/bin/env sh
+# PATH additions for ` + opts.PackName + ` pack
+# Export PATH modifications below
+
+# Example:
+# export PATH="$HOME/.local/bin:$PATH"
+`,
+		},
+	}
+
+	// Create each template file if it doesn't exist
+	for _, tmpl := range templates {
+		filePath := filepath.Join(targetPack.Path, tmpl.filename)
+		
+		// Check if file already exists
+		if _, err := os.Stat(filePath); err == nil {
+			log.Debug().Str("file", tmpl.filename).Msg("File already exists, skipping")
+			continue
+		}
+
+		// Write the template file
+		err := os.WriteFile(filePath, []byte(tmpl.content), 0644)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create %s", tmpl.filename)
+		}
+
+		// Make shell scripts executable
+		if strings.HasSuffix(tmpl.filename, ".sh") {
+			err = os.Chmod(filePath, 0755)
+			if err != nil {
+				return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to make %s executable", tmpl.filename)
+			}
+		}
+
+		result.FilesCreated = append(result.FilesCreated, tmpl.filename)
+		log.Info().Str("file", tmpl.filename).Msg("Created template file")
+	}
+
+	log.Info().Str("command", "FillPack").
+		Str("pack", opts.PackName).
+		Int("filesCreated", len(result.FilesCreated)).
+		Msg("Command finished")
 	return result, nil
 }
