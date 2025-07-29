@@ -1,35 +1,60 @@
 
 1. Core Design 
-
-
     1. Git-based versioning - No internal versioning, relies entirely on git
     2. Live deployment via symlinks - Files in source control ARE the deployed files (no
     copying/syncing)
     3. Stateless operation - No tracking of what's installed, simplifying the system
     4. User freedom - Users organize dotfiles in "packs" (directories) as they wish
     5. Simple operation - One main command: dodot deploy
-
-
 2.Architecture Components
+  1. Packs System
+    - Directories under $DOTFILES_ROOT containing related configs
+    - File naming conventions trigger behaviors (e.g., bin/ dirs added to PATH, alias.sh
+    sourced)
+    - Optional .dodot.toml for customization
+  2. Matchers 
+    - Act as configuration objects that connect triggers to powerups
+    - Contain: trigger_name, power_up_name, priority, and options
+    - Example: "When FileNameTrigger matches *.vim, use SymlinkPowerUp"
+  3. Triggers
+    - Pattern-matching engines that scan pack files/directories
+    - Each trigger has a match() function that tests if a file/directory matches its criteria
+    - Types include: file_name, directory, extension
+    - Return metadata when a match is found
+  4. Powerups 
+    - Action generators that process matched files
+    - Each power-up has a process() function that takes matched files and generates actions
+    - Types include: symlink, brew, bin, profile, script_runner
+    - Transform trigger matches into executable actions
+  5. Actions 
+    - High-level operations to be performed
+    - Contain: type, description, data, pack_source
+    - Examples: create symlink, install brew package, run script
+  6. File System Operations
+    - From the synthfs library https://github.com/arthur-debert/go-synthfs
+    - Low level descriptions of file system operations.
+    - Entirely handles by the synthfs library
+  Processing Pipeline
+  1. get_firing_triggers() scans packs with configured matchers
+     ↓
+  2. For each file/directory in pack:
+     - Test against all matcher configurations
+     - If trigger matches, create TriggerMatch
+     ↓
+  3. get_actions() groups TriggerMatches by power-up
+     ↓
+  4. Each power-up processes its grouped files
+     ↓
+  5. Powerups generate Actions
+     ↓
+  6. Actions are converted to filesystem operations
 
-    The design covers the main architectural pieces well:
+  Key Relationships
 
-    1. Packs System
-        - Directories under $DOTFILES_ROOT containing related configs
-        - File naming conventions trigger behaviors (e.g., bin/ dirs added to PATH, alias.sh
-        sourced)
-        - Optional .dodot.toml for customization
-    2. Power-ups, Triggers, and Matchers
-        - Power-ups: Actions dodot can perform (add to PATH, link files, etc.)
-        - Triggers: Conditions that activate power-ups (file presence)
-        - Matchers: Configuration linking triggers to power-ups
-        - Clean separation of concerns
-    3. Action System
-        - Power-ups return high-level action descriptions
-        - Actions translated to low-level file operations
-        - No direct filesystem manipulation by power-ups
-    4. Synthfs Integration
-        - External library handling actual filesystem operations
-        - Enables pure functional design and testing
-        - Isolates risky filesystem operations
+  - Matchers bind triggers to powerups with configuration
+  - Triggers identify which files need processing
+  - Powerups decide what to do with matched files
+  - Actions represent the actual work to be done
 
+  This modular design allows flexible dotfiles management where different file patterns can
+  trigger different installation behaviors.
