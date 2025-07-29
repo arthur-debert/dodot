@@ -1,4 +1,6 @@
-Read the ./overview.txxt and powerups-list.txxt for reference.
+Read the ./overview.txxt and powerups-list.txxt and ./execution.txxt for reference.
+
+
 
 
 I'm looking for feedback on how far to push the "no-state" design principle.
@@ -46,9 +48,9 @@ incurs in:
 
 1. install.sh and Brewfile must be idempotent, i.e. running them multiple
   times should not change the system, only the first time it runs.
-  For brewfile this is a non issue, as homebrew works like this.
+  For Brewfile this is a non issue, as homebrew works like this.
   but the user generated install.sh does require users to handle this.
-  in practice, I don't think this is a big deal. I've never writtern such a
+  in practice, I don't think this is a big deal. I've never written such a
   script in a way that I had certainty whether it had ran or not and which
   version. all the installs scripts I  see are safe to run multiple times, but
   of course, this is not a guarantee and it does require user discipline.
@@ -64,5 +66,188 @@ with the first issue, but issue 2 is very real. Deploy all goes from taking
 sub seconds to 30s or a minute, it does change the user experience. 
 
 Another point is that this doesn't give users any  visibility on the system
-status. This is actually ironic. You see, all other will either: 
+status. This is actually ironic. You see, all other will either will
+either: 
+- create symlinks in some <STATE>/<power-up>/<pack>.sh like
+  ~/.config/state/dodot/aliases/neovim.sh
+- create a symlink to predictable locations
 
+That is, all powerups, aside from  install.sh can easily be inspected and we
+can provide users with a detailed view of what is deployed and what not.
+To be clear, we can give users this without state, as long as we don't include
+the install state.
+
+
+Putting this all together, while I much like the radical no state approach, I
+do see that performance overhead of install.sh and Brewfile on updates + lack
+    of visibility  on stall whereas all others work does make me wonder if we
+    should change this.
+
+The simplest way I can think about changing this is: 
+
+a. Split $ dodot install and dodot deploy  / update
+The gist is that install would only  run the install.sh and Brewfile, which
+would make the idem potency issue safer (but still a thing) but would definitely fix the performance issue.
+b. we could keep a simple state file that would list something like: 
+
+packs:
+    - neovim
+        - install:sh: 3432a
+        - Brewfile: 3432b
+
+that is, the md5 of each of the install files. This would allow us to easily
+tell if a pack was installed and whether the installed version changed (we
+definitely don't want to track changes and what not)
+
+c. make dodot install only run if not installed (giving a --force options to
+run again), making very safe at the cost of user complexity
+
+d. a $dodot uninstall command. 
+Now, this again has to be a simpler view. For the install.sh, the reasonable
+expectation is that if a uninstall.sh exists, that gets run, and it's up to the
+user to guarantee symmetric installs and uninstalls. Undoing arbitrary shell
+scrips is just not possible.
+For homebrew, it should be simpler, as you  could just uninstall. But in
+practice that is not the right thing to do, as various packs or the user's base
+system might have already installed things that we would remove. It's still
+fixable as we can ask user confirmation of which formulae to remove
+
+
+Closing thoughts: 
+- the current design shines in simplicity from the codebase and the user
+  experience, with the caveat of performance on updates and install visibility.
+
+- there is a reasonable change that : 
+    - can be said to match users expectations of functionality (it can tell if
+      installed and changed, supports uninstall etc)
+    - has a manageable complexity cost ( a simple file, simple semantics and
+      some more commands and docs)
+- the question is whether this is worth it. I think it is, but I would like to
+
+
+In short, the current system surely falls a bit short on user expectation but
+with a great upside on simplicity. I can see a middle ground, another space
+where we can deliver (mostly) to expectations while keeping complexity
+manegeable, but I am not sure if it's worth it.
+
+Task: 
+Help me go over the trade-offs, explore the solutions (feel free to suggest
+other ones)
+
+
+Based on my reading of the design documents and your thoughtful analysis, I see the core
+  tension clearly. Let me explore the trade-offs and potential solutions:
+
+  The Core Trade-offs
+
+  Current No-State Design
+
+  Pros:
+  - Radical simplicity in codebase
+  - No synchronization issues between state and reality
+  - No version conflicts or dependency hell
+  - Files under source control ARE the deployed files
+  - Aligns perfectly with Unix philosophy
+
+  Cons:
+  - Performance hit on every deployment (30s-1min for brew/install)
+  - No visibility into what's installed
+  - Users must write idempotent install.sh scripts
+  - Can't tell if something needs updating without running it
+
+  Your Proposed Middle Ground
+
+  Your suggestion to split dodot install and dodot deploy with minimal MD5 tracking is
+  clever. Let me analyze it:
+
+  Benefits:
+  - Solves the performance issue elegantly
+  - Provides basic visibility (installed/changed)
+  - Maintains conceptual simplicity
+  - Avoids version management complexity
+
+  Risks:
+  - Still requires idempotent scripts
+  - MD5 approach has edge cases (as you noted with .vimrc edits)
+  - Introduces first bit of state management (slippery slope?)
+
+  Alternative Approaches to Consider
+
+  1. Lazy State Detection (No stored state)
+
+  Instead of storing state, detect it at runtime:
+  - For Brewfile: Query brew list to see what's already installed
+  - For install.sh: Let scripts self-report their state (standardized marker files)
+  - Performance: Cache detection results for the session only
+
+  This keeps dodot stateless while being smarter about what needs running.
+
+  2. Explicit Opt-in State
+
+  Make state management an optional power-up:
+  [powerups.brew]
+  track_state = true  # User explicitly opts in
+  state_method = "md5"  # or "timestamp" or "marker_file"
+
+  This way, users who want simplicity get it, while others can opt into state tracking.
+
+  3. Hybrid Approach: State as Cache
+
+  Treat state not as truth but as performance optimization:
+  - Store MD5s but always allow --force to ignore
+  - State file is deletable without breaking anything
+  - State mismatch triggers prompt: "Brewfile changed. Run? [Y/n]"
+
+  This frames state as a convenience, not a requirement.
+
+  4. The "Install Manifest" Pattern
+
+  Instead of tracking state, have powerups generate manifests:
+  - install.sh writes what it did to install.manifest
+  - Brewfile processing writes brew.manifest
+  - dodot status reads these manifests (if they exist)
+
+  This provides visibility without dodot managing state.
+
+  My Recommendation
+
+  I think your instinct about the middle ground is correct. The performance issue is real and
+   will frustrate users. Here's what I'd suggest:
+
+  1. Implement the split commands (install vs deploy)
+    - This alone solves 80% of the problem
+    - Clear mental model: install = heavy operations, deploy = lightweight
+  2. Use content hashing, but smartly
+    - Hash only the install.sh and Brewfile themselves
+    - Store as ~/.local/state/dodot/install-state.json (follows XDG)
+    - Make it append-only and human-readable
+  3. Keep it simple and transparent
+  {
+    "neovim": {
+      "install.sh": "3432a",
+      "last_run": "2024-01-15T10:00:00Z"
+    }
+  }
+  4. Make state optional and recoverable
+    - --force always ignores state
+    - Deleting state file is always safe
+    - dodot install --check shows what would run without running it
+  5. For uninstall, keep it explicit and simple**
+    - If uninstall.sh exists, run it
+    - For Brewfile, show what would be removed and confirm
+    - Don't try to be too clever
+
+  The Philosophical Question
+
+  You asked whether it's worth it. I think yes, because:
+
+  1. The performance issue is a deal-breaker - Users will create workarounds anyway
+  2. Your proposed solution maintains conceptual integrity - It's still fundamentally
+  stateless, just with a performance cache
+  3. It matches user expectations without becoming a package manager
+
+  The key is to frame this not as "state management" but as "performance optimization" and
+  "execution tracking". The system remains stateless in that deleting all state files doesn't
+   break anything - it just makes things slower.
+
+  What do you think? Does this analysis help clarify the path forward?
