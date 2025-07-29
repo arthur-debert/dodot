@@ -7,7 +7,7 @@ dodot has special features for macos users that are quite unique, but will work 
 this document outlines the design choices and their consequences both in the code and usage.
 
 
-The TLDR:
+See TLDR [./readme.txxt] for a simpler version.
 
     1. Versioning is left to git
     2. No installs, only deployments. No updates, changes are always live, users can edit their dotfiles as they see fit, no workflow changes.

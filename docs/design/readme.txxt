@@ -1,3 +1,6 @@
+TLDR for dodot
+
+See a full-fledged overview [./overview.txtt]
 
 1. Core Design 
     1. Git-based versioning - No internal versioning, relies entirely on git

@@ -3,6 +3,8 @@ dodot Implementation and Execution
 
 NOTE: this is the doc for the old, lua based implementation. It's available as
 a reference but is not to be taken as a literal doc for this version.
+
+
 1. Overview 
     
     This document covers the implementation side of dodot. Read docs/concepts-and-design.txxt for the conceptual reasoning.
@@ -10,7 +12,7 @@ a reference but is not to be taken as a literal doc for this version.
     The execution pipeline follows these steps:
         1. Get configuration, resolve DOTFILES directory
         2. Resolve pack names to paths and validate (read access, no ignore patterns, etc.)
-        3. For each pack: get firing triggers → array of trigger matches and their power-ups
+        3. For each pack: run the matchers to get firing triggers → array of trigger matches and their power-ups
             a. Resolve configuration including the pack's TOML file (if present)
             b. Run triggers and accumulate which ones fire
         4. Activate power-ups → array of actions per power-up
@@ -22,21 +24,23 @@ a reference but is not to be taken as a literal doc for this version.
 
     This covers the implementation for triggers, actions, and power-ups.
 
+
 2. Dependencies
     
-    We use Lua libraries that handle abstract lower-level parts of the problem:
+    We use libraries that handle abstract lower-level parts of the problem:
 
-    - **fsynth** (https://luarocks.org/modules/arthur-debert/fsynth) 0.1.0 
+    - fsynth [https://github.com/arthur-debert/go-synthfs]
       Created specifically for this problem. Provides an API for creating file system operations
       and a runner to execute them, plus visualization facilities.
-      Local paths: /Users/adebert/h/lua/fsynth.lua/fsynth and /Users/adebert/h/lua/fsynth.lua/docs
+      Local paths: local/third-parties/go-synthfs
 
-    - **melt** (https://luarocks.org/modules/arthur-debert/melt) 0.1.1 
+    - koandf [https://github.com/knadh/koanf] 
       Allows declaring a chain of configuration sources (files, env vars, command line options) 
       and returns a unified configuration merged in the correct order.
-      Local paths: ~/h/lua/lua.melt/docs ~/h/lua/lua.melt/lua
+
 
 3. Design Principles
+
 
     3.1. Functional Programming
         
@@ -60,31 +64,34 @@ a reference but is not to be taken as a literal doc for this version.
             local fs_operations = dodot.get_fs_ops(actions)
             fsynth.run(fs_operations)
 
-        This sketches the main API handlers. For actions, power-ups, and triggers, functions 
-        accept trigger definitions as a second parameter:
+        This sketches the main API handlers. For actions, power-ups, and triggers, functions accept trigger definitions as a second parameter:
             dodot.get_firing_triggers(packs, triggers) 
         If not provided, defaults to dodot.config.get_triggers()
 
     3.3. CLI Isolation
 
         The entire system implements pure business logic. The dodot.deploy module only receives 
-        full Lua objects, not shell arguments. Nothing prints to stdout directly.
+        full golang objects, not shell arguments. Nothing prints to stdout directly.
 
-        The dodot/cli.lua file handles argument parsing, validation, and calling appropriate 
+        The cmd/dodot/main.lua file handles argument parsing, validation, and calling appropriate 
         commands. Beyond that point, there is no CLI dependency.
 
     3.4. Data Types
 
         Core entities and their responsibilities:
-        - **Triggers**: Pure matching logic 
-        - **Power-ups**: Pure processing logic
-        - **Matchers**: Configuration connecting triggers to power-ups
-        - **Actions**: High-level operations to perform
-        - **Operations**: fsynth filesystem operations
+        - Triggers: Pure matching logic 
+        - Power-ups: Pure processing logic
+        - Matchers: Configuration connecting triggers to power-ups
+        - Actions: High-level operations to perform
+        - Operations: fsynth filesystem operations
 
     3.5. Error Handling
 
-        See docs/errors.txxt for detailed error handling strategy.
+        A key part of the codebase style is about error handling. Instead of having errors identified by the msg string content, all errors should have a common interface / implementation with a code , an int, and the msg.
+
+        This allows tests to be less brittle and verify the code only as opposed to relying on msg strings not changing . It also enables msg strings to be i18n. 
+
+        
 
 4. Implementation Strategy
 
@@ -95,7 +102,7 @@ a reference but is not to be taken as a literal doc for this version.
 
     4.2. Reducing Scope
         
-        a. **Core Power-ups**
+        a. Core Power-ups
 
             Instead of implementing all power-ups at once, we work on a smaller subset that 
             exercises all necessary functionality:
@@ -107,16 +114,16 @@ a reference but is not to be taken as a literal doc for this version.
 
             These exercise most required triggers and actions without being extensive.
 
-        b. **No Customization Initially**
+        b. No Customization Initially
 
-            The melt library allows us to normalize user customization in a black box way. 
+            The koanf library allows us to normalize user customization in a black box way. 
             Initially we work without customization but keep stubs for get_merged_config(). 
-            Later we can change these to actually use melt.
+            Later we can change these to actually use koanf.
 
-        c. **Registry System**
+        c. Registry System
 
             All matchers, triggers, actions, and power-ups will be user-extensible through 
-            a registry system. lua/utils/registry.lua handles this:
+            a registry system. 
 
                 local registry = require("dodot.utils.registry")
 
@@ -138,51 +145,37 @@ a reference but is not to be taken as a literal doc for this version.
     4.3. Project Layout
 
         Proposed structure:
-        lua/
-        └── dodot/
-            ├── actions/           # Action implementations
-            ├── cli.lua           # Argument parsing and CLI bridge
-            ├── libs.lua          # Initial registry setup
-            ├── core/             # One file per pipeline phase
-            │   ├── get_actions.lua
-            │   ├── get_firing_triggers.lua
-            │   ├── get_fs_ops.lua
-            │   ├── get_packs.lua
-            │   ├── list_packs.lua
-            │   └── run_ops.lua
-            ├── commands/         # Command implementations
-            │   ├── deploy.lua
-            │   └── list.lua
-            ├── init.lua          # Main module entry point
-            ├── matchers/         # Matcher implementations
-            ├── powerups/         # Power-up implementations
-            ├── triggers/         # Trigger implementations
-            └── utils/
-                └── registry.lua  # Registry system
+
+        dodot
+        ├─ actions                              Each action get's it's modules and one for the api
+        ├─ config                               Handles .dodot.toml files and basic configs
+        ├─ matchers                             Each matcher gets it's modules, and one for the api
+        ├─ powerups                             Each  powerups gets it's modules and one for the api
+        ├─ triggers                             Each  powerups gets it's modules and one for the api
+        └─ registry                             The common registry implementation
 
 5. Implementation Phases and Deliverables
 
-    **Phase 1: Foundation** - "Bedrock"
+    Phase 1: Foundation - "Bedrock"
         
         Goal: Establish all foundational pieces for controlled, incremental development.
         
-        **Deliverable 1.1: Project Structure**
+        Deliverable 1.1: Project Structure
         Tasks:
-        - Set up proper Lua module structure
         - Create directory layout as specified in 4.3
         - Initialize git repository with proper .gitignore
         - Create placeholder files for main modules
         
         Success Criteria:
         - ✓ All directories and placeholder files created
-        - ✓ Module structure follows Lua conventions
+        - ✓ Module structure follows golang conventions
         - ✓ Git repository initialized and configured
 
-        **Deliverable 1.2: Dependencies Setup**
+        Deliverable 1.2: Dependencies Setup
         Tasks:
-        - Configure luarocks and rockspec file
+        - Configure go.mod
         - Install and configure fsynth dependency
-        - Install and configure melt dependency
+        - Install and configure koanf dependency
         - Set up development environment
         
         Success Criteria:
@@ -190,7 +183,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ All dependencies installable via luarocks
         - ✓ Development environment functional
 
-        **Deliverable 1.3: Testing Framework**
+        Deliverable 1.3: Testing Framework
         Tasks:
         - Set up testing framework (busted)
         - Create test directory structure
@@ -202,11 +195,19 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Test runner functional
         - ✓ Sample tests pass
 
-        **Deliverable 1.4: Registry System**
+        Deliverable 1.4: Logging
+        Tasks: 
+            - implement centralized logging solution with zerolog
+            - have default setup log to both std out XDG/state/dodot.log file
+            - default log level is WARN
+            - cmd line flags  -v (info), -vv (debug) , -vvv (trace)
+            - have both test and cmd line tool work with these -v flags.
+            - from now on all implementations should include logging.
+
+        Deliverable 1.5: Registry System
         Tasks:
-        - Implement registry system (lua/utils/registry.lua)
+        - Implement registry system 
         - Create registry tests
-        - Implement basic libs.lua integration
         - Validate registry add/get/remove/list functionality
         
         Success Criteria:
@@ -214,11 +215,10 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Registry tests pass
         - ✓ Basic libs integration working
 
-        **Deliverable 1.5: Error Handling Foundation**
+        Deliverable 1.5: Error Handling Foundation
         Tasks:
-        - Implement error handling system (see docs/errors.txxt)
+        - Implement error handling system 
         - Create error type definitions
-        - Implement error reporting utilities
         - Add error handling tests
         
         Success Criteria:
@@ -226,11 +226,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Error types defined and tested
         - ✓ Error reporting utilities functional
 
-    **Phase 2: Core Pipeline** - "Backbone"
+    Phase 2: Core Pipeline - "Backbone"
     
         Goal: Implement the core execution pipeline stages and data flow.
         
-        **Deliverable 2.1: Data Type Definitions**
+        Deliverable 2.1: Data Type Definitions
         Tasks:
         - Create data type definitions for all core entities
         - Implement Pack, Trigger, PowerUp, Action, Operation types
@@ -242,7 +242,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Type validation functional
         - ✓ Type conversion utilities working
 
-        **Deliverable 2.2: Pack Discovery**
+        Deliverable 2.2: Pack Discovery
         Tasks:
         - Implement basic pack discovery logic
         - Create pack validation functions
@@ -254,7 +254,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Pack validation logic functional
         - ✓ Pack filtering works correctly
 
-        **Deliverable 2.3: Core Pipeline Skeleton**
+        Deliverable 2.3: Core Pipeline Skeleton
         Tasks:
         - Implement core/get_packs.lua (stub implementations)
         - Implement core/get_firing_triggers.lua (stub implementations)
@@ -267,7 +267,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Data flows correctly between stages
         - ✓ Pipeline integration functional
 
-        **Deliverable 2.4: Registry Integration**
+        Deliverable 2.4: Registry Integration
         Tasks:
         - Integrate registry system with pipeline stages
         - Implement libs.lua with registry setup
@@ -279,11 +279,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ libs.lua functional with registry loading
         - ✓ Integration tests pass
 
-    **Phase 3: Core Triggers & Power-ups** - "Workhorses"
+    Phase 3: Core Triggers & Power-ups - "Workhorses"
         
         Goal: Implement essential triggers and power-ups to validate the complete system.
         
-        **Deliverable 3.1: File-based Triggers**
+        Deliverable 3.1: File-based Triggers
         Tasks:
         - Implement FileNameTrigger with globbing support
         - Implement DirectoryTrigger
@@ -295,7 +295,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Globbing patterns work correctly
         - ✓ Trigger tests pass with real files
 
-        **Deliverable 3.2: Basic Matcher System**
+        Deliverable 3.2: Basic Matcher System
         Tasks:
         - Implement basic matcher configuration
         - Create trigger-to-powerup connection logic
@@ -307,7 +307,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Matcher configuration validates correctly
         - ✓ Matcher tests pass
 
-        **Deliverable 3.3: Symlink Power-up**
+        Deliverable 3.3: Symlink Power-up
         Tasks:
         - Implement symlink power-up for home directory
         - Create symlink action generation
@@ -319,7 +319,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Symlink validation prevents conflicts
         - ✓ Symlink tests pass
 
-        **Deliverable 3.4: Profile Power-up**
+        Deliverable 3.4: Profile Power-up
         Tasks:
         - Implement profile power-up for shell integration
         - Create shell profile detection
@@ -331,7 +331,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Profile modification actions generated correctly
         - ✓ Profile tests pass
 
-        **Deliverable 3.5: Bin Power-up**
+        Deliverable 3.5: Bin Power-up
         Tasks:
         - Implement bin power-up for PATH management
         - Create PATH modification logic
@@ -343,11 +343,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Bin directory operations work correctly
         - ✓ Bin tests pass
 
-    **Phase 4: Operation Execution** - "Executor"
+    Phase 4: Operation Execution - "Executor"
         
         Goal: Implement and test the final operations execution with confidence in core functionality.
         
-        **Deliverable 4.1: Action-to-Operation Conversion**
+        Deliverable 4.1: Action-to-Operation Conversion
         Tasks:
         - Implement action-to-operation conversion logic
         - Create operation type mapping
@@ -359,7 +359,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Operation types mapped properly
         - ✓ Conversion tests pass
 
-        **Deliverable 4.2: fsynth Integration**
+        Deliverable 4.2: fsynth Integration
         Tasks:
         - Integrate fsynth library for operations
         - Add fsynth configuration management
@@ -368,7 +368,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ fsynth integration functional
         - ✓ Operations execute through fsynth
 
-        **Deliverable 4.3: Dry-run Support**
+        Deliverable 4.3: Dry-run Support
         Tasks:
         - Implement dry-run mode for operations
         - Create operation preview functionality
@@ -380,7 +380,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Operation preview shows expected changes
         - ✓ Dry-run tests pass
 
-        **Deliverable 4.4: fsynth execution**
+        Deliverable 4.4: fsynth execution
         Tasks:
         - Implement operation execution wrapper
         - Create integration tests
@@ -388,7 +388,7 @@ a reference but is not to be taken as a literal doc for this version.
         Success Criteria:
         - ✓ Integration tests pass
         
-        **Deliverable 4.5: Error Handling and Rollback**
+        Deliverable 4.5: Error Handling and Rollback
         Tasks:
         - Implement operation error handling
         - Create rollback functionality
@@ -400,11 +400,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Rollback functionality works
         - ✓ Error handling tests pass
 
-    **Phase 5: CLI Interface** - "Commander"
+    Phase 5: CLI Interface - "Commander"
         
         Goal: Create the command-line interface that bridges user input to business logic.
         
-        **Deliverable 5.1: Argument Parsing**
+        Deliverable 5.1: Argument Parsing
         Tasks:
         - Implement dodot/cli.lua with argument parsing
         - Create command-line option definitions
@@ -416,7 +416,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Option definitions comprehensive
         - ✓ Parsing tests pass
 
-        **Deliverable 5.2: Deploy Command**
+        Deliverable 5.2: Deploy Command
         Tasks:
         - Create dodot/commands/deploy.lua
         - Implement deploy command logic
@@ -428,7 +428,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ CLI-to-business-logic bridge works
         - ✓ Deploy tests pass
 
-        **Deliverable 5.3: Output Formatting**
+        Deliverable 5.3: Output Formatting
         Tasks:
         - Implement user-friendly output formatting
         - Create progress indicators
@@ -440,7 +440,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Progress indicators functional
         - ✓ Output mode switching works
 
-        **Deliverable 5.4: End-to-End Integration**
+        Deliverable 5.4: End-to-End Integration
         Tasks:
         - Integrate all components for working `dodot deploy`
         - Perform end-to-end testing
@@ -452,11 +452,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ File system mutations execute correctly
         - ✓ Integration issues resolved
 
-    **Phase 6: Supporting Commands** - "Toolkit"
+    Phase 6: Supporting Commands - "Toolkit"
 
         Goal: Implement auxiliary commands that support the deploy workflow.
 
-        **Deliverable 6.1: Info Command**
+        Deliverable 6.1: Info Command
         Tasks:
         - Implement info command (show what would be deployed)
         - Create deployment preview functionality
@@ -468,7 +468,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Preview formatting clear and helpful
         - ✓ Info tests pass
 
-        **Deliverable 6.2: List Command**
+        Deliverable 6.2: List Command
         Tasks:
         - Implement list command (show available packs)
         - Create pack discovery and formatting
@@ -480,7 +480,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Pack status indicators accurate
         - ✓ List tests pass
 
-        **Deliverable 6.3: Disable Command**
+        Deliverable 6.3: Disable Command
         Tasks:
         - Implement disable command (pack management)
         - Create pack enable/disable functionality
@@ -492,7 +492,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Pack state persists correctly
         - ✓ Disable tests pass
 
-        **Deliverable 6.4: Help and Debug Support**
+        Deliverable 6.4: Help and Debug Support
         Tasks:
         - Implement comprehensive help system
         - Add verbose and debugging output
@@ -504,11 +504,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Debug output helpful for troubleshooting
         - ✓ Help tests pass
 
-    **Phase 7: Advanced Features** - "Powerhouse"
+    Phase 7: Advanced Features - "Powerhouse"
 
         Goal: Expand the system with additional power-ups and triggers.
 
-        **Deliverable 7.1: Advanced Triggers**
+        Deliverable 7.1: Advanced Triggers
         Tasks:
         - Implement ContentTrigger (file content matching)
         - Implement CombinationTrigger (AND/OR logic)
@@ -520,7 +520,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Complex trigger combinations supported
         - ✓ Advanced trigger tests pass
 
-        **Deliverable 7.2: Homebrew Power-up**
+        Deliverable 7.2: Homebrew Power-up
         Tasks:
         - Implement homebrew power-up (Brewfile support)
         - Create Brewfile parsing and generation
@@ -532,7 +532,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Homebrew installation actions work
         - ✓ Homebrew tests pass
 
-        **Deliverable 7.3: Script Runner Power-up**
+        Deliverable 7.3: Script Runner Power-up
         Tasks:
         - Implement script_runner power-up (setup.sh execution)
         - Create script execution safety measures
@@ -544,7 +544,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Script output captured and handled
         - ✓ Script runner tests pass
 
-        **Deliverable 7.4: Advanced Matcher Configurations**
+        Deliverable 7.4: Advanced Matcher Configurations
         Tasks:
         - Implement advanced matcher configurations
         - Create matcher priority systems
@@ -556,11 +556,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Matcher priority systems work
         - ✓ Advanced matcher tests pass
 
-    **Phase 8: Customization System** - "Configurator"
+    Phase 8: Customization System - "Configurator"
         
         Goal: Implement comprehensive customization through configuration layers.
         
-        **Deliverable 8.1: Configuration File Support**
+        Deliverable 8.1: Configuration File Support
         Tasks:
         - Implement user-wide customization (~/.dodot.toml)
         - Implement pack customization (TOML file per pack)
@@ -572,9 +572,9 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ User and pack customization working
         - ✓ Configuration tests pass
 
-        **Deliverable 8.2: Environment Variable Support**
+        Deliverable 8.2: Environment Variable Support
         Tasks:
-        - Implement environment variable support (DODOT_*)
+        - Implement environment variable support (DODOT_)
         - Create environment variable parsing
         - Add environment variable precedence
         - Implement environment tests
@@ -584,19 +584,19 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Variable precedence handled properly
         - ✓ Environment tests pass
 
-        **Deliverable 8.3: melt Integration**
+        Deliverable 8.3: koanf Integration
         Tasks:
-        - Integrate melt library for configuration merging
+        - Integrate koanf library for configuration merging
         - Implement configuration hierarchy
         - Add configuration conflict resolution
-        - Implement melt integration tests
+        - Implement koanf integration tests
         
         Success Criteria:
-        - ✓ melt integration seamless
+        - ✓ koanf integration seamless
         - ✓ Configuration hierarchy functional
         - ✓ Integration tests pass
 
-        **Deliverable 8.4: Configuration Validation**
+        Deliverable 8.4: Configuration Validation
         Tasks:
         - Implement configuration validation and error reporting
         - Create configuration schema validation
@@ -608,11 +608,11 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Error messages actionable and clear
         - ✓ Validation tests pass
 
-    **Phase 9: Testing and Polish** - "Production"
+    Phase 9: Testing and Polish - "Production"
         
         Goal: Comprehensive testing and final polish for release.
         
-        **Deliverable 9.1: Unit Test Suite**
+        Deliverable 9.1: Unit Test Suite
         Tasks:
         - Complete unit tests for all components
         - Achieve comprehensive test coverage
@@ -624,7 +624,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ All unit tests pass consistently
         - ✓ Property-based tests cover edge cases
 
-        **Deliverable 9.2: Integration Test Suite**
+        Deliverable 9.2: Integration Test Suite
         Tasks:
         - Implement integration tests
         - Create mock file system for integration tests
@@ -636,7 +636,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ Mock file system tests pass
         - ✓ Integration test suite automated
 
-        **Deliverable 9.3: End-to-End Test Suite**
+        Deliverable 9.3: End-to-End Test Suite
         Tasks:
         - Implement end-to-end tests with actual file system
         - Create CLI testing framework
@@ -648,7 +648,7 @@ a reference but is not to be taken as a literal doc for this version.
         - ✓ CLI testing comprehensive
         - ✓ Multi-platform tests pass
 
-        **Deliverable 9.4: Documentation and Release**
+        Deliverable 9.4: Documentation and Release
         Tasks:
         - Complete documentation (README, man pages, guides)
         - Implement performance optimization
@@ -667,12 +667,12 @@ a reference but is not to be taken as a literal doc for this version.
         All file system operations go through fsynth for safety:
         - Validation before execution
         - Dry-run capability
-        - Transactional rollback
+        - Transacional rollback
         - Checksum verification
 
     6.2. Configuration Hierarchy (Phase 8)
         
-        Configuration merging order (melt library):
+        Configuration merging order (koan library):
         1. Built-in defaults
         2. Global ~/.dodot.toml  
         3. Pack-specific .dodot.toml
@@ -700,15 +700,15 @@ a reference but is not to be taken as a literal doc for this version.
     Each deliverable has specific, measurable success criteria that must be met before proceeding 
     to the next deliverable. This ensures steady progress and prevents accumulation of technical debt.
 
-    **Phase 1 (Foundation)**: Solid foundation enables controlled development
-    **Phase 2 (Core Pipeline)**: Pipeline processes data correctly end-to-end
-    **Phase 3 (Workhorses)**: Essential functionality works with real files
-    **Phase 4 (Executor)**: File system operations execute safely and correctly
-    **Phase 5 (Commander)**: Users can run `dodot deploy` successfully
-    **Phase 6 (Toolkit)**: Complete command suite supports user workflow
-    **Phase 7 (Powerhouse)**: Advanced features expand system capabilities
-    **Phase 8 (Configurator)**: Full customization system operational
-    **Phase 9 (Production)**: System ready for public release
+    Phase 1 (Foundation): Solid foundation enables controlled development
+    Phase 2 (Core Pipeline): Pipeline processes data correctly end-to-end
+    Phase 3 (Workhorses): Essential functionality works with real files
+    Phase 4 (Executor): File system operations execute safely and correctly
+    Phase 5 (Commander): Users can run `dodot deploy` successfully
+    Phase 6 (Toolkit): Complete command suite supports user workflow
+    Phase 7 (Powerhouse): Advanced features expand system capabilities
+    Phase 8 (Configurator): Full customization system operational
+    Phase 9 (Production): System ready for public release
 
 This implementation plan provides a clear roadmap with granular deliverables, each with specific 
 success criteria. The numbered deliverable system (e.g., Phase 1.1, 1.2, etc.) allows for 
