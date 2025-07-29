@@ -3,6 +3,7 @@ package logging
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -102,7 +103,8 @@ func TestWithFields(t *testing.T) {
 
 // Helper function
 func contains(s, substr string) bool {
-	return filepath.Clean(s) == filepath.Clean(substr) || 
-		   filepath.Dir(s) == filepath.Dir(substr) ||
-		   s[len(s)-len(substr):] == substr
+	// Clean paths to handle different OS separators
+	cleanedS := filepath.ToSlash(s)
+	cleanedSubstr := filepath.ToSlash(substr)
+	return strings.Contains(cleanedS, cleanedSubstr)
 }
