@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/testutil"
@@ -419,8 +420,8 @@ func TestFileExists(t *testing.T) {
 	existingFile := testutil.CreateFile(t, dir, "exists.txt", "content")
 	nonExisting := filepath.Join(dir, "not-exists.txt")
 	
-	testutil.AssertTrue(t, fileExists(existingFile))
-	testutil.AssertFalse(t, fileExists(nonExisting))
+	testutil.AssertTrue(t, config.FileExists(existingFile))
+	testutil.AssertFalse(t, config.FileExists(nonExisting))
 }
 
 // Integration test
