@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/arthur-debert/dodot/pkg/testutil"
 )
 
 func TestGetDodotDataDir(t *testing.T) {
@@ -15,7 +13,7 @@ func TestGetDodotDataDir(t *testing.T) {
 	origDataDir := os.Getenv("DODOT_DATA_DIR")
 	origXDGDataHome := os.Getenv("XDG_DATA_HOME")
 	origHome := os.Getenv("HOME")
-	
+
 	// Restore after test
 	t.Cleanup(func() {
 		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
@@ -70,20 +68,22 @@ func TestGetDodotDataDir(t *testing.T) {
 			}
 
 			result := GetDodotDataDir()
-			
+
 			// For the dynamic test case, calculate expected based on actual home
 			if tt.name == "all_unset_uses_user_home" {
 				actualHome, _ := os.UserHomeDir()
 				tt.expected = filepath.Join(actualHome, ".local", "share", "dodot")
 			}
-			
+
 			// Handle Windows path differences
 			if runtime.GOOS == "windows" {
 				result = strings.ReplaceAll(result, "\\", "/")
 				tt.expected = strings.ReplaceAll(tt.expected, "\\", "/")
 			}
-			
-			testutil.AssertEqual(t, tt.expected, result)
+
+			if tt.expected != result {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
 		})
 	}
 }
@@ -106,8 +106,8 @@ func TestGetDeployedDir(t *testing.T) {
 			expected: "/custom/data/deployed",
 		},
 		{
-			name:     "default_data_dir",
-			dataDir:  "",
+			name:    "default_data_dir",
+			dataDir: "",
 			expected: func() string {
 				return filepath.Join(GetDodotDataDir(), "deployed")
 			}(),
@@ -118,13 +118,15 @@ func TestGetDeployedDir(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_ = os.Setenv("DODOT_DATA_DIR", tt.dataDir)
 			result := GetDeployedDir()
-			
+
 			if runtime.GOOS == "windows" {
 				result = strings.ReplaceAll(result, "\\", "/")
 				tt.expected = strings.ReplaceAll(tt.expected, "\\", "/")
 			}
-			
-			testutil.AssertEqual(t, tt.expected, result)
+
+			if tt.expected != result {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
 		})
 	}
 }
@@ -138,13 +140,15 @@ func TestGetSymlinkDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/deployed/symlink"
 	result := GetSymlinkDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetShellProfileDir(t *testing.T) {
@@ -156,13 +160,15 @@ func TestGetShellProfileDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/deployed/shell_profile"
 	result := GetShellProfileDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetPathDir(t *testing.T) {
@@ -174,13 +180,15 @@ func TestGetPathDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/deployed/path"
 	result := GetPathDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetShellSourceDir(t *testing.T) {
@@ -192,13 +200,15 @@ func TestGetShellSourceDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/deployed/shell_source"
 	result := GetShellSourceDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetShellDir(t *testing.T) {
@@ -210,13 +220,15 @@ func TestGetShellDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/shell"
 	result := GetShellDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetInitScriptPath(t *testing.T) {
@@ -228,13 +240,15 @@ func TestGetInitScriptPath(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/shell/dodot-init.sh"
 	result := GetInitScriptPath()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetInstallDir(t *testing.T) {
@@ -246,13 +260,15 @@ func TestGetInstallDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/install"
 	result := GetInstallDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 func TestGetBrewfileDir(t *testing.T) {
@@ -264,13 +280,15 @@ func TestGetBrewfileDir(t *testing.T) {
 	_ = os.Setenv("DODOT_DATA_DIR", "/test/data")
 	expected := "/test/data/brewfile"
 	result := GetBrewfileDir()
-	
+
 	if runtime.GOOS == "windows" {
 		result = strings.ReplaceAll(result, "\\", "/")
 		expected = strings.ReplaceAll(expected, "\\", "/")
 	}
-	
-	testutil.AssertEqual(t, expected, result)
+
+	if expected != result {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
 }
 
 // Test all directories with consistent data dir
@@ -285,7 +303,7 @@ func TestAllDirectoriesConsistent(t *testing.T) {
 
 	// All deployed subdirectories should be under deployed/
 	deployedBase := filepath.Join(baseDir, "deployed")
-	
+
 	tests := []struct {
 		name     string
 		fn       func() string
@@ -305,13 +323,15 @@ func TestAllDirectoriesConsistent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.fn()
-			
+
 			if runtime.GOOS == "windows" {
 				result = strings.ReplaceAll(result, "\\", "/")
 				tt.expected = strings.ReplaceAll(tt.expected, "\\", "/")
 			}
-			
-			testutil.AssertEqual(t, tt.expected, result)
+
+			if tt.expected != result {
+				t.Errorf("expected %q, got %q", tt.expected, result)
+			}
 		})
 	}
 }
@@ -333,8 +353,9 @@ func TestPathsAreAbsolute(t *testing.T) {
 	}
 
 	for i, path := range paths {
-		testutil.AssertTrue(t, filepath.IsAbs(path), 
-			"Path %d should be absolute: %s", i, path)
+		if !filepath.IsAbs(path) {
+			t.Errorf("Path %d should be absolute: %s", i, path)
+		}
 	}
 }
 

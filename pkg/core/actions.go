@@ -23,7 +23,8 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 	// Group matches by power-up, pack, and options
 	// This allows power-ups to process related files together
 	groups := groupMatches(matches)
-	
+	logger.Debug().Interface("groups", groups).Msg("Grouped matches")
+
 	var allActions []types.Action
 
 	// Process each group
@@ -44,7 +45,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 
 		allActions = append(allActions, actions...)
 	}
-	
+
 	logger.Info().Int("actionCount", len(allActions)).Msg("Generated actions")
 	return allActions, nil
 }
@@ -57,18 +58,19 @@ func ProcessMatchGroup(matches []types.TriggerMatch) ([]types.Action, error) {
 
 	// All matches in a group have the same power-up
 	powerUpName := matches[0].PowerUpName
-	
+
 	logger := logging.GetLogger("core.actions").With().
 		Str("powerup", powerUpName).
 		Int("matchCount", len(matches)).
 		Logger()
-	
+
 	logger.Debug().Msg("Processing match group")
 
 	// Get the power-up factory from registry
 	powerUpFactory, err := registry.GetPowerUpFactory(powerUpName)
 	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPowerUpNotFound, 
+		logger.Error().Err(err).Str("powerUpName", powerUpName).Msg("Failed to get power-up factory")
+		return nil, errors.Wrapf(err, errors.ErrPowerUpNotFound,
 			"failed to get power-up factory for %s", powerUpName)
 	}
 
@@ -162,7 +164,7 @@ func hashOptions(options map[string]interface{}) string {
 	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s=%v", k, options[k]))
 	}
-	
+
 	return strings.Join(parts, ";")
 }
 
