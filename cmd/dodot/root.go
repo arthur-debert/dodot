@@ -9,6 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 )
 
 var (
@@ -140,8 +141,12 @@ var manCmd = &cobra.Command{
 	Use:   "man",
 	Short: "Generate man page",
 	Long:  `Generate man page for dodot`,
-	Run: func(cmd *cobra.Command, args []string) {
-		log.Error().Msg("Man page generation not yet implemented")
+	RunE: func(cmd *cobra.Command, args []string) error {
+		header := &doc.GenManHeader{
+			Title:   "DODOT",
+			Section: "1",
+		}
+		return doc.GenManTree(rootCmd, header, "/tmp")
 	},
 }
 
