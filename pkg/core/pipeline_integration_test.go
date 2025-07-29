@@ -159,15 +159,52 @@ pattern = "*.conf"`
 				Type:        types.ActionTypeLink,
 				Description: "Link config file",
 				Source:      "/source/file.conf",
-				Target:      "/target/file.conf",
+				Target:      "~/file.conf",
+				Pack:        "test-pack",
+			},
+			{
+				Type:        types.ActionTypeShellSource,
+				Description: "Source shell aliases",
+				Source:      "/source/alias.sh",
+				Pack:        "test-pack",
+			},
+			{
+				Type:        types.ActionTypePathAdd,
+				Description: "Add bin to PATH",
+				Source:      "/source/bin",
+				Pack:        "test-pack",
 			},
 		}
 
 		operations, err := GetFsOps(actions)
 		testutil.AssertNoError(t, err)
 		
-		// Since we haven't implemented operation conversion yet, this should be empty
-		testutil.AssertEqual(t, 0, len(operations), "expected no operations yet")
+		// Should have operations for:
+		// - Link: mkdir parent, deploy symlink, user symlink (3 ops)
+		// - Shell source: mkdir shell_profile, create symlink (2 ops)
+		// - Path add: mkdir path, create symlink (2 ops)
+		// Total: 7 operations
+		testutil.AssertTrue(t, len(operations) >= 7, "expected at least 7 operations")
+		
+		// Verify operation types are correct
+		var opTypes []types.OperationType
+		for _, op := range operations {
+			opTypes = append(opTypes, op.Type)
+		}
+		
+		// Should contain create_dir and create_symlink operations
+		hasDir := false
+		hasSymlink := false
+		for _, opType := range opTypes {
+			if opType == types.OperationCreateDir {
+				hasDir = true
+			}
+			if opType == types.OperationCreateSymlink {
+				hasSymlink = true
+			}
+		}
+		testutil.AssertTrue(t, hasDir, "should have directory creation operations")
+		testutil.AssertTrue(t, hasSymlink, "should have symlink creation operations")
 	})
 }
 
