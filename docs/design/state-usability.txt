@@ -1,0 +1,4 @@
+Read the ./overview.txxt and powerups-list.txxt for reference.
+
+
+I'm looking for feedback on how far to push the "no-state"
