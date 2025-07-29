@@ -256,7 +256,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Show header
-echo -e "${BLUE}${BOLD}🚀 my-awesome-cli Release Tool${NC}"
+echo -e "${BLUE}${BOLD}🚀 dodot Release Tool${NC}"
 echo
 
 # Pre-flight checks

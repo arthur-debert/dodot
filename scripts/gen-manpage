@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Always build the binary to ensure it's for the current platform
-echo "Building my-awesome-cli..."
+echo "Building dodot..."
 ./scripts/build
 
 # Create man directory
@@ -10,15 +10,15 @@ mkdir -p man/man1
 
 # Generate man page
 echo "Generating man page..."
-./my-awesome-cli man > man/man1/my-awesome-cli.1 || {
+./dodot man > man/man1/dodot.1 || {
     echo "Note: 'man' subcommand not implemented yet"
     echo "Creating placeholder man page..."
-    cat > man/man1/my-awesome-cli.1 << EOF
-.TH MY-AWESOME-CLI 1 "$(date +"%B %Y")" "my-awesome-cli manual"
+    cat > man/man1/dodot.1 << EOF
+.TH DODOT 1 "$(date +"%B %Y")" "dodot manual"
 .SH NAME
-my-awesome-cli \- Description of your CLI tool
+dodot \- A stateless dotfiles manager
 .SH SYNOPSIS
-.B my-awesome-cli
+.B dodot
 [\fIOPTIONS\fR] [\fICOMMAND\fR]
 .SH DESCRIPTION
 Description of your CLI tool
@@ -37,9 +37,9 @@ EOF
 }
 
 # Compress the man page
-if [ -f "man/man1/my-awesome-cli.1" ]; then
-    gzip -f man/man1/my-awesome-cli.1
-    echo "✅ Man page generated in man/man1/my-awesome-cli.1.gz"
+if [ -f "man/man1/dodot.1" ]; then
+    gzip -f man/man1/dodot.1
+    echo "✅ Man page generated in man/man1/dodot.1.gz"
 else
     echo "❌ Failed to generate man page"
     exit 1

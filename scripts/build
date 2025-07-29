@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}${BOLD}🔨 Building my-awesome-cli...${NC}"
+echo -e "${BLUE}${BOLD}🔨 Building dodot...${NC}"
 echo
 
 # Get version information from git
@@ -42,8 +42,8 @@ LDFLAGS="$LDFLAGS -X main.buildDate=$BUILD_DATE"
 # Build the main binary
 echo
 echo -e "${BLUE}Building CLI binary...${NC}"
-if go build -ldflags "$LDFLAGS" -o my-awesome-cli ./cmd/my-awesome-cli; then
-    echo -e "${GREEN}✅ Binary built successfully: ./my-awesome-cli${NC}"
+if go build -ldflags "$LDFLAGS" -o dodot ./cmd/dodot; then
+    echo -e "${GREEN}✅ Binary built successfully: ./dodot${NC}"
 else
     echo -e "${RED}❌ Binary build failed${NC}"
     exit 1
@@ -67,12 +67,12 @@ fi
 # Verify the binary works
 echo
 echo -e "${BLUE}Verifying binary...${NC}"
-if ./my-awesome-cli --version >/dev/null 2>&1; then
+if ./dodot --version >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Binary verification passed${NC}"
     # Show actual version output
     echo -e "${BLUE}Version output:${NC}"
-    ./my-awesome-cli --version || true
-elif ./my-awesome-cli --help >/dev/null 2>&1; then
+    ./dodot --version || true
+elif ./dodot --help >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Binary verification passed (via --help)${NC}"
 else
     echo -e "${RED}❌ Binary verification failed${NC}"
@@ -83,11 +83,11 @@ fi
 if [ ! -d "bin" ]; then
     mkdir -p bin
 fi
-if [ ! -e "bin/my-awesome-cli" ]; then
-    ln -sf "../my-awesome-cli" "bin/my-awesome-cli"
-    echo -e "${GREEN}✅ Created symlink in bin/my-awesome-cli${NC}"
+if [ ! -e "bin/dodot" ]; then
+    ln -sf "../dodot" "bin/dodot"
+    echo -e "${GREEN}✅ Created symlink in bin/dodot${NC}"
 fi
 
 echo
 echo -e "${GREEN}${BOLD}🎉 Build completed successfully!${NC}"
-echo -e "${BLUE}Binary location: ${BOLD}./my-awesome-cli${NC}"
+echo -e "${BLUE}Binary location: ${BOLD}./dodot${NC}"

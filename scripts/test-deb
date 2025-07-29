@@ -53,7 +53,7 @@ ls -la dist/*.deb
 # Build Docker test image
 echo
 echo -e "${BLUE}Building Docker test image...${NC}"
-docker build -f Dockerfile.deb-test -t my-awesome-cli-deb-test .
+docker build -f Dockerfile.deb-test -t dodot-deb-test .
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Docker build failed${NC}"
@@ -63,7 +63,7 @@ fi
 # Run package tests
 echo
 echo -e "${BLUE}Running package tests...${NC}"
-docker run --rm my-awesome-cli-deb-test
+docker run --rm dodot-deb-test
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Package tests failed${NC}"
@@ -73,7 +73,7 @@ fi
 # Additional tests for different architectures
 echo
 echo -e "${BLUE}Testing installation paths...${NC}"
-docker run --rm my-awesome-cli-deb-test bash -c "
+docker run --rm dodot-deb-test bash -c "
     echo '=== Binary location ===' && which my-awesome-cli &&
     echo '=== Package info ===' && dpkg -l | grep my-awesome-cli &&
     echo '=== Installed files ===' && dpkg -L my-awesome-cli | head -20
@@ -94,8 +94,8 @@ if [[ "${TEST_ALL_UBUNTU:-}" == "true" ]]; then
         sed "s/FROM ubuntu:latest/FROM ubuntu:$VERSION/" Dockerfile.deb-test > Dockerfile.deb-test.$VERSION
         
         # Build and test
-        docker build -f Dockerfile.deb-test.$VERSION -t my-awesome-cli-deb-test-$VERSION . &&
-        docker run --rm my-awesome-cli-deb-test-$VERSION &&
+        docker build -f Dockerfile.deb-test.$VERSION -t dodot-deb-test-$VERSION . &&
+        docker run --rm dodot-deb-test-$VERSION &&
         rm Dockerfile.deb-test.$VERSION
         
         if [ $? -eq 0 ]; then

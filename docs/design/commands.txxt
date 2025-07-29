@@ -1,0 +1,11 @@
+                Commands in dodot
+
+    dodot aims for simplicity, hence the only core command is deploy: 
+
+      $ dodot deploy (deploys all packs in your DOTFILES_ROOT)
+      $ dodot desploy <pack...> (deploy the selected packs only)
+
+    There are a couple of auxiliary commands : 
+
+      1. dodot fill <path>
+

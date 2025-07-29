@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/arthur-debert/my-awesome-cli/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -12,9 +12,9 @@ var (
 	verbosity int
 
 	rootCmd = &cobra.Command{
-		Use:   "my-awesome-cli",
-		Short: "Description of your CLI tool",
-		Long:  `Description of your CLI tool`,
+		Use:   "dodot",
+		Short: "A stateless dotfiles manager",
+		Long:  `dodot is a stateless dotfiles manager that uses symlinks to deploy configuration files`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Setup logging based on verbosity
 			logging.SetupLogger(verbosity)
@@ -40,7 +40,7 @@ func init() {
 	// Verbosity flag for logging
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v, -vv, -vvv)")
 
-	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.my-awesome-cli.yaml)")
+	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/dodot/config.toml)")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
@@ -59,9 +59,9 @@ func init() {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number",
-	Long:  `Print the version number of my-awesome-cli`,
+	Long:  `Print the version number of dodot`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("my-awesome-cli version %s (commit: %s, built: %s)\n", version, commit, date)
+		fmt.Printf("dodot version %s (commit: %s, built: %s)\n", version, commit, date)
 	},
 }
 
@@ -71,30 +71,30 @@ var completionCmd = &cobra.Command{
 	Long: `To load completions:
 
 Bash:
-  $ source <(my-awesome-cli completion bash)
+  $ source <(dodot completion bash)
   # To load completions for each session, execute once:
   # Linux:
-  $ my-awesome-cli completion bash > /etc/bash_completion.d/my-awesome-cli
+  $ dodot completion bash > /etc/bash_completion.d/dodot
   # macOS:
-  $ my-awesome-cli completion bash > /usr/local/etc/bash_completion.d/my-awesome-cli
+  $ dodot completion bash > /usr/local/etc/bash_completion.d/dodot
 
 Zsh:
   # If shell completion is not already enabled in your environment,
   # you will need to enable it.  You can execute the following once:
   $ echo "autoload -U compinit; compinit" >> ~/.zshrc
   # To load completions for each session, execute once:
-  $ my-awesome-cli completion zsh > "${fpath[1]}/_my-awesome-cli"
+  $ dodot completion zsh > "${fpath[1]}/_dodot"
   # You will need to start a new shell for this setup to take effect.
 
 Fish:
-  $ my-awesome-cli completion fish | source
+  $ dodot completion fish | source
   # To load completions for each session, execute once:
-  $ my-awesome-cli completion fish > ~/.config/fish/completions/my-awesome-cli.fish
+  $ dodot completion fish > ~/.config/fish/completions/dodot.fish
 
 PowerShell:
-  PS> my-awesome-cli completion powershell | Out-String | Invoke-Expression
+  PS> dodot completion powershell | Out-String | Invoke-Expression
   # To load completions for every new session, run:
-  PS> my-awesome-cli completion powershell > my-awesome-cli.ps1
+  PS> dodot completion powershell > dodot.ps1
   # and source this file from your PowerShell profile.
 `,
 	DisableFlagsInUseLine: true,
@@ -125,7 +125,7 @@ PowerShell:
 var manCmd = &cobra.Command{
 	Use:   "man",
 	Short: "Generate man page",
-	Long:  `Generate man page for my-awesome-cli`,
+	Long:  `Generate man page for dodot`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Error().Msg("Man page generation not yet implemented")
 	},
