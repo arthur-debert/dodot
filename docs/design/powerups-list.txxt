@@ -8,7 +8,7 @@ dodot - they take matched files and generate actions to be executed.
 1. Shell Add Path Power-up (shell_add_path)
 
     Purpose: Adds directories to the system PATH environment variable for
-    different shells. This enables executables in pack bin directories to be
+    different shells. This enables executable in pack bin directories to be
     available system-wide.
 
     Trigger: Typically triggered by a "bin" directory in a pack.
@@ -110,6 +110,16 @@ dodot - they take matched files and generate actions to be executed.
     - Type: link
     - Creates a symbolic link from source to target with specified options
 
+6. The Install Power-up (install)
+
+    Purpose: run an arbitrary shell script that will install a pack. While many
+    items the Brewfile + dotfiles and shell includes are enough, often a pack
+    does need a more imperative and custom solution.
+
+    Trigger: a install.sh file inside a pack
+
+    Behavior: 
+        will run the install.sh, with -e, to catch early errors
 
 Design Notes:
 
@@ -124,6 +134,7 @@ Design Notes:
     - Clear separation of concerns
     - Predictable behavior
     - Safe error handling and potential rollback
+
 
 
 Run-Once Power-ups:
