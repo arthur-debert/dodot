@@ -32,6 +32,7 @@ type mockPowerUp struct {
 
 func (m *mockPowerUp) Name() string        { return m.name }
 func (m *mockPowerUp) Description() string { return m.description }
+func (m *mockPowerUp) RunMode() RunMode   { return RunModeMany }
 func (m *mockPowerUp) Process(matches []TriggerMatch) ([]Action, error) {
 	return m.actions, m.err
 }

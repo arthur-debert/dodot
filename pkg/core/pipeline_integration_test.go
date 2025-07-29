@@ -279,6 +279,7 @@ type MockPowerUp struct {
 
 func (m *MockPowerUp) Name() string { return m.name }
 func (m *MockPowerUp) Description() string { return "Mock power-up for testing" }
+func (m *MockPowerUp) RunMode() types.RunMode { return types.RunModeMany }
 func (m *MockPowerUp) ValidateOptions(options map[string]interface{}) error { return nil }
 func (m *MockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	if m.generateActions != nil && len(matches) > 0 {
