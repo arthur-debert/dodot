@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Always build the binary to ensure it's for the current platform
-echo "Building my-awesome-cli..."
+echo "Building dodot..."
 ./scripts/build
 
 # Create completions directory
@@ -10,12 +10,12 @@ mkdir -p completions
 
 # Generate completions
 echo "Generating bash completion..."
-./my-awesome-cli completion bash > completions/my-awesome-cli.bash
+./dodot completion bash > completions/dodot.bash
 
 echo "Generating zsh completion..."
-./my-awesome-cli completion zsh > completions/_my-awesome-cli
+./dodot completion zsh > completions/_dodot
 
 echo "Generating fish completion..."
-./my-awesome-cli completion fish > completions/my-awesome-cli.fish
+./dodot completion fish > completions/dodot.fish
 
 echo "✅ Completions generated in completions/"

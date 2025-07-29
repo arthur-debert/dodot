@@ -23,9 +23,9 @@ jobs:
 
       - name: Set environment variables
         run: |
-          echo "PKG_NAME=my-awesome-cli" >> $GITHUB_ENV
+          echo "PKG_NAME=dodot" >> $GITHUB_ENV
           echo "GH_USER=arthur-debert" >> $GITHUB_ENV
-          echo "GIT_REPO=arthur-debert/my-awesome-cli" >> $GITHUB_ENV
+          echo "GIT_REPO=arthur-debert/dodot" >> $GITHUB_ENV
 
       - name: Generate completions and man pages
         run: |
@@ -44,4 +44,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          PKG_NAME: my-awesome-cli 
+          PKG_NAME: dodot 

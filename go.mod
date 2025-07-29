@@ -1,4 +1,4 @@
-module github.com/arthur-debert/my-awesome-cli
+module github.com/arthur-debert/dodot
 
 go 1.23
 

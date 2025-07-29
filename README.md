@@ -1,4 +1,4 @@
-# Go CLI Module
+# dodot - A Stateless Dotfiles Manager
 
 This module sets up a complete Go CLI application with Cobra framework, comprehensive build tooling, and CI/CD pipelines.
 
@@ -6,8 +6,8 @@ This module sets up a complete Go CLI application with Cobra framework, comprehe
 
 ### 📁 Project Structure
 ```
-my-awesome-cli/
-├── cmd/my-awesome-cli/    # CLI entry point with Cobra commands
+dodot/
+├── cmd/dodot/    # CLI entry point with Cobra commands
 │   ├── main.go                # Main application entry
 │   └── root.go                # Root command configuration
 ├── pkg/                       # Reusable packages
@@ -62,7 +62,7 @@ After adding this module:
 ```bash
 # Build your CLI
 ./scripts/build
-./bin/my-awesome-cli --version
+./bin/dodot --version
 
 # Run tests
 ./scripts/test
