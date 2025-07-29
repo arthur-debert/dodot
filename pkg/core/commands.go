@@ -56,6 +56,14 @@ type FillPackOptions struct {
 	PackName string
 }
 
+// InitPackOptions defines the options for the InitPack command.
+type InitPackOptions struct {
+	// DotfilesRoot is the path to the root of the dotfiles directory.
+	DotfilesRoot string
+	// PackName is the name of the new pack to create.
+	PackName string
+}
+
 // ListPacks finds all available packs in the dotfiles root.
 func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	log := logging.GetLogger("core.commands")
@@ -436,6 +444,118 @@ echo "Installing ` + opts.PackName + ` pack..."
 
 	log.Info().Str("command", "FillPack").
 		Str("pack", opts.PackName).
+		Int("filesCreated", len(result.FilesCreated)).
+		Msg("Command finished")
+	return result, nil
+}
+
+// InitPack creates a new pack directory with template files and configuration.
+func InitPack(opts InitPackOptions) (*types.InitResult, error) {
+	log := logging.GetLogger("core.commands")
+	log.Debug().Str("command", "InitPack").Str("pack", opts.PackName).Msg("Executing command")
+
+	// 1. Validate pack name
+	if opts.PackName == "" {
+		return nil, errors.New(errors.ErrInvalidInput, "pack name cannot be empty")
+	}
+	
+	// Check for invalid characters in pack name
+	if strings.ContainsAny(opts.PackName, "/\\:*?\"<>|") {
+		return nil, errors.Newf(errors.ErrInvalidInput, "pack name contains invalid characters: %s", opts.PackName)
+	}
+
+	// 2. Create the pack directory
+	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
+	
+	// Check if pack already exists
+	if _, err := os.Stat(packPath); err == nil {
+		return nil, errors.Newf(errors.ErrPackExists, "pack %q already exists", opts.PackName)
+	}
+
+	// Create the directory
+	err := os.MkdirAll(packPath, 0755)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create pack directory")
+	}
+
+	result := &types.InitResult{
+		PackName:     opts.PackName,
+		Path:         packPath,
+		FilesCreated: []string{},
+	}
+
+	// 3. Create .dodot.toml configuration file
+	configContent := `# dodot configuration for ` + opts.PackName + ` pack
+# See https://github.com/arthur-debert/dodot for documentation
+
+# Uncomment to skip this pack during deployment
+# skip = true
+
+# File-specific rules
+[files]
+# Ignore specific files
+# "*.bak" = "ignore"
+# "*.tmp" = "ignore"
+
+# Override default power-up for specific files
+# "my-script.sh" = "install"
+# "my-aliases.sh" = "profile"
+`
+
+	configPath := filepath.Join(packPath, ".dodot.toml")
+	err = os.WriteFile(configPath, []byte(configContent), 0644)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create .dodot.toml")
+	}
+	result.FilesCreated = append(result.FilesCreated, ".dodot.toml")
+
+	// 4. Create README.txt
+	readmeContent := `dodot Pack: ` + opts.PackName + `
+====================
+
+This pack was created by dodot init. It contains configuration files and scripts
+for the ` + opts.PackName + ` environment.
+
+Files in this pack:
+- .dodot.toml     - Pack configuration
+- aliases.sh      - Shell aliases (sourced in shell profile)
+- install.sh      - Installation script (runs once during 'dodot install')
+- Brewfile        - Homebrew dependencies (processed during 'dodot install')
+- path.sh         - PATH modifications (sourced in shell profile)
+- README.txt      - This file
+
+Getting Started:
+1. Add your dotfiles to this directory
+2. Edit the template files to add your configurations
+3. Run 'dodot deploy ` + opts.PackName + `' to deploy this pack
+
+For more information, see: https://github.com/arthur-debert/dodot
+`
+
+	readmePath := filepath.Join(packPath, "README.txt")
+	err = os.WriteFile(readmePath, []byte(readmeContent), 0644)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create README.txt")
+	}
+	result.FilesCreated = append(result.FilesCreated, "README.txt")
+
+	// 5. Use FillPack to create the template files
+	//nolint:staticcheck // Explicit struct construction is clearer than conversion
+	fillOpts := FillPackOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackName:     opts.PackName,
+	}
+	fillResult, err := FillPack(fillOpts)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrPackInit, "failed to create template files")
+	}
+
+	// Add the filled files to our result
+	result.FilesCreated = append(result.FilesCreated, fillResult.FilesCreated...)
+
+	log.Info().Str("command", "InitPack").
+		Str("pack", opts.PackName).
+		Str("path", packPath).
 		Int("filesCreated", len(result.FilesCreated)).
 		Msg("Command finished")
 	return result, nil
