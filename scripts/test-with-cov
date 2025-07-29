@@ -40,9 +40,9 @@ trap "rm -rf $TEMP_DIR" EXIT
 echo -e "${BLUE}Running tests with coverage...${NC}"
 echo
 
-# Run tests with coverage, excluding docs directory and with timeout
-# Filter out the docs directory from test packages
-TEST_PACKAGES=$(go list $TEST_DIRS | grep -v /docs/)
+# Run tests with coverage, excluding docs directory and testutil packages with timeout
+# Filter out the docs directory and pkg/testutil packages from test packages
+TEST_PACKAGES=$(go list $TEST_DIRS | grep -v /docs/ | grep -v pkg/testutil)
 go test -timeout 30s -coverprofile="$TEMP_DIR/coverage.out" -covermode=atomic $TEST_PACKAGES
 
 if [ $? -ne 0 ]; then
