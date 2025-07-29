@@ -1,30 +1,108 @@
-                Dodotl configuration
+dodot Simple Configuration Design
+=================================
 
+Pack Configuration (.dodot.toml)
+--------------------------------
 
-We will here list what the conifguration for .dodot.toml entails inside pack
-dirs.
+Each pack can have a .dodot.toml file that tells dodot:
+1. Whether to skip the entire pack
+2. Which files to ignore
+3. Which power-up should handle specific files
 
+That's it.
 
-1. skip = boolean (default: false)
+Basic Structure
+---------------
 
-    If set to true, dodot will stop processing the pack altogether. 
-    Even if the file has further configuration, a skip = true will 
+```toml
+# Skip the entire pack (aliases: skip, disabled, ignore)
+skip = true
 
-2. filename : skip, override:<powerup>
+# Simple file rules
+[files]
+"secrets.txt" = "ignore"           # Don't process this file at all
+"my-aliases.sh" = "profile"        # Use profile power-up instead of default
+"*.bak" = "ignore"                 # Ignore all backup files
+"install-deps.sh" = "install"      # Use install power-up for this script
+```
 
-    Example: 
+How It Works
+------------
 
-        other-alias.sh: override:alias
+1. **No file rules**: dodot uses its default matchers (e.g., .vimrc → symlink)
+2. **"ignore"**: File is completely skipped, no power-up processes it
+3. **"powerup-name"**: Override the default and use this specific power-up
+4. **Patterns**: Support glob patterns for matching multiple files
 
-    This directive allows users to either skip a file (as in don't process that),
-    or to manually point to the power-up that this file should be passed to.
+Examples
+--------
 
-    A few important points: 
-        - the link power-up will symlink all files not used by the other
-          power-ups. If skip is set for a file, this also skips the file for
-          the link power-up as well.
-        - override: <power-up name>
+### Example 1: Simple vim pack
 
+```toml
+[files]
+"*.swp" = "ignore"                 # Don't deploy swap files
+"init.lua" = "symlink"             # Ensure this goes to home (if defaults change)
+```
 
-    
+### Example 2: Mixed configs pack
 
+```toml
+[files]
+# Ignore temporary and private files
+"*.tmp" = "ignore"
+"private-*" = "ignore"
+"TODO.txt" = "ignore"
+
+# Override defaults
+"setup.sh" = "install"             # Run this as install script
+"aliases-work.sh" = "profile"      # Add to shell profile
+"Brewfile.lock.json" = "ignore"    # Don't deploy the lock file
+```
+
+### Example 3: Skip entire pack
+
+```toml
+skip = true  # or disabled = true, or ignore = true
+```
+
+Implementation Details
+----------------------
+
+The file rules are checked in this order:
+1. If pack has skip=true, skip entire pack
+2. Check [files] for exact match
+3. Check [files] for glob pattern match
+4. Use default matchers if no rule found
+
+Simplifications from Current Implementation
+-------------------------------------------
+
+Remove these fields from PackConfig:
+- description (not needed for functionality)
+- priority (adds complexity, rarely needed)
+- matchers array (replaced by simpler [files] section)
+- powerup_options (can be added later if truly needed)
+
+The only fields needed:
+- skip/disabled/ignore (boolean)
+- files (map[string]string)
+
+Benefits
+--------
+
+1. **Dead Simple**: Users can understand it in 10 seconds
+2. **Covers 99% of Use Cases**: Ignore files or override power-up choice
+3. **No Learning Curve**: "ignore" and power-up names are self-explanatory
+4. **Backwards Compatible**: Existing skip/disabled fields still work
+5. **Predictable**: No priority battles, no complex merging
+
+What This Doesn't Support
+-------------------------
+
+- Custom matcher patterns (use built-in ones)
+- Power-up configuration (use defaults)
+- Complex precedence rules (not needed)
+- Per-file power-up options (too complex)
+
+These limitations are features - they keep dodot simple and predictable.
