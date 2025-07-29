@@ -102,13 +102,14 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 			continue
 		}
 
-		// Skip disabled packs (check both skip and disabled for compatibility)
-		if pack.Config.Skip || pack.Config.Disabled {
+		// Skip disabled packs using the helper method
+		if pack.Config.ShouldSkip() {
 			logger.Info().
 				Str("pack", pack.Name).
 				Bool("skip", pack.Config.Skip).
 				Bool("disabled", pack.Config.Disabled).
-				Msg("Pack is skipped/disabled")
+				Bool("ignore", pack.Config.Ignore).
+				Msg("Pack is skipped")
 			continue
 		}
 
@@ -116,15 +117,11 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 		logger.Debug().
 			Str("name", pack.Name).
 			Str("path", pack.Path).
-			Int("priority", pack.Priority).
 			Msg("Loaded pack")
 	}
 
-	// Sort packs by priority (descending) and then by name
+	// Sort packs by name for consistent ordering
 	sort.Slice(packs, func(i, j int) bool {
-		if packs[i].Priority != packs[j].Priority {
-			return packs[i].Priority > packs[j].Priority
-		}
 		return packs[i].Name < packs[j].Name
 	})
 
@@ -155,28 +152,19 @@ func loadPack(packPath string) (types.Pack, error) {
 	pack := types.Pack{
 		Name:     packName,
 		Path:     packPath,
-		Priority: 0, // Default priority
 		Metadata: make(map[string]interface{}),
 	}
 
 	// Load pack configuration if it exists
 	configPath := filepath.Join(packPath, ".dodot.toml")
 	if config.FileExists(configPath) {
-		config, err := loadPackConfig(configPath)
+		packConfig, err := loadPackConfig(configPath)
 		if err != nil {
 			return types.Pack{}, errors.Wrap(err, errors.ErrConfigLoad, "failed to load pack config").
 				WithDetail("pack", packName).
 				WithDetail("configPath", configPath)
 		}
-		pack.Config = config
-		
-		// Apply overrides from config
-		if config.Description != "" {
-			pack.Description = config.Description
-		}
-		if config.Priority != 0 {
-			pack.Priority = config.Priority
-		}
+		pack.Config = packConfig
 	}
 
 	logger.Debug().
@@ -235,11 +223,12 @@ func ValidatePack(packPath string) error {
 				WithDetail("configPath", configPath)
 		}
 		
-		if packConfig.Skip || packConfig.Disabled {
-			return errors.New(errors.ErrPackSkipped, "pack is marked as skip/disabled").
+		if packConfig.ShouldSkip() {
+			return errors.New(errors.ErrPackSkipped, "pack is marked as skip/disabled/ignore").
 				WithDetail("path", packPath).
 				WithDetail("skip", packConfig.Skip).
-				WithDetail("disabled", packConfig.Disabled)
+				WithDetail("disabled", packConfig.Disabled).
+				WithDetail("ignore", packConfig.Ignore)
 		}
 	}
 	
@@ -293,11 +282,8 @@ func SelectPacks(allPacks []types.Pack, selectedNames []string) ([]types.Pack, e
 			WithDetail("available", getPackNames(allPacks))
 	}
 	
-	// Maintain the original priority order
+	// Sort by name for consistent ordering
 	sort.Slice(selected, func(i, j int) bool {
-		if selected[i].Priority != selected[j].Priority {
-			return selected[i].Priority > selected[j].Priority
-		}
 		return selected[i].Name < selected[j].Name
 	})
 	

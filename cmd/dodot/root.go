@@ -196,7 +196,7 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 		for _, pack := range packs {
 			logger.Info().
 				Str("pack", pack.Name).
-				Int("priority", pack.Priority).
+				Str("path", pack.Path).
 				Msg("Loaded pack")
 		}
 

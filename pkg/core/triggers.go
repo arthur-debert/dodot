@@ -106,7 +106,32 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 			return nil
 		}
 
-		// Test against each matcher
+		// Check file rules from pack config first
+		fileAction := pack.Config.GetFileAction(relPath)
+		if fileAction == "ignore" {
+			logger.Debug().
+				Str("path", relPath).
+				Msg("File ignored by pack config")
+			return nil
+		}
+
+		// If file action specifies a power-up, use it directly
+		if fileAction != "" {
+			match := types.TriggerMatch{
+				TriggerName:    "file-rule",
+				Pack:           pack.Name,
+				Path:           relPath,
+				AbsolutePath:   path,
+				Metadata:       make(map[string]interface{}),
+				PowerUpName:    fileAction,
+				PowerUpOptions: make(map[string]interface{}),
+				Priority:       0,
+			}
+			matches = append(matches, match)
+			return nil
+		}
+
+		// Otherwise, test against default matchers
 		for _, matcher := range enabledMatchers {
 			match, err := testMatcher(pack, path, relPath, info, matcher)
 			if err != nil {
@@ -138,29 +163,11 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	return matches, nil
 }
 
-// getPackMatchers returns the matchers for a pack, merging defaults with pack-specific ones
+// getPackMatchers returns the default matchers for a pack
 func getPackMatchers(pack types.Pack) []types.Matcher {
-	logger := logging.GetLogger("core.triggers")
-
-	// Start with default matchers
-	defaultMatchers := matchers.DefaultMatchers()
-
-	// Convert pack's MatcherConfig to Matcher
-	var packMatchers []types.Matcher
-	for _, config := range pack.Config.Matchers {
-		matcher, err := matchers.CreateMatcher(&config)
-		if err != nil {
-			logger.Warn().
-				Err(err).
-				Str("pack", pack.Name).
-				Msg("Failed to create matcher from config")
-			continue
-		}
-		packMatchers = append(packMatchers, *matcher)
-	}
-
-	// Merge matchers (pack-specific override defaults)
-	return matchers.MergeMatchers(defaultMatchers, packMatchers)
+	// With simplified config, we only use default matchers
+	// File-specific rules are handled separately
+	return matchers.DefaultMatchers()
 }
 
 // testMatcher tests if a file matches a matcher's trigger
@@ -203,19 +210,12 @@ func testMatcher(pack types.Pack, absPath, relPath string, info fs.FileInfo, mat
 		Priority:       matcher.Priority,
 	}
 
-	// Merge power-up options from different sources
+	// Initialize power-up options from matcher
 	if match.PowerUpOptions == nil {
 		match.PowerUpOptions = make(map[string]interface{})
 	}
 
-	// Pack-level power-up options
-	if packOpts, ok := pack.Config.PowerUpOptions[matcher.PowerUpName]; ok {
-		for k, v := range packOpts {
-			match.PowerUpOptions[k] = v
-		}
-	}
-
-	// Matcher-level power-up options (override pack-level)
+	// Copy matcher-level power-up options
 	for k, v := range matcher.PowerUpOptions {
 		match.PowerUpOptions[k] = v
 	}

@@ -28,9 +28,8 @@ func TestPipelineIntegration(t *testing.T) {
 	root := testutil.TempDir(t, "pipeline-test")
 	
 	// Create test packs
-	vimPack := testutil.CreateDir(t, root, "vim-pack")
-	testutil.CreateFile(t, vimPack, ".vimrc", "\" Test vimrc")
-	testutil.CreateFile(t, vimPack, ".vim/colors/theme.vim", "\" Color theme")
+	binPack := testutil.CreateDir(t, root, "bin-pack")
+	testutil.CreateFile(t, binPack, "script.sh", "#!/bin/bash\necho test")
 	
 	shellPack := testutil.CreateDir(t, root, "shell-pack")
 	testutil.CreateFile(t, shellPack, ".zshrc", "# Test zshrc")
@@ -38,15 +37,12 @@ func TestPipelineIntegration(t *testing.T) {
 	
 	// Create pack with config
 	configuredPack := testutil.CreateDir(t, root, "configured-pack")
-	packConfig := `description = "Test pack with matchers"
-priority = 10
-
-[[matchers]]
-trigger = "test-trigger"
-powerup = "test-powerup"
-pattern = "*.conf"`
+	packConfig := `[files]
+"app.conf" = "test-powerup"
+"*.log" = "ignore"`
 	testutil.CreateFile(t, configuredPack, ".dodot.toml", packConfig)
 	testutil.CreateFile(t, configuredPack, "app.conf", "# App config")
+	testutil.CreateFile(t, configuredPack, "debug.log", "# Debug log")
 
 	// Register mock trigger and power-up for testing
 	triggerReg := registry.GetRegistry[types.Trigger]()
@@ -101,9 +97,11 @@ pattern = "*.conf"`
 		testutil.AssertNoError(t, err)
 		testutil.AssertEqual(t, 3, len(packs), "expected 3 packs")
 		
-		// Verify pack with config has higher priority
-		testutil.AssertEqual(t, "configured-pack", packs[0].Name)
-		testutil.AssertEqual(t, 10, packs[0].Priority)
+		// Verify packs are sorted alphabetically
+		expectedOrder := []string{"bin-pack", "configured-pack", "shell-pack"}
+		for i, expected := range expectedOrder {
+			testutil.AssertEqual(t, expected, packs[i].Name)
+		}
 	})
 
 	// Test Stage 3: GetFiringTriggers
