@@ -10,16 +10,21 @@ import (
 
 var (
 	verbosity int
+	dryRun    bool
 
 	rootCmd = &cobra.Command{
 		Use:   "dodot",
 		Short: "A stateless dotfiles manager",
-		Long:  `dodot is a stateless dotfiles manager that uses symlinks to deploy configuration files`,
+		Long: `dodot is a stateless dotfiles manager that helps you organize and deploy
+your configuration files in a structured, safe way while letting git handle
+versioning and history.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Setup logging based on verbosity
 			logging.SetupLogger(verbosity)
 			log.Debug().Str("command", cmd.Name()).Msg("Command started")
 		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		// Uncomment the following line if your bare application
 		// has an action associated with it:
 		// Run: func(cmd *cobra.Command, args []string) { },
@@ -38,13 +43,14 @@ func init() {
 	// will be global for your application.
 
 	// Verbosity flag for logging
-	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v, -vv, -vvv)")
+	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)")
+	
+	// Dry-run flag
+	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes without executing them")
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/dodot/config.toml)")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Remove unused toggle flag
 	
 	// Add version command
 	rootCmd.AddCommand(versionCmd)
@@ -54,14 +60,19 @@ func init() {
 	
 	// Add man page generation command
 	rootCmd.AddCommand(manCmd)
+	
+	// Add deploy command
+	rootCmd.AddCommand(deployCmd)
 }
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number",
-	Long:  `Print the version number of dodot`,
+	Short: "Print version information",
+	Long:  `Print version information for dodot`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("dodot version %s (commit: %s, built: %s)\n", version, commit, date)
+		fmt.Printf("dodot version %s\n", version)
+		fmt.Printf("  commit: %s\n", commit)
+		fmt.Printf("  built:  %s\n", date)
 	},
 }
 
@@ -128,5 +139,28 @@ var manCmd = &cobra.Command{
 	Long:  `Generate man page for dodot`,
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Error().Msg("Man page generation not yet implemented")
+	},
+}
+
+var deployCmd = &cobra.Command{
+	Use:   "deploy",
+	Short: "Deploy dotfiles to the system",
+	Long: `Deploy processes all packs in your dotfiles directory and creates
+the necessary symlinks, installs packages, and performs other configured actions.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := logging.GetLogger("cmd.deploy")
+		logger.Info().
+			Bool("dryRun", dryRun).
+			Msg("Starting deploy")
+
+		// TODO: Implement actual deploy logic by calling the pipeline
+		// For now, just log what would happen
+		logger.Info().Msg("Deploy command not yet implemented")
+		
+		if dryRun {
+			logger.Info().Msg("Running in dry-run mode - no changes will be made")
+		}
+
+		return nil
 	},
 } 

@@ -240,3 +240,12 @@ func formatMessage(msgAndArgs ...interface{}) string {
 	}
 	return strings.Join(parts, " ") + "\n"
 }
+
+// AssertNotEmpty checks that a string is not empty
+func AssertNotEmpty(t *testing.T, value string, msgAndArgs ...interface{}) {
+	t.Helper()
+	if value == "" {
+		msg := formatMessage(msgAndArgs...)
+		t.Errorf("%sExpected non-empty string", msg)
+	}
+}
