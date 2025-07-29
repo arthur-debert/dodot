@@ -1,9 +1,8 @@
 package types
 
 import (
+	"strings"
 	"testing"
-
-	"github.com/arthur-debert/dodot/pkg/testutil"
 )
 
 func TestGetShellIntegrationSnippet(t *testing.T) {
@@ -14,27 +13,27 @@ func TestGetShellIntegrationSnippet(t *testing.T) {
 		expectedResult string
 	}{
 		{
-			name:          "bash_default",
-			shell:         "bash",
-			customDataDir: "",
+			name:           "bash_default",
+			shell:          "bash",
+			customDataDir:  "",
 			expectedResult: `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`,
 		},
 		{
-			name:          "bash_custom_dir",
-			shell:         "bash",
-			customDataDir: "/custom/dodot",
+			name:           "bash_custom_dir",
+			shell:          "bash",
+			customDataDir:  "/custom/dodot",
 			expectedResult: `[ -f "/custom/dodot/shell/dodot-init.sh" ] && source "/custom/dodot/shell/dodot-init.sh"`,
 		},
 		{
-			name:          "zsh_default",
-			shell:         "zsh",
-			customDataDir: "",
+			name:           "zsh_default",
+			shell:          "zsh",
+			customDataDir:  "",
 			expectedResult: `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`,
 		},
 		{
-			name:          "zsh_custom_dir",
-			shell:         "zsh",
-			customDataDir: "/test/data",
+			name:           "zsh_custom_dir",
+			shell:          "zsh",
+			customDataDir:  "/test/data",
 			expectedResult: `[ -f "/test/data/shell/dodot-init.sh" ] && source "/test/data/shell/dodot-init.sh"`,
 		},
 		{
@@ -54,15 +53,15 @@ end`,
 end`,
 		},
 		{
-			name:          "unknown_shell_defaults_to_bash",
-			shell:         "unknown",
-			customDataDir: "",
+			name:           "unknown_shell_defaults_to_bash",
+			shell:          "unknown",
+			customDataDir:  "",
 			expectedResult: `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`,
 		},
 		{
-			name:          "empty_shell_defaults_to_bash",
-			shell:         "",
-			customDataDir: "/test",
+			name:           "empty_shell_defaults_to_bash",
+			shell:          "",
+			customDataDir:  "/test",
 			expectedResult: `[ -f "/test/shell/dodot-init.sh" ] && source "/test/shell/dodot-init.sh"`,
 		},
 	}
@@ -70,16 +69,18 @@ end`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := GetShellIntegrationSnippet(tt.shell, tt.customDataDir)
-			testutil.AssertEqual(t, tt.expectedResult, result)
+			if result != tt.expectedResult {
+				t.Errorf("expected %q, got %q", tt.expectedResult, result)
+			}
 		})
 	}
 }
 
 func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 	tests := []struct {
-		name     string
-		shell    string
-		dataDir  string
+		name    string
+		shell   string
+		dataDir string
 		// Just check that the path appears in the result
 	}{
 		{
@@ -102,16 +103,24 @@ func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := GetShellIntegrationSnippet(tt.shell, tt.dataDir)
-			testutil.AssertContains(t, result, tt.dataDir)
+			if !strings.Contains(result, tt.dataDir) {
+				t.Errorf("expected %q to contain %q", result, tt.dataDir)
+			}
 		})
 	}
 }
 
 func TestGetShellIntegrationSnippet_Constants(t *testing.T) {
 	// Test that the constants are used correctly
-	testutil.AssertEqual(t, ShellIntegrationSnippet, GetShellIntegrationSnippet("bash", ""))
-	testutil.AssertEqual(t, ShellIntegrationSnippet, GetShellIntegrationSnippet("zsh", ""))
-	testutil.AssertEqual(t, FishIntegrationSnippet, GetShellIntegrationSnippet("fish", ""))
+	if ShellIntegrationSnippet != GetShellIntegrationSnippet("bash", "") {
+		t.Errorf("expected %q, got %q", ShellIntegrationSnippet, GetShellIntegrationSnippet("bash", ""))
+	}
+	if ShellIntegrationSnippet != GetShellIntegrationSnippet("zsh", "") {
+		t.Errorf("expected %q, got %q", ShellIntegrationSnippet, GetShellIntegrationSnippet("zsh", ""))
+	}
+	if FishIntegrationSnippet != GetShellIntegrationSnippet("fish", "") {
+		t.Errorf("expected %q, got %q", FishIntegrationSnippet, GetShellIntegrationSnippet("fish", ""))
+	}
 }
 
 // Benchmark tests
@@ -129,7 +138,7 @@ func BenchmarkGetShellIntegrationSnippet_Fish(b *testing.B) {
 
 func BenchmarkGetShellIntegrationSnippet_AllShells(b *testing.B) {
 	shells := []string{"bash", "zsh", "fish"}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, shell := range shells {

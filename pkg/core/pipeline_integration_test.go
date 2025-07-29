@@ -26,15 +26,15 @@ func init() {
 func TestPipelineIntegration(t *testing.T) {
 	// Create a test dotfiles structure
 	root := testutil.TempDir(t, "pipeline-test")
-	
+
 	// Create test packs
-	binPack := testutil.CreateDir(t, root, "bin-pack")
-	testutil.CreateFile(t, binPack, "script.sh", "#!/bin/bash\necho test")
-	
-	shellPack := testutil.CreateDir(t, root, "shell-pack")
-	testutil.CreateFile(t, shellPack, ".zshrc", "# Test zshrc")
-	testutil.CreateFile(t, shellPack, ".bashrc", "# Test bashrc")
-	
+	testutil.CreateDir(t, root, "bin-pack")
+	testutil.CreateFile(t, filepath.Join(root, "bin-pack"), "script.sh", "#!/bin/bash\necho test")
+
+	testutil.CreateDir(t, root, "shell-pack")
+	testutil.CreateFile(t, filepath.Join(root, "shell-pack"), ".zshrc", "# Test zshrc")
+	testutil.CreateFile(t, filepath.Join(root, "shell-pack"), ".bashrc", "# Test bashrc")
+
 	// Create pack with config
 	configuredPack := testutil.CreateDir(t, root, "configured-pack")
 	packConfig := `[files]
@@ -45,9 +45,9 @@ func TestPipelineIntegration(t *testing.T) {
 	testutil.CreateFile(t, configuredPack, "debug.log", "# Debug log")
 
 	// Register mock trigger and power-up for testing
-	triggerReg := registry.GetRegistry[types.Trigger]()
-	powerupReg := registry.GetRegistry[types.PowerUp]()
-	
+	triggerReg := registry.GetRegistry[types.TriggerFactory]()
+	powerupReg := registry.GetRegistry[types.PowerUpFactory]()
+
 	// Clean up after test
 	t.Cleanup(func() {
 		_ = triggerReg.Remove("test-trigger")
@@ -55,30 +55,32 @@ func TestPipelineIntegration(t *testing.T) {
 	})
 
 	// Register mock trigger
-	mockTrigger := &MockTrigger{
-		name:        "test-trigger",
-		shouldMatch: func(path string) bool {
-			return filepath.Ext(path) == ".conf"
+	mockTrigger := &testutil.MockTrigger{
+		NameFunc: func() string { return "test-trigger" },
+		MatchFunc: func(path string, info fs.FileInfo) (bool, map[string]interface{}) {
+			return filepath.Ext(path) == ".conf", nil
 		},
 	}
-	err := triggerReg.Register("test-trigger", mockTrigger)
+	err := triggerReg.Register("test-trigger", func(o map[string]interface{}) (types.Trigger, error) { return mockTrigger, nil })
 	testutil.AssertNoError(t, err)
 
 	// Register mock power-up
-	mockPowerUp := &MockPowerUp{
-		name: "test-powerup",
-		generateActions: func(match types.TriggerMatch) ([]types.Action, error) {
-			return []types.Action{
-				{
+	mockPowerUp := &testutil.MockPowerUp{
+		NameFunc: func() string { return "test-powerup" },
+		ProcessFunc: func(matches []types.TriggerMatch) ([]types.Action, error) {
+			var actions []types.Action
+			for _, match := range matches {
+				actions = append(actions, types.Action{
 					Type:        types.ActionTypeLink,
 					Description: "Link " + match.Path,
 					Source:      match.Path,
 					Target:      filepath.Join("/tmp", filepath.Base(match.Path)),
-				},
-			}, nil
+				})
+			}
+			return actions, nil
 		},
 	}
-	err = powerupReg.Register("test-powerup", mockPowerUp)
+	err = powerupReg.Register("test-powerup", func(o map[string]interface{}) (types.PowerUp, error) { return mockPowerUp, nil })
 	testutil.AssertNoError(t, err)
 
 	// Test Stage 1: GetPackCandidates
@@ -96,7 +98,7 @@ func TestPipelineIntegration(t *testing.T) {
 		packs, err := GetPacks(candidates)
 		testutil.AssertNoError(t, err)
 		testutil.AssertEqual(t, 3, len(packs), "expected 3 packs")
-		
+
 		// Verify packs are sorted alphabetically
 		expectedOrder := []string{"bin-pack", "configured-pack", "shell-pack"}
 		for i, expected := range expectedOrder {
@@ -114,7 +116,7 @@ func TestPipelineIntegration(t *testing.T) {
 
 		matches, err := GetFiringTriggers(packs)
 		testutil.AssertNoError(t, err)
-		
+
 		// With the test pack structure, we should get some matches
 		// The exact number depends on the matchers and files in the test pack
 		testutil.AssertTrue(t, len(matches) >= 0, "GetFiringTriggers should not fail")
@@ -140,7 +142,7 @@ func TestPipelineIntegration(t *testing.T) {
 
 		actions, err := GetActions(matches)
 		testutil.AssertNoError(t, err)
-		
+
 		// The symlink power-up should generate one link action
 		testutil.AssertEqual(t, 1, len(actions), "expected one action")
 		if len(actions) > 0 {
@@ -176,20 +178,20 @@ func TestPipelineIntegration(t *testing.T) {
 
 		operations, err := GetFsOps(actions)
 		testutil.AssertNoError(t, err)
-		
+
 		// Should have operations for:
 		// - Link: mkdir parent, deploy symlink, user symlink (3 ops)
 		// - Shell source: mkdir shell_profile, create symlink (2 ops)
 		// - Path add: mkdir path, create symlink (2 ops)
 		// Total: 7 operations
 		testutil.AssertTrue(t, len(operations) >= 7, "expected at least 7 operations")
-		
+
 		// Verify operation types are correct
 		var opTypes []types.OperationType
 		for _, op := range operations {
 			opTypes = append(opTypes, op.Type)
 		}
-		
+
 		// Should contain create_dir and create_symlink operations
 		hasDir := false
 		hasSymlink := false
@@ -209,7 +211,7 @@ func TestPipelineIntegration(t *testing.T) {
 // TestPipelineErrorPropagation tests that errors are properly propagated through the pipeline
 func TestPipelineErrorPropagation(t *testing.T) {
 	// Test with non-existent directory
-	t.Run("NonExistentRoot", func(t *testing.T) {
+		t.Run("NonExistentRoot", func(t *testing.T) {
 		_, err := GetPackCandidates("/non/existent/path")
 		testutil.AssertError(t, err)
 	})
@@ -237,7 +239,7 @@ func TestPipelineDataFlow(t *testing.T) {
 		candidates, err := GetPackCandidates(root)
 		testutil.AssertNoError(t, err)
 		for _, candidate := range candidates {
-			testutil.AssertTrue(t, filepath.IsAbs(candidate), 
+			testutil.AssertTrue(t, filepath.IsAbs(candidate),
 				"candidate should be absolute path: %s", candidate)
 		}
 
@@ -253,47 +255,13 @@ func TestPipelineDataFlow(t *testing.T) {
 	})
 }
 
-// Mock implementations for testing
-
-type MockTrigger struct {
-	name        string
-	shouldMatch func(path string) bool
-}
-
-func (m *MockTrigger) Name() string { return m.name }
-func (m *MockTrigger) Description() string { return "Mock trigger for testing" }
-func (m *MockTrigger) Priority() int { return 1 }
-func (m *MockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]interface{}) {
-	if m.shouldMatch != nil && m.shouldMatch(path) {
-		return true, map[string]interface{}{"matched": true}
-	}
-	return false, nil
-}
-
-type MockPowerUp struct {
-	name            string
-	generateActions func(match types.TriggerMatch) ([]types.Action, error)
-}
-
-func (m *MockPowerUp) Name() string { return m.name }
-func (m *MockPowerUp) Description() string { return "Mock power-up for testing" }
-func (m *MockPowerUp) RunMode() types.RunMode { return types.RunModeMany }
-func (m *MockPowerUp) ValidateOptions(options map[string]interface{}) error { return nil }
-func (m *MockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	if m.generateActions != nil && len(matches) > 0 {
-		// For simplicity, just process the first match
-		return m.generateActions(matches[0])
-	}
-	return []types.Action{}, nil
-}
-
 // Benchmarks
 
 // BenchmarkGetPackCandidates benchmarks pack discovery
 func BenchmarkGetPackCandidates(b *testing.B) {
 	// Create test structure with many packs
 	root := b.TempDir()
-	
+
 	// Create 100 pack directories
 	for i := 0; i < 100; i++ {
 		packName := filepath.Join(root, fmt.Sprintf("pack-%03d", i))
@@ -316,7 +284,7 @@ func BenchmarkGetPacksIntegration(b *testing.B) {
 	// Create test structure
 	root := b.TempDir()
 	var candidates []string
-	
+
 	// Create 50 packs with configs
 	for i := 0; i < 50; i++ {
 		packName := filepath.Join(root, fmt.Sprintf("pack-%03d", i))
@@ -324,7 +292,7 @@ func BenchmarkGetPacksIntegration(b *testing.B) {
 			b.Fatal(err)
 		}
 		candidates = append(candidates, packName)
-		
+
 		// Half with configs
 		if i%2 == 0 {
 			config := fmt.Sprintf(`description = "Pack %d"\npriority = %d`, i, i)
@@ -348,7 +316,7 @@ func BenchmarkGetPacksIntegration(b *testing.B) {
 func BenchmarkPipelineEndToEnd(b *testing.B) {
 	// Create a realistic dotfiles structure
 	root := b.TempDir()
-	
+
 	// Create several packs with files
 	packs := []string{"vim", "shell", "git", "tmux", "bin"}
 	for _, packName := range packs {
@@ -356,7 +324,7 @@ func BenchmarkPipelineEndToEnd(b *testing.B) {
 		if err := os.MkdirAll(packDir, 0755); err != nil {
 			b.Fatal(err)
 		}
-		
+
 		// Create some files in each pack
 		for j := 0; j < 10; j++ {
 			fileName := fmt.Sprintf("file%d.conf", j)
@@ -366,19 +334,13 @@ func BenchmarkPipelineEndToEnd(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
-		
-		// Add a config file
-		config := fmt.Sprintf(`description = "%s configuration"
-priority = 1
 
-[[matchers]]
-trigger = "filename"
-powerup = "symlink"
-pattern = "*.conf"`, packName)
+		// Add a config file
+		config := fmt.Sprintf(`description = "%s configuration"\npriority = 1\n\n[[matchers]]\ntrigger = "filename"\npowerup = "symlink"\npattern = "*.conf"`, packName)
 		configPath := filepath.Join(packDir, ".dodot.toml")
 		if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
-			b.Fatal(err)
-		}
+				b.Fatal(err)
+			}
 	}
 
 	b.ResetTimer()
@@ -388,22 +350,22 @@ pattern = "*.conf"`, packName)
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		packs, err := GetPacks(candidates)
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		matches, err := GetFiringTriggers(packs)
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		actions, err := GetActions(matches)
 		if err != nil {
 			b.Fatal(err)
 		}
-		
+
 		_, err = GetFsOps(actions)
 		if err != nil {
 			b.Fatal(err)

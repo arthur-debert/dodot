@@ -31,3 +31,7 @@ type PowerUp interface {
 	// ValidateOptions checks if the provided options are valid for this power-up
 	ValidateOptions(options map[string]interface{}) error
 }
+
+// PowerUpFactory is a function that creates a new PowerUp instance
+// It takes a map of options to configure the power-up
+type PowerUpFactory func(options map[string]interface{}) (PowerUp, error)

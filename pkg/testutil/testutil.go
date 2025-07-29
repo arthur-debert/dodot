@@ -187,3 +187,26 @@ func SkipOnWindows(t *testing.T) {
 		t.Skip("Test not supported on Windows")
 	}
 }
+
+// Setenv sets an environment variable for the duration of the test.
+func Setenv(t *testing.T, key, value string) {
+	t.Helper()
+	
+	original, wasSet := os.LookupEnv(key)
+	
+	if err := os.Setenv(key, value); err != nil {
+		t.Fatalf("Failed to set environment variable %s: %v", key, err)
+	}
+	
+	t.Cleanup(func() {
+		if wasSet {
+			if err := os.Setenv(key, original); err != nil {
+				t.Fatalf("Failed to restore environment variable %s: %v", key, err)
+			}
+		} else {
+			if err := os.Unsetenv(key); err != nil {
+				t.Fatalf("Failed to unset environment variable %s: %v", key, err)
+			}
+		}
+	})
+}
