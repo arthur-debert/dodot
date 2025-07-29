@@ -17,6 +17,7 @@ const (
 	ErrNotFound     ErrorCode = "NOT_FOUND"
 	ErrAlreadyExists ErrorCode = "ALREADY_EXISTS"
 	ErrPermission   ErrorCode = "PERMISSION"
+	ErrNotImplemented ErrorCode = "NOT_IMPLEMENTED"
 	
 	// Configuration errors
 	ErrConfigLoad   ErrorCode = "CONFIG_LOAD"

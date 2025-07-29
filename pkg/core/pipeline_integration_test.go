@@ -1,0 +1,363 @@
+package core
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/testutil"
+	"github.com/arthur-debert/dodot/pkg/types"
+)
+
+func init() {
+	// Set up logging for tests
+	logging.SetupLogger(0)
+}
+
+// TestPipelineIntegration tests the complete pipeline flow end-to-end
+func TestPipelineIntegration(t *testing.T) {
+	// Create a test dotfiles structure
+	root := testutil.TempDir(t, "pipeline-test")
+	
+	// Create test packs
+	vimPack := testutil.CreateDir(t, root, "vim-pack")
+	testutil.CreateFile(t, vimPack, ".vimrc", "\" Test vimrc")
+	testutil.CreateFile(t, vimPack, ".vim/colors/theme.vim", "\" Color theme")
+	
+	shellPack := testutil.CreateDir(t, root, "shell-pack")
+	testutil.CreateFile(t, shellPack, ".zshrc", "# Test zshrc")
+	testutil.CreateFile(t, shellPack, ".bashrc", "# Test bashrc")
+	
+	// Create pack with config
+	configuredPack := testutil.CreateDir(t, root, "configured-pack")
+	packConfig := `description = "Test pack with matchers"
+priority = 10
+
+[[matchers]]
+trigger = "test-trigger"
+powerup = "test-powerup"
+pattern = "*.conf"`
+	testutil.CreateFile(t, configuredPack, ".dodot.toml", packConfig)
+	testutil.CreateFile(t, configuredPack, "app.conf", "# App config")
+
+	// Register mock trigger and power-up for testing
+	triggerReg := registry.GetRegistry[types.Trigger]()
+	powerupReg := registry.GetRegistry[types.PowerUp]()
+	
+	// Clean up after test
+	t.Cleanup(func() {
+		_ = triggerReg.Remove("test-trigger")
+		_ = powerupReg.Remove("test-powerup")
+	})
+
+	// Register mock trigger
+	mockTrigger := &MockTrigger{
+		name:        "test-trigger",
+		shouldMatch: func(path string) bool {
+			return filepath.Ext(path) == ".conf"
+		},
+	}
+	err := triggerReg.Register("test-trigger", mockTrigger)
+	testutil.AssertNoError(t, err)
+
+	// Register mock power-up
+	mockPowerUp := &MockPowerUp{
+		name: "test-powerup",
+		generateActions: func(match types.TriggerMatch) ([]types.Action, error) {
+			return []types.Action{
+				{
+					Type:        types.ActionTypeLink,
+					Description: "Link " + match.Path,
+					Source:      match.Path,
+					Target:      filepath.Join("/tmp", filepath.Base(match.Path)),
+				},
+			}, nil
+		},
+	}
+	err = powerupReg.Register("test-powerup", mockPowerUp)
+	testutil.AssertNoError(t, err)
+
+	// Test Stage 1: GetPackCandidates
+	t.Run("Stage1_GetPackCandidates", func(t *testing.T) {
+		candidates, err := GetPackCandidates(root)
+		testutil.AssertNoError(t, err)
+		testutil.AssertEqual(t, 3, len(candidates), "expected 3 pack candidates")
+	})
+
+	// Test Stage 2: GetPacks
+	t.Run("Stage2_GetPacks", func(t *testing.T) {
+		candidates, err := GetPackCandidates(root)
+		testutil.AssertNoError(t, err)
+
+		packs, err := GetPacks(candidates)
+		testutil.AssertNoError(t, err)
+		testutil.AssertEqual(t, 3, len(packs), "expected 3 packs")
+		
+		// Verify pack with config has higher priority
+		testutil.AssertEqual(t, "configured-pack", packs[0].Name)
+		testutil.AssertEqual(t, 10, packs[0].Priority)
+	})
+
+	// Test Stage 3: GetFiringTriggers
+	t.Run("Stage3_GetFiringTriggers", func(t *testing.T) {
+		candidates, err := GetPackCandidates(root)
+		testutil.AssertNoError(t, err)
+
+		packs, err := GetPacks(candidates)
+		testutil.AssertNoError(t, err)
+
+		matches, err := GetFiringTriggers(packs)
+		testutil.AssertNoError(t, err)
+		
+		// Since we haven't implemented triggers yet, this should be empty
+		testutil.AssertEqual(t, 0, len(matches), "expected no matches yet")
+	})
+
+	// Test Stage 4: GetActions
+	t.Run("Stage4_GetActions", func(t *testing.T) {
+		// Create a mock trigger match
+		matches := []types.TriggerMatch{
+			{
+				Pack:        "test-pack",
+				Path:        "/test/file.conf",
+				TriggerName: "test-trigger",
+				PowerUpName: "test-powerup",
+				Priority:    1,
+				Metadata:    map[string]interface{}{},
+			},
+		}
+
+		actions, err := GetActions(matches)
+		testutil.AssertNoError(t, err)
+		
+		// Since we haven't implemented action generation yet, this should be empty
+		testutil.AssertEqual(t, 0, len(actions), "expected no actions yet")
+	})
+
+	// Test Stage 5: GetFsOps
+	t.Run("Stage5_GetFsOps", func(t *testing.T) {
+		// Create mock actions
+		actions := []types.Action{
+			{
+				Type:        types.ActionTypeLink,
+				Description: "Link config file",
+				Source:      "/source/file.conf",
+				Target:      "/target/file.conf",
+			},
+		}
+
+		operations, err := GetFsOps(actions)
+		testutil.AssertNoError(t, err)
+		
+		// Since we haven't implemented operation conversion yet, this should be empty
+		testutil.AssertEqual(t, 0, len(operations), "expected no operations yet")
+	})
+}
+
+// TestPipelineErrorPropagation tests that errors are properly propagated through the pipeline
+func TestPipelineErrorPropagation(t *testing.T) {
+	// Test with non-existent directory
+	t.Run("NonExistentRoot", func(t *testing.T) {
+		_, err := GetPackCandidates("/non/existent/path")
+		testutil.AssertError(t, err)
+	})
+
+	// Test with invalid pack path
+	t.Run("InvalidPackPath", func(t *testing.T) {
+		// GetPacks should handle invalid paths gracefully
+		invalidPaths := []string{"/non/existent", "/another/bad/path"}
+		packs, err := GetPacks(invalidPaths)
+		testutil.AssertNoError(t, err)
+		testutil.AssertEqual(t, 0, len(packs), "expected no packs for invalid paths")
+	})
+}
+
+// TestPipelineDataFlow verifies data transformation at each stage
+func TestPipelineDataFlow(t *testing.T) {
+	// This test will be more meaningful once we implement the actual pipeline logic
+	t.Run("DataTransformation", func(t *testing.T) {
+		// Create test data
+		root := testutil.TempDir(t, "data-flow-test")
+		pack := testutil.CreateDir(t, root, "test-pack")
+		testutil.CreateFile(t, pack, "file.txt", "content")
+
+		// Stage 1: Candidates should be directory paths
+		candidates, err := GetPackCandidates(root)
+		testutil.AssertNoError(t, err)
+		for _, candidate := range candidates {
+			testutil.AssertTrue(t, filepath.IsAbs(candidate), 
+				"candidate should be absolute path: %s", candidate)
+		}
+
+		// Stage 2: Packs should have names and paths
+		packs, err := GetPacks(candidates)
+		testutil.AssertNoError(t, err)
+		for _, p := range packs {
+			testutil.AssertNotEmpty(t, p.Name, "pack should have name")
+			testutil.AssertNotEmpty(t, p.Path, "pack should have path")
+		}
+
+		// Further stages will be tested once implemented
+	})
+}
+
+// Mock implementations for testing
+
+type MockTrigger struct {
+	name        string
+	shouldMatch func(path string) bool
+}
+
+func (m *MockTrigger) Name() string { return m.name }
+func (m *MockTrigger) Description() string { return "Mock trigger for testing" }
+func (m *MockTrigger) Priority() int { return 1 }
+func (m *MockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]interface{}) {
+	if m.shouldMatch != nil && m.shouldMatch(path) {
+		return true, map[string]interface{}{"matched": true}
+	}
+	return false, nil
+}
+
+type MockPowerUp struct {
+	name            string
+	generateActions func(match types.TriggerMatch) ([]types.Action, error)
+}
+
+func (m *MockPowerUp) Name() string { return m.name }
+func (m *MockPowerUp) Description() string { return "Mock power-up for testing" }
+func (m *MockPowerUp) ValidateOptions(options map[string]interface{}) error { return nil }
+func (m *MockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+	if m.generateActions != nil && len(matches) > 0 {
+		// For simplicity, just process the first match
+		return m.generateActions(matches[0])
+	}
+	return []types.Action{}, nil
+}
+
+// Benchmarks
+
+// BenchmarkGetPackCandidates benchmarks pack discovery
+func BenchmarkGetPackCandidates(b *testing.B) {
+	// Create test structure with many packs
+	root := b.TempDir()
+	
+	// Create 100 pack directories
+	for i := 0; i < 100; i++ {
+		packName := filepath.Join(root, fmt.Sprintf("pack-%03d", i))
+		if err := os.MkdirAll(packName, 0755); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := GetPackCandidates(root)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkGetPacksIntegration benchmarks pack loading in the pipeline
+func BenchmarkGetPacksIntegration(b *testing.B) {
+	// Create test structure
+	root := b.TempDir()
+	var candidates []string
+	
+	// Create 50 packs with configs
+	for i := 0; i < 50; i++ {
+		packName := filepath.Join(root, fmt.Sprintf("pack-%03d", i))
+		if err := os.MkdirAll(packName, 0755); err != nil {
+			b.Fatal(err)
+		}
+		candidates = append(candidates, packName)
+		
+		// Half with configs
+		if i%2 == 0 {
+			config := fmt.Sprintf(`description = "Pack %d"\npriority = %d`, i, i)
+			configPath := filepath.Join(packName, ".dodot.toml")
+			if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := GetPacks(candidates)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkPipelineEndToEnd benchmarks the complete pipeline
+func BenchmarkPipelineEndToEnd(b *testing.B) {
+	// Create a realistic dotfiles structure
+	root := b.TempDir()
+	
+	// Create several packs with files
+	packs := []string{"vim", "shell", "git", "tmux", "bin"}
+	for _, packName := range packs {
+		packDir := filepath.Join(root, packName+"-pack")
+		if err := os.MkdirAll(packDir, 0755); err != nil {
+			b.Fatal(err)
+		}
+		
+		// Create some files in each pack
+		for j := 0; j < 10; j++ {
+			fileName := fmt.Sprintf("file%d.conf", j)
+			filePath := filepath.Join(packDir, fileName)
+			content := fmt.Sprintf("# Config file %d in %s", j, packName)
+			if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
+				b.Fatal(err)
+			}
+		}
+		
+		// Add a config file
+		config := fmt.Sprintf(`description = "%s configuration"
+priority = 1
+
+[[matchers]]
+trigger = "filename"
+powerup = "symlink"
+pattern = "*.conf"`, packName)
+		configPath := filepath.Join(packDir, ".dodot.toml")
+		if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+			b.Fatal(err)
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Run the complete pipeline
+		candidates, err := GetPackCandidates(root)
+		if err != nil {
+			b.Fatal(err)
+		}
+		
+		packs, err := GetPacks(candidates)
+		if err != nil {
+			b.Fatal(err)
+		}
+		
+		matches, err := GetFiringTriggers(packs)
+		if err != nil {
+			b.Fatal(err)
+		}
+		
+		actions, err := GetActions(matches)
+		if err != nil {
+			b.Fatal(err)
+		}
+		
+		_, err = GetFsOps(actions)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}

@@ -17,3 +17,52 @@ with little structure, control, safety or consistency.
 dodot aims for a sweet spot that : 
 - let's git handle the source control 
 - forgo the packager manager aspect entirely by  a simple and safe model.
+- allow users to configure and organize their dotfiles with great freedom
+
+
+Regarding state and package management, this is a slippery slope that I know
+too well, and it's something I don't want for dodot not for users. Take the
+simplest thing possible: keeping track of what packs are installed or not.
+
+Sure, it's easy enough to keep a file that has the packs we have installed. But
+that , it turns out, is not enough. Did the installed version change? What
+changed?  Now you  have versioning. Sure, you can have simpler things like an
+md5 of the entire pack, but that gets tricky. if the user has just changed a
+line in his .vimrc file, which is part of the vim pack, that would trigger a
+difference, when in truth the same thing was installed, it's just that the
+config file changed.
+
+This is a simple example, but once you start, you end up with formal versions
+and dependencies and safe forward and backward compatibility, and the works.
+Then you have partial installs, updates, rollbacks. That's what package
+managers do and it's VERY HARD to get right.
+
+Users , understandably, once presented with installing things will assume this
+rich functionality is there. what do you mean the installed failed half way?
+what now? 
+
+the design we've opted has a no state approach. it's a good trade off, which
+incurs in: 
+
+1. install.sh and Brewfile must be idempotent, i.e. running them multiple
+  times should not change the system, only the first time it runs.
+  For brewfile this is a non issue, as homebrew works like this.
+  but the user generated install.sh does require users to handle this.
+  in practice, I don't think this is a big deal. I've never writtern such a
+  script in a way that I had certainty whether it had ran or not and which
+  version. all the installs scripts I  see are safe to run multiple times, but
+  of course, this is not a guarantee and it does require user discipline.
+
+2. install and brew performance
+  All other powerups are very fast to run. they concat part os files, create
+  some links. it's fast. Even large dotfiles repos, it's almost instantaneous.
+  If we run install.sh and Brewfile every time, it will take a while.
+
+
+So these two points are negatives on the current design. I'm inclined to be ok
+with the first issue, but issue 2 is very real. Deploy all goes from taking
+sub seconds to 30s or a minute, it does change the user experience. 
+
+Another point is that this doesn't give users any  visibility on the system
+status. This is actually ironic. You see, all other will either: 
+

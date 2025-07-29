@@ -56,8 +56,8 @@ type Action struct {
 	// Args are the arguments for the command (for run operations)
 	Args []string
 	
-	// Pack is the pack that generated this action
-	Pack Pack
+	// Pack is the name of the pack that generated this action
+	Pack string
 	
 	// PowerUpName is the name of the power-up that generated this action
 	PowerUpName string

@@ -2,24 +2,33 @@ package main
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
 )
 
 var (
 	verbosity int
+	dryRun    bool
 
 	rootCmd = &cobra.Command{
 		Use:   "dodot",
 		Short: "A stateless dotfiles manager",
-		Long:  `dodot is a stateless dotfiles manager that uses symlinks to deploy configuration files`,
+		Long: `dodot is a stateless dotfiles manager that helps you organize and deploy
+your configuration files in a structured, safe way while letting git handle
+versioning and history.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Setup logging based on verbosity
 			logging.SetupLogger(verbosity)
 			log.Debug().Str("command", cmd.Name()).Msg("Command started")
 		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		// Uncomment the following line if your bare application
 		// has an action associated with it:
 		// Run: func(cmd *cobra.Command, args []string) { },
@@ -38,13 +47,14 @@ func init() {
 	// will be global for your application.
 
 	// Verbosity flag for logging
-	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v, -vv, -vvv)")
+	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)")
+	
+	// Dry-run flag
+	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes without executing them")
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/dodot/config.toml)")
 
-	// Cobra also supports local flags, which will only run
-	// when this action is called directly.
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Remove unused toggle flag
 	
 	// Add version command
 	rootCmd.AddCommand(versionCmd)
@@ -54,14 +64,19 @@ func init() {
 	
 	// Add man page generation command
 	rootCmd.AddCommand(manCmd)
+	
+	// Add deploy command
+	rootCmd.AddCommand(deployCmd)
 }
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number",
-	Long:  `Print the version number of dodot`,
+	Short: "Print version information",
+	Long:  `Print version information for dodot`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("dodot version %s (commit: %s, built: %s)\n", version, commit, date)
+		fmt.Printf("dodot version %s\n", version)
+		fmt.Printf("  commit: %s\n", commit)
+		fmt.Printf("  built:  %s\n", date)
 	},
 }
 
@@ -126,7 +141,63 @@ var manCmd = &cobra.Command{
 	Use:   "man",
 	Short: "Generate man page",
 	Long:  `Generate man page for dodot`,
-	Run: func(cmd *cobra.Command, args []string) {
-		log.Error().Msg("Man page generation not yet implemented")
+	RunE: func(cmd *cobra.Command, args []string) error {
+		header := &doc.GenManHeader{
+			Title:   "DODOT",
+			Section: "1",
+		}
+		return doc.GenManTree(rootCmd, header, "/tmp")
 	},
+}
+
+var deployCmd = &cobra.Command{
+	Use:   "deploy [packs...]",
+	Short: "Deploy dotfiles to the system",
+	Long: `Deploy processes all packs in your dotfiles directory and creates
+the necessary symlinks, installs packages, and performs other configured actions.
+
+If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		logger := logging.GetLogger("cmd.deploy")
+		logger.Info().
+			Bool("dryRun", dryRun).
+			Strs("packs", args).
+			Msg("Starting deploy")
+
+		dotfilesRoot, err := getDotfilesRoot()
+		if err != nil {
+			return err
+		}
+
+		// Run the pipeline
+		candidates, err := core.GetPackCandidates(dotfilesRoot)
+		if err != nil {
+			return err
+		}
+
+		packs, err := core.GetPacks(candidates)
+		if err != nil {
+			return err
+		}
+
+		// The rest of the pipeline will be called here once implemented
+		// For now, just log the packs that were found
+		for _, pack := range packs {
+			logger.Info().
+				Str("pack", pack.Name).
+				Int("priority", pack.Priority).
+				Msg("Loaded pack")
+		}
+
+		logger.Info().Msg("Deploy command finished")
+		return nil
+	},
+}
+
+func getDotfilesRoot() (string, error) {
+	root := os.Getenv("DOTFILES_ROOT")
+	if root == "" {
+		return "", errors.New(errors.ErrInvalidInput, "DOTFILES_ROOT environment variable not set")
+	}
+	return root, nil
 } 

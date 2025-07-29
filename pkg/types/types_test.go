@@ -239,7 +239,7 @@ func TestTriggerMatchStructure(t *testing.T) {
 	
 	match := TriggerMatch{
 		TriggerName:  "filename",
-		Pack:         pack,
+		Pack:         pack.Name,
 		Path:         "config.conf",
 		AbsolutePath: "/test/config.conf",
 		Metadata: map[string]interface{}{
@@ -249,11 +249,12 @@ func TestTriggerMatchStructure(t *testing.T) {
 		PowerUpOptions: map[string]interface{}{
 			"target": "$HOME/.config",
 		},
+		Priority: 1,
 	}
 	
 	// Verify fields
-	if match.Pack.Name != "test-pack" {
-		t.Errorf("TriggerMatch.Pack.Name = %s, want test-pack", match.Pack.Name)
+	if match.Pack != "test-pack" {
+		t.Errorf("TriggerMatch.Pack = %s, want test-pack", match.Pack)
 	}
 	
 	if match.Metadata["extension"] != ".conf" {

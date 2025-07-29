@@ -25,8 +25,8 @@ type TriggerMatch struct {
 	// TriggerName is the name of the trigger that matched
 	TriggerName string
 	
-	// Pack is the pack containing the matched file
-	Pack Pack
+	// Pack is the name of the pack containing the matched file
+	Pack string
 	
 	// Path is the relative path within the pack
 	Path string
@@ -42,4 +42,7 @@ type TriggerMatch struct {
 	
 	// PowerUpOptions contains options to pass to the power-up
 	PowerUpOptions map[string]interface{}
+	
+	// Priority determines the order of processing (higher = processed first)
+	Priority int
 }
