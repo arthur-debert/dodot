@@ -6,3 +6,4 @@ bin/
 ai-assistant/.build/
 ai-assistant/*.log
 .docker-build-cache/
+coverage.html
