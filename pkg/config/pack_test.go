@@ -209,3 +209,41 @@ func TestPackConfig_ShouldSkip(t *testing.T) {
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
+
+func TestFileExists(t *testing.T) {
+	// Create temp directory
+	tmpDir := t.TempDir()
+	
+	// Create a test file
+	testFile := filepath.Join(tmpDir, "test.txt")
+	err := os.WriteFile(testFile, []byte("test"), 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
+	// Create a test directory
+	testDir := filepath.Join(tmpDir, "testdir")
+	err = os.Mkdir(testDir, 0755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	
+	tests := []struct {
+		name     string
+		path     string
+		expected bool
+	}{
+		{"existing file", testFile, true},
+		{"existing directory", testDir, false},
+		{"non-existent file", filepath.Join(tmpDir, "nonexistent.txt"), false},
+	}
+	
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FileExists(tt.path)
+			if result != tt.expected {
+				t.Errorf("FileExists(%q) = %v, want %v", tt.path, result, tt.expected)
+			}
+		})
+	}
+}
