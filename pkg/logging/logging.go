@@ -39,16 +39,19 @@ func SetupLogger(verbosity int) {
 
 	// Get log file path from XDG_STATE_HOME or default
 	logFile := getLogFilePath()
-	if file, err := setupLogFile(logFile); err == nil {
-		writers = append(writers, file)
-	} else {
-		// If we can't create the log file, just log to console
-		log.Warn().Err(err).Str("path", logFile).Msg("Failed to create log file, logging to console only")
+	logFileHandle, err := setupLogFile(logFile)
+	if err == nil {
+		writers = append(writers, logFileHandle)
 	}
 
 	// Create multi-writer
 	multi := io.MultiWriter(writers...)
 	log.Logger = zerolog.New(multi).With().Timestamp().Logger()
+
+	// If we couldn't create the log file, log the error now with the new logger
+	if err != nil {
+		log.Warn().Err(err).Str("path", logFile).Msg("Failed to create log file, logging to console only")
+	}
 
 	// Add caller information for debug and trace levels
 	if verbosity >= 2 {
