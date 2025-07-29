@@ -1,27 +1,55 @@
                 Commands in dodot
 
-    dodot aims for simplicity, hence the only core command is deploy: 
+1. Pack Commands: 
 
-      $ dodot deploy (deploys all packs in your DOTFILES_ROOT)
-      $ dodot deploy <pack...> (deploy the selected packs only)
+    Pack commands are the ones which act on one or more packs. They have a
+    similar call: $dodot <command> <pack1>...<pack n>
+    For acting on all packs the --all -a flag with run on all pakcs in your
+    dotfiles root.
 
-    There are a couple of auxiliary commands : 
+    dodot aims for simplicity, the two core commands are install and deploy.
 
-      1. dodot fill <path>
+    1.1 Install
+
+        Install is a superste of deploy, that is, after installing a pack it will
+        be deployed. Install will run all commands with run = once mode, which are
+        reserved for install commands, as one does not wish to run them multiple
+        times , be it to avoid the time penalty or the risk of install.sh scripts
+        not being safe to execute multiple times.
+
+        Currently, this includes the install and brewfile power-ups, but any other
+        run once power-up would be included.
+
+        Internally, once we've ran the once power-ups we will deploy, as not
+        deploying a pack you have just installed would be counter intuitive to
+        users.
 
 
-This lists all the available power-ups
-    $ dodot list
-    Your dodot has the following power-ups: 
-        alias (alias.sh) : <description>
-        bin (bin/) : description
+    1.2 Deploy
 
-    $ dodot deploy
+        Deploy all other power-ups, that is will create the sym links, paths
+        and shell inclusions
 
-        The main command, will be ran on a list of pack(s) or all packs in the
-        dotfiles_root
 
-    $ dodot fill <pack>
+
+    1.3 Status
+
+    Will output the status for a given(s) pack. The status is derived from the
+    files / symlinks left when deployed on installed, but are groupped per pack
+    as in 
+
+    $ dodot status neovim
+
+    neovim pack: 
+        install: ran install.sh on <date> (has since changed)
+        brewfile:  installed on <date> (no changes)
+        symlink: neovim/.vimrc -> $HOME/.nvrimrc
+        alias: neovim/alias.sh 
+
+    
+    1.4 fill
+
+        $ dodot fill <pack>
 
         adds placeholder files for each power-ups (except for the link one) in
         the given pack(s)
@@ -31,24 +59,22 @@ This lists all the available power-ups
             done and edits to the files will be live.
 
 
-    $ dodot init path
+    1.5 $ dodot init packname
         
-        creates a pack at given path. this will include: 
+        creates a pack at DOTFILES_ROOT/packname will include: 
         - all files such as fill would create, 
         - a short and concise readme.txt explaining things
         - a .dodot.toml file that has the configuration in it's default form
           and is wellocnfiguration commented so it's easy to change anything.
+                
 
+1.6 dodot list
 
-      dodot status
+       can be ran without the --all flags , like this
 
-       List which packs are deployed and current power-ups for each , like: 
+       $dodot list
 
-
-       neovim: 
-          - .dodot.toml:  custom configuration found
-          - link: neovim/.vimrc -> ~/.vimrc
-          - bin: neovim/bin added to your PATH
-          - alias: neovim/alias.sh  in your shell
-       python-dev: 
-        ....
+       Packs: 
+        neovim
+        ssh
+        ...

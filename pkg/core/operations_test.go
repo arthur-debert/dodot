@@ -112,6 +112,47 @@ func TestGetFsOps(t *testing.T) {
 			wantOpsCount: 0,
 			wantError:    false,
 		},
+		{
+			name: "brew_and_install_actions",
+			actions: []types.Action{
+				{
+					Type:     types.ActionTypeBrew,
+					Source:   "/packs/tools/Brewfile",
+					Priority: 10,
+					Metadata: map[string]interface{}{
+						"checksum": "brew123",
+						"pack":     "tools",
+					},
+				},
+				{
+					Type:     types.ActionTypeInstall,
+					Source:   "/packs/dev/install.sh",
+					Priority: 20,
+					Metadata: map[string]interface{}{
+						"checksum": "install456",
+						"pack":     "dev",
+					},
+				},
+			},
+			wantOpsCount: 4, // 2 ops per action (create dir + write sentinel)
+			checkOps: func(t *testing.T, ops []types.Operation) {
+				// Install action should be processed first (higher priority)
+				testutil.AssertEqual(t, types.OperationCreateDir, ops[0].Type)
+				testutil.AssertEqual(t, types.GetInstallDir(), ops[0].Target)
+				
+				testutil.AssertEqual(t, types.OperationWriteFile, ops[1].Type)
+				testutil.AssertContains(t, ops[1].Target, "dev")
+				testutil.AssertEqual(t, "install456", ops[1].Content)
+				
+				// Then brew action
+				testutil.AssertEqual(t, types.OperationCreateDir, ops[2].Type)
+				testutil.AssertEqual(t, types.GetBrewfileDir(), ops[2].Target)
+				
+				testutil.AssertEqual(t, types.OperationWriteFile, ops[3].Type)
+				testutil.AssertContains(t, ops[3].Target, "tools")
+				testutil.AssertEqual(t, "brew123", ops[3].Content)
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -513,6 +554,130 @@ func TestConvertAction(t *testing.T) {
 			wantError: true,
 			errorCode: doerrors.ErrActionInvalid,
 		},
+		// Brew action tests
+		{
+			name: "brew_action_success",
+			action: types.Action{
+				Type:   types.ActionTypeBrew,
+				Source: "/packs/tools/Brewfile",
+				Metadata: map[string]interface{}{
+					"checksum": "abc123def456",
+					"pack":     "tools",
+				},
+			},
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationCreateDir,
+					Target:      types.GetBrewfileDir(),
+					Description: "Create brewfile sentinel directory",
+				},
+				{
+					Type:        types.OperationWriteFile,
+					Target:      filepath.Join(types.GetBrewfileDir(), "tools"),
+					Content:     "abc123def456",
+					Mode:        uint32Ptr(0644),
+					Description: "Create brewfile sentinel for tools",
+				},
+			},
+		},
+		{
+			name: "brew_action_missing_source",
+			action: types.Action{
+				Type: types.ActionTypeBrew,
+				Metadata: map[string]interface{}{
+					"checksum": "abc123",
+					"pack":     "tools",
+				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "brew_action_missing_checksum",
+			action: types.Action{
+				Type:   types.ActionTypeBrew,
+				Source: "/packs/tools/Brewfile",
+				Metadata: map[string]interface{}{
+					"pack": "tools",
+				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "brew_action_missing_pack",
+			action: types.Action{
+				Type:   types.ActionTypeBrew,
+				Source: "/packs/tools/Brewfile",
+				Metadata: map[string]interface{}{
+					"checksum": "abc123",
+				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		// Install action tests
+		{
+			name: "install_action_success",
+			action: types.Action{
+				Type:   types.ActionTypeInstall,
+				Source: "/packs/dev/install.sh",
+				Metadata: map[string]interface{}{
+					"checksum": "def789ghi012",
+					"pack":     "dev",
+				},
+			},
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationCreateDir,
+					Target:      types.GetInstallDir(),
+					Description: "Create install sentinel directory",
+				},
+				{
+					Type:        types.OperationWriteFile,
+					Target:      filepath.Join(types.GetInstallDir(), "dev"),
+					Content:     "def789ghi012",
+					Mode:        uint32Ptr(0644),
+					Description: "Create install sentinel for dev",
+				},
+			},
+		},
+		{
+			name: "install_action_missing_source",
+			action: types.Action{
+				Type: types.ActionTypeInstall,
+				Metadata: map[string]interface{}{
+					"checksum": "abc123",
+					"pack":     "dev",
+				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "install_action_missing_checksum",
+			action: types.Action{
+				Type:   types.ActionTypeInstall,
+				Source: "/packs/dev/install.sh",
+				Metadata: map[string]interface{}{
+					"pack": "dev",
+				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "install_action_missing_pack",
+			action: types.Action{
+				Type:   types.ActionTypeInstall,
+				Source: "/packs/dev/install.sh",
+				Metadata: map[string]interface{}{
+					"checksum": "abc123",
+				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
 	}
 
 	for _, tt := range tests {
@@ -607,10 +772,6 @@ func TestExpandHome(t *testing.T) {
 	}
 }
 
-// Helper function
-func uint32Ptr(v uint32) *uint32 {
-	return &v
-}
 
 // Benchmarks
 func BenchmarkGetFsOps(b *testing.B) {
