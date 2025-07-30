@@ -39,7 +39,7 @@ func CommonPackFixtures() []PackFixture {
 			Files: map[string]string{
 				".vimrc":        "\" Vim configuration\nset number\nset expandtab",
 				".vim/init.vim": "\" Neovim config",
-				"README.md":     "# Vim Configuration",
+				"README.txxt":   "# Vim Configuration",
 			},
 			Dirs: []string{".vim/colors", ".vim/plugin"},
 		},
@@ -119,7 +119,7 @@ func CreateComplexPack(t *testing.T, baseDir string) string {
 			".config2": "config 2",
 
 			// Regular files
-			"README.md":  "# Complex Pack",
+			"README.txxt": "# Complex Pack",
 			"install.sh": "#!/bin/bash\necho 'Installing...'",
 			"Brewfile":   "brew 'git'\nbrew 'vim'",
 

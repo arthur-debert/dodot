@@ -34,7 +34,7 @@ func TestGetPackCandidates(t *testing.T) {
 				testutil.CreateDir(t, root, "vim-pack")
 				testutil.CreateDir(t, root, "shell-pack")
 				testutil.CreateDir(t, root, "bin-pack")
-				testutil.CreateFile(t, root, "README.md", "# Dotfiles")
+				testutil.CreateFile(t, root, "README.txxt", "# Dotfiles")
 				return root
 			},
 			expectedCount: 3,
