@@ -23,7 +23,9 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 	// Group matches by power-up, pack, and options
 	// This allows power-ups to process related files together
 	groups := groupMatches(matches)
-	logger.Debug().Interface("groups", groups).Msg("Grouped matches")
+	logger.Debug().
+		Int("group_count", len(groups)).
+		Msg("Grouped matches by power-up and pack")
 
 	var allActions []types.Action
 

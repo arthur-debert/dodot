@@ -70,7 +70,7 @@ echo install`
 	testutil.AssertEqual(t, 2, len(filtered))
 
 	// Convert to operations
-	ops, err := GetFsOps(filtered)
+	ops, err := GetFileOperations(filtered)
 	testutil.AssertNoError(t, err)
 	testutil.AssertTrue(t, len(ops) > 0, "Should have operations")
 

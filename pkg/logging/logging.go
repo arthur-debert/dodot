@@ -130,3 +130,18 @@ func LogDuration(start time.Time, operation string) {
 		Dur("duration", time.Since(start)).
 		Msg("Operation completed")
 }
+
+// LogOperationStart logs the start of an operation and returns a function to log its completion
+func LogOperationStart(logger zerolog.Logger, operation string) func() {
+	start := time.Now()
+	logger.Debug().
+		Str("operation", operation).
+		Msg("Operation started")
+	
+	return func() {
+		logger.Debug().
+			Str("operation", operation).
+			Dur("duration", time.Since(start)).
+			Msg("Operation completed")
+	}
+}

@@ -53,8 +53,10 @@ uninstall_hook() {
     fi
 }
 
-# Function to run the actual pre-commit checks
+# Function to run the actual pre-commit checks, will run gofmft
 run_checks() {
+    echo "gofmt.ing"
+    gofmt -w pkg cmd internal
     # Colors for output
     RED='\033[0;31m'
     GREEN='\033[0;32m'

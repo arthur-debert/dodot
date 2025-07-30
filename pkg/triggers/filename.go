@@ -73,7 +73,7 @@ func (t *FileNameTrigger) Match(path string, info fs.FileInfo) (bool, map[string
 	}
 
 	if matched {
-		logger.Debug().
+		logger.Trace().
 			Str("trigger", t.Name()).
 			Str("pattern", t.pattern).
 			Str("file", path).

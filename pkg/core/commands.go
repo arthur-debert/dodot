@@ -212,7 +212,7 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 7. Convert the filtered actions to filesystem operations
-	ops, err := GetFsOps(actions)
+	ops, err := GetFileOperations(actions)
 	if err != nil {
 		return nil, err
 	}

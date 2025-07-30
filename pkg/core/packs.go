@@ -28,7 +28,7 @@ var DefaultIgnorePatterns = []string{
 // GetPackCandidates returns all potential pack directories in the dotfiles root
 func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	logger := logging.GetLogger("core.packs")
-	logger.Debug().Str("root", dotfilesRoot).Msg("Getting pack candidates")
+	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates")
 
 	// Validate dotfiles root exists
 	info, err := os.Stat(dotfilesRoot)
@@ -59,13 +59,13 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 
 		// Skip hidden directories (except .config which is common)
 		if strings.HasPrefix(name, ".") && name != ".config" {
-			logger.Debug().Str("name", name).Msg("Skipping hidden directory")
+			logger.Trace().Str("name", name).Msg("Skipping hidden directory")
 			continue
 		}
 
 		// Skip ignored patterns
 		if shouldIgnore(name) {
-			logger.Debug().Str("name", name).Msg("Skipping ignored pattern")
+			logger.Trace().Str("name", name).Msg("Skipping ignored pattern")
 			continue
 		}
 
@@ -73,7 +73,7 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 		if entry.IsDir() {
 			fullPath := filepath.Join(dotfilesRoot, name)
 			candidates = append(candidates, fullPath)
-			logger.Debug().Str("path", fullPath).Msg("Found pack candidate")
+			logger.Trace().Str("path", fullPath).Msg("Found pack candidate")
 		}
 	}
 
@@ -87,7 +87,7 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 // GetPacks validates and creates Pack instances from candidate paths
 func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("core.packs")
-	logger.Debug().Int("count", len(candidates)).Msg("Validating pack candidates")
+	logger.Trace().Int("count", len(candidates)).Msg("Validating pack candidates")
 
 	var packs []types.Pack
 
@@ -114,7 +114,7 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 		}
 
 		packs = append(packs, pack)
-		logger.Debug().
+		logger.Trace().
 			Str("name", pack.Name).
 			Str("path", pack.Path).
 			Msg("Loaded pack")
@@ -167,7 +167,7 @@ func loadPack(packPath string) (types.Pack, error) {
 		pack.Config = packConfig
 	}
 
-	logger.Debug().
+	logger.Trace().
 		Str("name", pack.Name).
 		Bool("hasConfig", config.FileExists(configPath)).
 		Msg("Pack loaded successfully")
@@ -245,7 +245,7 @@ func ValidatePack(packPath string) error {
 			WithDetail("path", packPath)
 	}
 
-	logger.Debug().Str("path", packPath).Msg("Pack validation successful")
+	logger.Trace().Str("path", packPath).Msg("Pack validation successful")
 	return nil
 }
 
@@ -270,7 +270,7 @@ func SelectPacks(allPacks []types.Pack, selectedNames []string) ([]types.Pack, e
 	for _, name := range selectedNames {
 		if pack, exists := packMap[name]; exists {
 			selected = append(selected, pack)
-			logger.Debug().Str("name", name).Msg("Selected pack")
+			logger.Trace().Str("name", name).Msg("Selected pack")
 		} else {
 			notFound = append(notFound, name)
 		}

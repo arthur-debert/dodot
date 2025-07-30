@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -10,10 +9,11 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
-// GetFsOps converts actions into file system operations
-func GetFsOps(actions []types.Action) ([]types.Operation, error) {
+// GetFileOperations converts actions into file system operations
+func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations")
 	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations")
 
@@ -51,6 +51,11 @@ func GetFsOps(actions []types.Action) ([]types.Operation, error) {
 			return nil, err
 		}
 		allOperations = append(allOperations, ops...)
+	}
+
+	// Check for conflicts across all operations
+	if err := detectOperationConflicts(allOperations); err != nil {
+		return nil, err
 	}
 
 	logger.Info().Int("operationCount", len(allOperations)).Msg("Generated operations")
@@ -326,15 +331,13 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 
 // expandHome expands ~ to the user's home directory
 func expandHome(path string) string {
-	if path == "~" {
-		home, _ := os.UserHomeDir()
-		return home
+	expanded, err := utils.ExpandHome(path)
+	if err != nil {
+		// If we can't expand home, return the original path
+		// This maintains backward compatibility
+		return path
 	}
-	if strings.HasPrefix(path, "~/") {
-		home, _ := os.UserHomeDir()
-		return filepath.Join(home, path[2:])
-	}
-	return path
+	return expanded
 }
 
 // convertBrewAction converts a brew action to operations
@@ -420,4 +423,91 @@ func convertInstallAction(action types.Action) ([]types.Operation, error) {
 // Helper to create uint32 pointer
 func uint32Ptr(v uint32) *uint32 {
 	return &v
+}
+
+// detectOperationConflicts checks for conflicts between operations targeting the same paths
+func detectOperationConflicts(operations []types.Operation) error {
+	logger := logging.GetLogger("core.operations")
+
+	// Track targets by path
+	// Map of target path -> list of operations targeting it
+	targetMap := make(map[string][]types.Operation)
+
+	for _, op := range operations {
+		// Skip operations without targets (shouldn't happen but be safe)
+		if op.Target == "" {
+			continue
+		}
+
+		// Normalize the target path
+		target := filepath.Clean(op.Target)
+
+		// Add to target map
+		targetMap[target] = append(targetMap[target], op)
+	}
+
+	// Check for conflicts
+	var conflicts []string
+	for target, ops := range targetMap {
+		if len(ops) <= 1 {
+			continue
+		}
+
+		// Multiple operations targeting the same path
+		// Check if they're compatible
+		if !areOperationsCompatible(ops) {
+			// Build conflict message
+			var descriptions []string
+			for _, op := range ops {
+				descriptions = append(descriptions, fmt.Sprintf("%s (%s)", op.Description, op.Type))
+			}
+
+			conflict := fmt.Sprintf("Multiple operations target %s: %s",
+				target, strings.Join(descriptions, ", "))
+			conflicts = append(conflicts, conflict)
+
+			logger.Error().
+				Str("target", target).
+				Int("operation_count", len(ops)).
+				Strs("operations", descriptions).
+				Msg("Detected operation conflict")
+		}
+	}
+
+	if len(conflicts) > 0 {
+		return errors.New(errors.ErrActionConflict,
+			fmt.Sprintf("Detected %d conflicts:\n%s",
+				len(conflicts), strings.Join(conflicts, "\n")))
+	}
+
+	return nil
+}
+
+// areOperationsCompatible checks if multiple operations targeting the same path are compatible
+func areOperationsCompatible(ops []types.Operation) bool {
+	// Single operation is always compatible with itself
+	if len(ops) <= 1 {
+		return true
+	}
+
+	// Multiple directory creation operations are compatible
+	allDirCreates := true
+	for _, op := range ops {
+		if op.Type != types.OperationCreateDir {
+			allDirCreates = false
+			break
+		}
+	}
+	if allDirCreates {
+		return true
+	}
+
+	// All other combinations are incompatible
+	// This includes:
+	// - Multiple symlinks to same target
+	// - Symlink and write to same target
+	// - Multiple writes to same target
+	// - Copy and write to same target
+	// etc.
+	return false
 }

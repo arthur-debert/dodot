@@ -33,6 +33,9 @@ const (
 
 	// ActionTypeInstall runs an install script
 	ActionTypeInstall ActionType = "install"
+
+	// ActionTypeTemplate processes a template file
+	ActionTypeTemplate ActionType = "template"
 )
 
 // Action represents a high-level operation to be performed.

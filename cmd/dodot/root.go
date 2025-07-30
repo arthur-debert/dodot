@@ -189,7 +189,7 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 		// 1. GetFiringTriggers(packs) - scan files and match triggers
 		// 2. GetActions(matches) - process matches through matchers and power-ups
 		// 3. FilterRunOnceActions(actions, force) - filter out already-executed run-once actions
-		// 4. GetFsOps(actions) - convert actions to filesystem operations
+		// 4. GetFileOperations(actions) - convert actions to filesystem operations
 		// 5. Execute operations through synthfs
 
 		// For now, just log the packs that were found

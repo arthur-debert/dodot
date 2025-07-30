@@ -9,9 +9,17 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// defaultMatchers stores the default matchers
+var defaultMatchers = make(map[string]types.Matcher)
+
+// RegisterDefaultMatcher registers a default matcher
+func RegisterDefaultMatcher(name string, matcher types.Matcher) {
+	defaultMatchers[name] = matcher
+}
+
 // DefaultMatchers returns a set of common matchers for typical dotfiles
 func DefaultMatchers() []types.Matcher {
-	return []types.Matcher{
+	matchers := []types.Matcher{
 		// Vim configuration
 		{
 			Name:        "vim-config",
@@ -131,7 +139,48 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
+
+		// Bin power-up matchers
+		{
+			Name:        "bin-dir",
+			TriggerName: "directory",
+			PowerUpName: "bin",
+			Priority:    90,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "bin",
+			},
+			Enabled: true,
+		},
+		{
+			Name:        "bin-local",
+			TriggerName: "directory",
+			PowerUpName: "bin",
+			Priority:    90,
+			TriggerOptions: map[string]interface{}{
+				"pattern": ".local/bin",
+			},
+			Enabled: true,
+		},
+
+		// Template power-up matcher
+		{
+			Name:        "template",
+			TriggerName: "extension",
+			PowerUpName: "template",
+			Priority:    70,
+			TriggerOptions: map[string]interface{}{
+				"extension": ".tmpl",
+			},
+			Enabled: true,
+		},
 	}
+
+	// Add any dynamically registered matchers
+	for _, matcher := range defaultMatchers {
+		matchers = append(matchers, matcher)
+	}
+
+	return matchers
 }
 
 // CreateMatcher creates a new matcher from configuration

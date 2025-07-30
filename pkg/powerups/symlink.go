@@ -8,6 +8,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
 const (
@@ -24,26 +25,11 @@ type SymlinkPowerUp struct {
 func NewSymlinkPowerUp() *SymlinkPowerUp {
 	logger := logging.GetLogger("powerups.symlink")
 
-	homeDir, err := os.UserHomeDir()
+	// Try to get home directory, but use ~ as fallback
+	homeDir, err := utils.GetHomeDirectory()
 	if err != nil {
-		logger.Warn().Err(err).Msg("failed to get user home directory, trying fallbacks")
-
-		// Fallback to HOME env var if os.UserHomeDir fails
-		homeDir = os.Getenv("HOME")
-		if homeDir == "" {
-			// Last resort: use current working directory
-			homeDir, err = os.Getwd()
-			if err != nil {
-				logger.Error().Err(err).Msg("failed to get working directory")
-				// If all else fails, use a safe default that will be obvious if wrong
-				homeDir = "/tmp/dodot-no-home"
-				logger.Error().Str("default", homeDir).Msg("using fallback directory - symlinks may not work as expected")
-			} else {
-				logger.Warn().Str("cwd", homeDir).Msg("using current working directory as home")
-			}
-		} else {
-			logger.Debug().Str("home", homeDir).Msg("using HOME environment variable")
-		}
+		logger.Warn().Err(err).Msg("failed to get home directory, using ~ placeholder")
+		homeDir = "~"
 	}
 
 	return &SymlinkPowerUp{
@@ -116,7 +102,7 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 
 		actions = append(actions, action)
 
-		logger.Debug().
+		logger.Trace().
 			Str("source", match.AbsolutePath).
 			Str("target", targetPath).
 			Str("pack", match.Pack).
