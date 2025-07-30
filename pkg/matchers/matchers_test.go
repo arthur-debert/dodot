@@ -7,7 +7,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	
+
 	// Import to register factories
 	_ "github.com/arthur-debert/dodot/pkg/powerups"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
@@ -19,7 +19,7 @@ func init() {
 	_ = registry.RegisterTriggerFactory("test-trigger", func(config map[string]interface{}) (types.Trigger, error) {
 		return nil, nil
 	})
-	
+
 	// Register test power-up factory
 	_ = registry.RegisterPowerUpFactory("test-powerup", func(config map[string]interface{}) (types.PowerUp, error) {
 		return nil, nil
@@ -28,36 +28,37 @@ func init() {
 
 func TestDefaultMatchers(t *testing.T) {
 	defaults := DefaultMatchers()
-	
+
 	// Should have a reasonable number of default matchers
-	assert.GreaterOrEqual(t, len(defaults), 9)
-	
+	assert.GreaterOrEqual(t, len(defaults), 11)
+
 	// Check some expected matchers exist
 	expectedNames := map[string]bool{
-		"vim-config":   false,
-		"bash-config":  false,
-		"zsh-config":   false,
-		"git-config":   false,
-		"tmux-config":  false,
+		"vim-config":    false,
+		"bash-config":   false,
+		"zsh-config":    false,
+		"git-config":    false,
+		"tmux-config":   false,
+		"shell-profile": false,
+		"shell-path":    false,
 	}
-	
+
 	for _, m := range defaults {
 		if _, exists := expectedNames[m.Name]; exists {
 			expectedNames[m.Name] = true
 		}
-		
+
 		// All default matchers should be enabled
 		assert.True(t, m.Enabled)
-		
-		// All should use filename trigger and symlink powerup
+
+		// All should use filename trigger
 		assert.Equal(t, "filename", m.TriggerName)
-		assert.Equal(t, "symlink", m.PowerUpName)
-		
+
 		// All should have a pattern
 		assert.NotNil(t, m.TriggerOptions)
 		assert.Contains(t, m.TriggerOptions, "pattern")
 	}
-	
+
 	// Ensure all expected matchers were found
 	for name, found := range expectedNames {
 		assert.True(t, found, "expected matcher %s not found", name)
@@ -176,11 +177,11 @@ func TestCreateMatcher(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m, err := CreateMatcher(tt.config)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Nil(t, m)
@@ -245,11 +246,11 @@ func TestValidateMatcher(t *testing.T) {
 			errMsg:  "unknown power-up: non-existent",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidateMatcher(tt.matcher)
-			
+
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
@@ -268,16 +269,16 @@ func TestSortMatchersByPriority(t *testing.T) {
 		{Name: "also-high", Priority: 100},
 		{Name: "also-medium", Priority: 50},
 	}
-	
+
 	SortMatchersByPriority(matchers)
-	
+
 	// Check ordering
 	assert.Equal(t, 100, matchers[0].Priority)
 	assert.Equal(t, 100, matchers[1].Priority)
 	assert.Equal(t, 50, matchers[2].Priority)
 	assert.Equal(t, 50, matchers[3].Priority)
 	assert.Equal(t, 10, matchers[4].Priority)
-	
+
 	// For same priority, should be sorted by name
 	assert.Equal(t, "also-high", matchers[0].Name)
 	assert.Equal(t, "high", matchers[1].Name)
@@ -293,9 +294,9 @@ func TestFilterEnabledMatchers(t *testing.T) {
 		{Name: "disabled2", Enabled: false},
 		{Name: "enabled3", Enabled: true},
 	}
-	
+
 	enabled := FilterEnabledMatchers(matchers)
-	
+
 	assert.Len(t, enabled, 3)
 	for _, m := range enabled {
 		assert.True(t, m.Enabled)
@@ -308,23 +309,23 @@ func TestMergeMatchers(t *testing.T) {
 		{Name: "common", TriggerName: "t1", PowerUpName: "p1", Priority: 10},
 		{Name: "only-in-1", TriggerName: "t2", PowerUpName: "p2", Priority: 20},
 	}
-	
+
 	set2 := []types.Matcher{
 		{Name: "common", TriggerName: "t3", PowerUpName: "p3", Priority: 30}, // Override
 		{Name: "only-in-2", TriggerName: "t4", PowerUpName: "p4", Priority: 40},
 	}
-	
+
 	set3 := []types.Matcher{
 		{Name: "only-in-3", TriggerName: "t5", PowerUpName: "p5", Priority: 50},
 		// Unnamed matcher
 		{TriggerName: "t6", PowerUpName: "p6", Priority: 60},
 	}
-	
+
 	merged := MergeMatchers(set1, set2, set3)
-	
+
 	// Should have 5 unique matchers
 	assert.Len(t, merged, 5)
-	
+
 	// Check that "common" was overridden by set2
 	for _, m := range merged {
 		if m.Name == "common" {
@@ -334,12 +335,12 @@ func TestMergeMatchers(t *testing.T) {
 			break
 		}
 	}
-	
+
 	// Should be sorted by priority (highest first)
 	for i := 1; i < len(merged); i++ {
 		assert.GreaterOrEqual(t, merged[i-1].Priority, merged[i].Priority)
 	}
-	
+
 	// Check all expected matchers are present
 	names := make(map[string]bool)
 	for _, m := range merged {
