@@ -120,8 +120,8 @@ func CreateComplexPack(t *testing.T, baseDir string) string {
 
 			// Regular files
 			"README.txxt": "# Complex Pack",
-			"install.sh": "#!/bin/bash\necho 'Installing...'",
-			"Brewfile":   "brew 'git'\nbrew 'vim'",
+			"install.sh":  "#!/bin/bash\necho 'Installing...'",
+			"Brewfile":    "brew 'git'\nbrew 'vim'",
 
 			// Nested structure
 			"config/app.yml":        "app: config",
