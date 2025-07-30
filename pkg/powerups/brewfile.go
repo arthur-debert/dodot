@@ -6,7 +6,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
-	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -49,14 +48,16 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 			Str("pack", match.Pack).
 			Msg("Processing Brewfile")
 
-		// Calculate checksum of the Brewfile
-		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
-		if err != nil {
-			logger.Error().Err(err).
-				Str("path", match.AbsolutePath).
-				Msg("Failed to calculate Brewfile checksum")
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.Path, err)
+		// First, create a checksum action
+		checksumAction := types.Action{
+			Type:        types.ActionTypeChecksum,
+			Description: fmt.Sprintf("Calculate checksum for %s", match.Path),
+			Source:      match.AbsolutePath,
+			Pack:        match.Pack,
+			PowerUpName: p.Name(),
+			Priority:    match.Priority + 1, // Higher priority to run first
 		}
+		actions = append(actions, checksumAction)
 
 		action := types.Action{
 			Type:        types.ActionTypeBrew,
@@ -67,8 +68,8 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 			PowerUpName: p.Name(),
 			Priority:    match.Priority,
 			Metadata: map[string]interface{}{
-				"checksum": checksum,
-				"pack":     match.Pack,
+				"pack": match.Pack,
+				// Checksum will be available after checksum action is executed
 			},
 		}
 

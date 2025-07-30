@@ -95,6 +95,10 @@ func ConvertAction(action types.Action) ([]types.Operation, error) {
 		return convertBrewAction(action)
 	case types.ActionTypeInstall:
 		return convertInstallAction(action)
+	case types.ActionTypeRead:
+		return convertReadAction(action)
+	case types.ActionTypeChecksum:
+		return convertChecksumAction(action)
 	default:
 		return nil, errors.Newf(errors.ErrActionInvalid, "unknown action type: %s", action.Type)
 	}
@@ -346,10 +350,12 @@ func convertBrewAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source (Brewfile path)")
 	}
 
-	// Get checksum from metadata
-	checksum, ok := action.Metadata["checksum"].(string)
-	if !ok || checksum == "" {
-		return nil, errors.New(errors.ErrActionInvalid, "brew action requires checksum in metadata")
+	// Get checksum from metadata (optional for now)
+	checksum, _ := action.Metadata["checksum"].(string)
+	// TODO: In the future, checksum will be provided by a separate checksum action
+	// For now, we'll use a placeholder
+	if checksum == "" {
+		checksum = "pending"
 	}
 
 	pack, ok := action.Metadata["pack"].(string)
@@ -386,10 +392,12 @@ func convertInstallAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "install action requires source (install script path)")
 	}
 
-	// Get checksum from metadata
-	checksum, ok := action.Metadata["checksum"].(string)
-	if !ok || checksum == "" {
-		return nil, errors.New(errors.ErrActionInvalid, "install action requires checksum in metadata")
+	// Get checksum from metadata (optional for now)
+	checksum, _ := action.Metadata["checksum"].(string)
+	// TODO: In the future, checksum will be provided by a separate checksum action
+	// For now, we'll use a placeholder
+	if checksum == "" {
+		checksum = "pending"
 	}
 
 	pack, ok := action.Metadata["pack"].(string)
@@ -510,4 +518,42 @@ func areOperationsCompatible(ops []types.Operation) bool {
 	// - Copy and write to same target
 	// etc.
 	return false
+}
+
+// convertReadAction converts a read action to read operations
+func convertReadAction(action types.Action) ([]types.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "read action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	ops := []types.Operation{
+		{
+			Type:        types.OperationReadFile,
+			Source:      source,
+			Description: fmt.Sprintf("Read file %s", filepath.Base(source)),
+		},
+	}
+
+	return ops, nil
+}
+
+// convertChecksumAction converts a checksum action to checksum operations
+func convertChecksumAction(action types.Action) ([]types.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "checksum action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	ops := []types.Operation{
+		{
+			Type:        types.OperationChecksum,
+			Source:      source,
+			Description: fmt.Sprintf("Calculate checksum for %s", filepath.Base(source)),
+		},
+	}
+
+	return ops, nil
 }

@@ -601,8 +601,20 @@ func TestConvertAction(t *testing.T) {
 					"pack": "tools",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationCreateDir,
+					Target:      types.GetBrewfileDir(),
+					Description: "Create brewfile sentinel directory",
+				},
+				{
+					Type:        types.OperationWriteFile,
+					Target:      filepath.Join(types.GetBrewfileDir(), "tools"),
+					Content:     "pending", // Uses placeholder when checksum is missing
+					Mode:        uint32Ptr(0644),
+					Description: "Create brewfile sentinel for tools",
+				},
+			},
 		},
 		{
 			name: "brew_action_missing_pack",
@@ -663,8 +675,20 @@ func TestConvertAction(t *testing.T) {
 					"pack": "dev",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationCreateDir,
+					Target:      types.GetInstallDir(),
+					Description: "Create install sentinel directory",
+				},
+				{
+					Type:        types.OperationWriteFile,
+					Target:      filepath.Join(types.GetInstallDir(), "dev"),
+					Content:     "pending", // Uses placeholder when checksum is missing
+					Mode:        uint32Ptr(0644),
+					Description: "Create install sentinel for dev",
+				},
+			},
 		},
 		{
 			name: "install_action_missing_pack",
@@ -674,6 +698,50 @@ func TestConvertAction(t *testing.T) {
 				Metadata: map[string]interface{}{
 					"checksum": "abc123",
 				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "read_action",
+			action: types.Action{
+				Type:   types.ActionTypeRead,
+				Source: "/packs/vim/.vimrc",
+			},
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationReadFile,
+					Source:      "/packs/vim/.vimrc",
+					Description: "Read file .vimrc",
+				},
+			},
+		},
+		{
+			name: "read_action_missing_source",
+			action: types.Action{
+				Type: types.ActionTypeRead,
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "checksum_action",
+			action: types.Action{
+				Type:   types.ActionTypeChecksum,
+				Source: "/packs/tools/Brewfile",
+			},
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationChecksum,
+					Source:      "/packs/tools/Brewfile",
+					Description: "Calculate checksum for Brewfile",
+				},
+			},
+		},
+		{
+			name: "checksum_action_missing_source",
+			action: types.Action{
+				Type: types.ActionTypeChecksum,
 			},
 			wantError: true,
 			errorCode: doerrors.ErrActionInvalid,
