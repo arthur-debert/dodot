@@ -1,0 +1,414 @@
+package paths
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/testutil"
+)
+
+func TestPathValidation(t *testing.T) {
+	p, err := New("/test/dotfiles")
+	testutil.AssertNoError(t, err)
+
+	tests := []struct {
+		name        string
+		path        string
+		expectError bool
+		description string
+	}{
+		{
+			name:        "empty path",
+			path:        "",
+			expectError: true,
+			description: "Empty paths should be rejected",
+		},
+		{
+			name:        "valid absolute path",
+			path:        "/home/user/file.txt",
+			expectError: false,
+			description: "Absolute paths should be valid",
+		},
+		{
+			name:        "valid relative path",
+			path:        "relative/path/file.txt",
+			expectError: false,
+			description: "Relative paths should be valid",
+		},
+		{
+			name:        "path with tilde",
+			path:        "~/dotfiles/file.txt",
+			expectError: false,
+			description: "Paths with tilde should be valid",
+		},
+		{
+			name:        "path with double dots",
+			path:        "/home/../usr/file.txt",
+			expectError: false,
+			description: "Paths with .. should be normalized",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := p.NormalizePath(tt.path)
+			
+			if tt.expectError {
+				testutil.AssertError(t, err)
+			} else {
+				testutil.AssertNoError(t, err)
+				if tt.path != "" {
+					testutil.AssertTrue(t, filepath.IsAbs(result), 
+						"Normalized path should be absolute: %s", result)
+				}
+			}
+		})
+	}
+}
+
+func TestPathSecurityValidation(t *testing.T) {
+	// Create a temporary directory structure for testing
+	tmpRoot := testutil.TempDir(t, "path-security")
+	dotfilesDir := filepath.Join(tmpRoot, "dotfiles")
+	testutil.CreateDir(t, tmpRoot, "dotfiles")
+	testutil.CreateDir(t, tmpRoot, "outside")
+	
+	p, err := New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	tests := []struct {
+		name             string
+		path             string
+		shouldBeInside   bool
+		description      string
+	}{
+		{
+			name:           "file inside dotfiles",
+			path:           filepath.Join(dotfilesDir, "vim", "vimrc"),
+			shouldBeInside: true,
+			description:    "Files inside dotfiles should be detected",
+		},
+		{
+			name:           "dotfiles root itself",
+			path:           dotfilesDir,
+			shouldBeInside: true,
+			description:    "Dotfiles root should be considered inside",
+		},
+		{
+			name:           "file outside dotfiles",
+			path:           filepath.Join(tmpRoot, "outside", "file.txt"),
+			shouldBeInside: false,
+			description:    "Files outside dotfiles should be detected",
+		},
+		{
+			name:           "path traversal attempt",
+			path:           filepath.Join(dotfilesDir, "..", "outside", "file.txt"),
+			shouldBeInside: false,
+			description:    "Path traversal should be detected",
+		},
+		{
+			name:           "symlink target outside (path only)",
+			path:           "/etc/passwd",
+			shouldBeInside: false,
+			description:    "System files should be outside dotfiles",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			isInside, err := p.IsInDotfiles(tt.path)
+			testutil.AssertNoError(t, err)
+			testutil.AssertEqual(t, tt.shouldBeInside, isInside)
+		})
+	}
+}
+
+func TestEnvironmentVariableHandling(t *testing.T) {
+	// Save original environment
+	origDotfilesRoot := os.Getenv(EnvDotfilesRoot)
+	origDotfilesHome := os.Getenv(EnvDotfilesHome)
+	origDodotDataDir := os.Getenv(EnvDodotDataDir)
+	origDodotConfigDir := os.Getenv(EnvDodotConfigDir)
+	origDodotCacheDir := os.Getenv(EnvDodotCacheDir)
+	origXdgStateHome := os.Getenv("XDG_STATE_HOME")
+	
+	t.Cleanup(func() {
+		os.Setenv(EnvDotfilesRoot, origDotfilesRoot)
+		os.Setenv(EnvDotfilesHome, origDotfilesHome)
+		os.Setenv(EnvDodotDataDir, origDodotDataDir)
+		os.Setenv(EnvDodotConfigDir, origDodotConfigDir)
+		os.Setenv(EnvDodotCacheDir, origDodotCacheDir)
+		os.Setenv("XDG_STATE_HOME", origXdgStateHome)
+	})
+
+	tests := []struct {
+		name      string
+		envSetup  map[string]string
+		validate  func(t *testing.T, p *Paths)
+	}{
+		{
+			name: "DOTFILES_ROOT with spaces",
+			envSetup: map[string]string{
+				EnvDotfilesRoot: "/path with spaces/dotfiles",
+			},
+			validate: func(t *testing.T, p *Paths) {
+				testutil.AssertEqual(t, "/path with spaces/dotfiles", p.DotfilesRoot())
+			},
+		},
+		{
+			name: "DOTFILES_ROOT with tilde",
+			envSetup: map[string]string{
+				EnvDotfilesRoot: "~/my-dotfiles",
+			},
+			validate: func(t *testing.T, p *Paths) {
+				homeDir, _ := os.UserHomeDir()
+				expected := filepath.Join(homeDir, "my-dotfiles")
+				testutil.AssertEqual(t, expected, p.DotfilesRoot())
+			},
+		},
+		{
+			name: "Custom XDG_STATE_HOME",
+			envSetup: map[string]string{
+				"XDG_STATE_HOME": "/custom/state",
+			},
+			validate: func(t *testing.T, p *Paths) {
+				expected := filepath.Join("/custom/state", "dodot", "dodot.log")
+				testutil.AssertEqual(t, expected, p.LogFilePath())
+			},
+		},
+		{
+			name: "All custom directories",
+			envSetup: map[string]string{
+				EnvDodotDataDir:   "/custom/data/dodot",
+				EnvDodotConfigDir: "/custom/config/dodot",
+				EnvDodotCacheDir:  "/custom/cache/dodot",
+			},
+			validate: func(t *testing.T, p *Paths) {
+				testutil.AssertEqual(t, "/custom/data/dodot", p.DataDir())
+				testutil.AssertEqual(t, "/custom/config/dodot", p.ConfigDir())
+				testutil.AssertEqual(t, "/custom/cache/dodot", p.CacheDir())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear all relevant env vars
+			os.Unsetenv(EnvDotfilesRoot)
+			os.Unsetenv(EnvDotfilesHome)
+			os.Unsetenv(EnvDodotDataDir)
+			os.Unsetenv(EnvDodotConfigDir)
+			os.Unsetenv(EnvDodotCacheDir)
+			os.Unsetenv("XDG_STATE_HOME")
+			
+			// Set up test environment
+			for k, v := range tt.envSetup {
+				os.Setenv(k, v)
+			}
+			
+			p, err := New("")
+			testutil.AssertNoError(t, err)
+			
+			if tt.validate != nil {
+				tt.validate(t, p)
+			}
+		})
+	}
+}
+
+func TestCrossPlatformPaths(t *testing.T) {
+	p, err := New("/test/dotfiles")
+	testutil.AssertNoError(t, err)
+
+	// Test path separator handling
+	tests := []struct {
+		name     string
+		method   func(string) string
+		input    string
+		validate func(t *testing.T, result string)
+	}{
+		{
+			name:   "pack path with forward slashes",
+			method: p.PackPath,
+			input:  "vim/config",
+			validate: func(t *testing.T, result string) {
+				expected := filepath.Join("/test/dotfiles", "vim", "config")
+				testutil.AssertEqual(t, expected, result)
+			},
+		},
+		{
+			name:   "state path with mixed separators",
+			method: func(s string) string {
+				parts := strings.Split(s, "/")
+				if len(parts) >= 2 {
+					return p.StatePath(parts[0], parts[1])
+				}
+				return ""
+			},
+			input: "mypack/powerup",
+			validate: func(t *testing.T, result string) {
+				testutil.AssertTrue(t, strings.Contains(result, "mypack"), 
+					"Result should contain pack name")
+				testutil.AssertTrue(t, strings.Contains(result, "powerup.json"), 
+					"Result should contain powerup name with .json")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.method(tt.input)
+			tt.validate(t, result)
+		})
+	}
+}
+
+func TestPathExpansionEdgeCases(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+		desc     string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: "",
+			desc:     "Empty string should remain empty",
+		},
+		{
+			name:     "just tilde",
+			input:    "~",
+			expected: os.Getenv("HOME"),
+			desc:     "Single tilde should expand to home",
+		},
+		{
+			name:     "tilde with trailing slash",
+			input:    "~/",
+			expected: "", // Will be set dynamically
+			desc:     "Tilde with slash expands to home",
+		},
+		{
+			name:     "tilde in middle",
+			input:    "/path/~/file",
+			expected: "/path/~/file",
+			desc:     "Tilde in middle should not expand",
+		},
+		{
+			name:     "tilde other user",
+			input:    "~otheruser/path",
+			expected: "~otheruser/path",
+			desc:     "Other user's home should not expand",
+		},
+		{
+			name:     "multiple tildes",
+			input:    "~/~/path",
+			expected: os.Getenv("HOME") + "/~/path",
+			desc:     "Only first tilde should expand",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ExpandHome(tt.input)
+			expected := tt.expected
+			
+			// Handle dynamic expectations
+			if tt.input == "~/" {
+				homeDir, _ := os.UserHomeDir()
+				expected = homeDir
+			} else if expected == os.Getenv("HOME") && expected != "" {
+				homeDir, _ := os.UserHomeDir()
+				expected = homeDir
+			}
+			
+			testutil.AssertEqual(t, expected, result)
+		})
+	}
+}
+
+func TestDeploymentPathStructure(t *testing.T) {
+	p, err := New("/test/dotfiles")
+	testutil.AssertNoError(t, err)
+
+	// Verify deployment directory structure
+	deploymentPaths := map[string]string{
+		"deployed root":   p.DeployedDir(),
+		"shell profile":   p.ShellProfileDir(),
+		"path":           p.PathDir(),
+		"shell source":   p.ShellSourceDir(),
+		"symlink":        p.SymlinkDir(),
+		"shell":          p.ShellDir(),
+		"install":        p.InstallDir(),
+		"brewfile":       p.BrewfileDir(),
+	}
+
+	// All deployment paths should be under data directory
+	dataDir := p.DataDir()
+	for name, path := range deploymentPaths {
+		t.Run(name, func(t *testing.T) {
+			testutil.AssertTrue(t, strings.HasPrefix(path, dataDir),
+				"%s path (%s) should be under data directory (%s)", name, path, dataDir)
+		})
+	}
+
+	// Verify specific relationships
+	t.Run("deployment subdirectories", func(t *testing.T) {
+		deployedDir := p.DeployedDir()
+		testutil.AssertTrue(t, strings.HasPrefix(p.ShellProfileDir(), deployedDir),
+			"Shell profile dir should be under deployed dir")
+		testutil.AssertTrue(t, strings.HasPrefix(p.PathDir(), deployedDir),
+			"Path dir should be under deployed dir")
+		testutil.AssertTrue(t, strings.HasPrefix(p.ShellSourceDir(), deployedDir),
+			"Shell source dir should be under deployed dir")
+		testutil.AssertTrue(t, strings.HasPrefix(p.SymlinkDir(), deployedDir),
+			"Symlink dir should be under deployed dir")
+	})
+}
+
+func TestCompatibilityFunctionsConcurrency(t *testing.T) {
+	t.Skip("Skipping concurrency test - environment variables are global and cannot be safely modified concurrently")
+
+	// Test that compatibility functions work correctly under concurrent access
+	// with changing environment variables
+	done := make(chan bool)
+	errors := make(chan error, 100)
+
+	// Start multiple goroutines that change environment and call functions
+	for i := 0; i < 10; i++ {
+		go func(id int) {
+			defer func() { done <- true }()
+			
+			for j := 0; j < 10; j++ {
+				// Change environment
+				testDir := filepath.Join("/tmp", "test", string(rune('A'+id)))
+				os.Setenv(EnvDodotDataDir, testDir)
+				
+				// Call compatibility functions
+				dataDir := GetDodotDataDir()
+				if !strings.HasPrefix(dataDir, testDir) {
+					errors <- fmt.Errorf("Expected data dir to start with %s, got %s", testDir, dataDir)
+				}
+				
+				deployedDir := GetDeployedDir()
+				if !strings.Contains(deployedDir, "deployed") {
+					errors <- fmt.Errorf("Expected deployed dir to contain 'deployed', got %s", deployedDir)
+				}
+			}
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	for i := 0; i < 10; i++ {
+		<-done
+	}
+	close(errors)
+
+	// Check for any errors
+	for err := range errors {
+		t.Error(err)
+	}
+}
