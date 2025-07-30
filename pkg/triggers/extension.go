@@ -34,7 +34,7 @@ func NewExtensionTrigger(options map[string]interface{}) (*ExtensionTrigger, err
 		extension = "." + extension
 	}
 
-	logger.Debug().
+	logger.Trace().
 		Str("extension", extension).
 		Msg("created extension trigger")
 
@@ -66,7 +66,7 @@ func (t *ExtensionTrigger) Match(path string, info fs.FileInfo) (bool, map[strin
 	// Check if it matches our extension
 	if strings.EqualFold(ext, t.extension) {
 		logger := logging.GetLogger("triggers.extension")
-		logger.Debug().
+		logger.Trace().
 			Str("path", path).
 			Str("extension", t.extension).
 			Msg("file extension matched")

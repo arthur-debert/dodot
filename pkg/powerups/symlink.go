@@ -102,7 +102,7 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 
 		actions = append(actions, action)
 
-		logger.Debug().
+		logger.Trace().
 			Str("source", match.AbsolutePath).
 			Str("target", targetPath).
 			Str("pack", match.Pack).

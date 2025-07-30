@@ -28,7 +28,7 @@ func NewPathPatternTrigger(options map[string]interface{}) (*PathPatternTrigger,
 		return nil, fmt.Errorf("path_pattern trigger requires a 'pattern' option")
 	}
 
-	logger.Debug().
+	logger.Trace().
 		Str("pattern", pattern).
 		Msg("created path pattern trigger")
 
@@ -63,7 +63,7 @@ func (t *PathPatternTrigger) Match(path string, info fs.FileInfo) (bool, map[str
 
 	if matched {
 		logger := logging.GetLogger("triggers.path_pattern")
-		logger.Debug().
+		logger.Trace().
 			Str("path", path).
 			Str("pattern", t.pattern).
 			Bool("isDir", info.IsDir()).

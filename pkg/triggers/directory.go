@@ -28,7 +28,7 @@ func NewDirectoryTrigger(options map[string]interface{}) (*DirectoryTrigger, err
 		return nil, fmt.Errorf("directory trigger requires a 'pattern' option")
 	}
 
-	logger.Debug().
+	logger.Trace().
 		Str("pattern", pattern).
 		Msg("created directory trigger")
 
@@ -71,7 +71,7 @@ func (t *DirectoryTrigger) Match(path string, info fs.FileInfo) (bool, map[strin
 	}
 
 	if matched {
-		logger.Debug().
+		logger.Trace().
 			Str("path", path).
 			Str("pattern", t.pattern).
 			Msg("directory matched")

@@ -109,7 +109,7 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 		// Check file rules from pack config first
 		fileAction := pack.Config.GetFileAction(relPath)
 		if fileAction == "ignore" {
-			logger.Debug().
+			logger.Trace().
 				Str("path", relPath).
 				Msg("File ignored by pack config")
 			return nil
@@ -192,7 +192,7 @@ func testMatcher(pack types.Pack, absPath, relPath string, info fs.FileInfo, mat
 		return nil, nil
 	}
 
-	logger.Debug().
+	logger.Trace().
 		Str("trigger", matcher.TriggerName).
 		Str("powerup", matcher.PowerUpName).
 		Str("path", relPath).

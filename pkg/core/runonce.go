@@ -241,7 +241,7 @@ func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 	// Check if file has changed
 	changed := storedChecksum != currentChecksum
 
-	logger.Debug().
+	logger.Trace().
 		Str("pack", filepath.Base(packPath)).
 		Str("powerup", powerUpName).
 		Bool("executed", true).
