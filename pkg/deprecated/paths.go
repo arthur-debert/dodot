@@ -1,7 +1,7 @@
-// Deprecated: This file contains deprecated path functions.
-// Please use github.com/arthur-debert/dodot/pkg/paths instead.
+// Package deprecated contains deprecated functions that are maintained for backward compatibility.
 // These functions will be removed in a future version.
-package types
+// Please use github.com/arthur-debert/dodot/pkg/paths instead.
+package deprecated
 
 import (
 	"os"

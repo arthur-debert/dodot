@@ -18,17 +18,17 @@ func ValidatePath(path string) error {
 	if path == "" {
 		return errors.New(errors.ErrInvalidInput, "path cannot be empty")
 	}
-	
+
 	// Check for null bytes
 	if strings.Contains(path, "\x00") {
 		return errors.New(errors.ErrInvalidInput, "path contains null bytes")
 	}
-	
+
 	// Check path length (common filesystem limit)
 	if len(path) > 4096 {
 		return errors.New(errors.ErrInvalidInput, "path exceeds maximum length")
 	}
-	
+
 	return nil
 }
 
@@ -42,32 +42,32 @@ func ValidatePackName(name string) error {
 	if name == "" {
 		return errors.New(errors.ErrInvalidInput, "pack name cannot be empty")
 	}
-	
+
 	// Check for path separators
 	if strings.ContainsAny(name, "/\\") {
 		return errors.New(errors.ErrInvalidInput, "pack name cannot contain path separators")
 	}
-	
+
 	// Check for reserved names
 	if name == "." || name == ".." {
 		return errors.New(errors.ErrInvalidInput, "pack name cannot be '.' or '..'")
 	}
-	
+
 	// Check for problematic characters
 	invalidChars := ":*?\"<>|"
 	if strings.ContainsAny(name, invalidChars) {
-		return errors.Newf(errors.ErrInvalidInput, 
+		return errors.Newf(errors.ErrInvalidInput,
 			"pack name contains invalid characters: %s", invalidChars)
 	}
-	
+
 	// Check for control characters
 	for _, r := range name {
 		if r < 32 {
-			return errors.New(errors.ErrInvalidInput, 
+			return errors.New(errors.ErrInvalidInput,
 				"pack name contains control characters")
 		}
 	}
-	
+
 	return nil
 }
 
@@ -80,15 +80,15 @@ func ValidatePackName(name string) error {
 func SanitizePath(path string) string {
 	// First expand home directory if present
 	path = expandHome(path)
-	
+
 	// Clean the path using filepath.Clean
 	cleaned := filepath.Clean(path)
-	
+
 	// Ensure we don't return an empty string
 	if cleaned == "" {
 		return "."
 	}
-	
+
 	return cleaned
 }
 
@@ -107,7 +107,7 @@ func JoinPaths(elem ...string) (string, error) {
 			return "", errors.New(errors.ErrInvalidInput, "path element contains null bytes")
 		}
 	}
-	
+
 	result := filepath.Join(elem...)
 	return result, nil
 }
@@ -118,13 +118,13 @@ func RelativePath(base, target string) (string, error) {
 	// Normalize both paths first
 	base = SanitizePath(base)
 	target = SanitizePath(target)
-	
+
 	rel, err := filepath.Rel(base, target)
 	if err != nil {
-		return "", errors.Wrapf(err, errors.ErrFileAccess, 
+		return "", errors.Wrapf(err, errors.ErrFileAccess,
 			"cannot determine relative path from %s to %s", base, target)
 	}
-	
+
 	return rel, nil
 }
 
@@ -134,13 +134,13 @@ func ContainsPath(parent, child string) bool {
 	// Normalize both paths
 	parent = SanitizePath(parent)
 	child = SanitizePath(child)
-	
+
 	// Try to get relative path
 	rel, err := filepath.Rel(parent, child)
 	if err != nil {
 		return false
 	}
-	
+
 	// If relative path starts with .., child is outside parent
 	return !strings.HasPrefix(rel, "..")
 }
@@ -156,12 +156,12 @@ func SplitPath(path string) (dir, file string) {
 func PathDepth(path string) int {
 	// Normalize the path first
 	path = SanitizePath(path)
-	
+
 	// Handle root directory
 	if path == "/" || path == filepath.VolumeName(path) {
 		return 0
 	}
-	
+
 	// Count separators
 	depth := 0
 	cleaned := filepath.Clean(path)
@@ -170,12 +170,12 @@ func PathDepth(path string) int {
 			depth++
 		}
 	}
-	
+
 	// Adjust for absolute paths (leading separator doesn't count)
 	if filepath.IsAbs(path) && depth > 0 {
 		depth--
 	}
-	
+
 	return depth
 }
 
@@ -185,20 +185,20 @@ func CommonPrefix(paths ...string) string {
 	if len(paths) == 0 {
 		return ""
 	}
-	
+
 	if len(paths) == 1 {
 		return SanitizePath(paths[0])
 	}
-	
+
 	// Normalize all paths
 	normalized := make([]string, len(paths))
 	for i, p := range paths {
 		normalized[i] = SanitizePath(p)
 	}
-	
+
 	// Find common prefix by comparing path components
 	first := strings.Split(normalized[0], string(filepath.Separator))
-	
+
 	commonParts := []string{}
 	for i, part := range first {
 		// Check if this part is common to all paths
@@ -210,26 +210,26 @@ func CommonPrefix(paths ...string) string {
 				break
 			}
 		}
-		
+
 		if !allMatch {
 			break
 		}
-		
+
 		commonParts = append(commonParts, part)
 	}
-	
+
 	if len(commonParts) == 0 {
 		return ""
 	}
-	
+
 	// Reconstruct path from common parts
 	result := filepath.Join(commonParts...)
-	
+
 	// Preserve leading separator for absolute paths
 	if len(normalized[0]) > 0 && normalized[0][0] == filepath.Separator {
 		result = string(filepath.Separator) + result
 	}
-	
+
 	return result
 }
 
@@ -240,24 +240,24 @@ func ValidatePathSecurity(path string) error {
 	if err := ValidatePath(path); err != nil {
 		return err
 	}
-	
+
 	// Check for obvious traversal attempts
 	if strings.Contains(path, "../") || strings.Contains(path, "..\\") {
 		// This is not always malicious, but worth checking in context
-		return errors.New(errors.ErrInvalidInput, 
+		return errors.New(errors.ErrInvalidInput,
 			"path contains parent directory references")
 	}
-	
+
 	// Check for hidden Unicode characters that might be used to deceive
 	for _, r := range path {
 		if r == '\u202e' || // Right-to-left override
-		   r == '\u200b' || // Zero-width space  
-		   r == '\u00ad' {  // Soft hyphen
+			r == '\u200b' || // Zero-width space
+			r == '\u00ad' { // Soft hyphen
 			return errors.New(errors.ErrInvalidInput,
 				"path contains suspicious Unicode characters")
 		}
 	}
-	
+
 	return nil
 }
 

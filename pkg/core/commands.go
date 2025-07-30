@@ -398,7 +398,7 @@ echo "Installing ` + packName + ` pack..."
 	var actions []types.Action
 	for _, tmpl := range templates {
 		filePath := filepath.Join(packPath, tmpl.filename)
-		
+
 		// Create write action for the file
 		action := types.Action{
 			Type:        types.ActionTypeWrite,
@@ -412,7 +412,7 @@ echo "Installing ` + packName + ` pack..."
 		}
 		actions = append(actions, action)
 	}
-	
+
 	return actions
 }
 
@@ -446,7 +446,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	// 3. Create placeholder files
 	// 3. Generate actions for template files
 	actions := generateFillPackActions(targetPack.Path, opts.PackName)
-	
+
 	// 4. Convert actions to operations
 	ops, err := GetFileOperations(actions)
 	if err != nil {
@@ -464,13 +464,13 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	for _, action := range actions {
 		if action.Type == types.ActionTypeWrite {
 			filename := filepath.Base(action.Target)
-			
+
 			// Check if file already exists
 			if _, err := os.Stat(action.Target); err == nil {
 				log.Debug().Str("file", filename).Msg("File already exists, skipping")
 				continue
 			}
-			
+
 			result.FilesCreated = append(result.FilesCreated, filename)
 			log.Info().
 				Str("file", filename).
@@ -478,7 +478,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 				Msg("Template file to be created")
 		}
 	}
-	
+
 	log.Debug().
 		Int("actionCount", len(actions)).
 		Int("operationCount", len(ops)).
@@ -516,7 +516,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 
 	// 3. Generate actions for creating pack
 	var actions []types.Action
-	
+
 	// Create directory action
 	mkdirAction := types.Action{
 		Type:        types.ActionTypeMkdir,
@@ -631,7 +631,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 				Msg("File to be created")
 		}
 	}
-	
+
 	log.Debug().
 		Int("actionCount", len(actions)).
 		Int("operationCount", len(ops)).

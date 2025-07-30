@@ -55,13 +55,13 @@ func TestPathValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := p.NormalizePath(tt.path)
-			
+
 			if tt.expectError {
 				testutil.AssertError(t, err)
 			} else {
 				testutil.AssertNoError(t, err)
 				if tt.path != "" {
-					testutil.AssertTrue(t, filepath.IsAbs(result), 
+					testutil.AssertTrue(t, filepath.IsAbs(result),
 						"Normalized path should be absolute: %s", result)
 				}
 			}
@@ -75,15 +75,15 @@ func TestPathSecurityValidation(t *testing.T) {
 	dotfilesDir := filepath.Join(tmpRoot, "dotfiles")
 	testutil.CreateDir(t, tmpRoot, "dotfiles")
 	testutil.CreateDir(t, tmpRoot, "outside")
-	
+
 	p, err := New(dotfilesDir)
 	testutil.AssertNoError(t, err)
 
 	tests := []struct {
-		name             string
-		path             string
-		shouldBeInside   bool
-		description      string
+		name           string
+		path           string
+		shouldBeInside bool
+		description    string
 	}{
 		{
 			name:           "file inside dotfiles",
@@ -134,20 +134,20 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 	origDodotConfigDir := os.Getenv(EnvDodotConfigDir)
 	origDodotCacheDir := os.Getenv(EnvDodotCacheDir)
 	origXdgStateHome := os.Getenv("XDG_STATE_HOME")
-	
+
 	t.Cleanup(func() {
-		os.Setenv(EnvDotfilesRoot, origDotfilesRoot)
-		os.Setenv(EnvDotfilesHome, origDotfilesHome)
-		os.Setenv(EnvDodotDataDir, origDodotDataDir)
-		os.Setenv(EnvDodotConfigDir, origDodotConfigDir)
-		os.Setenv(EnvDodotCacheDir, origDodotCacheDir)
-		os.Setenv("XDG_STATE_HOME", origXdgStateHome)
+		_ = os.Setenv(EnvDotfilesRoot, origDotfilesRoot)
+		_ = os.Setenv(EnvDotfilesHome, origDotfilesHome)
+		_ = os.Setenv(EnvDodotDataDir, origDodotDataDir)
+		_ = os.Setenv(EnvDodotConfigDir, origDodotConfigDir)
+		_ = os.Setenv(EnvDodotCacheDir, origDodotCacheDir)
+		_ = os.Setenv("XDG_STATE_HOME", origXdgStateHome)
 	})
 
 	tests := []struct {
-		name      string
-		envSetup  map[string]string
-		validate  func(t *testing.T, p *Paths)
+		name     string
+		envSetup map[string]string
+		validate func(t *testing.T, p *Paths)
 	}{
 		{
 			name: "DOTFILES_ROOT with spaces",
@@ -197,21 +197,21 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear all relevant env vars
-			os.Unsetenv(EnvDotfilesRoot)
-			os.Unsetenv(EnvDotfilesHome)
-			os.Unsetenv(EnvDodotDataDir)
-			os.Unsetenv(EnvDodotConfigDir)
-			os.Unsetenv(EnvDodotCacheDir)
-			os.Unsetenv("XDG_STATE_HOME")
-			
+			_ = os.Unsetenv(EnvDotfilesRoot)
+			_ = os.Unsetenv(EnvDotfilesHome)
+			_ = os.Unsetenv(EnvDodotDataDir)
+			_ = os.Unsetenv(EnvDodotConfigDir)
+			_ = os.Unsetenv(EnvDodotCacheDir)
+			_ = os.Unsetenv("XDG_STATE_HOME")
+
 			// Set up test environment
 			for k, v := range tt.envSetup {
-				os.Setenv(k, v)
+				_ = os.Setenv(k, v)
 			}
-			
+
 			p, err := New("")
 			testutil.AssertNoError(t, err)
-			
+
 			if tt.validate != nil {
 				tt.validate(t, p)
 			}
@@ -240,7 +240,7 @@ func TestCrossPlatformPaths(t *testing.T) {
 			},
 		},
 		{
-			name:   "state path with mixed separators",
+			name: "state path with mixed separators",
 			method: func(s string) string {
 				parts := strings.Split(s, "/")
 				if len(parts) >= 2 {
@@ -250,9 +250,9 @@ func TestCrossPlatformPaths(t *testing.T) {
 			},
 			input: "mypack/powerup",
 			validate: func(t *testing.T, result string) {
-				testutil.AssertTrue(t, strings.Contains(result, "mypack"), 
+				testutil.AssertTrue(t, strings.Contains(result, "mypack"),
 					"Result should contain pack name")
-				testutil.AssertTrue(t, strings.Contains(result, "powerup.json"), 
+				testutil.AssertTrue(t, strings.Contains(result, "powerup.json"),
 					"Result should contain powerup name with .json")
 			},
 		},
@@ -315,7 +315,7 @@ func TestPathExpansionEdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ExpandHome(tt.input)
 			expected := tt.expected
-			
+
 			// Handle dynamic expectations
 			if tt.input == "~/" {
 				homeDir, _ := os.UserHomeDir()
@@ -324,7 +324,7 @@ func TestPathExpansionEdgeCases(t *testing.T) {
 				homeDir, _ := os.UserHomeDir()
 				expected = homeDir
 			}
-			
+
 			testutil.AssertEqual(t, expected, result)
 		})
 	}
@@ -336,14 +336,14 @@ func TestDeploymentPathStructure(t *testing.T) {
 
 	// Verify deployment directory structure
 	deploymentPaths := map[string]string{
-		"deployed root":   p.DeployedDir(),
-		"shell profile":   p.ShellProfileDir(),
-		"path":           p.PathDir(),
-		"shell source":   p.ShellSourceDir(),
-		"symlink":        p.SymlinkDir(),
-		"shell":          p.ShellDir(),
-		"install":        p.InstallDir(),
-		"brewfile":       p.BrewfileDir(),
+		"deployed root": p.DeployedDir(),
+		"shell profile": p.ShellProfileDir(),
+		"path":          p.PathDir(),
+		"shell source":  p.ShellSourceDir(),
+		"symlink":       p.SymlinkDir(),
+		"shell":         p.ShellDir(),
+		"install":       p.InstallDir(),
+		"brewfile":      p.BrewfileDir(),
 	}
 
 	// All deployment paths should be under data directory
@@ -381,18 +381,18 @@ func TestCompatibilityFunctionsConcurrency(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			defer func() { done <- true }()
-			
+
 			for j := 0; j < 10; j++ {
 				// Change environment
 				testDir := filepath.Join("/tmp", "test", string(rune('A'+id)))
-				os.Setenv(EnvDodotDataDir, testDir)
-				
+				_ = os.Setenv(EnvDodotDataDir, testDir)
+
 				// Call compatibility functions
 				dataDir := GetDodotDataDir()
 				if !strings.HasPrefix(dataDir, testDir) {
 					errors <- fmt.Errorf("Expected data dir to start with %s, got %s", testDir, dataDir)
 				}
-				
+
 				deployedDir := GetDeployedDir()
 				if !strings.Contains(deployedDir, "deployed") {
 					errors <- fmt.Errorf("Expected deployed dir to contain 'deployed', got %s", deployedDir)
