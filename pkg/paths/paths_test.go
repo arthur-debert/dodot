@@ -82,7 +82,7 @@ func TestNew(t *testing.T) {
 			t.Setenv(EnvDodotDataDir, "")
 			t.Setenv(EnvDodotConfigDir, "")
 			t.Setenv(EnvDodotCacheDir, "")
-			
+
 			// Set up environment
 			for k, v := range tt.envSetup {
 				t.Setenv(k, v)
@@ -303,9 +303,9 @@ func TestIsInDotfiles(t *testing.T) {
 			expected: true,
 		},
 		{
-			name:     "empty path",
-			path:     "",
-			wantErr:  true,
+			name:    "empty path",
+			path:    "",
+			wantErr: true,
 		},
 	}
 
