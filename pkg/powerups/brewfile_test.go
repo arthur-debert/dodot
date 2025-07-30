@@ -11,7 +11,7 @@ import (
 
 func TestBrewfilePowerUp_Basic(t *testing.T) {
 	powerup := NewBrewfilePowerUp()
-	
+
 	testutil.AssertEqual(t, BrewfilePowerUpName, powerup.Name())
 	testutil.AssertEqual(t, "Processes Brewfiles to install Homebrew packages", powerup.Description())
 	testutil.AssertEqual(t, types.RunModeOnce, powerup.RunMode())
@@ -20,7 +20,7 @@ func TestBrewfilePowerUp_Basic(t *testing.T) {
 func TestBrewfilePowerUp_Process(t *testing.T) {
 	// Create test files
 	tmpDir := testutil.TempDir(t, "brewfile-test")
-	
+
 	// Create a test Brewfile
 	brewfilePath := filepath.Join(tmpDir, "Brewfile")
 	brewfileContent := `brew "git"
@@ -28,13 +28,13 @@ brew "node"
 cask "visual-studio-code"`
 	err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644)
 	testutil.AssertNoError(t, err)
-	
+
 	// Calculate expected checksum
-	expectedChecksum, err := CalculateFileChecksum(brewfilePath)
+	expectedChecksum, err := testutil.CalculateFileChecksum(brewfilePath)
 	testutil.AssertNoError(t, err)
-	
+
 	powerup := NewBrewfilePowerUp()
-	
+
 	matches := []types.TriggerMatch{
 		{
 			Path:         "Brewfile",
@@ -43,11 +43,11 @@ cask "visual-studio-code"`
 			Priority:     100,
 		},
 	}
-	
+
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 1, len(actions))
-	
+
 	action := actions[0]
 	testutil.AssertEqual(t, types.ActionTypeBrew, action.Type)
 	testutil.AssertEqual(t, brewfilePath, action.Source)
@@ -55,7 +55,7 @@ cask "visual-studio-code"`
 	testutil.AssertEqual(t, BrewfilePowerUpName, action.PowerUpName)
 	testutil.AssertEqual(t, 100, action.Priority)
 	testutil.AssertContains(t, action.Description, "Install packages from")
-	
+
 	// Check metadata
 	testutil.AssertNotNil(t, action.Metadata)
 	testutil.AssertEqual(t, expectedChecksum, action.Metadata["checksum"])
@@ -64,18 +64,18 @@ cask "visual-studio-code"`
 
 func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
 	tmpDir := testutil.TempDir(t, "brewfile-test")
-	
+
 	// Create multiple Brewfiles
 	brewfile1 := filepath.Join(tmpDir, "Brewfile1")
 	brewfile2 := filepath.Join(tmpDir, "Brewfile2")
-	
+
 	err := os.WriteFile(brewfile1, []byte("brew \"git\""), 0644)
 	testutil.AssertNoError(t, err)
 	err = os.WriteFile(brewfile2, []byte("brew \"node\""), 0644)
 	testutil.AssertNoError(t, err)
-	
+
 	powerup := NewBrewfilePowerUp()
-	
+
 	matches := []types.TriggerMatch{
 		{
 			Path:         "Brewfile1",
@@ -90,11 +90,11 @@ func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
 			Priority:     200,
 		},
 	}
-	
+
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(actions))
-	
+
 	// Verify each action
 	testutil.AssertEqual(t, "pack1", actions[0].Pack)
 	testutil.AssertEqual(t, "pack2", actions[1].Pack)
@@ -104,7 +104,7 @@ func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
 
 func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
 	powerup := NewBrewfilePowerUp()
-	
+
 	matches := []types.TriggerMatch{
 		{
 			Path:         "Brewfile",
@@ -113,7 +113,7 @@ func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
 			Priority:     100,
 		},
 	}
-	
+
 	actions, err := powerup.Process(matches)
 	testutil.AssertError(t, err)
 	testutil.AssertNil(t, actions)
@@ -122,14 +122,14 @@ func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
 
 func TestBrewfilePowerUp_ValidateOptions(t *testing.T) {
 	powerup := NewBrewfilePowerUp()
-	
+
 	// Brewfile power-up doesn't have options, so any options should be accepted
 	err := powerup.ValidateOptions(nil)
 	testutil.AssertNoError(t, err)
-	
+
 	err = powerup.ValidateOptions(map[string]interface{}{})
 	testutil.AssertNoError(t, err)
-	
+
 	err = powerup.ValidateOptions(map[string]interface{}{
 		"some": "option",
 	})
@@ -138,27 +138,27 @@ func TestBrewfilePowerUp_ValidateOptions(t *testing.T) {
 
 func TestCalculateFileChecksum(t *testing.T) {
 	tmpDir := testutil.TempDir(t, "brewfile-test")
-	
+
 	// Test with a known content
 	testFile := filepath.Join(tmpDir, "test.txt")
 	content := "Hello, World!"
 	err := os.WriteFile(testFile, []byte(content), 0644)
 	testutil.AssertNoError(t, err)
-	
-	checksum, err := CalculateFileChecksum(testFile)
+
+	checksum, err := testutil.CalculateFileChecksum(testFile)
 	testutil.AssertNoError(t, err)
 	// SHA256 of "Hello, World!" is:
 	testutil.AssertEqual(t, "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f", checksum)
-	
+
 	// Test with non-existent file
-	_, err = CalculateFileChecksum("/non/existent/file")
+	_, err = testutil.CalculateFileChecksum("/non/existent/file")
 	testutil.AssertError(t, err)
 }
 
 func TestGetBrewfileSentinelPath(t *testing.T) {
 	pack := "mypack"
 	path := GetBrewfileSentinelPath(pack)
-	
+
 	expected := filepath.Join(types.GetBrewfileDir(), pack)
 	testutil.AssertEqual(t, expected, path)
 }
@@ -171,7 +171,7 @@ func BenchmarkBrewfilePowerUp_Process(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	
+
 	powerup := NewBrewfilePowerUp()
 	matches := []types.TriggerMatch{
 		{
@@ -181,7 +181,7 @@ func BenchmarkBrewfilePowerUp_Process(b *testing.B) {
 			Priority:     100,
 		},
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := powerup.Process(matches)
@@ -194,7 +194,7 @@ func BenchmarkBrewfilePowerUp_Process(b *testing.B) {
 func BenchmarkCalculateFileChecksum(b *testing.B) {
 	tmpDir := b.TempDir()
 	testFile := filepath.Join(tmpDir, "test.txt")
-	
+
 	// Create a 1MB file for benchmarking
 	data := make([]byte, 1024*1024)
 	for i := range data {
@@ -204,10 +204,10 @@ func BenchmarkCalculateFileChecksum(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := CalculateFileChecksum(testFile)
+		_, err := testutil.CalculateFileChecksum(testFile)
 		if err != nil {
 			b.Fatal(err)
 		}

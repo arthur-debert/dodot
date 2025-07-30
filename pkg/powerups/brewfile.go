@@ -1,14 +1,12 @@
 package powerups
 
 import (
-	"crypto/sha256"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -52,7 +50,7 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 			Msg("Processing Brewfile")
 
 		// Calculate checksum of the Brewfile
-		checksum, err := CalculateFileChecksum(match.AbsolutePath)
+		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
 		if err != nil {
 			logger.Error().Err(err).
 				Str("path", match.AbsolutePath).
@@ -84,24 +82,6 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 func (p *BrewfilePowerUp) ValidateOptions(options map[string]interface{}) error {
 	// Brewfile power-up doesn't have any options
 	return nil
-}
-
-// CalculateFileChecksum calculates SHA256 checksum of a file
-func CalculateFileChecksum(filepath string) (string, error) {
-	file, err := os.Open(filepath)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
 // GetSentinelPath returns the path to the sentinel file for a pack

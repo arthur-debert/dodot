@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/powerups"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -33,7 +32,7 @@ func TestStatusPacks(t *testing.T) {
 				testutil.AssertEqual(t, 1, len(result.Packs))
 				pack := result.Packs[0]
 				testutil.AssertEqual(t, "test-pack", pack.Name)
-				
+
 				// Should have status for install power-up
 				var installStatus *types.PowerUpStatus
 				for i := range pack.PowerUpState {
@@ -53,14 +52,14 @@ func TestStatusPacks(t *testing.T) {
 				pack := testutil.CreateDir(t, root, "test-pack")
 				scriptContent := "#!/bin/bash\necho test"
 				testutil.CreateFile(t, pack, "install.sh", scriptContent)
-				
+
 				// Calculate the actual checksum
 				scriptPath := filepath.Join(pack, "install.sh")
-				checksum, err := powerups.CalculateFileChecksum(scriptPath)
+				checksum, err := testutil.CalculateFileChecksum(scriptPath)
 				if err != nil {
 					t.Fatal(err)
 				}
-				
+
 				// Create sentinel file to simulate executed install
 				sentinelPath := filepath.Join(types.GetInstallDir(), "test-pack")
 				sentinelDir := filepath.Dir(sentinelPath)
@@ -73,13 +72,13 @@ func TestStatusPacks(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				
+
 				return root, []string{"test-pack"}
 			},
 			validate: func(t *testing.T, result *types.PackStatusResult) {
 				testutil.AssertEqual(t, 1, len(result.Packs))
 				pack := result.Packs[0]
-				
+
 				var installStatus *types.PowerUpStatus
 				for i := range pack.PowerUpState {
 					if pack.PowerUpState[i].Name == "install" {
@@ -104,7 +103,7 @@ func TestStatusPacks(t *testing.T) {
 			},
 			validate: func(t *testing.T, result *types.PackStatusResult) {
 				testutil.AssertEqual(t, 2, len(result.Packs))
-				
+
 				// Verify we got both packs
 				packNames := make(map[string]bool)
 				for _, p := range result.Packs {
@@ -143,22 +142,22 @@ func TestStatusPacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root, packNames := tt.setup(t)
-			
+
 			opts := StatusPacksOptions{
 				DotfilesRoot: root,
 				PackNames:    packNames,
 			}
-			
+
 			result, err := StatusPacks(opts)
-			
+
 			if tt.wantErr {
 				testutil.AssertError(t, err)
 				return
 			}
-			
+
 			testutil.AssertNoError(t, err)
 			testutil.AssertNotNil(t, result)
-			
+
 			if tt.validate != nil {
 				tt.validate(t, result)
 			}

@@ -92,33 +92,92 @@ func TestDeployPacks(t *testing.T) {
 	testutil.AssertFalse(t, hasOnceOp, "Deploy result should NOT contain operations from once-powerup")
 }
 
-func TestInstallPacks(t *testing.T) {
-	root, _ := setupExecutionTest(t)
+func TestInstallPacks_RunOnceFiltering(t *testing.T) {
+	root, packPath := setupExecutionTest(t)
 
 	opts := InstallPacksOptions{
 		DotfilesRoot: root,
 		PackNames:    []string{"test-pack"},
 	}
 
-	result, err := InstallPacks(opts)
-
+	// --- First Run ---
+	result1, err := InstallPacks(opts)
 	testutil.AssertNoError(t, err)
-	testutil.AssertNotNil(t, result)
+	testutil.AssertNotNil(t, result1)
 
-	// Assert that operations from BOTH power-ups are present.
-	hasManyOp := false
-	hasOnceOp := false
-	for _, op := range result.Operations {
+	// Assert that operations from BOTH power-ups are present on the first run
+	var hasManyOp1, hasOnceOp1 bool
+	for _, op := range result1.Operations {
 		if strings.Contains(op.Description, "many-powerup") {
-			hasManyOp = true
+			hasManyOp1 = true
 		}
 		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
-			hasOnceOp = true
+			hasOnceOp1 = true
+			// Simulate the operation by creating the sentinel file for the next run
+			testutil.CreateDir(t, filepath.Dir(op.Target), "")
+			testutil.CreateFile(t, filepath.Dir(op.Target), filepath.Base(op.Target), op.Content)
 		}
 	}
+	testutil.AssertTrue(t, hasManyOp1, "First install should contain operations from many-powerup")
+	testutil.AssertTrue(t, hasOnceOp1, "First install should contain operations from once-powerup")
 
-	testutil.AssertTrue(t, hasManyOp, "Install result should contain operations from many-powerup")
-	testutil.AssertTrue(t, hasOnceOp, "Install result should contain operations from once-powerup")
+	// --- Second Run ---
+	result2, err := InstallPacks(opts)
+	testutil.AssertNoError(t, err)
+	testutil.AssertNotNil(t, result2)
+
+	// Assert that only the 'many' power-up operation is present on the second run
+	var hasManyOp2, hasOnceOp2 bool
+	for _, op := range result2.Operations {
+		if strings.Contains(op.Description, "many-powerup") {
+			hasManyOp2 = true
+		}
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+			hasOnceOp2 = true
+		}
+	}
+	testutil.AssertTrue(t, hasManyOp2, "Second install should still contain operations from many-powerup")
+	testutil.AssertFalse(t, hasOnceOp2, "Second install should NOT contain operations from once-powerup")
+
+	// --- Third Run (with --force) ---
+	opts.Force = true
+	result3, err := InstallPacks(opts)
+	testutil.AssertNoError(t, err)
+	testutil.AssertNotNil(t, result3)
+
+	// Assert that operations from BOTH power-ups are present when forced
+	var hasManyOp3, hasOnceOp3 bool
+	for _, op := range result3.Operations {
+		if strings.Contains(op.Description, "many-powerup") {
+			hasManyOp3 = true
+		}
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+			hasOnceOp3 = true
+		}
+	}
+	testutil.AssertTrue(t, hasManyOp3, "Forced install should contain operations from many-powerup")
+	testutil.AssertTrue(t, hasOnceOp3, "Forced install should contain operations from once-powerup")
+
+	// --- Fourth Run (after file change) ---
+	opts.Force = false
+	// Modify the file to change its checksum
+	testutil.CreateFile(t, packPath, "install.me", "new content")
+	result4, err := InstallPacks(opts)
+	testutil.AssertNoError(t, err)
+	testutil.AssertNotNil(t, result4)
+
+	// Assert that operations from BOTH power-ups are present after a change
+	var hasManyOp4, hasOnceOp4 bool
+	for _, op := range result4.Operations {
+		if strings.Contains(op.Description, "many-powerup") {
+			hasManyOp4 = true
+		}
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+			hasOnceOp4 = true
+		}
+	}
+	testutil.AssertTrue(t, hasManyOp4, "Post-change install should contain operations from many-powerup")
+	testutil.AssertTrue(t, hasOnceOp4, "Post-change install should contain operations from once-powerup")
 }
 
 // setupExecutionTest creates a temporary directory structure for testing deploy/install.
@@ -130,7 +189,10 @@ func setupExecutionTest(t *testing.T) (root, packPath string) {
 		NameFunc:    func() string { return "once-powerup" },
 		RunModeFunc: func() types.RunMode { return types.RunModeOnce },
 		ProcessFunc: func(matches []types.TriggerMatch) ([]types.Action, error) {
-			// A real install action includes metadata needed by GetFsOps
+			checksum, err := testutil.CalculateFileChecksum(matches[0].AbsolutePath)
+			if err != nil {
+				return nil, err
+			}
 			return []types.Action{{
 				Type:        types.ActionTypeInstall,
 				Description: "Install action from once-powerup",
@@ -138,7 +200,7 @@ func setupExecutionTest(t *testing.T) (root, packPath string) {
 				Source:      matches[0].AbsolutePath,
 				Pack:        matches[0].Pack,
 				Metadata: map[string]interface{}{
-					"checksum": "dummy-checksum",
+					"checksum": checksum,
 					"pack":     matches[0].Pack,
 				},
 			}}, nil
@@ -179,7 +241,6 @@ func setupExecutionTest(t *testing.T) (root, packPath string) {
 	testutil.CreateFile(t, packPath, "link.me", "content for link")
 
 	// Create a .dodot.toml to map files to our mock power-ups.
-	// This uses the `[files]` table which is processed by `GetFiringTriggers`.
 	dodotToml := `
 [files]
 "install.me" = "once-powerup"
@@ -187,15 +248,9 @@ func setupExecutionTest(t *testing.T) (root, packPath string) {
 `
 	testutil.CreateFile(t, packPath, ".dodot.toml", dodotToml)
 
-	// Also need to ensure the base directories for operations exist to avoid errors
-	// during the test run when GetFsOps tries to create paths.
-	// This is a bit of a leak from the implementation, but necessary for the test.
-	// In a real run, these dirs are in ~/.local/share/dodot
-	// For the test, we can just create them in a temp dir.
 	tempStateDir := testutil.TempDir(t, "dodot-state")
-	testutil.Setenv(t, "HOME", tempStateDir) // Redirect home to a temp dir for isolation
+	testutil.Setenv(t, "HOME", tempStateDir)
 
-	// Pre-create the directories that GetFsOps will expect, relative to the temp home
 	testutil.CreateDir(t, tempStateDir, ".local/share/dodot/symlinks")
 	testutil.CreateDir(t, tempStateDir, ".local/share/dodot/install")
 

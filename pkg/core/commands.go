@@ -198,18 +198,26 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 5. Filter actions by the desired RunMode
-	filteredActions, err := filterActionsByRunMode(actions, opts.RunMode)
+	actions, err = filterActionsByRunMode(actions, opts.RunMode)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. Convert the filtered actions to filesystem operations
-	ops, err := GetFsOps(filteredActions)
+	// 6. For RunModeOnce, filter out actions that have already been executed
+	if opts.RunMode == types.RunModeOnce {
+		actions, err = FilterRunOnceActions(actions, opts.Force)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 7. Convert the filtered actions to filesystem operations
+	ops, err := GetFsOps(actions)
 	if err != nil {
 		return nil, err
 	}
 
-	// 7. Construct and return the result
+	// 8. Construct and return the result
 	result := &types.ExecutionResult{
 		Packs:      getPackNames(selectedPacks),
 		Operations: ops,
