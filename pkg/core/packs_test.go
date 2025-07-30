@@ -174,35 +174,16 @@ func TestGetPacks(t *testing.T) {
 			},
 		},
 		{
-			name: "skip pack with skip=true",
+			name: "skip pack with .dodotignore",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
 
 				// Enabled pack
 				pack1 := testutil.CreateDir(t, root, "enabled-pack")
 
-				// Skipped pack
-				pack2 := testutil.CreateDir(t, root, "skipped-pack")
-				testutil.CreateFile(t, pack2, ".dodot.toml", "skip = true")
-
-				return []string{pack1, pack2}
-			},
-			expectedCount: 1,
-			validate: func(t *testing.T, packs []types.Pack) {
-				testutil.AssertEqual(t, "enabled-pack", packs[0].Name)
-			},
-		},
-		{
-			name: "skip disabled pack",
-			setup: func(t *testing.T) []string {
-				root := testutil.TempDir(t, "dotfiles")
-
-				// Enabled pack
-				pack1 := testutil.CreateDir(t, root, "enabled-pack")
-
-				// Disabled pack
-				pack2 := testutil.CreateDir(t, root, "disabled-pack")
-				testutil.CreateFile(t, pack2, ".dodot.toml", "disabled = true")
+				// Ignored pack
+				pack2 := testutil.CreateDir(t, root, "ignored-pack")
+				testutil.CreateFile(t, pack2, ".dodotignore", "")
 
 				return []string{pack1, pack2}
 			},
@@ -281,19 +262,12 @@ func TestLoadPackConfig(t *testing.T) {
 		{
 			name: "complete config",
 			toml: `
-skip = false
-disabled = false
-ignore = false
-
 [files]
 "test.vim" = "symlink"
 "*.bak" = "ignore"
 "setup.sh" = "install"
 `,
 			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertFalse(t, config.Skip)
-				testutil.AssertFalse(t, config.Disabled)
-				testutil.AssertFalse(t, config.Ignore)
 				testutil.AssertEqual(t, 3, len(config.Files))
 				testutil.AssertEqual(t, "symlink", config.Files["test.vim"])
 				testutil.AssertEqual(t, "ignore", config.Files["*.bak"])
@@ -304,40 +278,7 @@ ignore = false
 			name: "minimal config",
 			toml: ``,
 			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertFalse(t, config.Skip)
-				testutil.AssertFalse(t, config.Disabled)
-				testutil.AssertFalse(t, config.Ignore)
 				testutil.AssertEqual(t, 0, len(config.Files))
-			},
-		},
-		{
-			name: "skip variations",
-			toml: `
-skip = true
-`,
-			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertTrue(t, config.Skip)
-				testutil.AssertTrue(t, config.ShouldSkip())
-			},
-		},
-		{
-			name: "disabled variation",
-			toml: `
-disabled = true
-`,
-			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertTrue(t, config.Disabled)
-				testutil.AssertTrue(t, config.ShouldSkip())
-			},
-		},
-		{
-			name: "ignore variation",
-			toml: `
-ignore = true
-`,
-			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertTrue(t, config.Ignore)
-				testutil.AssertTrue(t, config.ShouldSkip())
 			},
 		},
 		{
@@ -492,28 +433,6 @@ func TestValidatePack(t *testing.T) {
 				return pack
 			},
 			wantErr: false,
-		},
-		{
-			name: "pack with skip=true",
-			setup: func(t *testing.T) string {
-				root := testutil.TempDir(t, "dotfiles")
-				pack := testutil.CreateDir(t, root, "skipped-pack")
-				testutil.CreateFile(t, pack, ".dodot.toml", "skip = true")
-				return pack
-			},
-			wantErr: true,
-			errCode: errors.ErrPackSkipped,
-		},
-		{
-			name: "pack with disabled=true",
-			setup: func(t *testing.T) string {
-				root := testutil.TempDir(t, "dotfiles")
-				pack := testutil.CreateDir(t, root, "disabled-pack")
-				testutil.CreateFile(t, pack, ".dodot.toml", "disabled = true")
-				return pack
-			},
-			wantErr: true,
-			errCode: errors.ErrPackSkipped,
 		},
 		{
 			name: "empty directory",

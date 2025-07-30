@@ -28,10 +28,10 @@ func TestListPacks(t *testing.T) {
 	// Assert
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, result)
-	testutil.AssertEqual(t, 2, len(result.Packs), "expected two non-hidden, non-disabled packs")
+	testutil.AssertEqual(t, 3, len(result.Packs), "expected three non-hidden packs")
 
 	// Check pack names (they should be sorted)
-	expectedNames := []string{"pack-one", "pack-two"}
+	expectedNames := []string{"disabled-pack", "pack-one", "pack-two"}
 	for i, pack := range result.Packs {
 		testutil.AssertEqual(t, expectedNames[i], pack.Name)
 	}

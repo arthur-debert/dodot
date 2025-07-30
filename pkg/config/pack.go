@@ -6,7 +6,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/pelletier/go-toml/v2"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 var log = logging.GetLogger("config")
@@ -31,9 +31,6 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 	}
 
 	logger.Debug().
-		Bool("skip", config.Skip).
-		Bool("disabled", config.Disabled).
-		Bool("ignore", config.Ignore).
 		Int("fileRules", len(config.Files)).
 		Msg("Pack config loaded")
 

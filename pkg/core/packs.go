@@ -102,16 +102,14 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 			continue
 		}
 
-		// Skip disabled packs using the helper method
-		if pack.Config.ShouldSkip() {
+		// Skip packs with .dodotignore file
+		if shouldIgnorePack(pack.Path) {
 			logger.Info().
 				Str("pack", pack.Name).
-				Bool("skip", pack.Config.Skip).
-				Bool("disabled", pack.Config.Disabled).
-				Bool("ignore", pack.Config.Ignore).
-				Msg("Pack is skipped")
+				Msg("Pack is skipped due to .dodotignore file")
 			continue
 		}
+
 
 		packs = append(packs, pack)
 		logger.Trace().
@@ -191,6 +189,15 @@ func shouldIgnore(name string) bool {
 	return false
 }
 
+// shouldIgnorePack checks if a pack should be ignored by checking for a .dodotignore file
+func shouldIgnorePack(packPath string) bool {
+	ignoreFilePath := filepath.Join(packPath, ".dodotignore")
+	if _, err := os.Stat(ignoreFilePath); err == nil {
+		return true
+	}
+	return false
+}
+
 // ValidatePack checks if a directory is a valid pack
 func ValidatePack(packPath string) error {
 	logger := logging.GetLogger("core.packs")
@@ -215,20 +222,12 @@ func ValidatePack(packPath string) error {
 	// Check if it has a .dodot.toml with skip=true
 	configPath := filepath.Join(packPath, ".dodot.toml")
 	if config.FileExists(configPath) {
-		packConfig, err := loadPackConfig(configPath)
+		_, err := loadPackConfig(configPath)
 		if err != nil {
 			// Config exists but is invalid
 			return errors.Wrap(err, errors.ErrConfigLoad, "invalid pack configuration").
 				WithDetail("path", packPath).
 				WithDetail("configPath", configPath)
-		}
-
-		if packConfig.ShouldSkip() {
-			return errors.New(errors.ErrPackSkipped, "pack is marked as skip/disabled/ignore").
-				WithDetail("path", packPath).
-				WithDetail("skip", packConfig.Skip).
-				WithDetail("disabled", packConfig.Disabled).
-				WithDetail("ignore", packConfig.Ignore)
 		}
 	}
 

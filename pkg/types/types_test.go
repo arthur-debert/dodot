@@ -172,9 +172,6 @@ func TestPackStructure(t *testing.T) {
 		Name: "test-pack",
 		Path: "/path/to/pack",
 		Config: PackConfig{
-			Skip:     false,
-			Disabled: false,
-			Ignore:   false,
 			Files: map[string]string{
 				"test.conf": "symlink",
 				"*.bak":     "ignore",
@@ -188,10 +185,6 @@ func TestPackStructure(t *testing.T) {
 	// Verify pack fields
 	if pack.Name != "test-pack" {
 		t.Errorf("Pack.Name = %s, want test-pack", pack.Name)
-	}
-
-	if pack.Config.ShouldSkip() {
-		t.Error("Pack.Config.ShouldSkip() = true, want false")
 	}
 
 	if len(pack.Config.Files) != 2 {

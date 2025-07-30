@@ -20,18 +20,12 @@ func TestLoadPackConfig(t *testing.T) {
 	}{
 		{
 			name: "complete_config",
-			content: `skip = false
-disabled = false
-ignore = false
-
+			content: `
 [files]
 "test.conf" = "symlink"
 "*.bak" = "ignore"
 "scripts/" = "shell_profile"`,
 			expected: types.PackConfig{
-				Skip:     false,
-				Disabled: false,
-				Ignore:   false,
 				Files: map[string]string{
 					"test.conf": "symlink",
 					"*.bak":     "ignore",
@@ -43,45 +37,7 @@ ignore = false
 			name:    "minimal_config",
 			content: ``,
 			expected: types.PackConfig{
-				Skip:     false,
-				Disabled: false,
-				Ignore:   false,
-				Files:    map[string]string{},
-			},
-		},
-		{
-			name: "skip_true",
-			content: `skip = true
-
-[files]
-"test.txt" = "ignore"`,
-			expected: types.PackConfig{
-				Skip:     true,
-				Disabled: false,
-				Ignore:   false,
-				Files: map[string]string{
-					"test.txt": "ignore",
-				},
-			},
-		},
-		{
-			name:    "disabled_true",
-			content: `disabled = true`,
-			expected: types.PackConfig{
-				Skip:     false,
-				Disabled: true,
-				Ignore:   false,
-				Files:    map[string]string{},
-			},
-		},
-		{
-			name:    "ignore_true",
-			content: `ignore = true`,
-			expected: types.PackConfig{
-				Skip:     false,
-				Disabled: false,
-				Ignore:   true,
-				Files:    map[string]string{},
+				Files: map[string]string{},
 			},
 		},
 		{
@@ -91,9 +47,6 @@ ignore = false
 "*.log" = "ignore"
 "install.sh" = "install"`,
 			expected: types.PackConfig{
-				Skip:     false,
-				Disabled: false,
-				Ignore:   false,
 				Files: map[string]string{
 					"app.conf":   "test-powerup",
 					"*.log":      "ignore",
@@ -111,10 +64,7 @@ ignore = false
 			name:    "empty_files_section",
 			content: `[files]`,
 			expected: types.PackConfig{
-				Skip:     false,
-				Disabled: false,
-				Ignore:   false,
-				Files:    map[string]string{},
+				Files: map[string]string{},
 			},
 		},
 	}
@@ -160,48 +110,6 @@ func TestLoadPackConfig_FileNotFound(t *testing.T) {
 	_, err := LoadPackConfig("/non/existent/file.toml")
 	if err == nil {
 		t.Error("Expected error for non-existent file")
-	}
-}
-
-func TestPackConfig_ShouldSkip(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   types.PackConfig
-		expected bool
-	}{
-		{
-			name:     "all_false",
-			config:   types.PackConfig{Skip: false, Disabled: false, Ignore: false},
-			expected: false,
-		},
-		{
-			name:     "skip_true",
-			config:   types.PackConfig{Skip: true, Disabled: false, Ignore: false},
-			expected: true,
-		},
-		{
-			name:     "disabled_true",
-			config:   types.PackConfig{Skip: false, Disabled: true, Ignore: false},
-			expected: true,
-		},
-		{
-			name:     "ignore_true",
-			config:   types.PackConfig{Skip: false, Disabled: false, Ignore: true},
-			expected: true,
-		},
-		{
-			name:     "multiple_true",
-			config:   types.PackConfig{Skip: true, Disabled: true, Ignore: true},
-			expected: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.config.ShouldSkip(); got != tt.expected {
-				t.Errorf("ShouldSkip() = %v, want %v", got, tt.expected)
-			}
-		})
 	}
 }
 

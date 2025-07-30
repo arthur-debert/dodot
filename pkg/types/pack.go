@@ -19,24 +19,10 @@ type Pack struct {
 
 // PackConfig represents configuration options for a pack
 type PackConfig struct {
-	// Skip indicates if this pack should be skipped
-	Skip bool `toml:"skip"`
-
-	// Disabled indicates if this pack should be skipped (alias for Skip)
-	Disabled bool `toml:"disabled"`
-
-	// Ignore indicates if this pack should be skipped (alias for Skip)
-	Ignore bool `toml:"ignore"`
-
 	// Files maps file patterns to actions:
 	// - "ignore": skip the file entirely
 	// - "<powerup-name>": use this power-up instead of default
 	Files map[string]string `toml:"files"`
-}
-
-// ShouldSkip returns true if the pack should be skipped
-func (c PackConfig) ShouldSkip() bool {
-	return c.Skip || c.Disabled || c.Ignore
 }
 
 // GetFileAction returns the action for a file (empty string means use defaults)
