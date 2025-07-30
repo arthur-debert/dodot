@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
@@ -79,16 +80,13 @@ func WithFields(fields map[string]interface{}) zerolog.Logger {
 // getLogFilePath returns the path to the log file
 // It respects XDG_STATE_HOME if set, otherwise uses ~/.local/state/dodot/
 func getLogFilePath() string {
-	stateHome := os.Getenv("XDG_STATE_HOME")
-	if stateHome == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			// Fallback to current directory if we can't get home
-			return "dodot.log"
-		}
-		stateHome = filepath.Join(home, ".local", "state")
+	// Create a default paths instance
+	p, err := paths.New("")
+	if err != nil {
+		// Fallback to current directory if we can't initialize paths
+		return "dodot.log"
 	}
-	return filepath.Join(stateHome, "dodot", "dodot.log")
+	return p.LogFilePath()
 }
 
 // setupLogFile creates the log file and its parent directories

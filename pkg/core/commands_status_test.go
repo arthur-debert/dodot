@@ -5,14 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 func TestStatusPacks(t *testing.T) {
 	// Clean up any existing sentinel files before running tests
-	_ = os.RemoveAll(types.GetInstallDir())
-	_ = os.RemoveAll(types.GetBrewfileDir())
+	_ = os.RemoveAll(paths.GetInstallDir())
+	_ = os.RemoveAll(paths.GetBrewfileDir())
 	tests := []struct {
 		name      string
 		setup     func(t *testing.T) (string, []string)
@@ -61,7 +62,7 @@ func TestStatusPacks(t *testing.T) {
 				}
 
 				// Create sentinel file to simulate executed install
-				sentinelPath := filepath.Join(types.GetInstallDir(), "test-pack")
+				sentinelPath := filepath.Join(paths.GetInstallDir(), "test-pack")
 				sentinelDir := filepath.Dir(sentinelPath)
 				err = os.MkdirAll(sentinelDir, 0755)
 				if err != nil {

@@ -5,22 +5,12 @@ package paths
 import (
 	"os"
 	"path/filepath"
-	"sync"
-)
-
-// Global default Paths instance for compatibility functions
-var (
-	defaultPaths     *Paths
-	defaultPathsOnce sync.Once
-	defaultPathsErr  error
 )
 
 // getDefaultPaths returns a default Paths instance for compatibility functions
+// Note: This creates a new instance each time to respect environment variable changes
 func getDefaultPaths() (*Paths, error) {
-	defaultPathsOnce.Do(func() {
-		defaultPaths, defaultPathsErr = New("")
-	})
-	return defaultPaths, defaultPathsErr
+	return New("")
 }
 
 // GetDodotDataDir returns the dodot data directory path

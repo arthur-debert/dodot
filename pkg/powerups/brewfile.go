@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -87,7 +88,7 @@ func (p *BrewfilePowerUp) ValidateOptions(options map[string]interface{}) error 
 
 // GetSentinelPath returns the path to the sentinel file for a pack
 func GetBrewfileSentinelPath(pack string) string {
-	return filepath.Join(types.GetBrewfileDir(), pack)
+	return filepath.Join(paths.GetBrewfileDir(), pack)
 }
 
 func init() {

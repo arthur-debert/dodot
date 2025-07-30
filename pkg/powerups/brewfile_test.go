@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -187,7 +188,7 @@ func TestGetBrewfileSentinelPath(t *testing.T) {
 	pack := "mypack"
 	path := GetBrewfileSentinelPath(pack)
 
-	expected := filepath.Join(types.GetBrewfileDir(), pack)
+	expected := filepath.Join(paths.GetBrewfileDir(), pack)
 	testutil.AssertEqual(t, expected, path)
 }
 
