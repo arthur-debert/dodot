@@ -9,7 +9,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/powerups"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -18,7 +18,7 @@ import (
 // should run, false if it has already run with the same checksum.
 func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 	logger := logging.GetLogger("core.runonce")
-	
+
 	// If force flag is set, always run
 	if force {
 		logger.Debug().
@@ -27,16 +27,16 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 			Msg("Force flag set, will run action")
 		return true, nil
 	}
-	
+
 	// Only check sentinel files for run-once action types
 	switch action.Type {
 	case types.ActionTypeBrew, types.ActionTypeInstall:
-		// Continue with sentinel check
+	// Continue with sentinel check
 	default:
 		// Not a run-once action, always run
 		return true, nil
 	}
-	
+
 	// Get checksum from metadata
 	checksum, ok := action.Metadata["checksum"].(string)
 	if !ok || checksum == "" {
@@ -46,7 +46,7 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 			Msg("Missing checksum in action metadata, will run")
 		return true, nil
 	}
-	
+
 	// Get pack from metadata
 	pack, ok := action.Metadata["pack"].(string)
 	if !ok || pack == "" {
@@ -55,7 +55,7 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 			Msg("Missing pack in action metadata, will run")
 		return true, nil
 	}
-	
+
 	// Determine sentinel path based on action type
 	var sentinelPath string
 	switch action.Type {
@@ -64,7 +64,7 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 	case types.ActionTypeInstall:
 		sentinelPath = filepath.Join(types.GetInstallDir(), pack)
 	}
-	
+
 	// Check if sentinel file exists
 	info, err := os.Stat(sentinelPath)
 	if err != nil {
@@ -75,10 +75,10 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 				Msg("Sentinel file does not exist, will run")
 			return true, nil
 		}
-		return false, errors.Wrapf(err, errors.ErrFileAccess, 
+		return false, errors.Wrapf(err, errors.ErrFileAccess,
 			"failed to check sentinel file: %s", sentinelPath)
 	}
-	
+
 	// Sentinel exists, check if it's a regular file
 	if !info.Mode().IsRegular() {
 		logger.Warn().
@@ -86,14 +86,14 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 			Msg("Sentinel path exists but is not a regular file, will run")
 		return true, nil
 	}
-	
+
 	// Read existing checksum
 	existingChecksum, err := os.ReadFile(sentinelPath)
 	if err != nil {
 		return false, errors.Wrapf(err, errors.ErrFileAccess,
 			"failed to read sentinel file: %s", sentinelPath)
 	}
-	
+
 	// Compare checksums
 	if string(existingChecksum) == checksum {
 		logger.Debug().
@@ -103,7 +103,7 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 			Msg("Checksum matches sentinel, skipping")
 		return false, nil
 	}
-	
+
 	logger.Debug().
 		Str("action_type", string(action.Type)).
 		Str("pack", pack).
@@ -122,19 +122,19 @@ func FilterRunOnceActions(actions []types.Action, force bool) ([]types.Action, e
 		Int("action_count", len(actions)).
 		Bool("force", force).
 		Msg("Filtering run-once actions")
-	
+
 	if len(actions) == 0 {
 		return actions, nil
 	}
-	
+
 	filtered := make([]types.Action, 0, len(actions))
-	
+
 	for _, action := range actions {
 		shouldRun, err := ShouldRunOnceAction(action, force)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		if shouldRun {
 			filtered = append(filtered, action)
 		} else {
@@ -145,13 +145,13 @@ func FilterRunOnceActions(actions []types.Action, force bool) ([]types.Action, e
 				Msg("Skipping run-once action (already executed)")
 		}
 	}
-	
+
 	logger.Info().
 		Int("original_count", len(actions)).
 		Int("filtered_count", len(filtered)).
 		Int("skipped_count", len(actions)-len(filtered)).
 		Msg("Filtered run-once actions")
-	
+
 	return filtered, nil
 }
 
@@ -161,11 +161,11 @@ func CalculateActionChecksum(action types.Action) (string, error) {
 	if action.Source == "" {
 		return "", errors.New(errors.ErrActionInvalid, "action has no source file")
 	}
-	
+
 	// For brew and install actions, calculate checksum of source file
 	switch action.Type {
 	case types.ActionTypeBrew, types.ActionTypeInstall:
-		return powerups.CalculateFileChecksum(action.Source)
+		return testutil.CalculateFileChecksum(action.Source)
 	default:
 		return "", fmt.Errorf("checksum calculation not supported for action type: %s", action.Type)
 	}
@@ -182,11 +182,11 @@ type RunOnceStatus struct {
 // GetRunOnceStatus checks the status of a run-once power-up for a specific pack
 func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 	logger := logging.GetLogger("core.runonce")
-	
+
 	// Map power-up names to their file patterns
 	var filePattern string
 	var sentinelDir string
-	
+
 	switch powerUpName {
 	case "install":
 		filePattern = "install.sh"
@@ -197,7 +197,7 @@ func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 	default:
 		return nil, fmt.Errorf("unknown run-once power-up: %s", powerUpName)
 	}
-	
+
 	// Check if the source file exists
 	sourceFile := filepath.Join(packPath, filePattern)
 	if _, err := os.Stat(sourceFile); err != nil {
@@ -207,13 +207,13 @@ func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 		}
 		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to check source file")
 	}
-	
+
 	// Calculate current checksum
-	currentChecksum, err := powerups.CalculateFileChecksum(sourceFile)
+	currentChecksum, err := testutil.CalculateFileChecksum(sourceFile)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Check for sentinel file
 	sentinelPath := sentinelDir // The sentinel dir itself acts as the sentinel file
 	sentinelData, err := os.ReadFile(sentinelPath)
@@ -227,27 +227,27 @@ func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 		}
 		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to read sentinel file")
 	}
-	
+
 	// The sentinel file contains just the checksum
 	storedChecksum := strings.TrimSpace(string(sentinelData))
-	
+
 	// Get file info for execution time
 	fileInfo, err := os.Stat(sentinelPath)
 	var executedAt time.Time
 	if err == nil {
 		executedAt = fileInfo.ModTime()
 	}
-	
+
 	// Check if file has changed
 	changed := storedChecksum != currentChecksum
-	
+
 	logger.Debug().
 		Str("pack", filepath.Base(packPath)).
 		Str("powerup", powerUpName).
 		Bool("executed", true).
 		Bool("changed", changed).
 		Msg("Run-once status checked")
-	
+
 	return &RunOnceStatus{
 		Executed:   true,
 		ExecutedAt: executedAt,

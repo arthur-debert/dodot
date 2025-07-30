@@ -109,6 +109,28 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
+
+		// Shell profile and path
+		{
+			Name:        "shell-profile",
+			TriggerName: "filename",
+			PowerUpName: "shell_profile",
+			Priority:    80,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "*aliases.sh",
+			},
+			Enabled: true,
+		},
+		{
+			Name:        "shell-path",
+			TriggerName: "filename",
+			PowerUpName: "shell_add_path",
+			Priority:    80,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "bin",
+			},
+			Enabled: true,
+		},
 	}
 }
 

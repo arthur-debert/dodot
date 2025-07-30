@@ -6,6 +6,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -49,7 +50,7 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 			Msg("Processing install script")
 
 		// Calculate checksum of the install script
-		checksum, err := CalculateFileChecksum(match.AbsolutePath)
+		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
 		if err != nil {
 			logger.Error().Err(err).
 				Str("path", match.AbsolutePath).

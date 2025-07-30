@@ -198,18 +198,26 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 5. Filter actions by the desired RunMode
-	filteredActions, err := filterActionsByRunMode(actions, opts.RunMode)
+	actions, err = filterActionsByRunMode(actions, opts.RunMode)
 	if err != nil {
 		return nil, err
 	}
 
-	// 6. Convert the filtered actions to filesystem operations
-	ops, err := GetFsOps(filteredActions)
+	// 6. For RunModeOnce, filter out actions that have already been executed
+	if opts.RunMode == types.RunModeOnce {
+		actions, err = FilterRunOnceActions(actions, opts.Force)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 7. Convert the filtered actions to filesystem operations
+	ops, err := GetFsOps(actions)
 	if err != nil {
 		return nil, err
 	}
 
-	// 7. Construct and return the result
+	// 8. Construct and return the result
 	result := &types.ExecutionResult{
 		Packs:      getPackNames(selectedPacks),
 		Operations: ops,
@@ -347,9 +355,9 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 
 	// 2. Find the specific pack
 	var targetPack *types.Pack
-	for _, p := range allPacks {
-		if p.Name == opts.PackName {
-			targetPack = &p
+	for i := range allPacks {
+		if allPacks[i].Name == opts.PackName {
+			targetPack = &allPacks[i]
 			break
 		}
 	}
@@ -417,7 +425,7 @@ echo "Installing ` + opts.PackName + ` pack..."
 	// Create each template file if it doesn't exist
 	for _, tmpl := range templates {
 		filePath := filepath.Join(targetPack.Path, tmpl.filename)
-		
+
 		// Check if file already exists
 		if _, err := os.Stat(filePath); err == nil {
 			log.Debug().Str("file", tmpl.filename).Msg("File already exists, skipping")
@@ -458,7 +466,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	if opts.PackName == "" {
 		return nil, errors.New(errors.ErrInvalidInput, "pack name cannot be empty")
 	}
-	
+
 	// Check for invalid characters in pack name
 	if strings.ContainsAny(opts.PackName, "/\\:*?\"<>|") {
 		return nil, errors.Newf(errors.ErrInvalidInput, "pack name contains invalid characters: %s", opts.PackName)
@@ -466,7 +474,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 
 	// 2. Create the pack directory
 	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
-	
+
 	// Check if pack already exists
 	if _, err := os.Stat(packPath); err == nil {
 		return nil, errors.Newf(errors.ErrPackExists, "pack %q already exists", opts.PackName)
@@ -540,11 +548,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 	result.FilesCreated = append(result.FilesCreated, "README.txt")
 
 	// 5. Use FillPack to create the template files
-	//nolint:staticcheck // Explicit struct construction is clearer than conversion
-	fillOpts := FillPackOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackName:     opts.PackName,
-	}
+	fillOpts := FillPackOptions(opts)
 	fillResult, err := FillPack(fillOpts)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrPackInit, "failed to create template files")
