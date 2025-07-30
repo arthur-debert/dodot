@@ -151,8 +151,8 @@ func TestPipelineIntegration(t *testing.T) {
 		}
 	})
 
-	// Test Stage 5: GetFsOps
-	t.Run("Stage5_GetFsOps", func(t *testing.T) {
+	// Test Stage 5: GetFileOperations
+	t.Run("Stage5_GetFileOperations", func(t *testing.T) {
 		// Create mock actions
 		actions := []types.Action{
 			{
@@ -176,7 +176,7 @@ func TestPipelineIntegration(t *testing.T) {
 			},
 		}
 
-		operations, err := GetFsOps(actions)
+		operations, err := GetFileOperations(actions)
 		testutil.AssertNoError(t, err)
 
 		// Should have operations for:
@@ -366,7 +366,7 @@ func BenchmarkPipelineEndToEnd(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		_, err = GetFsOps(actions)
+		_, err = GetFileOperations(actions)
 		if err != nil {
 			b.Fatal(err)
 		}

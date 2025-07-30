@@ -166,8 +166,8 @@ func TestDetectOperationConflicts(t *testing.T) {
 	}
 }
 
-func TestGetFsOps_WithConflictDetection(t *testing.T) {
-	// Test that GetFsOps properly detects conflicts
+func TestGetFileOperations_WithConflictDetection(t *testing.T) {
+	// Test that GetFileOperations properly detects conflicts
 	actions := []types.Action{
 		{
 			Type:        types.ActionTypeLink,
@@ -187,7 +187,7 @@ func TestGetFsOps_WithConflictDetection(t *testing.T) {
 		},
 	}
 
-	ops, err := GetFsOps(actions)
+	ops, err := GetFileOperations(actions)
 	require.Error(t, err)
 	assert.Nil(t, ops)
 	assert.Contains(t, err.Error(), "conflicts")

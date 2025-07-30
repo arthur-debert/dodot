@@ -11,7 +11,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestGetFsOps(t *testing.T) {
+func TestGetFileOperations(t *testing.T) {
 	tests := []struct {
 		name         string
 		actions      []types.Action
@@ -157,7 +157,7 @@ func TestGetFsOps(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := GetFsOps(tt.actions)
+			ops, err := GetFileOperations(tt.actions)
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -773,7 +773,7 @@ func TestExpandHome(t *testing.T) {
 }
 
 // Benchmarks
-func BenchmarkGetFsOps(b *testing.B) {
+func BenchmarkGetFileOperations(b *testing.B) {
 	actions := []types.Action{
 		{Type: types.ActionTypeLink, Source: "/src1", Target: "~/dst1"},
 		{Type: types.ActionTypeCopy, Source: "/src2", Target: "~/dst2"},
@@ -785,7 +785,7 @@ func BenchmarkGetFsOps(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := GetFsOps(actions)
+		_, err := GetFileOperations(actions)
 		if err != nil {
 			b.Fatal(err)
 		}

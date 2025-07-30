@@ -12,8 +12,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
-// GetFsOps converts actions into file system operations
-func GetFsOps(actions []types.Action) ([]types.Operation, error) {
+// GetFileOperations converts actions into file system operations
+func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations")
 	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations")
 
