@@ -258,3 +258,12 @@ func AssertFileExists(t *testing.T, path string, msgAndArgs ...interface{}) {
 		t.Errorf("%sFile does not exist: %s", msg, path)
 	}
 }
+
+// AssertDirExists checks that a directory exists.
+func AssertDirExists(t *testing.T, path string, msgAndArgs ...interface{}) {
+	t.Helper()
+	if !DirExists(t, path) {
+		msg := formatMessage(msgAndArgs...)
+		t.Errorf("%sDirectory does not exist: %s", msg, path)
+	}
+}

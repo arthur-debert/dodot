@@ -466,7 +466,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	if opts.PackName == "" {
 		return nil, errors.New(errors.ErrInvalidInput, "pack name cannot be empty")
 	}
-	
+
 	// Check for invalid characters in pack name
 	if strings.ContainsAny(opts.PackName, "/\\:*?\"<>|") {
 		return nil, errors.Newf(errors.ErrInvalidInput, "pack name contains invalid characters: %s", opts.PackName)
@@ -474,7 +474,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 
 	// 2. Create the pack directory
 	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
-	
+
 	// Check if pack already exists
 	if _, err := os.Stat(packPath); err == nil {
 		return nil, errors.Newf(errors.ErrPackExists, "pack %q already exists", opts.PackName)
@@ -548,11 +548,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 	result.FilesCreated = append(result.FilesCreated, "README.txt")
 
 	// 5. Use FillPack to create the template files
-	//nolint:staticcheck // Explicit struct construction is clearer than conversion
-	fillOpts := FillPackOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackName:     opts.PackName,
-	}
+	fillOpts := FillPackOptions(opts)
 	fillResult, err := FillPack(fillOpts)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrPackInit, "failed to create template files")
