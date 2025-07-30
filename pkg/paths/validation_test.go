@@ -369,40 +369,47 @@ func TestDeploymentPathStructure(t *testing.T) {
 	})
 }
 
-func TestCompatibilityFunctionsConcurrency(t *testing.T) {
-	t.Skip("Skipping concurrency test - environment variables are global and cannot be safely modified concurrently")
+func TestPathsConcurrentAccess(t *testing.T) {
+	// Test that a single Paths instance can be safely accessed concurrently
+	// This is what actually matters for our use case
+	p, err := New("/test/dotfiles")
+	testutil.AssertNoError(t, err)
 
-	// Test that compatibility functions work correctly under concurrent access
-	// with changing environment variables
-	done := make(chan bool)
-	errors := make(chan error, 100)
+	const numGoroutines = 20
+	const numIterations = 100
+	
+	done := make(chan bool, numGoroutines)
+	errors := make(chan error, numGoroutines*numIterations)
 
-	// Start multiple goroutines that change environment and call functions
-	for i := 0; i < 10; i++ {
+	// Start multiple goroutines that call various path methods concurrently
+	for i := 0; i < numGoroutines; i++ {
 		go func(id int) {
 			defer func() { done <- true }()
 
-			for j := 0; j < 10; j++ {
-				// Change environment
-				testDir := filepath.Join("/tmp", "test", string(rune('A'+id)))
-				_ = os.Setenv(EnvDodotDataDir, testDir)
-
-				// Call compatibility functions
-				dataDir := GetDodotDataDir()
-				if !strings.HasPrefix(dataDir, testDir) {
-					errors <- fmt.Errorf("Expected data dir to start with %s, got %s", testDir, dataDir)
-				}
-
-				deployedDir := GetDeployedDir()
-				if !strings.Contains(deployedDir, "deployed") {
-					errors <- fmt.Errorf("Expected deployed dir to contain 'deployed', got %s", deployedDir)
+			for j := 0; j < numIterations; j++ {
+				// Call various path methods concurrently
+				packName := fmt.Sprintf("pack%d", id%5)
+				
+				_ = p.PackPath(packName)
+				_ = p.DataDir()
+				_ = p.DeployedDir()
+				_ = p.StatePath(packName, "powerup")
+				_ = p.ConfigDir()
+				_ = p.CacheDir()
+				
+				// Test path normalization
+				testPath := fmt.Sprintf("/test/path/%d", j)
+				if normalized, err := p.NormalizePath(testPath); err != nil {
+					errors <- fmt.Errorf("normalization error: %v", err)
+				} else if !filepath.IsAbs(normalized) {
+					errors <- fmt.Errorf("normalized path should be absolute: %s", normalized)
 				}
 			}
 		}(i)
 	}
 
 	// Wait for all goroutines to complete
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numGoroutines; i++ {
 		<-done
 	}
 	close(errors)
