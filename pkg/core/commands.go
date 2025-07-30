@@ -169,6 +169,8 @@ type executionOptions struct {
 
 // runExecutionPipeline is the core logic for deploy and install.
 func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error) {
+	logger := logging.GetLogger("core.commands")
+	
 	// 1. Get all packs
 	candidates, err := GetPackCandidates(opts.DotfilesRoot)
 	if err != nil {
@@ -211,13 +213,32 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 		}
 	}
 
-	// 7. Convert the filtered actions to filesystem operations
-	ops, err := GetFileOperations(actions)
+	// 7. Execute checksum operations first and store results
+	ctx := NewExecutionContext()
+	
+	// First pass: generate all operations to find checksum operations
+	initialOps, err := GetFileOperations(actions)
+	if err != nil {
+		return nil, err
+	}
+	
+	// Execute checksum operations to get results
+	checksumResults, err := ctx.ExecuteChecksumOperations(initialOps)
+	if err != nil {
+		return nil, err
+	}
+	
+	if len(checksumResults) > 0 {
+		logger.Info().Int("checksumCount", len(checksumResults)).Msg("Executed checksum operations")
+	}
+	
+	// 8. Generate final operations with checksum context
+	ops, err := GetFileOperationsWithContext(actions, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// 8. Construct and return the result
+	// 9. Construct and return the result
 	result := &types.ExecutionResult{
 		Packs:      getPackNames(selectedPacks),
 		Operations: ops,
