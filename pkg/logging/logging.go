@@ -137,7 +137,7 @@ func LogOperationStart(logger zerolog.Logger, operation string) func() {
 	logger.Debug().
 		Str("operation", operation).
 		Msg("Operation started")
-	
+
 	return func() {
 		logger.Debug().
 			Str("operation", operation).
