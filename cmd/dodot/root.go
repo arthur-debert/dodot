@@ -49,26 +49,26 @@ func init() {
 
 	// Verbosity flag for logging
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)")
-	
+
 	// Dry-run flag
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes without executing them")
-	
+
 	// Force flag
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "Force execution of run-once power-ups even if already executed")
 
 	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.config/dodot/config.toml)")
 
 	// Remove unused toggle flag
-	
+
 	// Add version command
 	rootCmd.AddCommand(versionCmd)
-	
+
 	// Add completion command
 	rootCmd.AddCommand(completionCmd)
-	
+
 	// Add man page generation command
 	rootCmd.AddCommand(manCmd)
-	
+
 	// Add deploy command
 	rootCmd.AddCommand(deployCmd)
 }
@@ -191,7 +191,7 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 		// 3. FilterRunOnceActions(actions, force) - filter out already-executed run-once actions
 		// 4. GetFsOps(actions) - convert actions to filesystem operations
 		// 5. Execute operations through synthfs
-		
+
 		// For now, just log the packs that were found
 		for _, pack := range packs {
 			logger.Info().
@@ -211,4 +211,4 @@ func getDotfilesRoot() (string, error) {
 		return "", errors.New(errors.ErrInvalidInput, "DOTFILES_ROOT environment variable not set")
 	}
 	return root, nil
-} 
+}
