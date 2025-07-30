@@ -377,7 +377,7 @@ func TestPathsConcurrentAccess(t *testing.T) {
 
 	const numGoroutines = 20
 	const numIterations = 100
-	
+
 	done := make(chan bool, numGoroutines)
 	errors := make(chan error, numGoroutines*numIterations)
 
@@ -389,14 +389,14 @@ func TestPathsConcurrentAccess(t *testing.T) {
 			for j := 0; j < numIterations; j++ {
 				// Call various path methods concurrently
 				packName := fmt.Sprintf("pack%d", id%5)
-				
+
 				_ = p.PackPath(packName)
 				_ = p.DataDir()
 				_ = p.DeployedDir()
 				_ = p.StatePath(packName, "powerup")
 				_ = p.ConfigDir()
 				_ = p.CacheDir()
-				
+
 				// Test path normalization
 				testPath := fmt.Sprintf("/test/path/%d", j)
 				if normalized, err := p.NormalizePath(testPath); err != nil {

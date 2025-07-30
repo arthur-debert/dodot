@@ -192,11 +192,11 @@ func TestExpandHome_NoHome(t *testing.T) {
 
 	// Test expansion with no HOME environment variable
 	result, err := ExpandHome("~/test")
-	
+
 	if err == nil {
 		// System works without HOME - verify we got a reasonable result
 		testutil.AssertNotEmpty(t, result)
-		testutil.AssertTrue(t, !strings.HasPrefix(result, "~"), 
+		testutil.AssertTrue(t, !strings.HasPrefix(result, "~"),
 			"Tilde should be expanded even without HOME: %s", result)
 		t.Logf("System expanded ~ without HOME to: %s", result)
 	} else {
