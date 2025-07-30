@@ -51,12 +51,16 @@ func TestDefaultMatchers(t *testing.T) {
 		// All default matchers should be enabled
 		assert.True(t, m.Enabled)
 
-		// All should use filename trigger
-		assert.Equal(t, "filename", m.TriggerName)
-
-		// All should have a pattern
+		// Should have trigger options
 		assert.NotNil(t, m.TriggerOptions)
-		assert.Contains(t, m.TriggerOptions, "pattern")
+
+		// Check trigger-specific options
+		switch m.TriggerName {
+		case "filename", "directory", "path_pattern":
+			assert.Contains(t, m.TriggerOptions, "pattern")
+		case "extension":
+			assert.Contains(t, m.TriggerOptions, "extension")
+		}
 	}
 
 	// Ensure all expected matchers were found
