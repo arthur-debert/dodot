@@ -45,7 +45,7 @@ type FillResult struct {
 
 // InitResult holds the result of the 'init' command.
 type InitResult struct {
-	PackName      string   `json:"packName"`
-	Path          string   `json:"path"`
-	FilesCreated  []string `json:"filesCreated"`
+	PackName     string   `json:"packName"`
+	Path         string   `json:"path"`
+	FilesCreated []string `json:"filesCreated"`
 }

@@ -75,9 +75,9 @@ func TestFileNameTrigger_ExactMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trigger := NewFileNameTrigger(tt.pattern)
 			fileInfo := mockFileInfo{name: tt.fileName, isDir: false}
-			
+
 			matched, metadata := trigger.Match(tt.filePath, fileInfo)
-			
+
 			assert.Equal(t, tt.shouldMatch, matched)
 			if matched {
 				assert.NotNil(t, metadata)
@@ -152,9 +152,9 @@ func TestFileNameTrigger_GlobMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			trigger := NewFileNameTrigger(tt.pattern)
 			fileInfo := mockFileInfo{name: tt.fileName, isDir: false}
-			
+
 			matched, metadata := trigger.Match(tt.filePath, fileInfo)
-			
+
 			assert.Equal(t, tt.shouldMatch, matched)
 			if matched {
 				assert.NotNil(t, metadata)
@@ -169,9 +169,9 @@ func TestFileNameTrigger_GlobMatch(t *testing.T) {
 func TestFileNameTrigger_SkipsDirectories(t *testing.T) {
 	trigger := NewFileNameTrigger("config")
 	dirInfo := mockFileInfo{name: "config", isDir: true}
-	
+
 	matched, metadata := trigger.Match("/home/user/config", dirInfo)
-	
+
 	assert.False(t, matched)
 	assert.Nil(t, metadata)
 }
@@ -179,15 +179,15 @@ func TestFileNameTrigger_SkipsDirectories(t *testing.T) {
 func TestFileNameTrigger_Properties(t *testing.T) {
 	t.Run("exact match properties", func(t *testing.T) {
 		trigger := NewFileNameTrigger(".vimrc")
-		
+
 		assert.Equal(t, FileNameTriggerName, trigger.Name())
 		assert.Equal(t, "Matches files by exact name: .vimrc", trigger.Description())
 		assert.Equal(t, FileNameTriggerPriority, trigger.Priority())
 	})
-	
+
 	t.Run("glob match properties", func(t *testing.T) {
 		trigger := NewFileNameTrigger("*.go")
-		
+
 		assert.Equal(t, FileNameTriggerName, trigger.Name())
 		assert.Equal(t, "Matches files by glob pattern: *.go", trigger.Description())
 		assert.Equal(t, FileNameTriggerPriority, trigger.Priority())
@@ -207,7 +207,7 @@ func TestContainsGlobChars(t *testing.T) {
 		{"file{a,b}.txt", true},
 		{"normal-file.txt", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.pattern, func(t *testing.T) {
 			assert.Equal(t, tt.isGlob, containsGlobChars(tt.pattern))
@@ -219,9 +219,9 @@ func TestFileNameTrigger_InvalidGlobPattern(t *testing.T) {
 	// Test with an invalid glob pattern
 	trigger := NewFileNameTrigger("[")
 	fileInfo := mockFileInfo{name: "test.txt", isDir: false}
-	
+
 	matched, metadata := trigger.Match("/path/test.txt", fileInfo)
-	
+
 	// Should not match and return false on error
 	assert.False(t, matched)
 	assert.Nil(t, metadata)
@@ -232,22 +232,22 @@ func TestFileNameTrigger_FactoryRegistration(t *testing.T) {
 	factory, err := registry.GetTriggerFactory(FileNameTriggerName)
 	require.NoError(t, err)
 	require.NotNil(t, factory)
-	
+
 	// Test factory with pattern config
 	trigger, err := factory(map[string]interface{}{
 		"pattern": "*.md",
 	})
 	require.NoError(t, err)
 	require.NotNil(t, trigger)
-	
+
 	assert.Equal(t, FileNameTriggerName, trigger.Name())
 	assert.Equal(t, "Matches files by glob pattern: *.md", trigger.Description())
-	
+
 	// Test factory with default pattern
 	trigger2, err := factory(map[string]interface{}{})
 	require.NoError(t, err)
 	require.NotNil(t, trigger2)
-	
+
 	assert.Equal(t, FileNameTriggerName, trigger2.Name())
 	assert.Equal(t, "Matches files by glob pattern: *", trigger2.Description())
 }

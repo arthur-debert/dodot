@@ -13,11 +13,11 @@ import (
 
 func TestSymlinkPowerUp_BasicFunctionality(t *testing.T) {
 	powerUp := NewSymlinkPowerUp()
-	
+
 	// Test basic properties
 	assert.Equal(t, SymlinkPowerUpName, powerUp.Name())
 	assert.Equal(t, "Creates symbolic links from dotfiles to target locations", powerUp.Description())
-	
+
 	// Test with no matches
 	actions, err := powerUp.Process([]types.TriggerMatch{})
 	require.NoError(t, err)
@@ -35,9 +35,9 @@ func TestSymlinkPowerUp_ProcessMatches(t *testing.T) {
 			require.NoError(t, os.Unsetenv("HOME"))
 		}
 	}()
-	
+
 	powerUp := NewSymlinkPowerUp()
-	
+
 	matches := []types.TriggerMatch{
 		{
 			TriggerName:  "filename",
@@ -54,11 +54,11 @@ func TestSymlinkPowerUp_ProcessMatches(t *testing.T) {
 			PowerUpName:  "symlink",
 		},
 	}
-	
+
 	actions, err := powerUp.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 2)
-	
+
 	// Check first action
 	assert.Equal(t, types.ActionTypeLink, actions[0].Type)
 	assert.Equal(t, "Symlink .vimrc -> "+filepath.Join(homeDir, ".vimrc"), actions[0].Description)
@@ -67,7 +67,7 @@ func TestSymlinkPowerUp_ProcessMatches(t *testing.T) {
 	assert.Equal(t, "vim", actions[0].Pack)
 	assert.Equal(t, SymlinkPowerUpName, actions[0].PowerUpName)
 	assert.Equal(t, SymlinkPowerUpPriority, actions[0].Priority)
-	
+
 	// Check second action
 	assert.Equal(t, types.ActionTypeLink, actions[1].Type)
 	assert.Equal(t, "/dotfiles/bash/.bashrc", actions[1].Source)
@@ -78,7 +78,7 @@ func TestSymlinkPowerUp_ProcessMatches(t *testing.T) {
 func TestSymlinkPowerUp_CustomTarget(t *testing.T) {
 	powerUp := NewSymlinkPowerUp()
 	customTarget := "/custom/target"
-	
+
 	matches := []types.TriggerMatch{
 		{
 			TriggerName:  "filename",
@@ -91,17 +91,17 @@ func TestSymlinkPowerUp_CustomTarget(t *testing.T) {
 			},
 		},
 	}
-	
+
 	actions, err := powerUp.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	
+
 	assert.Equal(t, filepath.Join(customTarget, "app.conf"), actions[0].Target)
 }
 
 func TestSymlinkPowerUp_ConflictDetection(t *testing.T) {
 	powerUp := NewSymlinkPowerUp()
-	
+
 	// Two different files want to symlink to the same target
 	matches := []types.TriggerMatch{
 		{
@@ -114,12 +114,12 @@ func TestSymlinkPowerUp_ConflictDetection(t *testing.T) {
 		{
 			TriggerName:  "filename",
 			Pack:         "pack2",
-			Path:         ".config",  // Same filename
+			Path:         ".config", // Same filename
 			AbsolutePath: "/dotfiles/pack2/.config",
 			PowerUpName:  "symlink",
 		},
 	}
-	
+
 	actions, err := powerUp.Process(matches)
 	assert.Error(t, err)
 	assert.Nil(t, actions)
@@ -138,9 +138,9 @@ func TestSymlinkPowerUp_EnvironmentExpansion(t *testing.T) {
 			require.NoError(t, os.Unsetenv("CUSTOM_DIR"))
 		}
 	}()
-	
+
 	powerUp := NewSymlinkPowerUp()
-	
+
 	matches := []types.TriggerMatch{
 		{
 			TriggerName:  "filename",
@@ -153,17 +153,17 @@ func TestSymlinkPowerUp_EnvironmentExpansion(t *testing.T) {
 			},
 		},
 	}
-	
+
 	actions, err := powerUp.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	
+
 	assert.Equal(t, "/expanded/path/configs/file.txt", actions[0].Target)
 }
 
 func TestSymlinkPowerUp_ValidateOptions(t *testing.T) {
 	powerUp := NewSymlinkPowerUp()
-	
+
 	tests := []struct {
 		name    string
 		options map[string]interface{}
@@ -213,7 +213,7 @@ func TestSymlinkPowerUp_ValidateOptions(t *testing.T) {
 			errMsg:  "unknown option: invalid",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := powerUp.ValidateOptions(tt.options)
@@ -229,7 +229,7 @@ func TestSymlinkPowerUp_ValidateOptions(t *testing.T) {
 
 func TestSymlinkPowerUp_MetadataInActions(t *testing.T) {
 	powerUp := NewSymlinkPowerUp()
-	
+
 	matches := []types.TriggerMatch{
 		{
 			TriggerName:  "glob",
@@ -242,11 +242,11 @@ func TestSymlinkPowerUp_MetadataInActions(t *testing.T) {
 			},
 		},
 	}
-	
+
 	actions, err := powerUp.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
-	
+
 	// Check that trigger name is preserved in action metadata
 	assert.Equal(t, "glob", actions[0].Metadata["trigger"])
 }
@@ -256,11 +256,11 @@ func TestSymlinkPowerUp_FactoryRegistration(t *testing.T) {
 	factory, err := registry.GetPowerUpFactory(SymlinkPowerUpName)
 	require.NoError(t, err)
 	require.NotNil(t, factory)
-	
+
 	// Test factory creates power-up correctly
 	powerUp, err := factory(nil)
 	require.NoError(t, err)
 	require.NotNil(t, powerUp)
-	
+
 	assert.Equal(t, SymlinkPowerUpName, powerUp.Name())
 }

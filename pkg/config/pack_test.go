@@ -108,7 +108,7 @@ ignore = false
 			errorMsg:    "failed to parse TOML",
 		},
 		{
-			name: "empty_files_section",
+			name:    "empty_files_section",
 			content: `[files]`,
 			expected: types.PackConfig{
 				Skip:     false,
@@ -124,7 +124,7 @@ ignore = false
 			// Create a temporary file with the test content
 			tmpDir := t.TempDir()
 			configPath := filepath.Join(tmpDir, ".dodot.toml")
-			
+
 			err := os.WriteFile(configPath, []byte(tt.content), 0644)
 			if err != nil {
 				t.Fatalf("Failed to write test config: %v", err)
@@ -213,21 +213,21 @@ func contains(s, substr string) bool {
 func TestFileExists(t *testing.T) {
 	// Create temp directory
 	tmpDir := t.TempDir()
-	
+
 	// Create a test file
 	testFile := filepath.Join(tmpDir, "test.txt")
 	err := os.WriteFile(testFile, []byte("test"), 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Create a test directory
 	testDir := filepath.Join(tmpDir, "testdir")
 	err = os.Mkdir(testDir, 0755)
 	if err != nil {
 		t.Fatal(err)
 	}
-	
+
 	tests := []struct {
 		name     string
 		path     string
@@ -237,7 +237,7 @@ func TestFileExists(t *testing.T) {
 		{"existing directory", testDir, false},
 		{"non-existent file", filepath.Join(tmpDir, "nonexistent.txt"), false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := FileExists(tt.path)

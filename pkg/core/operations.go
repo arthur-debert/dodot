@@ -52,7 +52,7 @@ func GetFsOps(actions []types.Action) ([]types.Operation, error) {
 		}
 		allOperations = append(allOperations, ops...)
 	}
-	
+
 	logger.Info().Int("operationCount", len(allOperations)).Msg("Generated operations")
 	return allOperations, nil
 }
@@ -63,7 +63,7 @@ func ConvertAction(action types.Action) ([]types.Operation, error) {
 		Str("type", string(action.Type)).
 		Str("description", action.Description).
 		Logger()
-	
+
 	logger.Debug().Msg("Converting action to operations")
 
 	switch action.Type {
@@ -178,7 +178,7 @@ func convertWriteAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	target := expandHome(action.Target)
-	
+
 	// Convert mode to pointer if non-zero
 	var mode *uint32
 	if action.Mode != 0 {
@@ -219,7 +219,7 @@ func convertAppendAction(action types.Action) ([]types.Operation, error) {
 	// Since we're not doing actual FS operations, we'll create a write operation
 	// with a note that it should append
 	target := expandHome(action.Target)
-	
+
 	ops := []types.Operation{
 		{
 			Type:        types.OperationWriteFile,
@@ -239,7 +239,7 @@ func convertMkdirAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	target := expandHome(action.Target)
-	
+
 	var mode *uint32
 	if action.Mode != 0 {
 		m := action.Mode
@@ -356,7 +356,7 @@ func convertBrewAction(action types.Action) ([]types.Operation, error) {
 
 	// Create sentinel file with checksum
 	sentinelPath := filepath.Join(types.GetBrewfileDir(), pack)
-	
+
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
@@ -396,7 +396,7 @@ func convertInstallAction(action types.Action) ([]types.Operation, error) {
 
 	// Create sentinel file with checksum
 	sentinelPath := filepath.Join(types.GetInstallDir(), pack)
-	
+
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{

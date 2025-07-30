@@ -10,7 +10,7 @@ func TestAssertEqual(t *testing.T) {
 	AssertEqual(t, 42, 42)
 	AssertEqual(t, "hello", "hello")
 	AssertEqual(t, []int{1, 2, 3}, []int{1, 2, 3})
-	
+
 	// Test with custom message
 	AssertEqual(t, true, true, "boolean comparison")
 }
@@ -65,7 +65,7 @@ func TestAssertNotContains(t *testing.T) {
 func TestAssertSliceEqual(t *testing.T) {
 	// Test with equal slices
 	AssertSliceEqual(t, []string{"a", "b", "c"}, []string{"a", "b", "c"})
-	
+
 	// Test with different order (should still pass)
 	AssertSliceEqual(t, []string{"c", "b", "a"}, []string{"a", "b", "c"})
 }
@@ -129,7 +129,7 @@ func TestFormatMessage(t *testing.T) {
 			expected: "multiple args\n",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatMessage(tt.args...)
@@ -159,7 +159,7 @@ func TestIsNil(t *testing.T) {
 		{"zero int", 0, false},
 		{"empty string", "", false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := isNil(tt.value)

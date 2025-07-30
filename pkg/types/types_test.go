@@ -32,7 +32,7 @@ type mockPowerUp struct {
 
 func (m *mockPowerUp) Name() string        { return m.name }
 func (m *mockPowerUp) Description() string { return m.description }
-func (m *mockPowerUp) RunMode() RunMode   { return RunModeMany }
+func (m *mockPowerUp) RunMode() RunMode    { return RunModeMany }
 func (m *mockPowerUp) Process(matches []TriggerMatch) ([]Action, error) {
 	return m.actions, m.err
 }
@@ -63,20 +63,20 @@ func TestTriggerInterface(t *testing.T) {
 		shouldMatch: true,
 		metadata:    map[string]interface{}{"key": "value"},
 	}
-	
+
 	// Test interface methods
 	if trigger.Name() != "test-trigger" {
 		t.Errorf("Name() = %s, want %s", trigger.Name(), "test-trigger")
 	}
-	
+
 	if trigger.Description() != "A test trigger" {
 		t.Errorf("Description() = %s, want %s", trigger.Description(), "A test trigger")
 	}
-	
+
 	if trigger.Priority() != 10 {
 		t.Errorf("Priority() = %d, want %d", trigger.Priority(), 10)
 	}
-	
+
 	// Test Match
 	info := mockFileInfo{name: "test.txt", isDir: false}
 	matched, metadata := trigger.Match("test.txt", info)
@@ -97,23 +97,23 @@ func TestPowerUpInterface(t *testing.T) {
 			Target:      "/target",
 		},
 	}
-	
+
 	powerUp := &mockPowerUp{
 		name:        "test-powerup",
 		description: "A test power-up",
 		actions:     actions,
 		err:         nil,
 	}
-	
+
 	// Test interface methods
 	if powerUp.Name() != "test-powerup" {
 		t.Errorf("Name() = %s, want %s", powerUp.Name(), "test-powerup")
 	}
-	
+
 	if powerUp.Description() != "A test power-up" {
 		t.Errorf("Description() = %s, want %s", powerUp.Description(), "A test power-up")
 	}
-	
+
 	// Test Process
 	matches := []TriggerMatch{
 		{
@@ -121,16 +121,16 @@ func TestPowerUpInterface(t *testing.T) {
 			Path:        "test.txt",
 		},
 	}
-	
+
 	resultActions, err := powerUp.Process(matches)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	
+
 	if len(resultActions) != 1 {
 		t.Fatalf("Process() returned %d actions, want 1", len(resultActions))
 	}
-	
+
 	if resultActions[0].Type != ActionTypeLink {
 		t.Errorf("Action type = %s, want %s", resultActions[0].Type, ActionTypeLink)
 	}
@@ -148,7 +148,7 @@ func TestActionTypes(t *testing.T) {
 		ActionTypePathAdd,
 		ActionTypeRun,
 	}
-	
+
 	expectedValues := []string{
 		"link",
 		"copy",
@@ -159,7 +159,7 @@ func TestActionTypes(t *testing.T) {
 		"path_add",
 		"run",
 	}
-	
+
 	for i, at := range actionTypes {
 		if string(at) != expectedValues[i] {
 			t.Errorf("ActionType[%d] = %s, want %s", i, at, expectedValues[i])
@@ -184,25 +184,25 @@ func TestPackStructure(t *testing.T) {
 			"author": "test",
 		},
 	}
-	
+
 	// Verify pack fields
 	if pack.Name != "test-pack" {
 		t.Errorf("Pack.Name = %s, want test-pack", pack.Name)
 	}
-	
+
 	if pack.Config.ShouldSkip() {
 		t.Error("Pack.Config.ShouldSkip() = true, want false")
 	}
-	
+
 	if len(pack.Config.Files) != 2 {
 		t.Errorf("Pack.Config.Files length = %d, want 2", len(pack.Config.Files))
 	}
-	
+
 	// Test file action
 	if action := pack.Config.GetFileAction("test.conf"); action != "symlink" {
 		t.Errorf("GetFileAction(test.conf) = %s, want symlink", action)
 	}
-	
+
 	if action := pack.Config.GetFileAction("backup.bak"); action != "ignore" {
 		t.Errorf("GetFileAction(backup.bak) = %s, want ignore", action)
 	}
@@ -210,11 +210,11 @@ func TestPackStructure(t *testing.T) {
 
 func TestMatcherStructure(t *testing.T) {
 	matcher := Matcher{
-		Name:         "test-matcher",
-		TriggerName:  "filename",
-		PowerUpName:  "symlink",
-		Priority:     10,
-		Options:      map[string]interface{}{"global": true},
+		Name:        "test-matcher",
+		TriggerName: "filename",
+		PowerUpName: "symlink",
+		Priority:    10,
+		Options:     map[string]interface{}{"global": true},
 		TriggerOptions: map[string]interface{}{
 			"pattern": "*.conf",
 		},
@@ -223,16 +223,16 @@ func TestMatcherStructure(t *testing.T) {
 		},
 		Enabled: true,
 	}
-	
+
 	// Verify matcher fields
 	if matcher.TriggerName != "filename" {
 		t.Errorf("Matcher.TriggerName = %s, want filename", matcher.TriggerName)
 	}
-	
+
 	if matcher.PowerUpName != "symlink" {
 		t.Errorf("Matcher.PowerUpName = %s, want symlink", matcher.PowerUpName)
 	}
-	
+
 	if matcher.TriggerOptions["pattern"] != "*.conf" {
 		t.Errorf("Matcher.TriggerOptions[pattern] = %v, want *.conf", matcher.TriggerOptions["pattern"])
 	}
@@ -240,7 +240,7 @@ func TestMatcherStructure(t *testing.T) {
 
 func TestTriggerMatchStructure(t *testing.T) {
 	pack := Pack{Name: "test-pack", Path: "/test"}
-	
+
 	match := TriggerMatch{
 		TriggerName:  "filename",
 		Pack:         pack.Name,
@@ -255,12 +255,12 @@ func TestTriggerMatchStructure(t *testing.T) {
 		},
 		Priority: 1,
 	}
-	
+
 	// Verify fields
 	if match.Pack != "test-pack" {
 		t.Errorf("TriggerMatch.Pack = %s, want test-pack", match.Pack)
 	}
-	
+
 	if match.Metadata["extension"] != ".conf" {
 		t.Errorf("TriggerMatch.Metadata[extension] = %v, want .conf", match.Metadata["extension"])
 	}

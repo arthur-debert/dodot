@@ -48,16 +48,16 @@ func (t *FileNameTrigger) Description() string {
 // Match checks if the given file matches this trigger's pattern
 func (t *FileNameTrigger) Match(path string, info fs.FileInfo) (bool, map[string]interface{}) {
 	logger := logging.GetLogger("triggers.filename")
-	
+
 	// Skip directories
 	if info.IsDir() {
 		return false, nil
 	}
-	
+
 	filename := filepath.Base(path)
 	var matched bool
 	var err error
-	
+
 	if t.isGlob {
 		matched, err = filepath.Match(t.pattern, filename)
 		if err != nil {
@@ -71,7 +71,7 @@ func (t *FileNameTrigger) Match(path string, info fs.FileInfo) (bool, map[string
 	} else {
 		matched = filename == t.pattern
 	}
-	
+
 	if matched {
 		logger.Debug().
 			Str("trigger", t.Name()).
@@ -79,7 +79,7 @@ func (t *FileNameTrigger) Match(path string, info fs.FileInfo) (bool, map[string
 			Str("file", path).
 			Bool("is_glob", t.isGlob).
 			Msg("file matched trigger")
-		
+
 		metadata := map[string]interface{}{
 			"pattern":  t.pattern,
 			"filename": filename,
@@ -87,7 +87,7 @@ func (t *FileNameTrigger) Match(path string, info fs.FileInfo) (bool, map[string
 		}
 		return true, metadata
 	}
-	
+
 	return false, nil
 }
 

@@ -6,31 +6,31 @@ type ActionType string
 const (
 	// ActionTypeLink creates a symbolic link
 	ActionTypeLink ActionType = "link"
-	
+
 	// ActionTypeCopy copies a file
 	ActionTypeCopy ActionType = "copy"
-	
+
 	// ActionTypeWrite writes content to a file
 	ActionTypeWrite ActionType = "write"
-	
+
 	// ActionTypeAppend appends content to a file
 	ActionTypeAppend ActionType = "append"
-	
+
 	// ActionTypeMkdir creates a directory
 	ActionTypeMkdir ActionType = "mkdir"
-	
+
 	// ActionTypeShellSource adds a file to be sourced by the shell
 	ActionTypeShellSource ActionType = "shell_source"
-	
+
 	// ActionTypePathAdd adds a directory to PATH
 	ActionTypePathAdd ActionType = "path_add"
-	
+
 	// ActionTypeRun executes a command
 	ActionTypeRun ActionType = "run"
-	
+
 	// ActionTypeBrew processes a Brewfile
 	ActionTypeBrew ActionType = "brew"
-	
+
 	// ActionTypeInstall runs an install script
 	ActionTypeInstall ActionType = "install"
 )
@@ -40,37 +40,37 @@ const (
 type Action struct {
 	// Type specifies what kind of action this is
 	Type ActionType
-	
+
 	// Description is a human-readable description of what this action does
 	Description string
-	
+
 	// Source is the source path (for link, copy operations)
 	Source string
-	
+
 	// Target is the target path (for link, copy, write operations)
 	Target string
-	
+
 	// Content is the content to write (for write, append operations)
 	Content string
-	
+
 	// Mode is the file permissions (for write, mkdir operations)
 	Mode uint32
-	
+
 	// Command is the command to run (for run operations)
 	Command string
-	
+
 	// Args are the arguments for the command (for run operations)
 	Args []string
-	
+
 	// Pack is the name of the pack that generated this action
 	Pack string
-	
+
 	// PowerUpName is the name of the power-up that generated this action
 	PowerUpName string
-	
+
 	// Priority determines the order of execution (higher = executed first)
 	Priority int
-	
+
 	// Metadata contains any additional data for this action
 	Metadata map[string]interface{}
 }

@@ -12,22 +12,22 @@ import (
 type Registry[T any] interface {
 	// Register adds an item to the registry
 	Register(name string, item T) error
-	
+
 	// Get retrieves an item from the registry
 	Get(name string) (T, error)
-	
+
 	// Remove removes an item from the registry
 	Remove(name string) error
-	
+
 	// List returns all registered names
 	List() []string
-	
+
 	// Has checks if an item is registered
 	Has(name string) bool
-	
+
 	// Clear removes all items from the registry
 	Clear()
-	
+
 	// Count returns the number of registered items
 	Count() int
 }
@@ -50,14 +50,14 @@ func (r *registry[T]) Register(name string, item T) error {
 	if name == "" {
 		return errors.New(errors.ErrInvalidInput, "registry name cannot be empty")
 	}
-	
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if _, exists := r.items[name]; exists {
 		return errors.Newf(errors.ErrAlreadyExists, "item '%s' is already registered", name)
 	}
-	
+
 	r.items[name] = item
 	return nil
 }
@@ -66,13 +66,13 @@ func (r *registry[T]) Register(name string, item T) error {
 func (r *registry[T]) Get(name string) (T, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	item, exists := r.items[name]
 	if !exists {
 		var zero T
 		return zero, errors.Newf(errors.ErrNotFound, "item '%s' not found in registry", name)
 	}
-	
+
 	return item, nil
 }
 
@@ -80,11 +80,11 @@ func (r *registry[T]) Get(name string) (T, error) {
 func (r *registry[T]) Remove(name string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	if _, exists := r.items[name]; !exists {
 		return errors.Newf(errors.ErrNotFound, "item '%s' not found in registry", name)
 	}
-	
+
 	delete(r.items, name)
 	return nil
 }
@@ -93,12 +93,12 @@ func (r *registry[T]) Remove(name string) error {
 func (r *registry[T]) List() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	names := make([]string, 0, len(r.items))
 	for name := range r.items {
 		names = append(names, name)
 	}
-	
+
 	sort.Strings(names)
 	return names
 }
@@ -107,7 +107,7 @@ func (r *registry[T]) List() []string {
 func (r *registry[T]) Has(name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	_, exists := r.items[name]
 	return exists
 }
@@ -116,7 +116,7 @@ func (r *registry[T]) Has(name string) bool {
 func (r *registry[T]) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	r.items = make(map[string]T)
 }
 
@@ -124,7 +124,7 @@ func (r *registry[T]) Clear() {
 func (r *registry[T]) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	
+
 	return len(r.items)
 }
 

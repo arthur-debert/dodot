@@ -17,13 +17,13 @@ func TestShouldRunOnceAction(t *testing.T) {
 	t.Cleanup(func() {
 		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
 	})
-	
+
 	// Create sentinel directories
 	brewfileDir := filepath.Join(tmpDir, "brewfile")
 	installDir := filepath.Join(tmpDir, "install")
 	_ = os.MkdirAll(brewfileDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
-	
+
 	tests := []struct {
 		name        string
 		action      types.Action
@@ -154,7 +154,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 			shouldRun: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up any previous sentinel files
@@ -162,13 +162,13 @@ func TestShouldRunOnceAction(t *testing.T) {
 			_ = os.RemoveAll(installDir)
 			_ = os.MkdirAll(brewfileDir, 0755)
 			_ = os.MkdirAll(installDir, 0755)
-			
+
 			if tt.setupFunc != nil {
 				tt.setupFunc()
 			}
-			
+
 			shouldRun, err := ShouldRunOnceAction(tt.action, tt.force)
-			
+
 			if tt.expectError {
 				testutil.AssertError(t, err)
 			} else {
@@ -187,7 +187,7 @@ func TestFilterRunOnceActions(t *testing.T) {
 	t.Cleanup(func() {
 		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
 	})
-	
+
 	// Create sentinel directories and files
 	brewfileDir := filepath.Join(tmpDir, "brewfile")
 	installDir := filepath.Join(tmpDir, "install")
@@ -195,7 +195,7 @@ func TestFilterRunOnceActions(t *testing.T) {
 	_ = os.MkdirAll(installDir, 0755)
 	_ = os.WriteFile(filepath.Join(brewfileDir, "tools"), []byte("brew123"), 0644)
 	_ = os.WriteFile(filepath.Join(installDir, "dev"), []byte("install456"), 0644)
-	
+
 	actions := []types.Action{
 		// Regular action - always included
 		{
@@ -243,7 +243,7 @@ func TestFilterRunOnceActions(t *testing.T) {
 			},
 		},
 	}
-	
+
 	tests := []struct {
 		name          string
 		force         bool
@@ -263,13 +263,13 @@ func TestFilterRunOnceActions(t *testing.T) {
 			expectedDescs: []string{"Link action", "Brew tools", "Brew utils", "Install dev", "Install dev updated"},
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			filtered, err := FilterRunOnceActions(actions, tt.force)
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, tt.expectedCount, len(filtered))
-			
+
 			// Check that we got the expected actions
 			for i, desc := range tt.expectedDescs {
 				if i < len(filtered) {
@@ -284,7 +284,7 @@ func TestFilterRunOnceActions_Empty(t *testing.T) {
 	filtered, err := FilterRunOnceActions([]types.Action{}, false)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 0, len(filtered))
-	
+
 	filtered, err = FilterRunOnceActions(nil, false)
 	testutil.AssertNoError(t, err)
 	testutil.AssertNil(t, filtered)
@@ -292,14 +292,14 @@ func TestFilterRunOnceActions_Empty(t *testing.T) {
 
 func TestCalculateActionChecksum(t *testing.T) {
 	tmpDir := testutil.TempDir(t, "checksum-test")
-	
+
 	// Create test files
 	brewfile := filepath.Join(tmpDir, "Brewfile")
 	installScript := filepath.Join(tmpDir, "install.sh")
-	
+
 	_ = os.WriteFile(brewfile, []byte("brew \"git\""), 0644)
 	_ = os.WriteFile(installScript, []byte("#!/bin/bash\necho install"), 0755)
-	
+
 	tests := []struct {
 		name        string
 		action      types.Action
@@ -345,11 +345,11 @@ func TestCalculateActionChecksum(t *testing.T) {
 			expectError: true,
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			checksum, err := CalculateActionChecksum(tt.action)
-			
+
 			if tt.expectError {
 				testutil.AssertError(t, err)
 				testutil.AssertEqual(t, "", checksum)
@@ -365,11 +365,11 @@ func TestCalculateActionChecksum(t *testing.T) {
 func BenchmarkShouldRunOnceAction(b *testing.B) {
 	tmpDir := b.TempDir()
 	_ = os.Setenv("DODOT_DATA_DIR", tmpDir)
-	
+
 	brewfileDir := filepath.Join(tmpDir, "brewfile")
 	_ = os.MkdirAll(brewfileDir, 0755)
 	_ = os.WriteFile(filepath.Join(brewfileDir, "tools"), []byte("abc123"), 0644)
-	
+
 	action := types.Action{
 		Type: types.ActionTypeBrew,
 		Metadata: map[string]interface{}{
@@ -377,7 +377,7 @@ func BenchmarkShouldRunOnceAction(b *testing.B) {
 			"pack":     "tools",
 		},
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = ShouldRunOnceAction(action, false)
@@ -387,7 +387,7 @@ func BenchmarkShouldRunOnceAction(b *testing.B) {
 func BenchmarkFilterRunOnceActions(b *testing.B) {
 	tmpDir := b.TempDir()
 	_ = os.Setenv("DODOT_DATA_DIR", tmpDir)
-	
+
 	actions := make([]types.Action, 100)
 	for i := 0; i < 100; i++ {
 		switch i % 3 {
@@ -413,7 +413,7 @@ func BenchmarkFilterRunOnceActions(b *testing.B) {
 			}
 		}
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = FilterRunOnceActions(actions, false)

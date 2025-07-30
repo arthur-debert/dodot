@@ -48,11 +48,11 @@ func TestGetFsOps(t *testing.T) {
 				// Should create parent directory first
 				testutil.AssertEqual(t, types.OperationCreateDir, ops[0].Type)
 				testutil.AssertContains(t, ops[0].Target, ".config/app")
-				
+
 				// Deploy symlink
 				testutil.AssertEqual(t, types.OperationCreateSymlink, ops[1].Type)
 				testutil.AssertEqual(t, "/source/config.yml", ops[1].Source)
-				
+
 				// User symlink
 				testutil.AssertEqual(t, types.OperationCreateSymlink, ops[2].Type)
 			},
@@ -139,15 +139,15 @@ func TestGetFsOps(t *testing.T) {
 				// Install action should be processed first (higher priority)
 				testutil.AssertEqual(t, types.OperationCreateDir, ops[0].Type)
 				testutil.AssertEqual(t, types.GetInstallDir(), ops[0].Target)
-				
+
 				testutil.AssertEqual(t, types.OperationWriteFile, ops[1].Type)
 				testutil.AssertContains(t, ops[1].Target, "dev")
 				testutil.AssertEqual(t, "install456", ops[1].Content)
-				
+
 				// Then brew action
 				testutil.AssertEqual(t, types.OperationCreateDir, ops[2].Type)
 				testutil.AssertEqual(t, types.GetBrewfileDir(), ops[2].Target)
-				
+
 				testutil.AssertEqual(t, types.OperationWriteFile, ops[3].Type)
 				testutil.AssertContains(t, ops[3].Target, "tools")
 				testutil.AssertEqual(t, "brew123", ops[3].Content)
@@ -158,15 +158,15 @@ func TestGetFsOps(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ops, err := GetFsOps(tt.actions)
-			
+
 			if tt.wantError {
 				testutil.AssertError(t, err)
 				return
 			}
-			
+
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, tt.wantOpsCount, len(ops))
-			
+
 			if tt.checkOps != nil {
 				tt.checkOps(t, ops)
 			}
@@ -683,7 +683,7 @@ func TestConvertAction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ops, err := ConvertAction(tt.action)
-			
+
 			if tt.wantError {
 				testutil.AssertError(t, err)
 				if tt.errorCode != "" {
@@ -694,11 +694,11 @@ func TestConvertAction(t *testing.T) {
 				}
 				return
 			}
-			
+
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, len(tt.wantOps), len(ops),
 				"Expected %d operations, got %d", len(tt.wantOps), len(ops))
-			
+
 			for i, wantOp := range tt.wantOps {
 				if i >= len(ops) {
 					break
@@ -709,7 +709,7 @@ func TestConvertAction(t *testing.T) {
 				testutil.AssertEqual(t, wantOp.Target, gotOp.Target)
 				testutil.AssertEqual(t, wantOp.Content, gotOp.Content)
 				testutil.AssertEqual(t, wantOp.Description, gotOp.Description)
-				
+
 				// Compare Mode pointers
 				if wantOp.Mode == nil && gotOp.Mode == nil {
 					// Both nil, ok
@@ -726,7 +726,7 @@ func TestConvertAction(t *testing.T) {
 
 func TestExpandHome(t *testing.T) {
 	homeDir, _ := os.UserHomeDir()
-	
+
 	tests := []struct {
 		name     string
 		path     string
@@ -763,7 +763,7 @@ func TestExpandHome(t *testing.T) {
 			expected: "",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := expandHome(tt.path)
@@ -771,7 +771,6 @@ func TestExpandHome(t *testing.T) {
 		})
 	}
 }
-
 
 // Benchmarks
 func BenchmarkGetFsOps(b *testing.B) {
@@ -783,7 +782,7 @@ func BenchmarkGetFsOps(b *testing.B) {
 		{Type: types.ActionTypeShellSource, Source: "/script.sh"},
 		{Type: types.ActionTypePathAdd, Source: "/bin"},
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := GetFsOps(actions)
@@ -799,7 +798,7 @@ func BenchmarkConvertAction_Link(b *testing.B) {
 		Source: "/source/file",
 		Target: "~/.config/app/file",
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := ConvertAction(action)

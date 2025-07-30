@@ -101,9 +101,9 @@ func TestGetPackCandidates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			root := tt.setup(t)
-			
+
 			candidates, err := GetPackCandidates(root)
-			
+
 			if tt.wantErr {
 				testutil.AssertError(t, err)
 				if tt.errCode != "" {
@@ -112,17 +112,17 @@ func TestGetPackCandidates(t *testing.T) {
 				}
 				return
 			}
-			
+
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, tt.expectedCount, len(candidates),
 				"unexpected number of candidates")
-			
+
 			// Extract just the base names for comparison
 			var names []string
 			for _, c := range candidates {
 				names = append(names, filepath.Base(c))
 			}
-			
+
 			if len(tt.expectedNames) > 0 {
 				testutil.AssertSliceEqual(t, tt.expectedNames, names)
 			}
@@ -156,7 +156,7 @@ func TestGetPacks(t *testing.T) {
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
 				pack := testutil.CreateDir(t, root, "configured-pack")
-				
+
 				config := `
 [files]
 "test.conf" = "symlink"
@@ -177,14 +177,14 @@ func TestGetPacks(t *testing.T) {
 			name: "skip pack with skip=true",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
-				
+
 				// Enabled pack
 				pack1 := testutil.CreateDir(t, root, "enabled-pack")
-				
+
 				// Skipped pack
 				pack2 := testutil.CreateDir(t, root, "skipped-pack")
 				testutil.CreateFile(t, pack2, ".dodot.toml", "skip = true")
-				
+
 				return []string{pack1, pack2}
 			},
 			expectedCount: 1,
@@ -196,14 +196,14 @@ func TestGetPacks(t *testing.T) {
 			name: "skip disabled pack",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
-				
+
 				// Enabled pack
 				pack1 := testutil.CreateDir(t, root, "enabled-pack")
-				
+
 				// Disabled pack
 				pack2 := testutil.CreateDir(t, root, "disabled-pack")
 				testutil.CreateFile(t, pack2, ".dodot.toml", "disabled = true")
-				
+
 				return []string{pack1, pack2}
 			},
 			expectedCount: 1,
@@ -215,12 +215,12 @@ func TestGetPacks(t *testing.T) {
 			name: "sort by name alphabetically",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
-				
+
 				pack1 := testutil.CreateDir(t, root, "zebra-pack")
 				pack2 := testutil.CreateDir(t, root, "alpha-pack")
 				pack3 := testutil.CreateDir(t, root, "beta-pack")
 				pack4 := testutil.CreateDir(t, root, "default-pack")
-				
+
 				return []string{pack1, pack2, pack3, pack4}
 			},
 			expectedCount: 4,
@@ -237,14 +237,14 @@ func TestGetPacks(t *testing.T) {
 			name: "invalid pack config",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")
-				
+
 				// Valid pack
 				pack1 := testutil.CreateDir(t, root, "good-pack")
-				
+
 				// Pack with invalid TOML
 				pack2 := testutil.CreateDir(t, root, "bad-pack")
 				testutil.CreateFile(t, pack2, ".dodot.toml", "invalid = [toml")
-				
+
 				return []string{pack1, pack2}
 			},
 			expectedCount: 1, // Should skip the bad pack
@@ -257,13 +257,13 @@ func TestGetPacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			candidates := tt.setup(t)
-			
+
 			packs, err := GetPacks(candidates)
-			
+
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, tt.expectedCount, len(packs),
 				"unexpected number of packs")
-			
+
 			if tt.validate != nil {
 				tt.validate(t, packs)
 			}
@@ -352,14 +352,14 @@ ignore = true
 			// Create temporary config file
 			dir := testutil.TempDir(t, "config-test")
 			configPath := testutil.CreateFile(t, dir, ".dodot.toml", tt.toml)
-			
+
 			config, err := loadPackConfig(configPath)
-			
+
 			if tt.wantErr {
 				testutil.AssertError(t, err)
 				return
 			}
-			
+
 			testutil.AssertNoError(t, err)
 			if tt.validate != nil {
 				tt.validate(t, config)
@@ -397,7 +397,7 @@ func TestFileExists(t *testing.T) {
 	dir := testutil.TempDir(t, "exists-test")
 	existingFile := testutil.CreateFile(t, dir, "exists.txt", "content")
 	nonExisting := filepath.Join(dir, "not-exists.txt")
-	
+
 	testutil.AssertTrue(t, config.FileExists(existingFile))
 	testutil.AssertFalse(t, config.FileExists(nonExisting))
 }
@@ -406,25 +406,25 @@ func TestFileExists(t *testing.T) {
 func TestPackDiscoveryIntegration(t *testing.T) {
 	// Create a realistic dotfiles structure
 	root := testutil.CreateDotfilesRepo(t)
-	
+
 	// Get candidates
 	candidates, err := GetPackCandidates(root)
 	testutil.AssertNoError(t, err)
-	
+
 	// Should find our test packs
 	testutil.AssertTrue(t, len(candidates) >= 4,
 		"expected at least 4 packs, got %d", len(candidates))
-	
+
 	// Load packs
 	packs, err := GetPacks(candidates)
 	testutil.AssertNoError(t, err)
-	
+
 	// Verify we got the expected packs
 	packNames := make(map[string]bool)
 	for _, p := range packs {
 		packNames[p.Name] = true
 	}
-	
+
 	expectedPacks := []string{"vim-pack", "shell-pack", "bin-pack", "config-pack"}
 	for _, expected := range expectedPacks {
 		testutil.AssertTrue(t, packNames[expected],
@@ -437,7 +437,7 @@ func BenchmarkGetPacks(b *testing.B) {
 	// Create test structure
 	root := b.TempDir()
 	var candidates []string
-	
+
 	// Create 50 packs
 	for i := 0; i < 50; i++ {
 		packName := filepath.Join(root, fmt.Sprintf("pack-%02d", i))
@@ -445,7 +445,7 @@ func BenchmarkGetPacks(b *testing.B) {
 			b.Fatal(err)
 		}
 		candidates = append(candidates, packName)
-		
+
 		// Half with configs
 		if i%2 == 0 {
 			config := fmt.Sprintf(`description = "Pack %d"\npriority = %d`, i, i)
@@ -455,7 +455,7 @@ func BenchmarkGetPacks(b *testing.B) {
 			}
 		}
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, err := GetPacks(candidates)
@@ -559,9 +559,9 @@ func TestValidatePack(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			packPath := tt.setup(t)
-			
+
 			err := ValidatePack(packPath)
-			
+
 			if tt.wantErr {
 				testutil.AssertError(t, err)
 				if tt.errCode != "" {
@@ -641,14 +641,14 @@ func TestSelectPacks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			selected, err := SelectPacks(tt.allPacks, tt.selectedNames)
-			
+
 			if tt.wantErr {
 				testutil.AssertError(t, err)
 				if tt.errCode != "" {
 					testutil.AssertTrue(t, errors.IsErrorCode(err, tt.errCode),
 						"expected error code %s, got %s", tt.errCode, errors.GetErrorCode(err))
 				}
-				
+
 				// Check error details
 				if tt.errCode == errors.ErrPackNotFound {
 					details := errors.GetErrorDetails(err)
@@ -658,7 +658,7 @@ func TestSelectPacks(t *testing.T) {
 			} else {
 				testutil.AssertNoError(t, err)
 				testutil.AssertEqual(t, len(tt.expectedNames), len(selected))
-				
+
 				for i, name := range tt.expectedNames {
 					testutil.AssertEqual(t, name, selected[i].Name,
 						"pack at index %d", i)
@@ -674,10 +674,10 @@ func TestGetPackNames(t *testing.T) {
 		{Name: "pack2"},
 		{Name: "pack3"},
 	}
-	
+
 	names := getPackNames(packs)
 	expected := []string{"pack1", "pack2", "pack3"}
-	
+
 	testutil.AssertSliceEqual(t, expected, names)
 }
 
@@ -721,7 +721,7 @@ func TestGetFileAction(t *testing.T) {
 			name: "exact match takes precedence over pattern",
 			config: types.PackConfig{
 				Files: map[string]string{
-					"*.txt":      "ignore",
+					"*.txt":       "ignore",
 					"special.txt": "symlink",
 				},
 			},

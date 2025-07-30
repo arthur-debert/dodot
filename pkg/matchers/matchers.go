@@ -33,7 +33,7 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
-		
+
 		// Shell configurations
 		{
 			Name:        "bash-config",
@@ -65,7 +65,7 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
-		
+
 		// Git configuration
 		{
 			Name:        "git-config",
@@ -87,7 +87,7 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
-		
+
 		// Common development tools
 		{
 			Name:        "tmux-config",
@@ -146,28 +146,28 @@ func CreateMatcher(config *types.MatcherConfig) (*types.Matcher, error) {
 		PowerUpOptions: config.PowerUpOptions,
 		Enabled:        true,
 	}
-	
+
 	// Handle enabled flag
 	if config.Enabled != nil {
 		matcher.Enabled = *config.Enabled
 	}
-	
+
 	// Handle convenience fields
 	if config.Pattern != "" && matcher.TriggerOptions == nil {
 		matcher.TriggerOptions = make(map[string]interface{})
 		matcher.TriggerOptions["pattern"] = config.Pattern
 	}
-	
+
 	if config.Target != "" && matcher.PowerUpOptions == nil {
 		matcher.PowerUpOptions = make(map[string]interface{})
 		matcher.PowerUpOptions["target"] = config.Target
 	}
-	
+
 	// Validate the matcher
 	if err := ValidateMatcher(matcher); err != nil {
 		return nil, fmt.Errorf("invalid matcher configuration: %w", err)
 	}
-	
+
 	return matcher, nil
 }
 
@@ -176,23 +176,23 @@ func ValidateMatcher(matcher *types.Matcher) error {
 	if matcher.TriggerName == "" {
 		return fmt.Errorf("trigger name is required")
 	}
-	
+
 	if matcher.PowerUpName == "" {
 		return fmt.Errorf("power-up name is required")
 	}
-	
+
 	// Check if trigger factory exists
 	_, err := registry.GetTriggerFactory(matcher.TriggerName)
 	if err != nil {
 		return fmt.Errorf("unknown trigger: %s", matcher.TriggerName)
 	}
-	
+
 	// Check if power-up factory exists
 	_, err = registry.GetPowerUpFactory(matcher.PowerUpName)
 	if err != nil {
 		return fmt.Errorf("unknown power-up: %s", matcher.PowerUpName)
 	}
-	
+
 	return nil
 }
 
@@ -212,7 +212,7 @@ func SortMatchersByPriority(matchers []types.Matcher) {
 func FilterEnabledMatchers(matchers []types.Matcher) []types.Matcher {
 	logger := logging.GetLogger("matchers")
 	enabled := make([]types.Matcher, 0, len(matchers))
-	
+
 	for _, m := range matchers {
 		if m.Enabled {
 			enabled = append(enabled, m)
@@ -224,17 +224,17 @@ func FilterEnabledMatchers(matchers []types.Matcher) []types.Matcher {
 				Msg("skipping disabled matcher")
 		}
 	}
-	
+
 	return enabled
 }
 
 // MergeMatchers combines multiple matcher slices, with later ones taking precedence
 func MergeMatchers(matcherSets ...[]types.Matcher) []types.Matcher {
 	logger := logging.GetLogger("matchers")
-	
+
 	// Use a map to track matchers by name for deduplication
 	matcherMap := make(map[string]types.Matcher)
-	
+
 	// Process each set in order, later sets override earlier ones
 	for _, set := range matcherSets {
 		for _, matcher := range set {
@@ -243,7 +243,7 @@ func MergeMatchers(matcherSets ...[]types.Matcher) []types.Matcher {
 				// For unnamed matchers, use trigger+powerup as key
 				key = fmt.Sprintf("%s:%s", matcher.TriggerName, matcher.PowerUpName)
 			}
-			
+
 			if _, exists := matcherMap[key]; exists {
 				logger.Debug().
 					Str("name", matcher.Name).
@@ -251,19 +251,19 @@ func MergeMatchers(matcherSets ...[]types.Matcher) []types.Matcher {
 					Str("powerup", matcher.PowerUpName).
 					Msg("overriding existing matcher")
 			}
-			
+
 			matcherMap[key] = matcher
 		}
 	}
-	
+
 	// Convert map back to slice
 	result := make([]types.Matcher, 0, len(matcherMap))
 	for _, matcher := range matcherMap {
 		result = append(result, matcher)
 	}
-	
+
 	// Sort by priority for consistent ordering
 	SortMatchersByPriority(result)
-	
+
 	return result
 }

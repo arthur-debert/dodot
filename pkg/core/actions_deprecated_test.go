@@ -27,12 +27,12 @@ func TestProcessMatch(t *testing.T) {
 	actions, err := ProcessMatch(match)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 1, len(actions))
-	
+
 	// Verify it produces the same result as ProcessMatchGroup
 	groupActions, err := ProcessMatchGroup([]types.TriggerMatch{match})
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, len(actions), len(groupActions))
-	
+
 	if len(actions) > 0 && len(groupActions) > 0 {
 		testutil.AssertEqual(t, actions[0].Type, groupActions[0].Type)
 		testutil.AssertEqual(t, actions[0].Source, groupActions[0].Source)

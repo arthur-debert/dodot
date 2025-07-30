@@ -211,7 +211,7 @@ func TestPipelineIntegration(t *testing.T) {
 // TestPipelineErrorPropagation tests that errors are properly propagated through the pipeline
 func TestPipelineErrorPropagation(t *testing.T) {
 	// Test with non-existent directory
-		t.Run("NonExistentRoot", func(t *testing.T) {
+	t.Run("NonExistentRoot", func(t *testing.T) {
 		_, err := GetPackCandidates("/non/existent/path")
 		testutil.AssertError(t, err)
 	})
@@ -339,8 +339,8 @@ func BenchmarkPipelineEndToEnd(b *testing.B) {
 		config := fmt.Sprintf(`description = "%s configuration"\npriority = 1\n\n[[matchers]]\ntrigger = "filename"\npowerup = "symlink"\npattern = "*.conf"`, packName)
 		configPath := filepath.Join(packDir, ".dodot.toml")
 		if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
-				b.Fatal(err)
-			}
+			b.Fatal(err)
+		}
 	}
 
 	b.ResetTimer()

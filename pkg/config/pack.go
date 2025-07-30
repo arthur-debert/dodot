@@ -14,7 +14,7 @@ var log = logging.GetLogger("config")
 // LoadPackConfig reads and parses a pack's .dodot.toml configuration file
 func LoadPackConfig(configPath string) (types.PackConfig, error) {
 	logger := log.With().Str("configPath", configPath).Logger()
-	
+
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return types.PackConfig{}, fmt.Errorf("failed to read config file: %w", err)

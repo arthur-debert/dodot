@@ -30,7 +30,7 @@ func GetFiringTriggers(packs []types.Pack) ([]types.TriggerMatch, error) {
 		}
 		allMatches = append(allMatches, matches...)
 	}
-	
+
 	logger.Info().Int("matchCount", len(allMatches)).Msg("Found trigger matches")
 	return allMatches, nil
 }
@@ -40,7 +40,7 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("core.triggers").With().
 		Str("pack", pack.Name).
 		Logger()
-	
+
 	logger.Debug().Msg("Processing pack triggers")
 
 	// Get matchers from pack config, merging with defaults

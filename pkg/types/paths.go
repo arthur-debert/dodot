@@ -11,11 +11,11 @@ func GetDodotDataDir() string {
 	if dataDir := os.Getenv("DODOT_DATA_DIR"); dataDir != "" {
 		return dataDir
 	}
-	
+
 	if xdgDataHome := os.Getenv("XDG_DATA_HOME"); xdgDataHome != "" {
 		return filepath.Join(xdgDataHome, "dodot")
 	}
-	
+
 	homeDir, _ := os.UserHomeDir()
 	return filepath.Join(homeDir, ".local", "share", "dodot")
 }

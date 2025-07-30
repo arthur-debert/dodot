@@ -11,19 +11,19 @@ type ErrorCode string
 // Error codes for different error categories
 const (
 	// General errors
-	ErrUnknown      ErrorCode = "UNKNOWN"
-	ErrInternal     ErrorCode = "INTERNAL"
-	ErrInvalidInput ErrorCode = "INVALID_INPUT"
-	ErrNotFound     ErrorCode = "NOT_FOUND"
-	ErrAlreadyExists ErrorCode = "ALREADY_EXISTS"
-	ErrPermission   ErrorCode = "PERMISSION"
+	ErrUnknown        ErrorCode = "UNKNOWN"
+	ErrInternal       ErrorCode = "INTERNAL"
+	ErrInvalidInput   ErrorCode = "INVALID_INPUT"
+	ErrNotFound       ErrorCode = "NOT_FOUND"
+	ErrAlreadyExists  ErrorCode = "ALREADY_EXISTS"
+	ErrPermission     ErrorCode = "PERMISSION"
 	ErrNotImplemented ErrorCode = "NOT_IMPLEMENTED"
-	
+
 	// Configuration errors
-	ErrConfigLoad   ErrorCode = "CONFIG_LOAD"
-	ErrConfigParse  ErrorCode = "CONFIG_PARSE"
-	ErrConfigValid  ErrorCode = "CONFIG_INVALID"
-	
+	ErrConfigLoad  ErrorCode = "CONFIG_LOAD"
+	ErrConfigParse ErrorCode = "CONFIG_PARSE"
+	ErrConfigValid ErrorCode = "CONFIG_INVALID"
+
 	// Pack errors
 	ErrPackNotFound ErrorCode = "PACK_NOT_FOUND"
 	ErrPackInvalid  ErrorCode = "PACK_INVALID"
@@ -32,30 +32,30 @@ const (
 	ErrPackEmpty    ErrorCode = "PACK_EMPTY"
 	ErrPackExists   ErrorCode = "PACK_EXISTS"
 	ErrPackInit     ErrorCode = "PACK_INIT"
-	
+
 	// Trigger errors
 	ErrTriggerNotFound ErrorCode = "TRIGGER_NOT_FOUND"
 	ErrTriggerInvalid  ErrorCode = "TRIGGER_INVALID"
 	ErrTriggerMatch    ErrorCode = "TRIGGER_MATCH"
-	
+
 	// PowerUp errors
 	ErrPowerUpNotFound ErrorCode = "POWERUP_NOT_FOUND"
 	ErrPowerUpInvalid  ErrorCode = "POWERUP_INVALID"
 	ErrPowerUpExecute  ErrorCode = "POWERUP_EXECUTE"
-	
+
 	// Action errors
-	ErrActionInvalid   ErrorCode = "ACTION_INVALID"
-	ErrActionConflict  ErrorCode = "ACTION_CONFLICT"
-	ErrActionExecute   ErrorCode = "ACTION_EXECUTE"
-	
+	ErrActionInvalid  ErrorCode = "ACTION_INVALID"
+	ErrActionConflict ErrorCode = "ACTION_CONFLICT"
+	ErrActionExecute  ErrorCode = "ACTION_EXECUTE"
+
 	// FileSystem errors
-	ErrFileNotFound   ErrorCode = "FILE_NOT_FOUND"
-	ErrFileAccess     ErrorCode = "FILE_ACCESS"
-	ErrFileCreate     ErrorCode = "FILE_CREATE"
-	ErrFileWrite      ErrorCode = "FILE_WRITE"
-	ErrSymlinkCreate  ErrorCode = "SYMLINK_CREATE"
-	ErrSymlinkExists  ErrorCode = "SYMLINK_EXISTS"
-	ErrDirCreate      ErrorCode = "DIR_CREATE"
+	ErrFileNotFound  ErrorCode = "FILE_NOT_FOUND"
+	ErrFileAccess    ErrorCode = "FILE_ACCESS"
+	ErrFileCreate    ErrorCode = "FILE_CREATE"
+	ErrFileWrite     ErrorCode = "FILE_WRITE"
+	ErrSymlinkCreate ErrorCode = "SYMLINK_CREATE"
+	ErrSymlinkExists ErrorCode = "SYMLINK_EXISTS"
+	ErrDirCreate     ErrorCode = "DIR_CREATE"
 )
 
 // DodotError represents a structured error with code and details

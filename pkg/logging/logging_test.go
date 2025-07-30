@@ -46,18 +46,18 @@ func TestSetupLogger(t *testing.T) {
 
 func TestGetLogFilePath(t *testing.T) {
 	tests := []struct {
-		name        string
-		xdgState    string
+		name         string
+		xdgState     string
 		wantContains string
 	}{
 		{
-			name:        "with XDG_STATE_HOME",
-			xdgState:    "/custom/state",
+			name:         "with XDG_STATE_HOME",
+			xdgState:     "/custom/state",
 			wantContains: "/custom/state/dodot/dodot.log",
 		},
 		{
-			name:        "without XDG_STATE_HOME",
-			xdgState:    "",
+			name:         "without XDG_STATE_HOME",
+			xdgState:     "",
 			wantContains: ".local/state/dodot/dodot.log",
 		},
 	}
@@ -81,7 +81,7 @@ func TestGetLogFilePath(t *testing.T) {
 
 func TestGetLogger(t *testing.T) {
 	logger := GetLogger("test-component")
-	
+
 	// This is a basic test - in practice we'd capture the output
 	// and verify the component field is set
 	logger.Info().Msg("test message")
@@ -95,7 +95,7 @@ func TestWithFields(t *testing.T) {
 	}
 
 	logger := WithFields(fields)
-	
+
 	// This is a basic test - in practice we'd capture the output
 	// and verify all fields are present
 	logger.Info().Msg("test message with fields")

@@ -56,7 +56,7 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	var candidates []string
 	for _, entry := range entries {
 		name := entry.Name()
-		
+
 		// Skip hidden directories (except .config which is common)
 		if strings.HasPrefix(name, ".") && name != ".config" {
 			logger.Debug().Str("name", name).Msg("Skipping hidden directory")
@@ -79,7 +79,7 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 
 	// Sort for consistent ordering
 	sort.Strings(candidates)
-	
+
 	logger.Info().Int("count", len(candidates)).Msg("Found pack candidates")
 	return candidates, nil
 }
@@ -90,7 +90,7 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger.Debug().Int("count", len(candidates)).Msg("Validating pack candidates")
 
 	var packs []types.Pack
-	
+
 	for _, candidatePath := range candidates {
 		pack, err := loadPack(candidatePath)
 		if err != nil {
@@ -132,7 +132,7 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 // loadPack creates a Pack instance from a directory path
 func loadPack(packPath string) (types.Pack, error) {
 	logger := log.With().Str("path", packPath).Logger()
-	
+
 	// Verify the path exists and is accessible
 	info, err := os.Stat(packPath)
 	if err != nil {
@@ -147,7 +147,7 @@ func loadPack(packPath string) (types.Pack, error) {
 
 	// Extract pack name from directory
 	packName := filepath.Base(packPath)
-	
+
 	// Create base pack
 	pack := types.Pack{
 		Name:     packName,
@@ -194,7 +194,7 @@ func shouldIgnore(name string) bool {
 // ValidatePack checks if a directory is a valid pack
 func ValidatePack(packPath string) error {
 	logger := logging.GetLogger("core.packs")
-	
+
 	// Check if path exists
 	info, err := os.Stat(packPath)
 	if err != nil {
@@ -205,13 +205,13 @@ func ValidatePack(packPath string) error {
 		return errors.Wrap(err, errors.ErrFileAccess, "cannot access pack directory").
 			WithDetail("path", packPath)
 	}
-	
+
 	// Check if it's a directory
 	if !info.IsDir() {
 		return errors.New(errors.ErrPackInvalid, "pack path is not a directory").
 			WithDetail("path", packPath)
 	}
-	
+
 	// Check if it has a .dodot.toml with skip=true
 	configPath := filepath.Join(packPath, ".dodot.toml")
 	if config.FileExists(configPath) {
@@ -222,7 +222,7 @@ func ValidatePack(packPath string) error {
 				WithDetail("path", packPath).
 				WithDetail("configPath", configPath)
 		}
-		
+
 		if packConfig.ShouldSkip() {
 			return errors.New(errors.ErrPackSkipped, "pack is marked as skip/disabled/ignore").
 				WithDetail("path", packPath).
@@ -231,20 +231,20 @@ func ValidatePack(packPath string) error {
 				WithDetail("ignore", packConfig.Ignore)
 		}
 	}
-	
+
 	// Check if directory is empty
 	entries, err := os.ReadDir(packPath)
 	if err != nil {
 		return errors.Wrap(err, errors.ErrFileAccess, "cannot read pack directory").
 			WithDetail("path", packPath)
 	}
-	
+
 	// An empty directory is not a valid pack
 	if len(entries) == 0 {
 		return errors.New(errors.ErrPackEmpty, "pack directory is empty").
 			WithDetail("path", packPath)
 	}
-	
+
 	logger.Debug().Str("path", packPath).Msg("Pack validation successful")
 	return nil
 }
@@ -252,21 +252,21 @@ func ValidatePack(packPath string) error {
 // SelectPacks filters a list of packs by name
 func SelectPacks(allPacks []types.Pack, selectedNames []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("core.packs")
-	
+
 	if len(selectedNames) == 0 {
 		// No selection means all packs
 		return allPacks, nil
 	}
-	
+
 	// Create a map for quick lookup
 	packMap := make(map[string]types.Pack)
 	for _, pack := range allPacks {
 		packMap[pack.Name] = pack
 	}
-	
+
 	var selected []types.Pack
 	var notFound []string
-	
+
 	for _, name := range selectedNames {
 		if pack, exists := packMap[name]; exists {
 			selected = append(selected, pack)
@@ -275,23 +275,23 @@ func SelectPacks(allPacks []types.Pack, selectedNames []string) ([]types.Pack, e
 			notFound = append(notFound, name)
 		}
 	}
-	
+
 	if len(notFound) > 0 {
 		return nil, errors.New(errors.ErrPackNotFound, "pack(s) not found").
 			WithDetail("notFound", notFound).
 			WithDetail("available", getPackNames(allPacks))
 	}
-	
+
 	// Sort by name for consistent ordering
 	sort.Slice(selected, func(i, j int) bool {
 		return selected[i].Name < selected[j].Name
 	})
-	
+
 	logger.Info().
 		Int("selected", len(selected)).
 		Int("total", len(allPacks)).
 		Msg("Selected packs")
-	
+
 	return selected, nil
 }
 
@@ -303,4 +303,3 @@ func getPackNames(packs []types.Pack) []string {
 	}
 	return names
 }
-

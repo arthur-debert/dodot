@@ -23,11 +23,11 @@ type SymlinkPowerUp struct {
 // NewSymlinkPowerUp creates a new SymlinkPowerUp with default target as user home
 func NewSymlinkPowerUp() *SymlinkPowerUp {
 	logger := logging.GetLogger("powerups.symlink")
-	
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to get user home directory, trying fallbacks")
-		
+
 		// Fallback to HOME env var if os.UserHomeDir fails
 		homeDir = os.Getenv("HOME")
 		if homeDir == "" {
@@ -45,7 +45,7 @@ func NewSymlinkPowerUp() *SymlinkPowerUp {
 			logger.Debug().Str("home", homeDir).Msg("using HOME environment variable")
 		}
 	}
-	
+
 	return &SymlinkPowerUp{
 		defaultTarget: homeDir,
 	}
@@ -70,7 +70,7 @@ func (p *SymlinkPowerUp) RunMode() types.RunMode {
 func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	logger := logging.GetLogger("powerups.symlink")
 	actions := make([]types.Action, 0, len(matches))
-	
+
 	// Get target directory from options or use default
 	targetDir := p.defaultTarget
 	if len(matches) > 0 && matches[0].PowerUpOptions != nil {
@@ -78,15 +78,15 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 			targetDir = os.ExpandEnv(target)
 		}
 	}
-	
+
 	// Track symlink targets to detect conflicts
 	targetMap := make(map[string]string)
-	
+
 	for _, match := range matches {
 		// Calculate target path
 		filename := filepath.Base(match.Path)
 		targetPath := filepath.Join(targetDir, filename)
-		
+
 		// Check for conflicts
 		if existingSource, exists := targetMap[targetPath]; exists {
 			logger.Error().
@@ -97,9 +97,9 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 			return nil, fmt.Errorf("symlink conflict: both %s and %s want to link to %s",
 				existingSource, match.AbsolutePath, targetPath)
 		}
-		
+
 		targetMap[targetPath] = match.AbsolutePath
-		
+
 		// Create symlink action
 		action := types.Action{
 			Type:        types.ActionTypeLink,
@@ -113,21 +113,21 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 				"trigger": match.TriggerName,
 			},
 		}
-		
+
 		actions = append(actions, action)
-		
+
 		logger.Debug().
 			Str("source", match.AbsolutePath).
 			Str("target", targetPath).
 			Str("pack", match.Pack).
 			Msg("generated symlink action")
 	}
-	
+
 	logger.Info().
 		Int("match_count", len(matches)).
 		Int("action_count", len(actions)).
 		Msg("processed trigger matches")
-	
+
 	return actions, nil
 }
 
@@ -136,21 +136,21 @@ func (p *SymlinkPowerUp) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {
 		return nil
 	}
-	
+
 	// Check target option if provided
 	if target, exists := options["target"]; exists {
 		if _, ok := target.(string); !ok {
 			return fmt.Errorf("target option must be a string, got %T", target)
 		}
 	}
-	
+
 	// Check for unknown options
 	for key := range options {
 		if key != "target" {
 			return fmt.Errorf("unknown option: %s", key)
 		}
 	}
-	
+
 	return nil
 }
 
