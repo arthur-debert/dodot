@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -89,7 +90,7 @@ func (p *InstallScriptPowerUp) ValidateOptions(options map[string]interface{}) e
 
 // GetSentinelPath returns the path to the sentinel file for a pack
 func GetInstallSentinelPath(pack string) string {
-	return filepath.Join(types.GetInstallDir(), pack)
+	return filepath.Join(paths.GetInstallDir(), pack)
 }
 
 func init() {

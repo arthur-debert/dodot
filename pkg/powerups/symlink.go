@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
 const (
@@ -26,7 +26,7 @@ func NewSymlinkPowerUp() *SymlinkPowerUp {
 	logger := logging.GetLogger("powerups.symlink")
 
 	// Try to get home directory, but use ~ as fallback
-	homeDir, err := utils.GetHomeDirectory()
+	homeDir, err := paths.GetHomeDirectory()
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to get home directory, using ~ placeholder")
 		homeDir = "~"

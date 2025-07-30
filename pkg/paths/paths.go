@@ -10,8 +10,6 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/arthur-debert/dodot/pkg/errors"
-	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/rs/zerolog"
 )
 
 // Environment variable names
@@ -90,19 +88,13 @@ type Paths struct {
 
 	// xdgState is the XDG state directory
 	xdgState string
-
-	log zerolog.Logger
 }
 
 // New creates a new Paths instance with the given dotfiles root.
 // If dotfilesRoot is empty, it will be determined from environment variables
 // or defaults.
 func New(dotfilesRoot string) (*Paths, error) {
-	log := logging.GetLogger("paths")
-
-	p := &Paths{
-		log: log,
-	}
+	p := &Paths{}
 
 	// Set up dotfiles root
 	if dotfilesRoot == "" {
@@ -126,14 +118,6 @@ func New(dotfilesRoot string) (*Paths, error) {
 	if err := p.setupXDGDirs(); err != nil {
 		return nil, err
 	}
-
-	log.Debug().
-		Str("dotfilesRoot", p.dotfilesRoot).
-		Str("xdgData", p.xdgData).
-		Str("xdgConfig", p.xdgConfig).
-		Str("xdgCache", p.xdgCache).
-		Str("xdgState", p.xdgState).
-		Msg("Paths initialized")
 
 	return p, nil
 }
@@ -181,9 +165,7 @@ func findDotfilesRoot() (string, error) {
 
 	// Check legacy DOTFILES_HOME
 	if home := os.Getenv(EnvDotfilesHome); home != "" {
-		log := logging.GetLogger("paths")
-		log.Warn().
-			Msg("DOTFILES_HOME is deprecated, please use DOTFILES_ROOT")
+		// Note: DOTFILES_HOME is deprecated, but we still support it for backwards compatibility
 		return expandHome(home), nil
 	}
 
