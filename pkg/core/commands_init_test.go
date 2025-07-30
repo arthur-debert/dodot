@@ -23,12 +23,27 @@ func TestInitPack(t *testing.T) {
 			},
 			packName: "new-pack",
 			validate: func(t *testing.T, result *types.InitResult, packPath string) {
+				// Since we're not executing operations yet, we only check the reported files
 				testutil.AssertEqual(t, 6, len(result.FilesCreated))
-				testutil.AssertDirExists(t, packPath)
-
-				// Check that all files were created
-				for _, f := range []string{".dodot.toml", "README.txt", "aliases.sh", "install.sh", "Brewfile", "path.sh"} {
-					testutil.AssertFileExists(t, filepath.Join(packPath, f))
+				
+				// Check that all expected files are in the result
+				expectedFiles := map[string]bool{
+					".dodot.toml": false,
+					"README.txt":  false,
+					"aliases.sh":  false,
+					"install.sh":  false,
+					"Brewfile":    false,
+					"path.sh":     false,
+				}
+				
+				for _, file := range result.FilesCreated {
+					if _, ok := expectedFiles[file]; ok {
+						expectedFiles[file] = true
+					}
+				}
+				
+				for file, found := range expectedFiles {
+					testutil.AssertTrue(t, found, "Expected file %s not in FilesCreated", file)
 				}
 			},
 		},

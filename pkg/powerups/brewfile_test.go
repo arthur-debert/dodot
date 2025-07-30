@@ -29,10 +29,6 @@ cask "visual-studio-code"`
 	err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644)
 	testutil.AssertNoError(t, err)
 
-	// Calculate expected checksum
-	expectedChecksum, err := testutil.CalculateFileChecksum(brewfilePath)
-	testutil.AssertNoError(t, err)
-
 	powerup := NewBrewfilePowerUp()
 
 	matches := []types.TriggerMatch{
@@ -46,20 +42,29 @@ cask "visual-studio-code"`
 
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 1, len(actions))
+	testutil.AssertEqual(t, 2, len(actions)) // Now we have checksum + brew actions
 
-	action := actions[0]
-	testutil.AssertEqual(t, types.ActionTypeBrew, action.Type)
-	testutil.AssertEqual(t, brewfilePath, action.Source)
-	testutil.AssertEqual(t, "tools", action.Pack)
-	testutil.AssertEqual(t, BrewfilePowerUpName, action.PowerUpName)
-	testutil.AssertEqual(t, 100, action.Priority)
-	testutil.AssertContains(t, action.Description, "Install packages from")
+	// First action should be checksum
+	checksumAction := actions[0]
+	testutil.AssertEqual(t, types.ActionTypeChecksum, checksumAction.Type)
+	testutil.AssertEqual(t, brewfilePath, checksumAction.Source)
+	testutil.AssertEqual(t, "tools", checksumAction.Pack)
+	testutil.AssertEqual(t, BrewfilePowerUpName, checksumAction.PowerUpName)
+	testutil.AssertEqual(t, 101, checksumAction.Priority) // Higher priority
+	testutil.AssertContains(t, checksumAction.Description, "Calculate checksum")
+
+	// Second action should be brew
+	brewAction := actions[1]
+	testutil.AssertEqual(t, types.ActionTypeBrew, brewAction.Type)
+	testutil.AssertEqual(t, brewfilePath, brewAction.Source)
+	testutil.AssertEqual(t, "tools", brewAction.Pack)
+	testutil.AssertEqual(t, BrewfilePowerUpName, brewAction.PowerUpName)
+	testutil.AssertEqual(t, 100, brewAction.Priority)
+	testutil.AssertContains(t, brewAction.Description, "Install packages from")
 
 	// Check metadata
-	testutil.AssertNotNil(t, action.Metadata)
-	testutil.AssertEqual(t, expectedChecksum, action.Metadata["checksum"])
-	testutil.AssertEqual(t, "tools", action.Metadata["pack"])
+	testutil.AssertNotNil(t, brewAction.Metadata)
+	testutil.AssertEqual(t, "tools", brewAction.Metadata["pack"])
 }
 
 func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
@@ -93,13 +98,28 @@ func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
 
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(actions))
+	testutil.AssertEqual(t, 4, len(actions)) // 2 checksum + 2 brew actions
 
-	// Verify each action
+	// Verify actions are in correct order
+	// First checksum for pack1
+	testutil.AssertEqual(t, types.ActionTypeChecksum, actions[0].Type)
 	testutil.AssertEqual(t, "pack1", actions[0].Pack)
-	testutil.AssertEqual(t, "pack2", actions[1].Pack)
-	testutil.AssertEqual(t, 100, actions[0].Priority)
-	testutil.AssertEqual(t, 200, actions[1].Priority)
+	testutil.AssertEqual(t, 101, actions[0].Priority)
+
+	// Then brew for pack1
+	testutil.AssertEqual(t, types.ActionTypeBrew, actions[1].Type)
+	testutil.AssertEqual(t, "pack1", actions[1].Pack)
+	testutil.AssertEqual(t, 100, actions[1].Priority)
+
+	// Then checksum for pack2
+	testutil.AssertEqual(t, types.ActionTypeChecksum, actions[2].Type)
+	testutil.AssertEqual(t, "pack2", actions[2].Pack)
+	testutil.AssertEqual(t, 201, actions[2].Priority)
+
+	// Finally brew for pack2
+	testutil.AssertEqual(t, types.ActionTypeBrew, actions[3].Type)
+	testutil.AssertEqual(t, "pack2", actions[3].Pack)
+	testutil.AssertEqual(t, 200, actions[3].Priority)
 }
 
 func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
@@ -114,10 +134,18 @@ func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
 		},
 	}
 
+	// Since we're no longer calculating checksums directly in the PowerUp,
+	// it should not fail but instead create actions
 	actions, err := powerup.Process(matches)
-	testutil.AssertError(t, err)
-	testutil.AssertNil(t, actions)
-	testutil.AssertContains(t, err.Error(), "failed to calculate checksum")
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 2, len(actions))
+
+	// First action should be checksum (which will fail when executed)
+	testutil.AssertEqual(t, types.ActionTypeChecksum, actions[0].Type)
+	testutil.AssertEqual(t, "/non/existent/file", actions[0].Source)
+
+	// Second action should be brew
+	testutil.AssertEqual(t, types.ActionTypeBrew, actions[1].Type)
 }
 
 func TestBrewfilePowerUp_ValidateOptions(t *testing.T) {
