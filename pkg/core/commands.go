@@ -338,6 +338,84 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	return result, nil
 }
 
+// generateFillPackActions generates actions for creating template files in a pack
+func generateFillPackActions(packPath, packName string) []types.Action {
+	templates := []struct {
+		filename string
+		content  string
+		mode     uint32
+	}{
+		{
+			filename: "aliases.sh",
+			content: `#!/usr/bin/env sh
+# Shell aliases for ` + packName + ` pack
+# Add your aliases below
+
+# Example:
+# alias ll='ls -la'
+`,
+			mode: 0755,
+		},
+		{
+			filename: "install.sh",
+			content: `#!/usr/bin/env bash
+# Installation script for ` + packName + ` pack
+# This script runs once during 'dodot install'
+
+set -euo pipefail
+
+echo "Installing ` + packName + ` pack..."
+
+# Add your installation commands below
+`,
+			mode: 0755,
+		},
+		{
+			filename: "Brewfile",
+			content: `# Homebrew dependencies for ` + packName + ` pack
+# This file is processed during 'dodot install'
+
+# Examples:
+# brew 'git'
+# brew 'tmux'
+# cask 'visual-studio-code'
+`,
+			mode: 0644,
+		},
+		{
+			filename: "path.sh",
+			content: `#!/usr/bin/env sh
+# PATH additions for ` + packName + ` pack
+# Export PATH modifications below
+
+# Example:
+# export PATH="$HOME/.local/bin:$PATH"
+`,
+			mode: 0755,
+		},
+	}
+
+	var actions []types.Action
+	for _, tmpl := range templates {
+		filePath := filepath.Join(packPath, tmpl.filename)
+		
+		// Create write action for the file
+		action := types.Action{
+			Type:        types.ActionTypeWrite,
+			Description: fmt.Sprintf("Create template file %s", tmpl.filename),
+			Target:      filePath,
+			Content:     tmpl.content,
+			Mode:        tmpl.mode,
+			Pack:        packName,
+			PowerUpName: "fill_pack_internal",
+			Priority:    100,
+		}
+		actions = append(actions, action)
+	}
+	
+	return actions
+}
+
 // FillPack adds placeholder files for power-ups to an existing pack.
 func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	log := logging.GetLogger("core.commands")
@@ -366,89 +444,45 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	}
 
 	// 3. Create placeholder files
+	// 3. Generate actions for template files
+	actions := generateFillPackActions(targetPack.Path, opts.PackName)
+	
+	// 4. Convert actions to operations
+	ops, err := GetFileOperations(actions)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
+	}
+
+	// 5. For now, just report what would be created
+	// In the future, these operations will be executed through synthfs
 	result := &types.FillResult{
 		PackName:     opts.PackName,
 		FilesCreated: []string{},
 	}
 
-	// Define template files for each power-up
-	templates := []struct {
-		filename string
-		content  string
-	}{
-		{
-			filename: "aliases.sh",
-			content: `#!/usr/bin/env sh
-# Shell aliases for ` + opts.PackName + ` pack
-# Add your aliases below
-
-# Example:
-# alias ll='ls -la'
-`,
-		},
-		{
-			filename: "install.sh",
-			content: `#!/usr/bin/env bash
-# Installation script for ` + opts.PackName + ` pack
-# This script runs once during 'dodot install'
-
-set -euo pipefail
-
-echo "Installing ` + opts.PackName + ` pack..."
-
-# Add your installation commands below
-`,
-		},
-		{
-			filename: "Brewfile",
-			content: `# Homebrew dependencies for ` + opts.PackName + ` pack
-# This file is processed during 'dodot install'
-
-# Examples:
-# brew 'git'
-# brew 'tmux'
-# cask 'visual-studio-code'
-`,
-		},
-		{
-			filename: "path.sh",
-			content: `#!/usr/bin/env sh
-# PATH additions for ` + opts.PackName + ` pack
-# Export PATH modifications below
-
-# Example:
-# export PATH="$HOME/.local/bin:$PATH"
-`,
-		},
-	}
-
-	// Create each template file if it doesn't exist
-	for _, tmpl := range templates {
-		filePath := filepath.Join(targetPack.Path, tmpl.filename)
-
-		// Check if file already exists
-		if _, err := os.Stat(filePath); err == nil {
-			log.Debug().Str("file", tmpl.filename).Msg("File already exists, skipping")
-			continue
-		}
-
-		// Write the template file
-		err := os.WriteFile(filePath, []byte(tmpl.content), 0644)
-		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create %s", tmpl.filename)
-		}
-
-		// Make shell scripts executable
-		if strings.HasSuffix(tmpl.filename, ".sh") {
-			err = os.Chmod(filePath, 0755)
-			if err != nil {
-				return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to make %s executable", tmpl.filename)
+	// Check which files already exist and which would be created
+	for _, action := range actions {
+		if action.Type == types.ActionTypeWrite {
+			filename := filepath.Base(action.Target)
+			
+			// Check if file already exists
+			if _, err := os.Stat(action.Target); err == nil {
+				log.Debug().Str("file", filename).Msg("File already exists, skipping")
+				continue
 			}
+			
+			result.FilesCreated = append(result.FilesCreated, filename)
+			log.Info().
+				Str("file", filename).
+				Str("operation", "would create").
+				Msg("Template file to be created")
 		}
-
-		result.FilesCreated = append(result.FilesCreated, tmpl.filename)
-		log.Info().Str("file", tmpl.filename).Msg("Created template file")
 	}
+	
+	log.Debug().
+		Int("actionCount", len(actions)).
+		Int("operationCount", len(ops)).
+		Msg("Generated operations for FillPack")
 
 	log.Info().Str("command", "FillPack").
 		Str("pack", opts.PackName).
@@ -472,7 +506,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		return nil, errors.Newf(errors.ErrInvalidInput, "pack name contains invalid characters: %s", opts.PackName)
 	}
 
-	// 2. Create the pack directory
+	// 2. Build pack path and check if it exists
 	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
 
 	// Check if pack already exists
@@ -480,19 +514,22 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		return nil, errors.Newf(errors.ErrPackExists, "pack %q already exists", opts.PackName)
 	}
 
-	// Create the directory
-	err := os.MkdirAll(packPath, 0755)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create pack directory")
+	// 3. Generate actions for creating pack
+	var actions []types.Action
+	
+	// Create directory action
+	mkdirAction := types.Action{
+		Type:        types.ActionTypeMkdir,
+		Description: fmt.Sprintf("Create pack directory %s", opts.PackName),
+		Target:      packPath,
+		Mode:        0755,
+		Pack:        opts.PackName,
+		PowerUpName: "init_pack_internal",
+		Priority:    200, // Higher priority to create dir first
 	}
+	actions = append(actions, mkdirAction)
 
-	result := &types.InitResult{
-		PackName:     opts.PackName,
-		Path:         packPath,
-		FilesCreated: []string{},
-	}
-
-	// 3. Create .dodot.toml configuration file
+	// Create .dodot.toml configuration file
 	configContent := `# dodot configuration for ` + opts.PackName + ` pack
 # See https://github.com/arthur-debert/dodot for documentation
 
@@ -511,11 +548,17 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 `
 
 	configPath := filepath.Join(packPath, ".dodot.toml")
-	err = os.WriteFile(configPath, []byte(configContent), 0644)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create .dodot.toml")
+	configAction := types.Action{
+		Type:        types.ActionTypeWrite,
+		Description: "Create .dodot.toml configuration",
+		Target:      configPath,
+		Content:     configContent,
+		Mode:        0644,
+		Pack:        opts.PackName,
+		PowerUpName: "init_pack_internal",
+		Priority:    100,
 	}
-	result.FilesCreated = append(result.FilesCreated, ".dodot.toml")
+	actions = append(actions, configAction)
 
 	// 4. Create README.txt
 	readmeContent := `dodot Pack: ` + opts.PackName + `
@@ -541,21 +584,58 @@ For more information, see: https://github.com/arthur-debert/dodot
 `
 
 	readmePath := filepath.Join(packPath, "README.txt")
-	err = os.WriteFile(readmePath, []byte(readmeContent), 0644)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrFileAccess, "failed to create README.txt")
+	readmeAction := types.Action{
+		Type:        types.ActionTypeWrite,
+		Description: "Create README.txt",
+		Target:      readmePath,
+		Content:     readmeContent,
+		Mode:        0644,
+		Pack:        opts.PackName,
+		PowerUpName: "init_pack_internal",
+		Priority:    100,
 	}
-	result.FilesCreated = append(result.FilesCreated, "README.txt")
+	actions = append(actions, readmeAction)
 
-	// 5. Use FillPack to create the template files
-	fillOpts := FillPackOptions(opts)
-	fillResult, err := FillPack(fillOpts)
+	// 5. Add template file actions from FillPack
+	templateActions := generateFillPackActions(packPath, opts.PackName)
+	actions = append(actions, templateActions...)
+
+	// 6. Convert actions to operations
+	ops, err := GetFileOperations(actions)
 	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPackInit, "failed to create template files")
+		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}
 
-	// Add the filled files to our result
-	result.FilesCreated = append(result.FilesCreated, fillResult.FilesCreated...)
+	// 7. For now, just report what would be created
+	// In the future, these operations will be executed through synthfs
+	result := &types.InitResult{
+		PackName:     opts.PackName,
+		Path:         packPath,
+		FilesCreated: []string{},
+	}
+
+	// Report all files that would be created
+	for _, action := range actions {
+		switch action.Type {
+		case types.ActionTypeMkdir:
+			log.Info().
+				Str("directory", action.Target).
+				Str("operation", "would create").
+				Msg("Pack directory to be created")
+		case types.ActionTypeWrite:
+			filename := filepath.Base(action.Target)
+			result.FilesCreated = append(result.FilesCreated, filename)
+			log.Info().
+				Str("file", filename).
+				Str("operation", "would create").
+				Msg("File to be created")
+		}
+	}
+	
+	log.Debug().
+		Int("actionCount", len(actions)).
+		Int("operationCount", len(ops)).
+		Msg("Generated operations for InitPack")
 
 	log.Info().Str("command", "InitPack").
 		Str("pack", opts.PackName).
