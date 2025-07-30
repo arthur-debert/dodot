@@ -355,9 +355,9 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 
 	// 2. Find the specific pack
 	var targetPack *types.Pack
-	for _, p := range allPacks {
-		if p.Name == opts.PackName {
-			targetPack = &p
+	for i := range allPacks {
+		if allPacks[i].Name == opts.PackName {
+			targetPack = &allPacks[i]
 			break
 		}
 	}
@@ -425,7 +425,7 @@ echo "Installing ` + opts.PackName + ` pack..."
 	// Create each template file if it doesn't exist
 	for _, tmpl := range templates {
 		filePath := filepath.Join(targetPack.Path, tmpl.filename)
-		
+
 		// Check if file already exists
 		if _, err := os.Stat(filePath); err == nil {
 			log.Debug().Str("file", tmpl.filename).Msg("File already exists, skipping")
