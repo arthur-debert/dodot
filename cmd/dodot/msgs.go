@@ -1,4 +1,4 @@
-package commands
+package dodot
 
 import (
 	_ "embed"
