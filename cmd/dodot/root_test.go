@@ -30,7 +30,7 @@ func TestDeployCmd(t *testing.T) {
 
 func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 	t.Skip("Skipping test - needs to be updated for new command structure")
-	
+
 	// Unset the DOTFILES_ROOT environment variable
 	if err := os.Unsetenv("DOTFILES_ROOT"); err != nil {
 		t.Fatalf("Failed to unset DOTFILES_ROOT: %v", err)
