@@ -9,17 +9,12 @@ COMPLETIONS_DIR="${BUILD_DIR}/completions"
 # Create completions directory
 mkdir -p "${COMPLETIONS_DIR}"
 
-# Find the dodot binary - prefer our build dir, then current directory
-if [ -f "${BIN_DIR}/dodot" ]; then
-    DODOT_BIN="${BIN_DIR}/dodot"
-elif [ -f "./dodot" ]; then
-    DODOT_BIN="./dodot"
-else
-    # Build it if not found
-    echo "Building dodot..."
+# Always build for the current platform to ensure compatibility
+if [ ! -f "${BIN_DIR}/dodot" ]; then
+    echo "Building dodot for current platform..."
     ./scripts/build
-    DODOT_BIN="${BIN_DIR}/dodot"
 fi
+DODOT_BIN="${BIN_DIR}/dodot"
 
 # Generate completions
 echo "Generating bash completion..."
