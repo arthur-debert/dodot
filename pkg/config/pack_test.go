@@ -128,7 +128,6 @@ func TestLoadPackConfig_FileNotFound(t *testing.T) {
 	}
 }
 
-
 func TestFileExists(t *testing.T) {
 	// Create temp directory
 	tmpDir := t.TempDir()
