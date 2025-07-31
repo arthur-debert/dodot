@@ -178,6 +178,37 @@ powerup = "symlink"
 			},
 		},
 		{
+			name: "skip pack with .dodotignore file",
+			setup: func(t *testing.T) []string {
+				root := testutil.TempDir(t, "dotfiles")
+				
+				// Create normal pack
+				pack1 := testutil.CreateDir(t, root, "normal-pack")
+				testutil.CreateFile(t, pack1, "file.txt", "content")
+				
+				// Create pack with .dodotignore
+				pack2 := testutil.CreateDir(t, root, "ignored-pack")
+				testutil.CreateFile(t, pack2, ".dodotignore", "")
+				testutil.CreateFile(t, pack2, "file.txt", "content")
+				
+				// Create another normal pack
+				pack3 := testutil.CreateDir(t, root, "another-pack")
+				testutil.CreateFile(t, pack3, "file.txt", "content")
+				
+				return []string{pack1, pack2, pack3}
+			},
+			expectedCount: 2, // Should skip the pack with .dodotignore
+			validate: func(t *testing.T, packs []types.Pack) {
+				testutil.AssertEqual(t, "another-pack", packs[0].Name)
+				testutil.AssertEqual(t, "normal-pack", packs[1].Name)
+				// ignored-pack should not be in the list
+				for _, pack := range packs {
+					testutil.AssertTrue(t, pack.Name != "ignored-pack", 
+						"Pack with .dodotignore should have been skipped")
+				}
+			},
+		},
+		{
 			name: "sort by name alphabetically",
 			setup: func(t *testing.T) []string {
 				root := testutil.TempDir(t, "dotfiles")

@@ -128,10 +128,6 @@ func TestLoadPackConfig_FileNotFound(t *testing.T) {
 	}
 }
 
-// Helper function
-func contains(s, substr string) bool {
-	return strings.Contains(s, substr)
-}
 
 func TestFileExists(t *testing.T) {
 	// Create temp directory
