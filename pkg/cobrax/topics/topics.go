@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
 
@@ -171,16 +172,18 @@ func (tm *TopicManager) DisplayTopicsList() {
 			}
 		}
 
-		fmt.Println("Available help topics:")
 		if len(general) > 0 {
-			fmt.Println("\nGeneral topics:")
+			fmt.Println(pterm.Bold.Sprint("GENERAL TOPICS:"))
 			for _, name := range general {
 				fmt.Printf("  %s\n", name)
 			}
 		}
 
 		if len(options) > 0 {
-			fmt.Println("\nOption topics:")
+			if len(general) > 0 {
+				fmt.Println()
+			}
+			fmt.Println(pterm.Bold.Sprint("OPTION TOPICS:"))
 			for _, name := range options {
 				fmt.Printf("  --%s\n", name)
 			}
