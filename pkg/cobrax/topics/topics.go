@@ -4,15 +4,20 @@
 package topics
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
+
+//go:embed templates/topics-list.txt
+var topicsListTemplate string
 
 // TopicManager manages help topics for a Cobra application
 type TopicManager struct {
@@ -21,6 +26,18 @@ type TopicManager struct {
 	originalHelp func(*cobra.Command, []string)
 	extensions   []string
 	renderer     Renderer
+	rootCmd      *cobra.Command
+}
+
+// topicsListData holds data for rendering the topics list
+type topicsListData struct {
+	GeneralTitle string
+	OptionsTitle string
+	General      []string
+	Options      []string
+	HasGeneral   bool
+	HasOptions   bool
+	AppName      string
 }
 
 // Topic represents a help topic
@@ -155,41 +172,58 @@ func (tm *TopicManager) DisplayTopicsList() {
 	topics := tm.ListTopics()
 	if len(topics) == 0 {
 		fmt.Println("No help topics available.")
-	} else {
-		// Sort topics alphabetically
-		sort.Strings(topics)
+		return
+	}
 
-		// Separate options and general topics
-		var options []string
-		var general []string
+	// Sort topics alphabetically
+	sort.Strings(topics)
 
-		for _, name := range topics {
-			if strings.HasPrefix(name, "option-") {
-				// Remove prefix for display
-				options = append(options, strings.TrimPrefix(name, "option-"))
-			} else {
-				general = append(general, name)
-			}
+	// Separate options and general topics
+	var options []string
+	var general []string
+
+	for _, name := range topics {
+		if strings.HasPrefix(name, "option-") {
+			// Remove prefix for display
+			options = append(options, strings.TrimPrefix(name, "option-"))
+		} else {
+			general = append(general, name)
 		}
+	}
 
-		if len(general) > 0 {
-			fmt.Println(pterm.Bold.Sprint("GENERAL TOPICS:"))
-			for _, name := range general {
-				fmt.Printf("  %s\n", name)
-			}
-		}
+	// Prepare template data
+	data := topicsListData{
+		GeneralTitle: "GENERAL",
+		OptionsTitle: "OPTIONS",
+		General:      general,
+		Options:      options,
+		HasGeneral:   len(general) > 0,
+		HasOptions:   len(options) > 0,
+		AppName:      "dodot",
+	}
 
-		if len(options) > 0 {
-			if len(general) > 0 {
-				fmt.Println()
-			}
-			fmt.Println(pterm.Bold.Sprint("OPTION TOPICS:"))
-			for _, name := range options {
-				fmt.Printf("  --%s\n", name)
-			}
-		}
+	// If we have a root command, use its name
+	if tm.rootCmd != nil {
+		data.AppName = tm.rootCmd.Name()
+	}
 
-		fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
+	// Parse and execute template
+	tmpl := template.New("topics-list")
+	tmpl.Funcs(template.FuncMap{
+		"bold": func(s string) string {
+			return pterm.Bold.Sprint(s)
+		},
+	})
+
+	tmpl, err := tmpl.Parse(topicsListTemplate)
+	if err != nil {
+		// Fallback to simple output
+		fmt.Printf("Error parsing template: %v\n", err)
+		return
+	}
+
+	if err := tmpl.Execute(os.Stdout, data); err != nil {
+		fmt.Printf("Error executing template: %v\n", err)
 	}
 }
 
@@ -201,6 +235,7 @@ func Initialize(rootCmd *cobra.Command, topicsDir string) error {
 // InitializeWithOptions sets up the topic-based help system with custom options
 func InitializeWithOptions(rootCmd *cobra.Command, topicsDir string, opts Options) error {
 	tm := NewWithOptions(topicsDir, opts)
+	tm.rootCmd = rootCmd
 
 	// Scan for topics
 	if err := tm.scanTopics(); err != nil {

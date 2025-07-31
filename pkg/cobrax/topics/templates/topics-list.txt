@@ -1,0 +1,8 @@
+{{if .HasGeneral}}{{.GeneralTitle | bold}}:
+{{range .General}}  {{.}}
+{{end}}{{end}}{{if and .HasGeneral .HasOptions}}
+{{end}}{{if .HasOptions}}{{.OptionsTitle | bold}}:
+{{range .Options}}  --{{.}}
+{{end}}{{end}}
+
+Use '{{.AppName}} help <topic>' to read about a specific topic.
