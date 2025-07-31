@@ -266,6 +266,14 @@ To see all available help topics:
 		}
 	}
 
+	// Check if rootCmd has groups and set GroupID if "misc" group exists
+	for _, group := range rootCmd.Groups() {
+		if group.ID == "misc" {
+			helpCmd.GroupID = "misc"
+			break
+		}
+	}
+
 	// Add our custom help command
 	rootCmd.AddCommand(helpCmd)
 

@@ -1,3 +1,7 @@
 dodot is a dotfiles manager that powers you do organize your files and change
 configs in anyway you want.
 
+Pack Selection:
+  $ dodot [command]                  # runs on all packs
+  $ dodot [command] <pack>...<pack>  # runs on the specified packs
+

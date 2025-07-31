@@ -14,6 +14,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// customUsageTemplate is our custom help template that includes the Learn More section
+const customUsageTemplate = `Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Learn More:
+  $ {{.Root.Name}} help <command>   # see the command docs
+  $ {{.Root.Name}} help <option>    # see the options docs
+  $ {{.Root.Name}} help <topic>     # learn more about a topic
+  $ {{.Root.Name}} topics           # list available topics{{end}}`
+
 // NewRootCmd creates and returns the root command
 func NewRootCmd() *cobra.Command {
 	var (
@@ -48,6 +83,19 @@ func NewRootCmd() *cobra.Command {
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
+	// Define command groups
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "core",
+		Title: "Commands:",
+	})
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "misc",
+		Title: "Misc:",
+	})
+
+	// Set custom help template
+	rootCmd.SetUsageTemplate(customUsageTemplate)
+
 	// Add all commands
 	rootCmd.AddCommand(newDeployCmd())
 	rootCmd.AddCommand(newInstallCmd())
@@ -55,6 +103,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+	rootCmd.AddCommand(newTopicsCmd())
 
 	// Initialize topic-based help system
 	// Try to find help topics relative to the executable location
@@ -111,6 +160,7 @@ func newDeployCmd() *cobra.Command {
 		Short:   MsgDeployShort,
 		Long:    MsgDeployLong,
 		Example: MsgDeployExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -161,6 +211,7 @@ func newInstallCmd() *cobra.Command {
 		Short:   MsgInstallShort,
 		Long:    MsgInstallLong,
 		Example: MsgInstallExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -214,6 +265,7 @@ func newListCmd() *cobra.Command {
 		Short:   MsgListShort,
 		Long:    MsgListLong,
 		Example: MsgListExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -252,6 +304,7 @@ func newStatusCmd() *cobra.Command {
 		Short:   MsgStatusShort,
 		Long:    MsgStatusLong,
 		Example: MsgStatusExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -296,6 +349,7 @@ func newInitCmd() *cobra.Command {
 		Long:    MsgInitLong,
 		Args:    cobra.ExactArgs(1),
 		Example: MsgInitExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -341,6 +395,7 @@ func newFillCmd() *cobra.Command {
 		Long:    MsgFillLong,
 		Args:    cobra.ExactArgs(1),
 		Example: MsgFillExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -375,6 +430,20 @@ func newFillCmd() *cobra.Command {
 			}
 
 			return nil
+		},
+	}
+}
+
+func newTopicsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "topics",
+		Short: MsgTopicsShort,
+		Long:  MsgTopicsLong,
+		GroupID: "misc",
+		Run: func(cmd *cobra.Command, args []string) {
+			// Execute the help topics command
+			cmd.Root().SetArgs([]string{"help", "topics"})
+			_ = cmd.Root().Execute()
 		},
 	}
 }
