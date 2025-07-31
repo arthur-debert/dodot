@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/arthur-debert/dodot/internal/cli"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 )
 
@@ -16,6 +17,9 @@ func TestDeployCmd(t *testing.T) {
 	// Set the DOTFILES_ROOT environment variable
 	t.Setenv("DOTFILES_ROOT", dotfilesRoot)
 
+	// Create a new root command for testing
+	rootCmd := cli.NewRootCmd()
+	
 	// Execute the deploy command
 	rootCmd.SetArgs([]string{"deploy"})
 	err := rootCmd.Execute()
@@ -30,6 +34,9 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 		t.Fatalf("Failed to unset DOTFILES_ROOT: %v", err)
 	}
 
+	// Create a new root command for testing
+	rootCmd := cli.NewRootCmd()
+	
 	// Execute the deploy command
 	rootCmd.SetArgs([]string{"deploy"})
 	err := rootCmd.Execute()

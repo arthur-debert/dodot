@@ -2,17 +2,17 @@ package main
 
 import (
 	"os"
-)
 
-// Version information - set by ldflags during build
-var (
-	version = "dev"     // Set by goreleaser: -X main.version={{.Version}}
-	commit  = "unknown" // Set by goreleaser: -X main.commit={{.Commit}}
-	date    = "unknown" // Set by goreleaser: -X main.date={{.Date}}
+	"github.com/arthur-debert/dodot/internal/cli"
+	
+	// Import packages to ensure their init() functions are called for registration
+	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 func main() {
-	if err := Execute(); err != nil {
+	rootCmd := cli.NewRootCmd()
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }

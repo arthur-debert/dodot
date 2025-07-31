@@ -7,7 +7,7 @@ builds:
     main: ./cmd/dodot
     binary: dodot
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -X github.com/arthur-debert/dodot/internal/version.Version={{.Version}} -X github.com/arthur-debert/dodot/internal/version.Commit={{.Commit}} -X github.com/arthur-debert/dodot/internal/version.Date={{.Date}}
     env:
       - CGO_ENABLED=0
     goos: [linux, windows, darwin]

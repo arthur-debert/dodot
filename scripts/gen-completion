@@ -15,14 +15,18 @@ if [ ! -f "${BIN_DIR}/dodot" ]; then
 fi
 DODOT_BIN="${BIN_DIR}/dodot"
 
+# Build the completion generator tool
+echo "Building dodot-completions tool..."
+go build -o "${BIN_DIR}/dodot-completions" ./cmd/dodot-completions
+
 # Generate completions
 echo "Generating bash completion..."
-"${DODOT_BIN}" completion bash > "${COMPLETIONS_DIR}/dodot.bash"
+"${BIN_DIR}/dodot-completions" bash > "${COMPLETIONS_DIR}/dodot.bash"
 
 echo "Generating zsh completion..."
-"${DODOT_BIN}" completion zsh > "${COMPLETIONS_DIR}/_dodot"
+"${BIN_DIR}/dodot-completions" zsh > "${COMPLETIONS_DIR}/_dodot"
 
 echo "Generating fish completion..."
-"${DODOT_BIN}" completion fish > "${COMPLETIONS_DIR}/dodot.fish"
+"${BIN_DIR}/dodot-completions" fish > "${COMPLETIONS_DIR}/dodot.fish"
 
 echo "✅ Completions generated in ${COMPLETIONS_DIR}/"

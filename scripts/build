@@ -46,9 +46,9 @@ fi
 
 # Set up LDFLAGS for version embedding
 LDFLAGS="-s -w"
-LDFLAGS="$LDFLAGS -X main.version=$VERSION"
-LDFLAGS="$LDFLAGS -X main.commit=$COMMIT"
-LDFLAGS="$LDFLAGS -X main.buildDate=$BUILD_DATE"
+LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Version=$VERSION"
+LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Commit=$COMMIT"
+LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Date=$BUILD_DATE"
 
 # Build the main binary
 echo

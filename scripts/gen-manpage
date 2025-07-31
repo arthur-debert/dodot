@@ -15,33 +15,13 @@ if [ ! -f "${BIN_DIR}/dodot" ]; then
 fi
 DODOT_BIN="${BIN_DIR}/dodot"
 
+# Build the man page generator tool
+echo "Building dodot-manpage tool..."
+go build -o "${BIN_DIR}/dodot-manpage" ./cmd/dodot-manpage
+
 # Generate man page
 echo "Generating man page..."
-"${DODOT_BIN}" man > "${MAN_DIR}/dodot.1" 2>/dev/null || {
-    echo "Note: 'man' subcommand not implemented yet"
-    echo "Creating placeholder man page..."
-    cat > "${MAN_DIR}/dodot.1" << EOF
-.TH DODOT 1 "$(date +"%B %Y")" "dodot manual"
-.SH NAME
-dodot \- A stateless dotfiles manager
-.SH SYNOPSIS
-.B dodot
-[\fIOPTIONS\fR] [\fICOMMAND\fR]
-.SH DESCRIPTION
-Description of your CLI tool
-.SH OPTIONS
-.TP
-.BR \-h ", " \-\-help
-Show help message
-.TP
-.BR \-v ", " \-\-version
-Show version information
-.SH AUTHORS
-Arthur Debert <arthur@debert.xyz>
-.SH COPYRIGHT
-Copyright (C) 2024 Arthur Debert
-EOF
-}
+"${BIN_DIR}/dodot-manpage" > "${MAN_DIR}/dodot.1"
 
 # Compress the man page
 if [ -f "${MAN_DIR}/dodot.1" ]; then
