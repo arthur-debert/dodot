@@ -1,33 +1,33 @@
-[1mUSAGE[0m:{{if .HasParent}}{{if .Runnable}}
+{{`USAGE` | bold}}:{{if .HasParent}}{{if .Runnable}}
   {{.UseLine}}{{end}}{{else}}
   $ {{.CommandPath}} [command]                  # runs on all packs
   $ {{.CommandPath}} [command] <pack>...<pack>  # runs on the specified packs{{end}}{{if gt (len .Aliases) 0}}
 
-[1mALIASES[0m:
+{{`ALIASES` | bold}}:
   {{.NameAndAliases}}{{end}}{{if .HasExample}}
 
-[1mEXAMPLES[0m:
+{{`EXAMPLES` | bold}}:
 {{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
 
-[1mAVAILABLE COMMANDS[0m:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+{{`AVAILABLE COMMANDS` | bold}}:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
 
-[1m{{.Title}}[0m{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+{{.Title | bold}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
 
-[1mADDITIONAL COMMANDS[0m:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+{{`ADDITIONAL COMMANDS` | bold}}:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
-[1mFLAGS[0m:
+{{`FLAGS` | bold}}:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
 
-[1mGLOBAL FLAGS[0m:
+{{`GLOBAL FLAGS` | bold}}:
 {{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
 
-[1mADDITIONAL HELP TOPICS[0m:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+{{`ADDITIONAL HELP TOPICS` | bold}}:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
   {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
 
-[1mLEARN MORE[0m:
+{{`LEARN MORE` | bold}}:
   $ {{.Root.Name}} help <command>   # see the command docs
   $ {{.Root.Name}} help <option>    # see the options docs
   $ {{.Root.Name}} help <topic>     # learn more about a topic

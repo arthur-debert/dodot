@@ -16,6 +16,9 @@ import (
 
 // NewRootCmd creates and returns the root command
 func NewRootCmd() *cobra.Command {
+	// Initialize custom template formatting functions
+	initTemplateFormatting()
+
 	var (
 		verbosity int
 		dryRun    bool
