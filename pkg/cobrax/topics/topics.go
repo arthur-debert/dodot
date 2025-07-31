@@ -149,6 +149,47 @@ func (tm *TopicManager) ListTopics() []string {
 	return topics
 }
 
+// DisplayTopicsList prints the list of available topics
+func (tm *TopicManager) DisplayTopicsList() {
+	topics := tm.ListTopics()
+	if len(topics) == 0 {
+		fmt.Println("No help topics available.")
+	} else {
+		// Sort topics alphabetically
+		sort.Strings(topics)
+
+		// Separate options and general topics
+		var options []string
+		var general []string
+
+		for _, name := range topics {
+			if strings.HasPrefix(name, "option-") {
+				// Remove prefix for display
+				options = append(options, strings.TrimPrefix(name, "option-"))
+			} else {
+				general = append(general, name)
+			}
+		}
+
+		fmt.Println("Available help topics:")
+		if len(general) > 0 {
+			fmt.Println("\nGeneral topics:")
+			for _, name := range general {
+				fmt.Printf("  %s\n", name)
+			}
+		}
+
+		if len(options) > 0 {
+			fmt.Println("\nOption topics:")
+			for _, name := range options {
+				fmt.Printf("  --%s\n", name)
+			}
+		}
+
+		fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
+	}
+}
+
 // Initialize sets up the topic-based help system with default extensions
 func Initialize(rootCmd *cobra.Command, topicsDir string) error {
 	return InitializeWithOptions(rootCmd, topicsDir, Options{})
@@ -194,53 +235,17 @@ To see all available help topics:
 
 			return completions, cobra.ShellCompDirectiveNoFileComp
 		},
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// No args - show root help
 				tm.originalHelp(rootCmd, []string{})
-				return
+				return nil
 			}
 
 			// Check if asking for topics list
 			if args[0] == "topics" {
-				topics := tm.ListTopics()
-				if len(topics) == 0 {
-					fmt.Println("No help topics available.")
-				} else {
-					// Sort topics alphabetically
-					sort.Strings(topics)
-
-					// Separate options and general topics
-					var options []string
-					var general []string
-
-					for _, name := range topics {
-						if strings.HasPrefix(name, "option-") {
-							// Remove prefix for display
-							options = append(options, strings.TrimPrefix(name, "option-"))
-						} else {
-							general = append(general, name)
-						}
-					}
-
-					fmt.Println("Available help topics:")
-					if len(general) > 0 {
-						fmt.Println("\nGeneral topics:")
-						for _, name := range general {
-							fmt.Printf("  %s\n", name)
-						}
-					}
-
-					if len(options) > 0 {
-						fmt.Println("\nOption topics:")
-						for _, name := range options {
-							fmt.Printf("  --%s\n", name)
-						}
-					}
-
-					fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
-				}
-				return
+				tm.DisplayTopicsList()
+				return nil
 			}
 
 			// Check if it's a topic
@@ -250,11 +255,20 @@ To see all available help topics:
 				ext := filepath.Ext(topic.FilePath)
 				rendered := tm.renderer.Render(topic.Content, ext)
 				fmt.Print(rendered)
-				return
+				return nil
 			}
 
-			// Not a topic - fall back to original help
-			tm.originalHelp(rootCmd, args)
+			// Check if it's a command
+			if _, _, err := rootCmd.Find([]string{args[0]}); err == nil {
+				// It's a command - use original help
+				tm.originalHelp(rootCmd, args)
+				return nil
+			}
+
+			// Not a topic or command - show error and list available topics
+			fmt.Fprintf(os.Stderr, "Error: No help topic or command named '%s'\n\n", args[0])
+			tm.DisplayTopicsList()
+			return fmt.Errorf("topic '%s' not found", args[0])
 		},
 	}
 

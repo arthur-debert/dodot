@@ -414,10 +414,17 @@ func newTopicsCmd() *cobra.Command {
 		Short:   MsgTopicsShort,
 		Long:    MsgTopicsLong,
 		GroupID: "misc",
-		Run: func(cmd *cobra.Command, args []string) {
-			// Execute the help topics command
-			cmd.Root().SetArgs([]string{"help", "topics"})
-			_ = cmd.Root().Execute()
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Find the help command and execute it with "topics" argument
+			if helpCmd, _, err := cmd.Root().Find([]string{"help"}); err == nil {
+				if helpCmd.RunE != nil {
+					return helpCmd.RunE(helpCmd, []string{"topics"})
+				} else if helpCmd.Run != nil {
+					helpCmd.Run(helpCmd, []string{"topics"})
+					return nil
+				}
+			}
+			return fmt.Errorf("help command not found")
 		},
 	}
 }
