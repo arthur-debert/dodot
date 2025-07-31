@@ -107,4 +107,8 @@ var (
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string
 	MsgFallbackWarning    = strings.TrimSpace(msgFallbackWarningRaw)
+
+	//go:embed msgs/usage-template.txt
+	msgUsageTemplateRaw string
+	MsgUsageTemplate    = strings.TrimSpace(msgUsageTemplateRaw)
 )

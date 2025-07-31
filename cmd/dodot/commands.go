@@ -14,41 +14,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// customUsageTemplate is our custom help template that includes the Learn More section
-const customUsageTemplate = `Usage:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
-  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
-
-Aliases:
-  {{.NameAndAliases}}{{end}}{{if .HasExample}}
-
-Examples:
-{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
-
-Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
-
-{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
-
-Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
-  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
-
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
-
-Global Flags:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
-
-Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
-  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
-
-Learn More:
-  $ {{.Root.Name}} help <command>   # see the command docs
-  $ {{.Root.Name}} help <option>    # see the options docs
-  $ {{.Root.Name}} help <topic>     # learn more about a topic
-  $ {{.Root.Name}} topics           # list available topics{{end}}`
-
 // NewRootCmd creates and returns the root command
 func NewRootCmd() *cobra.Command {
 	var (
@@ -94,7 +59,7 @@ func NewRootCmd() *cobra.Command {
 	})
 
 	// Set custom help template
-	rootCmd.SetUsageTemplate(customUsageTemplate)
+	rootCmd.SetUsageTemplate(MsgUsageTemplate)
 
 	// Add all commands
 	rootCmd.AddCommand(newDeployCmd())
@@ -436,9 +401,9 @@ func newFillCmd() *cobra.Command {
 
 func newTopicsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "topics",
-		Short: MsgTopicsShort,
-		Long:  MsgTopicsLong,
+		Use:     "topics",
+		Short:   MsgTopicsShort,
+		Long:    MsgTopicsLong,
 		GroupID: "misc",
 		Run: func(cmd *cobra.Command, args []string) {
 			// Execute the help topics command
