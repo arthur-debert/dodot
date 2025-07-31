@@ -7,7 +7,7 @@ builds:
     main: ./cmd/dodot
     binary: dodot
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+      - -s -w -X github.com/arthur-debert/dodot/internal/version.Version={{.Version}} -X github.com/arthur-debert/dodot/internal/version.Commit={{.Commit}} -X github.com/arthur-debert/dodot/internal/version.Date={{.Date}}
     env:
       - CGO_ENABLED=0
     goos: [linux, windows, darwin]
@@ -15,6 +15,12 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
+
+before:
+  hooks:
+    # Generate completions and man pages (goreleaser will build the binary)
+    - ./scripts/gen-completion
+    - ./scripts/gen-manpage
 
 archives:
   - id: dodot-archive
@@ -27,9 +33,9 @@ archives:
     files:
       - "README.md"
       - "LICENSE"
-      - src: "completions/*"
+      - src: "dist/build/completions/*"
         dst: "completions"
-      - src: "man/man1/*"
+      - src: "dist/build/man/man1/*"
         dst: "man/man1"
 
 checksum:

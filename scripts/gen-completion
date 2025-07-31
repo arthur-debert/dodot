@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Always build the binary to ensure it's for the current platform
-echo "Building dodot..."
-./scripts/build
+# Build output directory (matching main build script)
+BIN_DIR="bin"
+COMPLETIONS_DIR="completions"
 
 # Create completions directory
-mkdir -p completions
+mkdir -p "${COMPLETIONS_DIR}"
+
+# Always build for the current platform to ensure compatibility
+if [ ! -f "${BIN_DIR}/dodot" ]; then
+    echo "Building dodot for current platform..."
+    ./scripts/build
+fi
+DODOT_BIN="${BIN_DIR}/dodot"
+
+# Build the completion generator tool
+echo "Building dodot-completions tool..."
+go build -o "${BIN_DIR}/dodot-completions" ./cmd/dodot-completions
 
 # Generate completions
 echo "Generating bash completion..."
-./dodot completion bash > completions/dodot.bash
+"${BIN_DIR}/dodot-completions" bash > "${COMPLETIONS_DIR}/dodot.bash"
 
 echo "Generating zsh completion..."
-./dodot completion zsh > completions/_dodot
+"${BIN_DIR}/dodot-completions" zsh > "${COMPLETIONS_DIR}/_dodot"
 
 echo "Generating fish completion..."
-./dodot completion fish > completions/dodot.fish
+"${BIN_DIR}/dodot-completions" fish > "${COMPLETIONS_DIR}/dodot.fish"
 
-echo "✅ Completions generated in completions/"
+echo "✅ Completions generated in ${COMPLETIONS_DIR}/"

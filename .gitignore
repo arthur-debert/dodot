@@ -7,3 +7,12 @@ ai-assistant/.build/
 ai-assistant/*.log
 .docker-build-cache/
 coverage.html
+
+# Build artifacts
+/dodot
+/dist/
+/completions/
+/man/
+*.out
+cover.out
+coverage.out
