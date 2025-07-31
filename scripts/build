@@ -53,7 +53,7 @@ LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Date=$BUILD
 # Build the main binary
 echo
 echo -e "${BLUE}Building CLI binary...${NC}"
-if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/dodot" ./cmd/dodot; then
+if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/dodot" ./cmd/dodot/main; then
     echo -e "${GREEN}✅ Binary built successfully: ${BIN_DIR}/dodot${NC}"
 else
     echo -e "${RED}❌ Binary build failed${NC}"

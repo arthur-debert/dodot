@@ -1,4 +1,4 @@
-package cli
+package dodot
 
 import (
 	"fmt"
@@ -23,11 +23,9 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "dodot",
-		Short: "A stateless dotfiles manager",
-		Long: `dodot is a stateless dotfiles manager that helps you organize and deploy
-your configuration files in a structured, safe way while letting git handle
-versioning and history.`,
+		Use:     "dodot",
+		Short:   MsgRootShort,
+		Long:    MsgRootLong,
 		Version: version.Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Setup logging based on verbosity
@@ -43,15 +41,14 @@ versioning and history.`,
 	}
 
 	// Global flags
-	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)")
-	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes without executing them")
-	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "Force execution of run-once power-ups even if already executed")
+	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", MsgFlagVerbose)
+	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, MsgFlagDryRun)
+	rootCmd.PersistentFlags().BoolVar(&force, "force", false, MsgFlagForce)
 
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
 	// Add all commands
-	rootCmd.AddCommand(newVersionCmd())
 	rootCmd.AddCommand(newDeployCmd())
 	rootCmd.AddCommand(newInstallCmd())
 	rootCmd.AddCommand(newListCmd())
@@ -93,58 +90,27 @@ versioning and history.`,
 func initPaths() (*paths.Paths, error) {
 	p, err := paths.New("")
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize paths: %w", err)
+		return nil, fmt.Errorf(MsgErrInitPaths, err)
 	}
 
 	if p.UsedFallback() {
-		fmt.Fprintf(os.Stderr, "Warning: Not in a git repository and DOTFILES_ROOT not set.\n")
-		fmt.Fprintf(os.Stderr, "Using current directory: %s\n", p.DotfilesRoot())
-		fmt.Fprintf(os.Stderr, "For better results, either:\n")
-		fmt.Fprintf(os.Stderr, "  - Run from within a git repository containing your dotfiles\n")
-		fmt.Fprintf(os.Stderr, "  - Set DOTFILES_ROOT environment variable\n\n")
+		fmt.Fprintf(os.Stderr, MsgFallbackWarning, p.DotfilesRoot())
 	} else {
 		// Debug: log how we found the path
 		if os.Getenv("DODOT_DEBUG") != "" {
-			fmt.Fprintf(os.Stderr, "Debug: Using dotfiles root: %s (fallback=%v)\n", p.DotfilesRoot(), p.UsedFallback())
+			fmt.Fprintf(os.Stderr, MsgDebugDotfilesRoot, p.DotfilesRoot(), p.UsedFallback())
 		}
 	}
 
 	return p, nil
 }
 
-func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print version information",
-		Long:  `Print detailed version information including commit hash and build date`,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("dodot version %s\n", version.Version)
-			if version.Commit != "" {
-				fmt.Printf("Commit: %s\n", version.Commit)
-			}
-			if version.Date != "" {
-				fmt.Printf("Built:  %s\n", version.Date)
-			}
-		},
-	}
-}
-
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "deploy [packs...]",
-		Short: "Deploy dotfiles to the system",
-		Long: `Deploy processes all packs in your dotfiles directory and creates
-the necessary symlinks, installs packages, and performs other configured actions.
-
-If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
-		Example: `  # Deploy all packs
-  dodot deploy
-  
-  # Deploy specific packs
-  dodot deploy vim zsh
-  
-  # Dry run to preview changes
-  dodot deploy --dry-run`,
+		Use:     "deploy [packs...]",
+		Short:   MsgDeployShort,
+		Long:    MsgDeployLong,
+		Example: MsgDeployExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -167,20 +133,20 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 				DryRun:       dryRun,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to deploy packs: %w", err)
+				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
 			// Display results
 			if dryRun {
-				fmt.Println("\nDRY RUN MODE - No changes were made")
+				fmt.Println(MsgDryRunNotice)
 			}
 
 			if len(result.Operations) == 0 {
-				fmt.Println("No operations needed.")
+				fmt.Println(MsgNoOperations)
 			} else {
-				fmt.Printf("\nPerformed %d operations:\n", len(result.Operations))
+				fmt.Printf(MsgOperationsFormat, len(result.Operations))
 				for _, op := range result.Operations {
-					fmt.Printf("  ✓ %s\n", op.Description)
+					fmt.Printf(MsgOperationItem, op.Description)
 				}
 			}
 
@@ -191,16 +157,10 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 
 func newInstallCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "install [packs...]",
-		Short: "Install and deploy dotfiles to the system",
-		Long: `Install is an alias for deploy. It processes all packs in your dotfiles
-directory and creates the necessary symlinks, installs packages, and performs
-other configured actions.`,
-		Example: `  # Install all packs
-  dodot install
-  
-  # Install specific packs
-  dodot install vim zsh`,
+		Use:     "install [packs...]",
+		Short:   MsgInstallShort,
+		Long:    MsgInstallLong,
+		Example: MsgInstallExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -226,20 +186,20 @@ other configured actions.`,
 				Force:        force,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to install packs: %w", err)
+				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
 
 			// Display results
 			if dryRun {
-				fmt.Println("\nDRY RUN MODE - No changes were made")
+				fmt.Println(MsgDryRunNotice)
 			}
 
 			if len(result.Operations) == 0 {
-				fmt.Println("No operations needed.")
+				fmt.Println(MsgNoOperations)
 			} else {
-				fmt.Printf("\nPerformed %d operations:\n", len(result.Operations))
+				fmt.Printf(MsgOperationsFormat, len(result.Operations))
 				for _, op := range result.Operations {
-					fmt.Printf("  ✓ %s\n", op.Description)
+					fmt.Printf(MsgOperationItem, op.Description)
 				}
 			}
 
@@ -250,11 +210,10 @@ other configured actions.`,
 
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List all available packs",
-		Long:  `List displays all packs found in your DOTFILES_ROOT directory.`,
-		Example: `  # List all packs
-  dodot list`,
+		Use:     "list",
+		Short:   MsgListShort,
+		Long:    MsgListLong,
+		Example: MsgListExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -269,16 +228,16 @@ func newListCmd() *cobra.Command {
 				DotfilesRoot: p.DotfilesRoot(),
 			})
 			if err != nil {
-				return fmt.Errorf("failed to list packs: %w", err)
+				return fmt.Errorf(MsgErrListPacks, err)
 			}
 
 			// Display the packs
 			if len(result.Packs) == 0 {
-				fmt.Println("No packs found.")
+				fmt.Println(MsgNoPacksFound)
 			} else {
-				fmt.Println("Available packs:")
+				fmt.Println(MsgAvailablePacks)
 				for _, pack := range result.Packs {
-					fmt.Printf("  %s\n", pack.Name)
+					fmt.Printf(MsgPackItem, pack.Name)
 				}
 			}
 
@@ -289,18 +248,10 @@ func newListCmd() *cobra.Command {
 
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status [packs...]",
-		Short: "Show deployment status of packs",
-		Long: `Status shows the current deployment state of packs, including
-which files are deployed, which power-ups have been executed, and any
-pending changes.
-
-If no packs are specified, status for all packs will be shown.`,
-		Example: `  # Show status for all packs
-  dodot status
-  
-  # Show status for specific packs
-  dodot status vim zsh`,
+		Use:     "status [packs...]",
+		Short:   MsgStatusShort,
+		Long:    MsgStatusLong,
+		Example: MsgStatusExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -316,18 +267,18 @@ If no packs are specified, status for all packs will be shown.`,
 				PackNames:    args,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to get pack status: %w", err)
+				return fmt.Errorf(MsgErrStatusPacks, err)
 			}
 
 			// Display status for each pack
 			for _, packStatus := range result.Packs {
-				fmt.Printf("\n%s:\n", packStatus.Name)
+				fmt.Printf(MsgPackStatusFormat, packStatus.Name)
 
 				// Show power-up statuses
 				for _, ps := range packStatus.PowerUpState {
-					fmt.Printf("  %s: %s", ps.Name, ps.State)
+					fmt.Printf(MsgPowerUpStatus, ps.Name, ps.State)
 					if ps.Description != "" {
-						fmt.Printf(" - %s", ps.Description)
+						fmt.Printf(MsgPowerUpDesc, ps.Description)
 					}
 					fmt.Println()
 				}
@@ -340,19 +291,11 @@ If no packs are specified, status for all packs will be shown.`,
 
 func newInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "init <pack-name>",
-		Short: "Create a new pack with template files",
-		Long: `Init creates a new pack directory with template configuration files.
-This helps you get started with a new pack quickly.
-
-The pack will be created in your DOTFILES_ROOT directory with a basic
-triggers.toml file and appropriate directory structure.`,
-		Args: cobra.ExactArgs(1),
-		Example: `  # Create a basic pack
-  dodot init mypack
-  
-  # Create a specific type of pack
-  dodot init --type shell myshell`,
+		Use:     "init <pack-name>",
+		Short:   MsgInitShort,
+		Long:    MsgInitLong,
+		Args:    cobra.ExactArgs(1),
+		Example: MsgInitExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -373,36 +316,31 @@ triggers.toml file and appropriate directory structure.`,
 				PackName:     packName,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to initialize pack: %w", err)
+				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
 			// Display results
-			fmt.Printf("Created pack '%s' with the following files:\n", packName)
+			fmt.Printf(MsgPackCreatedFormat, packName)
 			for _, file := range result.FilesCreated {
-				fmt.Printf("  ✓ %s\n", file)
+				fmt.Printf(MsgOperationItem, file)
 			}
 
 			return nil
 		},
 	}
 
-	cmd.Flags().StringP("type", "t", "basic", "Type of pack to create (basic, shell, vim, etc.)")
+	cmd.Flags().StringP("type", "t", "basic", MsgFlagType)
 
 	return cmd
 }
 
 func newFillCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "fill <pack-name>",
-		Short: "Add placeholder files to an existing pack",
-		Long: `Fill analyzes an existing pack's triggers and creates placeholder files
-for any patterns that don't match existing files.
-
-This is useful when you want to see what files a pack expects before
-actually creating them.`,
-		Args: cobra.ExactArgs(1),
-		Example: `  # Create placeholder files for a pack
-  dodot fill mypack`,
+		Use:     "fill <pack-name>",
+		Short:   MsgFillShort,
+		Long:    MsgFillLong,
+		Args:    cobra.ExactArgs(1),
+		Example: MsgFillExample,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -423,16 +361,16 @@ actually creating them.`,
 				PackName:     packName,
 			})
 			if err != nil {
-				return fmt.Errorf("failed to fill pack: %w", err)
+				return fmt.Errorf(MsgErrFillPack, err)
 			}
 
 			// Display results
 			if len(result.FilesCreated) == 0 {
-				fmt.Printf("Pack '%s' already has all standard files.\n", packName)
+				fmt.Printf(MsgPackHasAllFiles, packName)
 			} else {
-				fmt.Printf("Added the following files to pack '%s':\n", packName)
+				fmt.Printf(MsgPackFilledFormat, packName)
 				for _, file := range result.FilesCreated {
-					fmt.Printf("  ✓ %s\n", file)
+					fmt.Printf(MsgOperationItem, file)
 				}
 			}
 

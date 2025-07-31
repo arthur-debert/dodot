@@ -1,0 +1,5 @@
+Warning: Not in a git repository and DOTFILES_ROOT not set.
+Using current directory: %s
+For better results, either:
+  - Run from within a git repository containing your dotfiles
+  - Set DOTFILES_ROOT environment variable

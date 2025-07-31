@@ -1,0 +1,3 @@
+Install is an alias for deploy. It processes all packs in your dotfiles
+directory and creates the necessary symlinks, installs packages, and performs
+other configured actions.

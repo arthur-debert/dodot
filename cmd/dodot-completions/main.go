@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/arthur-debert/dodot/internal/cli"
+	"github.com/arthur-debert/dodot/cmd/dodot"
 
 	// Import packages to ensure their init() functions are called for registration
 	_ "github.com/arthur-debert/dodot/pkg/powerups"
@@ -18,7 +18,7 @@ func main() {
 	}
 
 	shell := os.Args[1]
-	rootCmd := cli.NewRootCmd()
+	rootCmd := dodot.NewRootCmd()
 
 	var err error
 	switch shell {

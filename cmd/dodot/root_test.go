@@ -1,10 +1,9 @@
-package main
+package dodot
 
 import (
 	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/internal/cli"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 )
 
@@ -18,7 +17,7 @@ func TestDeployCmd(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesRoot)
 
 	// Create a new root command for testing
-	rootCmd := cli.NewRootCmd()
+	rootCmd := NewRootCmd()
 
 	// Execute the deploy command
 	rootCmd.SetArgs([]string{"deploy"})
@@ -37,7 +36,7 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 	}
 
 	// Create a new root command for testing
-	rootCmd := cli.NewRootCmd()
+	rootCmd := NewRootCmd()
 
 	// Execute the deploy command
 	rootCmd.SetArgs([]string{"deploy"})

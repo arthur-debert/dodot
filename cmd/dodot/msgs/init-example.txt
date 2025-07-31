@@ -1,0 +1,5 @@
+  # Create a basic pack
+  dodot init mypack
+  
+  # Create a specific type of pack
+  dodot init --type shell myshell

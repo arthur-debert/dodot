@@ -1,0 +1,3 @@
+dodot is a dotfiles manager that powers you do organize your files and change
+configs in anyway you want.
+
