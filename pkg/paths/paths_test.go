@@ -43,11 +43,13 @@ func TestNew(t *testing.T) {
 			},
 		},
 		{
-			name: "default to ~/dotfiles",
+			name: "git repository or fallback",
 			validate: func(t *testing.T, p *Paths) {
-				homeDir, _ := os.UserHomeDir()
-				expected := filepath.Join(homeDir, DefaultDotfilesDir)
-				testutil.AssertEqual(t, expected, p.DotfilesRoot())
+				// This test will either find the git root if we're in a git repo,
+				// or fall back to the current directory
+				testutil.AssertNotEmpty(t, p.DotfilesRoot())
+				// The path should be absolute
+				testutil.AssertTrue(t, filepath.IsAbs(p.DotfilesRoot()), "Path should be absolute")
 			},
 		},
 		{

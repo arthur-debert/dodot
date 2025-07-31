@@ -21,27 +21,43 @@ Installation
 
 1. Download the latest release from GitHub
 2. Place the binary in your PATH
-3. Set the DOTFILES_ROOT environment variable to your dotfiles directory
 
 Quick Start
 -----------
 
-1. Initialize your first pack:
+1. Navigate to your dotfiles directory (a git repository):
+   $ cd ~/my-dotfiles
+
+2. Initialize your first pack:
    $ dodot init vim
 
-2. This creates a pack directory with placeholder files:
+3. This creates a pack directory with placeholder files:
    - install.sh (for setup scripts)
    - Brewfile (for package dependencies)
    - alias.sh (for shell aliases)
    - .dodot.toml (for pack configuration)
 
-3. Add your configuration files to the pack directory
+4. Add your configuration files to the pack directory
 
-4. Install the pack (runs setup scripts and deploys configs):
+5. Install the pack (runs setup scripts and deploys configs):
    $ dodot install vim
 
-5. Check the status:
+6. Check the status:
    $ dodot status vim
+
+How dodot Finds Your Dotfiles
+-----------------------------
+
+dodot automatically discovers your dotfiles directory in this order:
+
+1. DOTFILES_ROOT environment variable (if set)
+2. Git repository root (if you're in a git repo)
+3. Current directory (with a warning)
+
+This means you can simply:
+• cd into your dotfiles git repository and run dodot commands
+• No need to set environment variables for typical usage
+• DOTFILES_ROOT is still available for advanced cases
 
 Basic Commands
 --------------

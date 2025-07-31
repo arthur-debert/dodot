@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -48,6 +52,29 @@ versioning and history.`,
 	return rootCmd
 }
 
+// initPaths initializes the paths instance and shows a warning if using fallback
+func initPaths() (*paths.Paths, error) {
+	p, err := paths.New("")
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize paths: %w", err)
+	}
+
+	if p.UsedFallback() {
+		fmt.Fprintf(os.Stderr, "Warning: Not in a git repository and DOTFILES_ROOT not set.\n")
+		fmt.Fprintf(os.Stderr, "Using current directory: %s\n", p.DotfilesRoot())
+		fmt.Fprintf(os.Stderr, "For better results, either:\n")
+		fmt.Fprintf(os.Stderr, "  - Run from within a git repository containing your dotfiles\n")
+		fmt.Fprintf(os.Stderr, "  - Set DOTFILES_ROOT environment variable\n\n")
+	} else {
+		// Debug: log how we found the path
+		if os.Getenv("DODOT_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "Debug: Using dotfiles root: %s (fallback=%v)\n", p.DotfilesRoot(), p.UsedFallback())
+		}
+	}
+
+	return p, nil
+}
+
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
@@ -72,6 +99,25 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
   
   # Dry run to preview changes
   dodot deploy --dry-run`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Deploying from dotfiles root")
+
+			// TODO: Implement actual deploy logic
+			fmt.Printf("Deploy command would run with dotfiles root: %s\n", p.DotfilesRoot())
+			if len(args) > 0 {
+				fmt.Printf("Deploying packs: %v\n", args)
+			} else {
+				fmt.Println("Deploying all packs")
+			}
+
+			return nil
+		},
 	}
 }
 
@@ -97,6 +143,20 @@ func newListCmd() *cobra.Command {
 		Long:  `List displays all packs found in your DOTFILES_ROOT directory.`,
 		Example: `  # List all packs
   dodot list`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
+
+			// TODO: Implement actual list logic
+			fmt.Printf("Listing packs from: %s\n", p.DotfilesRoot())
+
+			return nil
+		},
 	}
 }
 

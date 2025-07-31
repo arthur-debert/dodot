@@ -4,7 +4,9 @@
 package paths
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -88,6 +90,9 @@ type Paths struct {
 
 	// xdgState is the XDG state directory
 	xdgState string
+
+	// usedFallback indicates if we fell back to cwd (for warning display)
+	usedFallback bool
 }
 
 // New creates a new Paths instance with the given dotfiles root.
@@ -98,13 +103,15 @@ func New(dotfilesRoot string) (*Paths, error) {
 
 	// Set up dotfiles root
 	if dotfilesRoot == "" {
-		root, err := findDotfilesRoot()
+		root, usedFallback, err := findDotfilesRoot()
 		if err != nil {
 			return nil, err
 		}
 		p.dotfilesRoot = root
+		p.usedFallback = usedFallback
 	} else {
 		p.dotfilesRoot = expandHome(dotfilesRoot)
+		p.usedFallback = false
 	}
 
 	// Ensure dotfiles root is absolute
@@ -157,25 +164,67 @@ func (p *Paths) setupXDGDirs() error {
 }
 
 // findDotfilesRoot determines the dotfiles root from environment or defaults
-func findDotfilesRoot() (string, error) {
-	// Check DOTFILES_ROOT first
+// It returns the path and a boolean indicating if fallback to cwd was used
+func findDotfilesRoot() (string, bool, error) {
+	// Check DOTFILES_ROOT first (highest priority)
 	if root := os.Getenv(EnvDotfilesRoot); root != "" {
-		return expandHome(root), nil
+		return expandHome(root), false, nil
 	}
 
 	// Check legacy DOTFILES_HOME
 	if home := os.Getenv(EnvDotfilesHome); home != "" {
 		// Note: DOTFILES_HOME is deprecated, but we still support it for backwards compatibility
-		return expandHome(home), nil
+		return expandHome(home), false, nil
 	}
 
-	// Default to ~/dotfiles
-	homeDir, err := os.UserHomeDir()
+	// Try to find git repository root
+	gitRoot, err := findGitRoot()
+	if err == nil && gitRoot != "" {
+		if os.Getenv("DODOT_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "Debug: findDotfilesRoot using git root: %s\n", gitRoot)
+		}
+		return gitRoot, false, nil
+	}
+
+	// Fallback to current working directory with warning
+	cwd, err := os.Getwd()
 	if err != nil {
-		return "", errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+		return "", false, errors.Wrapf(err, errors.ErrFileAccess, "failed to get current directory")
 	}
 
-	return filepath.Join(homeDir, DefaultDotfilesDir), nil
+	return cwd, true, nil
+}
+
+// findGitRoot attempts to find the root of the current git repository
+func findGitRoot() (string, error) {
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+
+	// Debug environment
+	if os.Getenv("DODOT_DEBUG") != "" {
+		cwd, _ := os.Getwd()
+		fmt.Fprintf(os.Stderr, "Debug: findGitRoot called from: %s\n", cwd)
+	}
+
+	output, err := cmd.Output()
+	if err != nil {
+		// Git command failed - not in a git repo or git not installed
+		if os.Getenv("DODOT_DEBUG") != "" {
+			fmt.Fprintf(os.Stderr, "Debug: git command failed: %v\n", err)
+		}
+		return "", err
+	}
+
+	// Trim whitespace and return the path
+	gitRoot := strings.TrimSpace(string(output))
+	if gitRoot == "" {
+		return "", errors.New(errors.ErrNotFound, "git root is empty")
+	}
+
+	if os.Getenv("DODOT_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "Debug: git root found: %s\n", gitRoot)
+	}
+
+	return gitRoot, nil
 }
 
 // expandHome expands ~ to the home directory
@@ -214,6 +263,11 @@ func expandHome(path string) string {
 // DotfilesRoot returns the root directory for dotfiles
 func (p *Paths) DotfilesRoot() string {
 	return p.dotfilesRoot
+}
+
+// UsedFallback returns true if the current working directory was used as fallback
+func (p *Paths) UsedFallback() bool {
+	return p.usedFallback
 }
 
 // PackPath returns the path to a specific pack

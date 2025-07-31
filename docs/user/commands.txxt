@@ -24,7 +24,7 @@ $ dodot install vim git ssh
 
 Options:
 • --force - Force re-execution of run-once power-ups even if already executed
-• --all (-a) - Install all packs in DOTFILES_ROOT
+• --all (-a) - Install all packs in your dotfiles directory
 
 Behavior:
 • Runs install.sh scripts (install_script power-up)
@@ -68,7 +68,7 @@ vim pack:
 4. list
 -------
 
-Show all available packs in your DOTFILES_ROOT directory.
+Show all available packs in your dotfiles directory.
 
 Usage:
 $ dodot list
@@ -90,7 +90,7 @@ Create a new pack with placeholder files and configuration.
 Usage:
 $ dodot init <packname>
 
-Creates a pack at DOTFILES_ROOT/<packname> with:
+Creates a pack at <dotfiles>/<packname> with:
 • Placeholder files for each power-up (install.sh, Brewfile, alias.sh, etc.)
 • A concise readme.txt explaining the pack structure
 • A .dodot.toml configuration file with commented examples
@@ -117,7 +117,9 @@ Global Options
 Environment Variables
 ---------------------
 
-• DOTFILES_ROOT - Path to your dotfiles directory (required)
+• DOTFILES_ROOT - Override path to your dotfiles directory (optional)
+  - If not set, dodot will use the git repository root
+  - If not in a git repo, uses current directory with a warning
 • DODOT_DATA_DIR - Path for dodot data files (optional, defaults to ~/.local/share/dodot)
 
 Examples
