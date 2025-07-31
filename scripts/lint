@@ -5,6 +5,11 @@
 
 set -e
 
+# Ensure GOPATH/bin is in the PATH, as go install places binaries there.
+export GOPATH=${GOPATH:-$HOME/go}
+export PATH=$PATH:$GOPATH/bin
+export PATH=$PATH:$HOME/go/bin # Explicitly add $HOME/go/bin as well
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -24,7 +29,7 @@ if ! command -v golangci-lint &>/dev/null; then
         brew install golangci-lint
     else
         echo -e "${BLUE}Installing via curl...${NC}"
-        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.57.2
     fi
 fi
 

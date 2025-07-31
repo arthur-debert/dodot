@@ -84,6 +84,17 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	return candidates, nil
 }
 
+// shouldIgnore checks if a name matches any ignore pattern
+func shouldIgnore(name string) bool {
+	for _, pattern := range DefaultIgnorePatterns {
+		// Simple pattern matching (could be enhanced with glob)
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+	}
+	return false
+}
+
 // GetPacks validates and creates Pack instances from candidate paths
 func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("core.packs")
@@ -99,17 +110,6 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 				Err(err).
 				Str("path", candidatePath).
 				Msg("Failed to load pack, skipping")
-			continue
-		}
-
-		// Skip disabled packs using the helper method
-		if pack.Config.ShouldSkip() {
-			logger.Info().
-				Str("pack", pack.Name).
-				Bool("skip", pack.Config.Skip).
-				Bool("disabled", pack.Config.Disabled).
-				Bool("ignore", pack.Config.Ignore).
-				Msg("Pack is skipped")
 			continue
 		}
 
@@ -180,17 +180,6 @@ func loadPackConfig(configPath string) (types.PackConfig, error) {
 	return config.LoadPackConfig(configPath)
 }
 
-// shouldIgnore checks if a name matches any ignore pattern
-func shouldIgnore(name string) bool {
-	for _, pattern := range DefaultIgnorePatterns {
-		// Simple pattern matching (could be enhanced with glob)
-		if matched, _ := filepath.Match(pattern, name); matched {
-			return true
-		}
-	}
-	return false
-}
-
 // ValidatePack checks if a directory is a valid pack
 func ValidatePack(packPath string) error {
 	logger := logging.GetLogger("core.packs")
@@ -215,20 +204,12 @@ func ValidatePack(packPath string) error {
 	// Check if it has a .dodot.toml with skip=true
 	configPath := filepath.Join(packPath, ".dodot.toml")
 	if config.FileExists(configPath) {
-		packConfig, err := loadPackConfig(configPath)
+		_, err := loadPackConfig(configPath)
 		if err != nil {
 			// Config exists but is invalid
 			return errors.Wrap(err, errors.ErrConfigLoad, "invalid pack configuration").
 				WithDetail("path", packPath).
 				WithDetail("configPath", configPath)
-		}
-
-		if packConfig.ShouldSkip() {
-			return errors.New(errors.ErrPackSkipped, "pack is marked as skip/disabled/ignore").
-				WithDetail("path", packPath).
-				WithDetail("skip", packConfig.Skip).
-				WithDetail("disabled", packConfig.Disabled).
-				WithDetail("ignore", packConfig.Ignore)
 		}
 	}
 

@@ -78,56 +78,43 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 			return nil
 		}
 
-		// Skip ignored patterns
-		if shouldIgnore(filepath.Base(path)) {
+		// Get relative path within pack
+		relPath, err := filepath.Rel(pack.Path, path)
+		if err != nil {
+			logger.Warn().Err(err).Str("path", path).Msg("Failed to get relative path")
+			return nil
+		}
+
+		// Check if file should be ignored by pack config
+		if pack.Config.IsIgnored(relPath) {
+			logger.Trace().Str("path", relPath).Msg("File ignored by pack config")
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
 			return nil
 		}
 
-		// Get file info
-		info, err := d.Info()
-		if err != nil {
-			logger.Warn().
-				Err(err).
-				Str("path", path).
-				Msg("Failed to get file info")
-			return nil
-		}
-
-		// Get relative path within pack
-		relPath, err := filepath.Rel(pack.Path, path)
-		if err != nil {
-			logger.Warn().
-				Err(err).
-				Str("path", path).
-				Msg("Failed to get relative path")
-			return nil
-		}
-
-		// Check file rules from pack config first
-		fileAction := pack.Config.GetFileAction(relPath)
-		if fileAction == "ignore" {
-			logger.Trace().
-				Str("path", relPath).
-				Msg("File ignored by pack config")
-			return nil
-		}
-
-		// If file action specifies a power-up, use it directly
-		if fileAction != "" {
+		// Check for a behavior override from pack config
+		if override := pack.Config.FindOverride(relPath); override != nil {
+			logger.Trace().Str("path", relPath).Str("powerup", override.Powerup).Msg("File behavior overridden by pack config")
 			match := types.TriggerMatch{
-				TriggerName:    "file-rule",
+				TriggerName:    "override-rule",
 				Pack:           pack.Name,
 				Path:           relPath,
 				AbsolutePath:   path,
 				Metadata:       make(map[string]interface{}),
-				PowerUpName:    fileAction,
-				PowerUpOptions: make(map[string]interface{}),
-				Priority:       0,
+				PowerUpName:    override.Powerup,
+				PowerUpOptions: override.With,
+				Priority:       types.OverridePriority, // High priority for overrides
 			}
 			matches = append(matches, match)
+			return nil // Don't process default matchers
+		}
+
+		// Get file info for default matching
+		info, err := d.Info()
+		if err != nil {
+			logger.Warn().Err(err).Str("path", path).Msg("Failed to get file info")
 			return nil
 		}
 

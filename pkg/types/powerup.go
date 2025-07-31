@@ -11,6 +11,11 @@ const (
 	RunModeOnce RunMode = "once"
 )
 
+const (
+	// OverridePriority is a high priority value for config overrides
+	OverridePriority = 100
+)
+
 // PowerUp is an interface for action generators that process matched files.
 // PowerUps receive groups of files that their associated triggers matched,
 // and generate high-level actions describing what should be done.

@@ -1,108 +1,118 @@
-dodot Simple Configuration Design
+dodot Configuration Design
 =================================
 
-Pack Configuration (.dodot.toml)
---------------------------------
+This document outlines the design for dodot's pack configuration file, `.dodot.toml`. The goal is to provide a clear, flexible, and extensible format for customizing pack behavior.
 
-Each pack can have a .dodot.toml file that tells dodot:
-1. Whether to skip the entire pack
-2. Which files to ignore
-3. Which power-up should handle specific files
+Pack Configuration (`.dodot.toml`)
+-----------------------------------
 
-That's it.
+Each pack can have a `.dodot.toml` file to override default behaviors. The configuration is split into two main sections: `[[ignore]]` for ignoring files and `[[override]]` for customizing power-up behavior.
 
-Basic Structure
----------------
+### Core Principles
+
+1.  **Clarity and Readability**: The format should be self-documenting.
+2.  **Separation of Concerns**: Ignoring files is distinct from overriding behavior.
+3.  **Implicit Precedence**: Ignore rules are always processed first.
+
+### Proposed `.dodot.toml` Format
 
 ```toml
-# Skip the entire pack (aliases: skip, disabled, ignore)
-skip = true
+# .dodot.toml
+#
+# This file allows you to override dodot's default behavior.
+# Ignore rules are always processed first and take precedence.
 
-# Simple file rules
-[files]
-"secrets.txt" = "ignore"           # Don't process this file at all
-"my-aliases.sh" = "profile"        # Use profile power-up instead of default
-"*.bak" = "ignore"                 # Ignore all backup files
-"install-deps.sh" = "install"      # Use install power-up for this script
+# ---
+# Section for ignoring files and patterns.
+# ---
+[[ignore]]
+  path = "README.md"
+
+[[ignore]]
+  path = "*.bak"
+
+# ---
+# Section for overriding default power-up behavior.
+# ---
+[[override]]
+  path = "macos-dependencies.txt"
+  powerup = "brewfile"
+
+[[override]]
+  path = "htoprc"
+  powerup = "symlink"
+  with = { target_dir = "~/.config/htop/" }
+
+[[override]]
+  path = "my-exports.sh"
+  powerup = "shell_profile"
+  with = { action_type = "export_vars" }
 ```
 
 How It Works
 ------------
 
-1. **No file rules**: dodot uses its default matchers (e.g., .vimrc → symlink)
-2. **"ignore"**: File is completely skipped, no power-up processes it
-3. **"powerup-name"**: Override the default and use this specific power-up
-4. **Patterns**: Support glob patterns for matching multiple files
+1.  **Ignore Rules**:
+    *   dodot first checks all `[[ignore]]` rules.
+    *   Any file or directory matching a `path` in an `[[ignore]]` rule is completely skipped.
+    *   Glob patterns are supported.
 
-Examples
---------
+2.  **Override Rules**:
+    *   If a file is not ignored, dodot checks for a matching `[[override]]` rule.
+    *   If a match is found, the specified `powerup` is used for that file.
+    *   The `with` table allows passing custom options to the power-up.
+    *   If no override rule matches, dodot falls back to its default matchers.
 
-### Example 1: Simple vim pack
+### Examples
 
-```toml
-[files]
-"*.swp" = "ignore"                 # Don't deploy swap files
-"init.lua" = "symlink"             # Ensure this goes to home (if defaults change)
-```
-
-### Example 2: Mixed configs pack
+#### Example 1: Simple vim pack
 
 ```toml
-[files]
-# Ignore temporary and private files
-"*.tmp" = "ignore"
-"private-*" = "ignore"
-"TODO.txt" = "ignore"
+# .dodot.toml for vim pack
 
-# Override defaults
-"setup.sh" = "install"             # Run this as install script
-"aliases-work.sh" = "profile"      # Add to shell profile
-"Brewfile.lock.json" = "ignore"    # Don't deploy the lock file
+[[ignore]]
+  path = "*.swp" # Don't deploy swap files
+
+[[override]]
+  path = "init.lua"
+  powerup = "symlink"
+  with = { target = "~/.config/nvim/init.lua" }
 ```
 
-### Example 3: Skip entire pack
+#### Example 2: Mixed configs pack
 
 ```toml
-skip = true  # or disabled = true, or ignore = true
+# .dodot.toml for a mixed pack
+
+[[ignore]]
+  path = "*.tmp"
+[[ignore]]
+  path = "private-*"
+[[ignore]]
+  path = "TODO.txt"
+[[ignore]]
+  path = "Brewfile.lock.json"
+
+[[override]]
+  path = "setup.sh"
+  powerup = "install"
+
+[[override]]
+  path = "aliases-work.sh"
+  powerup = "shell_profile"
 ```
 
-Implementation Details
-----------------------
+Benefits of This Design
+-----------------------
 
-The file rules are checked in this order:
-1. If pack has skip=true, skip entire pack
-2. Check [files] for exact match
-3. Check [files] for glob pattern match
-4. Use default matchers if no rule found
+1.  **Explicit**: The user's intent is clear from the section (`ignore` vs. `override`).
+2.  **Extensible**: The `with` table in `[[override]]` provides a natural way to add power-up specific configurations without complicating the top-level structure.
+3.  **Robust**: Separating ignores from overrides prevents ambiguity and ensures a predictable order of operations.
 
-Simplifications from Current Implementation
--------------------------------------------
-
-Remove these fields from PackConfig:
-- description (not needed for functionality)
-- priority (adds complexity, rarely needed)
-- matchers array (replaced by simpler [files] section)
-- powerup_options (can be added later if truly needed)
-
-The only fields needed:
-- skip/disabled/ignore (boolean)
-- files (map[string]string)
-
-Benefits
---------
-
-1. **Dead Simple**: Users can understand it in 10 seconds
-2. **Covers 99% of Use Cases**: Ignore files or override power-up choice
-3. **No Learning Curve**: "ignore" and power-up names are self-explanatory
-4. **Backwards Compatible**: Existing skip/disabled fields still work
-5. **Predictable**: No priority battles, no complex merging
-
-What This Doesn't Support
+What This Design Supports
 -------------------------
 
-- Custom matcher patterns (use built-in ones)
-- Power-up configuration (use defaults)
-- Complex precedence rules (not needed)
-- Per-file power-up options (too complex)
-
-These limitations are features - they keep dodot simple and predictable.
+*   Ignoring files and directories.
+*   Overriding the power-up for a specific file.
+*   Passing custom options to power-ups.
+*   Glob patterns for both `ignore` and `override` rules.

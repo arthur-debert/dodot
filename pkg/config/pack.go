@@ -6,7 +6,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/pelletier/go-toml/v2"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 var log = logging.GetLogger("config")
@@ -25,16 +25,9 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 		return types.PackConfig{}, fmt.Errorf("failed to parse TOML: %w", err)
 	}
 
-	// Initialize Files map if nil
-	if config.Files == nil {
-		config.Files = make(map[string]string)
-	}
-
 	logger.Debug().
-		Bool("skip", config.Skip).
-		Bool("disabled", config.Disabled).
-		Bool("ignore", config.Ignore).
-		Int("fileRules", len(config.Files)).
+		Int("ignore_rules", len(config.Ignore)).
+		Int("override_rules", len(config.Override)).
 		Msg("Pack config loaded")
 
 	return config, nil
