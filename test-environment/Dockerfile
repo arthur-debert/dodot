@@ -46,5 +46,8 @@ ENV DOTFILES_ROOT=/dotfiles
 # Add Homebrew to PATH for all shells
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
+# Make test scripts easily accessible
+RUN echo 'export PATH="/setup-scripts:$PATH"' >> ~/.zshrc
+
 # Default to zsh shell
 CMD ["/bin/zsh"]
