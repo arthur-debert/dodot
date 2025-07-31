@@ -105,7 +105,6 @@ func initPaths() (*paths.Paths, error) {
 	return p, nil
 }
 
-
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "deploy [packs...]",
