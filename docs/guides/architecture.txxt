@@ -1,0 +1,183 @@
+                   dodot Architecture
+
+This document explains dodot's high-level architecture and how the core
+components work together to process your dotfiles.
+
+Core Components
+---------------
+
+dodot's architecture is built around four main concepts that work in
+sequence:
+
+1. Triggers - Pattern-matching engines that find relevant files
+2. Matchers - Configuration that binds triggers to power-ups  
+3. Power-ups - Action generators that process matched files
+4. Actions - High-level descriptions of operations to perform
+
+Processing Pipeline
+-------------------
+
+When you run a dodot command, this is what happens:
+
+1. Discovery Phase:
+   • Scan all packs to find files and directories
+   • Build inventory of available content
+
+2. Trigger Matching:
+   • Test each file/directory against configured matchers
+   • Each matcher specifies a trigger and target power-up
+   • Create TriggerMatch objects containing file paths and power-ups
+
+3. Grouping Phase:
+   • Group TriggerMatches by power-up, pack, and options
+   • Allows power-ups to process related files together
+   • Example: all shell scripts in a pack processed as one group
+
+4. Action Generation:
+   • Each power-up processes its matched files
+   • Generate high-level actions (create symlink, modify shell profile)
+   • Actions describe intent, not implementation
+
+5. Operation Translation:
+   • Transform actions into low-level filesystem operations
+   • Operations are compatible with the synthfs library
+   • Still no actual filesystem changes at this point
+
+6. Execution:
+   • synthfs executes the filesystem operations
+   • Creates symlinks, directories, and files as needed
+   • Provides basic error handling and rollback
+
+Component Details
+-----------------
+
+Triggers:
+Triggers implement specific matching strategies:
+• FileNameTrigger - Matches files by name patterns
+• DirectoryTrigger - Matches directories by name
+• ExtensionTrigger - Matches files by extension
+• PathTrigger - Matches by full path patterns
+
+Each trigger returns metadata about matches, not actions. This separation
+allows the same trigger to be used with different power-ups.
+
+Matchers:
+Matchers bind triggers to power-ups with configuration:
+• Which trigger to use for detection
+• Which power-up should handle matches
+• Options to pass to the power-up
+• Priority for handling conflicts
+
+Matchers are configured globally with overrides possible per-pack via
+.dodot.toml files.
+
+Power-ups:
+Power-ups generate actions from matched files:
+• symlink - Creates symbolic links to target locations
+• shell_profile - Modifies shell configuration files
+• shell_add_path - Adds directories to PATH
+• brewfile - Processes Homebrew package files
+• install_script - Executes installation scripts
+
+Power-ups never perform filesystem operations directly. They only describe
+what should be done through actions.
+
+Actions:
+Actions are high-level operation descriptions:
+• Type (link, shell_source, brew, install, etc.)
+• Human-readable description
+• Data needed for execution (source, target, options)
+
+Actions abstract away implementation details from power-ups.
+
+Registry System
+---------------
+
+All components are registered in a type-safe registry system:
+• TriggerRegistry - Available trigger implementations
+• PowerUpRegistry - Available power-up implementations  
+• MatcherRegistry - Available matcher configurations
+
+This enables extensibility - new triggers and power-ups can be added
+without modifying core code.
+
+File System Safety
+------------------
+
+dodot uses a layered approach to filesystem operations:
+
+1. Pure Functions:
+   • Power-ups are pure functions (same input → same output)
+   • No side effects during action generation
+   • Easy to test and reason about
+
+2. Synthetic Filesystem:
+   • All operations go through the synthfs library
+   • Operations are validated before execution
+   • Provides transaction-like semantics
+
+3. Operation Descriptions:
+   • Actions are translated to operation descriptions
+   • Descriptions are data, not execution
+   • Enable dry-run capabilities and validation
+
+Benefits of This Architecture
+-----------------------------
+
+Separation of Concerns:
+• Triggers focus only on file detection
+• Power-ups focus only on action generation
+• Execution is handled by specialized library
+
+Extensibility:
+• New triggers can be used with existing power-ups
+• New power-ups can work with existing triggers
+• Registry system enables plugin-like architecture
+
+Testability:
+• Each component can be tested in isolation
+• Pure functions enable predictable testing
+• No filesystem dependencies in core logic
+
+Safety:
+• No direct filesystem operations in application code
+• Validation occurs before any changes
+• Basic rollback capabilities through synthfs
+
+Predictability:
+• Same inputs always produce same outputs
+• Clear data flow through the pipeline
+• Easy to debug and understand
+
+Configuration Flow
+------------------
+
+Configuration is resolved in this order:
+1. Default matchers (built into dodot)
+2. Global configuration files
+3. Pack-specific .dodot.toml files
+4. Command-line overrides
+
+This allows fine-grained control while maintaining sensible defaults.
+
+Pack Processing
+---------------
+
+Each pack is processed independently:
+1. Load pack configuration (.dodot.toml if present)
+2. Apply ignore rules (skip matching files)
+3. Run trigger matching for remaining files
+4. Group matches by power-up and options
+5. Generate actions for each group
+
+Multiple packs can be processed in parallel since they're independent.
+
+Error Handling
+--------------
+
+Errors are handled at appropriate levels:
+• Trigger errors - Skip individual files, continue processing
+• Power-up errors - Fail the power-up, continue with others
+• Execution errors - Stop processing, attempt rollback
+
+This provides graceful degradation while preventing partial deployments.

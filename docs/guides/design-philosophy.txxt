@@ -1,0 +1,132 @@
+                   Design Philosophy
+
+This document explains the core principles and trade-offs behind dodot's
+design. Understanding these principles helps explain why dodot works the
+way it does and whether it fits your use case.
+
+Core Principles
+---------------
+
+1. Versioning is left to git
+2. No installs, only deployments - changes are always live
+3. No state management - deployments are idempotent
+4. Complete freedom for users on file structure  
+5. Dead simple operation
+
+The Big Picture
+---------------
+
+These principles are deeply interconnected. By leaving versioning to git,
+we ensure your dotfiles repository IS your deployment. Combined with live
+changes, this means files under source control are the actual deployed
+files - not copies.
+
+This is achieved through symbolic links: the file in your repository acts
+as the link source. There's nothing to "update" since changes to config
+files are immediately live on the system.
+
+This enables stateless deployments - just linking paths from your system
+to your source-controlled repository.
+
+File Organization Philosophy
+----------------------------
+
+Directories as Packs:
+You organize related configurations under directories called "packs". The
+grouping criteria is entirely up to you:
+
+• By software (neovim pack for vim configurations)
+• By workflow (python-dev pack for development tools)
+• By machine type (macos-laptop for macOS-specific configs)
+
+File Naming Conventions:
+dodot works primarily through file naming conventions:
+• "bin" directory → added to system PATH
+• "alias.sh" file → sourced into shell profile
+• "vimrc" file → symlinked to ~/.vimrc
+• "Brewfile" → processed by Homebrew
+
+Override any convention using .dodot.toml configuration files.
+
+Trade-offs and Consequences
+---------------------------
+
+Benefits:
+• Simple mental model - your git repo is your deployment
+• Live editing - changes are immediately active
+• No complex state management or databases
+• Easy backup and portability (just git)
+• Works with any existing git repository structure
+
+Limitations:
+• No controlled deploy flow - changes are live immediately
+• No built-in versioning beyond git
+• Structural changes (new files) require redeployment
+• Install scripts must be idempotent
+
+Examples of Trade-offs:
+
+Immediate Changes:
+Edit an already-deployed alias.sh file, and the next shell login picks up
+changes automatically. Great for rapid iteration, but not suitable if you
+need controlled deployment flows.
+
+Structural Changes:
+If you deploy a pack without alias.sh, then later add alias.sh, it won't
+be active until redeployment (since no link was created initially). Use
+the fill command to create placeholder files if needed.
+
+Run-Once Operations:
+Actions like install.sh scripts and Brewfiles run every deployment unless
+you write defensive code. Homebrew handles this well; install scripts
+should be idempotent.
+
+The Stateless Advantage
+-----------------------
+
+No State Management:
+• No tracking database or metadata files
+• Each deployment is independent and complete
+• No complex upgrade/downgrade procedures
+• Easy to reason about and debug
+
+Idempotent Operations:
+Running the same deployment multiple times produces the same result. This
+makes dodot predictable and safe for automation.
+
+File System Safety:
+dodot never directly manipulates files. Instead, it generates descriptions
+of operations that are executed by a specialized file system library
+(synthfs). This provides:
+• Safer operations with validation
+• Basic rollback capabilities  
+• Easier testing through pure functions
+
+When dodot Fits
+---------------
+
+dodot works well when you:
+• Want simple, transparent dotfile management
+• Are comfortable with git-based versioning
+• Prefer live configuration editing
+• Don't need complex deployment workflows
+• Value simplicity over advanced features
+
+dodot may not fit if you:
+• Need controlled deployment with approvals
+• Require complex rollback scenarios
+• Want built-in configuration versioning
+• Need to manage secrets or sensitive data
+• Require cross-platform compatibility guarantees
+
+Design Philosophy Summary
+-------------------------
+
+dodot embraces simplicity over features. By accepting the constraints of
+git-based versioning, symlink deployment, and stateless operation, it
+achieves a remarkably simple and predictable system.
+
+The design makes certain advanced features impossible while making common
+operations trivial. This is an intentional trade-off - dodot chooses to
+do a few things extremely well rather than attempting to handle every
+possible use case.

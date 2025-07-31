@@ -1,0 +1,212 @@
+                   Extensibility
+
+This document explains how dodot's registry pattern enables extensibility
+and how new triggers and power-ups can be conceptually added to the
+system.
+
+Registry Pattern
+----------------
+
+dodot uses a type-safe registry system that allows components to be
+discovered and used dynamically:
+
+Core Registries:
+• TriggerRegistry - Available file matching strategies
+• PowerUpRegistry - Available action generators
+• MatcherRegistry - Available trigger-to-power-up bindings
+
+This pattern enables:
+• Plugin-like architecture without complex plugin systems
+• Easy addition of new functionality
+• Type-safe component discovery
+• Clean separation between core and extensions
+
+How Extension Works
+-------------------
+
+Adding New Triggers:
+
+A trigger is a file matching strategy. To add a new trigger:
+
+1. Implement the trigger interface
+2. Register it in the TriggerRegistry
+3. Create matchers that use the new trigger
+
+Example use cases:
+• ContentTrigger - Match files by content patterns
+• SizeTrigger - Match files by size thresholds  
+• TimeTrigger - Match files by modification time
+• PermissionTrigger - Match files by permissions
+
+Adding New Power-ups:
+
+A power-up processes matched files and generates actions. To add a new
+power-up:
+
+1. Implement the power-up interface
+2. Register it in the PowerUpRegistry
+3. Define what actions it generates
+
+Example use cases:
+• EncryptionPowerUp - Encrypt/decrypt sensitive files
+• TemplatePowerUp - Process template files with variables
+• CompressionPowerUp - Compress large configuration files
+• SyncPowerUp - Synchronize with cloud storage
+
+Adding New Actions:
+
+Actions describe high-level operations. New actions require:
+
+1. Define the action type and data structure
+2. Implement action-to-operation translation
+3. Register the translation logic
+
+Example use cases:
+• EncryptAction - Encrypt file before deployment
+• NetworkAction - Download remote configurations
+• DatabaseAction - Store configuration in database
+• NotificationAction - Send deployment notifications
+
+Extension Points
+----------------
+
+Configuration Extension:
+• .dodot.toml files can reference new triggers and power-ups
+• Global configuration can define new matchers
+• Command-line options can override registries
+
+Matcher System Extension:
+The matcher system is the primary extension point:
+
+```toml
+[[override]]
+  path = "*.encrypted"
+  powerup = "encryption"
+  with = { 
+    key_file = "~/.keys/dotfiles.key",
+    cipher = "AES256" 
+  }
+```
+
+This would use a hypothetical encryption power-up for encrypted files.
+
+Registry Composition:
+Registries can be composed and layered:
+• Core registries provide built-in functionality
+• User registries add custom components
+• Pack-specific registries for special cases
+
+Conceptual Extensions
+---------------------
+
+Template System:
+A template power-up could process files with variable substitution:
+• Match files with .template extension
+• Replace variables with environment values
+• Generate final configuration files
+
+Example: database.conf.template → database.conf with actual passwords
+
+Secret Management:
+A secrets power-up could integrate with password managers:
+• Match files containing secret references
+• Replace references with actual secrets
+• Support multiple secret backends (pass, 1Password, etc.)
+
+Platform Adaptation:
+A platform power-up could handle OS-specific configurations:
+• Match files with platform suffixes (.macos, .linux)
+• Deploy appropriate version based on current OS
+• Handle platform-specific paths and conventions
+
+Cloud Synchronization:
+A sync power-up could manage cloud-stored configurations:
+• Match configuration files that should be synchronized
+• Upload/download from cloud storage
+• Handle conflict resolution
+
+Development Workflow:
+A development power-up could integrate with development tools:
+• Generate IDE configuration from templates
+• Manage project-specific settings
+• Handle development environment setup
+
+Extension Guidelines
+--------------------
+
+Interface Compliance:
+New components must implement the defined interfaces:
+• Triggers return TriggerMatch objects
+• Power-ups return Action slices
+• Actions contain type, description, and data
+
+Pure Functions:
+Extensions should follow the pure function principle:
+• Same inputs produce same outputs
+• No side effects during processing
+• Filesystem operations only through actions
+
+Error Handling:
+Extensions should use typed errors:
+• Provide error codes for testing
+• Include helpful error messages
+• Support error context and details
+
+Configuration Support:
+Extensions should support configuration:
+• Accept options through the "with" table
+• Provide sensible defaults
+• Validate configuration inputs
+
+Registry Benefits
+-----------------
+
+Discoverability:
+• Components can be listed and introspected
+• Help systems can document available options
+• Configuration can be validated against available components
+
+Flexibility:
+• Mix and match triggers with different power-ups
+• Override defaults without modifying core code
+• Create pack-specific behaviors
+
+Testing:
+• Components can be tested in isolation
+• Mock registries enable unit testing
+• Registry state doesn't affect test isolation
+
+Maintenance:
+• New functionality doesn't require core changes
+• Extensions can be developed independently
+• Backwards compatibility is easier to maintain
+
+Future Directions
+-----------------
+
+Plugin System:
+The registry pattern provides foundation for a future plugin system:
+• Load external components from shared libraries
+• Discover plugins in standard directories
+• Manage plugin dependencies and versions
+
+Configuration Schema:
+Future versions could provide schema validation:
+• Validate power-up options against schemas
+• Provide better error messages for configuration
+• Enable IDE support for configuration files
+
+Performance Optimization:
+Registry pattern enables performance improvements:
+• Lazy loading of unused components
+• Parallel execution of independent power-ups
+• Caching of expensive operations
+
+Integration APIs:
+The extensibility model could support external integrations:
+• REST APIs for remote power-ups
+• Message queue integration for async operations
+• Webhook support for deployment notifications
+
+The registry pattern ensures dodot remains simple while providing
+powerful extension capabilities for advanced users and integrations.

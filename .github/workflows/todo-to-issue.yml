@@ -18,8 +18,7 @@ jobs:
       
       - name: TODO to Issue
         uses: alstr/todo-to-issue-action@v5.0
-        env:
-          ACTIONS_STEP_DEBUG: true
         with:
+          PATH: "pkg,cmd,internal"
           CLOSE_ISSUES: false
           AUTO_P: true

@@ -1,0 +1,121 @@
+                   dodot Configuration
+
+This document explains how to configure dodot packs using the .dodot.toml
+configuration file.
+
+Pack Configuration (.dodot.toml)
+--------------------------------
+
+Each pack can have a .dodot.toml file to override default behaviors. The
+configuration has two main sections:
+
+• [[ignore]] - Skip files and patterns  
+• [[override]] - Customize power-up behavior
+
+Core Principles
+---------------
+
+1. Clarity and Readability - Self-documenting format
+2. Separation of Concerns - Ignoring vs overriding are distinct
+3. Implicit Precedence - Ignore rules processed first
+
+Configuration Format
+--------------------
+
+```toml
+# .dodot.toml
+# Override dodot's default behavior for this pack
+
+# Skip files and patterns
+[[ignore]]
+  path = "README.md"
+
+[[ignore]]
+  path = "*.bak"
+
+# Override default power-up behavior
+[[override]]
+  path = "macos-dependencies.txt"
+  powerup = "brewfile"
+
+[[override]]
+  path = "htoprc"
+  powerup = "symlink"
+  with = { target_dir = "~/.config/htop/" }
+
+[[override]]
+  path = "my-exports.sh"
+  powerup = "shell_profile"
+  with = { action_type = "export_vars" }
+```
+
+How It Works
+------------
+
+1. Ignore Rules:
+   • dodot first checks all [[ignore]] rules
+   • Files matching a path are completely skipped
+   • Glob patterns supported (*.tmp, private-*)
+
+2. Override Rules:
+   • If not ignored, check for matching [[override]] rule
+   • Use specified powerup for that file
+   • Pass custom options via with table
+   • Fall back to default matchers if no override
+
+Configuration Examples
+----------------------
+
+Simple vim pack:
+```toml
+[[ignore]]
+  path = "*.swp"  # Skip swap files
+
+[[override]]
+  path = "init.lua"
+  powerup = "symlink"
+  with = { target_dir = "~/.config/nvim/" }
+```
+
+Mixed configs pack:
+```toml
+[[ignore]]
+  path = "*.tmp"
+[[ignore]]
+  path = "private-*"
+[[ignore]]
+  path = "Brewfile.lock.json"
+
+[[override]]
+  path = "setup.sh"
+  powerup = "install_script"
+
+[[override]]
+  path = "work-aliases.sh"
+  powerup = "shell_profile"
+```
+
+Power-up Options
+----------------
+
+Each power-up accepts different options in the with table:
+
+symlink:
+• target_dir - Where to create the symlink (default: "~")
+• create_dirs - Create parent directories (default: true)
+• overwrite - Replace existing files (default: false)
+• backup - Backup existing files (default: false)
+
+shell_profile:
+• shell - Target shell (auto-detected if not specified)
+• action_type - "source", "append", or "export_vars" (default: "source")
+• profile_preference - Which profile file to modify
+• export_prefix - Prefix for exported variables
+• order - Numeric order for multiple modifications (default: 50)
+
+shell_add_path:
+• bin_dir - Directory to add to PATH
+• shell - Target shell (auto-detected)
+• prepend - Add to beginning of PATH (default: false)
+
+See powerups.txxt for complete power-up documentation and options.
