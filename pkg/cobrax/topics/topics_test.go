@@ -24,32 +24,65 @@ func TestTopicManager_ScanTopics(t *testing.T) {
 	testutil.CreateFile(t, topicsDir, "config.txxt", "Configuration Guide\n==================")
 	testutil.CreateFile(t, topicsDir, "ignore.json", "This should be ignored")
 
-	// Create TopicManager and scan
-	tm := New(topicsDir)
-	err := tm.scanTopics()
-	testutil.AssertNoError(t, err)
+	t.Run("default extensions", func(t *testing.T) {
+		// Create TopicManager with default extensions (.txt, .md)
+		tm := New(topicsDir)
+		err := tm.scanTopics()
+		testutil.AssertNoError(t, err)
 
-	// Verify topics were loaded
-	tests := []struct {
-		name     string
-		expected bool
-		content  string
-	}{
-		{"dry-run", true, "Information about dry-run mode"},
-		{"architecture", true, "# Architecture\n\nSystem architecture details"},
-		{"config", true, "Configuration Guide\n=================="},
-		{"ignore", false, ""},
-	}
+		// Verify only .txt and .md were loaded
+		tests := []struct {
+			name     string
+			expected bool
+			content  string
+		}{
+			{"dry-run", true, "Information about dry-run mode"},
+			{"architecture", true, "# Architecture\n\nSystem architecture details"},
+			{"config", false, ""}, // .txxt not in defaults
+			{"ignore", false, ""},
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			topic, exists := tm.GetTopic(tt.name)
-			testutil.AssertEqual(t, tt.expected, exists)
-			if exists {
-				testutil.AssertEqual(t, tt.content, topic.Content)
-			}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				topic, exists := tm.GetTopic(tt.name)
+				testutil.AssertEqual(t, tt.expected, exists)
+				if exists {
+					testutil.AssertEqual(t, tt.content, topic.Content)
+				}
+			})
+		}
+	})
+
+	t.Run("custom extensions", func(t *testing.T) {
+		// Create TopicManager with custom extensions
+		tm := NewWithOptions(topicsDir, Options{
+			Extensions: []string{".txt", ".md", ".txxt"},
 		})
-	}
+		err := tm.scanTopics()
+		testutil.AssertNoError(t, err)
+
+		// Verify all configured extensions were loaded
+		tests := []struct {
+			name     string
+			expected bool
+			content  string
+		}{
+			{"dry-run", true, "Information about dry-run mode"},
+			{"architecture", true, "# Architecture\n\nSystem architecture details"},
+			{"config", true, "Configuration Guide\n=================="},
+			{"ignore", false, ""},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				topic, exists := tm.GetTopic(tt.name)
+				testutil.AssertEqual(t, tt.expected, exists)
+				if exists {
+					testutil.AssertEqual(t, tt.content, topic.Content)
+				}
+			})
+		}
+	})
 }
 
 func TestTopicManager_GetTopic(t *testing.T) {

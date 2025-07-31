@@ -8,7 +8,9 @@ support arbitrary help topics loaded from files.
 Features
 --------
 
-• File-based help topics (txt, txxt, md formats)
+• File-based help topics with configurable extensions
+• Default support for .txt and .md files
+• Customizable extensions (e.g., add .txxt, .rst)
 • Automatic topic discovery from directory
 • Flag-style topic support (--dry-run → dry-run)
 • Seamless fallback to Cobra's original help
@@ -34,8 +36,16 @@ Usage
 
    rootCmd := &cobra.Command{...}
    
-   // Pass the path where your topic files are stored
+   // Option 1: Use default extensions (.txt, .md)
    if err := topics.Initialize(rootCmd, "cmd/myapp/topics"); err != nil {
+       log.Debug().Err(err).Msg("Failed to initialize topics")
+   }
+   
+   // Option 2: Add custom extensions
+   opts := topics.Options{
+       Extensions: []string{".txt", ".md", ".txxt", ".rst"},
+   }
+   if err := topics.InitializeWithOptions(rootCmd, "cmd/myapp/topics", opts); err != nil {
        log.Debug().Err(err).Msg("Failed to initialize topics")
    }
 
@@ -48,14 +58,15 @@ Usage
 Topic Files
 -----------
 
-Create help files with any of these extensions:
+Default supported extensions:
 • .txt - Plain text files
-• .txxt - Structured text format
 • .md - Markdown files
 
+You can add more extensions (like .txxt, .rst, .adoc) using InitializeWithOptions.
+
 Naming Conventions:
-• option-<flag>.txt - For flag/option documentation (e.g., option-dry-run.txt)
-• <topic>.txt - For general topics (e.g., architecture.txt)
+• option-<flag>.<ext> - For flag/option documentation (e.g., option-dry-run.txt)
+• <topic>.<ext> - For general topics (e.g., architecture.md)
 
 The option- prefix allows users to access flag help naturally:
 • "help dry-run" finds option-dry-run.txt

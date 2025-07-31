@@ -18,6 +18,7 @@ type TopicManager struct {
 	topicsDir    string
 	topics       map[string]*Topic
 	originalHelp func(*cobra.Command, []string)
+	extensions   []string
 }
 
 // Topic represents a help topic
@@ -27,12 +28,32 @@ type Topic struct {
 	Content  string
 }
 
-// New creates a new TopicManager
+// Options configures the TopicManager
+type Options struct {
+	// Extensions is the list of file extensions to consider as topics
+	// Defaults to [".txt", ".md"] if not specified
+	Extensions []string
+}
+
+// New creates a new TopicManager with default extensions
 func New(topicsDir string) *TopicManager {
-	return &TopicManager{
-		topicsDir: topicsDir,
-		topics:    make(map[string]*Topic),
+	return NewWithOptions(topicsDir, Options{})
+}
+
+// NewWithOptions creates a new TopicManager with custom options
+func NewWithOptions(topicsDir string, opts Options) *TopicManager {
+	tm := &TopicManager{
+		topicsDir:  topicsDir,
+		topics:     make(map[string]*Topic),
+		extensions: opts.Extensions,
 	}
+	
+	// Set default extensions if none provided
+	if len(tm.extensions) == 0 {
+		tm.extensions = []string{".txt", ".md"}
+	}
+	
+	return tm
 }
 
 // scanTopics scans the topics directory for help files
@@ -56,7 +77,14 @@ func (tm *TopicManager) scanTopics() error {
 
 		// Check if file has a supported extension
 		ext := filepath.Ext(path)
-		if ext != ".txt" && ext != ".txxt" && ext != ".md" {
+		supported := false
+		for _, validExt := range tm.extensions {
+			if ext == validExt {
+				supported = true
+				break
+			}
+		}
+		if !supported {
 			return nil
 		}
 
@@ -110,9 +138,14 @@ func (tm *TopicManager) ListTopics() []string {
 	return topics
 }
 
-// Initialize sets up the topic-based help system for a Cobra application
+// Initialize sets up the topic-based help system with default extensions
 func Initialize(rootCmd *cobra.Command, topicsDir string) error {
-	tm := New(topicsDir)
+	return InitializeWithOptions(rootCmd, topicsDir, Options{})
+}
+
+// InitializeWithOptions sets up the topic-based help system with custom options
+func InitializeWithOptions(rootCmd *cobra.Command, topicsDir string, opts Options) error {
+	tm := NewWithOptions(topicsDir, opts)
 
 	// Scan for topics
 	if err := tm.scanTopics(); err != nil {
@@ -165,11 +198,11 @@ To see all available help topics:
 				} else {
 					// Sort topics alphabetically
 					sort.Strings(topics)
-					
+
 					// Separate options and general topics
 					var options []string
 					var general []string
-					
+
 					for _, name := range topics {
 						if strings.HasPrefix(name, "option-") {
 							// Remove prefix for display
@@ -178,7 +211,7 @@ To see all available help topics:
 							general = append(general, name)
 						}
 					}
-					
+
 					fmt.Println("Available help topics:")
 					if len(general) > 0 {
 						fmt.Println("\nGeneral topics:")
@@ -186,14 +219,14 @@ To see all available help topics:
 							fmt.Printf("  %s\n", name)
 						}
 					}
-					
+
 					if len(options) > 0 {
 						fmt.Println("\nOption topics:")
 						for _, name := range options {
 							fmt.Printf("  --%s\n", name)
 						}
 					}
-					
+
 					fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
 				}
 				return

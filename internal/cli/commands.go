@@ -65,15 +65,18 @@ versioning and history.`,
 	if err == nil {
 		// Look for help topics in various locations
 		possiblePaths := []string{
-			filepath.Join(filepath.Dir(exe), "topics"),                            // Same directory as binary (production)
+			filepath.Join(filepath.Dir(exe), "topics"),                             // Same directory as binary (production)
 			filepath.Join(filepath.Dir(exe), "..", "..", "cmd", "dodot", "topics"), // Development
 			"cmd/dodot/topics", // Current directory fallback
 		}
 
 		for _, helpPath := range possiblePaths {
 			if _, err := os.Stat(helpPath); err == nil {
-				// Initialize topics without logging (logging not set up yet)
-				if err := topics.Initialize(rootCmd, helpPath); err == nil {
+				// Initialize topics with .txt, .md, and .txxt extensions
+				opts := topics.Options{
+					Extensions: []string{".txt", ".md", ".txxt"},
+				}
+				if err := topics.InitializeWithOptions(rootCmd, helpPath, opts); err == nil {
 					break
 				}
 			}
