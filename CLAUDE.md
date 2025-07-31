@@ -11,7 +11,7 @@ This repository contains dodot, a stateless dotfiles manager written in Go.
 ## Common Development Commands
 
 ### Build & Development
-- `./scripts/build` - Builds the CLI binary with embedded version info to `./bin/dodot`
+- `./scripts/build` - Builds the CLI binary with embedded version info to `./dist/build/bin/dodot`
 - `./scripts/test` - Runs tests with race detection
 - `./scripts/test-with-cov` - Runs tests with detailed coverage report and HTML output
 - `./scripts/lint` - Runs golangci-lint (auto-installs if needed)
@@ -22,8 +22,8 @@ This repository contains dodot, a stateless dotfiles manager written in Go.
 - `goreleaser release --clean` - Builds multi-platform releases (triggered by version tags)
 
 ### Running the CLI
-- `./bin/dodot --version` - Shows version info
-- `./bin/dodot -v/-vv/-vvv` - Increases logging verbosity
+- `./dist/build/bin/dodot --version` - Shows version info
+- `./dist/build/bin/dodot -v/-vv/-vvv` - Increases logging verbosity
 
 ## Development Guidelines
 

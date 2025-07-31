@@ -91,22 +91,6 @@ else
     exit 1
 fi
 
-# Create convenience symlink in repo root for development
-if [ -e "dodot" ] || [ -L "dodot" ]; then
-    rm -f dodot
-fi
-ln -sf "${BIN_DIR}/dodot" dodot
-echo -e "${GREEN}✅ Created convenience symlink: ./dodot -> ${BIN_DIR}/dodot${NC}"
-
-# Also maintain the bin directory symlink for backwards compatibility
-if [ ! -d "bin" ]; then
-    mkdir -p bin
-fi
-rm -f bin/dodot
-ln -sf "../${BIN_DIR}/dodot" "bin/dodot"
-echo -e "${GREEN}✅ Created symlink in bin/dodot${NC}"
-
 echo
 echo -e "${GREEN}${BOLD}🎉 Build completed successfully!${NC}"
 echo -e "${BLUE}Binary location: ${BOLD}${BIN_DIR}/dodot${NC}"
-echo -e "${BLUE}Convenience symlink: ${BOLD}./dodot${NC}"
