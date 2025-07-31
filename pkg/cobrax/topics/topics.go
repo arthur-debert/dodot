@@ -5,13 +5,17 @@ package topics
 
 import (
 	_ "embed"
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"text/template"
 
+	"github.com/mattn/go-isatty"
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
@@ -194,14 +198,14 @@ func (tm *TopicManager) DisplayTopicsList() {
 
 	// Build groups dynamically
 	groups := []topicGroup{}
-	
+
 	if len(generalTopics) > 0 {
 		groups = append(groups, topicGroup{
 			Title:  "GENERAL",
 			Topics: generalTopics,
 		})
 	}
-	
+
 	if len(optionTopics) > 0 {
 		groups = append(groups, topicGroup{
 			Title:  "OPTIONS",
@@ -235,9 +239,70 @@ func (tm *TopicManager) DisplayTopicsList() {
 		return
 	}
 
-	if err := tmpl.Execute(os.Stdout, data); err != nil {
+	// Execute template to buffer first
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
 		fmt.Printf("Error executing template: %v\n", err)
+		return
 	}
+	
+	// Display with pager if needed
+	_ = displayWithPager(buf.String())
+}
+
+// shouldUsePager determines if content should be paged based on length and terminal
+func shouldUsePager(content string) bool {
+	// Only page if output is to a terminal
+	if !isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()) {
+		return false
+	}
+
+	// Count lines
+	lines := strings.Count(content, "\n") + 1
+	
+	// Get terminal height (default to 24 if we can't determine)
+	height := 24
+	if pterm.GetTerminalHeight() > 0 {
+		height = pterm.GetTerminalHeight()
+	}
+	
+	// Page if content is longer than 80% of terminal height
+	return lines > int(float64(height)*0.8)
+}
+
+// getPager returns the pager command to use
+func getPager() string {
+	// Check PAGER environment variable
+	if pager := os.Getenv("PAGER"); pager != "" {
+		return pager
+	}
+	
+	// Default based on OS
+	if runtime.GOOS == "windows" {
+		return "more"
+	}
+	return "less"
+}
+
+// displayWithPager shows content using the system pager if appropriate
+func displayWithPager(content string) error {
+	if !shouldUsePager(content) {
+		fmt.Print(content)
+		return nil
+	}
+
+	pager := getPager()
+	cmd := exec.Command(pager)
+	cmd.Stdin = strings.NewReader(content)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Set LESS environment variable for better defaults if using less
+	if strings.Contains(pager, "less") {
+		cmd.Env = append(os.Environ(), "LESS=FRX")
+	}
+
+	return cmd.Run()
 }
 
 // Initialize sets up the topic-based help system with default extensions
@@ -305,7 +370,12 @@ To see all available help topics:
 				// Get file extension for format detection
 				ext := filepath.Ext(topic.FilePath)
 				rendered := tm.renderer.Render(topic.Content, ext)
-				fmt.Print(rendered)
+				
+				// Use pager if content is long
+				if err := displayWithPager(rendered); err != nil {
+					// Fallback to direct output if pager fails
+					fmt.Print(rendered)
+				}
 				return nil
 			}
 
