@@ -361,14 +361,14 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 			checksum = cs
 		}
 	}
-	
+
 	// Fall back to metadata if no context or checksum not found
 	if checksum == "" {
 		if cs, ok := action.Metadata["checksum"].(string); ok {
 			checksum = cs
 		}
 	}
-	
+
 	// If still no checksum, this is an error - checksum actions should have run first
 	if checksum == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "brew action requires checksum - ensure checksum action runs first")
@@ -415,14 +415,14 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 			checksum = cs
 		}
 	}
-	
+
 	// Fall back to metadata if no context or checksum not found
 	if checksum == "" {
 		if cs, ok := action.Metadata["checksum"].(string); ok {
 			checksum = cs
 		}
 	}
-	
+
 	// If still no checksum, this is an error - checksum actions should have run first
 	if checksum == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "install action requires checksum - ensure checksum action runs first")

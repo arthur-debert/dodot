@@ -14,7 +14,7 @@ func TestExecutionContext_ExecuteChecksumOperations(t *testing.T) {
 	tempDir := testutil.TempDir(t, "checksum-test")
 	testFile := filepath.Join(tempDir, "test.txt")
 	testContent := "Hello, World!"
-	
+
 	err := os.WriteFile(testFile, []byte(testContent), 0644)
 	testutil.AssertNoError(t, err)
 
@@ -39,32 +39,32 @@ func TestExecutionContext_ExecuteChecksumOperations(t *testing.T) {
 	result := results[0]
 	testutil.AssertTrue(t, result.Success)
 	testutil.AssertNoError(t, result.Error)
-	
+
 	checksum, ok := result.Result.(string)
 	testutil.AssertTrue(t, ok)
 	testutil.AssertNotEmpty(t, checksum)
-	
+
 	// Verify checksum is stored in context
 	storedChecksum, exists := ctx.GetChecksum(testFile)
 	testutil.AssertTrue(t, exists)
 	testutil.AssertEqual(t, checksum, storedChecksum)
-	
+
 	// Verify it's a valid SHA256 checksum (64 hex characters)
 	testutil.AssertEqual(t, 64, len(checksum))
 }
 
 func TestExecutionContext_GetChecksum(t *testing.T) {
 	ctx := NewExecutionContext()
-	
+
 	// Test with no checksum stored
 	_, exists := ctx.GetChecksum("/nonexistent/file")
 	testutil.AssertFalse(t, exists)
-	
+
 	// Store a checksum
 	testPath := "/test/path/file.txt"
 	testChecksum := "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234"
 	ctx.ChecksumResults[testPath] = testChecksum
-	
+
 	// Retrieve the checksum
 	checksum, exists := ctx.GetChecksum(testPath)
 	testutil.AssertTrue(t, exists)
@@ -99,17 +99,17 @@ func TestCalculateFileChecksum(t *testing.T) {
 	tempDir := testutil.TempDir(t, "checksum-calc-test")
 	testFile := filepath.Join(tempDir, "test.txt")
 	testContent := "Hello, World!"
-	
+
 	err := os.WriteFile(testFile, []byte(testContent), 0644)
 	testutil.AssertNoError(t, err)
 
 	// Calculate checksum
 	checksum, err := calculateFileChecksum(testFile)
 	testutil.AssertNoError(t, err)
-	
+
 	// Verify it's a valid SHA256 checksum (64 hex characters)
 	testutil.AssertEqual(t, 64, len(checksum))
-	
+
 	// Verify it's the expected checksum for "Hello, World!"
 	// echo -n "Hello, World!" | sha256sum
 	expectedChecksum := "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"

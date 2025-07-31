@@ -174,30 +174,38 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 			return err
 		}
 
-		// Run the pipeline
-		candidates, err := core.GetPackCandidates(dotfilesRoot)
+		// Execute deployment pipeline
+		result, err := core.DeployPacks(core.DeployPacksOptions{
+			DotfilesRoot: dotfilesRoot,
+			PackNames:    args,
+			DryRun:       dryRun,
+		})
 		if err != nil {
 			return err
 		}
 
-		packs, err := core.GetPacks(candidates)
-		if err != nil {
-			return err
-		}
+		// Log execution results
+		logger.Info().
+			Int("packs", len(result.Packs)).
+			Int("operations", len(result.Operations)).
+			Bool("dryRun", result.DryRun).
+			Msg("Deployment pipeline completed")
 
-		// The rest of the pipeline will be called here once implemented:
-		// 1. GetFiringTriggers(packs) - scan files and match triggers
-		// 2. GetActions(matches) - process matches through matchers and power-ups
-		// 3. FilterRunOnceActions(actions, force) - filter out already-executed run-once actions
-		// 4. GetFileOperations(actions) - convert actions to filesystem operations
-		// 5. Execute operations through synthfs
+		// Execute operations if not in dry-run mode
+		if !dryRun && len(result.Operations) > 0 {
+			logger.Info().Msg("Executing operations through synthfs")
 
-		// For now, just log the packs that were found
-		for _, pack := range packs {
-			logger.Info().
-				Str("pack", pack.Name).
-				Str("path", pack.Path).
-				Msg("Loaded pack")
+			executor := core.NewSynthfsExecutor(dryRun)
+			if err := executor.ExecuteOperations(result.Operations); err != nil {
+				return errors.Wrap(err, errors.ErrActionExecute,
+					"failed to execute operations")
+			}
+
+			logger.Info().Msg("All operations executed successfully")
+		} else if dryRun {
+			logger.Info().Msg("Dry run mode - no operations were executed")
+		} else {
+			logger.Info().Msg("No operations to execute")
 		}
 
 		logger.Info().Msg("Deploy command finished")
