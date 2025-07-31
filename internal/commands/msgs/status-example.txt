@@ -1,0 +1,5 @@
+  # Show status for all packs
+  dodot status
+  
+  # Show status for specific packs
+  dodot status vim zsh

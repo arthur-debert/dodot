@@ -1,0 +1,5 @@
+Fill analyzes an existing pack's triggers and creates placeholder files
+for any patterns that don't match existing files.
+
+This is useful when you want to see what files a pack expects before
+actually creating them.

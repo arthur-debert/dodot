@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra/doc"
 
-	"github.com/arthur-debert/dodot/internal/cli"
+	"github.com/arthur-debert/dodot/internal/commands"
 	"github.com/arthur-debert/dodot/internal/version"
 
 	// Import packages to ensure their init() functions are called for registration
@@ -15,7 +15,7 @@ import (
 )
 
 func main() {
-	rootCmd := cli.NewRootCmd()
+	rootCmd := commands.NewRootCmd()
 
 	header := &doc.GenManHeader{
 		Title:   "DODOT",

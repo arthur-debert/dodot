@@ -1,0 +1,3 @@
+dodot is a stateless dotfiles manager that helps you organize and deploy
+your configuration files in a structured, safe way while letting git handle
+versioning and history.

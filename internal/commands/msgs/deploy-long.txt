@@ -1,0 +1,4 @@
+Deploy processes all packs in your dotfiles directory and creates
+the necessary symlinks, installs packages, and performs other configured actions.
+
+If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.

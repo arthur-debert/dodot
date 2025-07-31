@@ -1,0 +1,5 @@
+Init creates a new pack directory with template configuration files.
+This helps you get started with a new pack quickly.
+
+The pack will be created in your DOTFILES_ROOT directory with a basic
+triggers.toml file and appropriate directory structure.
