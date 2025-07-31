@@ -7,13 +7,17 @@ safe testing of file operations in an isolated Ubuntu environment.
 Quick Start
 -----------
 
-1. Build the Docker image:
-   $ docker build -t dodot-test .
+1. Build dodot binary:
+   $ cd .. && ./scripts/build
 
-2. Run interactive shell:
-   $ docker run --rm -it -v $(pwd)/../bin/dodot:/usr/local/bin/dodot dodot-test
+2. Build and run test environment:
+   $ cd test-environment
+   $ docker-compose run --rm dodot-test
 
-3. Inside container, test dodot:
+3. Inside container, run all tests:
+   $ run-all-tests.sh
+
+Or for interactive testing:
    $ cd /dotfiles
    $ dodot list
    $ dodot deploy vim
@@ -34,6 +38,16 @@ The testing follows this progression:
 2. Complex scenarios (multiple packs, conflicts)
 3. Edge cases (permissions, missing files)
 4. Automated regression tests
+
+Available Test Scripts
+----------------------
+
+- test-setup.sh: Verify environment is correctly configured
+- run-basic-tests.sh: 10 core functionality tests
+- run-edge-case-tests.sh: 10 edge case and error handling tests
+- run-all-tests.sh: Execute entire test suite
+
+All scripts are in PATH when inside the container.
 
 Future Enhancements
 -------------------
