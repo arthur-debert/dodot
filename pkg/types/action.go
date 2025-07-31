@@ -36,6 +36,12 @@ const (
 
 	// ActionTypeTemplate processes a template file
 	ActionTypeTemplate ActionType = "template"
+
+	// ActionTypeRead reads file contents
+	ActionTypeRead ActionType = "read"
+
+	// ActionTypeChecksum calculates file checksum
+	ActionTypeChecksum ActionType = "checksum"
 )
 
 // Action represents a high-level operation to be performed.

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
-	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -49,14 +49,16 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 			Str("pack", match.Pack).
 			Msg("Processing install script")
 
-		// Calculate checksum of the install script
-		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
-		if err != nil {
-			logger.Error().Err(err).
-				Str("path", match.AbsolutePath).
-				Msg("Failed to calculate install script checksum")
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.Path, err)
+		// First, create a checksum action
+		checksumAction := types.Action{
+			Type:        types.ActionTypeChecksum,
+			Description: fmt.Sprintf("Calculate checksum for %s", match.Path),
+			Source:      match.AbsolutePath,
+			Pack:        match.Pack,
+			PowerUpName: p.Name(),
+			Priority:    match.Priority + 1, // Higher priority to run first
 		}
+		actions = append(actions, checksumAction)
 
 		action := types.Action{
 			Type:        types.ActionTypeInstall,
@@ -69,8 +71,8 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 			Command:     match.AbsolutePath,
 			Args:        []string{}, // Could be extended to support arguments
 			Metadata: map[string]interface{}{
-				"checksum": checksum,
-				"pack":     match.Pack,
+				"pack": match.Pack,
+				// Checksum will be available after checksum action is executed
 			},
 		}
 
@@ -88,7 +90,7 @@ func (p *InstallScriptPowerUp) ValidateOptions(options map[string]interface{}) e
 
 // GetSentinelPath returns the path to the sentinel file for a pack
 func GetInstallSentinelPath(pack string) string {
-	return filepath.Join(types.GetInstallDir(), pack)
+	return filepath.Join(paths.GetInstallDir(), pack)
 }
 
 func init() {

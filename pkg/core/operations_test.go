@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -138,7 +139,7 @@ func TestGetFileOperations(t *testing.T) {
 			checkOps: func(t *testing.T, ops []types.Operation) {
 				// Install action should be processed first (higher priority)
 				testutil.AssertEqual(t, types.OperationCreateDir, ops[0].Type)
-				testutil.AssertEqual(t, types.GetInstallDir(), ops[0].Target)
+				testutil.AssertEqual(t, paths.GetInstallDir(), ops[0].Target)
 
 				testutil.AssertEqual(t, types.OperationWriteFile, ops[1].Type)
 				testutil.AssertContains(t, ops[1].Target, "dev")
@@ -146,7 +147,7 @@ func TestGetFileOperations(t *testing.T) {
 
 				// Then brew action
 				testutil.AssertEqual(t, types.OperationCreateDir, ops[2].Type)
-				testutil.AssertEqual(t, types.GetBrewfileDir(), ops[2].Target)
+				testutil.AssertEqual(t, paths.GetBrewfileDir(), ops[2].Target)
 
 				testutil.AssertEqual(t, types.OperationWriteFile, ops[3].Type)
 				testutil.AssertContains(t, ops[3].Target, "tools")
@@ -202,12 +203,12 @@ func TestConvertAction(t *testing.T) {
 				{
 					Type:        types.OperationCreateSymlink,
 					Source:      "/dotfiles/vim/.vimrc",
-					Target:      filepath.Join(types.GetSymlinkDir(), ".vimrc"),
+					Target:      filepath.Join(paths.GetSymlinkDir(), ".vimrc"),
 					Description: "Deploy symlink for .vimrc",
 				},
 				{
 					Type:        types.OperationCreateSymlink,
-					Source:      filepath.Join(types.GetSymlinkDir(), ".vimrc"),
+					Source:      filepath.Join(paths.GetSymlinkDir(), ".vimrc"),
 					Target:      filepath.Join(homeDir, ".vimrc"),
 					Description: "Link vimrc",
 				},
@@ -229,12 +230,12 @@ func TestConvertAction(t *testing.T) {
 				{
 					Type:        types.OperationCreateSymlink,
 					Source:      "/source/config.yml",
-					Target:      filepath.Join(types.GetSymlinkDir(), "config.yml"),
+					Target:      filepath.Join(paths.GetSymlinkDir(), "config.yml"),
 					Description: "Deploy symlink for config.yml",
 				},
 				{
 					Type:        types.OperationCreateSymlink,
-					Source:      filepath.Join(types.GetSymlinkDir(), "config.yml"),
+					Source:      filepath.Join(paths.GetSymlinkDir(), "config.yml"),
 					Target:      filepath.Join(homeDir, ".config/app/config.yml"),
 					Description: "",
 				},
@@ -447,13 +448,13 @@ func TestConvertAction(t *testing.T) {
 			wantOps: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      types.GetShellProfileDir(),
+					Target:      paths.GetShellProfileDir(),
 					Description: "Create shell profile deployment directory",
 				},
 				{
 					Type:        types.OperationCreateSymlink,
 					Source:      "/dotfiles/shell/aliases.sh",
-					Target:      filepath.Join(types.GetShellProfileDir(), "shell.sh"),
+					Target:      filepath.Join(paths.GetShellProfileDir(), "shell.sh"),
 					Description: "Deploy shell profile script from shell",
 				},
 			},
@@ -467,13 +468,13 @@ func TestConvertAction(t *testing.T) {
 			wantOps: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      types.GetShellProfileDir(),
+					Target:      paths.GetShellProfileDir(),
 					Description: "Create shell profile deployment directory",
 				},
 				{
 					Type:        types.OperationCreateSymlink,
 					Source:      "/dotfiles/custom.sh",
-					Target:      filepath.Join(types.GetShellProfileDir(), "custom.sh"),
+					Target:      filepath.Join(paths.GetShellProfileDir(), "custom.sh"),
 					Description: "Deploy shell profile script from ",
 				},
 			},
@@ -497,13 +498,13 @@ func TestConvertAction(t *testing.T) {
 			wantOps: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      types.GetPathDir(),
+					Target:      paths.GetPathDir(),
 					Description: "Create PATH deployment directory",
 				},
 				{
 					Type:        types.OperationCreateSymlink,
 					Source:      "/dotfiles/bin",
-					Target:      filepath.Join(types.GetPathDir(), "tools"),
+					Target:      filepath.Join(paths.GetPathDir(), "tools"),
 					Description: "Add tools to PATH",
 				},
 			},
@@ -517,13 +518,13 @@ func TestConvertAction(t *testing.T) {
 			wantOps: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      types.GetPathDir(),
+					Target:      paths.GetPathDir(),
 					Description: "Create PATH deployment directory",
 				},
 				{
 					Type:        types.OperationCreateSymlink,
 					Source:      "/usr/local/mybin",
-					Target:      filepath.Join(types.GetPathDir(), "mybin"),
+					Target:      filepath.Join(paths.GetPathDir(), "mybin"),
 					Description: "Add mybin to PATH",
 				},
 			},
@@ -568,12 +569,12 @@ func TestConvertAction(t *testing.T) {
 			wantOps: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      types.GetBrewfileDir(),
+					Target:      paths.GetBrewfileDir(),
 					Description: "Create brewfile sentinel directory",
 				},
 				{
 					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(types.GetBrewfileDir(), "tools"),
+					Target:      filepath.Join(paths.GetBrewfileDir(), "tools"),
 					Content:     "abc123def456",
 					Mode:        uint32Ptr(0644),
 					Description: "Create brewfile sentinel for tools",
@@ -630,12 +631,12 @@ func TestConvertAction(t *testing.T) {
 			wantOps: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      types.GetInstallDir(),
+					Target:      paths.GetInstallDir(),
 					Description: "Create install sentinel directory",
 				},
 				{
 					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(types.GetInstallDir(), "dev"),
+					Target:      filepath.Join(paths.GetInstallDir(), "dev"),
 					Content:     "def789ghi012",
 					Mode:        uint32Ptr(0644),
 					Description: "Create install sentinel for dev",
@@ -674,6 +675,50 @@ func TestConvertAction(t *testing.T) {
 				Metadata: map[string]interface{}{
 					"checksum": "abc123",
 				},
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "read_action",
+			action: types.Action{
+				Type:   types.ActionTypeRead,
+				Source: "/packs/vim/.vimrc",
+			},
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationReadFile,
+					Source:      "/packs/vim/.vimrc",
+					Description: "Read file .vimrc",
+				},
+			},
+		},
+		{
+			name: "read_action_missing_source",
+			action: types.Action{
+				Type: types.ActionTypeRead,
+			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
+		},
+		{
+			name: "checksum_action",
+			action: types.Action{
+				Type:   types.ActionTypeChecksum,
+				Source: "/packs/tools/Brewfile",
+			},
+			wantOps: []types.Operation{
+				{
+					Type:        types.OperationChecksum,
+					Source:      "/packs/tools/Brewfile",
+					Description: "Calculate checksum for Brewfile",
+				},
+			},
+		},
+		{
+			name: "checksum_action_missing_source",
+			action: types.Action{
+				Type: types.ActionTypeChecksum,
 			},
 			wantError: true,
 			errorCode: doerrors.ErrActionInvalid,

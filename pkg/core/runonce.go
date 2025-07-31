@@ -9,6 +9,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -60,9 +61,9 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 	var sentinelPath string
 	switch action.Type {
 	case types.ActionTypeBrew:
-		sentinelPath = filepath.Join(types.GetBrewfileDir(), pack)
+		sentinelPath = filepath.Join(paths.GetBrewfileDir(), pack)
 	case types.ActionTypeInstall:
-		sentinelPath = filepath.Join(types.GetInstallDir(), pack)
+		sentinelPath = filepath.Join(paths.GetInstallDir(), pack)
 	}
 
 	// Check if sentinel file exists
@@ -190,10 +191,10 @@ func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 	switch powerUpName {
 	case "install":
 		filePattern = "install.sh"
-		sentinelDir = filepath.Join(types.GetInstallDir(), filepath.Base(packPath))
+		sentinelDir = filepath.Join(paths.GetInstallDir(), filepath.Base(packPath))
 	case "brewfile":
 		filePattern = "Brewfile"
-		sentinelDir = filepath.Join(types.GetBrewfileDir(), filepath.Base(packPath))
+		sentinelDir = filepath.Join(paths.GetBrewfileDir(), filepath.Base(packPath))
 	default:
 		return nil, fmt.Errorf("unknown run-once power-up: %s", powerUpName)
 	}

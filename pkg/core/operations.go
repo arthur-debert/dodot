@@ -8,12 +8,17 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
 // GetFileOperations converts actions into file system operations
 func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
+	return GetFileOperationsWithContext(actions, nil)
+}
+
+// GetFileOperationsWithContext converts actions into file system operations with execution context
+func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations")
 	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations")
 
@@ -41,7 +46,7 @@ func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 
 	// Convert each action to operations
 	for _, action := range sortedActions {
-		ops, err := ConvertAction(action)
+		ops, err := ConvertActionWithContext(action, ctx)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -64,6 +69,11 @@ func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 
 // ConvertAction converts a single action to one or more operations
 func ConvertAction(action types.Action) ([]types.Operation, error) {
+	return ConvertActionWithContext(action, nil)
+}
+
+// ConvertActionWithContext converts a single action to one or more operations with execution context
+func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations").With().
 		Str("type", string(action.Type)).
 		Str("description", action.Description).
@@ -92,9 +102,13 @@ func ConvertAction(action types.Action) ([]types.Operation, error) {
 		logger.Debug().Msg("Run actions are not converted to file operations")
 		return nil, nil
 	case types.ActionTypeBrew:
-		return convertBrewAction(action)
+		return convertBrewActionWithContext(action, ctx)
 	case types.ActionTypeInstall:
-		return convertInstallAction(action)
+		return convertInstallActionWithContext(action, ctx)
+	case types.ActionTypeRead:
+		return convertReadAction(action)
+	case types.ActionTypeChecksum:
+		return convertChecksumAction(action)
 	default:
 		return nil, errors.Newf(errors.ErrActionInvalid, "unknown action type: %s", action.Type)
 	}
@@ -113,7 +127,7 @@ func convertLinkAction(action types.Action) ([]types.Operation, error) {
 	// For double-symlink approach, create two operations:
 	// 1. Link from deployed dir to source
 	// 2. Link from target to deployed dir
-	deployedPath := filepath.Join(types.GetSymlinkDir(), filepath.Base(target))
+	deployedPath := filepath.Join(paths.GetSymlinkDir(), filepath.Base(target))
 
 	ops := []types.Operation{
 		// First create symlink in deployed directory
@@ -275,7 +289,7 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	if action.Pack == "" {
 		deployedName = filepath.Base(source)
 	}
-	deployedPath := filepath.Join(types.GetShellProfileDir(), deployedName)
+	deployedPath := filepath.Join(paths.GetShellProfileDir(), deployedName)
 
 	ops := []types.Operation{
 		{
@@ -289,7 +303,7 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	// Ensure deployment directory exists
 	ops = append([]types.Operation{{
 		Type:        types.OperationCreateDir,
-		Target:      types.GetShellProfileDir(),
+		Target:      paths.GetShellProfileDir(),
 		Description: "Create shell profile deployment directory",
 	}}, ops...)
 
@@ -308,7 +322,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	if deployedName == "" {
 		deployedName = filepath.Base(source)
 	}
-	deployedPath := filepath.Join(types.GetPathDir(), deployedName)
+	deployedPath := filepath.Join(paths.GetPathDir(), deployedName)
 
 	ops := []types.Operation{
 		{
@@ -322,7 +336,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	// Ensure deployment directory exists
 	ops = append([]types.Operation{{
 		Type:        types.OperationCreateDir,
-		Target:      types.GetPathDir(),
+		Target:      paths.GetPathDir(),
 		Description: "Create PATH deployment directory",
 	}}, ops...)
 
@@ -331,25 +345,33 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 
 // expandHome expands ~ to the user's home directory
 func expandHome(path string) string {
-	expanded, err := utils.ExpandHome(path)
-	if err != nil {
-		// If we can't expand home, return the original path
-		// This maintains backward compatibility
-		return path
-	}
-	return expanded
+	return paths.ExpandHome(path)
 }
 
-// convertBrewAction converts a brew action to operations
-func convertBrewAction(action types.Action) ([]types.Operation, error) {
+// convertBrewActionWithContext converts a brew action to operations with execution context
+func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source (Brewfile path)")
 	}
 
-	// Get checksum from metadata
-	checksum, ok := action.Metadata["checksum"].(string)
-	if !ok || checksum == "" {
-		return nil, errors.New(errors.ErrActionInvalid, "brew action requires checksum in metadata")
+	// Get checksum from execution context or metadata
+	var checksum string
+	if ctx != nil {
+		if cs, exists := ctx.GetChecksum(action.Source); exists {
+			checksum = cs
+		}
+	}
+
+	// Fall back to metadata if no context or checksum not found
+	if checksum == "" {
+		if cs, ok := action.Metadata["checksum"].(string); ok {
+			checksum = cs
+		}
+	}
+
+	// If still no checksum, this is an error - checksum actions should have run first
+	if checksum == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires checksum - ensure checksum action runs first")
 	}
 
 	pack, ok := action.Metadata["pack"].(string)
@@ -358,13 +380,13 @@ func convertBrewAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(types.GetBrewfileDir(), pack)
+	sentinelPath := filepath.Join(paths.GetBrewfileDir(), pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      types.GetBrewfileDir(),
+			Target:      paths.GetBrewfileDir(),
 			Description: "Create brewfile sentinel directory",
 		},
 		// Write sentinel file with checksum
@@ -380,16 +402,30 @@ func convertBrewAction(action types.Action) ([]types.Operation, error) {
 	return ops, nil
 }
 
-// convertInstallAction converts an install action to operations
-func convertInstallAction(action types.Action) ([]types.Operation, error) {
+// convertInstallActionWithContext converts an install action to operations with execution context
+func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "install action requires source (install script path)")
 	}
 
-	// Get checksum from metadata
-	checksum, ok := action.Metadata["checksum"].(string)
-	if !ok || checksum == "" {
-		return nil, errors.New(errors.ErrActionInvalid, "install action requires checksum in metadata")
+	// Get checksum from execution context or metadata
+	var checksum string
+	if ctx != nil {
+		if cs, exists := ctx.GetChecksum(action.Source); exists {
+			checksum = cs
+		}
+	}
+
+	// Fall back to metadata if no context or checksum not found
+	if checksum == "" {
+		if cs, ok := action.Metadata["checksum"].(string); ok {
+			checksum = cs
+		}
+	}
+
+	// If still no checksum, this is an error - checksum actions should have run first
+	if checksum == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "install action requires checksum - ensure checksum action runs first")
 	}
 
 	pack, ok := action.Metadata["pack"].(string)
@@ -398,13 +434,13 @@ func convertInstallAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(types.GetInstallDir(), pack)
+	sentinelPath := filepath.Join(paths.GetInstallDir(), pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      types.GetInstallDir(),
+			Target:      paths.GetInstallDir(),
 			Description: "Create install sentinel directory",
 		},
 		// Write sentinel file with checksum
@@ -510,4 +546,42 @@ func areOperationsCompatible(ops []types.Operation) bool {
 	// - Copy and write to same target
 	// etc.
 	return false
+}
+
+// convertReadAction converts a read action to read operations
+func convertReadAction(action types.Action) ([]types.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "read action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	ops := []types.Operation{
+		{
+			Type:        types.OperationReadFile,
+			Source:      source,
+			Description: fmt.Sprintf("Read file %s", filepath.Base(source)),
+		},
+	}
+
+	return ops, nil
+}
+
+// convertChecksumAction converts a checksum action to checksum operations
+func convertChecksumAction(action types.Action) ([]types.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "checksum action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	ops := []types.Operation{
+		{
+			Type:        types.OperationChecksum,
+			Source:      source,
+			Description: fmt.Sprintf("Calculate checksum for %s", filepath.Base(source)),
+		},
+	}
+
+	return ops, nil
 }

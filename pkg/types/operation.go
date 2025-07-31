@@ -21,6 +21,12 @@ const (
 
 	// OperationBackupFile creates a backup of a file
 	OperationBackupFile OperationType = "backup_file"
+
+	// OperationReadFile reads file contents
+	OperationReadFile OperationType = "read_file"
+
+	// OperationChecksum calculates file checksum
+	OperationChecksum OperationType = "checksum"
 )
 
 // Operation represents a low-level file system operation

@@ -169,6 +169,22 @@ func AssertNoError(t *testing.T, err error, msgAndArgs ...interface{}) {
 	}
 }
 
+// AssertErrorContains checks if an error occurred and contains a specific substring
+func AssertErrorContains(t *testing.T, err error, substr string, msgAndArgs ...interface{}) {
+	t.Helper()
+
+	if err == nil {
+		msg := formatMessage(msgAndArgs...)
+		t.Errorf("%sExpected an error containing %q but got nil", msg, substr)
+		return
+	}
+
+	if !strings.Contains(err.Error(), substr) {
+		msg := formatMessage(msgAndArgs...)
+		t.Errorf("%sError %q does not contain %q", msg, err.Error(), substr)
+	}
+}
+
 // AssertPanic checks if a function panics
 func AssertPanic(t *testing.T, fn func(), msgAndArgs ...interface{}) {
 	t.Helper()
