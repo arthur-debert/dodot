@@ -1,0 +1,146 @@
+                   dodot Commands
+
+This document describes all available dodot commands and their usage.
+
+Pack Commands
+-------------
+
+Pack commands operate on one or more packs using the format:
+$ dodot <command> <pack1> ... <packN>
+
+Use the --all (-a) flag to operate on all packs in your dotfiles root.
+
+1. install
+----------
+
+Install and deploy a pack. This is a superset of deploy that runs all
+"run-once" power-ups (install scripts and Brewfiles) before deploying
+configurations.
+
+Usage:
+$ dodot install <pack>
+$ dodot install --all
+$ dodot install vim git ssh
+
+Options:
+• --force - Force re-execution of run-once power-ups even if already executed
+• --all (-a) - Install all packs in DOTFILES_ROOT
+
+Behavior:
+• Runs install.sh scripts (install_script power-up)
+• Processes Brewfiles (brewfile power-up)  
+• Creates symlinks (symlink power-up)
+• Updates shell profiles (shell_profile power-up)
+• Adds directories to PATH (shell_add_path power-up)
+
+2. deploy
+---------
+
+Deploy pack configurations without running install scripts. Creates symlinks
+and updates shell configurations but skips run-once power-ups.
+
+Usage:
+$ dodot deploy <pack>
+$ dodot deploy --all
+
+Use this when you only want to update symlinks and shell configurations
+without re-running expensive install operations.
+
+3. status
+---------
+
+Show the deployment status for given pack(s). Displays information about
+installed components, symlinks, and shell modifications.
+
+Usage:
+$ dodot status <pack>
+$ dodot status --all
+
+Example output:
+```
+vim pack:
+  install: ran install.sh on 2024-01-15 (has since changed)
+  brewfile: installed on 2024-01-15 (no changes)
+  symlink: vim/vimrc -> $HOME/.vimrc
+  shell_profile: vim/aliases.sh sourced in shell profile
+```
+
+4. list
+-------
+
+Show all available packs in your DOTFILES_ROOT directory.
+
+Usage:
+$ dodot list
+
+Example output:
+```
+Packs:
+  neovim
+  ssh
+  git
+  tmux
+```
+
+5. init
+-------
+
+Create a new pack with placeholder files and configuration.
+
+Usage:
+$ dodot init <packname>
+
+Creates a pack at DOTFILES_ROOT/<packname> with:
+• Placeholder files for each power-up (install.sh, Brewfile, alias.sh, etc.)
+• A concise readme.txt explaining the pack structure
+• A .dodot.toml configuration file with commented examples
+
+6. fill
+-------
+
+Add placeholder files for each power-up to an existing pack. Useful for
+adding missing power-up files to packs created manually.
+
+Usage:
+$ dodot fill <pack>
+
+For example, if a pack doesn't have an alias.sh file, one will be added.
+After deployment, symlinks to these files enable live editing.
+
+Global Options
+--------------
+
+• -v, -vv, -vvv - Increase logging verbosity (INFO, DEBUG, TRACE)
+• --version - Show version information
+• --help - Show help information
+
+Environment Variables
+---------------------
+
+• DOTFILES_ROOT - Path to your dotfiles directory (required)
+• DODOT_DATA_DIR - Path for dodot data files (optional, defaults to ~/.local/share/dodot)
+
+Examples
+--------
+
+Set up a new vim configuration:
+```bash
+$ dodot init vim
+$ # Edit vim/vimrc, vim/install.sh, etc.
+$ dodot install vim
+```
+
+Deploy all configurations:
+```bash
+$ dodot deploy --all
+```
+
+Check status of specific pack:
+```bash
+$ dodot status git
+```
+
+Force reinstall with verbose output:
+```bash
+$ dodot install --force -vv neovim
+```

@@ -1,0 +1,296 @@
+                   Code Architecture
+
+This document describes dodot's Go implementation, package organization,
+and key interfaces for developers working on the codebase.
+
+Package Structure
+-----------------
+
+```
+dodot/
+├── cmd/
+│   └── dodot/           # CLI entry point (thin Cobra layer)
+├── pkg/
+│   ├── core/           # Core pipeline functions
+│   ├── types/          # Type definitions and interfaces
+│   ├── triggers/       # Trigger implementations
+│   ├── powerups/       # PowerUp implementations
+│   ├── matchers/       # Matcher system
+│   ├── logging/        # Centralized logging utilities
+│   ├── errors/         # Error types with codes
+│   ├── registry/       # Generic registry implementation
+│   └── testutil/       # Common test helpers
+├── internal/           # Internal packages
+└── docs/              # Documentation
+```
+
+Core Pipeline API
+-----------------
+
+The main execution pipeline is implemented as pure functions in pkg/core:
+
+```go
+package core
+
+func GetPackCandidates(dotfilesRoot string) ([]string, error)
+func GetPacks(candidates []string) ([]types.Pack, error)
+func GetFiringTriggers(packs []types.Pack, matchers []types.Matcher) ([]types.TriggerMatch, error)
+func GetActions(triggerMatches []types.TriggerMatch, powerups types.PowerupRegistry) ([]types.Action, error)
+func GetFsOps(actions []types.Action) ([]synthfs.Operation, error)
+```
+
+Each function handles one stage of the pipeline:
+1. Discover pack directories
+2. Load pack configurations  
+3. Match files to triggers
+4. Generate actions from matches
+5. Convert actions to filesystem operations
+
+Key Interfaces
+--------------
+
+Trigger Interface:
+```go
+type Trigger interface {
+    Name() string
+    Match(file types.FileInfo, pack types.Pack) (bool, error)
+    GetMetadata(file types.FileInfo, pack types.Pack) (map[string]interface{}, error)
+}
+```
+
+PowerUp Interface:
+```go
+type PowerUp interface {
+    Name() string
+    ProcessMatches(matches []types.TriggerMatch) ([]types.Action, error)
+    Validate(options map[string]interface{}) error
+}
+```
+
+Registry Interface:
+```go
+type Registry[T any] interface {
+    Register(name string, item T) error
+    Get(name string) (T, error)
+    Remove(name string) error
+    List() []string
+}
+```
+
+Core Data Types
+---------------
+
+Pack:
+```go
+type Pack struct {
+    Name   string
+    Path   string
+    Config PackConfig  // from .dodot.toml
+}
+```
+
+TriggerMatch:
+```go
+type TriggerMatch struct {
+    File     FileInfo
+    Pack     Pack
+    Trigger  string
+    PowerUp  string
+    Options  map[string]interface{}
+    Metadata map[string]interface{}
+}
+```
+
+Action:
+```go
+type Action struct {
+    Type        string
+    Description string
+    Data        map[string]interface{}
+    Pack        string
+    Source      string
+}
+```
+
+Implementation Principles
+-------------------------
+
+Pure Functions:
+• Core pipeline functions are pure (same input → same output)
+• No side effects during processing
+• Easy to test and reason about
+
+Interface-Based Design:
+• Components implement well-defined interfaces
+• Enables testing with mocks
+• Supports registry-based extensibility
+
+Error Handling:
+• Typed errors with codes for stable testing
+• Structured error context and details
+• Graceful error propagation through pipeline
+
+CLI Isolation:
+• All business logic in pkg/ packages
+• cmd/dodot only handles CLI concerns
+• No filesystem operations in CLI code
+
+Registry System
+---------------
+
+All major components use type-safe registries:
+
+```go
+type Libraries struct {
+    Triggers  Registry[Trigger]
+    PowerUps  Registry[PowerUp]
+    Actions   Registry[ActionConverter]
+}
+```
+
+Benefits:
+• Components can be discovered and listed
+• Easy to add new functionality
+• Supports configuration validation
+• Enables plugin-like architecture
+
+Registration happens in init() functions:
+```go
+func init() {
+    defaultTriggers.Register("filename", &FileNameTrigger{})
+    defaultTriggers.Register("directory", &DirectoryTrigger{})
+}
+```
+
+Configuration System
+--------------------
+
+Configuration is resolved in order:
+1. Default matchers (built into code)
+2. Global configuration files
+3. Pack-specific .dodot.toml files  
+4. Command-line overrides
+
+Using koanf library for unified configuration management:
+• Handles multiple sources and formats
+• Provides type-safe access to values
+• Supports environment variable expansion
+
+Filesystem Abstraction
+----------------------
+
+All filesystem operations go through synthfs library:
+• Provides operation descriptions, not direct operations
+• Enables dry-run and validation capabilities
+• Basic rollback support for error recovery
+
+Operation Translation:
+```go
+// Actions describe WHAT to do
+action := types.Action{
+    Type: "link",
+    Data: map[string]interface{}{
+        "source": "/dotfiles/pack/vimrc",
+        "target": "/home/user/.vimrc",
+    },
+}
+
+// Operations describe HOW to do it
+op := synthfs.CreateSymlink{
+    Source: "/dotfiles/pack/vimrc",
+    Target: "/home/user/.vimrc",
+    CreateDirs: true,
+}
+```
+
+Testing Architecture
+--------------------
+
+Test Organization:
+• Unit tests alongside source (*_test.go)
+• Common helpers in pkg/testutil
+• Mock implementations for interfaces
+• Table-driven tests for comprehensive coverage
+
+Test Helpers:
+```go
+// Create test pack structure
+pack := testutil.CreateTestPack(t, "vim", map[string]string{
+    "vimrc": "set number",
+    "gvimrc": "set guifont=Monaco:h12",
+})
+
+// Capture log output
+logs := testutil.CaptureLogOutput(t, func() {
+    err := deployPack(pack)
+    assert.NoError(t, err)
+})
+```
+
+Error System
+------------
+
+Typed errors with codes enable stable testing:
+```go
+type DodotError struct {
+    Code    ErrorCode
+    Message string
+    Details map[string]interface{}
+}
+
+// Test error codes, not messages
+assert.Equal(t, errors.PACK_NOT_FOUND, err.Code)
+```
+
+Logging System
+--------------
+
+Structured logging with zerolog:
+• Different verbosity levels (-v, -vv, -vvv)
+• Context fields for traceability
+• Performance-optimized for production use
+
+```go
+logger.Debug().
+    Str("pack", pack.Name).
+    Str("trigger", trigger.Name()).
+    Int("matches", len(matches)).
+    Msg("processing trigger matches")
+```
+
+Concurrency Model
+-----------------
+
+Pack Processing:
+• Packs can be processed independently in parallel
+• Use goroutines with proper synchronization
+• Context for cancellation and timeouts
+
+Pipeline Stages:
+• Each stage processes all data before next stage
+• No inter-stage parallelism to maintain predictability
+• Operations batched for efficiency
+
+Development Workflow
+--------------------
+
+Adding New Triggers:
+1. Implement Trigger interface
+2. Add unit tests
+3. Register in init() function
+4. Update documentation
+
+Adding New PowerUps:
+1. Implement PowerUp interface
+2. Define action types and data structures
+3. Implement action-to-operation conversion
+4. Add comprehensive tests
+
+Adding New Actions:
+1. Define action structure
+2. Implement operation conversion
+3. Register converter
+4. Test with relevant power-ups
+
+This architecture provides a clean separation of concerns while enabling
+extensibility and maintainability.

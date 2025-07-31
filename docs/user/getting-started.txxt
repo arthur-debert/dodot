@@ -1,0 +1,72 @@
+                   Getting Started with dodot
+
+This guide will help you set up and start using dodot to manage your
+dotfiles and configurations.
+
+What is dodot?
+--------------
+
+dodot is a stateless dotfiles manager that uses symbolic links to deploy
+your configuration files. It organizes configs into "packs" - directories
+containing related files that get deployed together.
+
+Key principles:
+• Stateless - no database or tracking files needed
+• Git-based - your dotfiles repository IS your deployment
+• Symlink-heavy - live editing of configs without redeployment
+• Pack-organized - logical grouping of related configurations
+
+Installation
+------------
+
+1. Download the latest release from GitHub
+2. Place the binary in your PATH
+3. Set the DOTFILES_ROOT environment variable to your dotfiles directory
+
+Quick Start
+-----------
+
+1. Initialize your first pack:
+   $ dodot init vim
+
+2. This creates a pack directory with placeholder files:
+   - install.sh (for setup scripts)
+   - Brewfile (for package dependencies)
+   - alias.sh (for shell aliases)
+   - .dodot.toml (for pack configuration)
+
+3. Add your configuration files to the pack directory
+
+4. Install the pack (runs setup scripts and deploys configs):
+   $ dodot install vim
+
+5. Check the status:
+   $ dodot status vim
+
+Basic Commands
+--------------
+
+• dodot list - Show all available packs
+• dodot install <pack> - Install and deploy a pack
+• dodot deploy <pack> - Deploy configs without running install scripts
+• dodot status <pack> - Show pack deployment status
+• dodot fill <pack> - Add placeholder files to existing pack
+
+Use --all flag to operate on all packs:
+$ dodot install --all
+
+Pack Structure
+--------------
+
+A typical pack contains:
+• Configuration files (vimrc, gitconfig, etc.)
+• install.sh - Setup script for the pack
+• Brewfile - Package dependencies
+• alias.sh, env.sh - Shell configurations
+• .dodot.toml - Pack-specific overrides
+
+Next Steps
+----------
+
+See configuration.txxt for detailed config options and powerups.txxt for
+all available power-ups and their usage.

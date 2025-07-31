@@ -1,0 +1,259 @@
+                   Contributing to dodot
+
+This guide helps contributors understand the workflow, standards, and
+processes for contributing to the dodot project.
+
+Getting Started
+---------------
+
+Prerequisites:
+• Go 1.23+ installed
+• Git configured with your identity
+• GitHub account for pull requests
+
+Setup Development Environment:
+1. Fork the repository on GitHub
+2. Clone your fork: git clone https://github.com/yourusername/dodot
+3. Add upstream remote: git remote add upstream https://github.com/arthur-debert/dodot
+4. Source environment: source .envrc
+5. Install pre-commit hooks: scripts/pre-commit install
+6. Verify setup: scripts/test
+
+Development Workflow
+--------------------
+
+Starting New Work:
+1. Sync with upstream: git pull upstream main
+2. Create feature branch: git checkout -b feature/description
+3. Start work immediately, create PR early for visibility
+
+Making Changes:
+1. Write tests first (TDD encouraged)
+2. Implement with logging and error handling
+3. Run tests frequently: scripts/test
+4. Lint before committing: scripts/lint
+5. Make focused, atomic commits
+
+Pull Request Process:
+1. Create PR as soon as first commit is done
+2. Keep PRs focused on single feature/fix
+3. Update PR description as work progresses
+4. Request review when ready
+5. Address feedback promptly
+
+Commit Guidelines
+-----------------
+
+Commit Message Format:
+
+For Release Work:
+```
+Release X.Y.Z: description
+
+More detailed explanation if needed.
+```
+
+For Bug Fixes:
+```
+fixes #42: correct PATH handling in bin powerup
+
+The issue was caused by shell quoting when paths contained spaces.
+Now properly escape paths before adding to shell configuration.
+```
+
+For Features:
+```
+Add support for encrypted configuration files
+
+Implements new encryption power-up that can encrypt/decrypt sensitive
+configuration files using AES-256. Supports key files and environment
+variables for key management.
+```
+
+Commit Best Practices:
+• Keep commits atomic and focused
+• Write clear, descriptive messages
+• Include issue numbers when relevant
+• Explain WHY, not just WHAT
+
+Code Standards
+--------------
+
+Mandatory Requirements:
+• All code must pass scripts/lint
+• All code must pass scripts/test
+• Pre-commit hooks cannot be skipped
+• New code requires tests and logging
+
+Architecture Requirements:
+• Business logic in pkg/, not cmd/
+• No direct filesystem operations (use synthfs)
+• Use typed errors with codes
+• Follow interface-based design
+
+Documentation Requirements:
+• All documentation in txxt format
+• Update relevant docs with changes
+• Add Go doc comments for exported items
+• Document design decisions
+
+Testing Requirements
+--------------------
+
+Test Types:
+• Unit tests: Test individual functions/types
+• Integration tests: Test component interactions
+• E2E tests: Test complete workflows (minimize these)
+
+Test Standards:
+• Use table-driven tests for comprehensive coverage
+• Each test must be independent
+• Use testutil helpers for common setup
+• Test error codes, not error messages
+
+Example Test Structure:
+```go
+func TestFileNameTrigger(t *testing.T) {
+    tests := []struct {
+        name     string
+        filename string
+        pattern  string
+        want     bool
+        wantErr  bool
+    }{
+        // test cases
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            // test implementation
+        })
+    }
+}
+```
+
+Review Process
+--------------
+
+What Reviewers Look For:
+• Code follows established patterns
+• Tests cover new functionality
+• Documentation is updated
+• No security vulnerabilities
+• Performance implications considered
+
+Responding to Reviews:
+• Address all feedback promptly
+• Ask questions if feedback is unclear
+• Update PR description if scope changes
+• Mark conversations as resolved when addressed
+
+Getting Reviews:
+• Request specific reviewers if you know who to ask
+• Be patient - reviewers volunteer their time
+• Provide context in PR description
+• Update and re-request review after changes
+
+Issue Management
+----------------
+
+Reporting Bugs:
+• Check if issue already exists
+• Use issue templates when available
+• Provide minimal reproduction case
+• Include environment details
+
+Feature Requests:
+• Explain the use case and motivation
+• Describe proposed solution if you have one
+• Consider if it fits dodot's design philosophy
+• Be open to alternative approaches
+
+Working on Issues:
+• Comment on issue before starting work
+• Link PRs to issues they address
+• Update issue status as work progresses
+• Close issues when PRs are merged
+
+Communication Guidelines
+------------------------
+
+General Principles:
+• Be respectful and constructive
+• Assume good intent from others
+• Ask questions when unsure
+• Help newcomers get started
+
+Code Reviews:
+• Focus on the code, not the person
+• Explain reasoning behind suggestions
+• Offer alternatives when possible
+• Acknowledge good solutions
+
+Discussions:
+• Stay on topic in issues and PRs
+• Use GitHub discussions for broader topics
+• Reference relevant documentation
+• Tag appropriate people when needed
+
+Release Process
+---------------
+
+Version Numbering:
+• Semantic versioning: MAJOR.MINOR.PATCH
+• Breaking changes: increment MAJOR
+• New features: increment MINOR
+• Bug fixes: increment PATCH
+
+Release Workflow:
+1. Create release branch from main
+2. Update version numbers and changelog
+3. Run full test suite including E2E tests
+4. Create release PR with changes
+5. After merge, tag release and run goreleaser
+
+Common Contribution Areas
+-------------------------
+
+Good First Issues:
+• Documentation improvements
+• Test coverage additions
+• Small bug fixes
+• Linting/formatting improvements
+
+Regular Contributions:
+• New trigger implementations
+• New power-up implementations
+• Performance improvements
+• Error handling improvements
+
+Advanced Contributions:
+• Architecture improvements
+• New command implementations
+• CI/CD improvements
+• Security enhancements
+
+Resources for Contributors
+--------------------------
+
+Documentation:
+• docs/dev/README.txxt - Development overview
+• docs/dev/architecture.txxt - Code structure
+• docs/dev/conventions.txxt - Coding standards
+• docs/guides/ - Design principles and architecture
+
+Code Exploration:
+• pkg/core/ - Start here for pipeline understanding
+• pkg/types/ - Core data structures and interfaces
+• pkg/triggers/ - Example trigger implementations
+• pkg/powerups/ - Example power-up implementations
+
+Getting Help:
+• GitHub issues for bugs and feature requests
+• GitHub discussions for questions
+• Code comments and documentation
+• Ask in pull request comments
+
+Remember: Contributing is about more than just code. Documentation
+improvements, testing, issue triage, and helping other users are all
+valuable contributions to the project.
