@@ -158,9 +158,11 @@ func TestGetPacks(t *testing.T) {
 				pack := testutil.CreateDir(t, root, "configured-pack")
 
 				config := `
-[files]
-"test.conf" = "symlink"
-"*.bak" = "ignore"
+[[ignore]]
+path = "*.bak"
+[[override]]
+path = "test.conf"
+powerup = "symlink"
 `
 				testutil.CreateFile(t, pack, ".dodot.toml", config)
 				return []string{pack}
@@ -168,28 +170,11 @@ func TestGetPacks(t *testing.T) {
 			expectedCount: 1,
 			validate: func(t *testing.T, packs []types.Pack) {
 				pack := packs[0]
-				testutil.AssertEqual(t, 2, len(pack.Config.Files))
-				testutil.AssertEqual(t, "symlink", pack.Config.Files["test.conf"])
-				testutil.AssertEqual(t, "ignore", pack.Config.Files["*.bak"])
-			},
-		},
-		{
-			name: "skip pack with .dodotignore",
-			setup: func(t *testing.T) []string {
-				root := testutil.TempDir(t, "dotfiles")
-
-				// Enabled pack
-				pack1 := testutil.CreateDir(t, root, "enabled-pack")
-
-				// Ignored pack
-				pack2 := testutil.CreateDir(t, root, "ignored-pack")
-				testutil.CreateFile(t, pack2, ".dodotignore", "")
-
-				return []string{pack1, pack2}
-			},
-			expectedCount: 1,
-			validate: func(t *testing.T, packs []types.Pack) {
-				testutil.AssertEqual(t, "enabled-pack", packs[0].Name)
+				testutil.AssertEqual(t, 1, len(pack.Config.Ignore))
+				testutil.AssertEqual(t, "*.bak", pack.Config.Ignore[0].Path)
+				testutil.AssertEqual(t, 1, len(pack.Config.Override))
+				testutil.AssertEqual(t, "test.conf", pack.Config.Override[0].Path)
+				testutil.AssertEqual(t, "symlink", pack.Config.Override[0].Powerup)
 			},
 		},
 		{
@@ -248,88 +233,6 @@ func TestGetPacks(t *testing.T) {
 			if tt.validate != nil {
 				tt.validate(t, packs)
 			}
-		})
-	}
-}
-
-func TestLoadPackConfig(t *testing.T) {
-	tests := []struct {
-		name     string
-		toml     string
-		validate func(t *testing.T, config types.PackConfig)
-		wantErr  bool
-	}{
-		{
-			name: "complete config",
-			toml: `
-[files]
-"test.vim" = "symlink"
-"*.bak" = "ignore"
-"setup.sh" = "install"
-`,
-			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertEqual(t, 3, len(config.Files))
-				testutil.AssertEqual(t, "symlink", config.Files["test.vim"])
-				testutil.AssertEqual(t, "ignore", config.Files["*.bak"])
-				testutil.AssertEqual(t, "install", config.Files["setup.sh"])
-			},
-		},
-		{
-			name: "minimal config",
-			toml: ``,
-			validate: func(t *testing.T, config types.PackConfig) {
-				testutil.AssertEqual(t, 0, len(config.Files))
-			},
-		},
-		{
-			name:    "invalid toml",
-			toml:    `invalid = [toml`,
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create temporary config file
-			dir := testutil.TempDir(t, "config-test")
-			configPath := testutil.CreateFile(t, dir, ".dodot.toml", tt.toml)
-
-			config, err := loadPackConfig(configPath)
-
-			if tt.wantErr {
-				testutil.AssertError(t, err)
-				return
-			}
-
-			testutil.AssertNoError(t, err)
-			if tt.validate != nil {
-				tt.validate(t, config)
-			}
-		})
-	}
-}
-
-func TestShouldIgnore(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected bool
-	}{
-		{"git directory", ".git", true},
-		{"svn directory", ".svn", true},
-		{"node_modules", "node_modules", true},
-		{"DS_Store", ".DS_Store", true},
-		{"swap file", "file.swp", true},
-		{"backup file", "file~", true},
-		{"emacs backup", "#file#", true},
-		{"normal directory", "my-pack", false},
-		{"config directory", ".config", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := shouldIgnore(tt.input)
-			testutil.AssertEqual(t, tt.expected, result)
 		})
 	}
 }
@@ -600,69 +503,3 @@ func TestGetPackNames(t *testing.T) {
 	testutil.AssertSliceEqual(t, expected, names)
 }
 
-func TestGetFileAction(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   types.PackConfig
-		filename string
-		expected string
-	}{
-		{
-			name:     "empty config",
-			config:   types.PackConfig{},
-			filename: "test.txt",
-			expected: "",
-		},
-		{
-			name: "exact match",
-			config: types.PackConfig{
-				Files: map[string]string{
-					"test.txt": "ignore",
-					"app.sh":   "install",
-				},
-			},
-			filename: "test.txt",
-			expected: "ignore",
-		},
-		{
-			name: "glob pattern match",
-			config: types.PackConfig{
-				Files: map[string]string{
-					"*.bak":    "ignore",
-					"*.sh":     "install",
-					"init.vim": "symlink",
-				},
-			},
-			filename: "backup.bak",
-			expected: "ignore",
-		},
-		{
-			name: "exact match takes precedence over pattern",
-			config: types.PackConfig{
-				Files: map[string]string{
-					"*.txt":       "ignore",
-					"special.txt": "symlink",
-				},
-			},
-			filename: "special.txt",
-			expected: "symlink",
-		},
-		{
-			name: "no match",
-			config: types.PackConfig{
-				Files: map[string]string{
-					"*.bak": "ignore",
-				},
-			},
-			filename: "test.txt",
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.config.GetFileAction(tt.filename)
-			testutil.AssertEqual(t, tt.expected, result)
-		})
-	}
-}

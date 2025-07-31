@@ -242,9 +242,13 @@ func setupExecutionTest(t *testing.T) (root, packPath string) {
 
 	// Create a .dodot.toml to map files to our mock power-ups.
 	dodotToml := `
-[files]
-"install.me" = "once-powerup"
-"link.me" = "many-powerup"
+[[override]]
+path = "install.me"
+powerup = "once-powerup"
+
+[[override]]
+path = "link.me"
+powerup = "many-powerup"
 `
 	testutil.CreateFile(t, packPath, ".dodot.toml", dodotToml)
 

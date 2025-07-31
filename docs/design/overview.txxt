@@ -46,7 +46,7 @@ See TLDR [./readme.txxt] for a simpler version.
 
             The main thing is that dodot works by file naming conventions. For example if a pack has a "bin" directory in it, dodot will add it to the system path. If there is an alias.sh file in it, those will be added to your shell and so on.
 
-            The file names convention is pretty straightforward, but if that doesn't work for you, a .dodot.toml file in your pack can map these names into anything you want.
+            The file naming convention is pretty straightforward, but if that doesn't work for you, a .dodot.toml file in your pack can override the default behavior.
 
         In short: you group configs as you see fit under directories under your dotfiles root. Inside each directory, files and directories will trigger dodot to do various things, which you can customize with a .dodot.toml file if needed.
 
@@ -85,7 +85,7 @@ See TLDR [./readme.txxt] for a simpler version.
         Triggers are pattern-matching engines that scan files and directories within packs. Each trigger implements a specific matching strategy (like file name patterns, directory names, or file extensions). When a trigger finds a match, it returns metadata about what was found.
 
     3.2. Matchers
-        Matchers are configuration objects that bind triggers to power-ups. They specify: "when this trigger fires, invoke this power-up with these options." Matchers also define priorities for handling conflicts when multiple matches occur. They can be configured globally or customized per-pack via .dodot.toml files.
+        Matchers are configuration objects that bind triggers to power-ups. They specify: "when this trigger fires, invoke this power-up with these options." Matchers also define priorities for handling conflicts when multiple matches occur. They can be configured globally or customized per-pack via the `[[override]]` table in `.dodot.toml` files.
 
     3.3. Power-Ups
         Power-ups are action generators that process matched files. They receive groups of files that their associated triggers matched, and generate high-level actions describing what should be done (like "create symlink" or "add to PATH"). Power-ups don't perform any filesystem operations directly - they only describe intended changes.

@@ -25,13 +25,9 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 		return types.PackConfig{}, fmt.Errorf("failed to parse TOML: %w", err)
 	}
 
-	// Initialize Files map if nil
-	if config.Files == nil {
-		config.Files = make(map[string]string)
-	}
-
 	logger.Debug().
-		Int("fileRules", len(config.Files)).
+		Int("ignore_rules", len(config.Ignore)).
+		Int("override_rules", len(config.Override)).
 		Msg("Pack config loaded")
 
 	return config, nil

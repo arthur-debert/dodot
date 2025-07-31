@@ -172,9 +172,11 @@ func TestPackStructure(t *testing.T) {
 		Name: "test-pack",
 		Path: "/path/to/pack",
 		Config: PackConfig{
-			Files: map[string]string{
-				"test.conf": "symlink",
-				"*.bak":     "ignore",
+			Ignore: []IgnoreRule{
+				{Path: "*.bak"},
+			},
+			Override: []OverrideRule{
+				{Path: "test.conf", Powerup: "symlink"},
 			},
 		},
 		Metadata: map[string]interface{}{
@@ -187,17 +189,31 @@ func TestPackStructure(t *testing.T) {
 		t.Errorf("Pack.Name = %s, want test-pack", pack.Name)
 	}
 
-	if len(pack.Config.Files) != 2 {
-		t.Errorf("Pack.Config.Files length = %d, want 2", len(pack.Config.Files))
+	if len(pack.Config.Ignore) != 1 {
+		t.Errorf("len(pack.Config.Ignore) = %d, want 1", len(pack.Config.Ignore))
 	}
 
-	// Test file action
-	if action := pack.Config.GetFileAction("test.conf"); action != "symlink" {
-		t.Errorf("GetFileAction(test.conf) = %s, want symlink", action)
+	if len(pack.Config.Override) != 1 {
+		t.Errorf("len(pack.Config.Override) = %d, want 1", len(pack.Config.Override))
 	}
 
-	if action := pack.Config.GetFileAction("backup.bak"); action != "ignore" {
-		t.Errorf("GetFileAction(backup.bak) = %s, want ignore", action)
+	// Test IsIgnored
+	if !pack.Config.IsIgnored("backup.bak") {
+		t.Error("IsIgnored(backup.bak) should be true")
+	}
+	if pack.Config.IsIgnored("test.conf") {
+		t.Error("IsIgnored(test.conf) should be false")
+	}
+
+	// Test FindOverride
+	if override := pack.Config.FindOverride("test.conf"); override == nil {
+		t.Error("FindOverride(test.conf) should not be nil")
+	} else if override.Powerup != "symlink" {
+		t.Errorf("FindOverride(test.conf).Powerup = %s, want symlink", override.Powerup)
+	}
+
+	if override := pack.Config.FindOverride("other.file"); override != nil {
+		t.Error("FindOverride(other.file) should be nil")
 	}
 }
 

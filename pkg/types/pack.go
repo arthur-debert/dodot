@@ -17,31 +17,56 @@ type Pack struct {
 	Metadata map[string]interface{}
 }
 
-// PackConfig represents configuration options for a pack
+// PackConfig represents configuration options for a pack from .dodot.toml
 type PackConfig struct {
-	// Files maps file patterns to actions:
-	// - "ignore": skip the file entirely
-	// - "<powerup-name>": use this power-up instead of default
-	Files map[string]string `toml:"files"`
+	Ignore   []IgnoreRule   `toml:"ignore"`
+	Override []OverrideRule `toml:"override"`
 }
 
-// GetFileAction returns the action for a file (empty string means use defaults)
-func (c PackConfig) GetFileAction(filename string) string {
-	if c.Files == nil {
-		return ""
-	}
+// IgnoreRule defines a file or pattern to be ignored
+type IgnoreRule struct {
+	Path string `toml:"path"`
+}
 
-	// Check exact match first
-	if action, exists := c.Files[filename]; exists {
-		return action
-	}
+// OverrideRule defines a behavior override for a specific file or pattern
+type OverrideRule struct {
+	Path    string                 `toml:"path"`
+	Powerup string                 `toml:"powerup"`
+	With    map[string]interface{} `toml:"with"`
+}
 
-	// Check glob patterns
-	for pattern, action := range c.Files {
-		if matched, _ := filepath.Match(pattern, filename); matched {
-			return action
+// IsIgnored checks if a given file path should be ignored based on the pack's configuration.
+// It matches the filename against the list of ignore rules.
+func (c *PackConfig) IsIgnored(filename string) bool {
+	for _, rule := range c.Ignore {
+		if matched, _ := filepath.Match(rule.Path, filename); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// FindOverride returns the override rule that matches the given filename, if any.
+// It prioritizes exact matches over pattern matches.
+func (c *PackConfig) FindOverride(filename string) *OverrideRule {
+	var bestMatch *OverrideRule
+	longestMatch := 0
+
+	for i, rule := range c.Override {
+		// Exact match is always preferred
+		if rule.Path == filename {
+			return &c.Override[i]
+		}
+
+		// Glob matching for patterns
+		if matched, _ := filepath.Match(rule.Path, filename); matched {
+			// Basic glob specificity: longer pattern is better
+			if len(rule.Path) > longestMatch {
+				bestMatch = &c.Override[i]
+				longestMatch = len(rule.Path)
+			}
 		}
 	}
 
-	return ""
+	return bestMatch
 }

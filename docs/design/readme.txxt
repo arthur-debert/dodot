@@ -14,7 +14,7 @@ See a full-fledged overview [./overview.txtt]
     - Directories under $DOTFILES_ROOT containing related configs
     - File naming conventions trigger behaviors (e.g., bin/ dirs added to PATH, alias.sh
     sourced)
-    - Optional .dodot.toml for customization
+    - Optional `.dodot.toml` for customization, allowing users to ignore files or override default power-up behavior.
   2. Matchers 
     - Act as configuration objects that connect triggers to powerups
     - Contain: trigger_name, power_up_name, priority, and options

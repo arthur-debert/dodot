@@ -84,6 +84,17 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	return candidates, nil
 }
 
+// shouldIgnore checks if a name matches any ignore pattern
+func shouldIgnore(name string) bool {
+	for _, pattern := range DefaultIgnorePatterns {
+		// Simple pattern matching (could be enhanced with glob)
+		if matched, _ := filepath.Match(pattern, name); matched {
+			return true
+		}
+	}
+	return false
+}
+
 // GetPacks validates and creates Pack instances from candidate paths
 func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("core.packs")
@@ -101,15 +112,6 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 				Msg("Failed to load pack, skipping")
 			continue
 		}
-
-		// Skip packs with .dodotignore file
-		if shouldIgnorePack(pack.Path) {
-			logger.Info().
-				Str("pack", pack.Name).
-				Msg("Pack is skipped due to .dodotignore file")
-			continue
-		}
-
 
 		packs = append(packs, pack)
 		logger.Trace().
@@ -176,26 +178,6 @@ func loadPack(packPath string) (types.Pack, error) {
 // loadPackConfig reads and parses a pack's .dodot.toml configuration file
 func loadPackConfig(configPath string) (types.PackConfig, error) {
 	return config.LoadPackConfig(configPath)
-}
-
-// shouldIgnore checks if a name matches any ignore pattern
-func shouldIgnore(name string) bool {
-	for _, pattern := range DefaultIgnorePatterns {
-		// Simple pattern matching (could be enhanced with glob)
-		if matched, _ := filepath.Match(pattern, name); matched {
-			return true
-		}
-	}
-	return false
-}
-
-// shouldIgnorePack checks if a pack should be ignored by checking for a .dodotignore file
-func shouldIgnorePack(packPath string) bool {
-	ignoreFilePath := filepath.Join(packPath, ".dodotignore")
-	if _, err := os.Stat(ignoreFilePath); err == nil {
-		return true
-	}
-	return false
 }
 
 // ValidatePack checks if a directory is a valid pack

@@ -19,88 +19,103 @@ func TestLoadPackConfig(t *testing.T) {
 		errorMsg    string
 	}{
 		{
-			name: "complete_config",
+			name: "full_config",
 			content: `
-[files]
-"test.conf" = "symlink"
-"*.bak" = "ignore"
-"scripts/" = "shell_profile"`,
+[[ignore]]
+  path = "README.md"
+[[ignore]]
+  path = "*.bak"
+
+[[override]]
+  path = "htoprc"
+  powerup = "symlink"
+  with = { target_dir = "~/.config/htop" }
+
+[[override]]
+  path = "my-exports.sh"
+  powerup = "shell_profile"
+`,
 			expected: types.PackConfig{
-				Files: map[string]string{
-					"test.conf": "symlink",
-					"*.bak":     "ignore",
-					"scripts/":  "shell_profile",
+				Ignore: []types.IgnoreRule{
+					{Path: "README.md"},
+					{Path: "*.bak"},
+				},
+				Override: []types.OverrideRule{
+					{
+						Path:    "htoprc",
+						Powerup: "symlink",
+						With:    map[string]interface{}{"target_dir": "~/.config/htop"},
+					},
+					{
+						Path:    "my-exports.sh",
+						Powerup: "shell_profile",
+					},
 				},
 			},
 		},
 		{
-			name:    "minimal_config",
+			name:    "empty_config",
 			content: ``,
 			expected: types.PackConfig{
-				Files: map[string]string{},
+				Ignore:   nil,
+				Override: nil,
 			},
 		},
 		{
-			name: "only_files_section",
-			content: `[files]
-"app.conf" = "test-powerup"
-"*.log" = "ignore"
-"install.sh" = "install"`,
+			name: "only_ignore",
+			content: `
+[[ignore]]
+  path = "file.txt"
+`,
 			expected: types.PackConfig{
-				Files: map[string]string{
-					"app.conf":   "test-powerup",
-					"*.log":      "ignore",
-					"install.sh": "install",
-				},
+				Ignore:   []types.IgnoreRule{{Path: "file.txt"}},
+				Override: nil,
+			},
+		},
+		{
+			name: "only_override",
+			content: `
+[[override]]
+  path = "bashrc"
+  powerup = "symlink"
+`,
+			expected: types.PackConfig{
+				Ignore:   nil,
+				Override: []types.OverrideRule{{Path: "bashrc", Powerup: "symlink"}},
 			},
 		},
 		{
 			name:        "invalid_toml",
-			content:     `invalid = [toml`,
+			content:     `[[ignore] path = "test"`,
 			expectError: true,
 			errorMsg:    "failed to parse TOML",
-		},
-		{
-			name:    "empty_files_section",
-			content: `[files]`,
-			expected: types.PackConfig{
-				Files: map[string]string{},
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary file with the test content
 			tmpDir := t.TempDir()
 			configPath := filepath.Join(tmpDir, ".dodot.toml")
-
-			err := os.WriteFile(configPath, []byte(tt.content), 0644)
-			if err != nil {
-				t.Fatalf("Failed to write test config: %v", err)
+			if err := os.WriteFile(configPath, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("Failed to write temp config file: %v", err)
 			}
 
-			// Load the config
-			got, err := LoadPackConfig(configPath)
+			config, err := LoadPackConfig(configPath)
 
-			// Check error expectations
 			if tt.expectError {
 				if err == nil {
-					t.Errorf("Expected error but got none")
-				} else if tt.errorMsg != "" && !contains(err.Error(), tt.errorMsg) {
-					t.Errorf("Expected error containing %q, got %q", tt.errorMsg, err.Error())
+					t.Errorf("Expected an error, but got nil")
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error message to contain %q, but got %q", tt.errorMsg, err.Error())
 				}
 				return
 			}
-
 			if err != nil {
-				t.Errorf("Unexpected error: %v", err)
-				return
+				t.Fatalf("Unexpected error: %v", err)
 			}
 
-			// Compare the results
-			if !reflect.DeepEqual(got, tt.expected) {
-				t.Errorf("LoadPackConfig() = %+v, want %+v", got, tt.expected)
+			if !reflect.DeepEqual(config, tt.expected) {
+				t.Errorf("Expected config %+v, but got %+v", tt.expected, config)
 			}
 		})
 	}
