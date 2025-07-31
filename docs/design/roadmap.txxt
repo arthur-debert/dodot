@@ -1,7 +1,20 @@
 dodot Implementation Roadmap
 ===========================
 
-This document outlines the implementation phases for dodot, a stateless dotfiles manager written in Go. This is a rewrite of an existing Lua implementation, so the core concepts and architecture have been validated through user feedback.
+This document outlines the implementation phases for dodot, a stateless dotfiles manager written in Go. 
+
+The roadmap is bellow needs updateing, until we do, here's a high lever view of
+how we're handling it:
+
+    - core: get features and logic implemented. 
+    - file operations: : with the core logic correctly verified, we can byte
+      the bullet and actually execute the synthfs operation. At this time the
+      program becomes actually funcional.
+    - cli: now, with a working and useful code, we will actually write the cli,
+      which will leverage the fact that all program core commands are
+      implemented as a pure go api, that is, the cli rally is about the thin
+      cli part.
+In short: get it right, make it commit the changes, expose the ui through cli.
 
 Overview
 --------

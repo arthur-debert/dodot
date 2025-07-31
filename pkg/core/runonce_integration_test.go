@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/powerups"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -153,7 +154,7 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 	testutil.AssertEqual(t, 3, len(filtered))
 
 	// Create sentinel for only "tools" pack
-	brewfileDir := types.GetBrewfileDir()
+	brewfileDir := paths.GetBrewfileDir()
 	_ = os.MkdirAll(brewfileDir, 0755)
 
 	// Find and create sentinel for tools pack
@@ -225,8 +226,8 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 	}
 
 	// Create some sentinel files
-	brewfileDir := types.GetBrewfileDir()
-	installDir := types.GetInstallDir()
+	brewfileDir := paths.GetBrewfileDir()
+	installDir := paths.GetInstallDir()
 	_ = os.MkdirAll(brewfileDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
 

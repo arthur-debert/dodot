@@ -1,0 +1,9 @@
+A high level list of things we're working on: 
+
+[-] core features review for design and correctness 
+Features:
+    [ ] config file improvement /simplification
+[ ] documentation overhaul
+[ ] file operation execution
+[ ] cli
+
