@@ -111,6 +111,15 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Long:  `Print detailed version information including commit hash and build date`,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("dodot version %s\n", version.Version)
+			if version.Commit != "" {
+				fmt.Printf("Commit: %s\n", version.Commit)
+			}
+			if version.Date != "" {
+				fmt.Printf("Built:  %s\n", version.Date)
+			}
+		},
 	}
 }
 

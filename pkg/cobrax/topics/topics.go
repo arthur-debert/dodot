@@ -157,7 +157,7 @@ To see all available help topics:
 				} else {
 					// Sort topics alphabetically
 					sort.Strings(topics)
-					
+
 					fmt.Println("Available help topics:")
 					for _, name := range topics {
 						fmt.Printf("  %s\n", name)
