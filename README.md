@@ -62,7 +62,7 @@ After adding this module:
 ```bash
 # Build your CLI
 ./scripts/build
-./dist/build/bin/dodot --version
+./bin/dodot --version
 
 # Run tests
 ./scripts/test

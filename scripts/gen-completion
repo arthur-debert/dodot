@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build output directory
-BUILD_DIR="dist/build"
-BIN_DIR="${BUILD_DIR}/bin"
-COMPLETIONS_DIR="${BUILD_DIR}/completions"
+# Build output directory (matching main build script)
+BIN_DIR="bin"
+COMPLETIONS_DIR="completions"
 
 # Create completions directory
 mkdir -p "${COMPLETIONS_DIR}"
@@ -27,8 +26,3 @@ echo "Generating fish completion..."
 "${DODOT_BIN}" completion fish > "${COMPLETIONS_DIR}/dodot.fish"
 
 echo "✅ Completions generated in ${COMPLETIONS_DIR}/"
-
-# For backwards compatibility, also copy to old location
-mkdir -p completions
-cp "${COMPLETIONS_DIR}"/* completions/
-echo "✅ Also copied to completions/ for backwards compatibility"

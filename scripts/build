@@ -9,9 +9,8 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Build output directory
-BUILD_DIR="dist/build"
-BIN_DIR="${BUILD_DIR}/bin"
+# Build output directory (using bin/ to avoid conflicts with goreleaser's dist/)
+BIN_DIR="bin"
 
 echo -e "${BLUE}${BOLD}🔨 Building dodot...${NC}"
 echo
