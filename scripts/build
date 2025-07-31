@@ -9,7 +9,19 @@ BLUE='\033[0;34m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# Build output directory
+BUILD_DIR="dist/build"
+BIN_DIR="${BUILD_DIR}/bin"
+
 echo -e "${BLUE}${BOLD}🔨 Building dodot...${NC}"
+echo
+
+# Clean and create build directories
+echo -e "${BLUE}Setting up build directories...${NC}"
+# Only clean the bin directory, preserve other build artifacts
+rm -rf "${BIN_DIR}"
+mkdir -p "${BIN_DIR}"
+echo -e "${GREEN}✅ Build directories ready${NC}"
 echo
 
 # Get version information from git
@@ -42,8 +54,8 @@ LDFLAGS="$LDFLAGS -X main.buildDate=$BUILD_DATE"
 # Build the main binary
 echo
 echo -e "${BLUE}Building CLI binary...${NC}"
-if go build -ldflags "$LDFLAGS" -o dodot ./cmd/dodot; then
-    echo -e "${GREEN}✅ Binary built successfully: ./dodot${NC}"
+if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/dodot" ./cmd/dodot; then
+    echo -e "${GREEN}✅ Binary built successfully: ${BIN_DIR}/dodot${NC}"
 else
     echo -e "${RED}❌ Binary build failed${NC}"
     exit 1
@@ -67,27 +79,34 @@ fi
 # Verify the binary works
 echo
 echo -e "${BLUE}Verifying binary...${NC}"
-if ./dodot --version >/dev/null 2>&1; then
+if "${BIN_DIR}/dodot" --version >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Binary verification passed${NC}"
     # Show actual version output
     echo -e "${BLUE}Version output:${NC}"
-    ./dodot --version || true
-elif ./dodot --help >/dev/null 2>&1; then
+    "${BIN_DIR}/dodot" --version || true
+elif "${BIN_DIR}/dodot" --help >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Binary verification passed (via --help)${NC}"
 else
     echo -e "${RED}❌ Binary verification failed${NC}"
     exit 1
 fi
 
-# Create symlink in bin directory if it doesn't exist
+# Create convenience symlink in repo root for development
+if [ -e "dodot" ] || [ -L "dodot" ]; then
+    rm -f dodot
+fi
+ln -sf "${BIN_DIR}/dodot" dodot
+echo -e "${GREEN}✅ Created convenience symlink: ./dodot -> ${BIN_DIR}/dodot${NC}"
+
+# Also maintain the bin directory symlink for backwards compatibility
 if [ ! -d "bin" ]; then
     mkdir -p bin
 fi
-if [ ! -e "bin/dodot" ]; then
-    ln -sf "../dodot" "bin/dodot"
-    echo -e "${GREEN}✅ Created symlink in bin/dodot${NC}"
-fi
+rm -f bin/dodot
+ln -sf "../${BIN_DIR}/dodot" "bin/dodot"
+echo -e "${GREEN}✅ Created symlink in bin/dodot${NC}"
 
 echo
 echo -e "${GREEN}${BOLD}🎉 Build completed successfully!${NC}"
-echo -e "${BLUE}Binary location: ${BOLD}./dodot${NC}"
+echo -e "${BLUE}Binary location: ${BOLD}${BIN_DIR}/dodot${NC}"
+echo -e "${BLUE}Convenience symlink: ${BOLD}./dodot${NC}"

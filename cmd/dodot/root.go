@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/cobra/doc"
 
 	// Import packages to ensure their init() functions are called for registration
-	_ "github.com/arthur-debert/dodot/pkg/triggers"
 	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 var (
@@ -277,12 +277,12 @@ func hasHomeSymlinks(ops []types.Operation) bool {
 
 // CLI command constants
 const (
-	msgPacksDeployed       = "Successfully deployed %d pack(s)"
-	msgPacksInstalled      = "Successfully installed %d pack(s)"
-	msgNoPacksFound        = "No packs found in %s"
-	msgDryRunMode          = "DRY RUN MODE - No changes were made"
-	msgOperationsExecuted  = "Executed %d operation(s)"
-	msgNoOperationsNeeded  = "No operations needed"
+	msgPacksDeployed      = "Successfully deployed %d pack(s)"
+	msgPacksInstalled     = "Successfully installed %d pack(s)"
+	msgNoPacksFound       = "No packs found in %s"
+	msgDryRunMode         = "DRY RUN MODE - No changes were made"
+	msgOperationsExecuted = "Executed %d operation(s)"
+	msgNoOperationsNeeded = "No operations needed"
 )
 
 var installCmd = &cobra.Command{

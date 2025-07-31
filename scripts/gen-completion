@@ -1,21 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Always build the binary to ensure it's for the current platform
-echo "Building dodot..."
-./scripts/build
+# Build output directory
+BUILD_DIR="dist/build"
+BIN_DIR="${BUILD_DIR}/bin"
+COMPLETIONS_DIR="${BUILD_DIR}/completions"
 
 # Create completions directory
-mkdir -p completions
+mkdir -p "${COMPLETIONS_DIR}"
+
+# Find the dodot binary - prefer our build dir, then current directory
+if [ -f "${BIN_DIR}/dodot" ]; then
+    DODOT_BIN="${BIN_DIR}/dodot"
+elif [ -f "./dodot" ]; then
+    DODOT_BIN="./dodot"
+else
+    # Build it if not found
+    echo "Building dodot..."
+    ./scripts/build
+    DODOT_BIN="${BIN_DIR}/dodot"
+fi
 
 # Generate completions
 echo "Generating bash completion..."
-./dodot completion bash > completions/dodot.bash
+"${DODOT_BIN}" completion bash > "${COMPLETIONS_DIR}/dodot.bash"
 
 echo "Generating zsh completion..."
-./dodot completion zsh > completions/_dodot
+"${DODOT_BIN}" completion zsh > "${COMPLETIONS_DIR}/_dodot"
 
 echo "Generating fish completion..."
-./dodot completion fish > completions/dodot.fish
+"${DODOT_BIN}" completion fish > "${COMPLETIONS_DIR}/dodot.fish"
 
-echo "✅ Completions generated in completions/"
+echo "✅ Completions generated in ${COMPLETIONS_DIR}/"
+
+# For backwards compatibility, also copy to old location
+mkdir -p completions
+cp "${COMPLETIONS_DIR}"/* completions/
+echo "✅ Also copied to completions/ for backwards compatibility"

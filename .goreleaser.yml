@@ -16,6 +16,12 @@ builds:
       - goos: windows
         goarch: arm64
 
+before:
+  hooks:
+    # Generate completions and man pages (goreleaser will build the binary)
+    - ./scripts/gen-completion
+    - ./scripts/gen-manpage
+
 archives:
   - id: dodot-archive
     ids: [dodot]
@@ -27,9 +33,9 @@ archives:
     files:
       - "README.md"
       - "LICENSE"
-      - src: "completions/*"
+      - src: "dist/build/completions/*"
         dst: "completions"
-      - src: "man/man1/*"
+      - src: "dist/build/man/man1/*"
         dst: "man/man1"
 
 checksum:
@@ -92,22 +98,22 @@ nfpms:
     priority: optional
     contents:
       # Man page
-      - src: man/man1/dodot.1.gz
+      - src: dist/build/man/man1/dodot.1.gz
         dst: /usr/share/man/man1/dodot.1.gz
         file_info:
           mode: 0644
       # Bash completion
-      - src: completions/dodot.bash
+      - src: dist/build/completions/dodot.bash
         dst: /usr/share/bash-completion/completions/dodot
         file_info:
           mode: 0644
       # Zsh completion
-      - src: completions/_dodot
+      - src: dist/build/completions/_dodot
         dst: /usr/share/zsh/site-functions/_dodot
         file_info:
           mode: 0644
       # Fish completion
-      - src: completions/dodot.fish
+      - src: dist/build/completions/dodot.fish
         dst: /usr/share/fish/vendor_completions.d/dodot.fish
         file_info:
           mode: 0644
