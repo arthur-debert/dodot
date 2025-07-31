@@ -35,12 +35,19 @@ versioning and history.`,
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
+		},
+		DisableAutoGenTag: true,
 	}
 
 	// Global flags
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview changes without executing them")
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, "Force execution of run-once power-ups even if already executed")
+
+	// Disable automatic help command (we'll use our custom one from topics)
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
 	// Add all commands
 	rootCmd.AddCommand(newVersionCmd())
@@ -64,12 +71,10 @@ versioning and history.`,
 
 		for _, helpPath := range possiblePaths {
 			if _, err := os.Stat(helpPath); err == nil {
-				if err := topics.Initialize(rootCmd, helpPath); err != nil {
-					log.Debug().Err(err).Str("path", helpPath).Msg("Failed to initialize help topics")
-				} else {
-					log.Debug().Str("path", helpPath).Msg("Initialized help topics")
+				// Initialize topics without logging (logging not set up yet)
+				if err := topics.Initialize(rootCmd, helpPath); err == nil {
+					break
 				}
-				break
 			}
 		}
 	}
@@ -157,6 +162,25 @@ other configured actions.`,
   
   # Install specific packs
   dodot install vim zsh`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Installing from dotfiles root")
+
+			// TODO: Implement actual install logic
+			fmt.Printf("Install command would run with dotfiles root: %s\n", p.DotfilesRoot())
+			if len(args) > 0 {
+				fmt.Printf("Installing packs: %v\n", args)
+			} else {
+				fmt.Println("Installing all packs")
+			}
+
+			return nil
+		},
 	}
 }
 
@@ -198,6 +222,25 @@ If no packs are specified, status for all packs will be shown.`,
   
   # Show status for specific packs
   dodot status vim zsh`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
+
+			// TODO: Implement actual status logic
+			fmt.Printf("Status command would run with dotfiles root: %s\n", p.DotfilesRoot())
+			if len(args) > 0 {
+				fmt.Printf("Checking status for packs: %v\n", args)
+			} else {
+				fmt.Println("Checking status for all packs")
+			}
+
+			return nil
+		},
 	}
 }
 
@@ -216,6 +259,27 @@ triggers.toml file and appropriate directory structure.`,
   
   # Create a specific type of pack
   dodot init --type shell myshell`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			packName := args[0]
+			packType, _ := cmd.Flags().GetString("type")
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Str("pack", packName).
+				Str("type", packType).
+				Msg("Creating new pack")
+
+			// TODO: Implement actual init logic
+			fmt.Printf("Would create pack '%s' of type '%s' in: %s\n", packName, packType, p.DotfilesRoot())
+
+			return nil
+		},
 	}
 
 	cmd.Flags().StringP("type", "t", "basic", "Type of pack to create (basic, shell, vim, etc.)")
@@ -235,5 +299,24 @@ actually creating them.`,
 		Args: cobra.ExactArgs(1),
 		Example: `  # Create placeholder files for a pack
   dodot fill mypack`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			packName := args[0]
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Str("pack", packName).
+				Msg("Filling pack with placeholder files")
+
+			// TODO: Implement actual fill logic
+			fmt.Printf("Would fill pack '%s' in: %s\n", packName, p.DotfilesRoot())
+
+			return nil
+		},
 	}
 }
