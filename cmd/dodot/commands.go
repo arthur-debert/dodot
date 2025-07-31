@@ -41,11 +41,8 @@ func NewRootCmd() *cobra.Command {
 			_ = cmd.Help()
 			return fmt.Errorf("no command specified")
 		},
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		CompletionOptions: cobra.CompletionOptions{
-			DisableDefaultCmd: true,
-		},
+		SilenceUsage:      true,
+		SilenceErrors:     true,
 		DisableAutoGenTag: true,
 	}
 
@@ -78,6 +75,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newTopicsCmd())
+	rootCmd.AddCommand(newCompletionCmd())
 
 	// Initialize topic-based help system
 	// Try to find help topics relative to the executable location
@@ -128,6 +126,46 @@ func initPaths() (*paths.Paths, error) {
 	return p, nil
 }
 
+// packNamesCompletion provides shell completion for pack names
+func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// Initialize paths
+	p, err := initPaths()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+
+	// Get list of packs
+	result, err := core.ListPacks(core.ListPacksOptions{
+		DotfilesRoot: p.DotfilesRoot(),
+	})
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
+
+	// Extract pack names
+	var packNames []string
+	for _, pack := range result.Packs {
+		packNames = append(packNames, pack.Name)
+	}
+
+	// Filter out already specified packs
+	var availablePacks []string
+	for _, pack := range packNames {
+		found := false
+		for _, arg := range args {
+			if arg == pack {
+				found = true
+				break
+			}
+		}
+		if !found {
+			availablePacks = append(availablePacks, pack)
+		}
+	}
+
+	return availablePacks, cobra.ShellCompDirectiveNoFileComp
+}
+
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "deploy [packs...]",
@@ -135,6 +173,7 @@ func newDeployCmd() *cobra.Command {
 		Long:    MsgDeployLong,
 		Example: MsgDeployExample,
 		GroupID: "core",
+		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -186,6 +225,7 @@ func newInstallCmd() *cobra.Command {
 		Long:    MsgInstallLong,
 		Example: MsgInstallExample,
 		GroupID: "core",
+		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -279,6 +319,7 @@ func newStatusCmd() *cobra.Command {
 		Long:    MsgStatusLong,
 		Example: MsgStatusExample,
 		GroupID: "core",
+		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -425,6 +466,31 @@ func newTopicsCmd() *cobra.Command {
 				}
 			}
 			return fmt.Errorf("help command not found")
+		},
+	}
+}
+
+func newCompletionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: MsgCompletionShort,
+		Long:  MsgCompletionLong,
+		DisableFlagsInUseLine: true,
+		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		GroupID:               "misc",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return cmd.Root().GenBashCompletion(os.Stdout)
+			case "zsh":
+				return cmd.Root().GenZshCompletion(os.Stdout)
+			case "fish":
+				return cmd.Root().GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			}
+			return nil
 		},
 	}
 }
