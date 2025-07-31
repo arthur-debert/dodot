@@ -9,12 +9,12 @@ func TestGetDataSubdir(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
-	
+
 	p, err := New("")
 	if err != nil {
 		t.Fatalf("Failed to create Paths: %v", err)
 	}
-	
+
 	tests := []struct {
 		name     string
 		subdir   string
@@ -61,7 +61,7 @@ func TestGetDataSubdir(t *testing.T) {
 			expected: filepath.Join(p.DataDir(), "custom"),
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := p.GetDataSubdir(tt.subdir)
@@ -76,12 +76,12 @@ func TestGetDeployedSubdir(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
-	
+
 	p, err := New("")
 	if err != nil {
 		t.Fatalf("Failed to create Paths: %v", err)
 	}
-	
+
 	tests := []struct {
 		name     string
 		subdir   string
@@ -113,7 +113,7 @@ func TestGetDeployedSubdir(t *testing.T) {
 			expected: filepath.Join(p.DeployedDir(), "custom_deployment"),
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := p.GetDeployedSubdir(tt.subdir)
@@ -130,32 +130,32 @@ func TestHelperMethodsConsistency(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
-	
+
 	p, err := New("")
 	if err != nil {
 		t.Fatalf("Failed to create Paths: %v", err)
 	}
-	
+
 	// Test GetDataSubdir consistency
 	if p.GetDataSubdir("test") != filepath.Join(p.xdgData, "test") {
 		t.Errorf("GetDataSubdir does not match direct filepath.Join")
 	}
-	
+
 	// Test GetDeployedSubdir consistency
 	if p.GetDeployedSubdir("test") != filepath.Join(p.GetDataSubdir(DeployedDir), "test") {
 		t.Errorf("GetDeployedSubdir does not match expected path")
 	}
-	
+
 	// Verify that nested paths work correctly
 	deployedBase := p.DeployedDir()
 	shellProfileViaHelper := p.GetDeployedSubdir("shell_profile")
 	shellProfileViaMethod := p.ShellProfileDir()
 	shellProfileDirect := filepath.Join(deployedBase, "shell_profile")
-	
+
 	if shellProfileViaHelper != shellProfileViaMethod {
 		t.Errorf("GetDeployedSubdir result differs from direct method")
 	}
-	
+
 	if shellProfileViaHelper != shellProfileDirect {
 		t.Errorf("GetDeployedSubdir result differs from direct filepath.Join")
 	}

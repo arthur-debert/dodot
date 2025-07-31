@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
@@ -21,10 +22,12 @@ import (
 
 // SynthfsExecutor executes dodot operations using synthfs
 type SynthfsExecutor struct {
-	logger     zerolog.Logger
-	dryRun     bool
-	filesystem synthfs.FileSystem
-	paths      *paths.Paths
+	logger              zerolog.Logger
+	dryRun              bool
+	filesystem          synthfs.FileSystem
+	paths               *paths.Paths
+	allowHomeSymlinks   bool
+	backupExisting      bool
 }
 
 // NewSynthfsExecutor creates a new synthfs-based executor
@@ -32,21 +35,33 @@ func NewSynthfsExecutor(dryRun bool) *SynthfsExecutor {
 	// Initialize paths with empty string to use defaults
 	p, _ := paths.New("")
 	return &SynthfsExecutor{
-		logger:     logging.GetLogger("core.synthfs"),
-		dryRun:     dryRun,
-		filesystem: filesystem.NewOSFileSystem("/"), // Use root filesystem
-		paths:      p,
+		logger:            logging.GetLogger("core.synthfs"),
+		dryRun:            dryRun,
+		filesystem:        filesystem.NewOSFileSystem("/"), // Use root filesystem
+		paths:             p,
+		allowHomeSymlinks: false, // Default to safe mode
+		backupExisting:    true,  // Default to backing up existing files
 	}
 }
 
 // NewSynthfsExecutorWithPaths creates a new synthfs-based executor with custom paths
 func NewSynthfsExecutorWithPaths(dryRun bool, p *paths.Paths) *SynthfsExecutor {
 	return &SynthfsExecutor{
-		logger:     logging.GetLogger("core.synthfs"),
-		dryRun:     dryRun,
-		filesystem: filesystem.NewOSFileSystem("/"), // Use root filesystem
-		paths:      p,
+		logger:            logging.GetLogger("core.synthfs"),
+		dryRun:            dryRun,
+		filesystem:        filesystem.NewOSFileSystem("/"), // Use root filesystem
+		paths:             p,
+		allowHomeSymlinks: false,
+		backupExisting:    true,
 	}
+}
+
+// EnableHomeSymlinks allows the executor to create symlinks in the user's home directory
+// This should be used with caution and only for SymlinkPowerUp
+func (e *SynthfsExecutor) EnableHomeSymlinks(backup bool) *SynthfsExecutor {
+	e.allowHomeSymlinks = true
+	e.backupExisting = backup
+	return e
 }
 
 // ExecuteOperations executes a list of operations using synthfs
@@ -223,9 +238,8 @@ func (e *SynthfsExecutor) convertCreateSymlink(op types.Operation) (synthfs.Oper
 			"symlink operation requires source and target")
 	}
 
-	// For issue #70, we only allow symlinks in safe directories
-	// Issue #71 will handle symlinks in user home directory
-	if err := e.validateSafePath(op.Target); err != nil {
+	// For issue #71, handle symlinks in home directory with special validation
+	if err := e.validateSymlinkPath(op.Target, op.Source); err != nil {
 		return nil, err
 	}
 
@@ -431,7 +445,163 @@ func isPathWithin(path, parent string) bool {
 	}
 
 	// If relative path starts with "..", it's outside parent
-	return rel != ".." && !filepath.IsAbs(rel) && rel[0] != '.'
+	return !strings.HasPrefix(rel, "..") && !strings.HasPrefix(rel, "/")
+}
+
+// validateSymlinkPath validates symlink creation with special handling for home directory
+func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
+	
+	// First try standard safe path validation
+	if err := e.validateSafePath(target); err == nil {
+		// Target is in a safe directory, allow it
+		return nil
+	}
+
+	// If not in safe directory, check if home symlinks are allowed
+	if !e.allowHomeSymlinks {
+		return errors.Newf(errors.ErrPermission,
+			"symlink target is outside dodot-controlled directories: %s", target)
+	}
+
+	// Home symlinks are allowed, perform additional safety checks
+	
+	// First, validate the source is from dotfiles
+	dotfilesRoot := e.paths.DotfilesRoot()
+	normalizedSource, err := filepath.Abs(source)
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrInvalidInput,
+			"failed to normalize source path: %s", source)
+	}
+
+	if !isPathWithin(normalizedSource, dotfilesRoot) {
+		return errors.Newf(errors.ErrPermission,
+			"symlink source must be from dotfiles directory: %s", source)
+	}
+	
+	// Then validate target is in home directory
+	homeDir, err := paths.GetHomeDirectory()
+	if err != nil {
+		return errors.Wrap(err, errors.ErrFileAccess,
+			"failed to get home directory for validation")
+	}
+
+	// Normalize the target path
+	normalizedTarget, err := filepath.Abs(target)
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrInvalidInput,
+			"failed to normalize target path: %s", target)
+	}
+	
+	// For macOS, handle /var -> /private/var resolution
+	// Since the target may not exist yet, we need to check parent directories
+	parentDir := filepath.Dir(normalizedTarget)
+	if evalParent, err := filepath.EvalSymlinks(parentDir); err == nil {
+		normalizedTarget = filepath.Join(evalParent, filepath.Base(normalizedTarget))
+	}
+	
+	// Normalize home directory too for consistent comparison
+	normalizedHome := homeDir
+	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
+		normalizedHome = evalHome
+	} else {
+		// If EvalSymlinks fails (e.g., directory doesn't exist), 
+		// try to at least make paths consistent by resolving the parent
+		if homeParent := filepath.Dir(normalizedHome); homeParent != "" {
+			if evalHomeParent, err := filepath.EvalSymlinks(homeParent); err == nil {
+				normalizedHome = filepath.Join(evalHomeParent, filepath.Base(normalizedHome))
+			}
+		}
+	}
+	
+	e.logger.Debug().
+		Str("target", target).
+		Str("normalizedTarget", normalizedTarget).
+		Str("homeDir", homeDir).
+		Str("normalizedHome", normalizedHome).
+		Msg("Checking if target is in home directory")
+	
+	// Check if target is in home directory
+	if isPathWithin(normalizedTarget, normalizedHome) {
+		// Target is in home directory, perform additional safety checks
+		// Check for dangerous target locations
+		if err := e.validateNotSystemFile(normalizedTarget); err != nil {
+			return err
+		}
+	} else {
+		// Target is not in home directory, that's fine - it should go through
+		// standard safe path validation which already happened above
+		e.logger.Debug().
+			Str("target", normalizedTarget).
+			Msg("Target is not in home directory, standard validation applies")
+	}
+
+	e.logger.Debug().
+		Str("source", normalizedSource).
+		Str("target", normalizedTarget).
+		Bool("homeSymlinksAllowed", e.allowHomeSymlinks).
+		Msg("Symlink path validated for home directory")
+
+	return nil
+}
+
+// validateNotSystemFile ensures we're not overwriting critical system files
+func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
+	e.logger.Debug().
+		Str("path", path).
+		Msg("Checking if path is a protected system file")
+	
+	// List of protected files/directories that should never be symlinked
+	protectedPaths := []string{
+		".ssh/authorized_keys",
+		".ssh/id_rsa",
+		".ssh/id_ed25519",
+		".gnupg",
+		".password-store",
+		".config/gh/hosts.yml", // GitHub CLI auth
+		".aws/credentials",
+		".kube/config",
+		".docker/config.json",
+	}
+
+	homeDir, _ := paths.GetHomeDirectory()
+	// Normalize home directory for consistent comparison
+	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
+		homeDir = evalHome
+	}
+	
+	relPath, err := filepath.Rel(homeDir, path)
+	if err != nil {
+		// Not in home directory, can't check
+		return nil
+	}
+
+	// Check if the relative path matches any protected path
+	for _, protected := range protectedPaths {
+		// Check exact match or if the path is within a protected directory
+		if relPath == protected || strings.HasPrefix(relPath, protected+"/") {
+			e.logger.Warn().
+				Str("path", path).
+				Str("relPath", relPath).
+				Str("protected", protected).
+				Msg("Blocking symlink to protected file")
+			return errors.Newf(errors.ErrPermission,
+				"cannot create symlink for protected file: %s", relPath)
+		}
+	}
+
+	// Warn about existing files that will be replaced
+	if info, err := os.Stat(path); err == nil && !e.dryRun {
+		if info.Mode()&os.ModeSymlink == 0 {
+			// It's a real file, not a symlink
+			e.logger.Warn().
+				Str("path", path).
+				Bool("isDir", info.IsDir()).
+				Bool("backupEnabled", e.backupExisting).
+				Msg("Existing file will be replaced by symlink")
+		}
+	}
+
+	return nil
 }
 
 // logOperation logs details about an operation
