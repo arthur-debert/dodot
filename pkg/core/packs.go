@@ -113,6 +113,14 @@ func GetPacks(candidates []string) ([]types.Pack, error) {
 			continue
 		}
 
+		// Skip packs with .dodotignore file
+		if shouldIgnorePack(pack.Path) {
+			logger.Info().
+				Str("pack", pack.Name).
+				Msg("Pack is skipped due to .dodotignore file")
+			continue
+		}
+
 		packs = append(packs, pack)
 		logger.Trace().
 			Str("name", pack.Name).
@@ -178,6 +186,15 @@ func loadPack(packPath string) (types.Pack, error) {
 // loadPackConfig reads and parses a pack's .dodot.toml configuration file
 func loadPackConfig(configPath string) (types.PackConfig, error) {
 	return config.LoadPackConfig(configPath)
+}
+
+// shouldIgnorePack checks if a pack should be ignored by checking for a .dodotignore file
+func shouldIgnorePack(packPath string) bool {
+	ignoreFilePath := filepath.Join(packPath, ".dodotignore")
+	if _, err := os.Stat(ignoreFilePath); err == nil {
+		return true
+	}
+	return false
 }
 
 // ValidatePack checks if a directory is a valid pack

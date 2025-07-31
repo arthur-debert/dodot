@@ -198,14 +198,14 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 			logger.Info().Msg("Executing operations through synthfs")
 
 			executor := core.NewSynthfsExecutor(dryRun)
-			
+
 			// Check if any operations are symlinks targeting home directory
 			// If so, enable home symlinks with backup
 			if hasHomeSymlinks(result.Operations) {
 				logger.Info().Msg("Detected symlinks targeting home directory, enabling home symlink mode")
 				executor.EnableHomeSymlinks(true)
 			}
-			
+
 			if err := executor.ExecuteOperations(result.Operations); err != nil {
 				return errors.Wrap(err, errors.ErrActionExecute,
 					"failed to execute operations")
@@ -237,7 +237,7 @@ func hasHomeSymlinks(ops []types.Operation) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	for _, op := range ops {
 		if op.Type == types.OperationCreateSymlink && op.Target != "" {
 			// Check if target is in home directory
@@ -250,6 +250,6 @@ func hasHomeSymlinks(ops []types.Operation) bool {
 			}
 		}
 	}
-	
+
 	return false
 }

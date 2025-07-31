@@ -2,6 +2,7 @@ package core
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
@@ -83,6 +84,14 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 		if err != nil {
 			logger.Warn().Err(err).Str("path", path).Msg("Failed to get relative path")
 			return nil
+		}
+
+		// Check for .dodotignore in directories
+		if d.IsDir() {
+			if _, err := os.Stat(filepath.Join(path, ".dodotignore")); err == nil {
+				logger.Debug().Str("dir", relPath).Msg("Skipping directory with .dodotignore")
+				return filepath.SkipDir
+			}
 		}
 
 		// Check if file should be ignored by pack config

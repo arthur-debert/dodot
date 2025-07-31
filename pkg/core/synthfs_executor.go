@@ -22,12 +22,12 @@ import (
 
 // SynthfsExecutor executes dodot operations using synthfs
 type SynthfsExecutor struct {
-	logger              zerolog.Logger
-	dryRun              bool
-	filesystem          synthfs.FileSystem
-	paths               *paths.Paths
-	allowHomeSymlinks   bool
-	backupExisting      bool
+	logger            zerolog.Logger
+	dryRun            bool
+	filesystem        synthfs.FileSystem
+	paths             *paths.Paths
+	allowHomeSymlinks bool
+	backupExisting    bool
 }
 
 // NewSynthfsExecutor creates a new synthfs-based executor
@@ -450,7 +450,7 @@ func isPathWithin(path, parent string) bool {
 
 // validateSymlinkPath validates symlink creation with special handling for home directory
 func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
-	
+
 	// First try standard safe path validation
 	if err := e.validateSafePath(target); err == nil {
 		// Target is in a safe directory, allow it
@@ -464,7 +464,7 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 	}
 
 	// Home symlinks are allowed, perform additional safety checks
-	
+
 	// First, validate the source is from dotfiles
 	dotfilesRoot := e.paths.DotfilesRoot()
 	normalizedSource, err := filepath.Abs(source)
@@ -477,7 +477,7 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 		return errors.Newf(errors.ErrPermission,
 			"symlink source must be from dotfiles directory: %s", source)
 	}
-	
+
 	// Then validate target is in home directory
 	homeDir, err := paths.GetHomeDirectory()
 	if err != nil {
@@ -491,20 +491,20 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 		return errors.Wrapf(err, errors.ErrInvalidInput,
 			"failed to normalize target path: %s", target)
 	}
-	
+
 	// For macOS, handle /var -> /private/var resolution
 	// Since the target may not exist yet, we need to check parent directories
 	parentDir := filepath.Dir(normalizedTarget)
 	if evalParent, err := filepath.EvalSymlinks(parentDir); err == nil {
 		normalizedTarget = filepath.Join(evalParent, filepath.Base(normalizedTarget))
 	}
-	
+
 	// Normalize home directory too for consistent comparison
 	normalizedHome := homeDir
 	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
 		normalizedHome = evalHome
 	} else {
-		// If EvalSymlinks fails (e.g., directory doesn't exist), 
+		// If EvalSymlinks fails (e.g., directory doesn't exist),
 		// try to at least make paths consistent by resolving the parent
 		if homeParent := filepath.Dir(normalizedHome); homeParent != "" {
 			if evalHomeParent, err := filepath.EvalSymlinks(homeParent); err == nil {
@@ -512,14 +512,14 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 			}
 		}
 	}
-	
+
 	e.logger.Debug().
 		Str("target", target).
 		Str("normalizedTarget", normalizedTarget).
 		Str("homeDir", homeDir).
 		Str("normalizedHome", normalizedHome).
 		Msg("Checking if target is in home directory")
-	
+
 	// Check if target is in home directory
 	if isPathWithin(normalizedTarget, normalizedHome) {
 		// Target is in home directory, perform additional safety checks
@@ -549,7 +549,7 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 	e.logger.Debug().
 		Str("path", path).
 		Msg("Checking if path is a protected system file")
-	
+
 	// List of protected files/directories that should never be symlinked
 	protectedPaths := []string{
 		".ssh/authorized_keys",
@@ -568,7 +568,7 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
 		homeDir = evalHome
 	}
-	
+
 	relPath, err := filepath.Rel(homeDir, path)
 	if err != nil {
 		// Not in home directory, can't check
