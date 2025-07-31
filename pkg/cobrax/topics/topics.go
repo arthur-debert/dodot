@@ -31,13 +31,14 @@ type TopicManager struct {
 
 // topicsListData holds data for rendering the topics list
 type topicsListData struct {
-	GeneralTitle string
-	OptionsTitle string
-	General      []string
-	Options      []string
-	HasGeneral   bool
-	HasOptions   bool
-	AppName      string
+	Groups  []topicGroup
+	AppName string
+}
+
+// topicGroup represents a group of topics
+type topicGroup struct {
+	Title  string
+	Topics []string
 }
 
 // Topic represents a help topic
@@ -178,28 +179,40 @@ func (tm *TopicManager) DisplayTopicsList() {
 	// Sort topics alphabetically
 	sort.Strings(topics)
 
-	// Separate options and general topics
-	var options []string
-	var general []string
+	// Group topics by type
+	generalTopics := []string{}
+	optionTopics := []string{}
 
 	for _, name := range topics {
 		if strings.HasPrefix(name, "option-") {
-			// Remove prefix for display
-			options = append(options, strings.TrimPrefix(name, "option-"))
+			// Remove prefix and add -- for display
+			optionTopics = append(optionTopics, "--"+strings.TrimPrefix(name, "option-"))
 		} else {
-			general = append(general, name)
+			generalTopics = append(generalTopics, name)
 		}
+	}
+
+	// Build groups dynamically
+	groups := []topicGroup{}
+	
+	if len(generalTopics) > 0 {
+		groups = append(groups, topicGroup{
+			Title:  "GENERAL",
+			Topics: generalTopics,
+		})
+	}
+	
+	if len(optionTopics) > 0 {
+		groups = append(groups, topicGroup{
+			Title:  "OPTIONS",
+			Topics: optionTopics,
+		})
 	}
 
 	// Prepare template data
 	data := topicsListData{
-		GeneralTitle: "GENERAL",
-		OptionsTitle: "OPTIONS",
-		General:      general,
-		Options:      options,
-		HasGeneral:   len(general) > 0,
-		HasOptions:   len(options) > 0,
-		AppName:      "dodot",
+		Groups:  groups,
+		AppName: "dodot",
 	}
 
 	// If we have a root command, use its name
