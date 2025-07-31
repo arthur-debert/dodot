@@ -23,9 +23,9 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:   "dodot",
-		Short: MsgRootShort,
-		Long:  MsgRootLong,
+		Use:     "dodot",
+		Short:   MsgRootShort,
+		Long:    MsgRootLong,
 		Version: version.Version,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			// Setup logging based on verbosity
@@ -125,7 +125,7 @@ func newVersionCmd() *cobra.Command {
 
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "deploy [packs...]",
+		Use:     "deploy [packs...]",
 		Short:   MsgDeployShort,
 		Long:    MsgDeployLong,
 		Example: MsgDeployExample,
@@ -175,7 +175,7 @@ func newDeployCmd() *cobra.Command {
 
 func newInstallCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "install [packs...]",
+		Use:     "install [packs...]",
 		Short:   MsgInstallShort,
 		Long:    MsgInstallLong,
 		Example: MsgInstallExample,
@@ -228,7 +228,7 @@ func newInstallCmd() *cobra.Command {
 
 func newListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
+		Use:     "list",
 		Short:   MsgListShort,
 		Long:    MsgListLong,
 		Example: MsgListExample,
@@ -266,7 +266,7 @@ func newListCmd() *cobra.Command {
 
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status [packs...]",
+		Use:     "status [packs...]",
 		Short:   MsgStatusShort,
 		Long:    MsgStatusLong,
 		Example: MsgStatusExample,

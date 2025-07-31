@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/arthur-debert/dodot/internal/commands"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands"
 
 	// Import packages to ensure their init() functions are called for registration
 	_ "github.com/arthur-debert/dodot/pkg/powerups"

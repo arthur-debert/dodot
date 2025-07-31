@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra/doc"
 
-	"github.com/arthur-debert/dodot/internal/commands"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands"
 	"github.com/arthur-debert/dodot/internal/version"
 
 	// Import packages to ensure their init() functions are called for registration

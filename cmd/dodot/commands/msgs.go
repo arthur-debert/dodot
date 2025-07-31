@@ -40,13 +40,13 @@ const (
 	MsgBuiltFormat   = "Built:  %s\n"
 
 	// Error messages
-	MsgErrInitPaths     = "failed to initialize paths: %w"
-	MsgErrDeployPacks   = "failed to deploy packs: %w"
-	MsgErrInstallPacks  = "failed to install packs: %w"
-	MsgErrListPacks     = "failed to list packs: %w"
-	MsgErrStatusPacks   = "failed to get pack status: %w"
-	MsgErrInitPack      = "failed to initialize pack: %w"
-	MsgErrFillPack      = "failed to fill pack: %w"
+	MsgErrInitPaths    = "failed to initialize paths: %w"
+	MsgErrDeployPacks  = "failed to deploy packs: %w"
+	MsgErrInstallPacks = "failed to install packs: %w"
+	MsgErrListPacks    = "failed to list packs: %w"
+	MsgErrStatusPacks  = "failed to get pack status: %w"
+	MsgErrInitPack     = "failed to initialize pack: %w"
+	MsgErrFillPack     = "failed to fill pack: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"

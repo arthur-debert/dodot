@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/internal/commands"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 )
 
