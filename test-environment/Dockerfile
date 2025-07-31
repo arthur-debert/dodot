@@ -37,8 +37,14 @@ COPY --chown=testuser:testuser scripts/ /setup-scripts/
 # Copy sample dotfiles
 COPY --chown=testuser:testuser sample-dotfiles/ /dotfiles/
 
+# Run Homebrew setup
+RUN /setup-scripts/setup-brew.sh
+
 # Set DOTFILES_ROOT
 ENV DOTFILES_ROOT=/dotfiles
+
+# Add Homebrew to PATH for all shells
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
 
 # Default to zsh shell
 CMD ["/bin/zsh"]
