@@ -19,6 +19,7 @@ type TopicManager struct {
 	topics       map[string]*Topic
 	originalHelp func(*cobra.Command, []string)
 	extensions   []string
+	renderer     Renderer
 }
 
 // Topic represents a help topic
@@ -33,6 +34,10 @@ type Options struct {
 	// Extensions is the list of file extensions to consider as topics
 	// Defaults to [".txt", ".md"] if not specified
 	Extensions []string
+
+	// Renderer for formatting topic content (optional)
+	// Defaults to PlainRenderer if not specified
+	Renderer Renderer
 }
 
 // New creates a new TopicManager with default extensions
@@ -46,11 +51,17 @@ func NewWithOptions(topicsDir string, opts Options) *TopicManager {
 		topicsDir:  topicsDir,
 		topics:     make(map[string]*Topic),
 		extensions: opts.Extensions,
+		renderer:   opts.Renderer,
 	}
 
 	// Set default extensions if none provided
 	if len(tm.extensions) == 0 {
 		tm.extensions = []string{".txt", ".md"}
+	}
+
+	// Set default renderer if none provided
+	if tm.renderer == nil {
+		tm.renderer = &PlainRenderer{}
 	}
 
 	return tm
@@ -235,7 +246,10 @@ To see all available help topics:
 			// Check if it's a topic
 			topic, exists := tm.GetTopic(args[0])
 			if exists {
-				fmt.Println(topic.Content)
+				// Get file extension for format detection
+				ext := filepath.Ext(topic.FilePath)
+				rendered := tm.renderer.Render(topic.Content, ext)
+				fmt.Print(rendered)
 				return
 			}
 
@@ -261,7 +275,10 @@ To see all available help topics:
 		if len(args) > 0 {
 			topic, exists := tm.GetTopic(args[0])
 			if exists {
-				fmt.Println(topic.Content)
+				// Get file extension for format detection
+				ext := filepath.Ext(topic.FilePath)
+				rendered := tm.renderer.Render(topic.Content, ext)
+				fmt.Print(rendered)
 				return
 			}
 		}

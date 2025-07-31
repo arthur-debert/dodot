@@ -76,6 +76,12 @@ versioning and history.`,
 				opts := topics.Options{
 					Extensions: []string{".txt", ".md", ".txxt"},
 				}
+
+				// Enable glamour renderer if environment variable is set
+				if os.Getenv("DODOT_GLAMOUR") != "" {
+					opts.Renderer = topics.NewGlamourRenderer()
+				}
+
 				if err := topics.InitializeWithOptions(rootCmd, helpPath, opts); err == nil {
 					break
 				}
