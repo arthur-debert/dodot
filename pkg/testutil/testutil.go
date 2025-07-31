@@ -6,6 +6,7 @@ import (
 
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -231,4 +232,21 @@ func CalculateFileChecksum(filepath string) (string, error) {
 	}
 
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+// RunCommand runs a command and fails the test if it returns an error
+func RunCommand(t *testing.T, name string, args ...string) {
+	t.Helper()
+
+	cmd := exec.Command(name, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Command failed: %s %v\nOutput: %s\nError: %v", name, args, string(output), err)
+	}
+}
+
+// CommandAvailable checks if a command is available in the system PATH
+func CommandAvailable(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }
