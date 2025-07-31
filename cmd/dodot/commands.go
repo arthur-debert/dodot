@@ -49,7 +49,6 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
 	// Add all commands
-	rootCmd.AddCommand(newVersionCmd())
 	rootCmd.AddCommand(newDeployCmd())
 	rootCmd.AddCommand(newInstallCmd())
 	rootCmd.AddCommand(newListCmd())
@@ -106,22 +105,6 @@ func initPaths() (*paths.Paths, error) {
 	return p, nil
 }
 
-func newVersionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: MsgVersionShort,
-		Long:  MsgVersionLong,
-		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf(MsgVersionFormat, version.Version)
-			if version.Commit != "" {
-				fmt.Printf(MsgCommitFormat, version.Commit)
-			}
-			if version.Date != "" {
-				fmt.Printf(MsgBuiltFormat, version.Date)
-			}
-		},
-	}
-}
 
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{

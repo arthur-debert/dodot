@@ -8,10 +8,8 @@ import (
 // Short messages (one-liners)
 const (
 	// Command descriptions
-	MsgRootShort    = "A stateless dotfiles manager"
-	MsgVersionShort = "Print version information"
-	MsgVersionLong  = "Print detailed version information including commit hash and build date"
-	MsgDeployShort  = "Deploy dotfiles to the system"
+	MsgRootShort   = "A stateless dotfiles manager"
+	MsgDeployShort = "Deploy dotfiles to the system"
 	MsgInstallShort = "Install and deploy dotfiles to the system"
 	MsgListShort    = "List all available packs"
 	MsgListLong     = "List displays all packs found in your DOTFILES_ROOT directory."
@@ -31,13 +29,8 @@ const (
 	MsgPackFilledFormat  = "Added the following files to pack '%s':\n"
 	MsgPackHasAllFiles   = "Pack '%s' already has all standard files.\n"
 	MsgPackStatusFormat  = "\n%s:\n"
-	MsgPowerUpStatus     = "  %s: %s"
-	MsgPowerUpDesc       = " - %s"
-
-	// Version output
-	MsgVersionFormat = "dodot version %s\n"
-	MsgCommitFormat  = "Commit: %s\n"
-	MsgBuiltFormat   = "Built:  %s\n"
+	MsgPowerUpStatus = "  %s: %s"
+	MsgPowerUpDesc   = " - %s"
 
 	// Error messages
 	MsgErrInitPaths    = "failed to initialize paths: %w"
