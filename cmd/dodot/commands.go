@@ -51,11 +51,11 @@ func NewRootCmd() *cobra.Command {
 	// Define command groups
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "core",
-		Title: "Commands:",
+		Title: "COMMANDS:",
 	})
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "misc",
-		Title: "Misc:",
+		Title: "MISC:",
 	})
 
 	// Set custom help template

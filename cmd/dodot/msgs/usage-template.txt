@@ -1,33 +1,33 @@
-Usage:{{if .HasParent}}{{if .Runnable}}
+[1mUSAGE[0m:{{if .HasParent}}{{if .Runnable}}
   {{.UseLine}}{{end}}{{else}}
   $ {{.CommandPath}} [command]                  # runs on all packs
   $ {{.CommandPath}} [command] <pack>...<pack>  # runs on the specified packs{{end}}{{if gt (len .Aliases) 0}}
 
-Aliases:
+[1mALIASES[0m:
   {{.NameAndAliases}}{{end}}{{if .HasExample}}
 
-Examples:
+[1mEXAMPLES[0m:
 {{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
 
-Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+[1mAVAILABLE COMMANDS[0m:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
 
-{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+[1m{{.Title}}[0m{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
 
-Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+[1mADDITIONAL COMMANDS[0m:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
   {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 
-Flags:
+[1mFLAGS[0m:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
 
-Global Flags:
+[1mGLOBAL FLAGS[0m:
 {{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
 
-Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+[1mADDITIONAL HELP TOPICS[0m:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
   {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
 
-Learn More:
+[1mLEARN MORE[0m:
   $ {{.Root.Name}} help <command>   # see the command docs
   $ {{.Root.Name}} help <option>    # see the options docs
   $ {{.Root.Name}} help <topic>     # learn more about a topic
