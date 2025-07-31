@@ -35,6 +35,12 @@ func NewRootCmd() *cobra.Command {
 			logging.SetupLogger(verbosity)
 			log.Debug().Str("command", cmd.Name()).Msg("Command started")
 		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// If we get here, no subcommand was provided
+			// Show help but return an error to indicate incorrect usage
+			_ = cmd.Help()
+			return fmt.Errorf("no command specified")
+		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		CompletionOptions: cobra.CompletionOptions{
