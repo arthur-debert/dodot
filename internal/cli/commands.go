@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/rs/zerolog/log"
@@ -136,13 +137,36 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 				return err
 			}
 
-			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Deploying from dotfiles root")
+			// Get dry-run flag value (it's a persistent flag)
+			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
 
-			fmt.Printf("Deploy command would run with dotfiles root: %s\n", p.DotfilesRoot())
-			if len(args) > 0 {
-				fmt.Printf("Deploying packs: %v\n", args)
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Bool("dry_run", dryRun).
+				Msg("Deploying from dotfiles root")
+
+			// Use the actual DeployPacks implementation
+			result, err := core.DeployPacks(core.DeployPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				DryRun:       dryRun,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to deploy packs: %w", err)
+			}
+
+			// Display results
+			if dryRun {
+				fmt.Println("\nDRY RUN MODE - No changes were made")
+			}
+			
+			if len(result.Operations) == 0 {
+				fmt.Println("No operations needed.")
 			} else {
-				fmt.Println("Deploying all packs")
+				fmt.Printf("\nPerformed %d operations:\n", len(result.Operations))
+				for _, op := range result.Operations {
+					fmt.Printf("  ✓ %s\n", op.Description)
+				}
 			}
 
 			return nil
@@ -169,14 +193,39 @@ other configured actions.`,
 				return err
 			}
 
-			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Installing from dotfiles root")
+			// Get flags (they're persistent flags)
+			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
+			force, _ := cmd.Root().PersistentFlags().GetBool("force")
 
-			// TODO: Implement actual install logic
-			fmt.Printf("Install command would run with dotfiles root: %s\n", p.DotfilesRoot())
-			if len(args) > 0 {
-				fmt.Printf("Installing packs: %v\n", args)
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Bool("dry_run", dryRun).
+				Bool("force", force).
+				Msg("Installing from dotfiles root")
+
+			// Use the actual InstallPacks implementation
+			result, err := core.InstallPacks(core.InstallPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				DryRun:       dryRun,
+				Force:        force,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to install packs: %w", err)
+			}
+
+			// Display results
+			if dryRun {
+				fmt.Println("\nDRY RUN MODE - No changes were made")
+			}
+			
+			if len(result.Operations) == 0 {
+				fmt.Println("No operations needed.")
 			} else {
-				fmt.Println("Installing all packs")
+				fmt.Printf("\nPerformed %d operations:\n", len(result.Operations))
+				for _, op := range result.Operations {
+					fmt.Printf("  ✓ %s\n", op.Description)
+				}
 			}
 
 			return nil
@@ -200,8 +249,23 @@ func newListCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
 
-			// TODO: Implement actual list logic
-			fmt.Printf("Listing packs from: %s\n", p.DotfilesRoot())
+			// Use the actual ListPacks implementation
+			result, err := core.ListPacks(core.ListPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+			})
+			if err != nil {
+				return fmt.Errorf("failed to list packs: %w", err)
+			}
+
+			// Display the packs
+			if len(result.Packs) == 0 {
+				fmt.Println("No packs found.")
+			} else {
+				fmt.Println("Available packs:")
+				for _, pack := range result.Packs {
+					fmt.Printf("  %s\n", pack.Name)
+				}
+			}
 
 			return nil
 		},
@@ -231,12 +295,27 @@ If no packs are specified, status for all packs will be shown.`,
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
 
-			// TODO: Implement actual status logic
-			fmt.Printf("Status command would run with dotfiles root: %s\n", p.DotfilesRoot())
-			if len(args) > 0 {
-				fmt.Printf("Checking status for packs: %v\n", args)
-			} else {
-				fmt.Println("Checking status for all packs")
+			// Use the actual StatusPacks implementation
+			result, err := core.StatusPacks(core.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Display status for each pack
+			for _, packStatus := range result.Packs {
+				fmt.Printf("\n%s:\n", packStatus.Name)
+				
+				// Show power-up statuses
+				for _, ps := range packStatus.PowerUpState {
+					fmt.Printf("  %s: %s", ps.Name, ps.State)
+					if ps.Description != "" {
+						fmt.Printf(" - %s", ps.Description)
+					}
+					fmt.Println()
+				}
 			}
 
 			return nil
@@ -267,16 +346,26 @@ triggers.toml file and appropriate directory structure.`,
 			}
 
 			packName := args[0]
-			packType, _ := cmd.Flags().GetString("type")
 
 			log.Info().
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Str("pack", packName).
-				Str("type", packType).
 				Msg("Creating new pack")
 
-			// TODO: Implement actual init logic
-			fmt.Printf("Would create pack '%s' of type '%s' in: %s\n", packName, packType, p.DotfilesRoot())
+			// Use the actual InitPack implementation
+			result, err := core.InitPack(core.InitPackOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackName:     packName,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to initialize pack: %w", err)
+			}
+
+			// Display results
+			fmt.Printf("Created pack '%s' with the following files:\n", packName)
+			for _, file := range result.FilesCreated {
+				fmt.Printf("  ✓ %s\n", file)
+			}
 
 			return nil
 		},
@@ -313,8 +402,24 @@ actually creating them.`,
 				Str("pack", packName).
 				Msg("Filling pack with placeholder files")
 
-			// TODO: Implement actual fill logic
-			fmt.Printf("Would fill pack '%s' in: %s\n", packName, p.DotfilesRoot())
+			// Use the actual FillPack implementation
+			result, err := core.FillPack(core.FillPackOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackName:     packName,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to fill pack: %w", err)
+			}
+
+			// Display results
+			if len(result.FilesCreated) == 0 {
+				fmt.Printf("Pack '%s' already has all standard files.\n", packName)
+			} else {
+				fmt.Printf("Added the following files to pack '%s':\n", packName)
+				for _, file := range result.FilesCreated {
+					fmt.Printf("  ✓ %s\n", file)
+				}
+			}
 
 			return nil
 		},
