@@ -241,19 +241,25 @@ func (p *Paths) CacheDir() string {
 	return p.xdgCache
 }
 
+// GetDataSubdir returns a subdirectory path under the XDG data directory.
+// This is a helper method to reduce boilerplate for the many data subdirectories.
+func (p *Paths) GetDataSubdir(name string) string {
+	return filepath.Join(p.xdgData, name)
+}
+
 // StateDir returns the directory for state files
 func (p *Paths) StateDir() string {
-	return filepath.Join(p.xdgData, StateDir)
+	return p.GetDataSubdir(StateDir)
 }
 
 // BackupsDir returns the directory for backup files
 func (p *Paths) BackupsDir() string {
-	return filepath.Join(p.xdgData, BackupsDir)
+	return p.GetDataSubdir(BackupsDir)
 }
 
 // TemplatesDir returns the directory for template files
 func (p *Paths) TemplatesDir() string {
-	return filepath.Join(p.xdgData, TemplatesDir)
+	return p.GetDataSubdir(TemplatesDir)
 }
 
 // StatePath returns the path to a state file for a specific pack and powerup
@@ -305,32 +311,38 @@ func ExpandHome(path string) string {
 
 // DeployedDir returns the deployed directory path
 func (p *Paths) DeployedDir() string {
-	return filepath.Join(p.xdgData, DeployedDir)
+	return p.GetDataSubdir(DeployedDir)
+}
+
+// GetDeployedSubdir returns a subdirectory path under the deployed directory.
+// This is a helper method to reduce boilerplate for the deployed subdirectories.
+func (p *Paths) GetDeployedSubdir(name string) string {
+	return filepath.Join(p.DeployedDir(), name)
 }
 
 // ShellProfileDir returns the shell profile deployment directory
 func (p *Paths) ShellProfileDir() string {
-	return filepath.Join(p.DeployedDir(), "shell_profile")
+	return p.GetDeployedSubdir("shell_profile")
 }
 
 // PathDir returns the PATH deployment directory
 func (p *Paths) PathDir() string {
-	return filepath.Join(p.DeployedDir(), "path")
+	return p.GetDeployedSubdir("path")
 }
 
 // ShellSourceDir returns the shell source deployment directory
 func (p *Paths) ShellSourceDir() string {
-	return filepath.Join(p.DeployedDir(), "shell_source")
+	return p.GetDeployedSubdir("shell_source")
 }
 
 // SymlinkDir returns the symlink deployment directory
 func (p *Paths) SymlinkDir() string {
-	return filepath.Join(p.DeployedDir(), "symlink")
+	return p.GetDeployedSubdir("symlink")
 }
 
 // ShellDir returns the shell scripts directory
 func (p *Paths) ShellDir() string {
-	return filepath.Join(p.xdgData, ShellDir)
+	return p.GetDataSubdir(ShellDir)
 }
 
 // InitScriptPath returns the path to the dodot-init.sh script
@@ -340,12 +352,12 @@ func (p *Paths) InitScriptPath() string {
 
 // InstallDir returns the install scripts sentinel directory
 func (p *Paths) InstallDir() string {
-	return filepath.Join(p.xdgData, InstallDir)
+	return p.GetDataSubdir(InstallDir)
 }
 
 // BrewfileDir returns the brewfile sentinel directory
 func (p *Paths) BrewfileDir() string {
-	return filepath.Join(p.xdgData, BrewfileDir)
+	return p.GetDataSubdir(BrewfileDir)
 }
 
 // GetHomeDirectory returns the user's home directory with proper error handling
