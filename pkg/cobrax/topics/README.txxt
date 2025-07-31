@@ -1,0 +1,84 @@
+                   Cobra Topics Extension
+                   ======================
+
+The cobrax/topics package provides a pluggable, topic-based help system for
+Cobra CLI applications. It extends the default Cobra help functionality to
+support arbitrary help topics loaded from files.
+
+Features
+--------
+
+• File-based help topics (txt, txxt, md formats)
+• Automatic topic discovery from directory
+• Flag-style topic support (--dry-run → dry-run)
+• Seamless fallback to Cobra's original help
+• Shell completion for topics
+• Easy single-function integration
+
+Usage
+-----
+
+1. Import the package:
+
+   import "github.com/arthur-debert/dodot/pkg/cobrax/topics"
+
+2. Create help topic files in a directory:
+
+   docs/help/
+   ├── dry-run.txt
+   ├── architecture.md
+   └── verbose.txxt
+
+3. Initialize in your CLI:
+
+   rootCmd := &cobra.Command{...}
+   
+   if err := topics.Initialize(rootCmd, "docs/help"); err != nil {
+       log.Debug().Err(err).Msg("Failed to initialize topics")
+   }
+
+4. Users can now access help topics:
+
+   $ myapp help dry-run
+   $ myapp help --dry-run
+   $ myapp help architecture
+
+Topic Files
+-----------
+
+Create help files with any of these extensions:
+• .txt - Plain text files
+• .txxt - Structured text format
+• .md - Markdown files
+
+Topic names come from the filename without extension.
+
+Example Integration
+-------------------
+
+See dodot's integration in internal/cli/commands.go for a complete example
+that searches multiple paths for help topics.
+
+Best Practices
+--------------
+
+• Keep topic files concise and focused
+• Use consistent formatting across topics
+• Include examples in topic files
+• Name files after the flags/concepts they explain
+• Consider subdirectories for organization
+
+Testing
+-------
+
+The package includes comprehensive tests. Run with:
+
+$ go test ./pkg/cobrax/topics/...
+
+Future Enhancements
+-------------------
+
+• Markdown rendering for terminal display
+• Topic categories and grouping
+• Multi-language support
+• Topic search functionality

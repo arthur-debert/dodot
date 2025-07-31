@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/arthur-debert/dodot/internal/version"
+	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/rs/zerolog/log"
@@ -48,6 +50,29 @@ versioning and history.`,
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+
+	// Initialize topic-based help system
+	// Try to find help topics relative to the executable location
+	exe, err := os.Executable()
+	if err == nil {
+		// Look for help topics in various locations
+		possiblePaths := []string{
+			filepath.Join(filepath.Dir(exe), "..", "..", "docs", "help"), // Development
+			filepath.Join(filepath.Dir(exe), "docs", "help"),             // Installed
+			"docs/help", // Current directory
+		}
+
+		for _, helpPath := range possiblePaths {
+			if _, err := os.Stat(helpPath); err == nil {
+				if err := topics.Initialize(rootCmd, helpPath); err != nil {
+					log.Debug().Err(err).Str("path", helpPath).Msg("Failed to initialize help topics")
+				} else {
+					log.Debug().Str("path", helpPath).Msg("Initialized help topics")
+				}
+				break
+			}
+		}
+	}
 
 	return rootCmd
 }
@@ -108,7 +133,6 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Deploying from dotfiles root")
 
-			// TODO: Implement actual deploy logic
 			fmt.Printf("Deploy command would run with dotfiles root: %s\n", p.DotfilesRoot())
 			if len(args) > 0 {
 				fmt.Printf("Deploying packs: %v\n", args)

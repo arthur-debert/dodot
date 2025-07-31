@@ -1,0 +1,51 @@
+                   dodot Architecture
+                   ==================
+
+dodot is built around a simple, composable architecture that processes
+dotfiles through a pipeline of triggers, matchers, and power-ups.
+
+Core Concepts
+-------------
+
+1. Packs
+   Directory-based organization units for related configurations
+   Example: vim/, zsh/, git/
+
+2. Triggers
+   Pattern-matching engines that identify files to process
+   - FileNameTrigger: matches exact filenames
+   - DirectoryTrigger: matches directory names
+   - GlobTrigger: matches using glob patterns
+
+3. Power-ups
+   Action generators that create operations from matched files
+   - SymlinkPowerUp: creates symlinks
+   - ShellProfilePowerUp: adds shell sourcing
+   - InstallScriptPowerUp: runs install scripts
+   - BrewfilePowerUp: processes Homebrew bundles
+
+4. Actions
+   High-level operations to be performed
+   - CreateSymlink
+   - UpdateShellProfile
+   - RunInstallScript
+   - ProcessBrewfile
+
+Processing Pipeline
+-------------------
+
+1. GetPacks() - Discovers pack directories
+2. GetFiringTriggers() - Finds files matching triggers
+3. GetActions() - Power-ups generate actions from matches
+4. GetFsOps() - Actions produce filesystem operations
+5. Execute - Operations are applied to the system
+
+Key Design Principles
+---------------------
+
+• Stateless - no database, git handles versioning
+• Composable - mix and match triggers/power-ups
+• Safe - preview with --dry-run, backup before overwrite
+• Simple - directories and symlinks, no magic
+
+For more details, see the full architecture guide in docs/guides/
