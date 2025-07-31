@@ -19,7 +19,7 @@ func TestDeployCmd(t *testing.T) {
 
 	// Create a new root command for testing
 	rootCmd := cli.NewRootCmd()
-	
+
 	// Execute the deploy command
 	rootCmd.SetArgs([]string{"deploy"})
 	err := rootCmd.Execute()
@@ -36,7 +36,7 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 
 	// Create a new root command for testing
 	rootCmd := cli.NewRootCmd()
-	
+
 	// Execute the deploy command
 	rootCmd.SetArgs([]string{"deploy"})
 	err := rootCmd.Execute()
