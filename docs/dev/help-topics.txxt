@@ -1,0 +1,99 @@
+                   Help Topics System
+                   ==================
+
+dodot includes a custom help topics system that extends Cobra's built-in help
+to provide rich, file-based documentation accessible from the CLI.
+
+Overview
+--------
+
+The help topics system allows users to get detailed help on concepts, flags,
+and features directly from the command line:
+
+$ dodot help dry-run
+$ dodot help architecture
+$ dodot help packs
+
+Implementation
+--------------
+
+The system is implemented in pkg/cobrax/topics and provides:
+
+1. Topic Discovery
+   - Scans docs/help/ directory for topic files
+   - Supports .txt, .txxt, and .md files
+   - Topic name = filename without extension
+
+2. Help Command Override
+   - Custom help command checks for topics first
+   - Falls back to Cobra's help for commands
+   - Handles flag-style topics (--dry-run → dry-run)
+
+3. Integration Points
+   - Initialized in internal/cli/commands.go
+   - Searches multiple paths for flexibility
+   - Logs initialization for debugging
+
+Adding New Topics
+-----------------
+
+1. Create a file in docs/help/
+2. Name it after the topic (e.g., workflows.txxt)
+3. Write clear, structured documentation
+4. Test with: dodot help workflows
+
+Topic Guidelines
+----------------
+
+• Start with a title and separator
+• Include practical examples
+• Keep sections short and scannable
+• Use bullet points for lists
+• End with use cases or tips
+
+Example Topic Structure
+-----------------------
+
+                   Topic Title
+                   ===========
+
+Brief introduction explaining the topic.
+
+Key Concepts
+------------
+
+• Point one
+• Point two
+• Point three
+
+Examples
+--------
+
+$ command example one
+$ command example two
+
+Best Practices
+--------------
+
+Helpful tips and recommendations.
+
+Testing Topics
+--------------
+
+# List all available topics
+$ ls docs/help/
+
+# Test a specific topic
+$ ./bin/dodot help <topic-name>
+
+# Test flag-style access
+$ ./bin/dodot help --<flag-name>
+
+Future Improvements
+-------------------
+
+• Markdown rendering for better formatting
+• Topic categories and organization
+• Search within topics
+• Interactive topic browser
+• Multi-language support

@@ -1,0 +1,55 @@
+                   Verbose Output
+                   ==============
+
+Control dodot's output verbosity for debugging and understanding operations.
+
+Usage
+-----
+
+Use -v flags to increase verbosity:
+
+$ dodot deploy -v        # INFO level
+$ dodot deploy -vv       # DEBUG level  
+$ dodot deploy -vvv      # TRACE level
+
+Verbosity Levels
+----------------
+
+Default (WARN)
+  Only warnings and errors
+
+-v (INFO)
+  + Basic operation progress
+  + Pack processing status
+  + Action summaries
+
+-vv (DEBUG)
+  + Detailed file operations
+  + Trigger matching details
+  + Power-up processing info
+  + Configuration loading
+
+-vvv (TRACE)
+  + Full execution trace
+  + All file system calls
+  + Complete debugging info
+
+Examples
+--------
+
+# See what packs are being processed
+$ dodot deploy --all -v
+
+# Debug why files aren't matching
+$ dodot deploy vim -vv
+
+# Full trace for troubleshooting
+$ dodot status -vvv
+
+Tips
+----
+
+• Use -v for normal operation monitoring
+• Use -vv when triggers aren't matching as expected
+• Use -vvv when filing bug reports
+• Combine with --dry-run for safe debugging
