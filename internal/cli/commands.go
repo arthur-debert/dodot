@@ -159,7 +159,7 @@ If no packs are specified, all packs in the DOTFILES_ROOT will be deployed.`,
 			if dryRun {
 				fmt.Println("\nDRY RUN MODE - No changes were made")
 			}
-			
+
 			if len(result.Operations) == 0 {
 				fmt.Println("No operations needed.")
 			} else {
@@ -218,7 +218,7 @@ other configured actions.`,
 			if dryRun {
 				fmt.Println("\nDRY RUN MODE - No changes were made")
 			}
-			
+
 			if len(result.Operations) == 0 {
 				fmt.Println("No operations needed.")
 			} else {
@@ -307,7 +307,7 @@ If no packs are specified, status for all packs will be shown.`,
 			// Display status for each pack
 			for _, packStatus := range result.Packs {
 				fmt.Printf("\n%s:\n", packStatus.Name)
-				
+
 				// Show power-up statuses
 				for _, ps := range packStatus.PowerUpState {
 					fmt.Printf("  %s: %s", ps.Name, ps.State)

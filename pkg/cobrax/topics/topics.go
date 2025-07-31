@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -118,10 +119,16 @@ func Initialize(rootCmd *cobra.Command, topicsDir string) error {
 		Use:   "help [command or topic]",
 		Short: "Help about any command or topic",
 		Long: `Help provides help for any command or topic in the application.
-Simply type ` + rootCmd.Name() + ` help [path to command or topic] for full details.`,
+Simply type ` + rootCmd.Name() + ` help [path to command or topic] for full details.
+
+To see all available help topics:
+  ` + rootCmd.Name() + ` help topics`,
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			// Combine command names and topic names for completion
 			var completions []string
+
+			// Add special keywords
+			completions = append(completions, "topics")
 
 			// Add commands
 			for _, c := range rootCmd.Commands() {
@@ -139,6 +146,24 @@ Simply type ` + rootCmd.Name() + ` help [path to command or topic] for full deta
 			if len(args) == 0 {
 				// No args - show root help
 				tm.originalHelp(rootCmd, []string{})
+				return
+			}
+
+			// Check if asking for topics list
+			if args[0] == "topics" {
+				topics := tm.ListTopics()
+				if len(topics) == 0 {
+					fmt.Println("No help topics available.")
+				} else {
+					// Sort topics alphabetically
+					sort.Strings(topics)
+					
+					fmt.Println("Available help topics:")
+					for _, name := range topics {
+						fmt.Printf("  %s\n", name)
+					}
+					fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
+				}
 				return
 			}
 
