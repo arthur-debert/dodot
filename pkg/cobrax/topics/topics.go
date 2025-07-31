@@ -4,14 +4,24 @@
 package topics
 
 import (
+	_ "embed"
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"text/template"
 
+	"github.com/mattn/go-isatty"
+	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 )
+
+//go:embed templates/topics-list.txt
+var topicsListTemplate string
 
 // TopicManager manages help topics for a Cobra application
 type TopicManager struct {
@@ -20,6 +30,19 @@ type TopicManager struct {
 	originalHelp func(*cobra.Command, []string)
 	extensions   []string
 	renderer     Renderer
+	rootCmd      *cobra.Command
+}
+
+// topicsListData holds data for rendering the topics list
+type topicsListData struct {
+	Groups  []topicGroup
+	AppName string
+}
+
+// topicGroup represents a group of topics
+type topicGroup struct {
+	Title  string
+	Topics []string
 }
 
 // Topic represents a help topic
@@ -149,6 +172,139 @@ func (tm *TopicManager) ListTopics() []string {
 	return topics
 }
 
+// DisplayTopicsList prints the list of available topics
+func (tm *TopicManager) DisplayTopicsList() {
+	topics := tm.ListTopics()
+	if len(topics) == 0 {
+		fmt.Println("No help topics available.")
+		return
+	}
+
+	// Sort topics alphabetically
+	sort.Strings(topics)
+
+	// Group topics by type
+	generalTopics := []string{}
+	optionTopics := []string{}
+
+	for _, name := range topics {
+		if strings.HasPrefix(name, "option-") {
+			// Remove prefix and add -- for display
+			optionTopics = append(optionTopics, "--"+strings.TrimPrefix(name, "option-"))
+		} else {
+			generalTopics = append(generalTopics, name)
+		}
+	}
+
+	// Build groups dynamically
+	groups := []topicGroup{}
+
+	if len(generalTopics) > 0 {
+		groups = append(groups, topicGroup{
+			Title:  "GENERAL",
+			Topics: generalTopics,
+		})
+	}
+
+	if len(optionTopics) > 0 {
+		groups = append(groups, topicGroup{
+			Title:  "OPTIONS",
+			Topics: optionTopics,
+		})
+	}
+
+	// Prepare template data
+	data := topicsListData{
+		Groups:  groups,
+		AppName: "dodot",
+	}
+
+	// If we have a root command, use its name
+	if tm.rootCmd != nil {
+		data.AppName = tm.rootCmd.Name()
+	}
+
+	// Parse and execute template
+	tmpl := template.New("topics-list")
+	tmpl.Funcs(template.FuncMap{
+		"bold": func(s string) string {
+			return pterm.Bold.Sprint(s)
+		},
+	})
+
+	tmpl, err := tmpl.Parse(topicsListTemplate)
+	if err != nil {
+		// Fallback to simple output
+		fmt.Printf("Error parsing template: %v\n", err)
+		return
+	}
+
+	// Execute template to buffer first
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		fmt.Printf("Error executing template: %v\n", err)
+		return
+	}
+	
+	// Display with pager if needed
+	_ = displayWithPager(buf.String())
+}
+
+// shouldUsePager determines if content should be paged based on length and terminal
+func shouldUsePager(content string) bool {
+	// Only page if output is to a terminal
+	if !isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()) {
+		return false
+	}
+
+	// Count lines
+	lines := strings.Count(content, "\n") + 1
+	
+	// Get terminal height (default to 24 if we can't determine)
+	height := 24
+	if pterm.GetTerminalHeight() > 0 {
+		height = pterm.GetTerminalHeight()
+	}
+	
+	// Page if content is longer than 80% of terminal height
+	return lines > int(float64(height)*0.8)
+}
+
+// getPager returns the pager command to use
+func getPager() string {
+	// Check PAGER environment variable
+	if pager := os.Getenv("PAGER"); pager != "" {
+		return pager
+	}
+	
+	// Default based on OS
+	if runtime.GOOS == "windows" {
+		return "more"
+	}
+	return "less"
+}
+
+// displayWithPager shows content using the system pager if appropriate
+func displayWithPager(content string) error {
+	if !shouldUsePager(content) {
+		fmt.Print(content)
+		return nil
+	}
+
+	pager := getPager()
+	cmd := exec.Command(pager)
+	cmd.Stdin = strings.NewReader(content)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	// Set LESS environment variable for better defaults if using less
+	if strings.Contains(pager, "less") {
+		cmd.Env = append(os.Environ(), "LESS=FRX")
+	}
+
+	return cmd.Run()
+}
+
 // Initialize sets up the topic-based help system with default extensions
 func Initialize(rootCmd *cobra.Command, topicsDir string) error {
 	return InitializeWithOptions(rootCmd, topicsDir, Options{})
@@ -157,6 +313,7 @@ func Initialize(rootCmd *cobra.Command, topicsDir string) error {
 // InitializeWithOptions sets up the topic-based help system with custom options
 func InitializeWithOptions(rootCmd *cobra.Command, topicsDir string, opts Options) error {
 	tm := NewWithOptions(topicsDir, opts)
+	tm.rootCmd = rootCmd
 
 	// Scan for topics
 	if err := tm.scanTopics(); err != nil {
@@ -194,53 +351,17 @@ To see all available help topics:
 
 			return completions, cobra.ShellCompDirectiveNoFileComp
 		},
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				// No args - show root help
 				tm.originalHelp(rootCmd, []string{})
-				return
+				return nil
 			}
 
 			// Check if asking for topics list
 			if args[0] == "topics" {
-				topics := tm.ListTopics()
-				if len(topics) == 0 {
-					fmt.Println("No help topics available.")
-				} else {
-					// Sort topics alphabetically
-					sort.Strings(topics)
-
-					// Separate options and general topics
-					var options []string
-					var general []string
-
-					for _, name := range topics {
-						if strings.HasPrefix(name, "option-") {
-							// Remove prefix for display
-							options = append(options, strings.TrimPrefix(name, "option-"))
-						} else {
-							general = append(general, name)
-						}
-					}
-
-					fmt.Println("Available help topics:")
-					if len(general) > 0 {
-						fmt.Println("\nGeneral topics:")
-						for _, name := range general {
-							fmt.Printf("  %s\n", name)
-						}
-					}
-
-					if len(options) > 0 {
-						fmt.Println("\nOption topics:")
-						for _, name := range options {
-							fmt.Printf("  --%s\n", name)
-						}
-					}
-
-					fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
-				}
-				return
+				tm.DisplayTopicsList()
+				return nil
 			}
 
 			// Check if it's a topic
@@ -249,12 +370,26 @@ To see all available help topics:
 				// Get file extension for format detection
 				ext := filepath.Ext(topic.FilePath)
 				rendered := tm.renderer.Render(topic.Content, ext)
-				fmt.Print(rendered)
-				return
+				
+				// Use pager if content is long
+				if err := displayWithPager(rendered); err != nil {
+					// Fallback to direct output if pager fails
+					fmt.Print(rendered)
+				}
+				return nil
 			}
 
-			// Not a topic - fall back to original help
-			tm.originalHelp(rootCmd, args)
+			// Check if it's a command
+			if _, _, err := rootCmd.Find([]string{args[0]}); err == nil {
+				// It's a command - use original help
+				tm.originalHelp(rootCmd, args)
+				return nil
+			}
+
+			// Not a topic or command - show error and list available topics
+			fmt.Fprintf(os.Stderr, "Error: No help topic or command named '%s'\n\n", args[0])
+			tm.DisplayTopicsList()
+			return fmt.Errorf("topic '%s' not found", args[0])
 		},
 	}
 
@@ -262,6 +397,14 @@ To see all available help topics:
 	for _, cmd := range rootCmd.Commands() {
 		if cmd.Name() == "help" {
 			rootCmd.RemoveCommand(cmd)
+			break
+		}
+	}
+
+	// Check if rootCmd has groups and set GroupID if "misc" group exists
+	for _, group := range rootCmd.Groups() {
+		if group.ID == "misc" {
+			helpCmd.GroupID = "misc"
 			break
 		}
 	}

@@ -16,6 +16,8 @@ const (
 	MsgStatusShort  = "Show deployment status of packs"
 	MsgInitShort    = "Create a new pack with template files"
 	MsgFillShort    = "Add placeholder files to an existing pack"
+	MsgTopicsShort  = "Display available documentation topics"
+	MsgTopicsLong   = "Display a list of all available help topics that provide additional documentation beyond command help."
 
 	// Status messages
 	MsgDryRunNotice      = "\nDRY RUN MODE - No changes were made"
@@ -105,4 +107,8 @@ var (
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string
 	MsgFallbackWarning    = strings.TrimSpace(msgFallbackWarningRaw)
+
+	//go:embed msgs/usage-template.txt
+	msgUsageTemplateRaw string
+	MsgUsageTemplate    = strings.TrimSpace(msgUsageTemplateRaw)
 )

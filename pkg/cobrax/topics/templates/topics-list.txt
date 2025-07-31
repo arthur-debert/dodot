@@ -1,0 +1,6 @@
+{{range $i, $group := .Groups}}{{if $i}}
+{{end}}{{$group.Title | bold}}:
+{{range $group.Topics}}  {{.}}
+{{end}}{{end}}
+
+Use '{{.AppName}} help <topic>' to read about a specific topic.

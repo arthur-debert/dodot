@@ -16,6 +16,9 @@ import (
 
 // NewRootCmd creates and returns the root command
 func NewRootCmd() *cobra.Command {
+	// Initialize custom template formatting functions
+	initTemplateFormatting()
+
 	var (
 		verbosity int
 		dryRun    bool
@@ -31,6 +34,12 @@ func NewRootCmd() *cobra.Command {
 			// Setup logging based on verbosity
 			logging.SetupLogger(verbosity)
 			log.Debug().Str("command", cmd.Name()).Msg("Command started")
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// If we get here, no subcommand was provided
+			// Show help but return an error to indicate incorrect usage
+			_ = cmd.Help()
+			return fmt.Errorf("no command specified")
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -48,6 +57,19 @@ func NewRootCmd() *cobra.Command {
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
 
+	// Define command groups
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "core",
+		Title: "COMMANDS:",
+	})
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "misc",
+		Title: "MISC:",
+	})
+
+	// Set custom help template
+	rootCmd.SetUsageTemplate(MsgUsageTemplate)
+
 	// Add all commands
 	rootCmd.AddCommand(newDeployCmd())
 	rootCmd.AddCommand(newInstallCmd())
@@ -55,6 +77,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+	rootCmd.AddCommand(newTopicsCmd())
 
 	// Initialize topic-based help system
 	// Try to find help topics relative to the executable location
@@ -111,6 +134,7 @@ func newDeployCmd() *cobra.Command {
 		Short:   MsgDeployShort,
 		Long:    MsgDeployLong,
 		Example: MsgDeployExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -161,6 +185,7 @@ func newInstallCmd() *cobra.Command {
 		Short:   MsgInstallShort,
 		Long:    MsgInstallLong,
 		Example: MsgInstallExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -214,6 +239,7 @@ func newListCmd() *cobra.Command {
 		Short:   MsgListShort,
 		Long:    MsgListLong,
 		Example: MsgListExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -252,6 +278,7 @@ func newStatusCmd() *cobra.Command {
 		Short:   MsgStatusShort,
 		Long:    MsgStatusLong,
 		Example: MsgStatusExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -296,6 +323,7 @@ func newInitCmd() *cobra.Command {
 		Long:    MsgInitLong,
 		Args:    cobra.ExactArgs(1),
 		Example: MsgInitExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -341,6 +369,7 @@ func newFillCmd() *cobra.Command {
 		Long:    MsgFillLong,
 		Args:    cobra.ExactArgs(1),
 		Example: MsgFillExample,
+		GroupID: "core",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -375,6 +404,27 @@ func newFillCmd() *cobra.Command {
 			}
 
 			return nil
+		},
+	}
+}
+
+func newTopicsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "topics",
+		Short:   MsgTopicsShort,
+		Long:    MsgTopicsLong,
+		GroupID: "misc",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Find the help command and execute it with "topics" argument
+			if helpCmd, _, err := cmd.Root().Find([]string{"help"}); err == nil {
+				if helpCmd.RunE != nil {
+					return helpCmd.RunE(helpCmd, []string{"topics"})
+				} else if helpCmd.Run != nil {
+					helpCmd.Run(helpCmd, []string{"topics"})
+					return nil
+				}
+			}
+			return fmt.Errorf("help command not found")
 		},
 	}
 }
