@@ -5,7 +5,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     ca-certificates \
+    man-db \
     && rm -rf /var/lib/apt/lists/*
+
+# Remove dpkg exclusions that prevent man pages from being installed
+RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes
 
 # Create a directory for testing
 WORKDIR /test
