@@ -2,60 +2,8 @@ A high level list of things we're working on:
 
 [-] core features review for design and correctness 
 Features:
-    [ ] .dodotignore support #62
     [ ] config file improvement /simplification
-    [ ] Path and fs review / double check
 [ ] documentation overhaul
-[ ] 
+[ ] file operation execution
+[ ] cli
 
-Some feedback on your recommendations: 
-The general plan is sound. However,actually executing the file operations should be the last step, i.e. following path refactoring.
-For example, onnce that happens, we must be careful , when testing, in now poluting the user's home or xdg home directories. This will be easier to gurarantee with the the centralized path handling.
-
-The gist of the feedback is: 
-- Move the code once into the the dodot engie witht the the planned action reads.
-- Fix powerups to use actions exclusevely
-- centralize the paths + xdf lib, create the pkgs/path package and elimate the scattered code (the Path Refactoring)
-   note : part of this is to eliminate code using path directly, not create two execution models.
-- enable syhthfs execution for the "safe" powerusp (that is everything but the symlink), as this others will  write files to paths we control, not the user's home
-  enable synthfs  execution for the symlink powerup, paying special attention about now trashing this machine home dir in testing
-
-For these, create gh issues, with the prefix: [PATH/FS REview], so that they can be executed sequentially and with enough context so that other developers can work in them
-For the path refactor create a larguer issue for the refactor and then sub issues for the steps (add dxg lib, etc)
-
-This is the correct feature brach to work on, we should write a pr for that.
-
-
-  2. No operation execution - Pipeline generates operations
-This is expected. We're working on getting the core right until we do ops execution (which is assured by the synthfs lib).
-We will then have to do e2e tests and verify things, but this is solated to make getting the logic right first, the filesystem udpates will be easier after that.
-
-
-  3. Scattered path handling - Path logic spread across
-  multiple packages with inconsistencies
-  4. Direct filesystem access - FillPack and InitPack commands
-   use os.WriteFile directly
-
-  Recommendations:
-
-  1. Immediate Fixes
-
-  - Add ActionTypeRead/ActionTypeChecksum to support file
-  reading through actions. yes, it's paramounnt that the run once mechanismo is not something each power up does, but instead on the dodot engine, powerups should not even know about this.
-  - Fix PowerUps to use actions exclusively
-
-  2. Path Architecture
-
-  - Adopt github.com/adrg/xdg for XDG compliance
-  - Create centralized pkg/paths package
-  - Eliminate scattered path handling code
-
-  3. Implementation Phases
-
-  - Phase 1: Centralize paths
-  - Phase 2: Replace direct usage
-  - Phase 3: Add read support
-
-  This refactoring will make dodot's filesystem handling more
-  robust, testable, and maintainable while ensuring all
-  operations go through the proper abstraction layers.

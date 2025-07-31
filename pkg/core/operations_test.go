@@ -602,20 +602,8 @@ func TestConvertAction(t *testing.T) {
 					"pack": "tools",
 				},
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetBrewfileDir(),
-					Description: "Create brewfile sentinel directory",
-				},
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(paths.GetBrewfileDir(), "tools"),
-					Content:     "pending", // Uses placeholder when checksum is missing
-					Mode:        uint32Ptr(0644),
-					Description: "Create brewfile sentinel for tools",
-				},
-			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
 		},
 		{
 			name: "brew_action_missing_pack",
@@ -676,20 +664,8 @@ func TestConvertAction(t *testing.T) {
 					"pack": "dev",
 				},
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetInstallDir(),
-					Description: "Create install sentinel directory",
-				},
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(paths.GetInstallDir(), "dev"),
-					Content:     "pending", // Uses placeholder when checksum is missing
-					Mode:        uint32Ptr(0644),
-					Description: "Create install sentinel for dev",
-				},
-			},
+			wantError: true,
+			errorCode: doerrors.ErrActionInvalid,
 		},
 		{
 			name: "install_action_missing_pack",

@@ -14,6 +14,11 @@ import (
 
 // GetFileOperations converts actions into file system operations
 func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
+	return GetFileOperationsWithContext(actions, nil)
+}
+
+// GetFileOperationsWithContext converts actions into file system operations with execution context
+func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations")
 	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations")
 
@@ -41,7 +46,7 @@ func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 
 	// Convert each action to operations
 	for _, action := range sortedActions {
-		ops, err := ConvertAction(action)
+		ops, err := ConvertActionWithContext(action, ctx)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -64,6 +69,11 @@ func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 
 // ConvertAction converts a single action to one or more operations
 func ConvertAction(action types.Action) ([]types.Operation, error) {
+	return ConvertActionWithContext(action, nil)
+}
+
+// ConvertActionWithContext converts a single action to one or more operations with execution context
+func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations").With().
 		Str("type", string(action.Type)).
 		Str("description", action.Description).
@@ -92,9 +102,9 @@ func ConvertAction(action types.Action) ([]types.Operation, error) {
 		logger.Debug().Msg("Run actions are not converted to file operations")
 		return nil, nil
 	case types.ActionTypeBrew:
-		return convertBrewAction(action)
+		return convertBrewActionWithContext(action, ctx)
 	case types.ActionTypeInstall:
-		return convertInstallAction(action)
+		return convertInstallActionWithContext(action, ctx)
 	case types.ActionTypeRead:
 		return convertReadAction(action)
 	case types.ActionTypeChecksum:
@@ -338,18 +348,30 @@ func expandHome(path string) string {
 	return paths.ExpandHome(path)
 }
 
-// convertBrewAction converts a brew action to operations
-func convertBrewAction(action types.Action) ([]types.Operation, error) {
+// convertBrewActionWithContext converts a brew action to operations with execution context
+func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source (Brewfile path)")
 	}
 
-	// Get checksum from metadata (optional for now)
-	checksum, _ := action.Metadata["checksum"].(string)
-	// TODO: In the future, checksum will be provided by a separate checksum action
-	// For now, we'll use a placeholder
+	// Get checksum from execution context or metadata
+	var checksum string
+	if ctx != nil {
+		if cs, exists := ctx.GetChecksum(action.Source); exists {
+			checksum = cs
+		}
+	}
+
+	// Fall back to metadata if no context or checksum not found
 	if checksum == "" {
-		checksum = "pending"
+		if cs, ok := action.Metadata["checksum"].(string); ok {
+			checksum = cs
+		}
+	}
+
+	// If still no checksum, this is an error - checksum actions should have run first
+	if checksum == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires checksum - ensure checksum action runs first")
 	}
 
 	pack, ok := action.Metadata["pack"].(string)
@@ -380,18 +402,30 @@ func convertBrewAction(action types.Action) ([]types.Operation, error) {
 	return ops, nil
 }
 
-// convertInstallAction converts an install action to operations
-func convertInstallAction(action types.Action) ([]types.Operation, error) {
+// convertInstallActionWithContext converts an install action to operations with execution context
+func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "install action requires source (install script path)")
 	}
 
-	// Get checksum from metadata (optional for now)
-	checksum, _ := action.Metadata["checksum"].(string)
-	// TODO: In the future, checksum will be provided by a separate checksum action
-	// For now, we'll use a placeholder
+	// Get checksum from execution context or metadata
+	var checksum string
+	if ctx != nil {
+		if cs, exists := ctx.GetChecksum(action.Source); exists {
+			checksum = cs
+		}
+	}
+
+	// Fall back to metadata if no context or checksum not found
 	if checksum == "" {
-		checksum = "pending"
+		if cs, ok := action.Metadata["checksum"].(string); ok {
+			checksum = cs
+		}
+	}
+
+	// If still no checksum, this is an error - checksum actions should have run first
+	if checksum == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "install action requires checksum - ensure checksum action runs first")
 	}
 
 	pack, ok := action.Metadata["pack"].(string)
