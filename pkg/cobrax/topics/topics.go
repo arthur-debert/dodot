@@ -47,12 +47,12 @@ func NewWithOptions(topicsDir string, opts Options) *TopicManager {
 		topics:     make(map[string]*Topic),
 		extensions: opts.Extensions,
 	}
-	
+
 	// Set default extensions if none provided
 	if len(tm.extensions) == 0 {
 		tm.extensions = []string{".txt", ".md"}
 	}
-	
+
 	return tm
 }
 
