@@ -89,7 +89,15 @@ func (tm *TopicManager) GetTopic(name string) (*Topic, bool) {
 	name = strings.TrimPrefix(name, "--")
 	name = strings.TrimPrefix(name, "-")
 
+	// First try exact match
 	topic, exists := tm.topics[name]
+	if exists {
+		return topic, true
+	}
+
+	// For flag-style topics, also try with "option-" prefix
+	optionName := "option-" + name
+	topic, exists = tm.topics[optionName]
 	return topic, exists
 }
 
@@ -157,11 +165,35 @@ To see all available help topics:
 				} else {
 					// Sort topics alphabetically
 					sort.Strings(topics)
-
-					fmt.Println("Available help topics:")
+					
+					// Separate options and general topics
+					var options []string
+					var general []string
+					
 					for _, name := range topics {
-						fmt.Printf("  %s\n", name)
+						if strings.HasPrefix(name, "option-") {
+							// Remove prefix for display
+							options = append(options, strings.TrimPrefix(name, "option-"))
+						} else {
+							general = append(general, name)
+						}
 					}
+					
+					fmt.Println("Available help topics:")
+					if len(general) > 0 {
+						fmt.Println("\nGeneral topics:")
+						for _, name := range general {
+							fmt.Printf("  %s\n", name)
+						}
+					}
+					
+					if len(options) > 0 {
+						fmt.Println("\nOption topics:")
+						for _, name := range options {
+							fmt.Printf("  --%s\n", name)
+						}
+					}
+					
 					fmt.Println("\nUse 'dodot help <topic>' to read about a specific topic.")
 				}
 				return

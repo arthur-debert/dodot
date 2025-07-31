@@ -20,9 +20,10 @@ Implementation
 The system is implemented in pkg/cobrax/topics and provides:
 
 1. Topic Discovery
-   - Scans docs/help/ directory for topic files
+   - Scans cmd/dodot/topics/ directory for topic files
    - Supports .txt, .txxt, and .md files
    - Topic name = filename without extension
+   - Option topics use "option-" prefix (e.g., option-dry-run.txxt)
 
 2. Help Command Override
    - Custom help command checks for topics first
@@ -37,10 +38,11 @@ The system is implemented in pkg/cobrax/topics and provides:
 Adding New Topics
 -----------------
 
-1. Create a file in docs/help/
-2. Name it after the topic (e.g., workflows.txxt)
-3. Write clear, structured documentation
-4. Test with: dodot help workflows
+1. Create a file in cmd/dodot/topics/
+2. For options/flags: use "option-" prefix (e.g., option-force.txxt)
+3. For general topics: use plain name (e.g., workflows.txxt)
+4. Write clear, structured documentation
+5. Test with: dodot help force (or dodot help workflows)
 
 Topic Guidelines
 ----------------
@@ -81,13 +83,16 @@ Testing Topics
 --------------
 
 # List all available topics
-$ ls docs/help/
+$ ls cmd/dodot/topics/
+
+# List topics through CLI
+$ ./bin/dodot help topics
 
 # Test a specific topic
 $ ./bin/dodot help <topic-name>
 
-# Test flag-style access
-$ ./bin/dodot help --<flag-name>
+# Test option topics (strips option- prefix)
+$ ./bin/dodot help dry-run  # Finds option-dry-run.txxt
 
 Future Improvements
 -------------------

@@ -22,26 +22,28 @@ Usage
 
    import "github.com/arthur-debert/dodot/pkg/cobrax/topics"
 
-2. Create help topic files in a directory:
+2. Create help topic files in your project:
 
-   docs/help/
-   ├── dry-run.txt
-   ├── architecture.md
-   └── verbose.txxt
+   cmd/myapp/topics/
+   ├── option-dry-run.txt    # For flag/option documentation
+   ├── option-verbose.txt    # Prefix with "option-" for flags
+   ├── architecture.md       # General topics without prefix
+   └── getting-started.txxt
 
 3. Initialize in your CLI:
 
    rootCmd := &cobra.Command{...}
    
-   if err := topics.Initialize(rootCmd, "docs/help"); err != nil {
+   // Pass the path where your topic files are stored
+   if err := topics.Initialize(rootCmd, "cmd/myapp/topics"); err != nil {
        log.Debug().Err(err).Msg("Failed to initialize topics")
    }
 
 4. Users can now access help topics:
 
-   $ myapp help dry-run
-   $ myapp help --dry-run
-   $ myapp help architecture
+   $ myapp help dry-run        # Finds option-dry-run.txt
+   $ myapp help architecture   # Finds architecture.md
+   $ myapp help topics         # Lists all available topics
 
 Topic Files
 -----------
@@ -51,7 +53,13 @@ Create help files with any of these extensions:
 • .txxt - Structured text format
 • .md - Markdown files
 
-Topic names come from the filename without extension.
+Naming Conventions:
+• option-<flag>.txt - For flag/option documentation (e.g., option-dry-run.txt)
+• <topic>.txt - For general topics (e.g., architecture.txt)
+
+The option- prefix allows users to access flag help naturally:
+• "help dry-run" finds option-dry-run.txt
+• "help --dry-run" also finds option-dry-run.txt
 
 Example Integration
 -------------------

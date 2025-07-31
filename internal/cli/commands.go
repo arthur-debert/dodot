@@ -65,9 +65,9 @@ versioning and history.`,
 	if err == nil {
 		// Look for help topics in various locations
 		possiblePaths := []string{
-			filepath.Join(filepath.Dir(exe), "..", "..", "docs", "help"), // Development
-			filepath.Join(filepath.Dir(exe), "docs", "help"),             // Installed
-			"docs/help", // Current directory
+			filepath.Join(filepath.Dir(exe), "topics"),                            // Same directory as binary (production)
+			filepath.Join(filepath.Dir(exe), "..", "..", "cmd", "dodot", "topics"), // Development
+			"cmd/dodot/topics", // Current directory fallback
 		}
 
 		for _, helpPath := range possiblePaths {

@@ -56,8 +56,9 @@ func TestTopicManager_GetTopic(t *testing.T) {
 	tmpDir := testutil.TempDir(t, "topics-flags-test")
 	topicsDir := filepath.Join(tmpDir, "help")
 	testutil.CreateDir(t, tmpDir, "help")
-	testutil.CreateFile(t, topicsDir, "dry-run.txt", "Dry run help")
-	testutil.CreateFile(t, topicsDir, "verbose.txt", "Verbose help")
+	testutil.CreateFile(t, topicsDir, "option-dry-run.txt", "Dry run help")
+	testutil.CreateFile(t, topicsDir, "option-verbose.txt", "Verbose help")
+	testutil.CreateFile(t, topicsDir, "architecture.txt", "Architecture help")
 
 	tm := New(topicsDir)
 	err := tm.scanTopics()
@@ -68,12 +69,17 @@ func TestTopicManager_GetTopic(t *testing.T) {
 		expected string
 		exists   bool
 	}{
-		{"dry-run", "dry-run", true},
-		{"--dry-run", "dry-run", true},
-		{"-dry-run", "dry-run", true},
-		{"verbose", "verbose", true},
-		{"-v", "v", false}, // Single letter flags don't match "verbose"
-		{"--verbose", "verbose", true},
+		// Direct topic name
+		{"architecture", "architecture", true},
+		// Option topics with prefix
+		{"option-dry-run", "option-dry-run", true},
+		// Flag-style lookups should find option- prefixed files
+		{"dry-run", "option-dry-run", true},
+		{"--dry-run", "option-dry-run", true},
+		{"-dry-run", "option-dry-run", true},
+		{"verbose", "option-verbose", true},
+		{"-v", "", false}, // Single letter flags don't match
+		{"--verbose", "option-verbose", true},
 		{"nonexistent", "", false},
 	}
 
