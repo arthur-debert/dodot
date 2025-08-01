@@ -199,6 +199,16 @@ func newDeployCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
+			// Execute operations if not in dry-run mode
+			if !dryRun && len(result.Operations) > 0 {
+				executor := core.NewSynthfsExecutor(dryRun)
+				// Enable home symlinks for deployment
+				executor.EnableHomeSymlinks(true)
+				if err := executor.ExecuteOperations(result.Operations); err != nil {
+					return fmt.Errorf("failed to execute operations: %w", err)
+				}
+			}
+
 			// Display results
 			if dryRun {
 				fmt.Println(MsgDryRunNotice)
@@ -252,6 +262,16 @@ func newInstallCmd() *cobra.Command {
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrInstallPacks, err)
+			}
+
+			// Execute operations if not in dry-run mode
+			if !dryRun && len(result.Operations) > 0 {
+				executor := core.NewSynthfsExecutor(dryRun)
+				// Enable home symlinks for deployment
+				executor.EnableHomeSymlinks(true)
+				if err := executor.ExecuteOperations(result.Operations); err != nil {
+					return fmt.Errorf("failed to execute operations: %w", err)
+				}
 			}
 
 			// Display results

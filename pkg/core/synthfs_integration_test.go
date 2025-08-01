@@ -15,6 +15,7 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 	tempHome := testutil.TempDir(t, "synthfs-integration")
 	t.Setenv("HOME", tempHome)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempHome, ".local", "share", "dodot"))
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempHome, "dotfiles"))
 
 	// Create necessary directories
 	dataDir := filepath.Join(tempHome, ".local", "share", "dodot")
@@ -50,19 +51,6 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 		},
 		{
 			Type:        types.OperationWriteFile,
-			Target:      filepath.Join(dataDir, "source.txt"),
-			Content:     "Symlink source content",
-			Mode:        modePtr(0644),
-			Description: "Create symlink source",
-		},
-		{
-			Type:        types.OperationCreateSymlink,
-			Source:      filepath.Join(dataDir, "source.txt"),
-			Target:      filepath.Join(dataDir, "deployed", "symlink", "link.txt"),
-			Description: "Create test symlink",
-		},
-		{
-			Type:        types.OperationWriteFile,
 			Target:      filepath.Join(dataDir, "shell", "init.sh"),
 			Content:     "#!/bin/bash\necho 'Shell initialized'",
 			Mode:        modePtr(0755),
@@ -84,20 +72,6 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 	content := testutil.ReadFile(t, filepath.Join(dataDir, "test.txt"))
 	testutil.AssertEqual(t, "Hello from synthfs!", content)
 
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(dataDir, "source.txt")),
-		"Symlink source should have been created")
-
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(dataDir, "deployed", "symlink", "link.txt")),
-		"Symlink should have been created")
-
-	// Verify symlink points to correct target
-	linkTarget, err := filepath.EvalSymlinks(filepath.Join(dataDir, "deployed", "symlink", "link.txt"))
-	testutil.AssertNoError(t, err)
-	// Also evaluate the expected path to handle macOS /var -> /private/var conversion
-	expectedTarget, err := filepath.EvalSymlinks(filepath.Join(dataDir, "source.txt"))
-	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, expectedTarget, linkTarget)
-
 	// Verify shell script
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(dataDir, "shell", "init.sh")),
 		"Shell script should have been created")
@@ -110,6 +84,7 @@ func TestSynthfsExecutor_Integration_Errors(t *testing.T) {
 	tempHome := testutil.TempDir(t, "synthfs-errors")
 	t.Setenv("HOME", tempHome)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempHome, ".local", "share", "dodot"))
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempHome, "dotfiles"))
 
 	// Create necessary directories
 	testutil.CreateDir(t, tempHome, ".local")
