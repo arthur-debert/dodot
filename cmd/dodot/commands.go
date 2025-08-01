@@ -168,11 +168,11 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "deploy [packs...]",
-		Short:   MsgDeployShort,
-		Long:    MsgDeployLong,
-		Example: MsgDeployExample,
-		GroupID: "core",
+		Use:               "deploy [packs...]",
+		Short:             MsgDeployShort,
+		Long:              MsgDeployLong,
+		Example:           MsgDeployExample,
+		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
@@ -230,11 +230,11 @@ func newDeployCmd() *cobra.Command {
 
 func newInstallCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "install [packs...]",
-		Short:   MsgInstallShort,
-		Long:    MsgInstallLong,
-		Example: MsgInstallExample,
-		GroupID: "core",
+		Use:               "install [packs...]",
+		Short:             MsgInstallShort,
+		Long:              MsgInstallLong,
+		Example:           MsgInstallExample,
+		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
@@ -334,11 +334,11 @@ func newListCmd() *cobra.Command {
 
 func newStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "status [packs...]",
-		Short:   MsgStatusShort,
-		Long:    MsgStatusLong,
-		Example: MsgStatusExample,
-		GroupID: "core",
+		Use:               "status [packs...]",
+		Short:             MsgStatusShort,
+		Long:              MsgStatusLong,
+		Example:           MsgStatusExample,
+		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
@@ -492,9 +492,9 @@ func newTopicsCmd() *cobra.Command {
 
 func newCompletionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "completion [bash|zsh|fish|powershell]",
-		Short: MsgCompletionShort,
-		Long:  MsgCompletionLong,
+		Use:                   "completion [bash|zsh|fish|powershell]",
+		Short:                 MsgCompletionShort,
+		Long:                  MsgCompletionLong,
 		DisableFlagsInUseLine: true,
 		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),

@@ -111,8 +111,18 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 		logger.Debug().Msg("Run actions are not converted to file operations")
 		return nil, nil
 	case types.ActionTypeBrew:
+		// Skip brew actions if no context - they need checksums
+		if ctx == nil {
+			logger.Debug().Msg("Skipping brew action without context")
+			return nil, nil
+		}
 		return convertBrewActionWithContext(action, ctx)
 	case types.ActionTypeInstall:
+		// Skip install actions if no context - they need checksums
+		if ctx == nil {
+			logger.Debug().Msg("Skipping install action without context")
+			return nil, nil
+		}
 		return convertInstallActionWithContext(action, ctx)
 	case types.ActionTypeRead:
 		return convertReadAction(action)
@@ -611,7 +621,7 @@ func deduplicateOperations(ops []types.Operation) []types.Operation {
 		// Create a key based on operation type and target
 		// This ensures operations with same type and target are considered duplicates
 		key := string(op.Type) + ":" + op.Target
-		
+
 		if !seen[key] {
 			seen[key] = true
 			result = append(result, op)

@@ -4,8 +4,8 @@
 package topics
 
 import (
-	_ "embed"
 	"bytes"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -245,7 +245,7 @@ func (tm *TopicManager) DisplayTopicsList() {
 		fmt.Printf("Error executing template: %v\n", err)
 		return
 	}
-	
+
 	// Display with pager if needed
 	_ = displayWithPager(buf.String())
 }
@@ -259,13 +259,13 @@ func shouldUsePager(content string) bool {
 
 	// Count lines
 	lines := strings.Count(content, "\n") + 1
-	
+
 	// Get terminal height (default to 24 if we can't determine)
 	height := 24
 	if pterm.GetTerminalHeight() > 0 {
 		height = pterm.GetTerminalHeight()
 	}
-	
+
 	// Page if content is longer than 80% of terminal height
 	return lines > int(float64(height)*0.8)
 }
@@ -276,7 +276,7 @@ func getPager() string {
 	if pager := os.Getenv("PAGER"); pager != "" {
 		return pager
 	}
-	
+
 	// Default based on OS
 	if runtime.GOOS == "windows" {
 		return "more"
@@ -370,7 +370,7 @@ To see all available help topics:
 				// Get file extension for format detection
 				ext := filepath.Ext(topic.FilePath)
 				rendered := tm.renderer.Render(topic.Content, ext)
-				
+
 				// Use pager if content is long
 				if err := displayWithPager(rendered); err != nil {
 					// Fallback to direct output if pager fails

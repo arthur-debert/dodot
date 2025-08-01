@@ -28,20 +28,33 @@ func TestDeployCmd(t *testing.T) {
 }
 
 func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
-	t.Skip("Skipping test - needs to be updated for new command structure")
-
 	// Unset the DOTFILES_ROOT environment variable
-	if err := os.Unsetenv("DOTFILES_ROOT"); err != nil {
-		t.Fatalf("Failed to unset DOTFILES_ROOT: %v", err)
-	}
+	t.Setenv("DOTFILES_ROOT", "")
+
+	// Create a temporary directory to serve as current working directory
+	// This will be used as the fallback dotfiles root
+	tempDir := testutil.TempDir(t, "fallback-dotfiles")
+
+	// Change working directory to the temp directory
+	origWd, err := os.Getwd()
+	testutil.AssertNoError(t, err)
+	err = os.Chdir(tempDir)
+	testutil.AssertNoError(t, err)
+	t.Cleanup(func() {
+		_ = os.Chdir(origWd)
+	})
+
+	// Create some basic pack structure for the fallback to work
+	testutil.CreateDir(t, tempDir, "test-pack")
 
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
 
-	// Execute the deploy command
+	// Execute the deploy command - should succeed with fallback warning
 	rootCmd.SetArgs([]string{"deploy"})
-	err := rootCmd.Execute()
+	err = rootCmd.Execute()
 
-	// Assert that an error occurred
-	testutil.AssertError(t, err)
+	// The command should succeed but with a fallback warning
+	// (it uses current working directory as fallback)
+	testutil.AssertNoError(t, err)
 }
