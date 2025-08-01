@@ -43,6 +43,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 				Source:      vimrcSource,
 				Target:      filepath.Join(tempHome, ".vimrc"),
 				Description: "Create .vimrc symlink",
+				Status:      types.StatusReady,
 			},
 		}
 
@@ -61,6 +62,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 				Source:      vimrcSource,
 				Target:      filepath.Join(tempHome, ".vimrc"),
 				Description: "Create .vimrc symlink",
+				Status:      types.StatusReady,
 			},
 		}
 
@@ -90,6 +92,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 				Source:      vimrcSource,
 				Target:      "/etc/vimrc", // System location
 				Description: "Create system vimrc symlink",
+				Status:      types.StatusReady,
 			},
 		}
 
@@ -112,6 +115,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 				Source:      vimrcSource,
 				Target:      filepath.Join(tempHome, ".ssh", "id_rsa"),
 				Description: "Create SSH key symlink",
+				Status:      types.StatusReady,
 			},
 		}
 
@@ -137,6 +141,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 				Source:      outsideFile, // Not from dotfiles
 				Target:      filepath.Join(tempHome, ".config", "test"),
 				Description: "Create symlink from outside dotfiles",
+				Status:      types.StatusReady,
 			},
 		}
 
@@ -200,6 +205,7 @@ func TestSynthfsExecutor_ProtectedPaths(t *testing.T) {
 					Source:      sourceFile,
 					Target:      target,
 					Description: "Create symlink to protected path",
+					Status:      types.StatusReady,
 				},
 			}
 
@@ -247,6 +253,7 @@ func TestSynthfsExecutor_ExistingFileWarning(t *testing.T) {
 			Source:      sourceFile,
 			Target:      existingFile,
 			Description: "Replace existing .bashrc",
+			Status:      types.StatusReady,
 		},
 	}
 

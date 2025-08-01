@@ -36,6 +36,7 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 			Type:        types.OperationCreateDir,
 			Target:      filepath.Join(dataDir, "test-dir"),
 			Description: "Create test directory",
+			Status:      types.StatusReady,
 		},
 		{
 			Type:        types.OperationWriteFile,
@@ -43,11 +44,13 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 			Content:     "Hello from synthfs!",
 			Mode:        modePtr(0644),
 			Description: "Write test file",
+			Status:      types.StatusReady,
 		},
 		{
 			Type:        types.OperationCreateDir,
 			Target:      filepath.Join(dataDir, "deployed", "symlink"),
 			Description: "Create symlink parent directory",
+			Status:      types.StatusReady,
 		},
 		{
 			Type:        types.OperationWriteFile,
@@ -55,6 +58,7 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 			Content:     "#!/bin/bash\necho 'Shell initialized'",
 			Mode:        modePtr(0755),
 			Description: "Write shell script",
+			Status:      types.StatusReady,
 		},
 	}
 
@@ -103,6 +107,7 @@ func TestSynthfsExecutor_Integration_Errors(t *testing.T) {
 			Target:      "/etc/passwd",
 			Content:     "This should fail",
 			Description: "Attempt to write to system file",
+			Status:      types.StatusReady,
 		},
 	}
 
