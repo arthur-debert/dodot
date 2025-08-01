@@ -93,7 +93,7 @@ func TestGetFileOperations(t *testing.T) {
 					}
 				}
 				testutil.AssertEqual(t, 1, dirCount)
-				
+
 				// Find deploy symlink operations and check order
 				var deployOps []types.Operation
 				for _, op := range ops {
@@ -102,7 +102,7 @@ func TestGetFileOperations(t *testing.T) {
 					}
 				}
 				testutil.AssertEqual(t, 3, len(deployOps))
-				
+
 				// High priority should be processed first
 				testutil.AssertEqual(t, "/source/high", deployOps[0].Source)
 				// Medium priority second
@@ -948,8 +948,8 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 			Description: "Install from Brewfile",
 			Metadata: map[string]interface{}{
 				"checksum_source": "/dotfiles/brew/Brewfile",
-				"checksum": "abc123", // Provide checksum to avoid validation error
-				"pack": "brew",
+				"checksum":        "abc123", // Provide checksum to avoid validation error
+				"pack":            "brew",
 			},
 		},
 	}
@@ -994,7 +994,7 @@ func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
 	// This should be deduplicated to just one operation
 	deduped := deduplicateOperations(ops)
 	assert.Equal(t, 1, len(deduped), "Expected duplicate directory operations to be deduplicated")
-	
+
 	// The first operation should be kept
 	assert.Equal(t, "Create parent directory for .vimrc", deduped[0].Description)
 }
@@ -1004,7 +1004,7 @@ func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
 func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
 	homeDir := expandHome("~")
 	deployedDir := filepath.Join(homeDir, ".local", "share", "dodot", "deployed", "symlink")
-	
+
 	ops := []types.Operation{
 		{
 			Type:        types.OperationCreateDir,
@@ -1036,18 +1036,18 @@ func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
 	}
 
 	deduped := deduplicateOperations(ops)
-	
+
 	// Should have 4 operations (one duplicate removed)
 	assert.Equal(t, 4, len(deduped))
-	
+
 	// Order should be preserved
 	assert.Equal(t, types.OperationCreateDir, deduped[0].Type)
 	assert.Equal(t, homeDir, deduped[0].Target)
 	assert.Equal(t, "Create home directory", deduped[0].Description) // First occurrence kept
-	
+
 	assert.Equal(t, types.OperationCreateDir, deduped[1].Type)
 	assert.Equal(t, deployedDir, deduped[1].Target)
-	
+
 	assert.Equal(t, types.OperationCreateSymlink, deduped[2].Type)
 	assert.Equal(t, types.OperationCreateSymlink, deduped[3].Type)
 }

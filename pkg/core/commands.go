@@ -215,20 +215,20 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 
 	// 7. Check if we need to handle checksum operations
 	ctx := NewExecutionContext()
-	
+
 	// Check if any actions need checksums
 	hasChecksumActions := false
 	for _, action := range actions {
-		if action.Type == types.ActionTypeChecksum || 
-		   action.Type == types.ActionTypeBrew || 
-		   action.Type == types.ActionTypeInstall {
+		if action.Type == types.ActionTypeChecksum ||
+			action.Type == types.ActionTypeBrew ||
+			action.Type == types.ActionTypeInstall {
 			hasChecksumActions = true
 			break
 		}
 	}
 
 	var ops []types.Operation
-	
+
 	if hasChecksumActions {
 		// First pass: generate all operations to find checksum operations
 		initialOps, err := GetFileOperations(actions)
