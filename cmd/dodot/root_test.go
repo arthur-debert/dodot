@@ -34,7 +34,7 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 	// Create a temporary directory to serve as current working directory
 	// This will be used as the fallback dotfiles root
 	tempDir := testutil.TempDir(t, "fallback-dotfiles")
-	
+
 	// Change working directory to the temp directory
 	origWd, err := os.Getwd()
 	testutil.AssertNoError(t, err)
