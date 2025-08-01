@@ -213,29 +213,50 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 		}
 	}
 
-	// 7. Execute checksum operations first and store results
+	// 7. Check if we need to handle checksum operations
 	ctx := NewExecutionContext()
-
-	// First pass: generate all operations to find checksum operations
-	initialOps, err := GetFileOperations(actions)
-	if err != nil {
-		return nil, err
+	
+	// Check if any actions need checksums
+	hasChecksumActions := false
+	for _, action := range actions {
+		if action.Type == types.ActionTypeChecksum || 
+		   action.Type == types.ActionTypeBrew || 
+		   action.Type == types.ActionTypeInstall {
+			hasChecksumActions = true
+			break
+		}
 	}
 
-	// Execute checksum operations to get results
-	checksumResults, err := ctx.ExecuteChecksumOperations(initialOps)
-	if err != nil {
-		return nil, err
-	}
+	var ops []types.Operation
+	
+	if hasChecksumActions {
+		// First pass: generate all operations to find checksum operations
+		initialOps, err := GetFileOperations(actions)
+		if err != nil {
+			return nil, err
+		}
 
-	if len(checksumResults) > 0 {
-		logger.Info().Int("checksumCount", len(checksumResults)).Msg("Executed checksum operations")
-	}
+		// Execute checksum operations to get results
+		checksumResults, err := ctx.ExecuteChecksumOperations(initialOps)
+		if err != nil {
+			return nil, err
+		}
 
-	// 8. Generate final operations with checksum context
-	ops, err := GetFileOperationsWithContext(actions, ctx)
-	if err != nil {
-		return nil, err
+		if len(checksumResults) > 0 {
+			logger.Info().Int("checksumCount", len(checksumResults)).Msg("Executed checksum operations")
+		}
+
+		// Generate final operations with checksum context
+		ops, err = GetFileOperationsWithContext(actions, ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// No checksum operations needed, generate operations once
+		ops, err = GetFileOperations(actions)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 9. Construct and return the result

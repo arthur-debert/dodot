@@ -58,6 +58,15 @@ func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext)
 		allOperations = append(allOperations, ops...)
 	}
 
+	// Deduplicate operations (especially directory creation)
+	logger.Debug().
+		Int("beforeDedup", len(allOperations)).
+		Msg("Operations before deduplication")
+	allOperations = deduplicateOperations(allOperations)
+	logger.Debug().
+		Int("afterDedup", len(allOperations)).
+		Msg("Operations after deduplication")
+
 	// Check for conflicts across all operations
 	if err := detectOperationConflicts(allOperations); err != nil {
 		return nil, err
@@ -584,4 +593,37 @@ func convertChecksumAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	return ops, nil
+}
+
+// deduplicateOperations removes duplicate operations based on type and target.
+// For operations with the same type and target, only the first occurrence is kept.
+// This is particularly important for directory creation operations.
+func deduplicateOperations(ops []types.Operation) []types.Operation {
+	if len(ops) <= 1 {
+		return ops
+	}
+
+	logger := logging.GetLogger("core.operations")
+	seen := make(map[string]bool)
+	result := make([]types.Operation, 0, len(ops))
+
+	for _, op := range ops {
+		// Create a key based on operation type and target
+		// This ensures operations with same type and target are considered duplicates
+		key := string(op.Type) + ":" + op.Target
+		
+		if !seen[key] {
+			seen[key] = true
+			result = append(result, op)
+		} else {
+			// Log when we skip a duplicate operation
+			logger.Warn().
+				Str("type", string(op.Type)).
+				Str("target", op.Target).
+				Str("description", op.Description).
+				Msg("Skipping duplicate operation")
+		}
+	}
+
+	return result
 }
