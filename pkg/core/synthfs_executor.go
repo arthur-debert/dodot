@@ -243,7 +243,7 @@ func (e *SynthfsExecutor) convertCreateSymlink(op types.Operation) (synthfs.Oper
 		return nil, err
 	}
 
-	e.logger.Debug().
+	e.logger.Info().
 		Str("source", op.Source).
 		Str("target", op.Target).
 		Msg("Creating symlink operation")
@@ -426,6 +426,18 @@ func (e *SynthfsExecutor) validateSafePath(path string) error {
 		}
 	}
 
+	// Check if home operations are allowed and path is in home directory
+	// Note: For symlinks, validateSymlinkPath handles additional checks like protected files
+	if e.allowHomeSymlinks {
+		homeDir, err := paths.GetHomeDirectory()
+		if err == nil && isPathWithin(normalizedPath, homeDir) {
+			e.logger.Debug().
+				Str("path", normalizedPath).
+				Msg("Path validated as safe (home directory with allowHomeSymlinks)")
+			return nil
+		}
+	}
+
 	// For issue #71, we'll handle symlinks in user home directory
 	// For now, reject operations outside safe directories
 	return errors.Newf(errors.ErrPermission,
@@ -450,15 +462,39 @@ func isPathWithin(path, parent string) bool {
 
 // validateSymlinkPath validates symlink creation with special handling for home directory
 func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
-
-	// First try standard safe path validation
-	if err := e.validateSafePath(target); err == nil {
-		// Target is in a safe directory, allow it
-		return nil
+	// Normalize paths first
+	normalizedTarget, err := filepath.Abs(target)
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrInvalidInput,
+			"failed to normalize target path: %s", target)
 	}
 
-	// If not in safe directory, check if home symlinks are allowed
-	if !e.allowHomeSymlinks {
+	// Check if target is in home directory
+	homeDir, err := paths.GetHomeDirectory()
+	if err != nil {
+		return errors.Wrap(err, errors.ErrFileAccess,
+			"failed to get home directory for validation")
+	}
+
+	isInHome := isPathWithin(normalizedTarget, homeDir)
+
+	// First check if target is in standard safe directories (but not if it's in home)
+	if !isInHome {
+		err := e.validateSafePath(target)
+		if err == nil {
+			// Target is in a safe directory, allow it
+			return nil
+		}
+
+		// If not in safe directory and not home, check if home symlinks are allowed
+		if !e.allowHomeSymlinks {
+			return errors.Newf(errors.ErrPermission,
+				"symlink target is outside dodot-controlled directories: %s", target)
+		}
+	}
+
+	// If we get here, target is either in home or home symlinks are allowed
+	if !e.allowHomeSymlinks && isInHome {
 		return errors.Newf(errors.ErrPermission,
 			"symlink target is outside dodot-controlled directories: %s", target)
 	}
@@ -473,24 +509,15 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 			"failed to normalize source path: %s", source)
 	}
 
-	if !isPathWithin(normalizedSource, dotfilesRoot) {
+	// Source must be from either dotfiles or deployed directories
+	deployedDir := e.paths.DeployedDir()
+	if !isPathWithin(normalizedSource, dotfilesRoot) && !isPathWithin(normalizedSource, deployedDir) {
 		return errors.Newf(errors.ErrPermission,
-			"symlink source must be from dotfiles directory: %s", source)
+			"symlink source must be from dotfiles or deployed directory: %s", source)
 	}
 
-	// Then validate target is in home directory
-	homeDir, err := paths.GetHomeDirectory()
-	if err != nil {
-		return errors.Wrap(err, errors.ErrFileAccess,
-			"failed to get home directory for validation")
-	}
-
-	// Normalize the target path
-	normalizedTarget, err := filepath.Abs(target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to normalize target path: %s", target)
-	}
+	// Target path is already normalized above (normalizedTarget)
+	// Home directory is already retrieved above (homeDir)
 
 	// For macOS, handle /var -> /private/var resolution
 	// Since the target may not exist yet, we need to check parent directories
@@ -521,18 +548,16 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 		Msg("Checking if target is in home directory")
 
 	// Check if target is in home directory
-	if isPathWithin(normalizedTarget, normalizedHome) {
-		// Target is in home directory, perform additional safety checks
-		// Check for dangerous target locations
-		if err := e.validateNotSystemFile(normalizedTarget); err != nil {
-			return err
-		}
-	} else {
-		// Target is not in home directory, that's fine - it should go through
-		// standard safe path validation which already happened above
-		e.logger.Debug().
-			Str("target", normalizedTarget).
-			Msg("Target is not in home directory, standard validation applies")
+	if !isPathWithin(normalizedTarget, normalizedHome) {
+		// Target must be in home directory when allowHomeSymlinks is true
+		return errors.Newf(errors.ErrPermission,
+			"symlink target must be in home directory when using home symlinks: %s", target)
+	}
+
+	// Target is in home directory, perform additional safety checks
+	// Check for dangerous target locations
+	if err := e.validateNotSystemFile(normalizedTarget); err != nil {
+		return err
 	}
 
 	e.logger.Debug().

@@ -142,7 +142,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 
 		err := executor.ExecuteOperations(operations)
 		testutil.AssertError(t, err)
-		testutil.AssertErrorContains(t, err, "must be from dotfiles directory")
+		testutil.AssertErrorContains(t, err, "must be from dotfiles or deployed directory")
 	})
 }
 
