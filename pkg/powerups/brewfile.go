@@ -7,6 +7,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -60,6 +61,17 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 		}
 		actions = append(actions, checksumAction)
 
+		// Calculate checksum now for the metadata
+		// This helps with run-once filtering
+		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("path", match.AbsolutePath).
+				Msg("Failed to calculate checksum for Brewfile")
+			checksum = ""
+		}
+
 		action := types.Action{
 			Type:        types.ActionTypeBrew,
 			Description: fmt.Sprintf("Install packages from %s", match.Path),
@@ -69,8 +81,8 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 			PowerUpName: p.Name(),
 			Priority:    match.Priority,
 			Metadata: map[string]interface{}{
-				"pack": match.Pack,
-				// Checksum will be available after checksum action is executed
+				"pack":     match.Pack,
+				"checksum": checksum,
 			},
 		}
 

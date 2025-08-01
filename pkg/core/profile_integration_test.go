@@ -18,7 +18,7 @@ func TestProfilePowerUp_Integration(t *testing.T) {
 
 	// Create bash pack
 	bashPack := testEnv.CreatePack("bash")
-	
+
 	// Create an aliases script
 	aliasContent := `#!/usr/bin/env bash
 # Bash aliases
@@ -26,7 +26,7 @@ alias ll='ls -la'
 alias gs='git status'
 `
 	testutil.CreateFile(t, bashPack, "aliases.sh", aliasContent)
-	
+
 	// Make it executable
 	require.NoError(t, os.Chmod(filepath.Join(bashPack, "aliases.sh"), 0755))
 
@@ -48,7 +48,7 @@ alias gs='git status'
 
 	// Verify the shell script was deployed
 	shellScript := filepath.Join(testEnv.DataDir(), "deployed", "shell_profile", "bash.sh")
-	
+
 	// Check that the script exists and is a symlink
 	info, err := os.Lstat(shellScript)
 	require.NoError(t, err, "Expected shell script to exist")

@@ -8,14 +8,14 @@ import (
 // Short messages (one-liners)
 const (
 	// Command descriptions
-	MsgRootShort    = "A stateless dotfiles manager"
-	MsgDeployShort  = "Deploy dotfiles to the system"
-	MsgInstallShort = "Install and deploy dotfiles to the system"
-	MsgListShort    = "List all available packs"
-	MsgListLong     = "List displays all packs found in your DOTFILES_ROOT directory."
-	MsgStatusShort  = "Show deployment status of packs"
-	MsgInitShort    = "Create a new pack with template files"
-	MsgFillShort    = "Add placeholder files to an existing pack"
+	MsgRootShort       = "A stateless dotfiles manager"
+	MsgDeployShort     = "Deploy dotfiles to the system"
+	MsgInstallShort    = "Install and deploy dotfiles to the system"
+	MsgListShort       = "List all available packs"
+	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
+	MsgStatusShort     = "Show deployment status of packs"
+	MsgInitShort       = "Create a new pack with template files"
+	MsgFillShort       = "Add placeholder files to an existing pack"
 	MsgTopicsShort     = "Display available documentation topics"
 	MsgTopicsLong      = "Display a list of all available help topics that provide additional documentation beyond command help."
 	MsgCompletionShort = "Generate shell completion script"

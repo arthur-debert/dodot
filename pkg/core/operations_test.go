@@ -93,7 +93,7 @@ func TestGetFileOperations(t *testing.T) {
 					}
 				}
 				testutil.AssertEqual(t, 1, dirCount)
-				
+
 				// Find deploy symlink operations and check order
 				var deployOps []types.Operation
 				for _, op := range ops {
@@ -102,7 +102,7 @@ func TestGetFileOperations(t *testing.T) {
 					}
 				}
 				testutil.AssertEqual(t, 3, len(deployOps))
-				
+
 				// High priority should be processed first
 				testutil.AssertEqual(t, "/source/high", deployOps[0].Source)
 				// Medium priority second
@@ -135,7 +135,7 @@ func TestGetFileOperations(t *testing.T) {
 			wantError:    false,
 		},
 		{
-			name: "brew_and_install_actions",
+			name: "brew_and_install_actions_without_context",
 			actions: []types.Action{
 				{
 					Type:     types.ActionTypeBrew,
@@ -156,24 +156,8 @@ func TestGetFileOperations(t *testing.T) {
 					},
 				},
 			},
-			wantOpsCount: 4, // 2 ops per action (create dir + write sentinel)
-			checkOps: func(t *testing.T, ops []types.Operation) {
-				// Install action should be processed first (higher priority)
-				testutil.AssertEqual(t, types.OperationCreateDir, ops[0].Type)
-				testutil.AssertEqual(t, paths.GetInstallDir(), ops[0].Target)
-
-				testutil.AssertEqual(t, types.OperationWriteFile, ops[1].Type)
-				testutil.AssertContains(t, ops[1].Target, "dev")
-				testutil.AssertEqual(t, "install456", ops[1].Content)
-
-				// Then brew action
-				testutil.AssertEqual(t, types.OperationCreateDir, ops[2].Type)
-				testutil.AssertEqual(t, paths.GetBrewfileDir(), ops[2].Target)
-
-				testutil.AssertEqual(t, types.OperationWriteFile, ops[3].Type)
-				testutil.AssertContains(t, ops[3].Target, "tools")
-				testutil.AssertEqual(t, "brew123", ops[3].Content)
-			},
+			wantOpsCount: 0, // Without context, these actions are skipped
+			wantError:    false,
 		},
 	}
 
@@ -578,7 +562,7 @@ func TestConvertAction(t *testing.T) {
 		},
 		// Brew action tests
 		{
-			name: "brew_action_success",
+			name: "brew_action_without_context",
 			action: types.Action{
 				Type:   types.ActionTypeBrew,
 				Source: "/packs/tools/Brewfile",
@@ -587,23 +571,10 @@ func TestConvertAction(t *testing.T) {
 					"pack":     "tools",
 				},
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetBrewfileDir(),
-					Description: "Create brewfile sentinel directory",
-				},
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(paths.GetBrewfileDir(), "tools"),
-					Content:     "abc123def456",
-					Mode:        uint32Ptr(0644),
-					Description: "Create brewfile sentinel for tools",
-				},
-			},
+			wantOps: nil, // Without context, brew actions are skipped
 		},
 		{
-			name: "brew_action_missing_source",
+			name: "brew_action_missing_source_without_context",
 			action: types.Action{
 				Type: types.ActionTypeBrew,
 				Metadata: map[string]interface{}{
@@ -611,11 +582,10 @@ func TestConvertAction(t *testing.T) {
 					"pack":     "tools",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: nil, // Without context, skipped before validation
 		},
 		{
-			name: "brew_action_missing_checksum",
+			name: "brew_action_missing_checksum_without_context",
 			action: types.Action{
 				Type:   types.ActionTypeBrew,
 				Source: "/packs/tools/Brewfile",
@@ -623,11 +593,10 @@ func TestConvertAction(t *testing.T) {
 					"pack": "tools",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: nil, // Without context, skipped before validation
 		},
 		{
-			name: "brew_action_missing_pack",
+			name: "brew_action_missing_pack_without_context",
 			action: types.Action{
 				Type:   types.ActionTypeBrew,
 				Source: "/packs/tools/Brewfile",
@@ -635,12 +604,11 @@ func TestConvertAction(t *testing.T) {
 					"checksum": "abc123",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: nil, // Without context, skipped before validation
 		},
 		// Install action tests
 		{
-			name: "install_action_success",
+			name: "install_action_without_context",
 			action: types.Action{
 				Type:   types.ActionTypeInstall,
 				Source: "/packs/dev/install.sh",
@@ -649,23 +617,10 @@ func TestConvertAction(t *testing.T) {
 					"pack":     "dev",
 				},
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetInstallDir(),
-					Description: "Create install sentinel directory",
-				},
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(paths.GetInstallDir(), "dev"),
-					Content:     "def789ghi012",
-					Mode:        uint32Ptr(0644),
-					Description: "Create install sentinel for dev",
-				},
-			},
+			wantOps: nil, // Without context, install actions are skipped
 		},
 		{
-			name: "install_action_missing_source",
+			name: "install_action_missing_source_without_context",
 			action: types.Action{
 				Type: types.ActionTypeInstall,
 				Metadata: map[string]interface{}{
@@ -673,11 +628,10 @@ func TestConvertAction(t *testing.T) {
 					"pack":     "dev",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: nil, // Without context, skipped before validation
 		},
 		{
-			name: "install_action_missing_checksum",
+			name: "install_action_missing_checksum_without_context",
 			action: types.Action{
 				Type:   types.ActionTypeInstall,
 				Source: "/packs/dev/install.sh",
@@ -685,11 +639,10 @@ func TestConvertAction(t *testing.T) {
 					"pack": "dev",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: nil, // Without context, skipped before validation
 		},
 		{
-			name: "install_action_missing_pack",
+			name: "install_action_missing_pack_without_context",
 			action: types.Action{
 				Type:   types.ActionTypeInstall,
 				Source: "/packs/dev/install.sh",
@@ -697,8 +650,7 @@ func TestConvertAction(t *testing.T) {
 					"checksum": "abc123",
 				},
 			},
-			wantError: true,
-			errorCode: doerrors.ErrActionInvalid,
+			wantOps: nil, // Without context, skipped before validation
 		},
 		{
 			name: "read_action",
@@ -925,6 +877,53 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	assert.Equal(t, 6, symlinkCount, "Expected 6 symlink operations (2 per file)")
 }
 
+// TestGetFileOperationsWithContext_BrewAndInstall tests brew and install actions with context
+func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
+	// Create context with checksums
+	ctx := NewExecutionContext()
+	ctx.ChecksumResults["/packs/tools/Brewfile"] = "brew123"
+	ctx.ChecksumResults["/packs/dev/install.sh"] = "install456"
+
+	actions := []types.Action{
+		{
+			Type:     types.ActionTypeBrew,
+			Source:   "/packs/tools/Brewfile",
+			Priority: 10,
+			Metadata: map[string]interface{}{
+				"pack": "tools",
+			},
+		},
+		{
+			Type:     types.ActionTypeInstall,
+			Source:   "/packs/dev/install.sh",
+			Priority: 20,
+			Metadata: map[string]interface{}{
+				"pack": "dev",
+			},
+		},
+	}
+
+	ops, err := GetFileOperationsWithContext(actions, ctx)
+	require.NoError(t, err)
+	assert.Len(t, ops, 4) // 2 ops per action (create dir + write sentinel)
+
+	// Install action should be processed first (higher priority)
+	assert.Equal(t, types.OperationCreateDir, ops[0].Type)
+	assert.Equal(t, paths.GetInstallDir(), ops[0].Target)
+
+	assert.Equal(t, types.OperationWriteFile, ops[1].Type)
+	assert.Contains(t, ops[1].Target, "dev")
+	assert.Equal(t, "install456", ops[1].Content)
+
+	// Then brew action
+	assert.Equal(t, types.OperationCreateDir, ops[2].Type)
+	assert.Equal(t, paths.GetBrewfileDir(), ops[2].Target)
+
+	assert.Equal(t, types.OperationWriteFile, ops[3].Type)
+	assert.Contains(t, ops[3].Target, "tools")
+	assert.Equal(t, "brew123", ops[3].Content)
+}
+
 // TestExecutionPipelineNoDuplicateOperations tests that the execution pipeline
 // doesn't create duplicate operations when running with checksums
 func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
@@ -948,8 +947,8 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 			Description: "Install from Brewfile",
 			Metadata: map[string]interface{}{
 				"checksum_source": "/dotfiles/brew/Brewfile",
-				"checksum": "abc123", // Provide checksum to avoid validation error
-				"pack": "brew",
+				"checksum":        "abc123", // Provide checksum to avoid validation error
+				"pack":            "brew",
 			},
 		},
 	}
@@ -994,7 +993,7 @@ func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
 	// This should be deduplicated to just one operation
 	deduped := deduplicateOperations(ops)
 	assert.Equal(t, 1, len(deduped), "Expected duplicate directory operations to be deduplicated")
-	
+
 	// The first operation should be kept
 	assert.Equal(t, "Create parent directory for .vimrc", deduped[0].Description)
 }
@@ -1004,7 +1003,7 @@ func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
 func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
 	homeDir := expandHome("~")
 	deployedDir := filepath.Join(homeDir, ".local", "share", "dodot", "deployed", "symlink")
-	
+
 	ops := []types.Operation{
 		{
 			Type:        types.OperationCreateDir,
@@ -1036,18 +1035,18 @@ func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
 	}
 
 	deduped := deduplicateOperations(ops)
-	
+
 	// Should have 4 operations (one duplicate removed)
 	assert.Equal(t, 4, len(deduped))
-	
+
 	// Order should be preserved
 	assert.Equal(t, types.OperationCreateDir, deduped[0].Type)
 	assert.Equal(t, homeDir, deduped[0].Target)
 	assert.Equal(t, "Create home directory", deduped[0].Description) // First occurrence kept
-	
+
 	assert.Equal(t, types.OperationCreateDir, deduped[1].Type)
 	assert.Equal(t, deployedDir, deduped[1].Target)
-	
+
 	assert.Equal(t, types.OperationCreateSymlink, deduped[2].Type)
 	assert.Equal(t, types.OperationCreateSymlink, deduped[3].Type)
 }

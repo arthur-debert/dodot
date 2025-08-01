@@ -70,18 +70,30 @@ echo install`
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(filtered))
 
-	// Convert to operations
-	ops, err := GetFileOperations(filtered)
+	// Create execution context with checksums
+	ctx := NewExecutionContext()
+	ctx.ChecksumResults[brewfilePath] = brewChecksum
+	ctx.ChecksumResults[installPath] = installChecksum
+	
+	// Convert to operations with context
+	ops, err := GetFileOperationsWithContext(filtered, ctx)
 	testutil.AssertNoError(t, err)
 	testutil.AssertTrue(t, len(ops) > 0, "Should have operations")
 
 	// Simulate execution by creating sentinel files
-	for _, op := range ops {
+	// Debug: print operations
+	t.Logf("Operations generated: %d", len(ops))
+	for i, op := range ops {
+		t.Logf("  [%d] %s: %s", i, op.Type, op.Target)
 		switch op.Type {
 		case types.OperationCreateDir:
-			_ = os.MkdirAll(op.Target, 0755)
+			err := os.MkdirAll(op.Target, 0755)
+			testutil.AssertNoError(t, err)
 		case types.OperationWriteFile:
-			_ = os.WriteFile(op.Target, []byte(op.Content), 0644)
+			// Ensure parent directory exists
+			_ = os.MkdirAll(filepath.Dir(op.Target), 0755)
+			err := os.WriteFile(op.Target, []byte(op.Content), 0644)
+			testutil.AssertNoError(t, err)
 		}
 	}
 

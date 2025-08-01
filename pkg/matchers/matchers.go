@@ -173,6 +173,18 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
+
+		// Brewfile power-up matcher
+		{
+			Name:        "brewfile",
+			TriggerName: "filename",
+			PowerUpName: "brewfile",
+			Priority:    90,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "Brewfile",
+			},
+			Enabled: true,
+		},
 	}
 
 	// Add any dynamically registered matchers

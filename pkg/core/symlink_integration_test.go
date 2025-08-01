@@ -18,7 +18,7 @@ func TestSymlinkPowerUp_Integration(t *testing.T) {
 
 	// Create vim pack
 	vimPack := testEnv.CreatePack("vim")
-	
+
 	// Create a .vimrc file in the pack
 	vimrcContent := "\" Test vimrc\nset number"
 	testutil.CreateFile(t, vimPack, ".vimrc", vimrcContent)
@@ -41,7 +41,7 @@ func TestSymlinkPowerUp_Integration(t *testing.T) {
 
 	// Verify the symlink was created in home directory
 	homeVimrc := filepath.Join(testEnv.Home(), ".vimrc")
-	
+
 	// Check that ~/.vimrc exists and is a symlink
 	info, err := os.Lstat(homeVimrc)
 	require.NoError(t, err, "Expected ~/.vimrc to exist")
