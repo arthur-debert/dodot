@@ -72,11 +72,11 @@ echo "Tools installation complete!"
 	installOps := 0
 	for _, op := range result.Operations {
 		switch {
-		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
 			brewOps++
 		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
 			installOps++
 		}
 	}
@@ -113,7 +113,7 @@ echo "Tools installation complete!"
 	assert.NotEmpty(t, string(installSentinelContent), "Expected install script sentinel to contain checksum")
 
 	// Verify the checksums are different (different file contents)
-	assert.NotEqual(t, string(brewContent), string(installSentinelContent), 
+	assert.NotEqual(t, string(brewContent), string(installSentinelContent),
 		"Brewfile and install script should have different checksums")
 
 	// Second install should not generate install operations (already installed)
@@ -130,11 +130,11 @@ echo "Tools installation complete!"
 	installOps2 := 0
 	for _, op := range result2.Operations {
 		switch {
-		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
 			brewOps2++
 		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
 			installOps2++
 		}
 	}
