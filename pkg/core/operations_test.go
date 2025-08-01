@@ -4,12 +4,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetFileOperations(t *testing.T) {
@@ -80,14 +83,32 @@ func TestGetFileOperations(t *testing.T) {
 					Priority: 50,
 				},
 			},
-			wantOpsCount: 9, // 3 ops per link action (parent dir, deploy symlink, user symlink)
+			wantOpsCount: 7, // 1 parent dir (deduplicated) + 6 symlink ops (2 per link)
 			checkOps: func(t *testing.T, ops []types.Operation) {
-				// High priority should be processed first (deploy symlink is at index 1)
-				testutil.AssertEqual(t, "/source/high", ops[1].Source)
-				// Medium priority second (deploy symlink at index 4)
-				testutil.AssertEqual(t, "/source/medium", ops[4].Source)
-				// Low priority last (deploy symlink at index 7)
-				testutil.AssertEqual(t, "/source/low", ops[7].Source)
+				// Should have one directory creation for home
+				dirCount := 0
+				for _, op := range ops {
+					if op.Type == types.OperationCreateDir {
+						dirCount++
+					}
+				}
+				testutil.AssertEqual(t, 1, dirCount)
+				
+				// Find deploy symlink operations and check order
+				var deployOps []types.Operation
+				for _, op := range ops {
+					if op.Type == types.OperationCreateSymlink && strings.Contains(op.Target, "deployed/symlink") {
+						deployOps = append(deployOps, op)
+					}
+				}
+				testutil.AssertEqual(t, 3, len(deployOps))
+				
+				// High priority should be processed first
+				testutil.AssertEqual(t, "/source/high", deployOps[0].Source)
+				// Medium priority second
+				testutil.AssertEqual(t, "/source/medium", deployOps[1].Source)
+				// Low priority last
+				testutil.AssertEqual(t, "/source/low", deployOps[2].Source)
 			},
 		},
 		{
@@ -851,4 +872,182 @@ func BenchmarkConvertAction_Link(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+// TestNoDuplicateDirectoryOperations tests that we don't generate duplicate
+// directory creation operations when multiple files target the same parent directory
+func TestNoDuplicateDirectoryOperations(t *testing.T) {
+	// Create actions that will create files in the same directory
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeLink,
+			Source:      "/dotfiles/vim/.vimrc",
+			Target:      "~/.vimrc",
+			Description: "Symlink .vimrc",
+		},
+		{
+			Type:        types.ActionTypeLink,
+			Source:      "/dotfiles/bash/.bashrc",
+			Target:      "~/.bashrc",
+			Description: "Symlink .bashrc",
+		},
+		{
+			Type:        types.ActionTypeLink,
+			Source:      "/dotfiles/zsh/.zshrc",
+			Target:      "~/.zshrc",
+			Description: "Symlink .zshrc",
+		},
+	}
+
+	// Convert to operations
+	ops, err := GetFileOperations(actions)
+	require.NoError(t, err)
+
+	// Count directory creation operations for the home directory
+	homeDir := expandHome("~")
+	dirOpCount := 0
+	for _, op := range ops {
+		if op.Type == types.OperationCreateDir && op.Target == homeDir {
+			dirOpCount++
+		}
+	}
+
+	// We should only have ONE directory creation operation for the home directory
+	assert.Equal(t, 1, dirOpCount, "Expected exactly one directory creation operation for home directory, got %d", dirOpCount)
+
+	// Verify we have all the symlink operations (3 files × 2 symlinks each = 6)
+	symlinkCount := 0
+	for _, op := range ops {
+		if op.Type == types.OperationCreateSymlink {
+			symlinkCount++
+		}
+	}
+	assert.Equal(t, 6, symlinkCount, "Expected 6 symlink operations (2 per file)")
+}
+
+// TestExecutionPipelineNoDuplicateOperations tests that the execution pipeline
+// doesn't create duplicate operations when running with checksums
+func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
+	// Create actions that include both regular and checksum operations
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeLink,
+			Source:      "/dotfiles/vim/.vimrc",
+			Target:      "~/.vimrc",
+			Description: "Symlink .vimrc",
+		},
+		{
+			Type:        types.ActionTypeChecksum,
+			Source:      "/dotfiles/brew/Brewfile",
+			Description: "Checksum Brewfile",
+		},
+		{
+			Type:        types.ActionTypeBrew,
+			Source:      "/dotfiles/brew/Brewfile",
+			Target:      "~/.local/share/dodot/brewfile/Brewfile",
+			Description: "Install from Brewfile",
+			Metadata: map[string]interface{}{
+				"checksum_source": "/dotfiles/brew/Brewfile",
+				"checksum": "abc123", // Provide checksum to avoid validation error
+				"pack": "brew",
+			},
+		},
+	}
+
+	// Create context with checksum result
+	ctx := NewExecutionContext()
+	ctx.ChecksumResults["/dotfiles/brew/Brewfile"] = "abc123"
+
+	// Generate operations with context (this is what the pipeline does)
+	finalOps, err := GetFileOperationsWithContext(actions, ctx)
+	require.NoError(t, err)
+
+	// Count operations by type and target
+	opCounts := make(map[string]int)
+	for _, op := range finalOps {
+		key := string(op.Type) + ":" + op.Target
+		opCounts[key]++
+	}
+
+	// Verify no duplicates
+	for key, count := range opCounts {
+		assert.Equal(t, 1, count, "Operation %s should appear exactly once, but appeared %d times", key, count)
+	}
+}
+
+// TestDuplicateOperationsDifferentDescriptions tests that operations with the same
+// type and target but different descriptions are still considered duplicates
+func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
+	ops := []types.Operation{
+		{
+			Type:        types.OperationCreateDir,
+			Target:      "/home/user",
+			Description: "Create parent directory for .vimrc",
+		},
+		{
+			Type:        types.OperationCreateDir,
+			Target:      "/home/user",
+			Description: "Create parent directory for .bashrc",
+		},
+	}
+
+	// This should be deduplicated to just one operation
+	deduped := deduplicateOperations(ops)
+	assert.Equal(t, 1, len(deduped), "Expected duplicate directory operations to be deduplicated")
+	
+	// The first operation should be kept
+	assert.Equal(t, "Create parent directory for .vimrc", deduped[0].Description)
+}
+
+// TestDeduplicateOperationsPreservesOrder tests that deduplication preserves
+// the order of operations and keeps the first occurrence
+func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
+	homeDir := expandHome("~")
+	deployedDir := filepath.Join(homeDir, ".local", "share", "dodot", "deployed", "symlink")
+	
+	ops := []types.Operation{
+		{
+			Type:        types.OperationCreateDir,
+			Target:      homeDir,
+			Description: "Create home directory",
+		},
+		{
+			Type:        types.OperationCreateDir,
+			Target:      deployedDir,
+			Description: "Create deployed directory",
+		},
+		{
+			Type:        types.OperationCreateSymlink,
+			Source:      "/dotfiles/vim/.vimrc",
+			Target:      filepath.Join(deployedDir, ".vimrc"),
+			Description: "Deploy .vimrc",
+		},
+		{
+			Type:        types.OperationCreateDir,
+			Target:      homeDir,
+			Description: "Create home directory again",
+		},
+		{
+			Type:        types.OperationCreateSymlink,
+			Source:      filepath.Join(deployedDir, ".vimrc"),
+			Target:      filepath.Join(homeDir, ".vimrc"),
+			Description: "Symlink .vimrc",
+		},
+	}
+
+	deduped := deduplicateOperations(ops)
+	
+	// Should have 4 operations (one duplicate removed)
+	assert.Equal(t, 4, len(deduped))
+	
+	// Order should be preserved
+	assert.Equal(t, types.OperationCreateDir, deduped[0].Type)
+	assert.Equal(t, homeDir, deduped[0].Target)
+	assert.Equal(t, "Create home directory", deduped[0].Description) // First occurrence kept
+	
+	assert.Equal(t, types.OperationCreateDir, deduped[1].Type)
+	assert.Equal(t, deployedDir, deduped[1].Target)
+	
+	assert.Equal(t, types.OperationCreateSymlink, deduped[2].Type)
+	assert.Equal(t, types.OperationCreateSymlink, deduped[3].Type)
 }
