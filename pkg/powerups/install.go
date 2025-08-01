@@ -7,6 +7,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -60,6 +61,17 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 		}
 		actions = append(actions, checksumAction)
 
+		// Calculate checksum now for the metadata
+		// This helps with run-once filtering
+		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("path", match.AbsolutePath).
+				Msg("Failed to calculate checksum for install script")
+			checksum = ""
+		}
+
 		action := types.Action{
 			Type:        types.ActionTypeInstall,
 			Description: fmt.Sprintf("Run install script %s", match.Path),
@@ -71,8 +83,8 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 			Command:     match.AbsolutePath,
 			Args:        []string{}, // Could be extended to support arguments
 			Metadata: map[string]interface{}{
-				"pack": match.Pack,
-				// Checksum will be available after checksum action is executed
+				"pack":     match.Pack,
+				"checksum": checksum,
 			},
 		}
 

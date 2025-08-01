@@ -19,7 +19,7 @@ func TestExecutionContext_ExecuteChecksumOperations(t *testing.T) {
 	testutil.AssertNoError(t, err)
 
 	// Create execution context
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 
 	// Create checksum operation
 	ops := []types.Operation{
@@ -54,7 +54,7 @@ func TestExecutionContext_ExecuteChecksumOperations(t *testing.T) {
 }
 
 func TestExecutionContext_GetChecksum(t *testing.T) {
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 
 	// Test with no checksum stored
 	_, exists := ctx.GetChecksum("/nonexistent/file")
@@ -72,7 +72,7 @@ func TestExecutionContext_GetChecksum(t *testing.T) {
 }
 
 func TestExecutionContext_ExecuteChecksumOperations_FileNotFound(t *testing.T) {
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 
 	// Create checksum operation for non-existent file
 	ops := []types.Operation{
@@ -124,7 +124,7 @@ func TestConvertBrewActionWithContext(t *testing.T) {
 	testutil.AssertNoError(t, err)
 
 	// Create execution context and store a checksum
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 	testChecksum := "test-checksum-12345"
 	ctx.ChecksumResults[brewfile] = testChecksum
 
@@ -157,7 +157,7 @@ func TestConvertInstallActionWithContext(t *testing.T) {
 	testutil.AssertNoError(t, err)
 
 	// Create execution context and store a checksum
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 	testChecksum := "install-checksum-67890"
 	ctx.ChecksumResults[installScript] = testChecksum
 
@@ -200,7 +200,7 @@ func TestConvertActionWithoutChecksum_ReturnsError(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create empty execution context (no checksums)
-			ctx := NewExecutionContext()
+			ctx := NewExecutionContext(false)
 
 			// Create action without checksum in metadata
 			action := types.Action{

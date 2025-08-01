@@ -32,7 +32,10 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 	// Only check sentinel files for run-once action types
 	switch action.Type {
 	case types.ActionTypeBrew, types.ActionTypeInstall:
-	// Continue with sentinel check
+		// Continue with sentinel check
+	case types.ActionTypeChecksum:
+		// Checksum actions must always run to provide checksums for other actions
+		return true, nil
 	default:
 		// Not a run-once action, always run
 		return true, nil
