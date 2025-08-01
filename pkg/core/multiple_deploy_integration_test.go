@@ -31,7 +31,7 @@ syntax on
 `
 	testutil.CreateFile(t, vimPack, ".vimrc", vimrcContent)
 
-	// Add a profile file (aliases.sh) 
+	// Add a profile file (aliases.sh)
 	aliasesContent := `#!/bin/bash
 # Vim-related aliases
 alias vi='nvim'
@@ -57,20 +57,19 @@ set -o vi
 	assert.Len(t, result.Packs, 1)
 	assert.NotEmpty(t, result.Operations)
 
-
 	// Should have operations for:
 	// - Symlink .vimrc (2 operations: deploy + user)
-	// - Symlink .bashrc (2 operations: deploy + user)  
+	// - Symlink .bashrc (2 operations: deploy + user)
 	// - Deploy aliases.sh to shell profile (1 operation)
 	symlinkOps := 0
 	profileOps := 0
 	for _, op := range result.Operations {
 		switch {
-		case op.Type == "create_symlink" && 
-			 (filepath.Base(op.Target) == ".vimrc" || filepath.Base(op.Target) == ".bashrc"):
+		case op.Type == "create_symlink" &&
+			(filepath.Base(op.Target) == ".vimrc" || filepath.Base(op.Target) == ".bashrc"):
 			symlinkOps++
-		case op.Type == "create_symlink" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/deployed/shell_profile":
+		case op.Type == "create_symlink" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/deployed/shell_profile":
 			profileOps++
 		}
 	}
@@ -108,7 +107,7 @@ set -o vi
 	require.NoError(t, err)
 	assert.Contains(t, string(content), "set number", "Expected .vimrc content to be accessible")
 
-	// Read .bashrc content through symlink  
+	// Read .bashrc content through symlink
 	bashrcFileContent, err := os.ReadFile(bashrcPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(bashrcFileContent), "export EDITOR=nvim", "Expected .bashrc content to be accessible")
