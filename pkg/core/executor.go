@@ -24,13 +24,15 @@ type OperationResult struct {
 // ExecutionContext holds results from operation execution
 type ExecutionContext struct {
 	ChecksumResults map[string]string // Maps file path to checksum
+	Force           bool              // Whether to force operations
 	logger          zerolog.Logger
 }
 
 // NewExecutionContext creates a new execution context
-func NewExecutionContext() *ExecutionContext {
+func NewExecutionContext(force bool) *ExecutionContext {
 	return &ExecutionContext{
 		ChecksumResults: make(map[string]string),
+		Force:           force,
 		logger:          logging.GetLogger("core.executor"),
 	}
 }

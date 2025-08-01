@@ -880,7 +880,7 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 // TestGetFileOperationsWithContext_BrewAndInstall tests brew and install actions with context
 func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Create context with checksums
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 	ctx.ChecksumResults["/packs/tools/Brewfile"] = "brew123"
 	ctx.ChecksumResults["/packs/dev/install.sh"] = "install456"
 
@@ -954,7 +954,7 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 	}
 
 	// Create context with checksum result
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(false)
 	ctx.ChecksumResults["/dotfiles/brew/Brewfile"] = "abc123"
 
 	// Generate operations with context (this is what the pipeline does)
