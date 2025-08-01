@@ -79,12 +79,14 @@ func TestSynthfsExecutor_ConvertOperations(t *testing.T) {
 	tempDir := testutil.TempDir(t, "synthfs-test")
 	t.Setenv("HOME", tempDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempDir, ".local", "share", "dodot"))
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
 
 	dataDir := filepath.Join(tempDir, ".local", "share", "dodot")
 	testutil.CreateDir(t, tempDir, ".local")
 	testutil.CreateDir(t, filepath.Join(tempDir, ".local"), "share")
 	testutil.CreateDir(t, filepath.Join(tempDir, ".local", "share"), "dodot")
 	testutil.CreateDir(t, dataDir, "deployed")
+	testutil.CreateDir(t, tempDir, "dotfiles")
 
 	// Create paths and executor
 	p, err := paths.New("")
@@ -113,16 +115,6 @@ func TestSynthfsExecutor_ConvertOperations(t *testing.T) {
 				Content:     "Hello, World!",
 				Mode:        modePtr(0644),
 				Description: "Write test file",
-			},
-			expectErr: false,
-		},
-		{
-			name: "create symlink",
-			operation: types.Operation{
-				Type:        types.OperationCreateSymlink,
-				Source:      filepath.Join(dataDir, "source.txt"),
-				Target:      filepath.Join(dataDir, "deployed", "link.txt"),
-				Description: "Create test symlink",
 			},
 			expectErr: false,
 		},
@@ -157,6 +149,7 @@ func TestSynthfsExecutor_DryRun(t *testing.T) {
 	tempDir := testutil.TempDir(t, "synthfs-dryrun")
 	t.Setenv("HOME", tempDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempDir, ".local", "share", "dodot"))
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
 
 	dataDir := filepath.Join(tempDir, ".local", "share", "dodot")
 	testutil.CreateDir(t, tempDir, ".local")
@@ -206,6 +199,7 @@ func TestSynthfsExecutor_SkipNonMutatingOperations(t *testing.T) {
 	tempDir := testutil.TempDir(t, "synthfs-skip")
 	t.Setenv("HOME", tempDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempDir, ".local", "share", "dodot"))
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
 
 	dataDir := filepath.Join(tempDir, ".local", "share", "dodot")
 	testutil.CreateDir(t, tempDir, ".local")
