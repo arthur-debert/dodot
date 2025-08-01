@@ -141,6 +141,7 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 		PackNames:    opts.PackNames,
 		DryRun:       opts.DryRun,
 		RunMode:      types.RunModeMany,
+		Force:        opts.Force,
 	}
 	manyResult, err := runExecutionPipeline(manyOpts)
 	if err != nil {
@@ -214,7 +215,7 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 7. Check if we need to handle checksum operations
-	ctx := NewExecutionContext()
+	ctx := NewExecutionContext(opts.Force)
 
 	// Check if any actions need checksums
 	hasChecksumActions := false
@@ -231,7 +232,7 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 
 	if hasChecksumActions {
 		// First pass: generate all operations to find checksum operations
-		initialOps, err := GetFileOperations(actions)
+		initialOps, err := GetFileOperationsWithContext(actions, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -246,14 +247,16 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 			logger.Info().Int("checksumCount", len(checksumResults)).Msg("Executed checksum operations")
 		}
 
-		// Generate final operations with checksum context
+		// Re-generate final operations with checksum context.
+		// This is necessary because the first pass might have skipped some actions
+		// if their checksums weren't available yet.
 		ops, err = GetFileOperationsWithContext(actions, ctx)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// No checksum operations needed, generate operations once
-		ops, err = GetFileOperations(actions)
+		ops, err = GetFileOperationsWithContext(actions, ctx)
 		if err != nil {
 			return nil, err
 		}

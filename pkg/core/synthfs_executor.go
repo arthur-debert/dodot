@@ -24,6 +24,7 @@ import (
 type SynthfsExecutor struct {
 	logger            zerolog.Logger
 	dryRun            bool
+	force             bool
 	filesystem        synthfs.FileSystem
 	paths             *paths.Paths
 	allowHomeSymlinks bool
@@ -64,19 +65,57 @@ func (e *SynthfsExecutor) EnableHomeSymlinks(backup bool) *SynthfsExecutor {
 	return e
 }
 
+// EnableForce enables or disables force mode (overwrite existing files)
+func (e *SynthfsExecutor) EnableForce(force bool) *SynthfsExecutor {
+	e.force = force
+	return e
+}
+
 // ExecuteOperations executes a list of operations using synthfs
 func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 	if e.dryRun {
 		e.logger.Info().Msg("Dry run mode - operations would be executed:")
 		for _, op := range ops {
-			e.logOperation(op)
+			if op.Status == types.StatusReady {
+				e.logOperation(op)
+			}
 		}
 		return nil
+	}
+
+	// Before converting operations, check if we need to clean up existing files for force mode
+	// This is needed because synthfs validation will fail on existing symlinks
+	if e.force {
+		for _, op := range ops {
+			if op.Status == types.StatusReady && op.Type == types.OperationCreateSymlink {
+				// Check if target exists and if so, remove it to allow overwrite
+				if _, err := os.Lstat(op.Target); err == nil {
+					e.logger.Debug().
+						Str("target", op.Target).
+						Msg("Removing existing file to allow overwrite in force mode")
+					if err := os.Remove(op.Target); err != nil {
+						e.logger.Warn().
+							Err(err).
+							Str("target", op.Target).
+							Msg("Failed to remove existing file in force mode")
+					}
+				}
+			}
+		}
 	}
 
 	// Convert dodot operations to synthfs operations
 	synthOps := make([]synthfs.Operation, 0, len(ops))
 	for _, op := range ops {
+		if op.Status != types.StatusReady {
+			e.logger.Debug().
+				Str("type", string(op.Type)).
+				Str("target", op.Target).
+				Str("status", string(op.Status)).
+				Msg("Skipping operation with non-ready status")
+			continue
+		}
+
 		synthOp, err := e.convertToSynthfsOperation(op)
 		if err != nil {
 			return errors.Wrapf(err, errors.ErrActionExecute,
