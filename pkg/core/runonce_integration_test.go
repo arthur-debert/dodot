@@ -74,7 +74,7 @@ echo install`
 	ctx := NewExecutionContext()
 	ctx.ChecksumResults[brewfilePath] = brewChecksum
 	ctx.ChecksumResults[installPath] = installChecksum
-	
+
 	// Convert to operations with context
 	ops, err := GetFileOperationsWithContext(filtered, ctx)
 	testutil.AssertNoError(t, err)

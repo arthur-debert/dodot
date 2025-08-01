@@ -185,6 +185,18 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
+
+		// Install script power-up matcher
+		{
+			Name:        "install-script",
+			TriggerName: "filename",
+			PowerUpName: "install_script",
+			Priority:    90,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "install.sh",
+			},
+			Enabled: true,
+		},
 	}
 
 	// Add any dynamically registered matchers
