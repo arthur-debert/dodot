@@ -37,7 +37,7 @@ echo
 
 # Build all packages first
 echo -e "${BLUE}Building all packages...${NC}"
-if go build -mod=mod -v ./...; then
+if go build -mod=readonly -v ./...; then
     echo -e "${GREEN}✅ All packages built successfully${NC}"
 else
     echo -e "${RED}❌ Package build failed${NC}"
@@ -53,7 +53,7 @@ LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Date=$BUILD
 # Build the main binary
 echo
 echo -e "${BLUE}Building CLI binary...${NC}"
-if go build -mod=mod -ldflags "$LDFLAGS" -o "${BIN_DIR}/dodot" ./cmd/dodot/main; then
+if go build -mod=readonly -ldflags "$LDFLAGS" -o "${BIN_DIR}/dodot" ./cmd/dodot/main; then
     echo -e "${GREEN}✅ Binary built successfully: ${BIN_DIR}/dodot${NC}"
 else
     echo -e "${RED}❌ Binary build failed${NC}"
@@ -64,7 +64,7 @@ fi
 if [[ "${SKIP_TESTS:-}" != "true" ]]; then
     echo
     echo -e "${YELLOW}Running tests...${NC}"
-    if go test -mod=mod ./... -short; then
+    if go test -mod=readonly ./... -short; then
         echo -e "${GREEN}✅ All tests passed${NC}"
     else
         echo -e "${RED}❌ Tests failed${NC}"
