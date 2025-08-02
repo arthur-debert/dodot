@@ -21,9 +21,7 @@ NC='\033[0m' # No Color
 if [[ "$1" == "--ci" ]]; then
     echo -e "${BLUE}🧪 Running Go tests in CI mode...${NC}"
 
-    # Download dependencies first
-    echo -e "${BLUE}Downloading dependencies...${NC}"
-    go mod download
+    # Vendor mode - no need to download dependencies
 
     # Check if gotestsum is available
     if ! command -v gotestsum &>/dev/null; then
@@ -33,7 +31,7 @@ if [[ "$1" == "--ci" ]]; then
 
     # Run all tests including E2E with gotestsum, race detection and coverage
     echo -e "${BLUE}Running all tests (including E2E) with gotestsum, race detection and coverage...${NC}"
-    if gotestsum --format dots-v2 -- -race -coverprofile=coverage.out -tags=testcoverage ./...; then
+    if gotestsum --format dots-v2 -- -mod=vendor -race -coverprofile=coverage.out -tags=testcoverage ./...; then
         echo -e "${GREEN}✅ All tests passed!${NC}"
     else
         echo -e "${RED}❌ Some tests failed.${NC}"
@@ -86,9 +84,7 @@ else
         go install gotest.tools/gotestsum@latest
     fi
 
-    # Download dependencies first
-    echo -e "${BLUE}Downloading dependencies...${NC}"
-    go mod download
+    # Vendor mode - no need to download dependencies
 
     # Run gotestsum with all passed arguments
     echo -e "${BLUE}Running gotestsum with args: $*${NC}"
