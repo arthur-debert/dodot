@@ -1,4 +1,4 @@
-package commands
+package internal
 
 import (
 	"github.com/arthur-debert/dodot/pkg/core"
@@ -7,8 +7,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// executionOptions is an internal struct to pass to the pipeline runner.
-type executionOptions struct {
+// ExecutionOptions is an internal struct to pass to the pipeline runner.
+type ExecutionOptions struct {
 	DotfilesRoot string
 	PackNames    []string
 	DryRun       bool
@@ -16,8 +16,8 @@ type executionOptions struct {
 	Force        bool
 }
 
-// runExecutionPipeline is the core logic for deploy and install.
-func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error) {
+// RunExecutionPipeline is the core logic for deploy and install.
+func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error) {
 	logger := logging.GetLogger("core.commands")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).

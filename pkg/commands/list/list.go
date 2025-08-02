@@ -1,4 +1,4 @@
-package commands
+package list
 
 import (
 	"github.com/arthur-debert/dodot/pkg/core"

@@ -1,6 +1,7 @@
-package commands
+package install
 
 import (
+	"github.com/arthur-debert/dodot/pkg/commands/internal"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -24,27 +25,27 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 	log.Debug().Str("command", "InstallPacks").Msg("Executing command")
 
 	// Step 1: Run "once" power-ups
-	onceOpts := executionOptions{
+	onceOpts := internal.ExecutionOptions{
 		DotfilesRoot: opts.DotfilesRoot,
 		PackNames:    opts.PackNames,
 		DryRun:       opts.DryRun,
 		RunMode:      types.RunModeOnce,
 		Force:        opts.Force,
 	}
-	onceResult, err := runExecutionPipeline(onceOpts)
+	onceResult, err := internal.RunExecutionPipeline(onceOpts)
 	if err != nil {
 		return nil, err
 	}
 
 	// Step 2: Run "many" power-ups (deploy)
-	manyOpts := executionOptions{
+	manyOpts := internal.ExecutionOptions{
 		DotfilesRoot: opts.DotfilesRoot,
 		PackNames:    opts.PackNames,
 		DryRun:       opts.DryRun,
 		RunMode:      types.RunModeMany,
 		Force:        opts.Force,
 	}
-	manyResult, err := runExecutionPipeline(manyOpts)
+	manyResult, err := internal.RunExecutionPipeline(manyOpts)
 	if err != nil {
 		return nil, err
 	}

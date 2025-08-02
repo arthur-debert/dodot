@@ -1,6 +1,7 @@
-package commands
+package deploy
 
 import (
+	"github.com/arthur-debert/dodot/pkg/commands/internal"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -21,14 +22,14 @@ func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "DeployPacks").Msg("Executing command")
 
-	execOpts := executionOptions{
+	execOpts := internal.ExecutionOptions{
 		DotfilesRoot: opts.DotfilesRoot,
 		PackNames:    opts.PackNames,
 		DryRun:       opts.DryRun,
 		RunMode:      types.RunModeMany,
 	}
 
-	result, err := runExecutionPipeline(execOpts)
+	result, err := internal.RunExecutionPipeline(execOpts)
 	if err != nil {
 		return nil, err
 	}

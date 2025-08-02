@@ -1,4 +1,4 @@
-package commands
+package initialize
 
 import (
 	"path/filepath"

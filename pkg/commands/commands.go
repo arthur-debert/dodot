@@ -3,49 +3,69 @@
 // This package contains the command orchestration layer that coordinates
 // between the CLI interface and the core pipeline functionality.
 //
-// Each command is implemented in its own file:
-//   - list.go     - ListPacks command
-//   - deploy.go   - DeployPacks command
-//   - install.go  - InstallPacks command
-//   - status.go   - StatusPacks command
-//   - fill.go     - FillPack command
-//   - init.go     - InitPack command
-//   - execution.go - Shared execution pipeline logic
+// Each command is implemented in its own subdirectory:
+//   - list/     - ListPacks command
+//   - deploy/   - DeployPacks command
+//   - install/  - InstallPacks command
+//   - status/   - StatusPacks command
+//   - fill/     - FillPack command
+//   - initialize/ - InitPack command
+//   - internal/ - Shared execution pipeline logic
 //
 // This file serves as the main entry point and re-exports all command functions
 // to maintain API compatibility.
 package commands
 
-// Re-export all command functions to maintain existing API
-// These functions are implemented in their respective files:
+import (
+	"github.com/arthur-debert/dodot/pkg/commands/deploy"
+	"github.com/arthur-debert/dodot/pkg/commands/fill"
+	"github.com/arthur-debert/dodot/pkg/commands/initialize"
+	"github.com/arthur-debert/dodot/pkg/commands/install"
+	"github.com/arthur-debert/dodot/pkg/commands/list"
+	"github.com/arthur-debert/dodot/pkg/commands/status"
+	"github.com/arthur-debert/dodot/pkg/types"
+)
 
-// From list.go
+// Re-export all command types and functions to maintain existing API
+
 // ListPacks finds all available packs in the dotfiles root directory.
-// func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error)
+type ListPacksOptions = list.ListPacksOptions
 
-// From deploy.go
+func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
+	return list.ListPacks(opts)
+}
+
 // DeployPacks runs deployment logic for specified packs (RunModeMany power-ups).
-// func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error)
+type DeployPacksOptions = deploy.DeployPacksOptions
 
-// From install.go
+func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
+	return deploy.DeployPacks(opts)
+}
+
 // InstallPacks runs installation + deployment (RunModeOnce then RunModeMany power-ups).
-// func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error)
+type InstallPacksOptions = install.InstallPacksOptions
 
-// From status.go
+func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
+	return install.InstallPacks(opts)
+}
+
 // StatusPacks checks the deployment status of specified packs.
-// func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error)
+type StatusPacksOptions = status.StatusPacksOptions
 
-// From fill.go
+func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
+	return status.StatusPacks(opts)
+}
+
 // FillPack adds missing template files to an existing pack.
-// func FillPack(opts FillPackOptions) (*types.FillResult, error)
+type FillPackOptions = fill.FillPackOptions
 
-// From init.go
+func FillPack(opts FillPackOptions) (*types.FillResult, error) {
+	return fill.FillPack(opts)
+}
+
 // InitPack creates a new pack directory with template files and configuration.
-// func InitPack(opts InitPackOptions) (*types.InitResult, error)
+type InitPackOptions = initialize.InitPackOptions
 
-// Note: All actual implementations are in the respective command files.
-// This approach provides:
-// - Better code organization (each command in its own file)
-// - Easier maintenance and testing
-// - Clear separation of concerns
-// - Maintained API compatibility
+func InitPack(opts InitPackOptions) (*types.InitResult, error) {
+	return initialize.InitPack(opts)
+}
