@@ -24,7 +24,7 @@ func TestFullInstallDeployWorkflow_Integration(t *testing.T) {
 	devPack := testEnv.CreatePack("development")
 
 	// ===== INSTALL POWERUPS =====
-	
+
 	// Add a Brewfile for install
 	brewfileContent := `# Development environment
 brew 'git'
@@ -51,14 +51,14 @@ echo "dev-install-complete" > "$HOME/.dev-install-marker"
 echo "Development environment setup complete!"
 `
 	testutil.CreateFile(t, devPack, "install.sh", installContent)
-	
+
 	// Make the script executable
 	installPath := filepath.Join(devPack, "install.sh")
 	err := os.Chmod(installPath, 0755)
 	require.NoError(t, err)
 
 	// ===== DEPLOY POWERUPS =====
-	
+
 	// Add symlink files
 	gitconfigContent := `[user]
 	name = Test User
@@ -86,7 +86,7 @@ alias vim='nvim'
 	testutil.CreateFile(t, devPack, "aliases.sh", aliasesContent)
 
 	// ===== TEST FULL INSTALL FLOW =====
-	
+
 	// Run InstallPacks (should run install powerups first, then deploy powerups)
 	result, err := InstallPacks(InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
@@ -105,20 +105,20 @@ alias vim='nvim'
 	installOps := 0
 	symlinkOps := 0
 	profileOps := 0
-	
+
 	for _, op := range result.Operations {
 		switch {
-		case op.Type == "write_file" && filepath.Base(op.Target) == "development" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+		case op.Type == "write_file" && filepath.Base(op.Target) == "development" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
 			brewOps++
 		case op.Type == "write_file" && filepath.Base(op.Target) == "development" &&
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
 			installOps++
-		case op.Type == "create_symlink" && 
-			 (filepath.Base(op.Target) == ".gitconfig" || filepath.Base(op.Target) == ".tmux.conf"):
+		case op.Type == "create_symlink" &&
+			(filepath.Base(op.Target) == ".gitconfig" || filepath.Base(op.Target) == ".tmux.conf"):
 			symlinkOps++
-		case op.Type == "create_symlink" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/deployed/shell_profile":
+		case op.Type == "create_symlink" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/deployed/shell_profile":
 			profileOps++
 		}
 	}
@@ -135,7 +135,7 @@ alias vim='nvim'
 	require.NoError(t, err)
 
 	// ===== VERIFY INSTALL POWERUPS EXECUTED =====
-	
+
 	// Verify Brewfile sentinel
 	brewSentinel := filepath.Join(testEnv.DataDir(), "brewfile", "development")
 	info, err := os.Stat(brewSentinel)
@@ -149,7 +149,7 @@ alias vim='nvim'
 	assert.True(t, info.Mode().IsRegular(), "Expected install script sentinel to be a regular file")
 
 	// ===== VERIFY DEPLOY POWERUPS EXECUTED =====
-	
+
 	// Verify .gitconfig symlink
 	gitconfigPath := filepath.Join(testEnv.Home(), ".gitconfig")
 	info, err = os.Lstat(gitconfigPath)
@@ -169,7 +169,7 @@ alias vim='nvim'
 	assert.True(t, info.Mode()&os.ModeSymlink != 0, "Expected development.sh to be a symlink")
 
 	// ===== VERIFY CONTENT ACCESSIBLE =====
-	
+
 	// Verify symlinked file content
 	gitconfigFileContent, err := os.ReadFile(gitconfigPath)
 	require.NoError(t, err)
@@ -185,7 +185,7 @@ alias vim='nvim'
 	assert.Contains(t, string(shellProfileContent), "alias g='git'", "Expected aliases.sh content to be accessible")
 
 	// ===== TEST IDEMPOTENCY =====
-	
+
 	// Second install should not run install powerups again, but should run deploy powerups
 	result2, err := InstallPacks(InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
@@ -200,20 +200,20 @@ alias vim='nvim'
 	installOps2 := 0
 	symlinkOps2 := 0
 	profileOps2 := 0
-	
+
 	for _, op := range result2.Operations {
 		switch {
-		case op.Type == "write_file" && filepath.Base(op.Target) == "development" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+		case op.Type == "write_file" && filepath.Base(op.Target) == "development" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
 			brewOps2++
 		case op.Type == "write_file" && filepath.Base(op.Target) == "development" &&
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
 			installOps2++
-		case op.Type == "create_symlink" && 
-			 (filepath.Base(op.Target) == ".gitconfig" || filepath.Base(op.Target) == ".tmux.conf"):
+		case op.Type == "create_symlink" &&
+			(filepath.Base(op.Target) == ".gitconfig" || filepath.Base(op.Target) == ".tmux.conf"):
 			symlinkOps2++
-		case op.Type == "create_symlink" && 
-			 filepath.Dir(op.Target) == testEnv.DataDir()+"/deployed/shell_profile":
+		case op.Type == "create_symlink" &&
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/deployed/shell_profile":
 			profileOps2++
 		}
 	}
@@ -221,7 +221,7 @@ alias vim='nvim'
 	// Install powerups should not run again
 	assert.False(t, brewOps2 > 0, "Should not have Brewfile operations on second run")
 	assert.False(t, installOps2 > 0, "Should not have install operations on second run")
-	
+
 	// Deploy powerups should still run (RunModeMany)
 	assert.True(t, symlinkOps2 >= 4, "Should still have symlink operations on second run")
 	assert.True(t, profileOps2 >= 1, "Should still have profile operations on second run")

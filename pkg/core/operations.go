@@ -294,6 +294,7 @@ func areOperationsCompatible(ops []*types.Operation) bool {
 	}
 	return allDirCreates
 }
+
 // NOTE: The rest of the file (various convert functions) is omitted for brevity.
 // They are assumed to be present and correct. I will only show the changed parts.
 // The key change is removing the error return from detectOperationConflicts and
