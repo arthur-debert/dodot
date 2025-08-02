@@ -1,0 +1,144 @@
+Manual Testing Guide
+====================
+
+This guide walks through manual testing procedures for dodot in the Docker
+environment.
+
+Prerequisites
+-------------
+
+1. Build dodot binary:
+   $ cd .. && ./scripts/build
+
+2. Build Docker image:
+   $ cd test-environment
+   $ docker-compose build
+
+3. Start container:
+   $ docker-compose run --rm dodot-test
+
+Basic Functionality Tests
+-------------------------
+
+Once inside the container, run these tests:
+
+TEST 1: Environment Verification
+................................
+
+Run the setup verification:
+$ /setup-scripts/test-setup.sh
+
+Expected output:
+- Homebrew installed
+- dodot binary available
+- All sample packs listed
+
+TEST 2: List Packs
+..................
+
+$ dodot list
+
+Expected: Shows vim, zsh, git, ssh packs
+
+TEST 3: Deploy Single Pack
+..........................
+
+$ dodot deploy vim
+
+Expected:
+- Creates symlink ~/.vimrc -> /dotfiles/vim/.vimrc
+- Reports 1 operation performed
+
+Verify:
+$ ls -la ~/.vimrc
+$ cat ~/.vimrc  # Should show test vimrc content
+
+TEST 4: Deploy Multiple Packs
+.............................
+
+$ dodot deploy zsh git
+
+Expected:
+- Creates symlinks for .zshrc, .gitconfig
+- Reports operations for both packs
+
+TEST 5: Dry Run Mode
+....................
+
+$ dodot deploy ssh --dry-run
+
+Expected:
+- Shows what would be done
+- No actual changes made
+- "DRY RUN MODE" message displayed
+
+TEST 6: Shell Profile Integration
+.................................
+
+$ dodot deploy zsh
+$ source ~/.zshrc
+$ dtest
+
+Expected: "Dodot test alias working!" output
+
+TEST 7: Status Check
+....................
+
+$ dodot status
+
+Expected: Shows deployment status for all packs
+
+Intermediate Tests
+------------------
+
+TEST 8: Conflicting Files
+.........................
+
+# Create a conflicting file
+$ echo "manual config" > ~/.vimrc
+$ dodot deploy vim
+
+Expected: Error about existing file not being a symlink
+
+TEST 9: Missing Pack
+....................
+
+$ dodot deploy nonexistent
+
+Expected: Error message about pack not found
+
+TEST 10: Partial Deployment
+...........................
+
+$ dodot deploy vim
+$ rm ~/.vimrc
+$ dodot status vim
+
+Expected: Shows vim pack as partially deployed
+
+Edge Cases (Future)
+-------------------
+
+These tests will be automated in later commits:
+
+- Permissions issues (read-only files)
+- Broken symlinks
+- Circular symlinks
+- Unicode filenames
+- Very long paths
+- Case sensitivity issues
+
+Cleanup
+-------
+
+To reset the test environment:
+$ exit  # Leave container
+$ docker-compose down
+$ docker-compose build --no-cache  # Full rebuild
+
+Notes
+-----
+
+- The container is ephemeral - changes are lost on exit
+- To preserve changes for debugging: docker commit
+- Check /setup-scripts/ for additional utilities

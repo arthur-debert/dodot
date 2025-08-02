@@ -1,0 +1,61 @@
+Docker Integration Testing Environment
+======================================
+
+This directory contains a Docker-based testing environment for dodot that allows
+safe testing of file operations in an isolated Ubuntu environment.
+
+Quick Start
+-----------
+
+1. Build dodot binary:
+   $ cd .. && ./scripts/build
+
+2. Build and run test environment:
+   $ cd test-environment
+   $ docker-compose run --rm dodot-test
+
+3. Inside container, run all tests:
+   $ run-all-tests.sh
+
+Or for interactive testing:
+   $ cd /dotfiles
+   $ dodot list
+   $ dodot deploy vim
+
+Structure
+---------
+
+- Dockerfile: Ubuntu-based image with zsh and Homebrew
+- scripts/: Setup and test automation scripts  
+- sample-dotfiles/: Representative dotfiles for testing
+- docker-compose.yml: Simplified container management
+
+Testing Workflow
+----------------
+
+The testing follows this progression:
+1. Basic functionality (list, deploy single pack)
+2. Complex scenarios (multiple packs, conflicts)
+3. Edge cases (permissions, missing files)
+4. Automated regression tests
+
+Available Test Scripts
+----------------------
+
+- test-setup.sh: Verify environment is correctly configured
+- run-basic-tests.sh: 10 core functionality tests
+- run-edge-case-tests.sh: 10 edge case and error handling tests
+- run-all-tests.sh: Execute entire test suite
+
+All scripts are in PATH when inside the container.
+
+Future Enhancements
+-------------------
+
+- Support for bash and fish shells
+- macOS testing via Lima/Colima
+- GitHub Actions integration
+- Matrix testing across Ubuntu versions
+- Network-isolated testing
+- Performance benchmarking
+- Multi-user scenarios
