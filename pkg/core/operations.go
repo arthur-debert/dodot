@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 
@@ -20,6 +19,21 @@ var (
 	uint32Ptr               = operations.Uint32Ptr
 	deduplicateOperations   = operations.DeduplicateOperations
 )
+
+// ResolveConflicts checks for and marks conflicting operations
+// This is a wrapper to maintain backward compatibility with ExecutionContext
+func ResolveConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
+	if ctx == nil {
+		operations.ResolveConflicts(ops, nil)
+	} else {
+		operations.ResolveConflicts(ops, ctx)
+	}
+}
+
+// resolveOperationConflicts is a wrapper for the operations package function
+func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
+	operations.ResolveOperationConflicts(ops, ctx)
+}
 
 // GetFileOperations converts actions into file system operations
 func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
@@ -85,55 +99,6 @@ func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext)
 
 // ResolveConflicts checks for and resolves conflicts.
 // It modifies the operations slice in place.
-func ResolveConflicts(operations *[]types.Operation, ctx *ExecutionContext) {
-	logger := logging.GetLogger("core.operations")
-	ops := *operations
-	force := ctx != nil && ctx.Force
-	processedTargets := make(map[string]bool)
-
-	for i := range ops {
-		op := &ops[i]
-		if op.Status != types.StatusReady {
-			continue
-		}
-
-		target := filepath.Clean(op.Target)
-		if target == "" {
-			continue
-		}
-
-		if processedTargets[target] {
-			if !force {
-				op.Status = types.StatusConflict
-			}
-			continue
-		}
-
-		// Check for filesystem conflicts
-		if op.Type == types.OperationCreateSymlink {
-			if _, err := os.Lstat(op.Target); err == nil {
-				if !force {
-					op.Status = types.StatusConflict
-					logger.Debug().
-						Str("target", op.Target).
-						Msg("Marking symlink operation as conflicted due to existing file")
-				}
-			} else if !os.IsNotExist(err) {
-				op.Status = types.StatusError
-				logger.Error().
-					Err(err).
-					Str("target", op.Target).
-					Msg("Error checking symlink target")
-			}
-		}
-
-		if op.Status == types.StatusReady {
-			processedTargets[target] = true
-		}
-	}
-
-	*operations = ops
-}
 
 // ConvertAction converts a single action to one or more operations
 func ConvertAction(action types.Action) ([]types.Operation, error) {
@@ -246,49 +211,6 @@ func convertLinkAction(action types.Action) ([]types.Operation, error) {
 
 // resolveOperationConflicts checks for and resolves conflicts.
 // It modifies the operations slice in place.
-func resolveOperationConflicts(operations *[]types.Operation, ctx *ExecutionContext) {
-	logger := logging.GetLogger("core.operations")
-	ops := *operations
-	force := ctx != nil && ctx.Force
-
-	for i := range ops {
-		op := &ops[i]
-		if op.Status != types.StatusReady {
-			continue
-		}
-
-		// Check for internal conflicts (multiple ops targeting the same path)
-		for j := i + 1; j < len(ops); j++ {
-			otherOp := &ops[j]
-			if op.Target == otherOp.Target && !areOperationsCompatible([]*types.Operation{op, otherOp}) {
-				if !force {
-					logger.Error().
-						Str("target", op.Target).
-						Msg("Incompatible operations targeting the same path")
-					op.Status = types.StatusConflict
-					otherOp.Status = types.StatusConflict
-				}
-			}
-		}
-
-		// Check for filesystem conflicts (e.g., pre-existing files)
-		if op.Type == types.OperationCreateSymlink {
-			if _, err := os.Lstat(op.Target); err == nil {
-				if !force {
-					logger.Warn().
-						Str("target", op.Target).
-						Msg("Target file exists and --force is not used, marking as conflict")
-					op.Status = types.StatusConflict
-				}
-			} else if !os.IsNotExist(err) {
-				logger.Error().Err(err).Str("target", op.Target).Msg("Failed to check target file status")
-				op.Status = types.StatusError
-			}
-		}
-	}
-
-	*operations = ops
-}
 
 // NOTE: The rest of the file (various convert functions) is omitted for brevity.
 // They are assumed to be present and correct. I will only show the changed parts.
