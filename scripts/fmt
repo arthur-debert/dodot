@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Get the directory where this script is actually located (resolve symlinks)
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+# Function to format all Go files in the project
+format_all() {
+    echo "🔍 Running gofmt on all Go files..."
+    
+    # Find all Go files in the project
+    go_files=$(find "$PROJECT_ROOT" -name "*.go" -type f | grep -v vendor | grep -v .git || true)
+    
+    if [ -n "$go_files" ]; then
+        echo "$go_files" | while IFS= read -r file; do
+            echo "  Formatting: $file"
+            gofmt -w "$file"
+        done
+        echo -e "${GREEN}✅ Go formatting complete${NC}"
+    else
+        echo "  No Go files found"
+    fi
+}
+
+# Function to format only staged Go files (for pre-commit hook)
+format_staged() {
+    echo "🔍 Running gofmt on staged Go files..."
+    
+    # Get list of staged Go files (only Added, Copied, Modified, not Deleted)
+    staged_go_files=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+    
+    if [ -n "$staged_go_files" ]; then
+        # Create a temporary directory for processing
+        tmp_dir=$(mktemp -d)
+        trap "rm -rf $tmp_dir" EXIT
+        
+        echo "$staged_go_files" | while IFS= read -r file; do
+            if [ -f "$file" ]; then
+                echo "  Formatting: $file"
+                
+                # Check if file has unstaged changes
+                if git diff --name-only "$file" | grep -q .; then
+                    # File has unstaged changes - we need to be careful
+                    # 1. Copy the staged version to temp
+                    mkdir -p "$tmp_dir/$(dirname "$file")"
+                    git show ":$file" > "$tmp_dir/$file"
+                    
+                    # 2. Format the staged version
+                    gofmt -w "$tmp_dir/$file"
+                    
+                    # 3. Apply formatted version back to index without touching working directory
+                    # First, get the formatted content
+                    formatted_content=$(cat "$tmp_dir/$file")
+                    
+                    # 4. Add the formatted content to git's object database and get its hash
+                    blob_hash=$(echo -n "$formatted_content" | git hash-object -w --stdin)
+                    
+                    # 5. Update the index with the new blob
+                    git update-index --cacheinfo 100644 "$blob_hash" "$file"
+                    
+                    echo -e "    ${YELLOW}⚠️  File has unstaged changes - only staged content was formatted${NC}"
+                else
+                    # No unstaged changes - safe to format and stage normally
+                    gofmt -w "$file"
+                    git add "$file"
+                fi
+            fi
+        done
+        echo -e "${GREEN}✅ Go formatting complete${NC}"
+    else
+        echo "  No staged Go files to format"
+    fi
+}
+
+# Function to check formatting without making changes
+check_format() {
+    echo "🔍 Checking Go formatting..."
+    
+    # Find all Go files in the project
+    go_files=$(find "$PROJECT_ROOT" -name "*.go" -type f | grep -v vendor | grep -v .git || true)
+    
+    has_unformatted=false
+    if [ -n "$go_files" ]; then
+        echo "$go_files" | while IFS= read -r file; do
+            # gofmt -l lists files that need formatting
+            if gofmt -l "$file" | grep -q .; then
+                echo -e "  ${RED}✗${NC} $file"
+                has_unformatted=true
+            fi
+        done
+        
+        # Since the while loop runs in a subshell, we need a different approach
+        # Run gofmt -l on all files and check if it produces any output
+        unformatted=$(echo "$go_files" | xargs gofmt -l)
+        
+        if [ -z "$unformatted" ]; then
+            echo -e "${GREEN}✅ All Go files are properly formatted${NC}"
+            exit 0
+        else
+            echo -e "${RED}✗ Some files need formatting. Run 'scripts/fmt' to fix.${NC}"
+            exit 1
+        fi
+    else
+        echo "  No Go files found"
+        exit 0
+    fi
+}
+
+# Main script logic
+case "${1:-}" in
+"--staged")
+    # Format only staged files (used by pre-commit hook)
+    format_staged
+    ;;
+"--check")
+    # Check formatting without making changes
+    check_format
+    ;;
+"--help")
+    echo "Usage: $0 [--staged|--check|--help]"
+    echo ""
+    echo "Options:"
+    echo "  (no args)  Format all Go files in the project"
+    echo "  --staged   Format only staged Go files (for pre-commit hook)"
+    echo "  --check    Check formatting without making changes"
+    echo "  --help     Show this help message"
+    ;;
+"")
+    # Default: format all files
+    format_all
+    ;;
+*)
+    echo "Unknown option: $1"
+    echo "Run '$0 --help' for usage information"
+    exit 1
+    ;;
+esac
