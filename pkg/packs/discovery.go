@@ -185,7 +185,7 @@ func loadPack(packPath string) (types.Pack, error) {
 
 // loadPackConfig reads and parses a pack's .dodot.toml configuration file
 func loadPackConfig(configPath string) (types.PackConfig, error) {
-	return config.LoadPackConfig(configPath)
+	return LoadPackConfig(configPath)
 }
 
 // ShouldIgnorePack checks if a pack should be ignored by checking for a .dodotignore file
