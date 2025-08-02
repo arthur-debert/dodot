@@ -408,6 +408,14 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
+			// Execute operations if any
+			if len(result.Operations) > 0 {
+				executor := core.NewSynthfsExecutor(false)
+				if err := executor.ExecuteOperations(result.Operations); err != nil {
+					return fmt.Errorf("failed to execute operations: %w", err)
+				}
+			}
+
 			// Display results
 			fmt.Printf(MsgPackCreatedFormat, packName)
 			for _, file := range result.FilesCreated {
@@ -452,6 +460,14 @@ func newFillCmd() *cobra.Command {
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrFillPack, err)
+			}
+
+			// Execute operations if any
+			if len(result.Operations) > 0 {
+				executor := core.NewSynthfsExecutor(false)
+				if err := executor.ExecuteOperations(result.Operations); err != nil {
+					return fmt.Errorf("failed to execute operations: %w", err)
+				}
 			}
 
 			// Display results

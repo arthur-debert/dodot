@@ -131,7 +131,7 @@ func DefaultMatchers() []types.Matcher {
 		},
 		{
 			Name:        "shell-path",
-			TriggerName: "filename",
+			TriggerName: "directory",
 			PowerUpName: "shell_add_path",
 			Priority:    80,
 			TriggerOptions: map[string]interface{}{

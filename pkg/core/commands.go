@@ -383,83 +383,6 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	return result, nil
 }
 
-// generateFillPackActions generates actions for creating template files in a pack
-func generateFillPackActions(packPath, packName string) []types.Action {
-	templates := []struct {
-		filename string
-		content  string
-		mode     uint32
-	}{
-		{
-			filename: "aliases.sh",
-			content: `#!/usr/bin/env sh
-# Shell aliases for ` + packName + ` pack
-# Add your aliases below
-
-# Example:
-# alias ll='ls -la'
-`,
-			mode: 0755,
-		},
-		{
-			filename: "install.sh",
-			content: `#!/usr/bin/env bash
-# Installation script for ` + packName + ` pack
-# This script runs once during 'dodot install'
-
-set -euo pipefail
-
-echo "Installing ` + packName + ` pack..."
-
-# Add your installation commands below
-`,
-			mode: 0755,
-		},
-		{
-			filename: "Brewfile",
-			content: `# Homebrew dependencies for ` + packName + ` pack
-# This file is processed during 'dodot install'
-
-# Examples:
-# brew 'git'
-# brew 'tmux'
-# cask 'visual-studio-code'
-`,
-			mode: 0644,
-		},
-		{
-			filename: "path.sh",
-			content: `#!/usr/bin/env sh
-# PATH additions for ` + packName + ` pack
-# Export PATH modifications below
-
-# Example:
-# export PATH="$HOME/.local/bin:$PATH"
-`,
-			mode: 0755,
-		},
-	}
-
-	var actions []types.Action
-	for _, tmpl := range templates {
-		filePath := filepath.Join(packPath, tmpl.filename)
-
-		// Create write action for the file
-		action := types.Action{
-			Type:        types.ActionTypeWrite,
-			Description: fmt.Sprintf("Create template file %s", tmpl.filename),
-			Target:      filePath,
-			Content:     tmpl.content,
-			Mode:        tmpl.mode,
-			Pack:        packName,
-			PowerUpName: "fill_pack_internal",
-			Priority:    100,
-		}
-		actions = append(actions, action)
-	}
-
-	return actions
-}
 
 // FillPack adds placeholder files for power-ups to an existing pack.
 func FillPack(opts FillPackOptions) (*types.FillResult, error) {
@@ -488,40 +411,48 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		return nil, errors.Newf(errors.ErrPackNotFound, "pack %q not found", opts.PackName)
 	}
 
-	// 3. Create placeholder files
-	// 3. Generate actions for template files
-	actions := generateFillPackActions(targetPack.Path, opts.PackName)
+	// 3. Get missing template files
+	missingTemplates, err := GetMissingTemplateFiles(targetPack.Path, opts.PackName)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get missing templates")
+	}
 
-	// 4. Convert actions to operations
+	// 4. Generate actions for missing templates
+	var actions []types.Action
+	for _, template := range missingTemplates {
+		action := types.Action{
+			Type:        types.ActionTypeWrite,
+			Description: fmt.Sprintf("Create template file %s", template.Filename),
+			Target:      filepath.Join(targetPack.Path, template.Filename),
+			Content:     template.Content,
+			Mode:        template.Mode,
+			Pack:        opts.PackName,
+			PowerUpName: template.PowerUpName,
+			Priority:    50, // Lower priority for template files
+		}
+		actions = append(actions, action)
+	}
+
+	// 5. Convert actions to operations
 	ops, err := GetFileOperations(actions)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}
 
-	// 5. For now, just report what would be created
-	// In the future, these operations will be executed through synthfs
+	// 6. Return result with operations
 	result := &types.FillResult{
 		PackName:     opts.PackName,
 		FilesCreated: []string{},
+		Operations:   ops,
 	}
 
-	// Check which files already exist and which would be created
-	for _, action := range actions {
-		if action.Type == types.ActionTypeWrite {
-			filename := filepath.Base(action.Target)
-
-			// Check if file already exists
-			if _, err := os.Stat(action.Target); err == nil {
-				log.Debug().Str("file", filename).Msg("File already exists, skipping")
-				continue
-			}
-
-			result.FilesCreated = append(result.FilesCreated, filename)
-			log.Info().
-				Str("file", filename).
-				Str("operation", "would create").
-				Msg("Template file to be created")
-		}
+	// List files that will be created
+	for _, template := range missingTemplates {
+		result.FilesCreated = append(result.FilesCreated, template.Filename)
+		log.Info().
+			Str("file", template.Filename).
+			Str("powerup", template.PowerUpName).
+			Msg("Template file to be created")
 	}
 
 	log.Debug().
@@ -641,9 +572,26 @@ For more information, see: https://github.com/arthur-debert/dodot
 	}
 	actions = append(actions, readmeAction)
 
-	// 5. Add template file actions from FillPack
-	templateActions := generateFillPackActions(packPath, opts.PackName)
-	actions = append(actions, templateActions...)
+	// 5. Get all template files for the pack
+	templates, err := GetCompletePackTemplate(opts.PackName)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get pack templates")
+	}
+
+	// Add template file actions
+	for _, template := range templates {
+		action := types.Action{
+			Type:        types.ActionTypeWrite,
+			Description: fmt.Sprintf("Create template file %s", template.Filename),
+			Target:      filepath.Join(packPath, template.Filename),
+			Content:     template.Content,
+			Mode:        template.Mode,
+			Pack:        opts.PackName,
+			PowerUpName: template.PowerUpName,
+			Priority:    50, // Lower priority for template files
+		}
+		actions = append(actions, action)
+	}
 
 	// 6. Convert actions to operations
 	ops, err := GetFileOperations(actions)
@@ -651,12 +599,12 @@ For more information, see: https://github.com/arthur-debert/dodot
 		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}
 
-	// 7. For now, just report what would be created
-	// In the future, these operations will be executed through synthfs
+	// 7. Return result with operations
 	result := &types.InitResult{
 		PackName:     opts.PackName,
 		Path:         packPath,
 		FilesCreated: []string{},
+		Operations:   ops,
 	}
 
 	// Report all files that would be created

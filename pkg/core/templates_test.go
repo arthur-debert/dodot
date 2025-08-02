@@ -113,7 +113,7 @@ func TestTemplateFileExists(t *testing.T) {
 	// Test existing file
 	existingFile := filepath.Join(tempDir, "exists.txt")
 	require.NoError(t, os.WriteFile(existingFile, []byte("content"), 0644))
-	
+
 	exists, err := fileExists(existingFile)
 	assert.NoError(t, err)
 	assert.True(t, exists)

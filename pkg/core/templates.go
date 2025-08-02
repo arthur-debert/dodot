@@ -66,9 +66,15 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 				// Replace PACK_NAME placeholder
 				content = strings.ReplaceAll(content, "PACK_NAME", packName)
 
+				// Get filename from pattern, handling wildcards
+				filename := filenameTrigger.GetPattern()
+				
+				// For wildcard patterns, create a concrete filename
+				// Convert *aliases.sh to aliases.sh
+				filename = strings.TrimPrefix(filename, "*")
+				
 				// Determine file mode based on file type
 				mode := uint32(0644)
-				filename := filenameTrigger.GetPattern()
 				if strings.HasSuffix(filename, ".sh") || filename == "install.sh" {
 					mode = 0755
 				}
@@ -112,7 +118,7 @@ func GetMissingTemplateFiles(packPath string, packName string) ([]PackTemplateFi
 	// Check which ones don't exist
 	for _, template := range allTemplates {
 		filePath := filepath.Join(packPath, template.Filename)
-		
+
 		// Check if file exists
 		exists, err := fileExists(filePath)
 		if err != nil {
