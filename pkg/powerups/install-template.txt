@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# dodot install script for PACK_NAME pack
+# 
+# This script runs ONCE during 'dodot install PACK_NAME'
+# Use it for one-time setup tasks like:
+# - Installing dependencies not available via Homebrew
+# - Creating directories
+# - Downloading external resources
+# - Setting up initial configurations
+#
+# The script is idempotent - dodot tracks execution via checksums
+# and won't run it again unless the file contents change.
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# installation steps later without redeploying the pack.
+
+set -euo pipefail
+
+echo "Installing PACK_NAME pack..."
+
+# Add your installation commands below
+# Examples:
+# mkdir -p "$HOME/.config/PACK_NAME"
+# curl -fsSL https://example.com/install.sh | bash

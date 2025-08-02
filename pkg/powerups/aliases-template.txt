@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Shell aliases for PACK_NAME pack
+#
+# This file is sourced into your shell during 'dodot deploy PACK_NAME'
+# Changes take effect immediately in new shells or after re-deployment.
+# 
+# Works with bash, zsh, fish (via bass), and other POSIX shells.
+# For shell-specific syntax, check $SHELL or $0
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# aliases later that become live without redeploying the pack.
+
+# Add your aliases below
+# Examples:
+# alias ll='ls -la'
+# alias g='git'
+# alias dc='docker-compose'

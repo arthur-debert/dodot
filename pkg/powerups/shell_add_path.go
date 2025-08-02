@@ -1,6 +1,7 @@
 package powerups
 
 import (
+	_ "embed"
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -11,6 +12,9 @@ import (
 const (
 	ShellAddPathPowerUpName = "shell_add_path"
 )
+
+//go:embed path-template.txt
+var pathTemplate string
 
 // ShellAddPathPowerUp manages adding directories to the PATH
 type ShellAddPathPowerUp struct{}
@@ -62,7 +66,7 @@ func (p *ShellAddPathPowerUp) ValidateOptions(options map[string]interface{}) er
 
 // GetTemplateContent returns the template content for this power-up
 func (p *ShellAddPathPowerUp) GetTemplateContent() string {
-	return ""
+	return pathTemplate
 }
 
 func init() {

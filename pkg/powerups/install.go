@@ -1,6 +1,7 @@
 package powerups
 
 import (
+	_ "embed"
 	"fmt"
 	"path/filepath"
 
@@ -15,6 +16,9 @@ const (
 	// InstallScriptPowerUpName is the unique name for the install script power-up
 	InstallScriptPowerUpName = "install_script"
 )
+
+//go:embed install-template.txt
+var installTemplate string
 
 // InstallScriptPowerUp runs install.sh scripts
 type InstallScriptPowerUp struct{}
@@ -102,7 +106,7 @@ func (p *InstallScriptPowerUp) ValidateOptions(options map[string]interface{}) e
 
 // GetTemplateContent returns the template content for this power-up
 func (p *InstallScriptPowerUp) GetTemplateContent() string {
-	return ""
+	return installTemplate
 }
 
 // GetSentinelPath returns the path to the sentinel file for a pack

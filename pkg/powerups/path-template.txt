@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+# PATH modifications for PACK_NAME pack
+#
+# This file is sourced to add directories to your PATH
+# during 'dodot deploy PACK_NAME'
+# 
+# Use absolute paths or paths relative to $HOME
+# dodot handles deduplication automatically
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# PATH entries later without redeploying the pack.
+
+# Add PATH exports below
+# Examples:
+# export PATH="$HOME/.PACK_NAME/bin:$PATH"
+# export PATH="/usr/local/PACK_NAME/bin:$PATH"
