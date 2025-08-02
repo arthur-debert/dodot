@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,7 @@ func TestFillPack_Integration(t *testing.T) {
 	// Execute operations through synthfs
 	testPaths, err := paths.New(testEnv.DotfilesRoot())
 	require.NoError(t, err)
-	executor := NewSynthfsExecutorWithPaths(false, testPaths)
+	executor := synthfs.NewSynthfsExecutorWithPaths(false, testPaths)
 	err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
@@ -181,7 +182,7 @@ func TestInitPack_Integration(t *testing.T) {
 	// Execute operations through synthfs
 	testPaths, err := paths.New(testEnv.DotfilesRoot())
 	require.NoError(t, err)
-	executor := NewSynthfsExecutorWithPaths(false, testPaths)
+	executor := synthfs.NewSynthfsExecutorWithPaths(false, testPaths)
 	err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 

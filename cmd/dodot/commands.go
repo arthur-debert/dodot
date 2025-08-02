@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -201,7 +202,7 @@ func newDeployCmd() *cobra.Command {
 
 			// Execute operations if not in dry-run mode
 			if !dryRun && len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(dryRun)
+				executor := synthfs.NewSynthfsExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
@@ -266,7 +267,7 @@ func newInstallCmd() *cobra.Command {
 
 			// Execute operations if not in dry-run mode
 			if !dryRun && len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(dryRun)
+				executor := synthfs.NewSynthfsExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
@@ -410,7 +411,7 @@ func newInitCmd() *cobra.Command {
 
 			// Execute operations if any
 			if len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(false)
+				executor := synthfs.NewSynthfsExecutor(false)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}
@@ -464,7 +465,7 @@ func newFillCmd() *cobra.Command {
 
 			// Execute operations if any
 			if len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(false)
+				executor := synthfs.NewSynthfsExecutor(false)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}

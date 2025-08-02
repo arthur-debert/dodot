@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +42,7 @@ alias gs='git status'
 	assert.NotEmpty(t, result.Operations)
 
 	// Execute operations
-	executor := NewSynthfsExecutor(false)
+	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
 	err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)

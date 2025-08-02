@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -141,7 +142,7 @@ brew 'bash-completion'
 	assert.True(t, installOps["dev"] >= 1, "Expected dev pack to have install operations")
 
 	// Execute operations
-	executor := NewSynthfsExecutor(false)
+	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
 	err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)

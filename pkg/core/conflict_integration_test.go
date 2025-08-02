@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -57,7 +58,7 @@ func TestConflictHandling_PreexistingFile_Integration(t *testing.T) {
 	assert.Equal(t, types.StatusConflict, symlinkOp.Status, "Operation status should be conflict")
 
 	// Execute operations - the conflicting one should be skipped
-	executor := NewSynthfsExecutor(false)
+	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
 	err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err, "Executor should handle skippable operations gracefully")

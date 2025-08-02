@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,7 +65,7 @@ echo "Development setup complete!"
 	assert.True(t, hasInstallOps, "Expected install script operations")
 
 	// Execute operations
-	executor := NewSynthfsExecutor(false)
+	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
 	err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
