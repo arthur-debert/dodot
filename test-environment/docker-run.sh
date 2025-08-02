@@ -1,15 +1,31 @@
 #!/bin/bash
-# Helper script to run commands in the dodot test container
+# Docker run script - Stable entry point
+#
+# IMPORTANT: This script should RARELY change. It sets up the proper mounts
+# and runs the orchestrator. All logic is in the orchestrator and phase scripts.
+#
+# Key architecture decisions:
+# 1. Mount entire repository (source code for building)
+# 2. Mount test scripts directory
+# 3. Mount sample dotfiles
+# 4. Run orchestrator.sh which handles the three phases
 
-# Default to running bash if no command provided
-COMMAND="${@:-/bin/bash}"
+set -euo pipefail
 
-# Run the docker container with all necessary mounts
+# Get the directory of this script
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+echo "Starting dodot Docker test environment..."
+echo "Project root: $PROJECT_ROOT"
+echo
+
+# Run the container with all necessary mounts
 docker run --rm \
-    -v "$(pwd)/../bin/dodot-linux:/usr/local/bin/dodot:ro" \
-    -v "$(pwd)/sample-dotfiles:/dotfiles:rw" \
-    -v "$(pwd)/test-deploy.sh:/test-deploy.sh:ro" \
-    -v "$(pwd)/test-debug.sh:/test-debug.sh:ro" \
+    -v "$PROJECT_ROOT:/dodot:rw" \
+    -v "$SCRIPT_DIR/scripts:/scripts:ro" \
+    -v "$SCRIPT_DIR/orchestrator.sh:/orchestrator.sh:ro" \
+    -v "$SCRIPT_DIR/sample-dotfiles:/dotfiles:rw" \
     -e DOTFILES_ROOT=/dotfiles \
     dodot-test \
-    $COMMAND
+    /bin/bash /orchestrator.sh

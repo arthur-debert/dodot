@@ -4,7 +4,7 @@ FROM ubuntu:22.04
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install essential packages
+# Install essential packages and Go
 RUN apt-get update && apt-get install -y \
     curl \
     git \
@@ -16,6 +16,19 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     locales \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Go 1.23 (matching project requirements)
+# IMPORTANT: Installing Go in the image layer for caching, not mounting
+# Detect architecture and download appropriate Go binary
+RUN ARCH=$(dpkg --print-architecture) && \
+    case ${ARCH} in \
+        amd64) GOARCH="amd64" ;; \
+        arm64) GOARCH="arm64" ;; \
+        *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
+    esac && \
+    wget -q https://go.dev/dl/go1.23.0.linux-${GOARCH}.tar.gz && \
+    tar -C /usr/local -xzf go1.23.0.linux-${GOARCH}.tar.gz && \
+    rm go1.23.0.linux-${GOARCH}.tar.gz
 
 # Generate locale
 RUN locale-gen en_US.UTF-8
@@ -43,11 +56,11 @@ RUN /setup-scripts/setup-brew.sh
 # Set DOTFILES_ROOT
 ENV DOTFILES_ROOT=/dotfiles
 
-# Add Homebrew to PATH for all shells
-ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
+# Add Homebrew and Go to PATH for all shells
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/usr/local/go/bin:${PATH}"
 
 # Make test scripts easily accessible
-RUN echo 'export PATH="/setup-scripts:$PATH"' >> ~/.zshrc
+RUN echo 'export PATH="/scripts:$PATH"' >> ~/.zshrc
 
 # Default to zsh shell
 CMD ["/bin/zsh"]
