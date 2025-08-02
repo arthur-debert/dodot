@@ -8,8 +8,17 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+)
+
+// Re-exports from pkg/operations for backwards compatibility
+var (
+	areOperationsCompatible = operations.AreOperationsCompatible
+	expandHome              = operations.ExpandHome
+	uint32Ptr               = operations.Uint32Ptr
+	deduplicateOperations   = operations.DeduplicateOperations
 )
 
 // GetFileOperations converts actions into file system operations
@@ -281,20 +290,6 @@ func resolveOperationConflicts(operations *[]types.Operation, ctx *ExecutionCont
 	*operations = ops
 }
 
-func areOperationsCompatible(ops []*types.Operation) bool {
-	if len(ops) <= 1 {
-		return true
-	}
-	allDirCreates := true
-	for _, op := range ops {
-		if op.Type != types.OperationCreateDir {
-			allDirCreates = false
-			break
-		}
-	}
-	return allDirCreates
-}
-
 // NOTE: The rest of the file (various convert functions) is omitted for brevity.
 // They are assumed to be present and correct. I will only show the changed parts.
 // The key change is removing the error return from detectOperationConflicts and
@@ -487,9 +482,6 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 }
 
 // expandHome expands ~ to the user's home directory
-func expandHome(path string) string {
-	return paths.ExpandHome(path)
-}
 
 // convertBrewActionWithContext converts a brew action to operations with execution context
 func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
@@ -600,9 +592,6 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 }
 
 // Helper to create uint32 pointer
-func uint32Ptr(v uint32) *uint32 {
-	return &v
-}
 
 // convertReadAction converts a read action to read operations
 func convertReadAction(action types.Action) ([]types.Operation, error) {
@@ -645,32 +634,3 @@ func convertChecksumAction(action types.Action) ([]types.Operation, error) {
 // deduplicateOperations removes duplicate operations based on type and target.
 // For operations with the same type and target, only the first occurrence is kept.
 // This is particularly important for directory creation operations.
-func deduplicateOperations(ops []types.Operation) []types.Operation {
-	if len(ops) <= 1 {
-		return ops
-	}
-
-	logger := logging.GetLogger("core.operations")
-	seen := make(map[string]bool)
-	result := make([]types.Operation, 0, len(ops))
-
-	for _, op := range ops {
-		// Create a key based on operation type and target
-		// This ensures operations with same type and target are considered duplicates
-		key := string(op.Type) + ":" + op.Target
-
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, op)
-		} else {
-			// Log when we skip a duplicate operation
-			logger.Warn().
-				Str("type", string(op.Type)).
-				Str("target", op.Target).
-				Str("description", op.Description).
-				Msg("Skipping duplicate operation")
-		}
-	}
-
-	return result
-}
