@@ -19,13 +19,13 @@ jobs:
       - name: TODO to Issue
         uses: alstr/todo-to-issue-action@v5.0
         with:
-          # IMPORTANT: There is no PATH parameter in this action!
-          # Use IGNORE with regex patterns to exclude directories
+          # There is no PATH variable! Use ignore
           IGNORE: "vendor/.*"
           CLOSE_ISSUES: false
           AUTO_P: true
-          # Note: TODO identifier cannot be disabled, it's hardcoded
-          # These identifiers are ADDED to the default TODO
+          # We don't auto add todo as this rarely fits the mental model when
+          # writing one, these, however are more aligned with the intention
+          # Use a specific label to sort them when needed 
           IDENTIFIERS: |
             [
               {"name": "FIX", "labels": ["auto-todo"]},
