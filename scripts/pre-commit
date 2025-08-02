@@ -53,10 +53,8 @@ uninstall_hook() {
     fi
 }
 
-# Function to run the actual pre-commit checks, will run gofmft
+# Function to run the actual pre-commit checks
 run_checks() {
-    echo "gofmt.ing"
-    gofmt -w pkg cmd internal
     # Colors for output
     RED='\033[0;31m'
     GREEN='\033[0;32m'
@@ -64,11 +62,19 @@ run_checks() {
 
     echo "🔍 Running pre-commit checks:"
 
-    # Set PROJECT_ROOT for the lint and test scripts
+    # Set PROJECT_ROOT for all scripts
     export PROJECT_ROOT
 
     # Track overall success
     overall_success=true
+
+    # Run gofmt on staged files (suppress output)
+    if "${PROJECT_ROOT}"/scripts/fmt --staged >/dev/null 2>&1; then
+        echo -e "    ${GREEN}✓ Formatting${NC}"
+    else
+        echo -e "    ${RED}✗ Formatting failed${NC}"
+        overall_success=false
+    fi
 
     # Run lint (suppress output)
     if "${PROJECT_ROOT}"/scripts/lint >/dev/null 2>&1; then
