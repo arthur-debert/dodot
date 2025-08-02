@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -176,13 +176,13 @@ func TestCoreDeployPacksReturnsOperations(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("\" vim config content"), 0644))
 
 	// Call DeployPacks
-	opts := core.DeployPacksOptions{
+	opts := commands.DeployPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{"test-pack"},
 		DryRun:       false,
 	}
 
-	result, err := core.DeployPacks(opts)
+	result, err := commands.DeployPacks(opts)
 	require.NoError(t, err)
 
 	// Debug: log what we got

@@ -37,6 +37,11 @@ func NewExecutionContext(force bool) *ExecutionContext {
 	}
 }
 
+// IsForce returns whether force mode is enabled
+func (ctx *ExecutionContext) IsForce() bool {
+	return ctx.Force
+}
+
 // ExecuteChecksumOperations executes only checksum operations and stores results
 func (ctx *ExecutionContext) ExecuteChecksumOperations(operations []types.Operation) ([]OperationResult, error) {
 	var results []OperationResult

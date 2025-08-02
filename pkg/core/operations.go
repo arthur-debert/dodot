@@ -2,15 +2,38 @@ package core
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
+
+// Re-exports from pkg/operations for backwards compatibility
+var (
+	areOperationsCompatible = operations.AreOperationsCompatible
+	expandHome              = operations.ExpandHome
+	uint32Ptr               = operations.Uint32Ptr
+	deduplicateOperations   = operations.DeduplicateOperations
+)
+
+// ResolveConflicts checks for and marks conflicting operations
+// This is a wrapper to maintain backward compatibility with ExecutionContext
+func ResolveConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
+	if ctx == nil {
+		operations.ResolveConflicts(ops, nil)
+	} else {
+		operations.ResolveConflicts(ops, ctx)
+	}
+}
+
+// resolveOperationConflicts is a wrapper for the operations package function
+func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
+	operations.ResolveOperationConflicts(ops, ctx)
+}
 
 // GetFileOperations converts actions into file system operations
 func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
@@ -76,55 +99,6 @@ func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext)
 
 // ResolveConflicts checks for and resolves conflicts.
 // It modifies the operations slice in place.
-func ResolveConflicts(operations *[]types.Operation, ctx *ExecutionContext) {
-	logger := logging.GetLogger("core.operations")
-	ops := *operations
-	force := ctx != nil && ctx.Force
-	processedTargets := make(map[string]bool)
-
-	for i := range ops {
-		op := &ops[i]
-		if op.Status != types.StatusReady {
-			continue
-		}
-
-		target := filepath.Clean(op.Target)
-		if target == "" {
-			continue
-		}
-
-		if processedTargets[target] {
-			if !force {
-				op.Status = types.StatusConflict
-			}
-			continue
-		}
-
-		// Check for filesystem conflicts
-		if op.Type == types.OperationCreateSymlink {
-			if _, err := os.Lstat(op.Target); err == nil {
-				if !force {
-					op.Status = types.StatusConflict
-					logger.Debug().
-						Str("target", op.Target).
-						Msg("Marking symlink operation as conflicted due to existing file")
-				}
-			} else if !os.IsNotExist(err) {
-				op.Status = types.StatusError
-				logger.Error().
-					Err(err).
-					Str("target", op.Target).
-					Msg("Error checking symlink target")
-			}
-		}
-
-		if op.Status == types.StatusReady {
-			processedTargets[target] = true
-		}
-	}
-
-	*operations = ops
-}
 
 // ConvertAction converts a single action to one or more operations
 func ConvertAction(action types.Action) ([]types.Operation, error) {
@@ -237,63 +211,6 @@ func convertLinkAction(action types.Action) ([]types.Operation, error) {
 
 // resolveOperationConflicts checks for and resolves conflicts.
 // It modifies the operations slice in place.
-func resolveOperationConflicts(operations *[]types.Operation, ctx *ExecutionContext) {
-	logger := logging.GetLogger("core.operations")
-	ops := *operations
-	force := ctx != nil && ctx.Force
-
-	for i := range ops {
-		op := &ops[i]
-		if op.Status != types.StatusReady {
-			continue
-		}
-
-		// Check for internal conflicts (multiple ops targeting the same path)
-		for j := i + 1; j < len(ops); j++ {
-			otherOp := &ops[j]
-			if op.Target == otherOp.Target && !areOperationsCompatible([]*types.Operation{op, otherOp}) {
-				if !force {
-					logger.Error().
-						Str("target", op.Target).
-						Msg("Incompatible operations targeting the same path")
-					op.Status = types.StatusConflict
-					otherOp.Status = types.StatusConflict
-				}
-			}
-		}
-
-		// Check for filesystem conflicts (e.g., pre-existing files)
-		if op.Type == types.OperationCreateSymlink {
-			if _, err := os.Lstat(op.Target); err == nil {
-				if !force {
-					logger.Warn().
-						Str("target", op.Target).
-						Msg("Target file exists and --force is not used, marking as conflict")
-					op.Status = types.StatusConflict
-				}
-			} else if !os.IsNotExist(err) {
-				logger.Error().Err(err).Str("target", op.Target).Msg("Failed to check target file status")
-				op.Status = types.StatusError
-			}
-		}
-	}
-
-	*operations = ops
-}
-
-func areOperationsCompatible(ops []*types.Operation) bool {
-	if len(ops) <= 1 {
-		return true
-	}
-	allDirCreates := true
-	for _, op := range ops {
-		if op.Type != types.OperationCreateDir {
-			allDirCreates = false
-			break
-		}
-	}
-	return allDirCreates
-}
 
 // NOTE: The rest of the file (various convert functions) is omitted for brevity.
 // They are assumed to be present and correct. I will only show the changed parts.
@@ -487,9 +404,6 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 }
 
 // expandHome expands ~ to the user's home directory
-func expandHome(path string) string {
-	return paths.ExpandHome(path)
-}
 
 // convertBrewActionWithContext converts a brew action to operations with execution context
 func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
@@ -600,9 +514,6 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 }
 
 // Helper to create uint32 pointer
-func uint32Ptr(v uint32) *uint32 {
-	return &v
-}
 
 // convertReadAction converts a read action to read operations
 func convertReadAction(action types.Action) ([]types.Operation, error) {
@@ -645,32 +556,3 @@ func convertChecksumAction(action types.Action) ([]types.Operation, error) {
 // deduplicateOperations removes duplicate operations based on type and target.
 // For operations with the same type and target, only the first occurrence is kept.
 // This is particularly important for directory creation operations.
-func deduplicateOperations(ops []types.Operation) []types.Operation {
-	if len(ops) <= 1 {
-		return ops
-	}
-
-	logger := logging.GetLogger("core.operations")
-	seen := make(map[string]bool)
-	result := make([]types.Operation, 0, len(ops))
-
-	for _, op := range ops {
-		// Create a key based on operation type and target
-		// This ensures operations with same type and target are considered duplicates
-		key := string(op.Type) + ":" + op.Target
-
-		if !seen[key] {
-			seen[key] = true
-			result = append(result, op)
-		} else {
-			// Log when we skip a duplicate operation
-			logger.Warn().
-				Str("type", string(op.Type)).
-				Str("target", op.Target).
-				Str("description", op.Description).
-				Msg("Skipping duplicate operation")
-		}
-	}
-
-	return result
-}

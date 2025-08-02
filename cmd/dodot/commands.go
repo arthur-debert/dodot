@@ -7,9 +7,10 @@ import (
 
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -135,7 +136,7 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	}
 
 	// Get list of packs
-	result, err := core.ListPacks(core.ListPacksOptions{
+	result, err := commands.ListPacks(commands.ListPacksOptions{
 		DotfilesRoot: p.DotfilesRoot(),
 	})
 	if err != nil {
@@ -190,7 +191,7 @@ func newDeployCmd() *cobra.Command {
 				Msg("Deploying from dotfiles root")
 
 			// Use the actual DeployPacks implementation
-			result, err := core.DeployPacks(core.DeployPacksOptions{
+			result, err := commands.DeployPacks(commands.DeployPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				PackNames:    args,
 				DryRun:       dryRun,
@@ -201,7 +202,7 @@ func newDeployCmd() *cobra.Command {
 
 			// Execute operations if not in dry-run mode
 			if !dryRun && len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(dryRun)
+				executor := synthfs.NewSynthfsExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
@@ -254,7 +255,7 @@ func newInstallCmd() *cobra.Command {
 				Msg("Installing from dotfiles root")
 
 			// Use the actual InstallPacks implementation
-			result, err := core.InstallPacks(core.InstallPacksOptions{
+			result, err := commands.InstallPacks(commands.InstallPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				PackNames:    args,
 				DryRun:       dryRun,
@@ -266,7 +267,7 @@ func newInstallCmd() *cobra.Command {
 
 			// Execute operations if not in dry-run mode
 			if !dryRun && len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(dryRun)
+				executor := synthfs.NewSynthfsExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
@@ -310,7 +311,7 @@ func newListCmd() *cobra.Command {
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
 
 			// Use the actual ListPacks implementation
-			result, err := core.ListPacks(core.ListPacksOptions{
+			result, err := commands.ListPacks(commands.ListPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 			})
 			if err != nil {
@@ -350,7 +351,7 @@ func newStatusCmd() *cobra.Command {
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
 
 			// Use the actual StatusPacks implementation
-			result, err := core.StatusPacks(core.StatusPacksOptions{
+			result, err := commands.StatusPacks(commands.StatusPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				PackNames:    args,
 			})
@@ -400,7 +401,7 @@ func newInitCmd() *cobra.Command {
 				Msg("Creating new pack")
 
 			// Use the actual InitPack implementation
-			result, err := core.InitPack(core.InitPackOptions{
+			result, err := commands.InitPack(commands.InitPackOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				PackName:     packName,
 			})
@@ -410,7 +411,7 @@ func newInitCmd() *cobra.Command {
 
 			// Execute operations if any
 			if len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(false)
+				executor := synthfs.NewSynthfsExecutor(false)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}
@@ -454,7 +455,7 @@ func newFillCmd() *cobra.Command {
 				Msg("Filling pack with placeholder files")
 
 			// Use the actual FillPack implementation
-			result, err := core.FillPack(core.FillPackOptions{
+			result, err := commands.FillPack(commands.FillPackOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				PackName:     packName,
 			})
@@ -464,7 +465,7 @@ func newFillCmd() *cobra.Command {
 
 			// Execute operations if any
 			if len(result.Operations) > 0 {
-				executor := core.NewSynthfsExecutor(false)
+				executor := synthfs.NewSynthfsExecutor(false)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}

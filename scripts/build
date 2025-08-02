@@ -35,6 +35,14 @@ echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
 echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
 echo
 
+# Download dependencies first
+echo -e "${BLUE}Downloading dependencies...${NC}"
+go mod download
+
+# List all packages to ensure they're recognized
+echo -e "${BLUE}Listing all packages...${NC}"
+go list ./...
+
 # Build all packages first
 echo -e "${BLUE}Building all packages...${NC}"
 if go build -v ./...; then
