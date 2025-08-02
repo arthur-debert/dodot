@@ -7,10 +7,23 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
+
+	// Import powerups and triggers to register them via init() functions
+	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 // defaultMatchers stores the default matchers
 var defaultMatchers = make(map[string]types.Matcher)
+
+// init registers all default powerups and triggers needed by the default matchers
+// by importing the packages, which triggers their init() functions
+func init() {
+	// The import of powerups and triggers packages above will automatically
+	// register all powerups and triggers through their init() functions.
+	// This ensures that any code importing matchers gets all the default
+	// powerups and triggers registered without needing separate imports.
+}
 
 // RegisterDefaultMatcher registers a default matcher
 func RegisterDefaultMatcher(name string, matcher types.Matcher) {
