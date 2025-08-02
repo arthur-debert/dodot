@@ -48,7 +48,7 @@ func TestOtherPowerUps_GetTemplateContent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			content := tt.powerup.GetTemplateContent()
-			
+
 			if tt.hasTemplate {
 				assert.NotEmpty(t, content, "%s should have template content", tt.name)
 				for _, expected := range tt.expectedContent {
