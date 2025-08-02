@@ -44,7 +44,7 @@ func TestListCommand(t *testing.T) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-				
+
 				// Create vim pack
 				vimDir := filepath.Join(dotfilesRoot, "vim")
 				require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -53,7 +53,7 @@ func TestListCommand(t *testing.T) {
 					[]byte("\" vim config"),
 					0644,
 				))
-				
+
 				return dotfilesRoot
 			},
 			expectedOutput: []string{
@@ -68,7 +68,7 @@ func TestListCommand(t *testing.T) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-				
+
 				// Create packs in non-alphabetical order
 				packs := []string{"zsh", "vim", "git", "tmux", "bash"}
 				for _, pack := range packs {
@@ -81,13 +81,13 @@ func TestListCommand(t *testing.T) {
 						0644,
 					))
 				}
-				
+
 				return dotfilesRoot
 			},
 			expectedOutput: []string{
 				"Available packs:",
 				"bash",
-				"git", 
+				"git",
 				"tmux",
 				"vim",
 				"zsh",
@@ -100,7 +100,7 @@ func TestListCommand(t *testing.T) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-				
+
 				// Create regular packs
 				vimDir := filepath.Join(dotfilesRoot, "vim")
 				require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -109,7 +109,7 @@ func TestListCommand(t *testing.T) {
 					[]byte("\" vim config"),
 					0644,
 				))
-				
+
 				// Create hidden directory (should be ignored)
 				hiddenDir := filepath.Join(dotfilesRoot, ".hidden")
 				require.NoError(t, os.MkdirAll(hiddenDir, 0755))
@@ -118,11 +118,11 @@ func TestListCommand(t *testing.T) {
 					[]byte("# hidden config"),
 					0644,
 				))
-				
+
 				// Create .git directory (should be ignored)
 				gitDir := filepath.Join(dotfilesRoot, ".git")
 				require.NoError(t, os.MkdirAll(gitDir, 0755))
-				
+
 				return dotfilesRoot
 			},
 			expectedOutput: []string{
@@ -141,7 +141,7 @@ func TestListCommand(t *testing.T) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-				
+
 				// Create normal pack
 				vimDir := filepath.Join(dotfilesRoot, "vim")
 				require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -150,7 +150,7 @@ func TestListCommand(t *testing.T) {
 					[]byte("\" vim config"),
 					0644,
 				))
-				
+
 				// Create ignored pack
 				ignoredDir := filepath.Join(dotfilesRoot, "ignored")
 				require.NoError(t, os.MkdirAll(ignoredDir, 0755))
@@ -164,7 +164,7 @@ func TestListCommand(t *testing.T) {
 					[]byte("# ignored config"),
 					0644,
 				))
-				
+
 				return dotfilesRoot
 			},
 			expectedOutput: []string{
@@ -182,11 +182,11 @@ func TestListCommand(t *testing.T) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-				
+
 				// Create empty directories
 				emptyDir := filepath.Join(dotfilesRoot, "empty")
 				require.NoError(t, os.MkdirAll(emptyDir, 0755))
-				
+
 				// Create pack with file
 				vimDir := filepath.Join(dotfilesRoot, "vim")
 				require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -195,7 +195,7 @@ func TestListCommand(t *testing.T) {
 					[]byte("\" vim config"),
 					0644,
 				))
-				
+
 				return dotfilesRoot
 			},
 			expectedOutput: []string{
@@ -211,14 +211,14 @@ func TestListCommand(t *testing.T) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-				
+
 				// Create a file in dotfiles root
 				require.NoError(t, os.WriteFile(
 					filepath.Join(dotfilesRoot, "README.md"),
 					[]byte("# Dotfiles"),
 					0644,
 				))
-				
+
 				// Create pack directory
 				vimDir := filepath.Join(dotfilesRoot, "vim")
 				require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -227,7 +227,7 @@ func TestListCommand(t *testing.T) {
 					[]byte("\" vim config"),
 					0644,
 				))
-				
+
 				return dotfilesRoot
 			},
 			expectedOutput: []string{
@@ -263,25 +263,25 @@ func TestListCommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dotfilesRoot := tt.setup(t)
-			
+
 			// Set environment variables
 			t.Setenv("DOTFILES_ROOT", dotfilesRoot)
 			t.Setenv("DODOT_TEST_MODE", "true")
-			
+
 			// Execute command and capture output
 			var output string
 			var cmdErr error
-			
+
 			output, err := captureOutput(func() {
 				// Create command
 				cmd := NewRootCmd()
 				cmd.SetArgs([]string{"list"})
-				
+
 				// Execute command
 				cmdErr = cmd.Execute()
 			})
 			require.NoError(t, err, "Failed to capture output")
-			
+
 			if tt.wantErr {
 				assert.Error(t, cmdErr)
 				if tt.expectedErr != "" {
@@ -289,15 +289,15 @@ func TestListCommand(t *testing.T) {
 				}
 				return
 			}
-			
+
 			require.NoError(t, cmdErr)
-			
+
 			// Check expected output
 			for _, expected := range tt.expectedOutput {
 				assert.Contains(t, output, expected,
 					"Expected output to contain %q, but got:\n%s", expected, output)
 			}
-			
+
 			// Check not expected output
 			for _, notExpected := range tt.notExpected {
 				assert.NotContains(t, output, notExpected,
@@ -312,7 +312,7 @@ func TestListCommandVerbose(t *testing.T) {
 	tmpDir := t.TempDir()
 	dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
 	require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-	
+
 	// Create a pack
 	vimDir := filepath.Join(dotfilesRoot, "vim")
 	require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -321,10 +321,10 @@ func TestListCommandVerbose(t *testing.T) {
 		[]byte("\" vim config"),
 		0644,
 	))
-	
+
 	t.Setenv("DOTFILES_ROOT", dotfilesRoot)
 	t.Setenv("DODOT_TEST_MODE", "true")
-	
+
 	// Run with -v flag to get INFO level logs
 	var errBuf bytes.Buffer
 	output, err := captureOutput(func() {
@@ -334,10 +334,10 @@ func TestListCommandVerbose(t *testing.T) {
 		_ = cmd.Execute()
 	})
 	require.NoError(t, err)
-	
+
 	// Should see the packs
 	assert.Contains(t, output, "vim")
-	
+
 	// With verbose flag, we might see log messages in stderr
 	// (depending on how logging is configured)
 	errOutput := errBuf.String()
@@ -347,13 +347,13 @@ func TestListCommandVerbose(t *testing.T) {
 func TestListCommandWithFallbackWarning(t *testing.T) {
 	// Test list command when DOTFILES_ROOT is not set (uses fallback)
 	tmpDir := t.TempDir()
-	
+
 	// Change to tmpDir so it becomes the fallback
 	oldWd, err := os.Getwd()
 	require.NoError(t, err)
 	require.NoError(t, os.Chdir(tmpDir))
 	defer func() { _ = os.Chdir(oldWd) }()
-	
+
 	// Create a pack in current directory
 	vimDir := filepath.Join(tmpDir, "vim")
 	require.NoError(t, os.MkdirAll(vimDir, 0755))
@@ -362,16 +362,16 @@ func TestListCommandWithFallbackWarning(t *testing.T) {
 		[]byte("\" vim config"),
 		0644,
 	))
-	
+
 	// Unset DOTFILES_ROOT to trigger fallback
 	t.Setenv("DOTFILES_ROOT", "")
 	t.Setenv("DODOT_TEST_MODE", "true")
-	
+
 	// Capture both stdout and stderr
 	oldStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w
-	
+
 	var errOutput string
 	done := make(chan bool)
 	go func() {
@@ -380,22 +380,22 @@ func TestListCommandWithFallbackWarning(t *testing.T) {
 		errOutput = buf.String()
 		done <- true
 	}()
-	
+
 	output, err := captureOutput(func() {
 		cmd := NewRootCmd()
 		cmd.SetArgs([]string{"list"})
 		_ = cmd.Execute()
 	})
 	require.NoError(t, err)
-	
+
 	// Restore stderr
 	os.Stderr = oldStderr
 	_ = w.Close()
 	<-done
-	
+
 	// Should see the pack
 	assert.Contains(t, output, "vim")
-	
+
 	// Should see warning about fallback in stderr
 	assert.Contains(t, errOutput, "Warning") // Fallback warning
 }

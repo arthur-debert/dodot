@@ -20,7 +20,7 @@ func TestTopicsCommand(t *testing.T) {
 
 	t.Run("topics command exists and has correct structure", func(t *testing.T) {
 		cmd := NewRootCmd()
-		
+
 		// Find the topics command
 		var topicsCmd *cobra.Command
 		for _, c := range cmd.Commands() {
@@ -29,7 +29,7 @@ func TestTopicsCommand(t *testing.T) {
 				break
 			}
 		}
-		
+
 		require.NotNil(t, topicsCmd, "topics command should exist")
 		assert.Equal(t, "topics", topicsCmd.Use)
 		assert.Equal(t, MsgTopicsShort, topicsCmd.Short)
@@ -42,10 +42,10 @@ func TestTopicsCommand(t *testing.T) {
 		// In the test environment, the help command is not properly initialized
 		// because it depends on finding topic files relative to the executable.
 		// The topics command should return "help command not found" error.
-		
+
 		cmd := NewRootCmd()
 		cmd.SetArgs([]string{"topics"})
-		
+
 		err := cmd.Execute()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "help command not found")
@@ -53,7 +53,7 @@ func TestTopicsCommand(t *testing.T) {
 
 	t.Run("topics command has no subcommands", func(t *testing.T) {
 		cmd := NewRootCmd()
-		
+
 		var topicsCmd *cobra.Command
 		for _, c := range cmd.Commands() {
 			if c.Name() == "topics" {
@@ -61,14 +61,14 @@ func TestTopicsCommand(t *testing.T) {
 				break
 			}
 		}
-		
+
 		require.NotNil(t, topicsCmd)
 		assert.Empty(t, topicsCmd.Commands(), "topics command should have no subcommands")
 	})
 
 	t.Run("topics command has no special flags", func(t *testing.T) {
 		cmd := NewRootCmd()
-		
+
 		var topicsCmd *cobra.Command
 		for _, c := range cmd.Commands() {
 			if c.Name() == "topics" {
@@ -76,7 +76,7 @@ func TestTopicsCommand(t *testing.T) {
 				break
 			}
 		}
-		
+
 		require.NotNil(t, topicsCmd)
 		// Check that topics command has no local flags (only inherits persistent flags)
 		assert.False(t, topicsCmd.HasLocalFlags(), "topics command should not have local flags")
@@ -85,7 +85,7 @@ func TestTopicsCommand(t *testing.T) {
 	t.Run("topics command implementation", func(t *testing.T) {
 		// Verify that the topics command implementation tries to find and execute
 		// the help command with "topics" as an argument
-		
+
 		cmd := NewRootCmd()
 		var topicsCmd *cobra.Command
 		for _, c := range cmd.Commands() {
@@ -94,10 +94,10 @@ func TestTopicsCommand(t *testing.T) {
 				break
 			}
 		}
-		
+
 		require.NotNil(t, topicsCmd)
 		require.NotNil(t, topicsCmd.RunE)
-		
+
 		// The RunE function should attempt to find the help command
 		// In test environment, this will fail with "help command not found"
 		err := topicsCmd.RunE(topicsCmd, []string{})
@@ -108,16 +108,16 @@ func TestTopicsCommand(t *testing.T) {
 
 func TestTopicsCommandMessages(t *testing.T) {
 	// Verify that the topics command uses the correct message constants
-	
+
 	t.Run("message constants are defined", func(t *testing.T) {
 		assert.NotEmpty(t, MsgTopicsShort, "MsgTopicsShort should be defined")
 		assert.NotEmpty(t, MsgTopicsLong, "MsgTopicsLong should be defined")
 	})
-	
+
 	t.Run("messages are properly formatted", func(t *testing.T) {
 		// Basic checks that messages don't have obvious issues
 		assert.NotContains(t, MsgTopicsShort, "\n", "Short description should be single line")
-		assert.Greater(t, len(MsgTopicsLong), len(MsgTopicsShort), 
+		assert.Greater(t, len(MsgTopicsLong), len(MsgTopicsShort),
 			"Long description should be longer than short description")
 	})
 }
