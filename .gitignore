@@ -1,7 +1,7 @@
 # AI Assistant temporary files
 local
 tmp
-bin/
+/bin/
 .DS_Store
 ai-assistant/.build/
 ai-assistant/*.log
