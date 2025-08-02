@@ -60,6 +60,11 @@ func (p *ShellAddPathPowerUp) ValidateOptions(options map[string]interface{}) er
 	return nil // No options to validate yet
 }
 
+// GetTemplateContent returns the template content for this power-up
+func (p *ShellAddPathPowerUp) GetTemplateContent() string {
+	return ""
+}
+
 func init() {
 	err := registry.RegisterPowerUpFactory(ShellAddPathPowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
 		return NewShellAddPathPowerUp(), nil

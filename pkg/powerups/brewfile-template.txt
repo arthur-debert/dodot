@@ -1,0 +1,16 @@
+# Homebrew dependencies for PACK_NAME pack
+# 
+# This file is processed during 'dodot install PACK_NAME'
+# dodot tracks installed formulas and won't reinstall unless this file changes.
+#
+# Uses standard Brewfile syntax:
+# https://github.com/Homebrew/homebrew-bundle
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# dependencies later without redeploying the pack.
+
+# Examples:
+# brew 'git'          # Command line tools
+# brew 'tmux'         
+# cask 'firefox'      # GUI applications
+# mas 'Xcode', id: 497799835  # Mac App Store apps

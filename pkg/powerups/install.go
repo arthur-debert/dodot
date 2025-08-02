@@ -100,6 +100,11 @@ func (p *InstallScriptPowerUp) ValidateOptions(options map[string]interface{}) e
 	return nil
 }
 
+// GetTemplateContent returns the template content for this power-up
+func (p *InstallScriptPowerUp) GetTemplateContent() string {
+	return ""
+}
+
 // GetSentinelPath returns the path to the sentinel file for a pack
 func GetInstallSentinelPath(pack string) string {
 	return filepath.Join(paths.GetInstallDir(), pack)

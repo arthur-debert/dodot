@@ -140,6 +140,12 @@ func (p *SymlinkPowerUp) ValidateOptions(options map[string]interface{}) error {
 	return nil
 }
 
+// GetTemplateContent returns the template content for this power-up
+func (p *SymlinkPowerUp) GetTemplateContent() string {
+	// Symlink powerup doesn't provide templates - it symlinks any file
+	return ""
+}
+
 func init() {
 	// Register a factory function that creates the symlink power-up
 	err := registry.RegisterPowerUpFactory(SymlinkPowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {

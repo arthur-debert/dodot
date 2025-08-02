@@ -48,11 +48,12 @@ func (m *MockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]int
 
 // MockPowerUp is a mock implementation of the types.PowerUp interface for testing.
 type MockPowerUp struct {
-	NameFunc            func() string
-	DescriptionFunc     func() string
-	RunModeFunc         func() types.RunMode
-	ProcessFunc         func(matches []types.TriggerMatch) ([]types.Action, error)
-	ValidateOptionsFunc func(options map[string]interface{}) error
+	NameFunc               func() string
+	DescriptionFunc        func() string
+	RunModeFunc            func() types.RunMode
+	ProcessFunc            func(matches []types.TriggerMatch) ([]types.Action, error)
+	ValidateOptionsFunc    func(options map[string]interface{}) error
+	GetTemplateContentFunc func() string
 }
 
 // Name returns the mock's name.
@@ -93,4 +94,12 @@ func (m *MockPowerUp) ValidateOptions(options map[string]interface{}) error {
 		return m.ValidateOptionsFunc(options)
 	}
 	return nil
+}
+
+// GetTemplateContent returns the mock's template content.
+func (m *MockPowerUp) GetTemplateContent() string {
+	if m.GetTemplateContentFunc != nil {
+		return m.GetTemplateContentFunc()
+	}
+	return ""
 }

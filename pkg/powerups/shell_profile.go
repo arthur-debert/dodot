@@ -60,6 +60,11 @@ func (p *ShellProfilePowerUp) ValidateOptions(options map[string]interface{}) er
 	return nil // No options to validate yet
 }
 
+// GetTemplateContent returns the template content for this power-up
+func (p *ShellProfilePowerUp) GetTemplateContent() string {
+	return ""
+}
+
 func init() {
 	err := registry.RegisterPowerUpFactory(ShellProfilePowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
 		return NewShellProfilePowerUp(), nil

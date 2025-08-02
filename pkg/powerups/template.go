@@ -165,6 +165,11 @@ func (p *TemplatePowerUp) ValidateOptions(options map[string]interface{}) error 
 	return nil
 }
 
+// GetTemplateContent returns the template content for this power-up
+func (p *TemplatePowerUp) GetTemplateContent() string {
+	return ""
+}
+
 func init() {
 	// Register the factory
 	err := registry.RegisterPowerUpFactory(TemplatePowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
