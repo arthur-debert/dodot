@@ -22,5 +22,5 @@ jobs:
         SKIP_TESTS: true
 
     - name: Test
-      run: go test -mod=mod -v ./...
+      run: go test -mod=vendor -v ./...
 
