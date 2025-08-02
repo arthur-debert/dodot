@@ -96,6 +96,11 @@ func (t *FileNameTrigger) Priority() int {
 	return t.priority
 }
 
+// GetPattern returns the pattern this trigger matches
+func (t *FileNameTrigger) GetPattern() string {
+	return t.pattern
+}
+
 // containsGlobChars checks if a pattern contains glob special characters
 func containsGlobChars(pattern string) bool {
 	for _, char := range pattern {

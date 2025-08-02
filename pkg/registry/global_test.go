@@ -34,6 +34,9 @@ func (m *mockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, err
 func (m *mockPowerUp) ValidateOptions(options map[string]interface{}) error {
 	return nil
 }
+func (m *mockPowerUp) GetTemplateContent() string {
+	return ""
+}
 
 func TestGetRegistry(t *testing.T) {
 	// Test getting trigger registry

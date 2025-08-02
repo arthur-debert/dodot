@@ -1,6 +1,7 @@
 package powerups
 
 import (
+	_ "embed"
 	"fmt"
 	"path/filepath"
 
@@ -15,6 +16,9 @@ const (
 	// BrewfilePowerUpName is the unique name for the Brewfile power-up
 	BrewfilePowerUpName = "brewfile"
 )
+
+//go:embed brewfile-template.txt
+var brewfileTemplate string
 
 // BrewfilePowerUp processes Brewfiles to install packages via Homebrew
 type BrewfilePowerUp struct{}
@@ -96,6 +100,11 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 func (p *BrewfilePowerUp) ValidateOptions(options map[string]interface{}) error {
 	// Brewfile power-up doesn't have any options
 	return nil
+}
+
+// GetTemplateContent returns the template content for this power-up
+func (p *BrewfilePowerUp) GetTemplateContent() string {
+	return brewfileTemplate
 }
 
 // GetSentinelPath returns the path to the sentinel file for a pack

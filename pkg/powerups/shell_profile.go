@@ -1,6 +1,7 @@
 package powerups
 
 import (
+	_ "embed"
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -11,6 +12,9 @@ import (
 const (
 	ShellProfilePowerUpName = "shell_profile"
 )
+
+//go:embed aliases-template.txt
+var aliasesTemplate string
 
 // ShellProfilePowerUp manages shell profile modifications
 type ShellProfilePowerUp struct{}
@@ -58,6 +62,11 @@ func (p *ShellProfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Act
 
 func (p *ShellProfilePowerUp) ValidateOptions(options map[string]interface{}) error {
 	return nil // No options to validate yet
+}
+
+// GetTemplateContent returns the template content for this power-up
+func (p *ShellProfilePowerUp) GetTemplateContent() string {
+	return aliasesTemplate
 }
 
 func init() {

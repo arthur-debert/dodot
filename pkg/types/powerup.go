@@ -35,6 +35,10 @@ type PowerUp interface {
 
 	// ValidateOptions checks if the provided options are valid for this power-up
 	ValidateOptions(options map[string]interface{}) error
+
+	// GetTemplateContent returns the template content for this power-up
+	// Returns empty string if the power-up doesn't provide a template
+	GetTemplateContent() string
 }
 
 // PowerUpFactory is a function that creates a new PowerUp instance

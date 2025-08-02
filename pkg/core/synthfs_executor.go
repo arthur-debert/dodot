@@ -442,6 +442,7 @@ func (e *SynthfsExecutor) validateSafePath(path string) error {
 
 	// Check if the path is within any of the safe directories
 	safeDirectories := []string{
+		e.paths.DotfilesRoot(), // Allow operations in dotfiles root for init/fill
 		e.paths.DataDir(),
 		e.paths.ConfigDir(),
 		e.paths.CacheDir(),
