@@ -8,7 +8,7 @@ Pack Commands
 Pack commands operate on one or more packs using the format:
 $ dodot <command> <pack1> ... <packN>
 
-Use the --all (-a) flag to operate on all packs in your dotfiles root.
+When no pack names are specified, the command operates on all packs in your dotfiles root.
 
 1. install
 ----------
@@ -18,13 +18,12 @@ Install and deploy a pack. This is a superset of deploy that runs all
 configurations.
 
 Usage:
-$ dodot install <pack>
-$ dodot install --all
-$ dodot install vim git ssh
+$ dodot install              # Install all packs
+$ dodot install <pack>       # Install specific pack
+$ dodot install vim git ssh  # Install multiple packs
 
 Options:
 • --force - Force re-execution of run-once power-ups even if already executed
-• --all (-a) - Install all packs in your dotfiles directory
 
 Behavior:
 • Runs install.sh scripts (install_script power-up)
@@ -40,8 +39,8 @@ Deploy pack configurations without running install scripts. Creates symlinks
 and updates shell configurations but skips run-once power-ups.
 
 Usage:
-$ dodot deploy <pack>
-$ dodot deploy --all
+$ dodot deploy         # Deploy all packs
+$ dodot deploy <pack>  # Deploy specific pack
 
 Use this when you only want to update symlinks and shell configurations
 without re-running expensive install operations.
@@ -53,8 +52,8 @@ Show the deployment status for given pack(s). Displays information about
 installed components, symlinks, and shell modifications.
 
 Usage:
-$ dodot status <pack>
-$ dodot status --all
+$ dodot status         # Show status for all packs
+$ dodot status <pack>  # Show status for specific pack
 
 Example output:
 ```
@@ -134,7 +133,7 @@ $ dodot install vim
 
 Deploy all configurations:
 ```bash
-$ dodot deploy --all
+$ dodot deploy
 ```
 
 Check status of specific pack:
