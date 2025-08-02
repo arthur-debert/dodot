@@ -1,9 +1,15 @@
-package powerups
+package brewfile
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/powerups/bin"
+	"github.com/arthur-debert/dodot/pkg/powerups/install"
+	"github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
+	"github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
+	"github.com/arthur-debert/dodot/pkg/powerups/symlink"
+	"github.com/arthur-debert/dodot/pkg/powerups/template"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -37,12 +43,12 @@ func TestOtherPowerUps_GetTemplateContent(t *testing.T) {
 		hasTemplate     bool
 		expectedContent []string // content that should be present if hasTemplate is true
 	}{
-		{"SymlinkPowerUp", NewSymlinkPowerUp(), false, nil},
-		{"BinPowerUp", NewBinPowerUp(), false, nil},
-		{"InstallScriptPowerUp", NewInstallScriptPowerUp(), true, []string{"#!/usr/bin/env bash", "dodot install", "PACK_NAME"}},
-		{"ShellAddPathPowerUp", NewShellAddPathPowerUp(), true, []string{"#!/usr/bin/env sh", "PATH modifications", "PACK_NAME"}},
-		{"ShellProfilePowerUp", NewShellProfilePowerUp(), true, []string{"#!/usr/bin/env sh", "Shell aliases", "PACK_NAME"}},
-		{"TemplatePowerUp", NewTemplatePowerUp(), false, nil},
+		{"SymlinkPowerUp", symlink.NewSymlinkPowerUp(), false, nil},
+		{"BinPowerUp", bin.NewBinPowerUp(), false, nil},
+		{"InstallScriptPowerUp", install.NewInstallScriptPowerUp(), true, []string{"#!/usr/bin/env bash", "dodot install", "PACK_NAME"}},
+		{"ShellAddPathPowerUp", shell_add_path.NewShellAddPathPowerUp(), true, []string{"#!/usr/bin/env sh", "PATH modifications", "PACK_NAME"}},
+		{"ShellProfilePowerUp", shell_profile.NewShellProfilePowerUp(), true, []string{"#!/usr/bin/env sh", "Shell aliases", "PACK_NAME"}},
+		{"TemplatePowerUp", template.NewTemplatePowerUp(), false, nil},
 	}
 
 	for _, tt := range tests {

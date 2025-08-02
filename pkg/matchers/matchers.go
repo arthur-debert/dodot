@@ -9,7 +9,13 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 
 	// Import powerups and triggers to register them via init() functions
-	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/bin"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/brewfile"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/install"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/symlink"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/template"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 

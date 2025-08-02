@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/powerups"
+	"github.com/arthur-debert/dodot/pkg/powerups/brewfile"
+	"github.com/arthur-debert/dodot/pkg/powerups/install"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -47,7 +48,7 @@ echo install`
 			Type:        types.ActionTypeBrew,
 			Source:      brewfilePath,
 			Pack:        "tools",
-			PowerUpName: powerups.BrewfilePowerUpName,
+			PowerUpName: brewfile.BrewfilePowerUpName,
 			Metadata: map[string]interface{}{
 				"checksum": brewChecksum,
 				"pack":     "tools",
@@ -57,7 +58,7 @@ echo install`
 			Type:        types.ActionTypeInstall,
 			Source:      installPath,
 			Pack:        "tools",
-			PowerUpName: powerups.InstallScriptPowerUpName,
+			PowerUpName: install.InstallScriptPowerUpName,
 			Metadata: map[string]interface{}{
 				"checksum": installChecksum,
 				"pack":     "tools",
@@ -152,7 +153,7 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 			Type:        types.ActionTypeBrew,
 			Source:      brewfilePath,
 			Pack:        pack,
-			PowerUpName: powerups.BrewfilePowerUpName,
+			PowerUpName: brewfile.BrewfilePowerUpName,
 			Metadata: map[string]interface{}{
 				"checksum": checksum,
 				"pack":     pack,
@@ -213,7 +214,7 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 			actions = append(actions, types.Action{
 				Type:        types.ActionTypeBrew,
 				Pack:        packName,
-				PowerUpName: powerups.BrewfilePowerUpName,
+				PowerUpName: brewfile.BrewfilePowerUpName,
 				Metadata: map[string]interface{}{
 					"checksum": fmt.Sprintf("checksum%d", i),
 					"pack":     packName,
@@ -223,7 +224,7 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 			actions = append(actions, types.Action{
 				Type:        types.ActionTypeInstall,
 				Pack:        packName,
-				PowerUpName: powerups.InstallScriptPowerUpName,
+				PowerUpName: install.InstallScriptPowerUpName,
 				Metadata: map[string]interface{}{
 					"checksum": fmt.Sprintf("checksum%d", i),
 					"pack":     packName,

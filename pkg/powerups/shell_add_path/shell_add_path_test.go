@@ -1,4 +1,4 @@
-package powerups
+package shell_add_path
 
 import (
 	"testing"

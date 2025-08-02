@@ -1,4 +1,4 @@
-package powerups
+package install
 
 import (
 	_ "embed"

@@ -1,4 +1,4 @@
-package powerups
+package symlink
 
 import (
 	"os"

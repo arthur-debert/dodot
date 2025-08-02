@@ -1,4 +1,4 @@
-package powerups
+package shell_profile
 
 import (
 	_ "embed"

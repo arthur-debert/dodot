@@ -1,4 +1,4 @@
-package powerups
+package brewfile
 
 import (
 	_ "embed"
