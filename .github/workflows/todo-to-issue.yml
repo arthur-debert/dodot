@@ -19,6 +19,12 @@ jobs:
       - name: TODO to Issue
         uses: alstr/todo-to-issue-action@v5.0
         with:
-          PATH: "pkg,cmd,internal"
+          IGNORE: "vendor/.*"
           CLOSE_ISSUES: false
           AUTO_P: true
+          IDENTIFIERS: |
+            [
+              {"name": "FIX", "labels": ["auto-todo"]},
+              {"name": "FIXME", "labels": ["auto-todo"]},
+              {"name": "ISSUE", "labels": ["auto-todo"]}
+            ]
