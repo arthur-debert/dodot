@@ -236,14 +236,14 @@ func TestInitPack_InvalidName(t *testing.T) {
 
 	// Try invalid pack names
 	invalidNames := []string{
-		"",              // empty
-		"pack/name",     // contains slash
-		"pack\\name",    // contains backslash
-		"pack:name",     // contains colon
-		"pack*name",     // contains asterisk
-		"pack?name",     // contains question mark
-		"pack<name>",    // contains angle brackets
-		"pack|name",     // contains pipe
+		"",           // empty
+		"pack/name",  // contains slash
+		"pack\\name", // contains backslash
+		"pack:name",  // contains colon
+		"pack*name",  // contains asterisk
+		"pack?name",  // contains question mark
+		"pack<name>", // contains angle brackets
+		"pack|name",  // contains pipe
 	}
 
 	for _, name := range invalidNames {

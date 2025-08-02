@@ -27,7 +27,7 @@ func TestFillPack(t *testing.T) {
 			validate: func(t *testing.T, result *types.FillResult, packPath string) {
 				// Debug: print files created
 				t.Logf("Files created: %v", result.FilesCreated)
-				
+
 				// Since we're not executing operations yet, we only check the reported files
 				testutil.AssertEqual(t, 3, len(result.FilesCreated))
 

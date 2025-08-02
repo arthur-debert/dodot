@@ -68,11 +68,11 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 
 				// Get filename from pattern, handling wildcards
 				filename := filenameTrigger.GetPattern()
-				
+
 				// For wildcard patterns, create a concrete filename
 				// Convert *aliases.sh to aliases.sh
 				filename = strings.TrimPrefix(filename, "*")
-				
+
 				// Determine file mode based on file type
 				mode := uint32(0644)
 				if strings.HasSuffix(filename, ".sh") || filename == "install.sh" {

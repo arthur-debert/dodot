@@ -383,7 +383,6 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	return result, nil
 }
 
-
 // FillPack adds placeholder files for power-ups to an existing pack.
 func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	log := logging.GetLogger("core.commands")
