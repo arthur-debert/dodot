@@ -188,15 +188,6 @@ func loadPackConfig(configPath string) (types.PackConfig, error) {
 	return LoadPackConfig(configPath)
 }
 
-// ShouldIgnorePack checks if a pack should be ignored by checking for a .dodotignore file
-func ShouldIgnorePack(packPath string) bool {
-	ignoreFilePath := filepath.Join(packPath, ".dodotignore")
-	if _, err := os.Stat(ignoreFilePath); err == nil {
-		return true
-	}
-	return false
-}
-
 // ValidatePack checks if a directory is a valid pack
 func ValidatePack(packPath string) error {
 	logger := logging.GetLogger("packs.discovery")

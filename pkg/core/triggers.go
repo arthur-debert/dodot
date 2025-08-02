@@ -2,12 +2,12 @@ package core
 
 import (
 	"io/fs"
-	"os"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
+	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -88,8 +88,7 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 
 		// Check for .dodotignore in directories
 		if d.IsDir() {
-			if _, err := os.Stat(filepath.Join(path, ".dodotignore")); err == nil {
-				logger.Debug().Str("dir", relPath).Msg("Skipping directory with .dodotignore")
+			if packs.ShouldIgnoreDirectoryTraversal(path, relPath) {
 				return filepath.SkipDir
 			}
 		}
