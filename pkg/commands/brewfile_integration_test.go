@@ -1,4 +1,4 @@
-package core
+package commands
 
 import (
 	"os"
@@ -15,38 +15,28 @@ import (
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
-// TestInstallScriptPowerUp_Integration verifies that the install script powerup creates sentinel files
-func TestInstallScriptPowerUp_Integration(t *testing.T) {
+// TestBrewfilePowerUp_Integration verifies that the brewfile powerup creates sentinel files
+func TestBrewfilePowerUp_Integration(t *testing.T) {
 	// Setup test environment
-	testEnv := testutil.NewTestEnvironment(t, "install-integration")
+	testEnv := testutil.NewTestEnvironment(t, "brewfile-integration")
 	defer testEnv.Cleanup()
 
-	// Create dev pack
-	devPack := testEnv.CreatePack("dev")
+	// Create tools pack
+	toolsPack := testEnv.CreatePack("tools")
 
-	// Create an install.sh script
-	installContent := `#!/bin/bash
-# Development environment setup
-set -eou pipefail
-
-echo "Setting up development environment..."
-
-# Create a test file to verify the script ran
-echo "dev-setup-complete" > "$HOME/.dev-setup-marker"
-
-echo "Development setup complete!"
+	// Create a Brewfile
+	brewfileContent := `# Development tools
+brew 'git'
+brew 'tmux'
+brew 'neovim'
+cask 'visual-studio-code'
 `
-	testutil.CreateFile(t, devPack, "install.sh", installContent)
-
-	// Make the script executable
-	installPath := filepath.Join(devPack, "install.sh")
-	err := os.Chmod(installPath, 0755)
-	require.NoError(t, err)
+	testutil.CreateFile(t, toolsPack, "Brewfile", brewfileContent)
 
 	// First install should create operations
 	result, err := InstallPacks(InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
-		PackNames:    []string{"dev"},
+		PackNames:    []string{"tools"},
 		DryRun:       false,
 		Force:        false,
 	})
@@ -55,14 +45,14 @@ echo "Development setup complete!"
 	assert.NotEmpty(t, result.Operations)
 
 	// Should have operations for creating sentinel file
-	hasInstallOps := false
+	hasBrewOps := false
 	for _, op := range result.Operations {
-		if op.Type == "write_file" && filepath.Base(op.Target) == "dev" {
-			hasInstallOps = true
+		if op.Type == "write_file" && filepath.Base(op.Target) == "tools" {
+			hasBrewOps = true
 			break
 		}
 	}
-	assert.True(t, hasInstallOps, "Expected install script operations")
+	assert.True(t, hasBrewOps, "Expected Brewfile operations")
 
 	// Execute operations
 	executor := synthfs.NewSynthfsExecutor(false)
@@ -71,9 +61,9 @@ echo "Development setup complete!"
 	require.NoError(t, err)
 
 	// Verify sentinel file was created
-	sentinelPath := filepath.Join(testEnv.DataDir(), "install", "dev")
+	sentinelPath := filepath.Join(testEnv.DataDir(), "brewfile", "tools")
 	info, err := os.Stat(sentinelPath)
-	require.NoError(t, err, "Expected install script sentinel to exist")
+	require.NoError(t, err, "Expected Brewfile sentinel to exist")
 	assert.True(t, info.Mode().IsRegular(), "Expected sentinel to be a regular file")
 
 	// Read sentinel content (should be checksum)
@@ -81,22 +71,22 @@ echo "Development setup complete!"
 	require.NoError(t, err)
 	assert.NotEmpty(t, string(content), "Expected sentinel to contain checksum")
 
-	// Second install should not generate install operations (already installed)
+	// Second install should not generate Brewfile operations (already installed)
 	result2, err := InstallPacks(InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
-		PackNames:    []string{"dev"},
+		PackNames:    []string{"tools"},
 		DryRun:       false,
 		Force:        false,
 	})
 	require.NoError(t, err)
 
-	// Should not have any install operations (only checksum should run)
-	hasInstallOps2 := false
+	// Should not have any Brewfile operations (only checksum should run)
+	hasBrewOps2 := false
 	for _, op := range result2.Operations {
-		if op.Type == "write_file" && filepath.Base(op.Target) == "dev" {
-			hasInstallOps2 = true
+		if op.Type == "write_file" && filepath.Base(op.Target) == "tools" {
+			hasBrewOps2 = true
 			break
 		}
 	}
-	assert.False(t, hasInstallOps2, "Should not have install operations on second run")
+	assert.False(t, hasBrewOps2, "Should not have Brewfile operations on second run")
 }

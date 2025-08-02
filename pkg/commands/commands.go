@@ -1,4 +1,4 @@
-package core
+package commands
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
@@ -69,12 +70,12 @@ func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "ListPacks").Msg("Executing command")
 
-	candidates, err := GetPackCandidates(opts.DotfilesRoot)
+	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	packs, err := GetPacks(candidates)
+	packs, err := core.GetPacks(candidates)
 	if err != nil {
 		return nil, err
 	}
@@ -173,29 +174,29 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 	logger := logging.GetLogger("core.commands")
 
 	// 1. Get all packs
-	candidates, err := GetPackCandidates(opts.DotfilesRoot)
+	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
 	if err != nil {
 		return nil, err
 	}
-	allPacks, err := GetPacks(candidates)
+	allPacks, err := core.GetPacks(candidates)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Filter to selected packs
-	selectedPacks, err := SelectPacks(allPacks, opts.PackNames)
+	selectedPacks, err := core.SelectPacks(allPacks, opts.PackNames)
 	if err != nil {
 		return nil, err
 	}
 
 	// 3. Get all trigger matches for the selected packs
-	matches, err := GetFiringTriggers(selectedPacks)
+	matches, err := core.GetFiringTriggers(selectedPacks)
 	if err != nil {
 		return nil, err
 	}
 
 	// 4. Get all actions from the matches
-	actions, err := GetActions(matches)
+	actions, err := core.GetActions(matches)
 	if err != nil {
 		return nil, err
 	}
@@ -208,14 +209,14 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 
 	// 6. For RunModeOnce, filter out actions that have already been executed
 	if opts.RunMode == types.RunModeOnce {
-		actions, err = FilterRunOnceActions(actions, opts.Force)
+		actions, err = core.FilterRunOnceActions(actions, opts.Force)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	// 7. Check if we need to handle checksum operations
-	ctx := NewExecutionContext(opts.Force)
+	ctx := core.NewExecutionContext(opts.Force)
 
 	// Check if any actions need checksums
 	hasChecksumActions := false
@@ -232,7 +233,7 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 
 	if hasChecksumActions {
 		// First pass: generate all operations to find checksum operations
-		initialOps, err := GetFileOperationsWithContext(actions, ctx)
+		initialOps, err := core.GetFileOperationsWithContext(actions, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -250,13 +251,13 @@ func runExecutionPipeline(opts executionOptions) (*types.ExecutionResult, error)
 		// Re-generate final operations with checksum context.
 		// This is necessary because the first pass might have skipped some actions
 		// if their checksums weren't available yet.
-		ops, err = GetFileOperationsWithContext(actions, ctx)
+		ops, err = core.GetFileOperationsWithContext(actions, ctx)
 		if err != nil {
 			return nil, err
 		}
 	} else {
 		// No checksum operations needed, generate operations once
-		ops, err = GetFileOperationsWithContext(actions, ctx)
+		ops, err = core.GetFileOperationsWithContext(actions, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -302,17 +303,17 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	log.Debug().Str("command", "StatusPacks").Msg("Executing command")
 
 	// 1. Get all packs
-	candidates, err := GetPackCandidates(opts.DotfilesRoot)
+	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
 	if err != nil {
 		return nil, err
 	}
-	allPacks, err := GetPacks(candidates)
+	allPacks, err := core.GetPacks(candidates)
 	if err != nil {
 		return nil, err
 	}
 
 	// 2. Filter to selected packs
-	selectedPacks, err := SelectPacks(allPacks, opts.PackNames)
+	selectedPacks, err := core.SelectPacks(allPacks, opts.PackNames)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +330,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 		}
 
 		// Check run-once power-up status (install, brewfile)
-		installStatus, err := GetRunOnceStatus(pack.Path, "install")
+		installStatus, err := core.GetRunOnceStatus(pack.Path, "install")
 		if err == nil && installStatus != nil {
 			state := "Not Installed"
 			description := "Install script not yet executed"
@@ -348,7 +349,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 			})
 		}
 
-		brewfileStatus, err := GetRunOnceStatus(pack.Path, "brewfile")
+		brewfileStatus, err := core.GetRunOnceStatus(pack.Path, "brewfile")
 		if err == nil && brewfileStatus != nil {
 			state := "Not Installed"
 			description := "Brewfile not yet executed"
@@ -389,11 +390,11 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	log.Debug().Str("command", "FillPack").Str("pack", opts.PackName).Msg("Executing command")
 
 	// 1. Get all packs to verify the pack exists
-	candidates, err := GetPackCandidates(opts.DotfilesRoot)
+	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
 	if err != nil {
 		return nil, err
 	}
-	allPacks, err := GetPacks(candidates)
+	allPacks, err := core.GetPacks(candidates)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +412,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	}
 
 	// 3. Get missing template files
-	missingTemplates, err := GetMissingTemplateFiles(targetPack.Path, opts.PackName)
+	missingTemplates, err := core.GetMissingTemplateFiles(targetPack.Path, opts.PackName)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get missing templates")
 	}
@@ -433,7 +434,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	}
 
 	// 5. Convert actions to operations
-	ops, err := GetFileOperations(actions)
+	ops, err := core.GetFileOperations(actions)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}
@@ -572,7 +573,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 	actions = append(actions, readmeAction)
 
 	// 5. Get all template files for the pack
-	templates, err := GetCompletePackTemplate(opts.PackName)
+	templates, err := core.GetCompletePackTemplate(opts.PackName)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get pack templates")
 	}
@@ -593,7 +594,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 	}
 
 	// 6. Convert actions to operations
-	ops, err := GetFileOperations(actions)
+	ops, err := core.GetFileOperations(actions)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}
@@ -635,4 +636,13 @@ For more information, see: https://github.com/arthur-debert/dodot
 		Int("filesCreated", len(result.FilesCreated)).
 		Msg("Command finished")
 	return result, nil
+}
+
+// getPackNames returns a list of pack names
+func getPackNames(packs []types.Pack) []string {
+	names := make([]string, len(packs))
+	for i, pack := range packs {
+		names[i] = pack.Name
+	}
+	return names
 }

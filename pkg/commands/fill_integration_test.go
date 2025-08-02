@@ -1,10 +1,11 @@
-package core
+package commands
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
@@ -139,7 +140,7 @@ func TestFillPack_AllFilesExist(t *testing.T) {
 	))
 
 	// Get all templates and create files
-	templates, err := GetCompletePackTemplate(packName)
+	templates, err := core.GetCompletePackTemplate(packName)
 	require.NoError(t, err)
 
 	for _, tmpl := range templates {

@@ -1,4 +1,4 @@
-package core
+package commands
 
 import (
 	"os"
@@ -15,28 +15,38 @@ import (
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
-// TestBrewfilePowerUp_Integration verifies that the brewfile powerup creates sentinel files
-func TestBrewfilePowerUp_Integration(t *testing.T) {
+// TestInstallScriptPowerUp_Integration verifies that the install script powerup creates sentinel files
+func TestInstallScriptPowerUp_Integration(t *testing.T) {
 	// Setup test environment
-	testEnv := testutil.NewTestEnvironment(t, "brewfile-integration")
+	testEnv := testutil.NewTestEnvironment(t, "install-integration")
 	defer testEnv.Cleanup()
 
-	// Create tools pack
-	toolsPack := testEnv.CreatePack("tools")
+	// Create dev pack
+	devPack := testEnv.CreatePack("dev")
 
-	// Create a Brewfile
-	brewfileContent := `# Development tools
-brew 'git'
-brew 'tmux'
-brew 'neovim'
-cask 'visual-studio-code'
+	// Create an install.sh script
+	installContent := `#!/bin/bash
+# Development environment setup
+set -eou pipefail
+
+echo "Setting up development environment..."
+
+# Create a test file to verify the script ran
+echo "dev-setup-complete" > "$HOME/.dev-setup-marker"
+
+echo "Development setup complete!"
 `
-	testutil.CreateFile(t, toolsPack, "Brewfile", brewfileContent)
+	testutil.CreateFile(t, devPack, "install.sh", installContent)
+
+	// Make the script executable
+	installPath := filepath.Join(devPack, "install.sh")
+	err := os.Chmod(installPath, 0755)
+	require.NoError(t, err)
 
 	// First install should create operations
 	result, err := InstallPacks(InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
-		PackNames:    []string{"tools"},
+		PackNames:    []string{"dev"},
 		DryRun:       false,
 		Force:        false,
 	})
@@ -45,14 +55,14 @@ cask 'visual-studio-code'
 	assert.NotEmpty(t, result.Operations)
 
 	// Should have operations for creating sentinel file
-	hasBrewOps := false
+	hasInstallOps := false
 	for _, op := range result.Operations {
-		if op.Type == "write_file" && filepath.Base(op.Target) == "tools" {
-			hasBrewOps = true
+		if op.Type == "write_file" && filepath.Base(op.Target) == "dev" {
+			hasInstallOps = true
 			break
 		}
 	}
-	assert.True(t, hasBrewOps, "Expected Brewfile operations")
+	assert.True(t, hasInstallOps, "Expected install script operations")
 
 	// Execute operations
 	executor := synthfs.NewSynthfsExecutor(false)
@@ -61,9 +71,9 @@ cask 'visual-studio-code'
 	require.NoError(t, err)
 
 	// Verify sentinel file was created
-	sentinelPath := filepath.Join(testEnv.DataDir(), "brewfile", "tools")
+	sentinelPath := filepath.Join(testEnv.DataDir(), "install", "dev")
 	info, err := os.Stat(sentinelPath)
-	require.NoError(t, err, "Expected Brewfile sentinel to exist")
+	require.NoError(t, err, "Expected install script sentinel to exist")
 	assert.True(t, info.Mode().IsRegular(), "Expected sentinel to be a regular file")
 
 	// Read sentinel content (should be checksum)
@@ -71,22 +81,22 @@ cask 'visual-studio-code'
 	require.NoError(t, err)
 	assert.NotEmpty(t, string(content), "Expected sentinel to contain checksum")
 
-	// Second install should not generate Brewfile operations (already installed)
+	// Second install should not generate install operations (already installed)
 	result2, err := InstallPacks(InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
-		PackNames:    []string{"tools"},
+		PackNames:    []string{"dev"},
 		DryRun:       false,
 		Force:        false,
 	})
 	require.NoError(t, err)
 
-	// Should not have any Brewfile operations (only checksum should run)
-	hasBrewOps2 := false
+	// Should not have any install operations (only checksum should run)
+	hasInstallOps2 := false
 	for _, op := range result2.Operations {
-		if op.Type == "write_file" && filepath.Base(op.Target) == "tools" {
-			hasBrewOps2 = true
+		if op.Type == "write_file" && filepath.Base(op.Target) == "dev" {
+			hasInstallOps2 = true
 			break
 		}
 	}
-	assert.False(t, hasBrewOps2, "Should not have Brewfile operations on second run")
+	assert.False(t, hasInstallOps2, "Should not have install operations on second run")
 }

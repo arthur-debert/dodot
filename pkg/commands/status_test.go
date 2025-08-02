@@ -1,4 +1,4 @@
-package core
+package commands
 
 import (
 	"os"
@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -378,7 +379,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 		name     string
 		setup    func(t *testing.T) string // returns pack path
 		powerup  string
-		validate func(t *testing.T, status *RunOnceStatus)
+		validate func(t *testing.T, status *core.RunOnceStatus)
 		wantNil  bool
 	}{
 		{
@@ -400,7 +401,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 				return pack
 			},
 			powerup: "install",
-			validate: func(t *testing.T, status *RunOnceStatus) {
+			validate: func(t *testing.T, status *core.RunOnceStatus) {
 				testutil.AssertFalse(t, status.Executed)
 				testutil.AssertFalse(t, status.Changed)
 				testutil.AssertNotEqual(t, "", status.Checksum)
@@ -437,7 +438,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 				return pack
 			},
 			powerup: "install",
-			validate: func(t *testing.T, status *RunOnceStatus) {
+			validate: func(t *testing.T, status *core.RunOnceStatus) {
 				testutil.AssertTrue(t, status.Executed)
 				testutil.AssertFalse(t, status.Changed)
 				testutil.AssertNotEqual(t, time.Time{}, status.ExecutedAt)
@@ -452,7 +453,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 				return pack
 			},
 			powerup: "brewfile",
-			validate: func(t *testing.T, status *RunOnceStatus) {
+			validate: func(t *testing.T, status *core.RunOnceStatus) {
 				testutil.AssertFalse(t, status.Executed)
 				testutil.AssertNotEqual(t, "", status.Checksum)
 			},
@@ -463,7 +464,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			packPath := tt.setup(t)
 
-			status, err := GetRunOnceStatus(packPath, tt.powerup)
+			status, err := core.GetRunOnceStatus(packPath, tt.powerup)
 			testutil.AssertNoError(t, err)
 
 			if tt.wantNil {
