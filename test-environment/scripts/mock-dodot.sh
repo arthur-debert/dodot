@@ -139,6 +139,16 @@ case "$CMD" in
                 # Create symlink with pack name
                 ln -sf "$PACK_DIR/aliases.sh" "$SHELL_PROFILE_DIR/bash.sh"
             fi
+        elif [ "$PACK" = "tools" ]; then
+            # Handle tools pack with PATH
+            if [ -d "$PACK_DIR/bin" ]; then
+                # Create path deployment directory
+                PATH_DIR="$HOME/.local/share/dodot/deployed/path"
+                mkdir -p "$PATH_DIR"
+                
+                # Create symlink to bin directory
+                ln -sf "$PACK_DIR/bin" "$PATH_DIR/tools"
+            fi
         fi
         ;;
         

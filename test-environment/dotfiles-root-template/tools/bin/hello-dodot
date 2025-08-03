@@ -1,0 +1,5 @@
+#!/bin/bash
+# Test script for PATH integration
+
+echo "Hello from dodot tools!"
+echo "PATH integration is working correctly."
