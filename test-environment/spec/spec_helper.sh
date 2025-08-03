@@ -1,6 +1,11 @@
 #!/bin/zsh
 # ShellSpec helper file for common test setup
 
+# Capture original environment at startup
+export ORIGINAL_HOME="${HOME}"
+export ORIGINAL_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
+export ORIGINAL_PATH="${PATH}"
+
 # Set up test environment paths
 # Use the container-built binary if available, otherwise use mock
 if [ -x "/usr/local/bin/dodot-container-linux" ]; then
@@ -15,24 +20,25 @@ export TEST_DOTFILES_ROOT="/tmp/test-dotfiles"
 export HOME_TEMPLATE="/test-environment/home-template"
 export DOTFILES_TEMPLATE="/test-environment/dotfiles-root-template"
 
-# Reset test environment to clean state using templates
+# Forward declaration - actual implementation is at end of file
+# This ensures the enhanced version with verification is used
 reset_test_environment() {
-  # Clean up any existing test directories
-  rm -rf "$TEST_HOME" "$TEST_DOTFILES_ROOT"
-  
-  # Create fresh copies from templates
-  cp -r "$HOME_TEMPLATE" "$TEST_HOME"
-  cp -r "$DOTFILES_TEMPLATE" "$TEST_DOTFILES_ROOT"
-  
-  # Set environment variables for dodot
-  export HOME="$TEST_HOME"
-  export DOTFILES_ROOT="$TEST_DOTFILES_ROOT"
-  
-  # Create XDG directories if they don't exist in template
-  mkdir -p "$HOME/.config" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.cache"
-  
-  # Clear any dodot-specific directories
-  rm -rf "$HOME/.local/share/dodot" "$HOME/.cache/dodot"
+  _reset_test_environment_impl
+}
+
+# Run command in isolated environment
+# This ensures no environment pollution between commands
+run_isolated() {
+  (
+    # Run in subshell to isolate environment changes
+    # Ensure clean environment variables
+    export HOME="$TEST_HOME"
+    export DOTFILES_ROOT="$TEST_DOTFILES_ROOT"
+    unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
+    
+    # Execute the command
+    "$@"
+  )
 }
 
 # Helper to verify file is a symlink pointing to expected target
@@ -68,11 +74,34 @@ verify_regular_file() {
 
 # Clean up function
 cleanup_test_environment() {
+  # Save original HOME for cleanup
+  local original_home="${ORIGINAL_HOME:-$HOME}"
+  
   # Fix permissions if they were changed during tests
   if [ -d "$TEST_HOME" ]; then
     chmod -R 755 "$TEST_HOME" 2>/dev/null || true
   fi
+  
+  # Remove test directories
   rm -rf "$TEST_HOME" "$TEST_DOTFILES_ROOT"
+  
+  # Clean up any dodot directories that might have been created in original HOME
+  if [ -n "$original_home" ] && [ "$original_home" != "$TEST_HOME" ]; then
+    rm -rf "$original_home/.local/share/dodot" 2>/dev/null || true
+    rm -rf "$original_home/.config/dodot" 2>/dev/null || true
+    rm -rf "$original_home/.cache/dodot" 2>/dev/null || true
+  fi
+  
+  # Unset dodot-specific environment variables
+  unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
+  
+  # Restore original environment variables if saved
+  if [ -n "${ORIGINAL_HOME:-}" ]; then
+    export HOME="$ORIGINAL_HOME"
+  fi
+  if [ -n "${ORIGINAL_DOTFILES_ROOT:-}" ]; then
+    export DOTFILES_ROOT="$ORIGINAL_DOTFILES_ROOT"
+  fi
 }
 
 # Comprehensive environment state verification
@@ -107,6 +136,16 @@ verify_clean_environment() {
     "$HOME/.cache/dodot"
     "$HOME/.local/state/dodot"
   )
+  
+  # Also check root directories if we're not already checking them
+  if [ "$HOME" != "/root" ] && [ -d "/root" ]; then
+    dodot_dirs+=(
+      "/root/.local/share/dodot"
+      "/root/.config/dodot"
+      "/root/.cache/dodot"
+      "/root/.local/state/dodot"
+    )
+  fi
   
   for dir in "${dodot_dirs[@]}"; do
     if [ -d "$dir" ]; then
@@ -215,7 +254,16 @@ dump_environment_state() {
 }
 
 # Enhanced reset function that verifies clean state
-reset_test_environment() {
+_reset_test_environment_impl() {
+  # Save original environment on first call
+  if [ -z "${ORIGINAL_HOME:-}" ]; then
+    export ORIGINAL_HOME="$HOME"
+    export ORIGINAL_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
+  fi
+  
+  # Unset any dodot-specific environment variables FIRST
+  unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
+  
   # Fix permissions if they were changed during tests
   if [ -d "$TEST_HOME" ]; then
     chmod -R 755 "$TEST_HOME" 2>/dev/null || true
@@ -223,6 +271,14 @@ reset_test_environment() {
   
   # Clean up any existing test directories
   rm -rf "$TEST_HOME" "$TEST_DOTFILES_ROOT"
+  
+  # Clean up any dodot directories from the original HOME
+  if [ -n "$ORIGINAL_HOME" ] && [ "$ORIGINAL_HOME" != "$TEST_HOME" ]; then
+    rm -rf "$ORIGINAL_HOME/.local/share/dodot" 2>/dev/null || true
+    rm -rf "$ORIGINAL_HOME/.config/dodot" 2>/dev/null || true
+    rm -rf "$ORIGINAL_HOME/.cache/dodot" 2>/dev/null || true
+    rm -rf "$ORIGINAL_HOME/.local/state/dodot" 2>/dev/null || true
+  fi
   
   # Create fresh copies from templates
   cp -r "$HOME_TEMPLATE" "$TEST_HOME"
@@ -235,15 +291,13 @@ reset_test_environment() {
   # Create XDG directories if they don't exist in template
   mkdir -p "$HOME/.config" "$HOME/.local/share" "$HOME/.local/state" "$HOME/.cache"
   
-  # Clear any dodot-specific directories (belt and suspenders)
+  # Clear any dodot-specific directories in TEST_HOME (belt and suspenders)
   rm -rf "$HOME/.local/share/dodot" "$HOME/.cache/dodot" "$HOME/.config/dodot" "$HOME/.local/state/dodot"
-  
-  # Unset any dodot-specific environment variables
-  unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
   
   # Verify we have a clean environment
   if ! verify_clean_environment; then
     echo "FATAL: Environment verification failed after reset!" >&2
+    dump_environment_state
     return 1
   fi
 }

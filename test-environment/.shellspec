@@ -2,3 +2,4 @@
 --format documentation
 --format junit
 --shell zsh
+--jobs 1
