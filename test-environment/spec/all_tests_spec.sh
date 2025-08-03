@@ -24,8 +24,9 @@ Describe 'Dodot Integration Test Suite'
       Pending "13/15 tests implemented ✅"
     End
     
-    It 'Brewfile PowerUp'
-      Pending "16/16 tests written but marked pending (implementation incomplete) ⚠️"
+    It 'Brewfile PowerUp (15 tests)'
+      # Tests enabled but may need brew execution fixes
+      Pending "15/16 tests enabled (1 skipped) ⚠️"
     End
   End
   
