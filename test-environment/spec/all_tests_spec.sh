@@ -20,11 +20,11 @@ Describe 'Dodot Integration Test Suite'
     End
     
     It 'Install Script PowerUp'
-      Pending "0/15 tests implemented 🔲"
+      Pending "15/15 tests written but marked pending (implementation incomplete) ⚠️"
     End
     
     It 'Brewfile PowerUp'
-      Pending "0/16 tests implemented 🔲"
+      Pending "16/16 tests written but marked pending (implementation incomplete) ⚠️"
     End
   End
   
@@ -82,8 +82,8 @@ Describe 'Dodot Integration Test Suite'
   
   Describe 'Test Summary'
     It 'shows overall progress'
-      # Total: 61 tests implemented out of ~160 planned
-      Pending "Progress: 61/160 tests (38%) - 3 PowerUps complete ✅"
+      # Total: 92 tests written (61 passing, 31 pending) out of ~160 planned
+      Pending "Progress: 92/160 tests (58%) - 3 PowerUps complete ✅, 2 pending ⚠️"
     End
   End
 End
