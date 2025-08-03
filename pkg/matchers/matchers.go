@@ -39,107 +39,31 @@ func RegisterDefaultMatcher(name string, matcher types.Matcher) {
 // DefaultMatchers returns a set of common matchers for typical dotfiles
 func DefaultMatchers() []types.Matcher {
 	matchers := []types.Matcher{
-		// Vim configuration
+		// Install powerups (run once)
 		{
-			Name:        "vim-config",
+			Name:        "install-script",
 			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".vimrc",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "neovim-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".config/nvim",
-			},
-			Enabled: true,
-		},
-
-		// Shell configurations
-		{
-			Name:        "bash-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".bashrc",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "zsh-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".zshrc",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "fish-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".config/fish",
-			},
-			Enabled: true,
-		},
-
-		// Git configuration
-		{
-			Name:        "git-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".gitconfig",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "git-ignore",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".gitignore_global",
-			},
-			Enabled: true,
-		},
-
-		// Common development tools
-		{
-			Name:        "tmux-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
-			Priority:    100,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".tmux.conf",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "ssh-config",
-			TriggerName: "filename",
-			PowerUpName: "symlink",
+			PowerUpName: "install_script",
 			Priority:    90,
 			TriggerOptions: map[string]interface{}{
-				"pattern": ".ssh/config",
+				"pattern": "install.sh",
+			},
+			Enabled: true,
+		},
+		{
+			Name:        "brewfile",
+			TriggerName: "filename",
+			PowerUpName: "brewfile",
+			Priority:    90,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "Brewfile",
 			},
 			Enabled: true,
 		},
 
-		// Shell profile and path
+		// Shell profile integration
 		{
-			Name:        "shell-profile",
+			Name:        "shell-aliases",
 			TriggerName: "filename",
 			PowerUpName: "shell_profile",
 			Priority:    80,
@@ -149,17 +73,17 @@ func DefaultMatchers() []types.Matcher {
 			Enabled: true,
 		},
 		{
-			Name:        "shell-path",
-			TriggerName: "directory",
-			PowerUpName: "shell_add_path",
+			Name:        "shell-profile",
+			TriggerName: "filename",
+			PowerUpName: "shell_profile",
 			Priority:    80,
 			TriggerOptions: map[string]interface{}{
-				"pattern": "bin",
+				"pattern": "profile.sh",
 			},
 			Enabled: true,
 		},
 
-		// Bin power-up matchers
+		// Bin directories - handled by both bin and shell_add_path powerups
 		{
 			Name:        "bin-dir",
 			TriggerName: "directory",
@@ -171,10 +95,30 @@ func DefaultMatchers() []types.Matcher {
 			Enabled: true,
 		},
 		{
-			Name:        "bin-local",
+			Name:        "bin-path",
+			TriggerName: "directory",
+			PowerUpName: "shell_add_path",
+			Priority:    80,
+			TriggerOptions: map[string]interface{}{
+				"pattern": "bin",
+			},
+			Enabled: true,
+		},
+		{
+			Name:        "local-bin-dir",
 			TriggerName: "directory",
 			PowerUpName: "bin",
 			Priority:    90,
+			TriggerOptions: map[string]interface{}{
+				"pattern": ".local/bin",
+			},
+			Enabled: true,
+		},
+		{
+			Name:        "local-bin-path",
+			TriggerName: "directory",
+			PowerUpName: "shell_add_path",
+			Priority:    80,
 			TriggerOptions: map[string]interface{}{
 				"pattern": ".local/bin",
 			},
@@ -189,30 +133,6 @@ func DefaultMatchers() []types.Matcher {
 			Priority:    70,
 			TriggerOptions: map[string]interface{}{
 				"extension": ".tmpl",
-			},
-			Enabled: true,
-		},
-
-		// Brewfile power-up matcher
-		{
-			Name:        "brewfile",
-			TriggerName: "filename",
-			PowerUpName: "brewfile",
-			Priority:    90,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "Brewfile",
-			},
-			Enabled: true,
-		},
-
-		// Install script power-up matcher
-		{
-			Name:        "install-script",
-			TriggerName: "filename",
-			PowerUpName: "install_script",
-			Priority:    90,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "install.sh",
 			},
 			Enabled: true,
 		},

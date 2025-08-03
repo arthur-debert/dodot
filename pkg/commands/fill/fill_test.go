@@ -32,11 +32,12 @@ func TestFillPack(t *testing.T) {
 				t.Logf("Files created: %v", result.FilesCreated)
 
 				// Since we're not executing operations yet, we only check the reported files
-				testutil.AssertEqual(t, 3, len(result.FilesCreated))
+				testutil.AssertEqual(t, 4, len(result.FilesCreated))
 
 				// Check that all expected files are in the result
 				expectedFiles := map[string]bool{
 					"aliases.sh": false,
+					"profile.sh": false,
 					"install.sh": false,
 					"Brewfile":   false,
 				}
@@ -63,7 +64,7 @@ func TestFillPack(t *testing.T) {
 			packName: "partial-pack",
 			validate: func(t *testing.T, result *types.FillResult, packPath string) {
 				// Since aliases.sh already exists, only 2 files should be created
-				testutil.AssertEqual(t, 2, len(result.FilesCreated))
+				testutil.AssertEqual(t, 3, len(result.FilesCreated))
 
 				// Check that existing file was not overwritten
 				content := testutil.ReadFile(t, filepath.Join(packPath, "aliases.sh"))
