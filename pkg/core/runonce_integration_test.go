@@ -76,14 +76,15 @@ echo install`
 	ctx.ChecksumResults[brewfilePath] = brewChecksum
 	ctx.ChecksumResults[installPath] = installChecksum
 
-	// Convert to operations with context
-	ops, err := GetFileOperationsWithContext(filtered, ctx)
+	// Convert to operations with context (PLANNING PHASE - no execution yet)
+	ops, err := ConvertActionsToOperationsWithContext(filtered, ctx)
 	testutil.AssertNoError(t, err)
-	testutil.AssertTrue(t, len(ops) > 0, "Should have operations")
+	testutil.AssertTrue(t, len(ops) > 0, "Should have operations planned")
 
-	// Simulate execution by creating sentinel files
-	// Debug: print operations
-	t.Logf("Operations generated: %d", len(ops))
+	// EXECUTION PHASE - Actually perform the operations
+	// NOTE: This test manually simulates execution instead of using a proper executor
+	// This is why it skips OperationExecute types and only handles file operations
+	t.Logf("Operations planned (not executed): %d", len(ops))
 	for i, op := range ops {
 		t.Logf("  [%d] %s: %s", i, op.Type, op.Target)
 		switch op.Type {

@@ -141,10 +141,16 @@ func TestConvertBrewActionWithContext(t *testing.T) {
 	// Convert action with context
 	ops, err := convertBrewActionWithContext(action, ctx)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(ops))
+	testutil.AssertEqual(t, 3, len(ops)) // Now we have: create dir, execute, write sentinel
+
+	// Verify the execute operation
+	executeOp := ops[1] // Second operation should be the brew bundle execute
+	testutil.AssertEqual(t, types.OperationExecute, executeOp.Type)
+	testutil.AssertEqual(t, "brew", executeOp.Command)
+	testutil.AssertEqual(t, []string{"bundle", "--file", brewfile}, executeOp.Args)
 
 	// Verify the sentinel file operation uses the real checksum
-	sentinelOp := ops[1] // Second operation should be the sentinel file write
+	sentinelOp := ops[2] // Third operation should be the sentinel file write
 	testutil.AssertEqual(t, types.OperationWriteFile, sentinelOp.Type)
 	testutil.AssertEqual(t, testChecksum, sentinelOp.Content)
 }
@@ -174,10 +180,16 @@ func TestConvertInstallActionWithContext(t *testing.T) {
 	// Convert action with context
 	ops, err := convertInstallActionWithContext(action, ctx)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(ops))
+	testutil.AssertEqual(t, 3, len(ops)) // Now we have: create dir, execute, write sentinel
+
+	// Verify the execute operation
+	executeOp := ops[1] // Second operation should be the install script execute
+	testutil.AssertEqual(t, types.OperationExecute, executeOp.Type)
+	testutil.AssertEqual(t, "/bin/sh", executeOp.Command)
+	testutil.AssertEqual(t, []string{installScript}, executeOp.Args)
 
 	// Verify the sentinel file operation uses the real checksum
-	sentinelOp := ops[1] // Second operation should be the sentinel file write
+	sentinelOp := ops[2] // Third operation should be the sentinel file write
 	testutil.AssertEqual(t, types.OperationWriteFile, sentinelOp.Type)
 	testutil.AssertEqual(t, testChecksum, sentinelOp.Content)
 }

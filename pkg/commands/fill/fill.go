@@ -68,7 +68,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	}
 
 	// 5. Convert actions to operations
-	ops, err := core.GetFileOperations(actions)
+	ops, err := core.ConvertActionsToOperations(actions)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}

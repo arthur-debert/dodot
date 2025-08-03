@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetFileOperations(t *testing.T) {
+func TestConvertActionsToOperations(t *testing.T) {
 	tests := []struct {
 		name         string
 		actions      []types.Action
@@ -163,7 +163,7 @@ func TestGetFileOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := GetFileOperations(tt.actions)
+			ops, err := ConvertActionsToOperations(tt.actions)
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -791,7 +791,7 @@ func TestExpandHome(t *testing.T) {
 }
 
 // Benchmarks
-func BenchmarkGetFileOperations(b *testing.B) {
+func BenchmarkConvertActionsToOperations(b *testing.B) {
 	actions := []types.Action{
 		{Type: types.ActionTypeLink, Source: "/src1", Target: "~/dst1"},
 		{Type: types.ActionTypeCopy, Source: "/src2", Target: "~/dst2"},
@@ -803,7 +803,7 @@ func BenchmarkGetFileOperations(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := GetFileOperations(actions)
+		_, err := ConvertActionsToOperations(actions)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -852,7 +852,7 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := GetFileOperations(actions)
+	ops, err := ConvertActionsToOperations(actions)
 	require.NoError(t, err)
 
 	// Count directory creation operations for the home directory
@@ -877,8 +877,8 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	assert.Equal(t, 6, symlinkCount, "Expected 6 symlink operations (2 per file)")
 }
 
-// TestGetFileOperationsWithContext_BrewAndInstall tests brew and install actions with context
-func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
+// TestConvertActionsToOperationsWithContext_BrewAndInstall tests brew and install actions with context
+func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Create context with checksums
 	ctx := NewExecutionContext(false)
 	ctx.ChecksumResults["/packs/tools/Brewfile"] = "brew123"
@@ -903,25 +903,33 @@ func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
 		},
 	}
 
-	ops, err := GetFileOperationsWithContext(actions, ctx)
+	ops, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
-	assert.Len(t, ops, 4) // 2 ops per action (create dir + write sentinel)
+	assert.Len(t, ops, 5) // After deduplication: 2 create dir ops + 2 execute ops + 2 write sentinel ops - 1 duplicate dir
 
 	// Install action should be processed first (higher priority)
+	// First: create install directory
 	assert.Equal(t, types.OperationCreateDir, ops[0].Type)
 	assert.Equal(t, paths.GetInstallDir(), ops[0].Target)
 
-	assert.Equal(t, types.OperationWriteFile, ops[1].Type)
-	assert.Contains(t, ops[1].Target, "dev")
-	assert.Equal(t, "install456", ops[1].Content)
+	// Second: execute install script
+	assert.Equal(t, types.OperationExecute, ops[1].Type)
+	assert.Equal(t, "/bin/sh", ops[1].Command)
+
+	// Third: write install sentinel
+	assert.Equal(t, types.OperationWriteFile, ops[2].Type)
+	assert.Contains(t, ops[2].Target, "dev")
+	assert.Equal(t, "install456", ops[2].Content)
 
 	// Then brew action
-	assert.Equal(t, types.OperationCreateDir, ops[2].Type)
-	assert.Equal(t, paths.GetBrewfileDir(), ops[2].Target)
+	// Fourth: create brewfile directory
+	assert.Equal(t, types.OperationCreateDir, ops[3].Type)
+	assert.Equal(t, paths.GetBrewfileDir(), ops[3].Target)
 
-	assert.Equal(t, types.OperationWriteFile, ops[3].Type)
-	assert.Contains(t, ops[3].Target, "tools")
-	assert.Equal(t, "brew123", ops[3].Content)
+	// Fifth: write brewfile sentinel (execute was deduplicated)
+	assert.Equal(t, types.OperationWriteFile, ops[4].Type)
+	assert.Contains(t, ops[4].Target, "tools")
+	assert.Equal(t, "brew123", ops[4].Content)
 }
 
 // TestExecutionPipelineNoDuplicateOperations tests that the execution pipeline
@@ -958,7 +966,7 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 	ctx.ChecksumResults["/dotfiles/brew/Brewfile"] = "abc123"
 
 	// Generate operations with context (this is what the pipeline does)
-	finalOps, err := GetFileOperationsWithContext(actions, ctx)
+	finalOps, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
 
 	// Count operations by type and target

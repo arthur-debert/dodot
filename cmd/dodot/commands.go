@@ -202,7 +202,8 @@ func newDeployCmd() *cobra.Command {
 
 			// Execute operations if not in dry-run mode
 			if !dryRun && len(result.Operations) > 0 {
-				executor := synthfs.NewSynthfsExecutor(dryRun)
+				// Use combined executor to handle operations in the correct order
+				executor := synthfs.NewCombinedExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {
@@ -267,7 +268,8 @@ func newInstallCmd() *cobra.Command {
 
 			// Execute operations if not in dry-run mode
 			if !dryRun && len(result.Operations) > 0 {
-				executor := synthfs.NewSynthfsExecutor(dryRun)
+				// Use combined executor to handle operations in the correct order
+				executor := synthfs.NewCombinedExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
 				if err := executor.ExecuteOperations(result.Operations); err != nil {

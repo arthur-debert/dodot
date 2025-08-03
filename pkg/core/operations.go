@@ -35,15 +35,17 @@ func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
 	operations.ResolveOperationConflicts(ops, ctx)
 }
 
-// GetFileOperations converts actions into file system operations
-func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
-	return GetFileOperationsWithContext(actions, nil)
+// ConvertActionsToOperations converts actions into file system operations
+// This is the planning phase - no actual file system changes are made.
+func ConvertActionsToOperations(actions []types.Action) ([]types.Operation, error) {
+	return ConvertActionsToOperationsWithContext(actions, nil)
 }
 
-// GetFileOperationsWithContext converts actions into file system operations with execution context
-func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
+// ConvertActionsToOperationsWithContext converts actions into file system operations with execution context
+// This is the planning phase - no actual file system changes are made.
+func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations")
-	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations")
+	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations (planning phase)")
 
 	if len(actions) == 0 {
 		return nil, nil
@@ -93,7 +95,7 @@ func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext)
 	// Resolve conflicts
 	ResolveConflicts(&allOperations, ctx)
 
-	logger.Info().Int("operationCount", len(allOperations)).Msg("Generated operations")
+	logger.Info().Int("operationCount", len(allOperations)).Msg("Converted actions to operations (ready for execution)")
 	return allOperations, nil
 }
 
@@ -446,7 +448,15 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 			Target:      paths.GetBrewfileDir(),
 			Description: "Create brewfile sentinel directory",
 		},
-		// Write sentinel file with checksum
+		// Execute brew bundle command
+		{
+			Type:        types.OperationExecute,
+			Command:     "brew",
+			Args:        []string{"bundle", "--file", action.Source},
+			WorkingDir:  filepath.Dir(action.Source),
+			Description: fmt.Sprintf("Execute brew bundle for %s", pack),
+		},
+		// Write sentinel file with checksum only after successful execution
 		{
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
@@ -500,7 +510,15 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 			Target:      paths.GetInstallDir(),
 			Description: "Create install sentinel directory",
 		},
-		// Write sentinel file with checksum
+		// Execute the install script
+		{
+			Type:        types.OperationExecute,
+			Command:     "/bin/sh",
+			Args:        []string{action.Source},
+			WorkingDir:  filepath.Dir(action.Source),
+			Description: fmt.Sprintf("Execute install script for %s", pack),
+		},
+		// Write sentinel file with checksum only after successful execution
 		{
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
