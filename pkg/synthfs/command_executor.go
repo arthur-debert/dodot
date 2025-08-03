@@ -107,13 +107,21 @@ func (e *CommandExecutor) executeOperation(op types.Operation) error {
 	// Execute command
 	err := cmd.Run()
 
-	// Log output
+	// Display output to user
 	if stdout.Len() > 0 {
+		// Print stdout directly to the console so users can see script progress
+		fmt.Print(stdout.String())
+
+		// Also log for debugging
 		e.logger.Debug().
 			Str("output", stdout.String()).
 			Msg("Command stdout")
 	}
 	if stderr.Len() > 0 {
+		// Print stderr to console as well
+		fmt.Fprint(os.Stderr, stderr.String())
+
+		// Also log for debugging
 		e.logger.Debug().
 			Str("output", stderr.String()).
 			Msg("Command stderr")
