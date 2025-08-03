@@ -72,4 +72,17 @@ else
 fi
 
 echo
+echo "Setting up brew mocking..."
+# Rename real brew to brew-full if it exists
+if command -v brew &> /dev/null && [ ! -e /home/linuxbrew/.linuxbrew/bin/brew-full ]; then
+    sudo mv /home/linuxbrew/.linuxbrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew-full
+fi
+
+# Install our mock brew
+sudo cp /scripts/mock-brew.sh /home/linuxbrew/.linuxbrew/bin/brew
+sudo chmod +x /home/linuxbrew/.linuxbrew/bin/brew
+
+echo "✅ Mock brew installed (real brew available as brew-full)"
+
+echo
 echo "Setup phase completed successfully!"
