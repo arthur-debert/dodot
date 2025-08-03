@@ -30,17 +30,17 @@ Describe 'Dodot Integration Test Suite'
     End
   End
   
-  Describe 'Phase 2: Multiple PowerUps (Same Pack) 🔲'
-    It 'Multiple Deploy PowerUps'
-      Pending "0/4 tests implemented"
+  Describe 'Phase 2: Multiple PowerUps (Same Pack)'
+    It '⚠️ Multiple Deploy PowerUps (4 tests)'
+      Pending "4/4 tests implemented but failing ⚠️"
     End
     
-    It 'Multiple Install PowerUps'
-      Pending "0/4 tests implemented"
+    It '⚠️ Multiple Install PowerUps (4 tests)'
+      Pending "4/4 tests implemented but failing ⚠️"
     End
     
-    It 'Mixed Deploy + Install'
-      Pending "0/4 tests implemented"
+    It '⚠️ Mixed Deploy + Install (4 tests)'
+      Pending "4/4 tests implemented but failing ⚠️"
     End
   End
   
@@ -84,8 +84,8 @@ Describe 'Dodot Integration Test Suite'
   
   Describe 'Test Summary'
     It 'shows overall progress'
-      # Total: 105 tests written (74 passing, 31 pending) out of ~160 planned
-      Pending "Progress: 105/160 tests (66%) - 4 PowerUps complete ✅, 1 pending ⚠️"
+      # Total: 117 tests written (74 passing, 15 failing, 28 pending) out of ~160 planned
+      Pending "Progress: 117/160 tests (73%) - 4 PowerUps complete ✅, 1 pending ⚠️, Phase 2 failing ⚠️"
     End
   End
 End
