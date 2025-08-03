@@ -1,0 +1,15 @@
+[user]
+    name = Test User
+    email = test@example.com
+
+[core]
+    editor = vim
+    excludesfile = ~/.gitignore_global
+
+[alias]
+    st = status
+    co = checkout
+    br = branch
+
+[init]
+    defaultBranch = main

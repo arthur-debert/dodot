@@ -1,0 +1,12 @@
+# Git configuration pack
+name = "git"
+
+# Symlink git config
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".gitconfig" },
+    { type = "FileName", pattern = ".gitignore_global" }
+]
+actions = [
+    { type = "Symlink" }
+]
