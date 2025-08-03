@@ -32,6 +32,10 @@ fi
 # Change to source directory
 cd /dodot
 
+# Configure git safe directory for GitHub Actions
+# This is needed when running as root in a repo owned by another user
+git config --global --add safe.directory /dodot
+
 # Use the existing build script
 # Skip tests during container setup for speed
 echo "Building dodot using scripts/build..."
