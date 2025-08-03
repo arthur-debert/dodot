@@ -91,6 +91,11 @@ func (t *DirectoryTrigger) Priority() int {
 	return 100 // High priority for directory matching
 }
 
+// Type returns the trigger type - this is a specific trigger
+func (t *DirectoryTrigger) Type() types.TriggerType {
+	return types.TriggerTypeSpecific
+}
+
 // ValidateOptions checks if the provided options are valid for this trigger
 func (t *DirectoryTrigger) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {

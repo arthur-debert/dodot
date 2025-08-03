@@ -86,6 +86,11 @@ func (t *ExtensionTrigger) Priority() int {
 	return 80 // Medium-high priority
 }
 
+// Type returns the trigger type - this is a specific trigger
+func (t *ExtensionTrigger) Type() types.TriggerType {
+	return types.TriggerTypeSpecific
+}
+
 // ValidateOptions checks if the provided options are valid for this trigger
 func (t *ExtensionTrigger) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {

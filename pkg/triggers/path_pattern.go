@@ -85,6 +85,11 @@ func (t *PathPatternTrigger) Priority() int {
 	return 70 // Medium priority
 }
 
+// Type returns the trigger type - this is a specific trigger
+func (t *PathPatternTrigger) Type() types.TriggerType {
+	return types.TriggerTypeSpecific
+}
+
 // ValidateOptions checks if the provided options are valid for this trigger
 func (t *PathPatternTrigger) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {
