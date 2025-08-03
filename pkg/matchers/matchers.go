@@ -216,6 +216,18 @@ func DefaultMatchers() []types.Matcher {
 			},
 			Enabled: true,
 		},
+
+		// Catchall symlink matcher - must be last with lowest priority
+		{
+			Name:           "symlink-catchall",
+			TriggerName:    "catchall",
+			PowerUpName:    "symlink",
+			Priority:       0, // Lowest priority to run last
+			TriggerOptions: map[string]interface{}{
+				// Default excludes are handled by the catchall trigger itself
+			},
+			Enabled: true,
+		},
 	}
 
 	// Add any dynamically registered matchers
