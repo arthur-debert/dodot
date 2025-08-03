@@ -29,18 +29,21 @@ func init() {
 func TestDefaultMatchers(t *testing.T) {
 	defaults := DefaultMatchers()
 
-	// Should have a reasonable number of default matchers
-	assert.GreaterOrEqual(t, len(defaults), 11)
+	// Should have exactly the matchers we defined
+	assert.Equal(t, 10, len(defaults)) // 2 install + 2 shell + 4 bin + 1 template + 1 catchall
 
 	// Check some expected matchers exist
 	expectedNames := map[string]bool{
-		"vim-config":    false,
-		"bash-config":   false,
-		"zsh-config":    false,
-		"git-config":    false,
-		"tmux-config":   false,
-		"shell-profile": false,
-		"shell-path":    false,
+		"install-script":   false,
+		"brewfile":         false,
+		"shell-aliases":    false,
+		"shell-profile":    false,
+		"bin-dir":          false,
+		"bin-path":         false,
+		"local-bin-dir":    false,
+		"local-bin-path":   false,
+		"template":         false,
+		"symlink-catchall": false,
 	}
 
 	for _, m := range defaults {

@@ -27,13 +27,14 @@ func TestInitPack(t *testing.T) {
 			packName: "new-pack",
 			validate: func(t *testing.T, result *types.InitResult, packPath string) {
 				// Since we're not executing operations yet, we only check the reported files
-				testutil.AssertEqual(t, 5, len(result.FilesCreated))
+				testutil.AssertEqual(t, 6, len(result.FilesCreated))
 
 				// Check that all expected files are in the result
 				expectedFiles := map[string]bool{
 					".dodot.toml": false,
 					"README.txt":  false,
 					"aliases.sh":  false,
+					"profile.sh":  false,
 					"install.sh":  false,
 					"Brewfile":    false,
 				}
