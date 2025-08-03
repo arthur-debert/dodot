@@ -47,7 +47,6 @@ EOF
   
   Describe 'Basic Brewfile processing'
     It 'processes valid Brewfile using mock brew'
-      Pending "Brewfile powerup only creates sentinels, doesn't execute brew bundle"
       # Create Brewfile with basic formulas
       create_brewfile "dev-tools" '
 # Development tools
@@ -62,11 +61,11 @@ brew "tmux"
       When call "$DODOT" install
       The status should be success
       The output should include "Brewfile"
-      The result of function check_brew_log "brew bundle --file" should be successful
+      When call check_brew_log "brew bundle --file"
+      The status should be success
     End
     
     It 'calls brew bundle with correct file path'
-      Pending "brew bundle not executed"
       create_brewfile "tools" 'brew "wget"'
       
       rm -f /tmp/brew-calls.log
@@ -80,19 +79,17 @@ brew "tmux"
     End
     
     It 'creates sentinel file after successful install'
-      Pending "Sentinel location may differ"
       create_brewfile "tools" 'brew "curl"'
       
       When call "$DODOT" install
       The status should be success
       
       # Check sentinel directory and file
-      The path "$HOME/.local/share/dodot/sentinels/brewfile" should be directory
-      The file "$HOME/.local/share/dodot/sentinels/brewfile/tools" should exist
+      The path "$HOME/.local/share/dodot/brewfile" should be directory
+      The file "$HOME/.local/share/dodot/brewfile/tools" should exist
     End
     
     It 'stores Brewfile checksum in sentinel'
-      Pending "Sentinel implementation incomplete"
       create_brewfile "tools" 'brew "jq"'
       
       When call "$DODOT" install
@@ -102,14 +99,13 @@ brew "tmux"
       local expected_checksum=$(sha256sum "$TEST_DOTFILES_ROOT/tools/Brewfile" | cut -d' ' -f1)
       
       # Sentinel should contain checksum
-      The file "$HOME/.local/share/dodot/sentinels/brewfile/tools" should exist
-      The file "$HOME/.local/share/dodot/sentinels/brewfile/tools" should include "$expected_checksum"
+      The file "$HOME/.local/share/dodot/brewfile/tools" should exist
+      The file "$HOME/.local/share/dodot/brewfile/tools" should include "$expected_checksum"
     End
   End
   
   Describe 'Mock brew functionality'
     It 'logs brew bundle calls to /tmp/brew-calls.log'
-      Pending "brew bundle not executed"
       create_brewfile "test" 'brew "htop"'
       
       rm -f /tmp/brew-calls.log
@@ -136,7 +132,6 @@ brew "tmux"
   
   Describe 'Idempotency'
     It 'installs packages on first run'
-      Pending "brew bundle not executed"
       create_brewfile "apps" 'brew "tree"\nbrew "jq"'
       
       rm -f /tmp/brew-calls.log
@@ -151,7 +146,6 @@ brew "tmux"
     End
     
     It 'skips installation on second run with same Brewfile'
-      Pending "brew bundle not executed"
       create_brewfile "apps" 'brew "ripgrep"'
       
       # First run
@@ -171,7 +165,6 @@ brew "tmux"
     End
     
     It 'reinstalls when Brewfile changes'
-      Pending "brew bundle not executed"
       create_brewfile "apps" 'brew "fd"'
       
       # First run
@@ -212,7 +205,6 @@ EOF
     End
     
     It 'handles invalid Brewfile syntax'
-      Pending "brew bundle not executed"
       # Note: Our mock brew doesn't validate syntax, but real brew would
       create_brewfile "bad-syntax" '
 # Invalid syntax
@@ -227,7 +219,6 @@ brew
     End
     
     It 'handles brew formula that does not exist'
-      Pending "brew bundle not executed"
       create_brewfile "bad-formula" 'brew "nonexistent-formula"'
       
       When call "$DODOT" install
@@ -237,7 +228,6 @@ brew
     End
     
     It 'handles brew command failures'
-      Pending "brew bundle not executed"
       # Create a Brewfile that will cause mock brew to fail
       create_brewfile "failing" ''
       # Make Brewfile unreadable to trigger error
@@ -253,7 +243,6 @@ brew
   
   Describe 'Brewfile formats'
     It 'handles basic brew formula lines'
-      Pending "brew bundle not executed"
       create_brewfile "formats" '
 brew "wget"
 brew "curl"
@@ -272,7 +261,6 @@ brew "httpie"
     End
     
     It 'handles tap directives'
-      Pending "brew bundle not executed"
       create_brewfile "taps" '
 tap "homebrew/cask-fonts"
 brew "font-hack-nerd-font"
@@ -288,7 +276,6 @@ brew "font-hack-nerd-font"
     End
     
     It 'handles cask installations'
-      Pending "brew bundle not executed"
       create_brewfile "casks" '
 cask "visual-studio-code"
 cask "docker"
