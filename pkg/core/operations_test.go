@@ -905,23 +905,31 @@ func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
 
 	ops, err := GetFileOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
-	assert.Len(t, ops, 4) // 2 ops per action (create dir + write sentinel)
+	assert.Len(t, ops, 5) // After deduplication: 2 create dir ops + 2 execute ops + 2 write sentinel ops - 1 duplicate dir
 
 	// Install action should be processed first (higher priority)
+	// First: create install directory
 	assert.Equal(t, types.OperationCreateDir, ops[0].Type)
 	assert.Equal(t, paths.GetInstallDir(), ops[0].Target)
 
-	assert.Equal(t, types.OperationWriteFile, ops[1].Type)
-	assert.Contains(t, ops[1].Target, "dev")
-	assert.Equal(t, "install456", ops[1].Content)
+	// Second: execute install script
+	assert.Equal(t, types.OperationExecute, ops[1].Type)
+	assert.Equal(t, "/bin/sh", ops[1].Command)
+
+	// Third: write install sentinel
+	assert.Equal(t, types.OperationWriteFile, ops[2].Type)
+	assert.Contains(t, ops[2].Target, "dev")
+	assert.Equal(t, "install456", ops[2].Content)
 
 	// Then brew action
-	assert.Equal(t, types.OperationCreateDir, ops[2].Type)
-	assert.Equal(t, paths.GetBrewfileDir(), ops[2].Target)
+	// Fourth: create brewfile directory
+	assert.Equal(t, types.OperationCreateDir, ops[3].Type)
+	assert.Equal(t, paths.GetBrewfileDir(), ops[3].Target)
 
-	assert.Equal(t, types.OperationWriteFile, ops[3].Type)
-	assert.Contains(t, ops[3].Target, "tools")
-	assert.Equal(t, "brew123", ops[3].Content)
+	// Fifth: write brewfile sentinel (execute was deduplicated)
+	assert.Equal(t, types.OperationWriteFile, ops[4].Type)
+	assert.Contains(t, ops[4].Target, "tools")
+	assert.Equal(t, "brew123", ops[4].Content)
 }
 
 // TestExecutionPipelineNoDuplicateOperations tests that the execution pipeline

@@ -27,6 +27,9 @@ const (
 
 	// OperationChecksum calculates file checksum
 	OperationChecksum OperationType = "checksum"
+
+	// OperationExecute executes a command or script
+	OperationExecute OperationType = "execute"
 )
 
 // OperationStatus defines the state of an operation
@@ -66,4 +69,16 @@ type Operation struct {
 
 	// Status is the current state of the operation
 	Status OperationStatus
+
+	// Command is the command to execute (for execute operations)
+	Command string
+
+	// Args are the arguments for the command (for execute operations)
+	Args []string
+
+	// WorkingDir is the working directory for execution (optional)
+	WorkingDir string
+
+	// EnvironmentVars are additional environment variables (optional)
+	EnvironmentVars map[string]string
 }

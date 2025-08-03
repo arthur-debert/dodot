@@ -51,8 +51,9 @@ func DeduplicateOperations(ops []types.Operation) []types.Operation {
 			seen[key] = true
 			result = append(result, op)
 		} else {
-			// Log when we skip a duplicate operation
-			logger.Warn().
+			// Log when we skip a duplicate operation at debug level
+			// This is normal behavior and shouldn't clutter the output
+			logger.Debug().
 				Str("type", string(op.Type)).
 				Str("target", op.Target).
 				Str("description", op.Description).

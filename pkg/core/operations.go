@@ -446,7 +446,15 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 			Target:      paths.GetBrewfileDir(),
 			Description: "Create brewfile sentinel directory",
 		},
-		// Write sentinel file with checksum
+		// Execute brew bundle command
+		{
+			Type:        types.OperationExecute,
+			Command:     "brew",
+			Args:        []string{"bundle", "--file", action.Source},
+			WorkingDir:  filepath.Dir(action.Source),
+			Description: fmt.Sprintf("Execute brew bundle for %s", pack),
+		},
+		// Write sentinel file with checksum only after successful execution
 		{
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
@@ -500,7 +508,15 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 			Target:      paths.GetInstallDir(),
 			Description: "Create install sentinel directory",
 		},
-		// Write sentinel file with checksum
+		// Execute the install script
+		{
+			Type:        types.OperationExecute,
+			Command:     "/bin/sh",
+			Args:        []string{action.Source},
+			WorkingDir:  filepath.Dir(action.Source),
+			Description: fmt.Sprintf("Execute install script for %s", pack),
+		},
+		// Write sentinel file with checksum only after successful execution
 		{
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,

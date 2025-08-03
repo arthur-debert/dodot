@@ -178,6 +178,14 @@ func (e *SynthfsExecutor) convertToSynthfsOperation(op types.Operation) (synthfs
 			Str("type", string(op.Type)).
 			Msg("Skipping non-mutating operation")
 		return nil, nil
+	case types.OperationExecute:
+		// Execute operations need special handling outside of synthfs
+		// For now, skip them in synthfs and handle them separately
+		e.logger.Debug().
+			Str("type", string(op.Type)).
+			Str("command", op.Command).
+			Msg("Skipping execute operation in synthfs (needs separate handling)")
+		return nil, nil
 	default:
 		return nil, errors.Newf(errors.ErrActionInvalid,
 			"unsupported operation type: %s", op.Type)
