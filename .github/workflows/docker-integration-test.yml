@@ -50,7 +50,7 @@ jobs:
           
           echo "=== Extracted Status ==="
           echo "Setup: $SETUP_STATUS"
-          echo "Test: $SETUP_STATUS"
+          echo "Test: $TEST_STATUS"
           echo "Report: $REPORT_STATUS"
           
           # Set outputs for other steps
@@ -58,12 +58,18 @@ jobs:
           echo "test_status=$TEST_STATUS" >> $GITHUB_OUTPUT
           echo "report_status=$REPORT_STATUS" >> $GITHUB_OUTPUT
           
-          # For now, we only care about setup success
-          if [ "$SETUP_STATUS" = "SUCCESS" ]; then
-            echo "✅ Setup phase succeeded - workflow passes"
-            exit 0
-          else
+          # Check test results to determine workflow success
+          if [ "$SETUP_STATUS" != "SUCCESS" ]; then
             echo "❌ Setup phase failed - workflow fails"
+            exit 1
+          elif [ "$TEST_STATUS" = "SUCCESS" ]; then
+            echo "✅ All tests passed - workflow succeeds"
+            exit 0
+          elif [ "$TEST_STATUS" = "PARTIAL" ]; then
+            echo "⚠️ Some tests failed - workflow fails"
+            exit 1
+          else
+            echo "❌ Test phase failed - workflow fails"
             exit 1
           fi
       
@@ -78,7 +84,7 @@ jobs:
           echo "| Test | ${{ steps.run-tests.outputs.test_status || 'UNKNOWN' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Report | ${{ steps.run-tests.outputs.report_status || 'UNKNOWN' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Current success criteria:** Setup phase must succeed" >> $GITHUB_STEP_SUMMARY
+          echo "**Success criteria:** All tests must pass (TEST_STATUS = SUCCESS)" >> $GITHUB_STEP_SUMMARY
       
       - name: Upload test artifacts
         if: always()
