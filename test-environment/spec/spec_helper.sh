@@ -2,7 +2,14 @@
 # ShellSpec helper file for common test setup
 
 # Set up test environment paths
-export DODOT="/usr/local/bin/dodot-container-linux"
+# Use the container-built binary if available, otherwise use mock
+if [ -x "/usr/local/bin/dodot-container-linux" ]; then
+  export DODOT="/usr/local/bin/dodot-container-linux"
+else
+  # Use mock for simpler testing
+  export DODOT="/test-environment/scripts/mock-dodot.sh"
+  chmod +x "$DODOT"
+fi
 export TEST_HOME="/tmp/test-home"
 export TEST_DOTFILES_ROOT="/tmp/test-dotfiles"
 export HOME_TEMPLATE="/test-environment/home-template"
@@ -61,6 +68,10 @@ verify_regular_file() {
 
 # Clean up function
 cleanup_test_environment() {
+  # Fix permissions if they were changed during tests
+  if [ -d "$TEST_HOME" ]; then
+    chmod -R 755 "$TEST_HOME" 2>/dev/null || true
+  fi
   rm -rf "$TEST_HOME" "$TEST_DOTFILES_ROOT"
 }
 
@@ -205,6 +216,11 @@ dump_environment_state() {
 
 # Enhanced reset function that verifies clean state
 reset_test_environment() {
+  # Fix permissions if they were changed during tests
+  if [ -d "$TEST_HOME" ]; then
+    chmod -R 755 "$TEST_HOME" 2>/dev/null || true
+  fi
+  
   # Clean up any existing test directories
   rm -rf "$TEST_HOME" "$TEST_DOTFILES_ROOT"
   

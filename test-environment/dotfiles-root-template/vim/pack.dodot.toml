@@ -8,5 +8,5 @@ triggers = [
     { type = "Directory", pattern = ".vim" }
 ]
 actions = [
-    { type = "Symlink" }
+    { type = "symlink" }
 ]

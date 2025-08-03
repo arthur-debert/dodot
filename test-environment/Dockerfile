@@ -56,6 +56,9 @@ COPY --chown=testuser:testuser scripts/ /setup-scripts/
 # Copy sample dotfiles
 COPY --chown=testuser:testuser sample-dotfiles/ /dotfiles/
 
+# Copy test environment files
+COPY --chown=testuser:testuser . /test-environment/
+
 # Run Homebrew setup
 RUN /setup-scripts/setup-brew.sh
 
