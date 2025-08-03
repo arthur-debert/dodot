@@ -12,6 +12,7 @@ type MockTrigger struct {
 	DescriptionFunc func() string
 	PriorityFunc    func() int
 	MatchFunc       func(path string, info fs.FileInfo) (bool, map[string]interface{})
+	TypeFunc        func() types.TriggerType
 }
 
 // Name returns the mock's name.
@@ -44,6 +45,14 @@ func (m *MockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]int
 		return m.MatchFunc(path, info)
 	}
 	return false, nil
+}
+
+// Type returns the mock's trigger type.
+func (m *MockTrigger) Type() types.TriggerType {
+	if m.TypeFunc != nil {
+		return m.TypeFunc()
+	}
+	return types.TriggerTypeSpecific
 }
 
 // MockPowerUp is a mock implementation of the types.PowerUp interface for testing.

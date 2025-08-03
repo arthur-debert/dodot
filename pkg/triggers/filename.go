@@ -96,6 +96,11 @@ func (t *FileNameTrigger) Priority() int {
 	return t.priority
 }
 
+// Type returns the trigger type - this is a specific trigger
+func (t *FileNameTrigger) Type() types.TriggerType {
+	return types.TriggerTypeSpecific
+}
+
 // GetPattern returns the pattern this trigger matches
 func (t *FileNameTrigger) GetPattern() string {
 	return t.pattern

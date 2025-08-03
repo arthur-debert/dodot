@@ -22,6 +22,7 @@ func (m *mockTrigger) Priority() int       { return m.priority }
 func (m *mockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]interface{}) {
 	return m.shouldMatch, m.metadata
 }
+func (m *mockTrigger) Type() TriggerType { return TriggerTypeSpecific }
 
 type mockPowerUp struct {
 	name        string

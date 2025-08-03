@@ -2,6 +2,16 @@ package types
 
 import "io/fs"
 
+// TriggerType represents the type of trigger - specific or catchall
+type TriggerType int
+
+const (
+	// TriggerTypeSpecific is for triggers that match specific patterns
+	TriggerTypeSpecific TriggerType = iota
+	// TriggerTypeCatchall is for triggers that match everything not already matched
+	TriggerTypeCatchall
+)
+
 // Trigger is an interface for pattern-matching engines that scan files
 // and directories within packs. When a trigger finds a match, it returns
 // metadata about what was found.
@@ -18,6 +28,9 @@ type Trigger interface {
 
 	// Priority returns the priority of this trigger (higher = evaluated first)
 	Priority() int
+
+	// Type returns whether this is a specific or catchall trigger
+	Type() TriggerType
 }
 
 // TriggerMatch represents a successful trigger match on a file or directory
