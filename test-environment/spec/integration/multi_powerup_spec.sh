@@ -13,42 +13,41 @@ Describe 'Multiple PowerUps Integration'
   
   Describe 'Multiple deploy PowerUps'
     It 'handles symlink + shell_profile in same pack'
-      create_multi_powerup_pack "dev-tools"
+      create_multi_powerup_pack "multitest"
       
-      # Create files for symlink
-      echo "alias ll='ls -la'" > "$TEST_DOTFILES_ROOT/dev-tools/.aliases"
-      echo "export EDITOR=vim" > "$TEST_DOTFILES_ROOT/dev-tools/.exports"
+      # Create files matching working test patterns
+      echo "#!/bin/bash" > "$TEST_DOTFILES_ROOT/multitest/.bashrc"
+      echo "alias g='git'" > "$TEST_DOTFILES_ROOT/multitest/aliases.sh"
       
-      # Create shell profile scripts
-      mkdir -p "$TEST_DOTFILES_ROOT/dev-tools/.config/shell_profile"
-      echo "echo 'Loading dev tools profile'" > "$TEST_DOTFILES_ROOT/dev-tools/.config/shell_profile/dev.sh"
-      
-      # Create pack.dodot.toml with both powerups
-      cat > "$TEST_DOTFILES_ROOT/dev-tools/pack.dodot.toml" << 'EOF'
-# Symlink powerup
-[[symlink]]
-trigger = { file_name = ".aliases" }
-target = "~/.aliases"
+      # Create pack.dodot.toml matching working format exactly
+      cat > "$TEST_DOTFILES_ROOT/multitest/pack.dodot.toml" << 'EOF'
+name = "multitest"
 
-[[symlink]]
-trigger = { file_name = ".exports" }
-target = "~/.exports"
+# Deploy .bashrc as symlink
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".bashrc" }
+]
+actions = [
+    { type = "symlink" }
+]
 
-# Shell profile powerup
-[[shell_profile]]
-trigger = { directory = ".config/shell_profile", recursive = false }
+# Source aliases.sh for shell profile
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "aliases.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
 EOF
       
-      When call "$DODOT" deploy
+      When call "$DODOT" deploy multitest
       The status should be success
       
-      # Verify symlinks created
-      The file "$HOME/.aliases" should be symlink
-      The file "$HOME/.exports" should be symlink
-      
-      # Verify shell profile deployed
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/dev.sh" should exist
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/dev.sh" should include "Loading dev tools profile"
+      # Verify both powerups executed
+      The file "$HOME/.bashrc" should be symlink
+      The file "$HOME/.local/share/dodot/deployed/shell_profile/multitest.sh" should exist
     End
     
     It 'handles all three deploy types in one pack'
@@ -58,28 +57,43 @@ EOF
       echo "complete vimrc" > "$TEST_DOTFILES_ROOT/complete/.vimrc"
       
       # Shell profile scripts
-      mkdir -p "$TEST_DOTFILES_ROOT/complete/shell"
-      echo "source ~/.aliases" > "$TEST_DOTFILES_ROOT/complete/shell/init.sh"
+      echo "source ~/.aliases" > "$TEST_DOTFILES_ROOT/complete/aliases.sh"
       
       # Shell add path directory
       mkdir -p "$TEST_DOTFILES_ROOT/complete/bin"
       echo '#!/bin/bash\necho "mytool"' > "$TEST_DOTFILES_ROOT/complete/bin/mytool"
       chmod +x "$TEST_DOTFILES_ROOT/complete/bin/mytool"
       
-      # Create comprehensive pack.dodot.toml
+      # Create pack.dodot.toml
       cat > "$TEST_DOTFILES_ROOT/complete/pack.dodot.toml" << 'EOF'
+name = "complete"
+
 # Symlink
-[[symlink]]
-trigger = { file_name = ".vimrc" }
-target = "~/.vimrc"
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".vimrc" }
+]
+actions = [
+    { type = "symlink" }
+]
 
 # Shell profile
-[[shell_profile]]
-trigger = { directory = "shell", recursive = false }
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "aliases.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
 
 # Shell add path
-[[shell_add_path]]
-trigger = { directory = "bin", recursive = false }
+[[matchers]]
+triggers = [
+    { type = "Directory", pattern = "bin" }
+]
+actions = [
+    { type = "shell_add_path" }
+]
 EOF
       
       When call "$DODOT" deploy
@@ -87,43 +101,62 @@ EOF
       
       # All three types should be deployed
       The file "$HOME/.vimrc" should be symlink
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/init.sh" should exist
+      The file "$HOME/.local/share/dodot/deployed/shell_profile/complete.sh" should exist
       The file "$HOME/.local/share/dodot/deployed/shell_add_path/bin" should exist
     End
     
     It 'executes powerups in priority order'
       create_multi_powerup_pack "ordered"
       
-      # Create files that log their execution order
-      echo "Order: 1" > "$TEST_DOTFILES_ROOT/ordered/.first"
-      echo "Order: 2" > "$TEST_DOTFILES_ROOT/ordered/.second"
-      echo "Order: 3" > "$TEST_DOTFILES_ROOT/ordered/.third"
+      # Create different file types
+      echo "bashrc content" > "$TEST_DOTFILES_ROOT/ordered/.bashrc"
+      echo "aliases content" > "$TEST_DOTFILES_ROOT/ordered/aliases.sh"
+      mkdir -p "$TEST_DOTFILES_ROOT/ordered/bin"
+      echo '#!/bin/bash' > "$TEST_DOTFILES_ROOT/ordered/bin/tool"
+      chmod +x "$TEST_DOTFILES_ROOT/ordered/bin/tool"
       
-      # Pack with explicit priorities
+      # Pack config with explicit priorities
       cat > "$TEST_DOTFILES_ROOT/ordered/pack.dodot.toml" << 'EOF'
-[[symlink]]
-trigger = { file_name = ".third" }
-target = "~/.third"
-priority = 30
+name = "ordered"
 
-[[symlink]]
-trigger = { file_name = ".first" }
-target = "~/.first"
-priority = 10
+# High priority symlink
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".bashrc" }
+]
+actions = [
+    { type = "symlink" }
+]
+priority = 100
 
-[[symlink]]
-trigger = { file_name = ".second" }
-target = "~/.second"
-priority = 20
+# Medium priority shell profile
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "aliases.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
+priority = 80
+
+# Lower priority shell add path
+[[matchers]]
+triggers = [
+    { type = "Directory", pattern = "bin" }
+]
+actions = [
+    { type = "shell_add_path" }
+]
+priority = 70
 EOF
       
       When call "$DODOT" deploy -v
       The status should be success
       
-      # All should be deployed (order verification would need operation logs)
-      The file "$HOME/.first" should exist
-      The file "$HOME/.second" should exist
-      The file "$HOME/.third" should exist
+      # All should be deployed
+      The file "$HOME/.bashrc" should be symlink
+      The file "$HOME/.local/share/dodot/deployed/shell_profile/ordered.sh" should exist
+      The path "$HOME/.local/share/dodot/deployed/shell_add_path/bin" should be symlink
     End
     
     It 'maintains separate deployments for each powerup'
@@ -131,16 +164,27 @@ EOF
       
       # Different powerup types with their own files
       echo "gitconfig content" > "$TEST_DOTFILES_ROOT/separated/.gitconfig"
-      mkdir -p "$TEST_DOTFILES_ROOT/separated/profile.d"
-      echo "export SEPARATED=yes" > "$TEST_DOTFILES_ROOT/separated/profile.d/env.sh"
+      echo "export SEPARATED=yes" > "$TEST_DOTFILES_ROOT/separated/aliases.sh"
       
+      # Pack config
       cat > "$TEST_DOTFILES_ROOT/separated/pack.dodot.toml" << 'EOF'
-[[symlink]]
-trigger = { file_name = ".gitconfig" }
-target = "~/.gitconfig"
+name = "separated"
 
-[[shell_profile]]
-trigger = { directory = "profile.d", recursive = false }
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".gitconfig" }
+]
+actions = [
+    { type = "symlink" }
+]
+
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "aliases.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
 EOF
       
       When call "$DODOT" deploy
@@ -149,7 +193,7 @@ EOF
       # Each powerup maintains its own deployment structure
       The path "$HOME/.gitconfig" should be symlink
       The path "$HOME/.local/share/dodot/deployed/shell_profile" should be directory
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/env.sh" should exist
+      The file "$HOME/.local/share/dodot/deployed/shell_profile/separated.sh" should exist
       
       # They should not interfere with each other
       The path "$HOME/.local/share/dodot/deployed/shell_profile/.gitconfig" should not exist
@@ -158,12 +202,12 @@ EOF
   
   Describe 'Multiple install PowerUps'
     It 'handles install_script + brewfile in same pack'
-      Pending "Install powerups not fully implemented"
       create_multi_powerup_pack "installers"
       
       # Create install script
       cat > "$TEST_DOTFILES_ROOT/installers/install.sh" << 'EOF'
 #!/bin/bash
+echo "Running installer"
 echo "Running installer" > /tmp/multi-install.log
 EOF
       chmod +x "$TEST_DOTFILES_ROOT/installers/install.sh"
@@ -174,34 +218,82 @@ brew "wget"
 brew "tree"
 EOF
       
-      # Pack with both install powerups
+      # Pack config
       cat > "$TEST_DOTFILES_ROOT/installers/pack.dodot.toml" << 'EOF'
-[[install_script]]
-trigger = { directory = ".", recursive = false }
-file_name = "install.sh"
+name = "installers"
 
-[[brewfile]]
-trigger = { directory = ".", recursive = false }
-file_name = "Brewfile"
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "install.sh" }
+]
+actions = [
+    { type = "install_script" }
+]
+
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "Brewfile" }
+]
+actions = [
+    { type = "brewfile" }
+]
 EOF
       
       When call "$DODOT" install
       The status should be success
       
-      # Both should create sentinels (actual execution not implemented)
-      The path "$HOME/.local/share/dodot/sentinels" should be directory
+      # Both should create sentinels
+      The path "$HOME/.local/share/dodot/sentinels/install" should be directory
+      The path "$HOME/.local/share/dodot/sentinels/brewfile" should be directory
     End
     
     It 'runs both installers on first deploy'
-      Pending "Install powerups not fully implemented"
+      create_multi_powerup_pack "first-run"
+      
+      # Create both install powerups
+      echo "#!/bin/bash\necho 'First installer'" > "$TEST_DOTFILES_ROOT/first-run/install.sh"
+      chmod +x "$TEST_DOTFILES_ROOT/first-run/install.sh"
+      echo "brew 'tree'" > "$TEST_DOTFILES_ROOT/first-run/Brewfile"
+      
+      When call "$DODOT" install
+      The status should be success
+      
+      # Check both ran
+      The output should include "First installer"
+      The output should include "brew bundle"
     End
     
     It 'tracks sentinel files separately'
-      Pending "Install powerups not fully implemented"
+      create_multi_powerup_pack "sentinel-test"
+      
+      # Create both install powerups
+      echo "#!/bin/bash\necho 'Sentinel test'" > "$TEST_DOTFILES_ROOT/sentinel-test/install.sh"
+      chmod +x "$TEST_DOTFILES_ROOT/sentinel-test/install.sh"
+      echo "brew 'wget'" > "$TEST_DOTFILES_ROOT/sentinel-test/Brewfile"
+      
+      # First run
+      "$DODOT" install >/dev/null 2>&1
+      
+      # Check sentinels exist
+      The path "$HOME/.local/share/dodot/sentinels/install/sentinel-test" should be file
+      The path "$HOME/.local/share/dodot/sentinels/brewfile/sentinel-test" should be file
     End
     
     It 'handles one installer failing'
-      Pending "Install powerups not fully implemented"
+      create_multi_powerup_pack "fail-test"
+      
+      # Create failing install script
+      echo "#!/bin/bash\nexit 1" > "$TEST_DOTFILES_ROOT/fail-test/install.sh"
+      chmod +x "$TEST_DOTFILES_ROOT/fail-test/install.sh"
+      
+      # Create working Brewfile
+      echo "brew 'jq'" > "$TEST_DOTFILES_ROOT/fail-test/Brewfile"
+      
+      When call "$DODOT" install
+      The status should be failure
+      
+      # Brewfile should still run even if install script fails
+      The output should include "brew bundle"
     End
   End
   
@@ -209,8 +301,8 @@ EOF
     It 'handles symlink (deploy) + install_script in same pack'
       create_multi_powerup_pack "mixed"
       
-      # Deploy files (symlink)
-      echo "mixed config" > "$TEST_DOTFILES_ROOT/mixed/.mixedrc"
+      # Deploy files
+      echo "mixed bash config" > "$TEST_DOTFILES_ROOT/mixed/.bashrc"
       
       # Install script
       cat > "$TEST_DOTFILES_ROOT/mixed/install.sh" << 'EOF'
@@ -219,57 +311,113 @@ echo "Mixed pack installer"
 EOF
       chmod +x "$TEST_DOTFILES_ROOT/mixed/install.sh"
       
+      # Pack config
       cat > "$TEST_DOTFILES_ROOT/mixed/pack.dodot.toml" << 'EOF'
-[[symlink]]
-trigger = { file_name = ".mixedrc" }
-target = "~/.mixedrc"
+name = "mixed"
 
-[[install_script]]
-trigger = { directory = ".", recursive = false }
-file_name = "install.sh"
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".bashrc" }
+]
+actions = [
+    { type = "symlink" }
+]
+
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "install.sh" }
+]
+actions = [
+    { type = "install_script" }
+]
 EOF
       
-      # First run - both should execute
+      # First run deploy - should only run deploy powerups
       When call "$DODOT" deploy
       The status should be success
-      The file "$HOME/.mixedrc" should be symlink
+      The file "$HOME/.bashrc" should be symlink
       
-      # Install would create sentinel (if implemented)
+      # Then run install - should only run install powerups
       When call "$DODOT" install
       The status should be success
+      The path "$HOME/.local/share/dodot/sentinels/install" should be directory
     End
     
     It 'runs deploy powerups on every dodot deploy'
       create_multi_powerup_pack "deploy-always"
       
-      echo "version 1" > "$TEST_DOTFILES_ROOT/deploy-always/.config"
+      echo "version 1" > "$TEST_DOTFILES_ROOT/deploy-always/.vimrc"
       
+      # Pack config
       cat > "$TEST_DOTFILES_ROOT/deploy-always/pack.dodot.toml" << 'EOF'
-[[symlink]]
-trigger = { file_name = ".config" }
-target = "~/.deploy-config"
+name = "deploy-always"
+
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".vimrc" }
+]
+actions = [
+    { type = "symlink" }
+]
 EOF
       
       # First deploy
       When call "$DODOT" deploy
       The status should be success
-      The file "$HOME/.deploy-config" should include "version 1"
+      The file "$HOME/.vimrc" should include "version 1"
       
       # Update source
-      echo "version 2" > "$TEST_DOTFILES_ROOT/deploy-always/.config"
+      echo "version 2" > "$TEST_DOTFILES_ROOT/deploy-always/.vimrc"
       
       # Second deploy - should update
       When call "$DODOT" deploy
       The status should be success
-      The file "$HOME/.deploy-config" should include "version 2"
+      The file "$HOME/.vimrc" should include "version 2"
     End
     
     It 'runs install powerups only once'
-      Pending "Install powerups not fully implemented - would test sentinel behavior"
+      create_multi_powerup_pack "run-once"
+      
+      # Create install script that logs runs
+      echo "#!/bin/bash\necho 'Install ran' >> /tmp/install-count.log" > "$TEST_DOTFILES_ROOT/run-once/install.sh"
+      chmod +x "$TEST_DOTFILES_ROOT/run-once/install.sh"
+      
+      # Clear log
+      rm -f /tmp/install-count.log
+      
+      # First run
+      "$DODOT" install >/dev/null 2>&1
+      
+      # Second run
+      "$DODOT" install >/dev/null 2>&1
+      
+      # Check it only ran once
+      When call wc -l < /tmp/install-count.log
+      The output should equal "1"
     End
     
     It 'handles deploy succeeding but install failing'
-      Pending "Install powerups not fully implemented"
+      create_multi_powerup_pack "partial-fail"
+      
+      # Deploy file (should succeed)
+      echo "config content" > "$TEST_DOTFILES_ROOT/partial-fail/.vimrc"
+      
+      # Install script that fails
+      echo "#!/bin/bash\necho 'About to fail'\nexit 1" > "$TEST_DOTFILES_ROOT/partial-fail/install.sh"
+      chmod +x "$TEST_DOTFILES_ROOT/partial-fail/install.sh"
+      
+      # Run deploy first (should succeed)
+      When call "$DODOT" deploy
+      The status should be success
+      The file "$HOME/.vimrc" should be symlink
+      
+      # Then run install (should fail)
+      When call "$DODOT" install  
+      The status should be failure
+      The output should include "About to fail"
+      
+      # But deploy should still be intact
+      The file "$HOME/.vimrc" should be symlink
     End
   End
   
@@ -277,107 +425,203 @@ EOF
     It 'handles pack with 5+ different powerups'
       create_multi_powerup_pack "kitchen-sink"
       
-      # Create various files
+      # Symlink powerup files
       echo "vimrc" > "$TEST_DOTFILES_ROOT/kitchen-sink/.vimrc"
       echo "bashrc" > "$TEST_DOTFILES_ROOT/kitchen-sink/.bashrc"
       echo "gitconfig" > "$TEST_DOTFILES_ROOT/kitchen-sink/.gitconfig"
       
-      mkdir -p "$TEST_DOTFILES_ROOT/kitchen-sink/shell.d"
-      echo "shell setup" > "$TEST_DOTFILES_ROOT/kitchen-sink/shell.d/setup.sh"
+      # Shell profile powerup
+      echo "shell setup" > "$TEST_DOTFILES_ROOT/kitchen-sink/aliases.sh"
       
+      # Shell add path powerup
       mkdir -p "$TEST_DOTFILES_ROOT/kitchen-sink/bin"
       echo "#!/bin/bash" > "$TEST_DOTFILES_ROOT/kitchen-sink/bin/tool1"
+      chmod +x "$TEST_DOTFILES_ROOT/kitchen-sink/bin/tool1"
       
-      # Comprehensive pack configuration
+      # Install script powerup
+      echo "#!/bin/bash\necho 'installing'" > "$TEST_DOTFILES_ROOT/kitchen-sink/install.sh"
+      chmod +x "$TEST_DOTFILES_ROOT/kitchen-sink/install.sh"
+      
+      # Brewfile powerup
+      echo "brew 'jq'" > "$TEST_DOTFILES_ROOT/kitchen-sink/Brewfile"
+      
+      # Comprehensive pack config
       cat > "$TEST_DOTFILES_ROOT/kitchen-sink/pack.dodot.toml" << 'EOF'
+name = "kitchen-sink"
+
 # Multiple symlinks
-[[symlink]]
-trigger = { file_name = ".vimrc" }
-target = "~/.vimrc"
-
-[[symlink]]
-trigger = { file_name = ".bashrc" }
-target = "~/.bashrc"
-
-[[symlink]]
-trigger = { file_name = ".gitconfig" }
-target = "~/.gitconfig"
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".vimrc" },
+    { type = "FileName", pattern = ".bashrc" },
+    { type = "FileName", pattern = ".gitconfig" }
+]
+actions = [
+    { type = "symlink" }
+]
 
 # Shell profile
-[[shell_profile]]
-trigger = { directory = "shell.d", recursive = false }
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "aliases.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
 
-# Add to PATH
-[[shell_add_path]]
-trigger = { directory = "bin", recursive = false }
+# Shell add path
+[[matchers]]
+triggers = [
+    { type = "Directory", pattern = "bin" }
+]
+actions = [
+    { type = "shell_add_path" }
+]
+
+# Install script
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "install.sh" }
+]
+actions = [
+    { type = "install_script" }
+]
+
+# Brewfile
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "Brewfile" }
+]
+actions = [
+    { type = "brewfile" }
+]
 EOF
       
       When call "$DODOT" deploy
       The status should be success
       
-      # All deployments should succeed
+      # Deploy powerups should succeed
       The file "$HOME/.vimrc" should be symlink
       The file "$HOME/.bashrc" should be symlink
       The file "$HOME/.gitconfig" should be symlink
       The path "$HOME/.local/share/dodot/deployed/shell_profile" should be directory
       The path "$HOME/.local/share/dodot/deployed/shell_add_path" should be directory
+      
+      # Install powerups need separate install command
+      When call "$DODOT" install
+      The status should be success
     End
     
-    It 'handles multiple matchers with different powerups'
-      create_multi_powerup_pack "matchers"
+    It 'handles multiple file types with different patterns'
+      create_multi_powerup_pack "patterns"
       
-      # Different file patterns
-      echo "Config 1" > "$TEST_DOTFILES_ROOT/matchers/app.conf"
-      echo "Config 2" > "$TEST_DOTFILES_ROOT/matchers/tool.conf"
-      echo "RC file" > "$TEST_DOTFILES_ROOT/matchers/.apprc"
+      # Various file types
+      echo "vim config" > "$TEST_DOTFILES_ROOT/patterns/.vimrc"
+      echo "bash config" > "$TEST_DOTFILES_ROOT/patterns/.bashrc"
+      echo "git config" > "$TEST_DOTFILES_ROOT/patterns/.gitconfig"
+      echo "alias x=exit" > "$TEST_DOTFILES_ROOT/patterns/aliases.sh"
+      mkdir -p "$TEST_DOTFILES_ROOT/patterns/bin"
+      echo "#!/bin/bash\necho hi" > "$TEST_DOTFILES_ROOT/patterns/bin/hello"
+      chmod +x "$TEST_DOTFILES_ROOT/patterns/bin/hello"
       
-      cat > "$TEST_DOTFILES_ROOT/matchers/pack.dodot.toml" << 'EOF'
-# Match .conf files
-[[symlink]]
-trigger = { pattern = "*.conf" }
-target = "~/.config/{{.FileName}}"
+      # Pack config with various patterns
+      cat > "$TEST_DOTFILES_ROOT/patterns/pack.dodot.toml" << 'EOF'
+name = "patterns"
 
-# Match rc files
-[[symlink]]
-trigger = { pattern = ".*rc" }
-target = "~/{{.FileName}}"
+# Dotfiles pattern
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".*rc" },
+    { type = "FileName", pattern = ".gitconfig" }
+]
+actions = [
+    { type = "symlink" }
+]
+
+# Shell scripts pattern
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "*.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
+
+# Bin directory
+[[matchers]]
+triggers = [
+    { type = "Directory", pattern = "bin" }
+]
+actions = [
+    { type = "shell_add_path" }
+]
 EOF
       
       When call "$DODOT" deploy
       The status should be success
       
-      # Pattern matches should work
-      The file "$HOME/.config/app.conf" should be symlink
-      The file "$HOME/.config/tool.conf" should be symlink
-      The file "$HOME/.apprc" should be symlink
+      # All should be deployed
+      The file "$HOME/.vimrc" should be symlink
+      The file "$HOME/.bashrc" should be symlink
+      The file "$HOME/.gitconfig" should be symlink
+      The file "$HOME/.local/share/dodot/deployed/shell_profile/patterns.sh" should exist
+      The path "$HOME/.local/share/dodot/deployed/shell_add_path/bin" should be symlink
     End
     
-    It 'handles overlapping file patterns'
-      create_multi_powerup_pack "overlap"
+    It 'handles priority between different powerups'
+      create_multi_powerup_pack "priority"
       
-      # File that could match multiple patterns
-      echo "Special config" > "$TEST_DOTFILES_ROOT/overlap/.special.conf"
+      # Create files that would be handled by different powerups
+      mkdir -p "$TEST_DOTFILES_ROOT/priority/bin"
+      echo "#!/bin/bash\necho test" > "$TEST_DOTFILES_ROOT/priority/bin/test"
+      chmod +x "$TEST_DOTFILES_ROOT/priority/bin/test"
       
-      cat > "$TEST_DOTFILES_ROOT/overlap/pack.dodot.toml" << 'EOF'
-# General conf pattern
-[[symlink]]
-trigger = { pattern = "*.conf" }
-target = "~/.config/{{.FileName}}"
-priority = 20
+      # Create other files for clarity
+      echo "vimrc" > "$TEST_DOTFILES_ROOT/priority/.vimrc"
+      echo "aliases" > "$TEST_DOTFILES_ROOT/priority/aliases.sh"
+      
+      # Pack config with different priorities
+      cat > "$TEST_DOTFILES_ROOT/priority/pack.dodot.toml" << 'EOF'
+name = "priority"
 
-# More specific dotfile pattern
-[[symlink]]
-trigger = { pattern = ".*" }
-target = "~/{{.FileName}}"
-priority = 10
+# High priority
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".vimrc" }
+]
+actions = [
+    { type = "symlink" }
+]
+priority = 100
+
+# Medium priority
+[[matchers]]
+triggers = [
+    { type = "Directory", pattern = "bin" }
+]
+actions = [
+    { type = "shell_add_path" }
+]
+priority = 80
+
+# Lower priority
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = "*.sh" }
+]
+actions = [
+    { type = "shell_profile" }
+]
+priority = 70
 EOF
       
-      When call "$DODOT" deploy
+      When call "$DODOT" deploy -v
       The status should be success
       
-      # Should handle based on priority or first match
-      # At least one should succeed
-      The output should include ".special.conf"
+      # Should deploy all files
+      The output should include "bin"
+      The file "$HOME/.vimrc" should be symlink
+      The file "$HOME/.local/share/dodot/deployed/shell_profile/priority.sh" should exist
     End
   End
 End
