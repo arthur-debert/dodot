@@ -61,7 +61,38 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	// Sort matchers by priority
 	matchers.SortMatchersByPriority(enabledMatchers)
 
+	// Separate matchers by trigger type
+	var specificMatchers []types.Matcher
+	var catchallMatchers []types.Matcher
+
+	for _, matcher := range enabledMatchers {
+		triggerFactory, err := registry.GetTriggerFactory(matcher.TriggerName)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("matcher", matcher.Name).
+				Msg("Failed to get trigger factory for matcher")
+			continue
+		}
+
+		trigger, err := triggerFactory(matcher.TriggerOptions)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("matcher", matcher.Name).
+				Msg("Failed to create trigger for matcher")
+			continue
+		}
+
+		if trigger.Type() == types.TriggerTypeCatchall {
+			catchallMatchers = append(catchallMatchers, matcher)
+		} else {
+			specificMatchers = append(specificMatchers, matcher)
+		}
+	}
+
 	var matches []types.TriggerMatch
+	matchedFiles := make(map[string]bool)
 
 	// Walk the pack directory
 	err := filepath.WalkDir(pack.Path, func(path string, d fs.DirEntry, err error) error {
@@ -116,6 +147,7 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 				Priority:       types.OverridePriority, // High priority for overrides
 			}
 			matches = append(matches, match)
+			matchedFiles[relPath] = true
 			return nil // Don't process default matchers
 		}
 
@@ -126,8 +158,8 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 			return nil
 		}
 
-		// Otherwise, test against default matchers
-		for _, matcher := range enabledMatchers {
+		// Phase 1: Test against specific matchers
+		for _, matcher := range specificMatchers {
 			match, err := testMatcher(pack, path, relPath, info, matcher)
 			if err != nil {
 				logger.Warn().
@@ -139,8 +171,30 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 			}
 			if match != nil {
 				matches = append(matches, *match)
+				matchedFiles[relPath] = true
 				// Only one matcher can match per file
 				break
+			}
+		}
+
+		// Phase 2: If not matched by specific matchers, test against catchall matchers
+		if !matchedFiles[relPath] && len(catchallMatchers) > 0 {
+			for _, matcher := range catchallMatchers {
+				match, err := testMatcher(pack, path, relPath, info, matcher)
+				if err != nil {
+					logger.Warn().
+						Err(err).
+						Str("matcher", matcher.Name).
+						Str("path", path).
+						Msg("Failed to test catchall matcher")
+					continue
+				}
+				if match != nil {
+					matches = append(matches, *match)
+					matchedFiles[relPath] = true
+					// Only one matcher can match per file
+					break
+				}
 			}
 		}
 
@@ -153,6 +207,8 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 
 	logger.Debug().
 		Int("matchCount", len(matches)).
+		Int("specificMatchers", len(specificMatchers)).
+		Int("catchallMatchers", len(catchallMatchers)).
 		Msg("Completed pack trigger processing")
 
 	return matches, nil
