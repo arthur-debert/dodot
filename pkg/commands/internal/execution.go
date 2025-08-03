@@ -73,22 +73,25 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 	// 7. Create execution context
 	ctx := core.NewExecutionContext(opts.Force)
 
-	// 8. Get file operations from actions
+	// 8. Convert actions to operations (PLANNING PHASE)
+	// This converts high-level actions into low-level operations
+	// No actual file system changes happen at this stage
 	var ops []types.Operation
 	if opts.DryRun {
-		// For dry run, just get the basic operations without context
+		// For dry run, convert actions to operations for display
 		initialOps, err := core.GetFileOperationsWithContext(filteredActions, ctx)
 		if err != nil {
 			return nil, err
 		}
 		ops = initialOps
 	} else {
-		// For actual execution, we need to run the operations
+		// For actual execution, convert actions to operations
+		// Note: This is still just planning - execution happens later
 		if opts.RunMode == types.RunModeOnce {
-			// For RunModeOnce, we need to create checkpoint files
+			// For RunModeOnce, operations will include checkpoint/sentinel files
 			ops, err = core.GetFileOperationsWithContext(filteredActions, ctx)
 		} else {
-			// For RunModeMany, just get the operations
+			// For RunModeMany, convert without checkpoint files
 			ops, err = core.GetFileOperationsWithContext(filteredActions, ctx)
 		}
 		if err != nil {
@@ -97,6 +100,8 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 9. Construct and return the result
+	// Note: At this point we have PLANNED operations but have NOT EXECUTED them
+	// Execution happens in the command handlers using executors
 	result := &types.ExecutionResult{
 		Packs:      getPackNames(selectedPacks),
 		Operations: ops,

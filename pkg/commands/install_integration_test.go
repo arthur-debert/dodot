@@ -16,6 +16,9 @@ import (
 )
 
 // TestInstallScriptPowerUp_Integration verifies that the install script powerup creates sentinel files
+// WARNING: This test has a false positive - it only verifies sentinel creation, not script execution!
+// The test uses SynthfsExecutor which cannot execute commands, so the install script never runs.
+// See TestInstallScriptActuallyExecutes for a proper test that verifies actual execution.
 func TestInstallScriptPowerUp_Integration(t *testing.T) {
 	// Setup test environment
 	testEnv := testutil.NewTestEnvironment(t, "install-integration")
@@ -65,6 +68,8 @@ echo "Development setup complete!"
 	assert.True(t, hasInstallOps, "Expected install script operations")
 
 	// Execute operations
+	// BUG: Using SynthfsExecutor which CANNOT execute commands!
+	// This only creates directories and writes files, but never runs the install script
 	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
 	err = executor.ExecuteOperations(result.Operations)

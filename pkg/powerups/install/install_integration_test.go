@@ -13,7 +13,7 @@ import (
 )
 
 func TestInstallPowerUpGeneratesExecuteOperation(t *testing.T) {
-	t.Run("convertInstallActionWithContext should generate execute operation", func(t *testing.T) {
+	t.Run("action to operation conversion should plan execute operation", func(t *testing.T) {
 		// Create a test install action
 		action := types.Action{
 			Type:   types.ActionTypeInstall,
@@ -28,12 +28,12 @@ func TestInstallPowerUpGeneratesExecuteOperation(t *testing.T) {
 		// Create execution context
 		ctx := core.NewExecutionContext(false)
 
-		// Convert action to operations
+		// Convert action to operations (PLANNING PHASE)
 		operations, err := core.GetFileOperationsWithContext([]types.Action{action}, ctx)
 		require.NoError(t, err)
 
-		// Check that we have operations
-		require.NotEmpty(t, operations, "Should generate operations for install action")
+		// Check that we have operations planned
+		require.NotEmpty(t, operations, "Should plan operations for install action")
 
 		// Look for execute operation
 		hasExecuteOp := false
@@ -53,8 +53,8 @@ func TestInstallPowerUpGeneratesExecuteOperation(t *testing.T) {
 			}
 		}
 
-		assert.True(t, hasSentinelOp, "Should generate sentinel file operation")
-		assert.True(t, hasExecuteOp, "Should generate execute operation for install script - this is the bug!")
+		assert.True(t, hasSentinelOp, "Should plan sentinel file operation")
+		assert.True(t, hasExecuteOp, "Should plan execute operation for install script")
 	})
 
 	t.Run("install operations include all necessary steps", func(t *testing.T) {

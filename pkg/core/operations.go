@@ -36,14 +36,16 @@ func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
 }
 
 // GetFileOperations converts actions into file system operations
+// DEPRECATED: Use ConvertActionsToOperations for clearer naming
 func GetFileOperations(actions []types.Action) ([]types.Operation, error) {
 	return GetFileOperationsWithContext(actions, nil)
 }
 
 // GetFileOperationsWithContext converts actions into file system operations with execution context
+// DEPRECATED: Use ConvertActionsToOperationsWithContext for clearer naming
 func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	logger := logging.GetLogger("core.operations")
-	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations")
+	logger.Debug().Int("actionCount", len(actions)).Msg("Converting actions to operations (planning phase)")
 
 	if len(actions) == 0 {
 		return nil, nil
@@ -93,7 +95,7 @@ func GetFileOperationsWithContext(actions []types.Action, ctx *ExecutionContext)
 	// Resolve conflicts
 	ResolveConflicts(&allOperations, ctx)
 
-	logger.Info().Int("operationCount", len(allOperations)).Msg("Generated operations")
+	logger.Info().Int("operationCount", len(allOperations)).Msg("Converted actions to operations (ready for execution)")
 	return allOperations, nil
 }
 
