@@ -7,24 +7,15 @@ Describe 'Test Environment Initialization'
     # This handles the case where container state persists
     
     # Clean from root's home (container runs as root)
-    rm -rf /root/.local/share/dodot 2>/dev/null || true
-    rm -rf /root/.config/dodot 2>/dev/null || true
-    rm -rf /root/.cache/dodot 2>/dev/null || true
-    rm -rf /root/.local/state/dodot 2>/dev/null || true
+    When run rm -rf /root/.local/share/dodot /root/.config/dodot /root/.cache/dodot /root/.local/state/dodot
+    The status should be success
     
     # Clean from any test directories
-    rm -rf /tmp/test-home/.local/share/dodot 2>/dev/null || true
-    rm -rf /tmp/test-home/.config/dodot 2>/dev/null || true
-    rm -rf /tmp/test-home/.cache/dodot 2>/dev/null || true
-    rm -rf /tmp/test-home/.local/state/dodot 2>/dev/null || true
+    When run rm -rf /tmp/test-home/.local/share/dodot /tmp/test-home/.config/dodot /tmp/test-home/.cache/dodot /tmp/test-home/.local/state/dodot
+    The status should be success
     
-    # Unset any dodot environment variables
-    unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
-    
-    # Clean brew log
-    rm -f /tmp/brew-calls.log
-    
-    # Success
+    # Clean test logs
+    When run rm -f /tmp/brew-calls.log
     The status should be success
   End
   

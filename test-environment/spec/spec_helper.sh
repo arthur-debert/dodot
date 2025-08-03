@@ -77,9 +77,20 @@ cleanup_test_environment() {
   # Save original HOME for cleanup
   local original_home="${ORIGINAL_HOME:-$HOME}"
   
+  # Unset dodot-specific environment variables FIRST
+  unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
+  
   # Fix permissions if they were changed during tests
   if [ -d "$TEST_HOME" ]; then
     chmod -R 755 "$TEST_HOME" 2>/dev/null || true
+  fi
+  
+  # Clean up any dodot directories from TEST_HOME before removing it
+  if [ -d "$TEST_HOME" ]; then
+    rm -rf "$TEST_HOME/.local/share/dodot" 2>/dev/null || true
+    rm -rf "$TEST_HOME/.config/dodot" 2>/dev/null || true
+    rm -rf "$TEST_HOME/.cache/dodot" 2>/dev/null || true
+    rm -rf "$TEST_HOME/.local/state/dodot" 2>/dev/null || true
   fi
   
   # Remove test directories
@@ -90,10 +101,16 @@ cleanup_test_environment() {
     rm -rf "$original_home/.local/share/dodot" 2>/dev/null || true
     rm -rf "$original_home/.config/dodot" 2>/dev/null || true
     rm -rf "$original_home/.cache/dodot" 2>/dev/null || true
+    rm -rf "$original_home/.local/state/dodot" 2>/dev/null || true
   fi
   
-  # Unset dodot-specific environment variables
-  unset DOTFILES_HOME DODOT_DATA_DIR DODOT_CONFIG_DIR DODOT_CACHE_DIR DODOT_DEBUG
+  # Also clean from root if we're not root
+  if [ "$original_home" != "/root" ] && [ -d "/root" ]; then
+    rm -rf "/root/.local/share/dodot" 2>/dev/null || true
+    rm -rf "/root/.config/dodot" 2>/dev/null || true
+    rm -rf "/root/.cache/dodot" 2>/dev/null || true
+    rm -rf "/root/.local/state/dodot" 2>/dev/null || true
+  fi
   
   # Restore original environment variables if saved
   if [ -n "${ORIGINAL_HOME:-}" ]; then
