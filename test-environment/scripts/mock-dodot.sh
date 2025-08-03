@@ -31,8 +31,9 @@ case "$CMD" in
             exit 1
         fi
         
-        # Simulate basic symlink creation for vim pack
+        # Handle different packs
         if [ "$PACK" = "vim" ]; then
+            # Simulate basic symlink creation for vim pack
             # Check for source files
             if [ -f "$PACK_DIR/.vimrc" ]; then
                 # Check if target already exists
@@ -101,6 +102,42 @@ case "$CMD" in
             if grep -q '\.nonexistent' "$PACK_DIR/pack.dodot.toml"; then
                 echo "ERROR: Source file .nonexistent not found" >&2
                 exit 1
+            fi
+        elif [ "$PACK" = "bash" ]; then
+            # Handle bash pack
+            if [ -f "$PACK_DIR/.bashrc" ]; then
+                # Check if target already exists
+                if [ -e "$HOME/.bashrc" ] && [ ! -L "$HOME/.bashrc" ]; then
+                    echo "ERROR: $HOME/.bashrc already exists and is not a symlink" >&2
+                    exit 1
+                fi
+                
+                # Check permissions
+                if ! touch "$HOME/.test-write-permission" 2>/dev/null; then
+                    echo "ERROR: Cannot write to $HOME" >&2
+                    exit 1
+                fi
+                rm -f "$HOME/.test-write-permission"
+                
+                # Create deployed directory structure
+                DEPLOYED_DIR="$HOME/.local/share/dodot/deployed/symlink"
+                mkdir -p "$DEPLOYED_DIR"
+                
+                # Create symlink in deployed directory
+                ln -sf "$PACK_DIR/.bashrc" "$DEPLOYED_DIR/.bashrc"
+                
+                # Create symlink in home
+                ln -sf "$DEPLOYED_DIR/.bashrc" "$HOME/.bashrc"
+            fi
+            
+            # Handle aliases.sh for shell_profile
+            if [ -f "$PACK_DIR/aliases.sh" ]; then
+                # Create shell_profile deployment directory
+                SHELL_PROFILE_DIR="$HOME/.local/share/dodot/deployed/shell_profile"
+                mkdir -p "$SHELL_PROFILE_DIR"
+                
+                # Create symlink with pack name
+                ln -sf "$PACK_DIR/aliases.sh" "$SHELL_PROFILE_DIR/bash.sh"
             fi
         fi
         ;;
