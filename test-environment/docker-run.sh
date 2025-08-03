@@ -23,6 +23,7 @@ echo
 # Run the container with all necessary mounts
 docker run --rm \
     -v "$PROJECT_ROOT:/dodot:rw" \
+    -v "$SCRIPT_DIR:/test-environment:rw" \
     -v "$SCRIPT_DIR/scripts:/scripts:ro" \
     -v "$SCRIPT_DIR/orchestrator.sh:/orchestrator.sh:ro" \
     -v "$SCRIPT_DIR/sample-dotfiles:/dotfiles:rw" \
