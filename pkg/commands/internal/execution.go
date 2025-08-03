@@ -79,7 +79,7 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 	var ops []types.Operation
 	if opts.DryRun {
 		// For dry run, convert actions to operations for display
-		initialOps, err := core.GetFileOperationsWithContext(filteredActions, ctx)
+		initialOps, err := core.ConvertActionsToOperationsWithContext(filteredActions, ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -89,10 +89,10 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 		// Note: This is still just planning - execution happens later
 		if opts.RunMode == types.RunModeOnce {
 			// For RunModeOnce, operations will include checkpoint/sentinel files
-			ops, err = core.GetFileOperationsWithContext(filteredActions, ctx)
+			ops, err = core.ConvertActionsToOperationsWithContext(filteredActions, ctx)
 		} else {
 			// For RunModeMany, convert without checkpoint files
-			ops, err = core.GetFileOperationsWithContext(filteredActions, ctx)
+			ops, err = core.ConvertActionsToOperationsWithContext(filteredActions, ctx)
 		}
 		if err != nil {
 			return nil, err

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetFileOperations(t *testing.T) {
+func TestConvertActionsToOperations(t *testing.T) {
 	tests := []struct {
 		name         string
 		actions      []types.Action
@@ -163,7 +163,7 @@ func TestGetFileOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := GetFileOperations(tt.actions)
+			ops, err := ConvertActionsToOperations(tt.actions)
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -791,7 +791,7 @@ func TestExpandHome(t *testing.T) {
 }
 
 // Benchmarks
-func BenchmarkGetFileOperations(b *testing.B) {
+func BenchmarkConvertActionsToOperations(b *testing.B) {
 	actions := []types.Action{
 		{Type: types.ActionTypeLink, Source: "/src1", Target: "~/dst1"},
 		{Type: types.ActionTypeCopy, Source: "/src2", Target: "~/dst2"},
@@ -803,7 +803,7 @@ func BenchmarkGetFileOperations(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := GetFileOperations(actions)
+		_, err := ConvertActionsToOperations(actions)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -852,7 +852,7 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := GetFileOperations(actions)
+	ops, err := ConvertActionsToOperations(actions)
 	require.NoError(t, err)
 
 	// Count directory creation operations for the home directory
@@ -877,8 +877,8 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	assert.Equal(t, 6, symlinkCount, "Expected 6 symlink operations (2 per file)")
 }
 
-// TestGetFileOperationsWithContext_BrewAndInstall tests brew and install actions with context
-func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
+// TestConvertActionsToOperationsWithContext_BrewAndInstall tests brew and install actions with context
+func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Create context with checksums
 	ctx := NewExecutionContext(false)
 	ctx.ChecksumResults["/packs/tools/Brewfile"] = "brew123"
@@ -903,7 +903,7 @@ func TestGetFileOperationsWithContext_BrewAndInstall(t *testing.T) {
 		},
 	}
 
-	ops, err := GetFileOperationsWithContext(actions, ctx)
+	ops, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
 	assert.Len(t, ops, 5) // After deduplication: 2 create dir ops + 2 execute ops + 2 write sentinel ops - 1 duplicate dir
 
@@ -966,7 +966,7 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 	ctx.ChecksumResults["/dotfiles/brew/Brewfile"] = "abc123"
 
 	// Generate operations with context (this is what the pipeline does)
-	finalOps, err := GetFileOperationsWithContext(actions, ctx)
+	finalOps, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
 
 	// Count operations by type and target

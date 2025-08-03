@@ -147,7 +147,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 	}
 
 	// 6. Convert actions to operations
-	ops, err := core.GetFileOperations(actions)
+	ops, err := core.ConvertActionsToOperations(actions)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
 	}

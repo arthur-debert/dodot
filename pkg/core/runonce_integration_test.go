@@ -77,7 +77,7 @@ echo install`
 	ctx.ChecksumResults[installPath] = installChecksum
 
 	// Convert to operations with context (PLANNING PHASE - no execution yet)
-	ops, err := GetFileOperationsWithContext(filtered, ctx)
+	ops, err := ConvertActionsToOperationsWithContext(filtered, ctx)
 	testutil.AssertNoError(t, err)
 	testutil.AssertTrue(t, len(ops) > 0, "Should have operations planned")
 

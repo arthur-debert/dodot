@@ -29,7 +29,7 @@ func TestInstallPowerUpGeneratesExecuteOperation(t *testing.T) {
 		ctx := core.NewExecutionContext(false)
 
 		// Convert action to operations (PLANNING PHASE)
-		operations, err := core.GetFileOperationsWithContext([]types.Action{action}, ctx)
+		operations, err := core.ConvertActionsToOperationsWithContext([]types.Action{action}, ctx)
 		require.NoError(t, err)
 
 		// Check that we have operations planned
@@ -73,7 +73,7 @@ func TestInstallPowerUpGeneratesExecuteOperation(t *testing.T) {
 		ctx := core.NewExecutionContext(false)
 
 		// Convert action to operations
-		operations, err := core.GetFileOperationsWithContext([]types.Action{action}, ctx)
+		operations, err := core.ConvertActionsToOperationsWithContext([]types.Action{action}, ctx)
 		require.NoError(t, err)
 
 		// Verify we have all necessary operations

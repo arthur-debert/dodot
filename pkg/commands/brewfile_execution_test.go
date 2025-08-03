@@ -198,7 +198,7 @@ func TestBrewPowerUpGeneratesExecuteOperation(t *testing.T) {
 		ctx := core.NewExecutionContext(false)
 
 		// Convert action to operations
-		operations, err := core.GetFileOperationsWithContext([]types.Action{action}, ctx)
+		operations, err := core.ConvertActionsToOperationsWithContext([]types.Action{action}, ctx)
 		require.NoError(t, err)
 
 		// Verify we have all necessary operations

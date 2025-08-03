@@ -74,13 +74,13 @@ func TestResolveOperationConflicts(t *testing.T) {
 	}
 }
 
-func TestGetFileOperations_WithConflictResolution(t *testing.T) {
+func TestConvertActionsToOperations_WithConflictResolution(t *testing.T) {
 	actions := []types.Action{
 		{Type: types.ActionTypeLink, Source: "/dotfiles/vim/.vimrc", Target: "~/.vimrc"},
 		{Type: types.ActionTypeWrite, Target: "~/.vimrc", Content: "\"vimrc\""},
 	}
 
-	ops, err := GetFileOperations(actions)
+	ops, err := ConvertActionsToOperations(actions)
 	require.NoError(t, err) // Should not error, but mark ops as conflict
 
 	conflictCount := 0

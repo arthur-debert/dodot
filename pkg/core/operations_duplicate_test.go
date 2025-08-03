@@ -37,7 +37,7 @@ func TestDuplicateParentDirectoryOperations(t *testing.T) {
 		}
 
 		// Convert actions to operations
-		operations, err := core.GetFileOperations(actions)
+		operations, err := core.ConvertActionsToOperations(actions)
 		require.NoError(t, err)
 
 		// Count parent directory creation operations
@@ -80,7 +80,7 @@ func TestDuplicateParentDirectoryOperations(t *testing.T) {
 		}
 
 		// Convert actions to operations
-		operations, err := core.GetFileOperations(actions)
+		operations, err := core.ConvertActionsToOperations(actions)
 		require.NoError(t, err)
 
 		// Count unique parent directory targets
