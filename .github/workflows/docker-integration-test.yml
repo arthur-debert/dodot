@@ -28,7 +28,7 @@ jobs:
           cd test-environment
           docker build -t dodot-test .
       
-      - name: Run Docker integration tests
+      - name: Run all test phases
         id: run-tests
         run: |
           echo "Running Docker integration tests..."
@@ -40,6 +40,9 @@ jobs:
           EXIT_CODE=$?
           set -e
           
+          # Save output to file for debugging
+          echo "$OUTPUT" > test-output.log
+          
           # Print the full output for debugging
           echo "$OUTPUT"
           
@@ -50,21 +53,60 @@ jobs:
           
           echo "=== Extracted Status ==="
           echo "Setup: $SETUP_STATUS"
-          echo "Test: $SETUP_STATUS"
+          echo "Test: $TEST_STATUS"
           echo "Report: $REPORT_STATUS"
           
           # Set outputs for other steps
           echo "setup_status=$SETUP_STATUS" >> $GITHUB_OUTPUT
           echo "test_status=$TEST_STATUS" >> $GITHUB_OUTPUT
           echo "report_status=$REPORT_STATUS" >> $GITHUB_OUTPUT
-          
-          # For now, we only care about setup success
+          echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+      
+      - name: ✅ Setup Phase
+        if: always()
+        run: |
+          SETUP_STATUS="${{ steps.run-tests.outputs.setup_status }}"
           if [ "$SETUP_STATUS" = "SUCCESS" ]; then
-            echo "✅ Setup phase succeeded - workflow passes"
+            echo "✅ Setup phase succeeded - dodot binary built successfully"
             exit 0
           else
-            echo "❌ Setup phase failed - workflow fails"
+            echo "❌ Setup phase failed - could not build dodot binary"
+            echo "Check the logs above for build errors"
             exit 1
+          fi
+      
+      - name: 🧪 Test Phase
+        if: always()
+        run: |
+          TEST_STATUS="${{ steps.run-tests.outputs.test_status }}"
+          if [ "$TEST_STATUS" = "SUCCESS" ]; then
+            echo "✅ All tests passed"
+            exit 0
+          elif [ "$TEST_STATUS" = "PARTIAL" ]; then
+            echo "⚠️ Some tests failed"
+            echo "Check the test output above for details"
+            exit 1
+          elif [ "$TEST_STATUS" = "FAILURE" ]; then
+            echo "❌ Test phase failed"
+            echo "Check the test output above for failures"
+            exit 1
+          else
+            echo "❓ Test status unknown: $TEST_STATUS"
+            exit 1
+          fi
+      
+      - name: 📊 Report Phase
+        if: always()
+        run: |
+          REPORT_STATUS="${{ steps.run-tests.outputs.report_status }}"
+          if [ "$REPORT_STATUS" = "SUCCESS" ]; then
+            echo "✅ Report phase succeeded - test results collected"
+            exit 0
+          else
+            echo "⚠️ Report phase had issues"
+            echo "Test results may be incomplete"
+            # Don't fail the workflow for reporting issues
+            exit 0
           fi
       
       - name: Summary
@@ -78,7 +120,7 @@ jobs:
           echo "| Test | ${{ steps.run-tests.outputs.test_status || 'UNKNOWN' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Report | ${{ steps.run-tests.outputs.report_status || 'UNKNOWN' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Current success criteria:** Setup phase must succeed" >> $GITHUB_STEP_SUMMARY
+          echo "**Success criteria:** All tests must pass (TEST_STATUS = SUCCESS)" >> $GITHUB_STEP_SUMMARY
       
       - name: Upload test artifacts
         if: always()
@@ -87,6 +129,7 @@ jobs:
           name: docker-test-results
           path: |
             test-environment/test-results/
+            test-environment/test-output.log
             bin/dodot-container-linux
           retention-days: 7
           if-no-files-found: ignore

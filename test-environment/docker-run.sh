@@ -21,8 +21,12 @@ echo "Project root: $PROJECT_ROOT"
 echo
 
 # Run the container with all necessary mounts
+# Note: In CI, the repository might be owned by a different user,
+# so we run as root user to ensure permissions work
 docker run --rm \
+    --user root \
     -v "$PROJECT_ROOT:/dodot:rw" \
+    -v "$SCRIPT_DIR:/test-environment:rw" \
     -v "$SCRIPT_DIR/scripts:/scripts:ro" \
     -v "$SCRIPT_DIR/orchestrator.sh:/orchestrator.sh:ro" \
     -v "$SCRIPT_DIR/sample-dotfiles:/dotfiles:rw" \

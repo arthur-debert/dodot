@@ -32,6 +32,10 @@ fi
 # Change to source directory
 cd /dodot
 
+# Configure git safe directory for GitHub Actions
+# This is needed when running as root in a repo owned by another user
+git config --global --add safe.directory /dodot
+
 # Use the existing build script
 # Skip tests during container setup for speed
 echo "Building dodot using scripts/build..."
@@ -70,6 +74,19 @@ else
     echo "This is unexpected as the build script already verified it"
     exit 1
 fi
+
+echo
+echo "Setting up brew mocking..."
+# Rename real brew to brew-full if it exists
+if command -v brew &> /dev/null && [ ! -e /home/linuxbrew/.linuxbrew/bin/brew-full ]; then
+    sudo mv /home/linuxbrew/.linuxbrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew-full
+fi
+
+# Install our mock brew
+sudo cp /scripts/mock-brew.sh /home/linuxbrew/.linuxbrew/bin/brew
+sudo chmod +x /home/linuxbrew/.linuxbrew/bin/brew
+
+echo "✅ Mock brew installed (real brew available as brew-full)"
 
 echo
 echo "Setup phase completed successfully!"

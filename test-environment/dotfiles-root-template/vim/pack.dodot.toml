@@ -1,0 +1,12 @@
+# Vim configuration pack
+name = "vim"
+
+# Symlink vim configuration
+[[matchers]]
+triggers = [
+    { type = "FileName", pattern = ".vimrc" },
+    { type = "Directory", pattern = ".vim" }
+]
+actions = [
+    { type = "symlink" }
+]

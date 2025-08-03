@@ -30,6 +30,12 @@ RUN ARCH=$(dpkg --print-architecture) && \
     tar -C /usr/local -xzf go1.23.0.linux-${GOARCH}.tar.gz && \
     rm go1.23.0.linux-${GOARCH}.tar.gz
 
+# Install ShellSpec for shell testing
+RUN git clone --depth 1 https://github.com/shellspec/shellspec.git /tmp/shellspec && \
+    cd /tmp/shellspec && \
+    sudo make install PREFIX=/usr/local && \
+    rm -rf /tmp/shellspec
+
 # Generate locale
 RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8
@@ -49,6 +55,9 @@ COPY --chown=testuser:testuser scripts/ /setup-scripts/
 
 # Copy sample dotfiles
 COPY --chown=testuser:testuser sample-dotfiles/ /dotfiles/
+
+# Copy test environment files
+COPY --chown=testuser:testuser . /test-environment/
 
 # Run Homebrew setup
 RUN /setup-scripts/setup-brew.sh

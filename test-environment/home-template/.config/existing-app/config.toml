@@ -1,0 +1,3 @@
+# Existing application config to test conflicts
+[settings]
+theme = "light"

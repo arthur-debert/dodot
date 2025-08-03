@@ -1,0 +1,10 @@
+name = "tools"
+
+# Add bin directory to PATH
+[[matchers]]
+triggers = [
+    { type = "Directory", pattern = "bin" }
+]
+actions = [
+    { type = "shell_add_path" }
+]
