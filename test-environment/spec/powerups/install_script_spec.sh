@@ -68,7 +68,6 @@ EOF
   
   Describe 'Basic install script execution'
     It 'executes install.sh successfully'
-      Pending "Install powerup only creates sentinels, doesn't execute scripts"
       create_install_script "tools" 'echo "Installing tools..." > /tmp/tools-installed.marker'
       
       # Debug: Check the created files
@@ -88,7 +87,6 @@ EOF
     End
     
     It 'creates sentinel file after execution'
-      Pending "Verifying sentinel creation only"
       create_install_script "tools" 'echo "Test install"'
       
       When call "$DODOT" install
@@ -98,7 +96,6 @@ EOF
     End
     
     It 'stores checksum in sentinel file'
-      Pending "Sentinel implementation incomplete"
       create_install_script "tools" 'echo "Test content"'
       
       When call "$DODOT" install
@@ -112,7 +109,6 @@ EOF
   
   Describe 'Idempotency (run-once behavior)'
     It 'runs script on first deploy'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'echo "First run: $(date +%s)" > /tmp/install-timestamp.txt'
       
       When call "$DODOT" install
@@ -122,7 +118,6 @@ EOF
     End
     
     It 'skips script on second deploy with same checksum'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'echo "Should only run once" > /tmp/idempotent-test.txt'
       
       # First run
@@ -148,7 +143,6 @@ EOF
     End
     
     It 'runs script again when checksum changes'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'echo "Version 1" >> /tmp/checksum-test.log'
       
       # First run
@@ -170,7 +164,6 @@ EOF
   
   Describe 'Script execution environment'
     It 'passes environment variables to script'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'echo "HOME=$HOME" > /tmp/env-test.txt; echo "DOTFILES_ROOT=$DOTFILES_ROOT" >> /tmp/env-test.txt'
       
       When call "$DODOT" install
@@ -180,7 +173,6 @@ EOF
     End
     
     It 'executes from correct working directory'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'pwd > /tmp/pwd-test.txt'
       
       When call "$DODOT" install
@@ -191,7 +183,6 @@ EOF
   
   Describe 'Error handling'
     It 'handles script exit with non-zero code'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'echo "Error occurred!"; exit 1'
       
       When call "$DODOT" install
@@ -204,7 +195,6 @@ EOF
     End
     
     It 'handles non-executable script file'
-      Pending "Install scripts not executed"
       mkdir -p "$TEST_DOTFILES_ROOT/tools"
       
       # Create non-executable script
@@ -243,7 +233,6 @@ EOF
     End
     
     It 'cleans up on failure'
-      Pending "Install scripts not executed"
       create_install_script "tools" 'touch /tmp/partial-install.marker; echo "Failing..."; exit 1'
       
       When call "$DODOT" install
@@ -259,7 +248,6 @@ EOF
   
   Describe 'Complex scripts'
     It 'handles script with multiple commands'
-      Pending "Install scripts not executed"
       create_install_script "tools" '
 echo "Step 1: Creating directories..."
 mkdir -p /tmp/test-install/{bin,lib,config}
@@ -295,7 +283,6 @@ echo "Installation complete!"
     End
     
     It 'captures script output'
-      Pending "Install scripts not executed"
       create_install_script "tools" '
 echo "Standard output message"
 echo "Error message" >&2
