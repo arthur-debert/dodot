@@ -14,9 +14,9 @@ type Batch struct {
 }
 
 // NewBatch creates a new batch with the clean implementation that has prerequisite resolution enabled by default
-func NewBatch(fs interface{}, registry core.OperationFactory) *Batch {
+func NewBatch(fs interface{}) *Batch {
 	return &Batch{
-		impl: batch.NewBatch(fs, registry),
+		impl: batch.NewBatch(fs, NewOperationRegistry()),
 	}
 }
 

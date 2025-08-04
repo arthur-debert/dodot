@@ -23,8 +23,8 @@ github.com/alecthomas/chroma/v2 v2.14.0 h1:R3+wzpnUArGcQz7fCETQBzO5n9IMNi13iIs46
 github.com/alecthomas/chroma/v2 v2.14.0/go.mod h1:QolEbTfmUHIMVpBqxeDnNBj2uoeI4EbYP4i6n68SG4I=
 github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc=
 github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
-github.com/arthur-debert/go-synthfs v0.1.1-0.20250710165849-8b41c212f97f h1:gQAXMeY+SRK0sAKyhHDhR3VlbTahMGsFbxzN8d2gkX0=
-github.com/arthur-debert/go-synthfs v0.1.1-0.20250710165849-8b41c212f97f/go.mod h1:FD9UFBJ0rhtwqm6aJVl423Ng9xE3/AKVZIUFGInkBoo=
+github.com/arthur-debert/go-synthfs v0.9.0 h1:+piTV3UuzOYREqYhOFDIDSVAxxhU12XMi4G9Wug+fs4=
+github.com/arthur-debert/go-synthfs v0.9.0/go.mod h1:CGB9Du5lJhlcM0FrzsKY1ajICac4+h9zPCzlrxsT/9c=
 github.com/atomicgo/cursor v0.0.1/go.mod h1:cBON2QmmrysudxNBFthvMtN32r3jxVRIvzkUiF/RuIk=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=

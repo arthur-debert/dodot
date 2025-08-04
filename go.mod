@@ -6,7 +6,7 @@ toolchain go1.24.5
 
 require (
 	github.com/adrg/xdg v0.5.3
-	github.com/arthur-debert/synthfs v0.0.0-00010101000000-000000000000
+	github.com/arthur-debert/synthfs v0.9.0
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/pelletier/go-toml/v2 v2.2.4
@@ -16,7 +16,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 )
 
-replace github.com/arthur-debert/synthfs => ./local/third-parties/go-synthfs
+replace github.com/arthur-debert/synthfs => github.com/arthur-debert/go-synthfs v0.9.0
 
 require (
 	atomicgo.dev/cursor v0.2.0 // indirect
