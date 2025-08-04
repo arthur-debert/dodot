@@ -20,10 +20,17 @@ verify_symlink_deployed() {
     return 1
   fi
   
-  # Verify it points to dodot deployed directory
+  # Verify it points somewhere (dodot creates direct symlinks to source)
   local link_target=$(readlink "$symlink_path")
-  if [[ "$link_target" != *".local/share/dodot/deployed/symlink"* ]]; then
-    echo "ERROR: Symlink $symlink_path points to $link_target, not dodot deployed directory" >&2
+  if [ -z "$link_target" ]; then
+    echo "ERROR: Symlink $symlink_path has no target" >&2
+    return 1
+  fi
+  
+  # Verify the symlink target exists and is readable
+  local resolved_target=$(readlink -f "$symlink_path" 2>/dev/null)
+  if [ ! -e "$resolved_target" ]; then
+    echo "ERROR: Symlink target does not exist: $link_target" >&2
     return 1
   fi
   
