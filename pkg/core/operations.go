@@ -12,14 +12,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// Re-exports from pkg/operations for backwards compatibility
-var (
-	areOperationsCompatible = operations.AreOperationsCompatible
-	expandHome              = operations.ExpandHome
-	uint32Ptr               = operations.Uint32Ptr
-	deduplicateOperations   = operations.DeduplicateOperations
-)
-
 // ResolveConflicts checks for and marks conflicting operations
 // This is a wrapper to maintain backward compatibility with ExecutionContext
 func ResolveConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
@@ -87,7 +79,7 @@ func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *Executio
 	logger.Debug().
 		Int("beforeDedup", len(allOperations)).
 		Msg("Operations before deduplication")
-	allOperations = deduplicateOperations(allOperations)
+	allOperations = operations.DeduplicateOperations(allOperations)
 	logger.Debug().
 		Int("afterDedup", len(allOperations)).
 		Msg("Operations after deduplication")
@@ -175,8 +167,8 @@ func convertLinkAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "link action requires source and target")
 	}
 
-	source := expandHome(action.Source)
-	target := expandHome(action.Target)
+	source := operations.ExpandHome(action.Source)
+	target := operations.ExpandHome(action.Target)
 	deployedPath := filepath.Join(paths.GetSymlinkDir(), filepath.Base(target))
 
 	ops := []types.Operation{
@@ -227,8 +219,8 @@ func convertCopyAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "copy action requires source and target")
 	}
 
-	source := expandHome(action.Source)
-	target := expandHome(action.Target)
+	source := operations.ExpandHome(action.Source)
+	target := operations.ExpandHome(action.Target)
 
 	ops := []types.Operation{
 		{
@@ -258,7 +250,7 @@ func convertWriteAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "write action requires target")
 	}
 
-	target := expandHome(action.Target)
+	target := operations.ExpandHome(action.Target)
 
 	// Convert mode to pointer if non-zero
 	var mode *uint32
@@ -299,7 +291,7 @@ func convertAppendAction(action types.Action) ([]types.Operation, error) {
 	// For append, we need to read existing content and write combined
 	// Since we're not doing actual FS operations, we'll create a write operation
 	// with a note that it should append
-	target := expandHome(action.Target)
+	target := operations.ExpandHome(action.Target)
 
 	ops := []types.Operation{
 		{
@@ -319,7 +311,7 @@ func convertMkdirAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "mkdir action requires target")
 	}
 
-	target := expandHome(action.Target)
+	target := operations.ExpandHome(action.Target)
 
 	var mode *uint32
 	if action.Mode != 0 {
@@ -346,7 +338,7 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	// Create symlink in shell_profile deployment directory
-	source := expandHome(action.Source)
+	source := operations.ExpandHome(action.Source)
 	deployedName := fmt.Sprintf("%s.sh", action.Pack)
 	if action.Pack == "" {
 		deployedName = filepath.Base(source)
@@ -379,7 +371,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	}
 
 	// Create symlink in path deployment directory
-	source := expandHome(action.Source)
+	source := operations.ExpandHome(action.Source)
 	deployedName := action.Pack
 	if deployedName == "" {
 		deployedName = filepath.Base(source)
@@ -461,7 +453,7 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
 			Content:     checksum,
-			Mode:        uint32Ptr(0644),
+			Mode:        operations.Uint32Ptr(0644),
 			Description: fmt.Sprintf("Create brewfile sentinel for %s", pack),
 		},
 	}
@@ -523,7 +515,7 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
 			Content:     checksum,
-			Mode:        uint32Ptr(0644),
+			Mode:        operations.Uint32Ptr(0644),
 			Description: fmt.Sprintf("Create install sentinel for %s", pack),
 		},
 	}
@@ -539,7 +531,7 @@ func convertReadAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "read action requires source")
 	}
 
-	source := expandHome(action.Source)
+	source := operations.ExpandHome(action.Source)
 
 	ops := []types.Operation{
 		{
@@ -558,7 +550,7 @@ func convertChecksumAction(action types.Action) ([]types.Operation, error) {
 		return nil, errors.New(errors.ErrActionInvalid, "checksum action requires source")
 	}
 
-	source := expandHome(action.Source)
+	source := operations.ExpandHome(action.Source)
 
 	ops := []types.Operation{
 		{

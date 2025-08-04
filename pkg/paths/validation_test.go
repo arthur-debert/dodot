@@ -129,7 +129,6 @@ func TestPathSecurityValidation(t *testing.T) {
 func TestEnvironmentVariableHandling(t *testing.T) {
 	// Save original environment
 	origDotfilesRoot := os.Getenv(EnvDotfilesRoot)
-	origDotfilesHome := os.Getenv(EnvDotfilesHome)
 	origDodotDataDir := os.Getenv(EnvDodotDataDir)
 	origDodotConfigDir := os.Getenv(EnvDodotConfigDir)
 	origDodotCacheDir := os.Getenv(EnvDodotCacheDir)
@@ -137,7 +136,6 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = os.Setenv(EnvDotfilesRoot, origDotfilesRoot)
-		_ = os.Setenv(EnvDotfilesHome, origDotfilesHome)
 		_ = os.Setenv(EnvDodotDataDir, origDodotDataDir)
 		_ = os.Setenv(EnvDodotConfigDir, origDodotConfigDir)
 		_ = os.Setenv(EnvDodotCacheDir, origDodotCacheDir)
@@ -198,7 +196,6 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear all relevant env vars
 			_ = os.Unsetenv(EnvDotfilesRoot)
-			_ = os.Unsetenv(EnvDotfilesHome)
 			_ = os.Unsetenv(EnvDodotDataDir)
 			_ = os.Unsetenv(EnvDodotConfigDir)
 			_ = os.Unsetenv(EnvDodotCacheDir)

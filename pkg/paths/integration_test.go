@@ -102,27 +102,32 @@ func TestMigrationFromOldPaths(t *testing.T) {
 	oldDataDir := filepath.Join(tmpRoot, "old-data")
 	t.Setenv("DODOT_DATA_DIR", oldDataDir)
 
-	// Test that old functions still work
-	t.Run("compatibility functions work", func(t *testing.T) {
-		dataDir := GetDodotDataDir()
-		testutil.AssertEqual(t, oldDataDir, dataDir)
-
-		deployedDir := GetDeployedDir()
-		testutil.AssertEqual(t, filepath.Join(oldDataDir, "deployed"), deployedDir)
-
-		brewfileDir := GetBrewfileDir()
-		testutil.AssertEqual(t, filepath.Join(oldDataDir, "brewfile"), brewfileDir)
-	})
-
-	// Test that new API gives same results
-	t.Run("new API matches old", func(t *testing.T) {
+	// Test that paths API works with environment variables
+	t.Run("paths API respects environment", func(t *testing.T) {
 		p, err := New("")
 		testutil.AssertNoError(t, err)
 
-		testutil.AssertEqual(t, GetDodotDataDir(), p.DataDir())
-		testutil.AssertEqual(t, GetDeployedDir(), p.DeployedDir())
-		testutil.AssertEqual(t, GetBrewfileDir(), p.BrewfileDir())
-		testutil.AssertEqual(t, GetInstallDir(), p.InstallDir())
+		dataDir := p.DataDir()
+		testutil.AssertEqual(t, oldDataDir, dataDir)
+
+		deployedDir := p.DeployedDir()
+		testutil.AssertEqual(t, filepath.Join(oldDataDir, "deployed"), deployedDir)
+
+		brewfileDir := p.BrewfileDir()
+		testutil.AssertEqual(t, filepath.Join(oldDataDir, "brewfile"), brewfileDir)
+	})
+
+	// Test that new API gives consistent results
+	t.Run("new API consistency", func(t *testing.T) {
+		p1, err := New("")
+		testutil.AssertNoError(t, err)
+		p2, err := New("")
+		testutil.AssertNoError(t, err)
+
+		testutil.AssertEqual(t, p1.DataDir(), p2.DataDir())
+		testutil.AssertEqual(t, p1.DeployedDir(), p2.DeployedDir())
+		testutil.AssertEqual(t, p1.BrewfileDir(), p2.BrewfileDir())
+		testutil.AssertEqual(t, p1.InstallDir(), p2.InstallDir())
 	})
 }
 

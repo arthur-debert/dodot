@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -339,7 +340,7 @@ func TestConvertAction(t *testing.T) {
 					Type:        types.OperationWriteFile,
 					Target:      filepath.Join(homeDir, ".myapp.conf"),
 					Content:     "# My App Config\nkey=value",
-					Mode:        uint32Ptr(0644),
+					Mode:        operations.Uint32Ptr(0644),
 					Description: "Create config",
 				},
 			},
@@ -414,7 +415,7 @@ func TestConvertAction(t *testing.T) {
 				{
 					Type:        types.OperationCreateDir,
 					Target:      filepath.Join(homeDir, ".config/myapp"),
-					Mode:        uint32Ptr(0755),
+					Mode:        operations.Uint32Ptr(0755),
 					Description: "Create app dir",
 				},
 			},
@@ -784,7 +785,7 @@ func TestExpandHome(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := expandHome(tt.path)
+			result := operations.ExpandHome(tt.path)
 			testutil.AssertEqual(t, tt.expected, result)
 		})
 	}
@@ -856,7 +857,7 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Count directory creation operations for the home directory
-	homeDir := expandHome("~")
+	homeDir := operations.ExpandHome("~")
 	dirOpCount := 0
 	for _, op := range ops {
 		if op.Type == types.OperationCreateDir && op.Target == homeDir {
@@ -999,7 +1000,7 @@ func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
 	}
 
 	// This should be deduplicated to just one operation
-	deduped := deduplicateOperations(ops)
+	deduped := operations.DeduplicateOperations(ops)
 	assert.Equal(t, 1, len(deduped), "Expected duplicate directory operations to be deduplicated")
 
 	// The first operation should be kept
@@ -1009,7 +1010,7 @@ func TestDuplicateOperationsDifferentDescriptions(t *testing.T) {
 // TestDeduplicateOperationsPreservesOrder tests that deduplication preserves
 // the order of operations and keeps the first occurrence
 func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
-	homeDir := expandHome("~")
+	homeDir := operations.ExpandHome("~")
 	deployedDir := filepath.Join(homeDir, ".local", "share", "dodot", "deployed", "symlink")
 
 	ops := []types.Operation{
@@ -1042,7 +1043,7 @@ func TestDeduplicateOperationsPreservesOrder(t *testing.T) {
 		},
 	}
 
-	deduped := deduplicateOperations(ops)
+	deduped := operations.DeduplicateOperations(ops)
 
 	// Should have 4 operations (one duplicate removed)
 	assert.Equal(t, 4, len(deduped))

@@ -9,6 +9,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -87,7 +88,7 @@ func (ctx *ExecutionContext) executeChecksumOperation(op types.Operation) (Opera
 	// Expand the source path
 	sourcePath := op.Source
 	if sourcePath[0] == '~' {
-		sourcePath = expandHome(sourcePath)
+		sourcePath = operations.ExpandHome(sourcePath)
 	}
 
 	// Make path absolute
@@ -135,7 +136,7 @@ func (ctx *ExecutionContext) GetChecksum(filePath string) (string, bool) {
 	}
 
 	// Try expanding home directory
-	if expanded := expandHome(filePath); expanded != filePath {
+	if expanded := operations.ExpandHome(filePath); expanded != filePath {
 		if checksum, exists := ctx.ChecksumResults[expanded]; exists {
 			return checksum, true
 		}

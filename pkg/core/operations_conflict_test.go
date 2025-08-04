@@ -3,6 +3,7 @@ package core
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -112,7 +113,7 @@ func TestAreOperationsCompatible(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := areOperationsCompatible(tt.ops)
+			result := operations.AreOperationsCompatible(tt.ops)
 			assert.Equal(t, tt.compatible, result)
 		})
 	}

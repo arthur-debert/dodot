@@ -19,9 +19,6 @@ const (
 	// EnvDotfilesRoot is the primary environment variable for dotfiles location
 	EnvDotfilesRoot = "DOTFILES_ROOT"
 
-	// EnvDotfilesHome is the legacy environment variable (deprecated)
-	EnvDotfilesHome = "DOTFILES_HOME"
-
 	// EnvDodotDataDir overrides the XDG data directory for dodot
 	EnvDodotDataDir = "DODOT_DATA_DIR"
 
@@ -169,12 +166,6 @@ func findDotfilesRoot() (string, bool, error) {
 	// Check DOTFILES_ROOT first (highest priority)
 	if root := os.Getenv(EnvDotfilesRoot); root != "" {
 		return expandHome(root), false, nil
-	}
-
-	// Check legacy DOTFILES_HOME
-	if home := os.Getenv(EnvDotfilesHome); home != "" {
-		// Note: DOTFILES_HOME is deprecated, but we still support it for backwards compatibility
-		return expandHome(home), false, nil
 	}
 
 	// Try to find git repository root

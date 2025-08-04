@@ -13,37 +13,18 @@ func getDefaultPaths() (*Paths, error) {
 	return New("")
 }
 
-// GetDodotDataDir returns the dodot data directory path
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetDodotDataDir() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		// Fallback to basic logic if initialization fails
-		if dataDir := os.Getenv(EnvDodotDataDir); dataDir != "" {
-			return expandHome(dataDir)
-		}
-		homeDir := GetHomeDirectoryWithDefault("/tmp")
-		return filepath.Join(homeDir, ".local", "share", "dodot")
-	}
-	return p.DataDir()
-}
-
-// GetDeployedDir returns the deployed directory path
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetDeployedDir() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetDodotDataDir(), DeployedDir)
-	}
-	return p.DeployedDir()
-}
-
 // GetShellProfileDir returns the shell profile deployment directory
 // This is a compatibility wrapper for migration from pkg/types/paths.go
 func GetShellProfileDir() string {
 	p, err := getDefaultPaths()
 	if err != nil {
-		return filepath.Join(GetDeployedDir(), "shell_profile")
+		// Fallback to basic logic if initialization fails
+		dataDir := os.Getenv(EnvDodotDataDir)
+		if dataDir == "" {
+			homeDir := GetHomeDirectoryWithDefault("/tmp")
+			dataDir = filepath.Join(homeDir, ".local", "share", "dodot")
+		}
+		return filepath.Join(dataDir, DeployedDir, "shell_profile")
 	}
 	return p.ShellProfileDir()
 }
@@ -53,19 +34,15 @@ func GetShellProfileDir() string {
 func GetPathDir() string {
 	p, err := getDefaultPaths()
 	if err != nil {
-		return filepath.Join(GetDeployedDir(), "path")
+		// Fallback to basic logic if initialization fails
+		dataDir := os.Getenv(EnvDodotDataDir)
+		if dataDir == "" {
+			homeDir := GetHomeDirectoryWithDefault("/tmp")
+			dataDir = filepath.Join(homeDir, ".local", "share", "dodot")
+		}
+		return filepath.Join(dataDir, DeployedDir, "path")
 	}
 	return p.PathDir()
-}
-
-// GetShellSourceDir returns the shell source deployment directory
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetShellSourceDir() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetDeployedDir(), "shell_source")
-	}
-	return p.ShellSourceDir()
 }
 
 // GetSymlinkDir returns the symlink deployment directory
@@ -73,29 +50,15 @@ func GetShellSourceDir() string {
 func GetSymlinkDir() string {
 	p, err := getDefaultPaths()
 	if err != nil {
-		return filepath.Join(GetDeployedDir(), "symlink")
+		// Fallback to basic logic if initialization fails
+		dataDir := os.Getenv(EnvDodotDataDir)
+		if dataDir == "" {
+			homeDir := GetHomeDirectoryWithDefault("/tmp")
+			dataDir = filepath.Join(homeDir, ".local", "share", "dodot")
+		}
+		return filepath.Join(dataDir, DeployedDir, "symlink")
 	}
 	return p.SymlinkDir()
-}
-
-// GetShellDir returns the shell scripts directory
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetShellDir() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetDodotDataDir(), ShellDir)
-	}
-	return p.ShellDir()
-}
-
-// GetInitScriptPath returns the path to the dodot-init.sh script
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetInitScriptPath() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetShellDir(), InitScriptName)
-	}
-	return p.InitScriptPath()
 }
 
 // GetInstallDir returns the install scripts sentinel directory
@@ -103,7 +66,13 @@ func GetInitScriptPath() string {
 func GetInstallDir() string {
 	p, err := getDefaultPaths()
 	if err != nil {
-		return filepath.Join(GetDodotDataDir(), InstallDir)
+		// Fallback to basic logic if initialization fails
+		dataDir := os.Getenv(EnvDodotDataDir)
+		if dataDir == "" {
+			homeDir := GetHomeDirectoryWithDefault("/tmp")
+			dataDir = filepath.Join(homeDir, ".local", "share", "dodot")
+		}
+		return filepath.Join(dataDir, InstallDir)
 	}
 	return p.InstallDir()
 }
@@ -113,7 +82,13 @@ func GetInstallDir() string {
 func GetBrewfileDir() string {
 	p, err := getDefaultPaths()
 	if err != nil {
-		return filepath.Join(GetDodotDataDir(), BrewfileDir)
+		// Fallback to basic logic if initialization fails
+		dataDir := os.Getenv(EnvDodotDataDir)
+		if dataDir == "" {
+			homeDir := GetHomeDirectoryWithDefault("/tmp")
+			dataDir = filepath.Join(homeDir, ".local", "share", "dodot")
+		}
+		return filepath.Join(dataDir, BrewfileDir)
 	}
 	return p.BrewfileDir()
 }

@@ -15,7 +15,6 @@
 // The package respects the following environment variables:
 //
 //   - DOTFILES_ROOT: Primary location for dotfiles (default: ~/dotfiles)
-//   - DOTFILES_HOME: Legacy variable, deprecated in favor of DOTFILES_ROOT
 //   - DODOT_DATA_DIR: Override XDG data directory (default: $XDG_DATA_HOME/dodot)
 //   - DODOT_CONFIG_DIR: Override XDG config directory (default: $XDG_CONFIG_HOME/dodot)
 //   - DODOT_CACHE_DIR: Override XDG cache directory (default: $XDG_CACHE_HOME/dodot)
