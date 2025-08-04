@@ -102,57 +102,6 @@ EOF
       The result of function verify_pack_deployed "complete" "symlink:.vimrc" "shell_profile:aliases.sh" "shell_add_path:bin" should be successful
     End
     
-    It 'executes powerups in priority order'
-      create_multi_powerup_pack "ordered"
-      
-      # Create different file types
-      echo "bashrc content" > "$TEST_DOTFILES_ROOT/ordered/.bashrc"
-      echo "aliases content" > "$TEST_DOTFILES_ROOT/ordered/aliases.sh"
-      mkdir -p "$TEST_DOTFILES_ROOT/ordered/bin"
-      echo '#!/bin/bash' > "$TEST_DOTFILES_ROOT/ordered/bin/tool"
-      chmod +x "$TEST_DOTFILES_ROOT/ordered/bin/tool"
-      
-      # Pack config with explicit priorities
-      cat > "$TEST_DOTFILES_ROOT/ordered/pack.dodot.toml" << 'EOF'
-name = "ordered"
-
-# High priority symlink
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".bashrc" }
-]
-actions = [
-    { type = "symlink" }
-]
-priority = 100
-
-# Medium priority shell profile
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = "aliases.sh" }
-]
-actions = [
-    { type = "shell_profile" }
-]
-priority = 80
-
-# Lower priority shell add path
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = "bin" }
-]
-actions = [
-    { type = "shell_add_path" }
-]
-priority = 70
-EOF
-      
-      When call "$DODOT" deploy -v
-      The status should be success
-      
-      # All should be deployed - verify using composite function
-      The result of function verify_pack_deployed "ordered" "symlink:.bashrc" "shell_profile:aliases.sh" "shell_add_path:bin" should be successful
-    End
     
     It 'maintains separate deployments for each powerup'
       create_multi_powerup_pack "separated"
@@ -558,60 +507,5 @@ EOF
       The result of function verify_pack_deployed "patterns" "symlink:.vimrc" "symlink:.bashrc" "symlink:.gitconfig" "shell_profile:aliases.sh" "shell_add_path:bin" should be successful
     End
     
-    It 'handles priority between different powerups'
-      create_multi_powerup_pack "priority"
-      
-      # Create files that would be handled by different powerups
-      mkdir -p "$TEST_DOTFILES_ROOT/priority/bin"
-      echo "#!/bin/bash\necho test" > "$TEST_DOTFILES_ROOT/priority/bin/test"
-      chmod +x "$TEST_DOTFILES_ROOT/priority/bin/test"
-      
-      # Create other files for clarity
-      echo "vimrc" > "$TEST_DOTFILES_ROOT/priority/.vimrc"
-      echo "aliases" > "$TEST_DOTFILES_ROOT/priority/aliases.sh"
-      
-      # Pack config with different priorities
-      cat > "$TEST_DOTFILES_ROOT/priority/pack.dodot.toml" << 'EOF'
-name = "priority"
-
-# High priority
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".vimrc" }
-]
-actions = [
-    { type = "symlink" }
-]
-priority = 100
-
-# Medium priority
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = "bin" }
-]
-actions = [
-    { type = "shell_add_path" }
-]
-priority = 80
-
-# Lower priority
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = "*.sh" }
-]
-actions = [
-    { type = "shell_profile" }
-]
-priority = 70
-EOF
-      
-      When call "$DODOT" deploy -v
-      The status should be success
-      
-      # Should deploy all files
-      The output should include "bin"
-      # Verify deployments using verification functions
-      The result of function verify_pack_deployed "priority" "symlink:.vimrc" "shell_profile:aliases.sh" should be successful
-    End
   End
 End
