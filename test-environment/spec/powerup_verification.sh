@@ -159,38 +159,73 @@ verify_shell_profile_deployed() {
 }
 
 # Verify shell add path powerup deployment
-# Usage: verify_shell_add_path_deployed <pack> [bin_dir]
+# Usage: verify_shell_add_path_deployed <pack> [bin_dir] [mode]
+# Modes: deployed (default), not-deployed, no-executables
 # Example: verify_shell_add_path_deployed "tools" "bin"
+# Example: verify_shell_add_path_deployed "tools" "bin" "not-deployed"
 verify_shell_add_path_deployed() {
   local pack=$1
   local bin_dir=${2:-"bin"}
+  local mode=${3:-"deployed"}
   local path_dir="$HOME/.local/share/dodot/deployed/path"
   local deployed_link="$path_dir/$pack"
   
-  # Check directory exists
-  if [ ! -d "$path_dir" ]; then
-    echo "ERROR: Path directory $path_dir does not exist" >&2
-    return 1
-  fi
-  
-  # Check symlink exists
-  if [ ! -L "$deployed_link" ]; then
-    echo "ERROR: Expected symlink at $deployed_link does not exist" >&2
-    return 1
-  fi
-  
-  # Verify symlink points to bin directory
-  local link_target=$(readlink "$deployed_link")
-  if [[ "$link_target" != *"$pack/$bin_dir"* ]]; then
-    echo "ERROR: Symlink $deployed_link points to $link_target, not $pack/$bin_dir" >&2
-    return 1
-  fi
-  
-  # Verify at least one executable exists
-  if [ -z "$(find "$deployed_link" -type f -executable 2>/dev/null)" ]; then
-    echo "ERROR: No executable files found in $deployed_link" >&2
-    return 1
-  fi
+  case "$mode" in
+    "deployed")
+      # Check directory exists
+      if [ ! -d "$path_dir" ]; then
+        echo "ERROR: Path directory $path_dir does not exist" >&2
+        return 1
+      fi
+      
+      # Check symlink exists
+      if [ ! -L "$deployed_link" ]; then
+        echo "ERROR: Expected symlink at $deployed_link does not exist" >&2
+        return 1
+      fi
+      
+      # Verify symlink points to bin directory
+      local link_target=$(readlink "$deployed_link")
+      if [[ "$link_target" != *"$pack/$bin_dir"* ]]; then
+        echo "ERROR: Symlink $deployed_link points to $link_target, not $pack/$bin_dir" >&2
+        return 1
+      fi
+      
+      # Verify at least one executable exists
+      if [ -z "$(find "$deployed_link" -type f -executable 2>/dev/null)" ]; then
+        echo "ERROR: No executable files found in $deployed_link" >&2
+        return 1
+      fi
+      ;;
+      
+    "not-deployed")
+      # Check deployed link does not exist
+      if [ -L "$deployed_link" ] || [ -e "$deployed_link" ]; then
+        echo "ERROR: Path link $deployed_link exists when it shouldn't" >&2
+        return 1
+      fi
+      ;;
+      
+    "no-executables")
+      # Check link exists but no executables
+      # Useful for testing edge cases
+      if [ ! -L "$deployed_link" ]; then
+        echo "ERROR: Expected symlink at $deployed_link for no-executables test" >&2
+        return 1
+      fi
+      
+      # Verify NO executable files exist
+      if [ -n "$(find "$deployed_link" -type f -executable 2>/dev/null)" ]; then
+        echo "ERROR: Found executable files in $deployed_link when none expected" >&2
+        return 1
+      fi
+      ;;
+      
+    *)
+      echo "ERROR: Unknown mode '$mode'. Valid modes: deployed, not-deployed, no-executables" >&2
+      return 1
+      ;;
+  esac
   
   return 0
 }
