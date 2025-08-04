@@ -36,23 +36,57 @@ fi
 echo "✅ ShellSpec is installed"
 echo
 
-# Run ShellSpec tests
+# Run ShellSpec tests with enhanced reporting
 echo "Running ShellSpec test suite..."
 echo "================================"
 
 # Run tests and capture exit code
+# Use ShellSpec's built-in formatters for better reporting
 set +e
-shellspec 2>&1 | tee /tmp/test-results/test-output.log
+shellspec \
+    --format progress \
+    --format junit \
+    --format tap \
+    --output-junit /tmp/test-results/junit.xml \
+    --output-tap /tmp/test-results/test-results.tap \
+    2>&1 | tee /tmp/test-results/test-output.log
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 set -e
 
 echo
 echo "================================"
+echo "=== TEST SUMMARY ==="
 
-# Copy test results to a location that will be preserved
-if [ -f "results/junit.xml" ]; then
-    cp results/junit.xml /tmp/test-results/
-    echo "✅ JUnit XML results saved to /tmp/test-results/junit.xml"
+# Display test summary if available
+if [ -f "/tmp/test-results/test-results.tap" ]; then
+    echo
+    echo "📊 TAP Test Results:"
+    echo "-------------------"
+    cat /tmp/test-results/test-results.tap | head -20
+    echo
+    
+    # Count test results
+    TOTAL_TESTS=$(grep -c "^ok\|^not ok" /tmp/test-results/test-results.tap || echo "0")
+    PASSED_TESTS=$(grep -c "^ok" /tmp/test-results/test-results.tap || echo "0")
+    FAILED_TESTS=$(grep -c "^not ok" /tmp/test-results/test-results.tap || echo "0")
+    
+    echo "📈 Test Statistics:"
+    echo "  Total:  $TOTAL_TESTS"
+    echo "  Passed: $PASSED_TESTS"
+    echo "  Failed: $FAILED_TESTS"
+fi
+
+# Show files created
+echo
+echo "📁 Generated Reports:"
+if [ -f "/tmp/test-results/junit.xml" ]; then
+    echo "  ✅ JUnit XML: /tmp/test-results/junit.xml"
+fi
+if [ -f "/tmp/test-results/test-results.tap" ]; then
+    echo "  ✅ TAP format: /tmp/test-results/test-results.tap"
+fi
+if [ -f "/tmp/test-results/test-output.log" ]; then
+    echo "  ✅ Full output: /tmp/test-results/test-output.log"
 fi
 
 # Exit with the test exit code
