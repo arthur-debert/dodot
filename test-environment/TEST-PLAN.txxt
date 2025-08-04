@@ -103,7 +103,7 @@ Phase 4: Edge Cases & Error Handling
 - [ ] Symlink chains (link → link → file)
 
 4.2 Configuration Errors
-- [ ] Invalid pack.dodot.toml syntax
+- [ ] Invalid .dodot.toml syntax
 - [ ] Missing required trigger fields
 - [ ] Unknown powerup type
 - [ ] Circular pack dependencies

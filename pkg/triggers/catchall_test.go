@@ -22,7 +22,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 			},
 		},
@@ -34,7 +33,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 				"*.tmp",
 				"*.bak",
@@ -48,7 +46,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 				"*.log",
 				"temp*",
@@ -60,7 +57,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 			},
 		},
@@ -102,12 +98,6 @@ func TestCatchallTrigger_Match(t *testing.T) {
 		{
 			name:        "exclude .dodot.toml",
 			path:        "/home/user/dotfiles/pack/.dodot.toml",
-			isDir:       false,
-			shouldMatch: false,
-		},
-		{
-			name:        "exclude pack.dodot.toml",
-			path:        "/home/user/dotfiles/pack/pack.dodot.toml",
 			isDir:       false,
 			shouldMatch: false,
 		},
