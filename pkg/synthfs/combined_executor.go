@@ -1,8 +1,11 @@
 package synthfs
 
 import (
+	"strings"
+
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -25,6 +28,16 @@ func NewCombinedExecutor(dryRun bool) *CombinedExecutor {
 	}
 }
 
+// NewCombinedExecutorWithPaths creates a new combined executor with custom paths
+func NewCombinedExecutorWithPaths(dryRun bool, p *paths.Paths) *CombinedExecutor {
+	return &CombinedExecutor{
+		logger:          logging.GetLogger("core.combined_executor"),
+		dryRun:          dryRun,
+		synthfsExecutor: NewSynthfsExecutorWithPaths(dryRun, p),
+		commandExecutor: NewCommandExecutor(dryRun),
+	}
+}
+
 // EnableHomeSymlinks allows the executor to create symlinks in the user's home directory
 func (e *CombinedExecutor) EnableHomeSymlinks(backup bool) *CombinedExecutor {
 	e.synthfsExecutor.EnableHomeSymlinks(backup)
@@ -37,14 +50,12 @@ func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) error
 		return nil
 	}
 
-	// Group operations by their dependencies
-	// For install/brew actions, we need to ensure:
-	// 1. Directory creation happens first
-	// 2. Script execution happens next
-	// 3. Sentinel file creation happens only after successful execution
+	// Separate operations into three categories:
+	// 1. Filesystem operations (handled by synthfs with automatic dependency resolution)
+	// 2. Command operations (must run after filesystem setup)
+	// 3. Sentinel file operations (must run after successful command execution)
 
-	// First, separate operations by type
-	var dirOps, executeOps, fileOps, otherOps []types.Operation
+	var filesystemOps, commandOps, sentinelOps []types.Operation
 
 	for _, op := range operations {
 		if op.Status != types.StatusReady {
@@ -52,54 +63,43 @@ func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) error
 		}
 
 		switch op.Type {
-		case types.OperationCreateDir:
-			dirOps = append(dirOps, op)
 		case types.OperationExecute:
-			executeOps = append(executeOps, op)
+			commandOps = append(commandOps, op)
 		case types.OperationWriteFile:
 			// Check if this is a sentinel file write
 			if isSentinelWrite(op) {
-				// Sentinel writes go after execution
-				fileOps = append(fileOps, op)
+				sentinelOps = append(sentinelOps, op)
 			} else {
-				// Other file writes can happen with other ops
-				otherOps = append(otherOps, op)
+				filesystemOps = append(filesystemOps, op)
 			}
 		default:
-			otherOps = append(otherOps, op)
+			// All other operations are filesystem operations
+			filesystemOps = append(filesystemOps, op)
 		}
 	}
 
-	// Execute in order:
-	// 1. Create directories first
-	if len(dirOps) > 0 {
-		e.logger.Debug().Int("count", len(dirOps)).Msg("Executing directory operations")
-		if err := e.synthfsExecutor.ExecuteOperations(dirOps); err != nil {
-			return errors.Wrap(err, errors.ErrActionExecute, "failed to create directories")
+	// 1. Execute all filesystem operations in one batch
+	// The synthfs library will handle dependency resolution (e.g., creating directories before files)
+	if len(filesystemOps) > 0 {
+		e.logger.Debug().Int("count", len(filesystemOps)).Msg("Executing filesystem operations")
+		if err := e.synthfsExecutor.ExecuteOperations(filesystemOps); err != nil {
+			return errors.Wrap(err, errors.ErrActionExecute, "failed to execute filesystem operations")
 		}
 	}
 
-	// 2. Execute other file system operations (symlinks, non-sentinel writes, etc)
-	if len(otherOps) > 0 {
-		e.logger.Debug().Int("count", len(otherOps)).Msg("Executing other file operations")
-		if err := e.synthfsExecutor.ExecuteOperations(otherOps); err != nil {
-			return errors.Wrap(err, errors.ErrActionExecute, "failed to execute file operations")
-		}
-	}
-
-	// 3. Execute commands
-	if len(executeOps) > 0 {
-		e.logger.Debug().Int("count", len(executeOps)).Msg("Executing command operations")
-		if err := e.commandExecutor.ExecuteOperations(executeOps); err != nil {
+	// 2. Execute commands (must happen after filesystem is set up)
+	if len(commandOps) > 0 {
+		e.logger.Debug().Int("count", len(commandOps)).Msg("Executing command operations")
+		if err := e.commandExecutor.ExecuteOperations(commandOps); err != nil {
 			// If command execution fails, don't proceed to sentinel creation
 			return errors.Wrap(err, errors.ErrActionExecute, "failed to execute commands")
 		}
 	}
 
-	// 4. Create sentinel files only after successful execution
-	if len(fileOps) > 0 {
-		e.logger.Debug().Int("count", len(fileOps)).Msg("Creating sentinel files")
-		if err := e.synthfsExecutor.ExecuteOperations(fileOps); err != nil {
+	// 3. Create sentinel files only after successful command execution
+	if len(sentinelOps) > 0 {
+		e.logger.Debug().Int("count", len(sentinelOps)).Msg("Creating sentinel files")
+		if err := e.synthfsExecutor.ExecuteOperations(sentinelOps); err != nil {
 			return errors.Wrap(err, errors.ErrActionExecute, "failed to create sentinel files")
 		}
 	}
@@ -109,28 +109,11 @@ func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) error
 
 // isSentinelWrite checks if a write operation is for a sentinel file
 func isSentinelWrite(op types.Operation) bool {
-	// Check if the description mentions "sentinel"
-	// This is a simple heuristic - we could also check the path
+	// Check if the description mentions "sentinel" or if the path indicates a sentinel file
+	// This is application-specific logic that must be preserved
 	return op.Type == types.OperationWriteFile &&
-		(contains(op.Description, "sentinel") ||
-			contains(op.Target, "/sentinels/") ||
-			contains(op.Target, "/install/") ||
-			contains(op.Target, "/brewfile/"))
-}
-
-// contains is a simple string contains helper
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && containsSubstring(s, substr)
-}
-
-func containsSubstring(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
+		(strings.Contains(strings.ToLower(op.Description), "sentinel") ||
+			strings.Contains(op.Target, "/sentinels/") ||
+			strings.Contains(op.Target, "/install/") ||
+			strings.Contains(op.Target, "/brewfile/"))
 }
