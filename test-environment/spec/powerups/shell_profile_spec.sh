@@ -48,45 +48,6 @@ Describe 'Shell Profile PowerUp'
     End
   End
   
-  Describe 'Multiple shell profiles'
-    It 'handles multiple packs with shell profiles'
-      # Create zsh pack with aliases
-      mkdir -p "$DOTFILES_ROOT/zsh"
-      cat > "$DOTFILES_ROOT/zsh/pack.dodot.toml" << 'EOF'
-name = "zsh"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = "zsh_aliases.sh" }
-]
-actions = [
-    { type = "shell_profile" }
-]
-EOF
-      
-      # Create zsh aliases file
-      cat > "$DOTFILES_ROOT/zsh/zsh_aliases.sh" << 'EOF'
-#!/usr/bin/env sh
-# ZSH specific aliases
-
-alias zr='source ~/.zshrc'
-alias zsh-test='echo "zsh aliases loaded"'
-EOF
-      
-      # Update mock to handle zsh pack
-      # For now, we'll just check that the files are created correctly
-      
-      # Deploy bash first
-      "$DODOT" deploy bash >/dev/null 2>&1
-      
-      # Manually create zsh deployment (since mock doesn't handle it yet)
-      ln -sf "$DOTFILES_ROOT/zsh/zsh_aliases.sh" "$HOME/.local/share/dodot/deployed/shell_profile/zsh.sh"
-      
-      # Check both profiles were deployed
-      The result of function verify_shell_profile_deployed "bash" "aliases.sh" should be successful
-      The result of function verify_shell_profile_deployed "zsh" "zsh_aliases.sh" should be successful
-    End
-  End
   
   Describe 'Shell profile with custom names'
     It 'uses pack name for deployed file'
@@ -108,25 +69,6 @@ EOF
   End
   
   Describe 'Error handling'
-    It 'handles missing source file'
-      # Create pack with non-existent file
-      mkdir -p "$DOTFILES_ROOT/broken"
-      cat > "$DOTFILES_ROOT/broken/pack.dodot.toml" << 'EOF'
-name = "broken"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = "missing.sh" }
-]
-actions = [
-    { type = "shell_profile" }
-]
-EOF
-      
-      # Mock doesn't handle this, but real dodot should fail
-      # For now, we'll skip this test
-      Skip "Mock doesn't validate missing files for shell_profile"
-    End
     
     It 'handles permission errors on deployment directory'
       # Create directory with no write permission

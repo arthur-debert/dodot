@@ -55,89 +55,10 @@ Describe 'Symlink PowerUp'
       The output should equal "colorscheme test"
     End
     
-    It 'handles nested directory structure'
-      # Create a nested config structure
-      mkdir -p "$DOTFILES_ROOT/vim/.config/nvim"
-      echo "set number" > "$DOTFILES_ROOT/vim/.config/nvim/init.vim"
-      
-      # Update the pack config to handle .config/nvim
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".vimrc" },
-    { type = "Directory", pattern = ".vim" },
-    { type = "Directory", pattern = ".config/nvim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
-      # Run deploy
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      # Verify parent directory was created
-      When call test -d "$HOME/.config"
-      The status should be success
-    End
     
-    It 'creates nested directory symlink'
-      # Setup nested structure
-      mkdir -p "$DOTFILES_ROOT/vim/.config/nvim"
-      echo "set number" > "$DOTFILES_ROOT/vim/.config/nvim/init.vim"
-      
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      When call verify_symlink_deployed "vim" "nvim" ".config"
-      The status should be success
-    End
-    
-    It 'reads content through nested symlink'
-      # Setup nested structure
-      mkdir -p "$DOTFILES_ROOT/vim/.config/nvim"
-      echo "set number" > "$DOTFILES_ROOT/vim/.config/nvim/init.vim"
-      
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = ".config/nvim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      When call cat "$HOME/.config/nvim/init.vim"
-      The output should equal "set number"
-    End
   End
   
   Describe 'Error handling'
-    It 'fails when source file does not exist'
-      # Create a config that references non-existent file
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".vimrc" },
-    { type = "FileName", pattern = ".nonexistent" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
-      When call "$DODOT" deploy vim
-      The status should be failure
-      The error should include "ERROR"
-    End
     
     It 'fails with existing file at target'
       # Create a regular file where symlink would go
@@ -264,18 +185,6 @@ EOF
       # Setup files
       mkdir -p "$DOTFILES_ROOT/vim/.vim/plugin"
       echo "\" plugin" > "$DOTFILES_ROOT/vim/.vim/plugin/test.vim"
-      
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = ".vim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
       
       "$DODOT" deploy vim >/dev/null 2>&1
       

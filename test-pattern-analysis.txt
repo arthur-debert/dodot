@@ -1,0 +1,88 @@
+POWERUP TEST PATTERN ANALYSIS
+=============================
+
+1. SYMLINK_SPEC.SH (282 lines total)
+   - Uses verify_symlink_deployed: 5 times
+   - Uses verify_idempotent_deploy: 1 time  
+   - Uses verify_pack_deployed: 1 time
+   - Manual assertions: ~45 (test -d, test -L, cat checks, etc.)
+   - Pattern: Heavy use of manual assertions alongside verification functions
+   - Many tests use manual "cat" to verify content through symlinks
+   - Manual directory existence checks with "test -d"
+   - Manual symlink checks with "test -L"
+
+2. SHELL_PROFILE_SPEC.SH (219 lines total)
+   - Uses verify_shell_profile_deployed: 3 times
+   - Uses verify_idempotent_deploy: 1 time
+   - Manual assertions: ~30 (grep, test -d, test -f, bash -c, zsh -c, etc.)
+   - Pattern: Similar to symlink - many manual assertions
+   - Manual grep for content verification
+   - Manual source tests with bash -c and zsh -c
+   - Manual readlink comparisons for idempotency
+
+3. INSTALL_SCRIPT_SPEC.SH (281 lines total)
+   - Uses verify_install_script_deployed: 2 times
+   - Manual assertions: ~50 (file existence, includes checks, executable checks)
+   - Pattern: Mostly manual assertions
+   - Has custom verify_sentinel helper function
+   - Many "The file should exist/include" assertions
+   - Manual directory checks with "The path should be directory"
+
+4. BREWFILE_SPEC.SH (225 lines total)
+   - Uses verify_brewfile_deployed: 7 times
+   - Manual assertions: ~15 (file should not exist, output should include)
+   - Pattern: DIFFERENT - relies more on verification functions
+   - Less manual testing overall
+   - Simpler test structure
+
+5. MULTI_POWERUP_SPEC.SH (from partial read)
+   - Uses verify_pack_deployed: Frequently for combined verification
+   - Pattern: Uses composite verification for multiple powerups
+
+KEY OBSERVATIONS:
+=================
+
+1. Manual Assertion Types:
+   - File content checks: cat, grep
+   - File existence: test -f, "The file should exist"
+   - Directory checks: test -d, "The path should be directory"
+   - Symlink verification: test -L, readlink
+   - Permission checks: test -w, "should be executable"
+   - Output content: "The output should include/equal"
+
+2. Verification Function Usage:
+   - Symlink tests: Mix of both (5 functions, ~45 manual)
+   - Shell profile: Mix of both (4 functions, ~30 manual)
+   - Install script: Mostly manual (2 functions, ~50 manual)
+   - Brewfile: Mostly functions (7 functions, ~15 manual)
+
+3. Patterns:
+   - Brewfile is an OUTLIER - it relies heavily on verification functions
+   - Other tests keep manual assertions even when functions exist
+   - Manual assertions often test specific implementation details
+   - Verification functions test higher-level success
+
+4. Why Manual Assertions Remain:
+   - Testing specific error messages
+   - Verifying intermediate states
+   - Checking exact file permissions
+   - Testing shell compatibility (bash vs zsh)
+   - Verifying exact output format
+   - Testing error conditions that functions don't cover
+
+CONCLUSION:
+===========
+The brewfile test is indeed different from the others. While most tests maintain
+30-50 manual assertions alongside verification functions, brewfile has only ~15
+manual assertions and relies heavily on its verification function (7 calls).
+
+The other tests appear to intentionally keep manual assertions to:
+1. Test implementation details the verification functions don't check
+2. Provide more granular error messages when tests fail
+3. Verify exact behavior rather than just "success"
+4. Test error paths and edge cases
+
+The brewfile test might be:
+- Newer and following a different pattern
+- Simpler in nature (just needs to verify brew was called)
+- Missing some detailed checks the other tests have

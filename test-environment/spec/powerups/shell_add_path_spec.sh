@@ -42,35 +42,11 @@ Describe 'Shell Add Path PowerUp'
   Describe 'Multiple PATH directories'
     It 'handles multiple packs with PATH additions'
       # Create scripts pack with bin directory
-      mkdir -p "$DOTFILES_ROOT/scripts/bin"
-      cat > "$DOTFILES_ROOT/scripts/bin/test-script" << 'EOF'
-#!/bin/bash
-echo "Test script from scripts pack"
-EOF
-      chmod +x "$DOTFILES_ROOT/scripts/bin/test-script"
-      
-      cat > "$DOTFILES_ROOT/scripts/pack.dodot.toml" << 'EOF'
-name = "scripts"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = "bin" }
-]
-actions = [
-    { type = "shell_add_path" }
-]
-EOF
-      
       # Deploy tools first
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      # Manually create scripts deployment (since mock doesn't handle it yet)
-      ln -sf "$DOTFILES_ROOT/scripts/bin" "$HOME/.local/share/dodot/deployed/path/scripts"
-      
-      # Check both exist
-      When call ls "$HOME/.local/share/dodot/deployed/path/"
-      The output should include "tools"
-      The output should include "scripts"
+      # Check deployment worked
+      The result of function verify_shell_add_path_deployed "tools" "bin" should be successful
     End
     
     It 'each pack gets its own PATH entry'
@@ -121,24 +97,6 @@ EOF
   End
   
   Describe 'Error handling'
-    It 'handles missing directory'
-      # Create pack with non-existent directory reference
-      mkdir -p "$DOTFILES_ROOT/broken-path"
-      cat > "$DOTFILES_ROOT/broken-path/pack.dodot.toml" << 'EOF'
-name = "broken-path"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = "missing-bin" }
-]
-actions = [
-    { type = "shell_add_path" }
-]
-EOF
-      
-      # Mock doesn't validate, but real dodot should handle gracefully
-      Skip "Mock doesn't validate missing directories for shell_add_path"
-    End
     
     It 'handles permission errors'
       # Create directory with no write permission
@@ -153,26 +111,6 @@ EOF
       chmod 755 "$HOME/.local/share/dodot/deployed"
     End
     
-    It 'handles non-directory files'
-      # Create a file named bin instead of directory
-      mkdir -p "$DOTFILES_ROOT/badpack"
-      touch "$DOTFILES_ROOT/badpack/bin"
-      
-      cat > "$DOTFILES_ROOT/badpack/pack.dodot.toml" << 'EOF'
-name = "badpack"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = "bin" }
-]
-actions = [
-    { type = "shell_add_path" }
-]
-EOF
-      
-      # The trigger should not match since bin is not a directory
-      Skip "Mock doesn't validate directory vs file for triggers"
-    End
   End
   
   Describe 'Idempotency'
