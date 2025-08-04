@@ -1,4 +1,4 @@
-package bin
+package path
 
 import (
 	"fmt"
@@ -10,43 +10,43 @@ import (
 )
 
 const (
-	// BinPowerUpName is the unique name for the bin power-up
-	BinPowerUpName = "bin"
+	// PathPowerUpName is the unique name for the path power-up
+	PathPowerUpName = "path"
 
-	// BinPowerUpPriority is the priority for bin operations
-	BinPowerUpPriority = 90
+	// PathPowerUpPriority is the priority for path operations
+	PathPowerUpPriority = 90
 )
 
-// BinPowerUp handles executable files by creating symlinks in ~/bin
-type BinPowerUp struct {
+// PathPowerUp handles executable files by creating symlinks in ~/bin
+type PathPowerUp struct {
 	targetDir string
 }
 
-// NewBinPowerUp creates a new BinPowerUp
-func NewBinPowerUp() *BinPowerUp {
-	return &BinPowerUp{
+// NewPathPowerUp creates a new PathPowerUp
+func NewPathPowerUp() *PathPowerUp {
+	return &PathPowerUp{
 		targetDir: "~/bin",
 	}
 }
 
 // Name returns the unique name of this power-up
-func (p *BinPowerUp) Name() string {
-	return BinPowerUpName
+func (p *PathPowerUp) Name() string {
+	return PathPowerUpName
 }
 
 // Description returns a human-readable description
-func (p *BinPowerUp) Description() string {
+func (p *PathPowerUp) Description() string {
 	return "Creates symlinks for executable files in ~/bin"
 }
 
 // RunMode returns when this power-up should run
-func (p *BinPowerUp) RunMode() types.RunMode {
+func (p *PathPowerUp) RunMode() types.RunMode {
 	return types.RunModeMany
 }
 
 // Process takes executable files and creates symlink actions to ~/bin
-func (p *BinPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	logger := logging.GetLogger("powerups.bin")
+func (p *PathPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+	logger := logging.GetLogger("powerups.path")
 	actions := make([]types.Action, 0, len(matches))
 
 	// Get target directory from options or use default
@@ -71,8 +71,8 @@ func (p *BinPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, erro
 				Str("target", targetPath).
 				Str("source1", existingSource).
 				Str("source2", match.AbsolutePath).
-				Msg("bin conflict detected - multiple files want same target")
-			return nil, fmt.Errorf("bin conflict: both %s and %s want to link to %s",
+				Msg("path conflict detected - multiple files want same target")
+			return nil, fmt.Errorf("path conflict: both %s and %s want to link to %s",
 				existingSource, match.AbsolutePath, targetPath)
 		}
 
@@ -86,7 +86,7 @@ func (p *BinPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, erro
 			Target:      targetPath,
 			Pack:        match.Pack,
 			PowerUpName: p.Name(),
-			Priority:    BinPowerUpPriority,
+			Priority:    PathPowerUpPriority,
 			Metadata: map[string]interface{}{
 				"trigger":    match.TriggerName,
 				"executable": true,
@@ -99,7 +99,7 @@ func (p *BinPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, erro
 			Str("source", match.AbsolutePath).
 			Str("target", targetPath).
 			Str("pack", match.Pack).
-			Msg("generated bin symlink action")
+			Msg("generated path symlink action")
 	}
 
 	logger.Info().
@@ -111,7 +111,7 @@ func (p *BinPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, erro
 }
 
 // ValidateOptions checks if the provided options are valid
-func (p *BinPowerUp) ValidateOptions(options map[string]interface{}) error {
+func (p *PathPowerUp) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {
 		return nil
 	}
@@ -134,17 +134,17 @@ func (p *BinPowerUp) ValidateOptions(options map[string]interface{}) error {
 }
 
 // GetTemplateContent returns the template content for this power-up
-func (p *BinPowerUp) GetTemplateContent() string {
+func (p *PathPowerUp) GetTemplateContent() string {
 	return ""
 }
 
 func init() {
 	// Register the factory
-	err := registry.RegisterPowerUpFactory(BinPowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
-		return NewBinPowerUp(), nil
+	err := registry.RegisterPowerUpFactory(PathPowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
+		return NewPathPowerUp(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", BinPowerUpName, err))
+		panic(fmt.Sprintf("failed to register %s power-up: %v", PathPowerUpName, err))
 	}
 
 	// Default matchers will be registered separately to avoid import cycles

@@ -121,11 +121,11 @@ func BenchmarkPathsAPI(b *testing.B) {
 		}
 	})
 
-	b.Run("Paths.BrewfileDir", func(b *testing.B) {
+	b.Run("Paths.HomebrewDir", func(b *testing.B) {
 		p, _ := New("")
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = p.BrewfileDir()
+			_ = p.HomebrewDir()
 		}
 	})
 }

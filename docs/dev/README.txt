@@ -176,7 +176,7 @@ Detailed Guidelines
     *   Example: `"Release 3.4.2: implement FileNameTrigger with glob support"`
 *   When fixing GitHub issues:
     *   Include `"fixes #XX"` to auto-close issues.
-    *   Example: `"fixes #42: correct PATH handling in bin powerup"`
+    *   Example: `"fixes #42: correct PATH handling in path powerup"`
 
 #### 5.2. Pull Request Process
 

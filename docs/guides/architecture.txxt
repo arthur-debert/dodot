@@ -76,7 +76,7 @@ Power-ups generate actions from matched files:
 • symlink - Creates symbolic links to target locations
 • shell_profile - Modifies shell configuration files
 • shell_add_path - Adds directories to PATH
-• brewfile - Processes Homebrew package files
+• homebrew - Processes Homebrew package files
 • install_script - Executes installation scripts
 
 Power-ups never perform filesystem operations directly. They only describe

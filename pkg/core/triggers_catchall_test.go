@@ -57,7 +57,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	// Verify specific matchers worked
 	testutil.AssertEqual(t, "symlink", matchMap[".vimrc"])
 	testutil.AssertEqual(t, "symlink", matchMap[".bashrc"])
-	testutil.AssertEqual(t, "brewfile", matchMap["Brewfile"])
+	testutil.AssertEqual(t, "homebrew", matchMap["Brewfile"])
 	testutil.AssertEqual(t, "install_script", matchMap["install.sh"])
 
 	// Verify catchall caught the remaining files
@@ -87,7 +87,7 @@ func TestProcessPackTriggers_CatchallWithOverrides(t *testing.T) {
 	packDir := filepath.Join(testDir, "test-pack")
 	testutil.CreateDir(t, testDir, "test-pack")
 
-	// Create pack.dodot.toml with overrides
+	// Create .dodot.toml with overrides
 	packConfigContent := `
 [[override]]
 path = "custom.conf"
@@ -97,7 +97,7 @@ powerup = "shell_profile"
 path = "data.json"
 powerup = "template"
 `
-	testutil.CreateFile(t, packDir, "pack.dodot.toml", packConfigContent)
+	testutil.CreateFile(t, packDir, ".dodot.toml", packConfigContent)
 
 	// Create test files
 	testFiles := map[string]string{
@@ -111,7 +111,7 @@ powerup = "template"
 	}
 
 	// Load the pack config
-	configPath := filepath.Join(packDir, "pack.dodot.toml")
+	configPath := filepath.Join(packDir, ".dodot.toml")
 	packConfig, err := config.LoadPackConfig(configPath)
 	testutil.AssertNoError(t, err)
 

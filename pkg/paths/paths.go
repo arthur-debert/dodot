@@ -61,8 +61,8 @@ const (
 	// InstallDir is the subdirectory for install sentinels
 	InstallDir = "install"
 
-	// BrewfileDir is the subdirectory for brewfile sentinels
-	BrewfileDir = "brewfile"
+	// HomebrewDir is the subdirectory for homebrew sentinels
+	HomebrewDir = "homebrew"
 
 	// InitScriptName is the name of the init script
 	InitScriptName = "dodot-init.sh"
@@ -400,9 +400,9 @@ func (p *Paths) InstallDir() string {
 	return p.GetDataSubdir(InstallDir)
 }
 
-// BrewfileDir returns the brewfile sentinel directory
-func (p *Paths) BrewfileDir() string {
-	return p.GetDataSubdir(BrewfileDir)
+// HomebrewDir returns the homebrew sentinel directory
+func (p *Paths) HomebrewDir() string {
+	return p.GetDataSubdir(HomebrewDir)
 }
 
 // GetHomeDirectory returns the user's home directory with proper error handling

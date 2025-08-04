@@ -15,7 +15,7 @@ import (
 func TestStatusPacks(t *testing.T) {
 	// Clean up any existing sentinel files before running tests
 	_ = os.RemoveAll(paths.GetInstallDir())
-	_ = os.RemoveAll(paths.GetBrewfileDir())
+	_ = os.RemoveAll(paths.GetHomebrewDir())
 	tests := []struct {
 		name      string
 		setup     func(t *testing.T) (string, []string)
@@ -153,20 +153,20 @@ func TestStatusPacks(t *testing.T) {
 				testutil.AssertEqual(t, 1, len(result.Packs))
 				pack := result.Packs[0]
 
-				var brewfileStatus *types.PowerUpStatus
+				var homebrewStatus *types.PowerUpStatus
 				for i := range pack.PowerUpState {
-					if pack.PowerUpState[i].Name == "brewfile" {
-						brewfileStatus = &pack.PowerUpState[i]
+					if pack.PowerUpState[i].Name == "homebrew" {
+						homebrewStatus = &pack.PowerUpState[i]
 						break
 					}
 				}
-				testutil.AssertNotNil(t, brewfileStatus)
-				testutil.AssertEqual(t, "Not Installed", brewfileStatus.State)
-				testutil.AssertEqual(t, "Brewfile not yet executed", brewfileStatus.Description)
+				testutil.AssertNotNil(t, homebrewStatus)
+				testutil.AssertEqual(t, "Not Installed", homebrewStatus.State)
+				testutil.AssertEqual(t, "Brewfile not yet executed", homebrewStatus.Description)
 			},
 		},
 		{
-			name: "status of pack with executed brewfile",
+			name: "status of pack with executed homebrew",
 			setup: func(t *testing.T) (string, []string) {
 				root := testutil.TempDir(t, "status-test")
 				pack := testutil.CreateDir(t, root, "test-pack")
@@ -181,7 +181,7 @@ func TestStatusPacks(t *testing.T) {
 				}
 
 				// Create sentinel file
-				sentinelPath := filepath.Join(paths.GetBrewfileDir(), "test-pack")
+				sentinelPath := filepath.Join(paths.GetHomebrewDir(), "test-pack")
 				sentinelDir := filepath.Dir(sentinelPath)
 				err = os.MkdirAll(sentinelDir, 0755)
 				if err != nil {
@@ -200,7 +200,7 @@ func TestStatusPacks(t *testing.T) {
 
 				var brewfileStatus *types.PowerUpStatus
 				for i := range pack.PowerUpState {
-					if pack.PowerUpState[i].Name == "brewfile" {
+					if pack.PowerUpState[i].Name == "homebrew" {
 						brewfileStatus = &pack.PowerUpState[i]
 						break
 					}
@@ -338,7 +338,7 @@ func TestStatusPacks(t *testing.T) {
 
 				// Should have at least install, brewfile, and symlink
 				testutil.AssertTrue(t, powerupTypes["install"], "Expected install status")
-				testutil.AssertTrue(t, powerupTypes["brewfile"], "Expected brewfile status")
+				testutil.AssertTrue(t, powerupTypes["homebrew"], "Expected brewfile status")
 				testutil.AssertTrue(t, powerupTypes["symlink"], "Expected symlink status")
 			},
 		},
@@ -373,7 +373,7 @@ func TestStatusPacks(t *testing.T) {
 func TestGetRunOnceStatus(t *testing.T) {
 	// Clean up any existing sentinel files
 	_ = os.RemoveAll(paths.GetInstallDir())
-	_ = os.RemoveAll(paths.GetBrewfileDir())
+	_ = os.RemoveAll(paths.GetHomebrewDir())
 
 	tests := []struct {
 		name     string
@@ -452,7 +452,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 				testutil.CreateFile(t, pack, "Brewfile", "brew 'git'")
 				return pack
 			},
-			powerup: "brewfile",
+			powerup: "homebrew",
 			validate: func(t *testing.T, status *core.RunOnceStatus) {
 				testutil.AssertFalse(t, status.Executed)
 				testutil.AssertNotEqual(t, "", status.Checksum)

@@ -39,7 +39,7 @@ actions = [
     { type = "Symlink" }
 ]
 `
-	configPath := filepath.Join(dotfilesRoot, "vim", "pack.dodot.toml")
+	configPath := filepath.Join(dotfilesRoot, "vim", ".dodot.toml")
 	require.NoError(t, os.WriteFile(configPath, []byte(packConfig), 0644))
 
 	// Create the file to be symlinked
@@ -129,7 +129,7 @@ actions = [
     { type = "Symlink" }
 ]
 `
-	configPath := filepath.Join(dotfilesRoot, "vim", "pack.dodot.toml")
+	configPath := filepath.Join(dotfilesRoot, "vim", ".dodot.toml")
 	require.NoError(t, os.WriteFile(configPath, []byte(packConfig), 0644))
 
 	vimrcPath := filepath.Join(dotfilesRoot, "vim", ".vimrc")

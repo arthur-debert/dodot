@@ -1,4 +1,4 @@
-package brewfile
+package homebrew
 
 import (
 	_ "embed"
@@ -13,39 +13,39 @@ import (
 )
 
 const (
-	// BrewfilePowerUpName is the unique name for the Brewfile power-up
-	BrewfilePowerUpName = "brewfile"
+	// HomebrewPowerUpName is the unique name for the Homebrew power-up
+	HomebrewPowerUpName = "homebrew"
 )
 
-//go:embed brewfile-template.txt
-var brewfileTemplate string
+//go:embed homebrew-template.txt
+var homebrewTemplate string
 
-// BrewfilePowerUp processes Brewfiles to install packages via Homebrew
-type BrewfilePowerUp struct{}
+// HomebrewPowerUp processes Brewfiles to install packages via Homebrew
+type HomebrewPowerUp struct{}
 
-// NewBrewfilePowerUp creates a new instance of the Brewfile power-up
-func NewBrewfilePowerUp() types.PowerUp {
-	return &BrewfilePowerUp{}
+// NewHomebrewPowerUp creates a new instance of the Homebrew power-up
+func NewHomebrewPowerUp() types.PowerUp {
+	return &HomebrewPowerUp{}
 }
 
 // Name returns the unique name of this power-up
-func (p *BrewfilePowerUp) Name() string {
-	return BrewfilePowerUpName
+func (p *HomebrewPowerUp) Name() string {
+	return HomebrewPowerUpName
 }
 
 // Description returns a human-readable description of what this power-up does
-func (p *BrewfilePowerUp) Description() string {
+func (p *HomebrewPowerUp) Description() string {
 	return "Processes Brewfiles to install Homebrew packages"
 }
 
 // RunMode returns whether this power-up runs once or many times
-func (p *BrewfilePowerUp) RunMode() types.RunMode {
+func (p *HomebrewPowerUp) RunMode() types.RunMode {
 	return types.RunModeOnce
 }
 
 // Process takes Brewfile matches and generates brew actions
-func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	logger := logging.GetLogger("powerups.brewfile")
+func (p *HomebrewPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+	logger := logging.GetLogger("powerups.homebrew")
 	actions := make([]types.Action, 0, len(matches))
 
 	for _, match := range matches {
@@ -97,32 +97,32 @@ func (p *BrewfilePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 }
 
 // ValidateOptions checks if the provided options are valid for this power-up
-func (p *BrewfilePowerUp) ValidateOptions(options map[string]interface{}) error {
-	// Brewfile power-up doesn't have any options
+func (p *HomebrewPowerUp) ValidateOptions(options map[string]interface{}) error {
+	// Homebrew power-up doesn't have any options
 	return nil
 }
 
 // GetTemplateContent returns the template content for this power-up
-func (p *BrewfilePowerUp) GetTemplateContent() string {
-	return brewfileTemplate
+func (p *HomebrewPowerUp) GetTemplateContent() string {
+	return homebrewTemplate
 }
 
 // GetSentinelPath returns the path to the sentinel file for a pack
-func GetBrewfileSentinelPath(pack string) string {
-	return filepath.Join(paths.GetBrewfileDir(), pack)
+func GetHomebrewSentinelPath(pack string) string {
+	return filepath.Join(paths.GetHomebrewDir(), pack)
 }
 
 func init() {
 	// Register factory in the global registry
-	RegisterBrewfilePowerUpFactory()
+	RegisterHomebrewPowerUpFactory()
 }
 
-// RegisterBrewfilePowerUpFactory registers the Brewfile power-up factory
-func RegisterBrewfilePowerUpFactory() {
-	err := registry.RegisterPowerUpFactory(BrewfilePowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
-		return NewBrewfilePowerUp(), nil
+// RegisterHomebrewPowerUpFactory registers the Homebrew power-up factory
+func RegisterHomebrewPowerUpFactory() {
+	err := registry.RegisterPowerUpFactory(HomebrewPowerUpName, func(config map[string]interface{}) (types.PowerUp, error) {
+		return NewHomebrewPowerUp(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", BrewfilePowerUpName, err))
+		panic(fmt.Sprintf("failed to register %s power-up: %v", HomebrewPowerUpName, err))
 	}
 }

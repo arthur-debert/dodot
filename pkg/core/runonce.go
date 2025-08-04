@@ -64,7 +64,7 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 	var sentinelPath string
 	switch action.Type {
 	case types.ActionTypeBrew:
-		sentinelPath = filepath.Join(paths.GetBrewfileDir(), pack)
+		sentinelPath = filepath.Join(paths.GetHomebrewDir(), pack)
 	case types.ActionTypeInstall:
 		sentinelPath = filepath.Join(paths.GetInstallDir(), pack)
 	}
@@ -195,9 +195,9 @@ func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
 	case "install":
 		filePattern = "install.sh"
 		sentinelDir = filepath.Join(paths.GetInstallDir(), filepath.Base(packPath))
-	case "brewfile":
+	case "homebrew":
 		filePattern = "Brewfile"
-		sentinelDir = filepath.Join(paths.GetBrewfileDir(), filepath.Base(packPath))
+		sentinelDir = filepath.Join(paths.GetHomebrewDir(), filepath.Base(packPath))
 	default:
 		return nil, fmt.Errorf("unknown run-once power-up: %s", powerUpName)
 	}

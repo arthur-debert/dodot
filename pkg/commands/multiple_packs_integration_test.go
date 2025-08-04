@@ -122,7 +122,7 @@ brew 'bash-completion'
 				symlinkOps["shell"]++
 			}
 		case op.Type == "write_file" &&
-			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/homebrew":
 			packName := filepath.Base(op.Target)
 			brewfileOps[packName]++
 		case op.Type == "write_file" &&
@@ -164,7 +164,7 @@ brew 'bash-completion'
 	// ===== VERIFY PACK 2 (DEV) - Install powerups =====
 
 	// Check Brewfile sentinel
-	devBrewSentinel := filepath.Join(testEnv.DataDir(), "brewfile", "dev")
+	devBrewSentinel := filepath.Join(testEnv.DataDir(), "homebrew", "dev")
 	info, err = os.Stat(devBrewSentinel)
 	require.NoError(t, err, "Expected dev Brewfile sentinel to exist")
 	assert.True(t, info.Mode().IsRegular(), "Expected dev Brewfile sentinel to be a regular file")
@@ -190,7 +190,7 @@ brew 'bash-completion'
 	assert.True(t, info.Mode()&os.ModeSymlink != 0, "Expected shell profile to be a symlink")
 
 	// Check install - Brewfile sentinel
-	shellBrewSentinel := filepath.Join(testEnv.DataDir(), "brewfile", "shell")
+	shellBrewSentinel := filepath.Join(testEnv.DataDir(), "homebrew", "shell")
 	info, err = os.Stat(shellBrewSentinel)
 	require.NoError(t, err, "Expected shell Brewfile sentinel to exist")
 	assert.True(t, info.Mode().IsRegular(), "Expected shell Brewfile sentinel to be a regular file")
@@ -252,7 +252,7 @@ brew 'bash-completion'
 	for _, op := range result2.Operations {
 		switch {
 		case op.Type == "write_file" &&
-			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/homebrew":
 			brewfileOps2++
 		case op.Type == "write_file" &&
 			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":

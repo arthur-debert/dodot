@@ -52,8 +52,8 @@ func TestGetDataSubdir(t *testing.T) {
 		},
 		{
 			name:     "brewfile directory",
-			subdir:   BrewfileDir,
-			expected: p.BrewfileDir(),
+			subdir:   HomebrewDir,
+			expected: p.HomebrewDir(),
 		},
 		{
 			name:     "custom subdirectory",

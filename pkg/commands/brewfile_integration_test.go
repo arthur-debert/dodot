@@ -61,7 +61,7 @@ cask 'visual-studio-code'
 	require.NoError(t, err)
 
 	// Verify sentinel file was created
-	sentinelPath := filepath.Join(testEnv.DataDir(), "brewfile", "tools")
+	sentinelPath := filepath.Join(testEnv.DataDir(), "homebrew", "tools")
 	info, err := os.Stat(sentinelPath)
 	require.NoError(t, err, "Expected Brewfile sentinel to exist")
 	assert.True(t, info.Mode().IsRegular(), "Expected sentinel to be a regular file")

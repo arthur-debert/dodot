@@ -925,7 +925,7 @@ func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Then brew action
 	// Fourth: create brewfile directory
 	assert.Equal(t, types.OperationCreateDir, ops[3].Type)
-	assert.Equal(t, paths.GetBrewfileDir(), ops[3].Target)
+	assert.Equal(t, paths.GetHomebrewDir(), ops[3].Target)
 
 	// Fifth: write brewfile sentinel (execute was deduplicated)
 	assert.Equal(t, types.OperationWriteFile, ops[4].Type)

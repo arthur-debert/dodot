@@ -431,13 +431,13 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(paths.GetBrewfileDir(), pack)
+	sentinelPath := filepath.Join(paths.GetHomebrewDir(), pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      paths.GetBrewfileDir(),
+			Target:      paths.GetHomebrewDir(),
 			Description: "Create brewfile sentinel directory",
 		},
 		// Execute brew bundle command

@@ -28,7 +28,6 @@ func NewCatchallTrigger(options map[string]interface{}) (*CatchallTrigger, error
 	trigger := &CatchallTrigger{
 		excludePatterns: []string{
 			".dodot.toml",
-			"pack.dodot.toml",
 			".dodotignore",
 		},
 		priority: CatchallTriggerPriority,

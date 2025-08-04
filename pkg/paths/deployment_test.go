@@ -58,9 +58,9 @@ func TestDeploymentPaths(t *testing.T) {
 			expected: filepath.Join(p.DataDir(), "install"),
 		},
 		{
-			name:     "brewfile dir",
-			method:   p.BrewfileDir,
-			expected: filepath.Join(p.DataDir(), "brewfile"),
+			name:     "homebrew dir",
+			method:   p.HomebrewDir,
+			expected: filepath.Join(p.DataDir(), "homebrew"),
 		},
 	}
 
@@ -159,11 +159,11 @@ func TestCompatibilityFunctions(t *testing.T) {
 			},
 		},
 		{
-			name: "GetBrewfileDir",
-			fn:   GetBrewfileDir,
+			name: "GetHomebrewDir",
+			fn:   GetHomebrewDir,
 			verify: func(t *testing.T, result string) {
 				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "brewfile"), "Should end with 'brewfile'")
+				testutil.AssertTrue(t, strings.HasSuffix(result, "homebrew"), "Should end with 'homebrew'")
 			},
 		},
 	}
