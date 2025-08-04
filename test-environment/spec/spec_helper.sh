@@ -20,6 +20,9 @@ export TEST_DOTFILES_ROOT="/tmp/test-dotfiles"
 export HOME_TEMPLATE="/test-environment/home-template"
 export DOTFILES_TEMPLATE="/test-environment/dotfiles-root-template"
 
+# Source powerup verification functions
+source /test-environment/spec/powerup_verification.sh
+
 # Forward declaration - actual implementation is at end of file
 # This ensures the enhanced version with verification is used
 reset_test_environment() {

@@ -16,7 +16,7 @@ Describe 'Symlink PowerUp'
       # Run deploy first
       "$DODOT" deploy vim >/dev/null 2>&1
       
-      When call test -L "$HOME/.vimrc"
+      When call verify_symlink_deployed "vim" ".vimrc"
       The status should be success
     End
     
@@ -24,8 +24,9 @@ Describe 'Symlink PowerUp'
       # Run deploy first
       "$DODOT" deploy vim >/dev/null 2>&1
       
-      When call readlink "$HOME/.vimrc"
-      The output should include ".local/share/dodot/deployed/symlink"
+      # This test is now redundant as verify_symlink_deployed checks this
+      When call verify_symlink_deployed "vim" ".vimrc"
+      The status should be success
     End
     
     It 'allows reading file content through symlink'
