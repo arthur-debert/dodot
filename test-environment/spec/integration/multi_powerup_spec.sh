@@ -150,10 +150,8 @@ EOF
       When call "$DODOT" deploy -v
       The status should be success
       
-      # All should be deployed
-      The file "$HOME/.bashrc" should be symlink
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/ordered.sh" should exist
-      The path "$HOME/.local/share/dodot/deployed/shell_add_path/bin" should be symlink
+      # All should be deployed - verify using composite function
+      The result of function verify_pack_deployed "ordered" "symlink:.bashrc" "shell_profile:aliases.sh" "shell_add_path:bin" should be successful
     End
     
     It 'maintains separate deployments for each powerup'
@@ -188,11 +186,9 @@ EOF
       The status should be success
       
       # Each powerup maintains its own deployment structure
-      The path "$HOME/.gitconfig" should be symlink
-      The path "$HOME/.local/share/dodot/deployed/shell_profile" should be directory
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/separated.sh" should exist
+      The result of function verify_pack_deployed "separated" "symlink:.gitconfig" "shell_profile:aliases.sh" should be successful
       
-      # They should not interfere with each other
+      # They should not interfere with each other (edge case worth checking manually)
       The path "$HOME/.local/share/dodot/deployed/shell_profile/.gitconfig" should not exist
     End
   End
