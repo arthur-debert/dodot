@@ -153,7 +153,7 @@ case "$CMD" in
         ;;
         
     "--version")
-        echo "dodot mock version 0.0.1-test"
+        echo "dodot version 0.0.1-test (mock)"
         ;;
         
     *)

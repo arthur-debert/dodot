@@ -7,19 +7,25 @@ export ORIGINAL_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
 export ORIGINAL_PATH="${PATH}"
 
 # Set up test environment paths
-# Use the container-built binary if available, otherwise use mock
+# Prioritize the actual dodot binary in Docker container
+# The setup.sh script should have built and installed it
 if [ -x "/usr/local/bin/dodot-container-linux" ]; then
   export DODOT="/usr/local/bin/dodot-container-linux"
+  echo "Using real dodot binary: $DODOT" >&2
+elif [ -x "/usr/local/bin/dodot" ]; then
+  export DODOT="/usr/local/bin/dodot"
+  echo "Using real dodot binary: $DODOT" >&2
 else
-  # Use mock for simpler testing
+  # Use mock for local testing outside Docker
   export DODOT="/test-environment/scripts/mock-dodot.sh"
   chmod +x "$DODOT"
+  echo "WARNING: Using mock dodot for testing: $DODOT" >&2
 fi
 export TEST_HOME="/tmp/test-home"
 export TEST_DOTFILES_ROOT="/tmp/test-dotfiles"
-# Get the directory of this script
-SPEC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-TEST_ENV_DIR="$( cd "$SPEC_DIR/.." && pwd )"
+# Get the test environment directory
+# Since we're running in Docker with fixed paths, use absolute path
+TEST_ENV_DIR="/test-environment"
 
 export HOME_TEMPLATE="$TEST_ENV_DIR/home-template"
 export DOTFILES_TEMPLATE="$TEST_ENV_DIR/dotfiles-root-template"

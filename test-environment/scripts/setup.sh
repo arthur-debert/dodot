@@ -83,7 +83,7 @@ if command -v brew &> /dev/null && [ ! -e /home/linuxbrew/.linuxbrew/bin/brew-fu
 fi
 
 # Install our mock brew
-sudo cp /scripts/mock-brew.sh /home/linuxbrew/.linuxbrew/bin/brew
+sudo cp /test-environment/scripts/mock-brew.sh /home/linuxbrew/.linuxbrew/bin/brew
 sudo chmod +x /home/linuxbrew/.linuxbrew/bin/brew
 
 echo "✅ Mock brew installed (real brew available as brew-full)"
