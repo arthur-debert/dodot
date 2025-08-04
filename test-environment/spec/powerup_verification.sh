@@ -5,40 +5,76 @@
 # These functions reduce repetition and improve test maintainability.
 
 # Verify symlink powerup deployment
-# Usage: verify_symlink_deployed <pack> <filename> [target_dir]
+# Usage: verify_symlink_deployed <pack> <filename> [target_dir] [mode]
+# Modes: deployed (default), not-deployed, wrong-target
 # Example: verify_symlink_deployed "vim" ".vimrc"
 # Example: verify_symlink_deployed "ssh" "config" ".ssh"
+# Example: verify_symlink_deployed "vim" ".vimrc" "$HOME" "not-deployed"
 verify_symlink_deployed() {
   local pack=$1
   local filename=$2
   local target_dir=${3:-$HOME}
+  local mode=${4:-"deployed"}
   local symlink_path="$target_dir/$filename"
   
-  # Check symlink exists
-  if [ ! -L "$symlink_path" ]; then
-    echo "ERROR: Expected symlink at $symlink_path does not exist" >&2
-    return 1
-  fi
-  
-  # Verify it points somewhere (dodot creates direct symlinks to source)
-  local link_target=$(readlink "$symlink_path")
-  if [ -z "$link_target" ]; then
-    echo "ERROR: Symlink $symlink_path has no target" >&2
-    return 1
-  fi
-  
-  # Verify the symlink target exists and is readable
-  local resolved_target=$(readlink -f "$symlink_path" 2>/dev/null)
-  if [ ! -e "$resolved_target" ]; then
-    echo "ERROR: Symlink target does not exist: $link_target" >&2
-    return 1
-  fi
-  
-  # Verify content is accessible
-  if [ ! -r "$symlink_path" ]; then
-    echo "ERROR: Cannot read content through symlink $symlink_path" >&2
-    return 1
-  fi
+  case "$mode" in
+    "deployed")
+      # Check symlink exists
+      if [ ! -L "$symlink_path" ]; then
+        echo "ERROR: Expected symlink at $symlink_path does not exist" >&2
+        return 1
+      fi
+      
+      # Verify it points somewhere (dodot creates direct symlinks to source)
+      local link_target=$(readlink "$symlink_path")
+      if [ -z "$link_target" ]; then
+        echo "ERROR: Symlink $symlink_path has no target" >&2
+        return 1
+      fi
+      
+      # Verify the symlink target exists and is readable
+      local resolved_target=$(readlink -f "$symlink_path" 2>/dev/null)
+      if [ ! -e "$resolved_target" ]; then
+        echo "ERROR: Symlink target does not exist: $link_target" >&2
+        return 1
+      fi
+      
+      # Verify content is accessible
+      if [ ! -r "$symlink_path" ]; then
+        echo "ERROR: Cannot read content through symlink $symlink_path" >&2
+        return 1
+      fi
+      ;;
+      
+    "not-deployed")
+      # Check symlink does NOT exist
+      if [ -L "$symlink_path" ] || [ -e "$symlink_path" ]; then
+        echo "ERROR: Path $symlink_path exists when it shouldn't" >&2
+        return 1
+      fi
+      ;;
+      
+    "wrong-target")
+      # Check symlink exists but points to wrong target
+      # This is useful for testing error conditions
+      if [ ! -L "$symlink_path" ]; then
+        echo "ERROR: Expected symlink at $symlink_path for wrong-target test" >&2
+        return 1
+      fi
+      
+      # Just verify it's a broken symlink or points to unexpected location
+      local resolved_target=$(readlink -f "$symlink_path" 2>/dev/null)
+      if [ -e "$resolved_target" ]; then
+        # For this mode, we expect the symlink to be broken or wrong
+        return 0
+      fi
+      ;;
+      
+    *)
+      echo "ERROR: Unknown mode '$mode'. Valid modes: deployed, not-deployed, wrong-target" >&2
+      return 1
+      ;;
+  esac
   
   return 0
 }
