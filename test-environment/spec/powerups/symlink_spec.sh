@@ -48,7 +48,7 @@ Describe 'Symlink PowerUp'
       # Run deploy
       "$DODOT" deploy vim >/dev/null 2>&1
       
-      When call test -L "$HOME/.vim"
+      When call verify_symlink_deployed "vim" ".vim"
       The status should be success
     End
     
@@ -262,8 +262,15 @@ EOF
       "$DODOT" deploy vim >/dev/null 2>&1
       
       # Verify symlink still works
-      When call cat "$HOME/.vimrc"
-      The output should equal "\" vim config"
+      When call verify_symlink_deployed "vim" ".vimrc"
+      The status should be success
+    End
+    
+    It 'verifies idempotent deployment'
+      echo "\" vim config" > "$DOTFILES_ROOT/vim/.vimrc"
+      
+      When call verify_idempotent_deploy "vim"
+      The status should be success
     End
   End
   
