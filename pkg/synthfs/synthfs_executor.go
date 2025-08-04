@@ -30,10 +30,14 @@ type SynthfsExecutor struct {
 func NewSynthfsExecutor(dryRun bool) *SynthfsExecutor {
 	// Initialize paths with empty string to use defaults
 	p, _ := paths.New("")
+	// Use PathAwareFileSystem to handle absolute paths directly
+	osfs := filesystem.NewOSFileSystem("/")
+	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+
 	return &SynthfsExecutor{
 		logger:            logging.GetLogger("core.synthfs"),
 		dryRun:            dryRun,
-		filesystem:        filesystem.NewOSFileSystem("/"), // Use root filesystem
+		filesystem:        pathAwareFS,
 		paths:             p,
 		allowHomeSymlinks: false, // Default to safe mode
 		backupExisting:    true,  // Default to backing up existing files
@@ -42,10 +46,14 @@ func NewSynthfsExecutor(dryRun bool) *SynthfsExecutor {
 
 // NewSynthfsExecutorWithPaths creates a new synthfs-based executor with custom paths
 func NewSynthfsExecutorWithPaths(dryRun bool, p *paths.Paths) *SynthfsExecutor {
+	// Use PathAwareFileSystem to handle absolute paths directly
+	osfs := filesystem.NewOSFileSystem("/")
+	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+
 	return &SynthfsExecutor{
 		logger:            logging.GetLogger("core.synthfs"),
 		dryRun:            dryRun,
-		filesystem:        filesystem.NewOSFileSystem("/"), // Use root filesystem
+		filesystem:        pathAwareFS,
 		paths:             p,
 		allowHomeSymlinks: false,
 		backupExisting:    true,
@@ -127,10 +135,8 @@ func (e *SynthfsExecutor) addOperationToBatch(batch *synthfs.SimpleBatch, op typ
 			e.logger.Debug().
 				Str("target", op.Target).
 				Msg("Adding delete operation for existing file in force mode")
-			// Convert to relative path
-			if relPath, err := filepath.Rel("/", op.Target); err == nil {
-				batch.Delete(relPath)
-			}
+			// PathAwareFileSystem handles absolute paths directly
+			batch.Delete(op.Target)
 		}
 	}
 
@@ -189,14 +195,8 @@ func (e *SynthfsExecutor) addCreateDir(batch *synthfs.SimpleBatch, op types.Oper
 		Str("mode", mode.String()).
 		Msg("Adding create directory operation")
 
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	batch.CreateDir(relPath, mode)
+	// PathAwareFileSystem handles absolute paths directly
+	batch.CreateDir(op.Target, mode)
 	return nil
 }
 
@@ -223,14 +223,8 @@ func (e *SynthfsExecutor) addWriteFile(batch *synthfs.SimpleBatch, op types.Oper
 		Int("contentLen", len(op.Content)).
 		Msg("Adding write file operation")
 
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	batch.WriteFile(relPath, []byte(op.Content), mode)
+	// PathAwareFileSystem handles absolute paths directly
+	batch.WriteFile(op.Target, []byte(op.Content), mode)
 	return nil
 }
 
@@ -251,19 +245,8 @@ func (e *SynthfsExecutor) addCreateSymlink(batch *synthfs.SimpleBatch, op types.
 		Str("target", op.Target).
 		Msg("Adding symlink operation")
 
-	// Convert absolute paths to relative for synthfs
-	relSource, err := filepath.Rel("/", op.Source)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert source path: %s", op.Source)
-	}
-	relTarget, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert target path: %s", op.Target)
-	}
-
-	batch.CreateSymlink(relSource, relTarget)
+	// PathAwareFileSystem handles absolute paths directly
+	batch.CreateSymlink(op.Source, op.Target)
 	return nil
 }
 
@@ -284,19 +267,8 @@ func (e *SynthfsExecutor) addCopyFile(batch *synthfs.SimpleBatch, op types.Opera
 		Str("target", op.Target).
 		Msg("Adding copy file operation")
 
-	// Convert absolute paths to relative for synthfs
-	relSource, err := filepath.Rel("/", op.Source)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert source path: %s", op.Source)
-	}
-	relTarget, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert target path: %s", op.Target)
-	}
-
-	batch.Copy(relSource, relTarget)
+	// PathAwareFileSystem handles absolute paths directly
+	batch.Copy(op.Source, op.Target)
 	return nil
 }
 
@@ -316,14 +288,8 @@ func (e *SynthfsExecutor) addDeleteFile(batch *synthfs.SimpleBatch, op types.Ope
 		Str("target", op.Target).
 		Msg("Adding delete file operation")
 
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	batch.Delete(relPath)
+	// PathAwareFileSystem handles absolute paths directly
+	batch.Delete(op.Target)
 	return nil
 }
 
@@ -344,20 +310,9 @@ func (e *SynthfsExecutor) addBackupFile(batch *synthfs.SimpleBatch, op types.Ope
 		Str("target", op.Target).
 		Msg("Adding backup (copy) operation")
 
-	// Convert absolute paths to relative for synthfs
-	relSource, err := filepath.Rel("/", op.Source)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert source path: %s", op.Source)
-	}
-	relTarget, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert target path: %s", op.Target)
-	}
-
+	// PathAwareFileSystem handles absolute paths directly
 	// Backup is essentially a copy operation
-	batch.Copy(relSource, relTarget)
+	batch.Copy(op.Source, op.Target)
 	return nil
 }
 
