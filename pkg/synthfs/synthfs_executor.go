@@ -15,6 +15,19 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// protectedPathsMap contains paths that should never be symlinked for security reasons
+var protectedPathsMap = map[string]bool{
+	".ssh/authorized_keys": true,
+	".ssh/id_rsa":          true,
+	".ssh/id_ed25519":      true,
+	".gnupg":               true,
+	".password-store":      true,
+	".config/gh/hosts.yml": true, // GitHub CLI auth
+	".aws/credentials":     true,
+	".kube/config":         true,
+	".docker/config.json":  true,
+}
+
 // SynthfsExecutor executes dodot operations using synthfs
 type SynthfsExecutor struct {
 	logger            zerolog.Logger
@@ -527,19 +540,6 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 		Str("path", path).
 		Msg("Checking if path is a protected system file")
 
-	// List of protected files/directories that should never be symlinked
-	protectedPaths := []string{
-		".ssh/authorized_keys",
-		".ssh/id_rsa",
-		".ssh/id_ed25519",
-		".gnupg",
-		".password-store",
-		".config/gh/hosts.yml", // GitHub CLI auth
-		".aws/credentials",
-		".kube/config",
-		".docker/config.json",
-	}
-
 	homeDir, _ := paths.GetHomeDirectory()
 	// Normalize home directory for consistent comparison
 	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
@@ -553,13 +553,23 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 	}
 
 	// Check if the relative path matches any protected path
-	for _, protected := range protectedPaths {
-		// Check exact match or if the path is within a protected directory
-		if relPath == protected || strings.HasPrefix(relPath, protected+"/") {
+	// First check exact match
+	if protectedPathsMap[relPath] {
+		e.logger.Warn().
+			Str("path", path).
+			Str("relPath", relPath).
+			Msg("Blocking symlink to protected file")
+		return errors.Newf(errors.ErrPermission,
+			"cannot create symlink for protected file: %s", relPath)
+	}
+
+	// Then check if the path is within a protected directory
+	for protectedPath := range protectedPathsMap {
+		if strings.HasPrefix(relPath, protectedPath+"/") {
 			e.logger.Warn().
 				Str("path", path).
 				Str("relPath", relPath).
-				Str("protected", protected).
+				Str("protected", protectedPath).
 				Msg("Blocking symlink to protected file")
 			return errors.Newf(errors.ErrPermission,
 				"cannot create symlink for protected file: %s", relPath)
