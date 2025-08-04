@@ -5,12 +5,35 @@ import (
 	"time"
 )
 
-// PipelineOptions controls how operations are executed
+// PipelineOptions defines options for pipeline execution.
 type PipelineOptions struct {
-	Restorable           bool // Whether to enable reversible operations with backup
-	MaxBackupSizeMB      int  // Maximum backup size in MB (default: 10MB)
-	ResolvePrerequisites bool // Whether to resolve prerequisites like parent directories (default: true)
-	UseSimpleBatch       bool // Whether to use SimpleBatch implementation (default: true)
+	// DryRun, if true, will cause the pipeline to go through validation
+	// and dependency resolution, but will not execute any operations.
+	DryRun bool
+
+	// RollbackOnError, if true, will cause the pipeline to attempt a rollback
+	// of successful operations if a subsequent operation fails.
+	RollbackOnError bool
+
+	// ContinueOnError, if true, will cause the pipeline to continue
+	// executing subsequent operations even if one fails.
+	ContinueOnError bool
+
+	// MaxConcurrent is the maximum number of operations to execute concurrently.
+	// A value of 0 or 1 means sequential execution.
+	MaxConcurrent int
+
+	// Restorable, if true, enables the backup mechanism for rollback.
+	Restorable bool
+
+	// MaxBackupSizeMB is the maximum memory budget for backups in megabytes.
+	MaxBackupSizeMB int
+
+	// ResolvePrerequisites, if true, automatically resolves prerequisites.
+	ResolvePrerequisites bool
+
+	// UseSimpleBatch, if true, uses the simple batch execution model.
+	UseSimpleBatch bool
 }
 
 // OperationResult holds the outcome of a single operation's execution

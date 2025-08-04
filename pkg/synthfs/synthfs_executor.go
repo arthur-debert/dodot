@@ -2,58 +2,77 @@ package synthfs
 
 import (
 	"context"
-	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/synthfs/pkg/synthfs"
-	"github.com/arthur-debert/synthfs/pkg/synthfs/core"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
-	"github.com/arthur-debert/synthfs/pkg/synthfs/operations"
 	"github.com/rs/zerolog"
 )
+
+// protectedPathsMap contains paths that should never be symlinked for security reasons
+var protectedPathsMap = map[string]bool{
+	".ssh/authorized_keys": true,
+	".ssh/id_rsa":          true,
+	".ssh/id_ed25519":      true,
+	".gnupg":               true,
+	".password-store":      true,
+	".config/gh/hosts.yml": true, // GitHub CLI auth
+	".aws/credentials":     true,
+	".kube/config":         true,
+	".docker/config.json":  true,
+}
 
 // SynthfsExecutor executes dodot operations using synthfs
 type SynthfsExecutor struct {
 	logger            zerolog.Logger
 	dryRun            bool
 	force             bool
-	filesystem        synthfs.FileSystem
+	filesystem        filesystem.FullFileSystem
 	paths             *paths.Paths
 	allowHomeSymlinks bool
 	backupExisting    bool
+	enableRollback    bool
 }
 
 // NewSynthfsExecutor creates a new synthfs-based executor
 func NewSynthfsExecutor(dryRun bool) *SynthfsExecutor {
 	// Initialize paths with empty string to use defaults
 	p, _ := paths.New("")
+	// Use PathAwareFileSystem to handle absolute paths directly
+	osfs := filesystem.NewOSFileSystem("/")
+	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+
 	return &SynthfsExecutor{
 		logger:            logging.GetLogger("core.synthfs"),
 		dryRun:            dryRun,
-		filesystem:        filesystem.NewOSFileSystem("/"), // Use root filesystem
+		filesystem:        pathAwareFS,
 		paths:             p,
 		allowHomeSymlinks: false, // Default to safe mode
 		backupExisting:    true,  // Default to backing up existing files
+		enableRollback:    true,  // Default to enabling rollback for safety
 	}
 }
 
 // NewSynthfsExecutorWithPaths creates a new synthfs-based executor with custom paths
 func NewSynthfsExecutorWithPaths(dryRun bool, p *paths.Paths) *SynthfsExecutor {
+	// Use PathAwareFileSystem to handle absolute paths directly
+	osfs := filesystem.NewOSFileSystem("/")
+	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+
 	return &SynthfsExecutor{
 		logger:            logging.GetLogger("core.synthfs"),
 		dryRun:            dryRun,
-		filesystem:        filesystem.NewOSFileSystem("/"), // Use root filesystem
+		filesystem:        pathAwareFS,
 		paths:             p,
 		allowHomeSymlinks: false,
 		backupExisting:    true,
+		enableRollback:    true,
 	}
 }
 
@@ -71,6 +90,12 @@ func (e *SynthfsExecutor) EnableForce(force bool) *SynthfsExecutor {
 	return e
 }
 
+// EnableRollback enables or disables automatic rollback on errors
+func (e *SynthfsExecutor) EnableRollback(enable bool) *SynthfsExecutor {
+	e.enableRollback = enable
+	return e
+}
+
 // ExecuteOperations executes a list of operations using synthfs
 func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 	if e.dryRun {
@@ -83,29 +108,10 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 		return nil
 	}
 
-	// Before converting operations, check if we need to clean up existing files for force mode
-	// This is needed because synthfs validation will fail on existing symlinks
-	if e.force {
-		for _, op := range ops {
-			if op.Status == types.StatusReady && op.Type == types.OperationCreateSymlink {
-				// Check if target exists and if so, remove it to allow overwrite
-				if _, err := os.Lstat(op.Target); err == nil {
-					e.logger.Debug().
-						Str("target", op.Target).
-						Msg("Removing existing file to allow overwrite in force mode")
-					if err := os.Remove(op.Target); err != nil {
-						e.logger.Warn().
-							Err(err).
-							Str("target", op.Target).
-							Msg("Failed to remove existing file in force mode")
-					}
-				}
-			}
-		}
-	}
+	// Create a SimpleBatch for collecting operations
+	batch := synthfs.NewSimpleBatch(e.filesystem)
 
-	// Convert dodot operations to synthfs operations
-	synthOps := make([]synthfs.Operation, 0, len(ops))
+	// Process each operation
 	for _, op := range ops {
 		if op.Status != types.StatusReady {
 			e.logger.Debug().
@@ -116,40 +122,48 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 			continue
 		}
 
-		synthOp, err := e.convertToSynthfsOperation(op)
-		if err != nil {
+		// Add the operation to the batch
+		if err := e.addOperationToBatch(batch, op); err != nil {
 			return errors.Wrapf(err, errors.ErrActionExecute,
-				"failed to convert operation: %s", op.Description)
-		}
-		if synthOp != nil {
-			synthOps = append(synthOps, synthOp)
+				"failed to add operation: %s", op.Description)
 		}
 	}
 
-	if len(synthOps) == 0 {
+	// Check if we have any operations to execute
+	if len(batch.Operations()) == 0 {
 		e.logger.Info().Msg("No operations to execute")
 		return nil
 	}
 
-	// Create a synthfs pipeline with the operations
-	pipeline := synthfs.NewMemPipeline()
-	for _, op := range synthOps {
-		if err := pipeline.Add(op); err != nil {
-			return errors.Wrapf(err, errors.ErrActionExecute,
-				"failed to add operation to pipeline")
+	// Execute the batch
+	e.logger.Info().
+		Int("operationCount", len(batch.Operations())).
+		Bool("rollbackEnabled", e.enableRollback).
+		Msg("Executing operations")
+
+	ctx := context.Background()
+	var err error
+
+	if e.enableRollback {
+		// Use ExecuteWithRollback for safer operations
+		err = batch.WithContext(ctx).ExecuteWithRollback()
+		if err != nil {
+			e.logger.Error().
+				Err(err).
+				Msg("Batch execution failed, rollback was attempted")
+		}
+	} else {
+		// Use regular Execute without rollback
+		err = batch.WithContext(ctx).Execute()
+		if err != nil {
+			e.logger.Error().
+				Err(err).
+				Msg("Batch execution failed")
 		}
 	}
 
-	// Execute the pipeline
-	ctx := context.Background()
-	executor := synthfs.NewExecutor()
-
-	e.logger.Info().Int("operationCount", len(synthOps)).Msg("Executing operations")
-
-	result := executor.Run(ctx, pipeline, e.filesystem)
-	if result.GetError() != nil {
-		e.logger.Error().Err(result.GetError()).Msg("Pipeline execution failed")
-		return errors.Wrapf(result.GetError(), errors.ErrActionExecute,
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrActionExecute,
 			"failed to execute operations")
 	}
 
@@ -157,27 +171,38 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 	return nil
 }
 
-// convertToSynthfsOperation converts a dodot operation to a synthfs operation
-func (e *SynthfsExecutor) convertToSynthfsOperation(op types.Operation) (synthfs.Operation, error) {
+// addOperationToBatch adds a dodot operation to the synthfs batch
+func (e *SynthfsExecutor) addOperationToBatch(batch *synthfs.SimpleBatch, op types.Operation) error {
+	// Handle force mode for symlinks by pre-deleting existing files
+	if e.force && op.Type == types.OperationCreateSymlink {
+		if _, err := os.Lstat(op.Target); err == nil {
+			e.logger.Debug().
+				Str("target", op.Target).
+				Msg("Adding delete operation for existing file in force mode")
+			// PathAwareFileSystem handles absolute paths directly
+			batch.Delete(op.Target)
+		}
+	}
+
 	switch op.Type {
 	case types.OperationCreateDir:
-		return e.convertCreateDir(op)
+		return e.addCreateDir(batch, op)
 	case types.OperationWriteFile:
-		return e.convertWriteFile(op)
+		return e.addWriteFile(batch, op)
 	case types.OperationCreateSymlink:
-		return e.convertCreateSymlink(op)
+		return e.addCreateSymlink(batch, op)
 	case types.OperationCopyFile:
-		return e.convertCopyFile(op)
+		return e.addCopyFile(batch, op)
 	case types.OperationDeleteFile:
-		return e.convertDeleteFile(op)
+		return e.addDeleteFile(batch, op)
 	case types.OperationBackupFile:
-		return e.convertBackupFile(op)
+		return e.addBackupFile(batch, op)
 	case types.OperationReadFile, types.OperationChecksum:
 		// These are not actual file operations
 		e.logger.Debug().
 			Str("type", string(op.Type)).
 			Msg("Skipping non-mutating operation")
-		return nil, nil
+		return nil
 	case types.OperationExecute:
 		// Execute operations need special handling outside of synthfs
 		// For now, skip them in synthfs and handle them separately
@@ -185,23 +210,23 @@ func (e *SynthfsExecutor) convertToSynthfsOperation(op types.Operation) (synthfs
 			Str("type", string(op.Type)).
 			Str("command", op.Command).
 			Msg("Skipping execute operation in synthfs (needs separate handling)")
-		return nil, nil
+		return nil
 	default:
-		return nil, errors.Newf(errors.ErrActionInvalid,
+		return errors.Newf(errors.ErrActionInvalid,
 			"unsupported operation type: %s", op.Type)
 	}
 }
 
-// convertCreateDir converts a create directory operation
-func (e *SynthfsExecutor) convertCreateDir(op types.Operation) (synthfs.Operation, error) {
+// addCreateDir adds a create directory operation to the batch
+func (e *SynthfsExecutor) addCreateDir(batch *synthfs.SimpleBatch, op types.Operation) error {
 	if op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
+		return errors.New(errors.ErrInvalidInput,
 			"create directory operation requires target")
 	}
 
 	// Ensure we're only creating directories in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
+		return err
 	}
 
 	mode := os.FileMode(0755)
@@ -212,38 +237,23 @@ func (e *SynthfsExecutor) convertCreateDir(op types.Operation) (synthfs.Operatio
 	e.logger.Debug().
 		Str("target", op.Target).
 		Str("mode", mode.String()).
-		Msg("Creating directory operation")
+		Msg("Adding create directory operation")
 
-	// Create the synthfs operation
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	opID := core.OperationID(fmt.Sprintf("create-dir-%s", op.Target))
-	createOp := operations.NewCreateDirectoryOperation(opID, relPath)
-
-	// Set the mode via item
-	createOp.SetItem(&directoryItem{
-		path: relPath,
-		mode: mode,
-	})
-
-	return synthfs.NewOperationsPackageAdapter(createOp), nil
+	// PathAwareFileSystem handles absolute paths directly
+	batch.CreateDir(op.Target, mode)
+	return nil
 }
 
-// convertWriteFile converts a write file operation
-func (e *SynthfsExecutor) convertWriteFile(op types.Operation) (synthfs.Operation, error) {
+// addWriteFile adds a write file operation to the batch
+func (e *SynthfsExecutor) addWriteFile(batch *synthfs.SimpleBatch, op types.Operation) error {
 	if op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
+		return errors.New(errors.ErrInvalidInput,
 			"write file operation requires target")
 	}
 
 	// Ensure we're only writing files in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
+		return err
 	}
 
 	mode := os.FileMode(0644)
@@ -255,182 +265,99 @@ func (e *SynthfsExecutor) convertWriteFile(op types.Operation) (synthfs.Operatio
 		Str("target", op.Target).
 		Str("mode", mode.String()).
 		Int("contentLen", len(op.Content)).
-		Msg("Creating write file operation")
+		Msg("Adding write file operation")
 
-	// Create the synthfs operation
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	opID := core.OperationID(fmt.Sprintf("write-file-%s", op.Target))
-	createOp := operations.NewCreateFileOperation(opID, relPath)
-
-	// Set the content via item
-	createOp.SetItem(&fileItem{
-		path:    relPath,
-		content: []byte(op.Content),
-		mode:    mode,
-	})
-
-	return synthfs.NewOperationsPackageAdapter(createOp), nil
+	// PathAwareFileSystem handles absolute paths directly
+	batch.WriteFile(op.Target, []byte(op.Content), mode)
+	return nil
 }
 
-// convertCreateSymlink converts a create symlink operation
-func (e *SynthfsExecutor) convertCreateSymlink(op types.Operation) (synthfs.Operation, error) {
+// addCreateSymlink adds a create symlink operation to the batch
+func (e *SynthfsExecutor) addCreateSymlink(batch *synthfs.SimpleBatch, op types.Operation) error {
 	if op.Source == "" || op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
+		return errors.New(errors.ErrInvalidInput,
 			"symlink operation requires source and target")
 	}
 
 	// For issue #71, handle symlinks in home directory with special validation
 	if err := e.validateSymlinkPath(op.Target, op.Source); err != nil {
-		return nil, err
+		return err
 	}
 
 	e.logger.Info().
 		Str("source", op.Source).
 		Str("target", op.Target).
-		Msg("Creating symlink operation")
+		Msg("Adding symlink operation")
 
-	// Create the synthfs operation
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	// Convert source path to relative as well
-	relSource, err := filepath.Rel("/", op.Source)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert source path: %s", op.Source)
-	}
-
-	opID := core.OperationID(fmt.Sprintf("symlink-%s", op.Target))
-	symlinkOp := operations.NewCreateSymlinkOperation(opID, relPath)
-
-	// Set the target via description detail
-	symlinkOp.SetDescriptionDetail("target", relSource)
-
-	// Set a minimal item (synthfs requires it)
-	symlinkOp.SetItem(&symlinkItem{
-		path:   relPath,
-		target: relSource,
-	})
-
-	return synthfs.NewOperationsPackageAdapter(symlinkOp), nil
+	// PathAwareFileSystem handles absolute paths directly
+	batch.CreateSymlink(op.Source, op.Target)
+	return nil
 }
 
-// convertCopyFile converts a copy file operation
-func (e *SynthfsExecutor) convertCopyFile(op types.Operation) (synthfs.Operation, error) {
+// addCopyFile adds a copy file operation to the batch
+func (e *SynthfsExecutor) addCopyFile(batch *synthfs.SimpleBatch, op types.Operation) error {
 	if op.Source == "" || op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
+		return errors.New(errors.ErrInvalidInput,
 			"copy file operation requires source and target")
 	}
 
 	// Ensure we're only copying to safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
+		return err
 	}
 
 	e.logger.Debug().
 		Str("source", op.Source).
 		Str("target", op.Target).
-		Msg("Creating copy file operation")
+		Msg("Adding copy file operation")
 
-	// Create the synthfs operation
-	// Convert paths to relative for synthfs
-	relSource, err := filepath.Rel("/", op.Source)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert source path: %s", op.Source)
-	}
-	relTarget, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert target path: %s", op.Target)
-	}
-
-	opID := core.OperationID(fmt.Sprintf("copy-%s-to-%s", filepath.Base(op.Source), op.Target))
-	copyOp := operations.NewCopyOperation(opID, relTarget)
-
-	// Set source and destination paths
-	copyOp.SetPaths(relSource, relTarget)
-
-	return synthfs.NewOperationsPackageAdapter(copyOp), nil
+	// PathAwareFileSystem handles absolute paths directly
+	batch.Copy(op.Source, op.Target)
+	return nil
 }
 
-// convertDeleteFile converts a delete file operation
-func (e *SynthfsExecutor) convertDeleteFile(op types.Operation) (synthfs.Operation, error) {
+// addDeleteFile adds a delete file operation to the batch
+func (e *SynthfsExecutor) addDeleteFile(batch *synthfs.SimpleBatch, op types.Operation) error {
 	if op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
+		return errors.New(errors.ErrInvalidInput,
 			"delete file operation requires target")
 	}
 
 	// Ensure we're only deleting files in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
+		return err
 	}
 
 	e.logger.Debug().
 		Str("target", op.Target).
-		Msg("Creating delete file operation")
+		Msg("Adding delete file operation")
 
-	// Create the synthfs operation
-	// Convert absolute path to relative for synthfs
-	relPath, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert path: %s", op.Target)
-	}
-
-	opID := core.OperationID(fmt.Sprintf("delete-%s", op.Target))
-	deleteOp := operations.NewDeleteOperation(opID, relPath)
-
-	return synthfs.NewOperationsPackageAdapter(deleteOp), nil
+	// PathAwareFileSystem handles absolute paths directly
+	batch.Delete(op.Target)
+	return nil
 }
 
-// convertBackupFile converts a backup file operation
-func (e *SynthfsExecutor) convertBackupFile(op types.Operation) (synthfs.Operation, error) {
+// addBackupFile adds a backup file operation to the batch
+func (e *SynthfsExecutor) addBackupFile(batch *synthfs.SimpleBatch, op types.Operation) error {
 	if op.Source == "" || op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
+		return errors.New(errors.ErrInvalidInput,
 			"backup file operation requires source and target")
 	}
 
 	// Ensure we're only creating backups in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
+		return err
 	}
 
 	e.logger.Debug().
 		Str("source", op.Source).
 		Str("target", op.Target).
-		Msg("Creating backup (copy) operation")
+		Msg("Adding backup (copy) operation")
 
+	// PathAwareFileSystem handles absolute paths directly
 	// Backup is essentially a copy operation
-	// Convert paths to relative for synthfs
-	relSource, err := filepath.Rel("/", op.Source)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert source path: %s", op.Source)
-	}
-	relTarget, err := filepath.Rel("/", op.Target)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInvalidInput,
-			"failed to convert target path: %s", op.Target)
-	}
-
-	opID := core.OperationID(fmt.Sprintf("backup-%s", filepath.Base(op.Source)))
-	copyOp := operations.NewCopyOperation(opID, relTarget)
-
-	// Set source and destination paths
-	copyOp.SetPaths(relSource, relTarget)
-
-	return synthfs.NewOperationsPackageAdapter(copyOp), nil
+	batch.Copy(op.Source, op.Target)
+	return nil
 }
 
 // validateSafePath ensures the path is within dodot-controlled directories
@@ -446,6 +373,15 @@ func (e *SynthfsExecutor) validateSafePath(path string) error {
 	if err != nil {
 		return errors.Wrapf(err, errors.ErrInvalidInput,
 			"failed to normalize path: %s", path)
+	}
+
+	// Also try to resolve symlinks in the path (for macOS /var -> /private/var)
+	resolvedPath := normalizedPath
+	// Only resolve if parent directory exists
+	if parentDir := filepath.Dir(normalizedPath); parentDir != "" {
+		if resolvedParent, err := filepath.EvalSymlinks(parentDir); err == nil {
+			resolvedPath = filepath.Join(resolvedParent, filepath.Base(normalizedPath))
+		}
 	}
 
 	// Check if the path is within any of the safe directories
@@ -465,7 +401,14 @@ func (e *SynthfsExecutor) validateSafePath(path string) error {
 	}
 
 	for _, safeDir := range safeDirectories {
-		if isPathWithin(normalizedPath, safeDir) {
+		// Resolve symlinks in safe directory path for comparison
+		resolvedSafeDir := safeDir
+		if resolved, err := filepath.EvalSymlinks(safeDir); err == nil {
+			resolvedSafeDir = resolved
+		}
+
+		if isPathWithin(normalizedPath, safeDir) || isPathWithin(normalizedPath, resolvedSafeDir) ||
+			isPathWithin(resolvedPath, safeDir) || isPathWithin(resolvedPath, resolvedSafeDir) {
 			e.logger.Debug().
 				Str("path", normalizedPath).
 				Str("safeDir", safeDir).
@@ -533,6 +476,11 @@ func (e *SynthfsExecutor) validateSymlinkPath(target, source string) error {
 			// Target is in a safe directory, allow it
 			return nil
 		}
+		e.logger.Debug().
+			Str("target", target).
+			Str("normalizedTarget", normalizedTarget).
+			Err(err).
+			Msg("Target not in safe directories")
 
 		// If not in safe directory and not home, check if home symlinks are allowed
 		if !e.allowHomeSymlinks {
@@ -623,19 +571,6 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 		Str("path", path).
 		Msg("Checking if path is a protected system file")
 
-	// List of protected files/directories that should never be symlinked
-	protectedPaths := []string{
-		".ssh/authorized_keys",
-		".ssh/id_rsa",
-		".ssh/id_ed25519",
-		".gnupg",
-		".password-store",
-		".config/gh/hosts.yml", // GitHub CLI auth
-		".aws/credentials",
-		".kube/config",
-		".docker/config.json",
-	}
-
 	homeDir, _ := paths.GetHomeDirectory()
 	// Normalize home directory for consistent comparison
 	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
@@ -649,13 +584,23 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 	}
 
 	// Check if the relative path matches any protected path
-	for _, protected := range protectedPaths {
-		// Check exact match or if the path is within a protected directory
-		if relPath == protected || strings.HasPrefix(relPath, protected+"/") {
+	// First check exact match
+	if protectedPathsMap[relPath] {
+		e.logger.Warn().
+			Str("path", path).
+			Str("relPath", relPath).
+			Msg("Blocking symlink to protected file")
+		return errors.Newf(errors.ErrPermission,
+			"cannot create symlink for protected file: %s", relPath)
+	}
+
+	// Then check if the path is within a protected directory
+	for protectedPath := range protectedPathsMap {
+		if strings.HasPrefix(relPath, protectedPath+"/") {
 			e.logger.Warn().
 				Str("path", path).
 				Str("relPath", relPath).
-				Str("protected", protected).
+				Str("protected", protectedPath).
 				Msg("Blocking symlink to protected file")
 			return errors.Newf(errors.ErrPermission,
 				"cannot create symlink for protected file: %s", relPath)
@@ -712,43 +657,3 @@ func (e *SynthfsExecutor) logOperation(op types.Operation) {
 		logger.Info().Msg("Would execute operation")
 	}
 }
-
-// Item types for synthfs operations
-
-// fileItem implements the interface needed for file operations
-type fileItem struct {
-	path    string
-	content []byte
-	mode    fs.FileMode
-}
-
-func (f *fileItem) Path() string       { return f.path }
-func (f *fileItem) Type() string       { return "file" }
-func (f *fileItem) Content() []byte    { return f.content }
-func (f *fileItem) Mode() fs.FileMode  { return f.mode }
-func (f *fileItem) IsDir() bool        { return false }
-func (f *fileItem) ModTime() time.Time { return time.Now() }
-func (f *fileItem) Size() int64        { return int64(len(f.content)) }
-
-// directoryItem implements the interface needed for directory operations
-type directoryItem struct {
-	path string
-	mode fs.FileMode
-}
-
-func (d *directoryItem) Path() string       { return d.path }
-func (d *directoryItem) Type() string       { return "directory" }
-func (d *directoryItem) Mode() fs.FileMode  { return d.mode }
-func (d *directoryItem) IsDir() bool        { return true }
-func (d *directoryItem) ModTime() time.Time { return time.Now() }
-func (d *directoryItem) Size() int64        { return 0 }
-
-// symlinkItem implements the interface needed for symlink operations
-type symlinkItem struct {
-	path   string
-	target string
-}
-
-func (s *symlinkItem) Path() string   { return s.path }
-func (s *symlinkItem) Type() string   { return "symlink" }
-func (s *symlinkItem) Target() string { return s.target }

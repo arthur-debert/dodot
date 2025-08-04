@@ -22,9 +22,18 @@ type OperationResult struct {
 	BackupSizeMB float64
 }
 
-// DefaultPipelineOptions returns sensible defaults for pipeline execution
+// DefaultPipelineOptions returns a new PipelineOptions with default values.
 func DefaultPipelineOptions() PipelineOptions {
-	return execution.DefaultPipelineOptions()
+	return PipelineOptions{
+		DryRun:               false,
+		RollbackOnError:      false,
+		ContinueOnError:      false,
+		MaxConcurrent:        1, // Default to sequential execution
+		Restorable:           false,
+		MaxBackupSizeMB:      10,
+		ResolvePrerequisites: true,
+		UseSimpleBatch:       true,
+	}
 }
 
 // Executor processes a pipeline of operations.

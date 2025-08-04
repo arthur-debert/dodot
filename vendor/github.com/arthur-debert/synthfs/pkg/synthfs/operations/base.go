@@ -3,6 +3,7 @@ package operations
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/arthur-debert/synthfs/pkg/synthfs/core"
 )
@@ -123,6 +124,26 @@ func (op *BaseOperation) Execute(ctx context.Context, fsys interface{}) error {
 // Validate checks if the operation can be performed.
 // Subclasses should override this method.
 func (op *BaseOperation) Validate(ctx context.Context, fsys interface{}) error {
+	// Basic validation: reject empty IDs
+	if string(op.id) == "" {
+		return &core.ValidationError{
+			OperationID:   op.ID(),
+			OperationDesc: op.Describe(),
+			Reason:        "operation ID cannot be empty",
+			Cause:         nil,
+		}
+	}
+
+	// Basic validation: reject whitespace-only IDs
+	if strings.TrimSpace(string(op.id)) == "" {
+		return &core.ValidationError{
+			OperationID:   op.ID(),
+			OperationDesc: op.Describe(),
+			Reason:        "operation ID cannot contain only whitespace",
+			Cause:         nil,
+		}
+	}
+
 	// Basic validation: reject empty paths
 	if op.description.Path == "" {
 		return &core.ValidationError{
