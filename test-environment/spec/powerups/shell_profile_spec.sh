@@ -104,8 +104,8 @@ EOF
       # The deployed file should be named after the pack, not the source file
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      # Should be bash.sh, not aliases.sh
-      When call test -f "$HOME/.local/share/dodot/deployed/shell_profile/bash.sh"
+      # Should be bash.sh, not aliases.sh  
+      When call verify_shell_profile_deployed "bash" "aliases.sh"
       The status should be success
     End
     
@@ -155,11 +155,7 @@ EOF
   
   Describe 'Idempotency'
     It 'can deploy multiple times successfully'
-      # First deploy
-      "$DODOT" deploy bash >/dev/null 2>&1
-      
-      # Second deploy should also succeed
-      When call "$DODOT" deploy bash
+      When call verify_idempotent_deploy "bash"
       The status should be success
     End
     

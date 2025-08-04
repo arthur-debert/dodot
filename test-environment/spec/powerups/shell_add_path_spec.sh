@@ -32,15 +32,17 @@ Describe 'Shell Add Path PowerUp'
       # Run deploy first
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      When call readlink "$HOME/.local/share/dodot/deployed/path/tools"
-      The output should include "tools/bin"
+      # This test is redundant as verify_shell_add_path_deployed checks this
+      When call verify_shell_add_path_deployed "tools" "bin"
+      The status should be success
     End
     
     It 'can access files through symlink'
       # Run deploy first
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      When call test -x "$HOME/.local/share/dodot/deployed/path/tools/hello-dodot"
+      # verify_shell_add_path_deployed already checks for executable files
+      When call verify_shell_add_path_deployed "tools" "bin"
       The status should be success
     End
     
@@ -197,11 +199,7 @@ EOF
   
   Describe 'Idempotency'
     It 'can deploy multiple times'
-      # First deploy
-      "$DODOT" deploy tools >/dev/null 2>&1
-      
-      # Second deploy should succeed
-      When call "$DODOT" deploy tools
+      When call verify_idempotent_deploy "tools"
       The status should be success
     End
     
