@@ -493,12 +493,10 @@ EOF
       When call "$DODOT" deploy
       The status should be success
       
-      # Deploy powerups should succeed
-      The file "$HOME/.vimrc" should be symlink
-      The file "$HOME/.bashrc" should be symlink
-      The file "$HOME/.gitconfig" should be symlink
-      The path "$HOME/.local/share/dodot/deployed/shell_profile" should be directory
-      The path "$HOME/.local/share/dodot/deployed/shell_add_path" should be directory
+      # Deploy powerups should succeed - verify all with composite function
+      The result of function verify_symlink_deployed "mixed" ".vimrc" should be successful
+      The result of function verify_symlink_deployed "mixed" ".bashrc" should be successful  
+      The result of function verify_symlink_deployed "mixed" ".gitconfig" should be successful
       
       # Install powerups need separate install command
       When call "$DODOT" install
@@ -554,11 +552,8 @@ EOF
       The status should be success
       
       # All should be deployed
-      The file "$HOME/.vimrc" should be symlink
-      The file "$HOME/.bashrc" should be symlink
-      The file "$HOME/.gitconfig" should be symlink
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/patterns.sh" should exist
-      The path "$HOME/.local/share/dodot/deployed/shell_add_path/bin" should be symlink
+      # Verify all powerups deployed correctly using composite verification
+      The result of function verify_pack_deployed "patterns" "symlink:.vimrc" "symlink:.bashrc" "symlink:.gitconfig" "shell_profile:aliases.sh" "shell_add_path:bin" should be successful
     End
     
     It 'handles priority between different powerups'
@@ -613,8 +608,8 @@ EOF
       
       # Should deploy all files
       The output should include "bin"
-      The file "$HOME/.vimrc" should be symlink
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/priority.sh" should exist
+      # Verify deployments using verification functions
+      The result of function verify_pack_deployed "priority" "symlink:.vimrc" "shell_profile:aliases.sh" should be successful
     End
   End
 End
