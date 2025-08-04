@@ -85,17 +85,7 @@ brew "tmux"
       When call "$DODOT" install
       The status should be success
       
-      # Use our verification function
-      The result of function verify_brewfile_deployed "tools" should be successful
-    End
-    
-    It 'stores Brewfile checksum in sentinel'
-      create_brewfile "tools" 'brew "jq"'
-      
-      When call "$DODOT" install
-      The status should be success
-      
-      # Verification function checks for checksum
+      # Use our verification function (also checks checksum)
       The result of function verify_brewfile_deployed "tools" should be successful
     End
   End

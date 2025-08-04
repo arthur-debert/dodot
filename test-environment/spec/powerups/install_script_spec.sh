@@ -84,17 +84,7 @@ EOF
       When call "$DODOT" install
       The status should be success
       
-      # Use our verification function
-      The result of function verify_install_script_deployed "tools" "install.sh" should be successful
-    End
-    
-    It 'stores checksum in sentinel file'
-      create_install_script "tools" 'echo "Test content"'
-      
-      When call "$DODOT" install
-      The status should be success
-      
-      # Verify using our function which checks the correct path
+      # Use our verification function (also checks checksum)
       The result of function verify_install_script_deployed "tools" "install.sh" should be successful
     End
   End
