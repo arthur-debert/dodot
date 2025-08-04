@@ -172,12 +172,18 @@ verify_brewfile_deployed() {
     return 1
   fi
   
-  # Verify brew was called (for testing with mock)
-  if [ -f "$brew_log" ]; then
-    if ! grep -q "bundle --file.*$pack/Brewfile" "$brew_log"; then
-      echo "ERROR: No brew bundle call found for $pack in $brew_log" >&2
-      return 1
-    fi
+  # Verify brew was called with correct arguments (mock behavior)
+  if [ ! -f "$brew_log" ]; then
+    echo "ERROR: Brew log file $brew_log does not exist" >&2
+    return 1
+  fi
+  
+  # Check that brew bundle was called with the correct file path
+  local brewfile_path="$TEST_DOTFILES_ROOT/$pack/Brewfile"
+  if ! grep -q "brew bundle --file $brewfile_path" "$brew_log"; then
+    echo "ERROR: No brew bundle call found with correct path in $brew_log" >&2
+    echo "Expected: brew bundle --file $brewfile_path" >&2
+    return 1
   fi
   
   return 0

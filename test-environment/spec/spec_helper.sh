@@ -17,11 +17,15 @@ else
 fi
 export TEST_HOME="/tmp/test-home"
 export TEST_DOTFILES_ROOT="/tmp/test-dotfiles"
-export HOME_TEMPLATE="/test-environment/home-template"
-export DOTFILES_TEMPLATE="/test-environment/dotfiles-root-template"
+# Get the directory of this script
+SPEC_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+TEST_ENV_DIR="$( cd "$SPEC_DIR/.." && pwd )"
+
+export HOME_TEMPLATE="$TEST_ENV_DIR/home-template"
+export DOTFILES_TEMPLATE="$TEST_ENV_DIR/dotfiles-root-template"
 
 # Source powerup verification functions
-source /test-environment/spec/powerup_verification.sh
+source "$SPEC_DIR/powerup_verification.sh"
 
 # Forward declaration - actual implementation is at end of file
 # This ensures the enhanced version with verification is used
