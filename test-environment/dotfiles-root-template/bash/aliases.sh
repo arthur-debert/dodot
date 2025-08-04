@@ -19,3 +19,6 @@ alias mv='mv -i'
 
 # Custom test alias for verification
 alias dodot-test='echo "dodot bash aliases loaded successfully"'
+
+# Marker for shell profile verification
+BASH_PROFILE_LOADED=1

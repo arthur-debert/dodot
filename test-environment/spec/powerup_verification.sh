@@ -71,8 +71,13 @@ verify_shell_profile_deployed() {
     return 1
   fi
   
-  # For now, skip the marker check as files don't have it yet
-  # TODO: Add marker variable check once files are updated
+  # Verify we can source it and check marker (if present)
+  # Convention: <PACK>_PROFILE_LOADED=1
+  local marker="${pack^^}_PROFILE_LOADED"
+  if ! bash -c "source '$deployed_file' 2>/dev/null && [ \"\$$marker\" = '1' ]"; then
+    # Marker check is optional for backward compatibility
+    echo "WARNING: Shell profile marker $marker not found in $deployed_file" >&2
+  fi
   
   return 0
 }

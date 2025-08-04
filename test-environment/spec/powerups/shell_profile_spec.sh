@@ -25,7 +25,7 @@ Describe 'Shell Profile PowerUp'
       # Run deploy first
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      When call test -L "$HOME/.local/share/dodot/deployed/shell_profile/bash.sh"
+      When call verify_shell_profile_deployed "bash" "aliases.sh"
       The status should be success
     End
     
@@ -33,8 +33,9 @@ Describe 'Shell Profile PowerUp'
       # Run deploy first
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      When call readlink "$HOME/.local/share/dodot/deployed/shell_profile/bash.sh"
-      The output should include "bash/aliases.sh"
+      # This test is now redundant as verify_shell_profile_deployed checks this
+      When call verify_shell_profile_deployed "bash" "aliases.sh"
+      The status should be success
     End
     
     It 'can read aliases through symlink'

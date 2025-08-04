@@ -24,7 +24,7 @@ Describe 'Shell Add Path PowerUp'
       # Run deploy first
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      When call test -L "$HOME/.local/share/dodot/deployed/path/tools"
+      When call verify_shell_add_path_deployed "tools" "bin"
       The status should be success
     End
     
