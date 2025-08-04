@@ -231,34 +231,75 @@ verify_shell_add_path_deployed() {
 }
 
 # Verify install script powerup deployment
-# Usage: verify_install_script_deployed <pack> [script_name] [marker_file]
+# Usage: verify_install_script_deployed <pack> [script_name] [marker_file] [mode]
+# Modes: deployed (default), not-deployed, idempotent
 # Example: verify_install_script_deployed "tools" "install.sh" "/tmp/tools-installed.marker"
+# Example: verify_install_script_deployed "tools" "install.sh" "" "not-deployed"
 verify_install_script_deployed() {
   local pack=$1
   local script_name=${2:-"install.sh"}
   local marker_file=$3
+  local mode=${4:-"deployed"}
   local sentinel_dir="$HOME/.local/share/dodot/install"
   local sentinel_file="$sentinel_dir/$pack"
   
-  # Check sentinel exists
-  if [ ! -f "$sentinel_file" ]; then
-    echo "ERROR: Sentinel file $sentinel_file does not exist" >&2
-    return 1
-  fi
-  
-  # Verify sentinel contains checksum (64 hex chars)
-  if ! grep -qE "^[a-f0-9]{64}$" "$sentinel_file"; then
-    echo "ERROR: Sentinel file $sentinel_file does not contain valid checksum" >&2
-    return 1
-  fi
-  
-  # If marker file specified, check it exists
-  if [ -n "$marker_file" ]; then
-    if [ ! -f "$marker_file" ]; then
-      echo "ERROR: Expected marker file $marker_file does not exist" >&2
+  case "$mode" in
+    "deployed")
+      # Check sentinel exists
+      if [ ! -f "$sentinel_file" ]; then
+        echo "ERROR: Sentinel file $sentinel_file does not exist" >&2
+        return 1
+      fi
+      
+      # Verify sentinel contains checksum (64 hex chars)
+      if ! grep -qE "^[a-f0-9]{64}$" "$sentinel_file"; then
+        echo "ERROR: Sentinel file $sentinel_file does not contain valid checksum" >&2
+        return 1
+      fi
+      
+      # If marker file specified, check it exists
+      if [ -n "$marker_file" ]; then
+        if [ ! -f "$marker_file" ]; then
+          echo "ERROR: Expected marker file $marker_file does not exist" >&2
+          return 1
+        fi
+      fi
+      ;;
+      
+    "not-deployed")
+      # Check sentinel does not exist
+      if [ -f "$sentinel_file" ]; then
+        echo "ERROR: Sentinel file $sentinel_file exists when it shouldn't" >&2
+        return 1
+      fi
+      
+      # If marker file specified, check it does NOT exist
+      if [ -n "$marker_file" ] && [ -f "$marker_file" ]; then
+        echo "ERROR: Marker file $marker_file exists when it shouldn't" >&2
+        return 1
+      fi
+      ;;
+      
+    "idempotent")
+      # Check sentinel exists (from previous run)
+      if [ ! -f "$sentinel_file" ]; then
+        echo "ERROR: Sentinel file $sentinel_file does not exist (should exist from previous run)" >&2
+        return 1
+      fi
+      
+      # For idempotency, the marker file should NOT be created again
+      # (assuming the script creates it fresh each time)
+      if [ -n "$marker_file" ] && [ -f "$marker_file" ]; then
+        echo "ERROR: Marker file $marker_file was created on idempotent run" >&2
+        return 1
+      fi
+      ;;
+      
+    *)
+      echo "ERROR: Unknown mode '$mode'. Valid modes: deployed, not-deployed, idempotent" >&2
       return 1
-    fi
-  fi
+      ;;
+  esac
   
   return 0
 }
