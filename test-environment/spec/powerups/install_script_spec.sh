@@ -173,7 +173,7 @@ EOF
       The error should include "install script failed"
       
       # Sentinel should not be created on failure
-      The file "$HOME/.local/share/dodot/sentinels/tools_install.sh.sentinel" should not exist
+      The result of function verify_install_script_deployed "tools" "install.sh" "" "not-deployed" should be successful
     End
     
     It 'handles non-executable script file'
@@ -224,7 +224,7 @@ EOF
       The file "/tmp/partial-install.marker" should exist
       
       # But sentinel should not be created
-      The file "$HOME/.local/share/dodot/sentinels/tools_install.sh.sentinel" should not exist
+      The result of function verify_install_script_deployed "tools" "install.sh" "" "not-deployed" should be successful
     End
   End
   
