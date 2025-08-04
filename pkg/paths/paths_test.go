@@ -34,15 +34,6 @@ func TestNew(t *testing.T) {
 			},
 		},
 		{
-			name: "from legacy DOTFILES_HOME env",
-			envSetup: map[string]string{
-				EnvDotfilesHome: "/legacy/dotfiles",
-			},
-			validate: func(t *testing.T, p *Paths) {
-				testutil.AssertEqual(t, "/legacy/dotfiles", p.DotfilesRoot())
-			},
-		},
-		{
 			name: "git repository or fallback",
 			validate: func(t *testing.T, p *Paths) {
 				// This test will either find the git root if we're in a git repo,
@@ -80,7 +71,6 @@ func TestNew(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear relevant environment variables first
 			t.Setenv(EnvDotfilesRoot, "")
-			t.Setenv(EnvDotfilesHome, "")
 			t.Setenv(EnvDodotDataDir, "")
 			t.Setenv(EnvDodotConfigDir, "")
 			t.Setenv(EnvDodotCacheDir, "")

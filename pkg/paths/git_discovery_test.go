@@ -33,14 +33,6 @@ func TestFindDotfilesRoot(t *testing.T) {
 			expectFallback: false,
 		},
 		{
-			name: "DOTFILES_HOME env var (legacy)",
-			setupEnv: map[string]string{
-				EnvDotfilesHome: "/legacy/dotfiles",
-			},
-			expectedPath:   "/legacy/dotfiles",
-			expectFallback: false,
-		},
-		{
 			name: "Git repository root discovery",
 			setupFunc: func(t *testing.T) string {
 				// Create a temporary git repo
@@ -91,7 +83,6 @@ func TestFindDotfilesRoot(t *testing.T) {
 
 			// Clear environment
 			t.Setenv(EnvDotfilesRoot, "")
-			t.Setenv(EnvDotfilesHome, "")
 
 			// Set up environment
 			for k, v := range tt.setupEnv {
@@ -178,7 +169,6 @@ func TestPathsWithGitDiscovery(t *testing.T) {
 	t.Run("git repo discovery", func(t *testing.T) {
 		// Clear environment to avoid interference
 		t.Setenv(EnvDotfilesRoot, "")
-		t.Setenv(EnvDotfilesHome, "")
 
 		tmpDir := testutil.TempDir(t, "paths-git-test")
 		err := os.Chdir(tmpDir)
@@ -199,7 +189,6 @@ func TestPathsWithGitDiscovery(t *testing.T) {
 	t.Run("fallback to cwd", func(t *testing.T) {
 		// Clear environment to avoid interference
 		t.Setenv(EnvDotfilesRoot, "")
-		t.Setenv(EnvDotfilesHome, "")
 
 		tmpDir := testutil.TempDir(t, "paths-no-git-test")
 		err := os.Chdir(tmpDir)
@@ -281,7 +270,6 @@ func TestCLIIntegration(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clear environment
 			t.Setenv(EnvDotfilesRoot, "")
-			t.Setenv(EnvDotfilesHome, "")
 
 			// Set up environment
 			for k, v := range tt.envSetup {
