@@ -169,10 +169,3 @@ func hashOptions(options map[string]interface{}) string {
 
 	return strings.Join(parts, ";")
 }
-
-// ProcessMatch processes a single trigger match into actions
-// Deprecated: Use ProcessMatchGroup for batch processing
-func ProcessMatch(match types.TriggerMatch) ([]types.Action, error) {
-	// For backward compatibility, wrap single match in a slice
-	return ProcessMatchGroup([]types.TriggerMatch{match})
-}
