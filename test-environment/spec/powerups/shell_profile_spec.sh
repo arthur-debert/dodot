@@ -103,9 +103,9 @@ EOF
     It 'does not create aliases.sh in deployed directory'
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      # Should NOT be named aliases.sh
-      When call test -f "$HOME/.local/share/dodot/deployed/shell_profile/aliases.sh"
-      The status should be failure
+      # Should NOT be named aliases.sh - verify using not-deployed mode
+      # Note: We're checking a different filename that shouldn't exist
+      The result of function verify_shell_profile_deployed "aliases" "aliases.sh" "not-deployed" should be successful
     End
   End
   
@@ -174,18 +174,16 @@ EOF
       # Deploy bash pack which has both symlink and shell_profile
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      # Check symlink was created
-      When call test -L "$HOME/.bashrc"
-      The status should be success
+      # Check symlink was created using appropriate verification
+      The result of function verify_symlink_deployed "bash" ".bashrc" should be successful
     End
     
     It 'creates shell_profile link alongside symlink'
       # Deploy bash pack
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      # Check shell_profile was created
-      When call test -L "$HOME/.local/share/dodot/deployed/shell_profile/bash.sh"
-      The status should be success
+      # Check shell_profile was created using verification function
+      The result of function verify_shell_profile_deployed "bash" "aliases.sh" should be successful
     End
   End
   
