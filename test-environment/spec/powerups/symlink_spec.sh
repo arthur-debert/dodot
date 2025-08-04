@@ -164,6 +164,10 @@ EOF
       # Verify original file wasn't changed
       When call cat "$HOME/.vimrc"
       The output should equal "existing content"
+      
+      # Verify symlink was not created (file remains regular file, not symlink)
+      # Note: The file exists but is not a symlink, so we can't use "not-deployed" mode
+      # which checks for non-existence. This is a case where manual check is appropriate.
     End
     
     It 'fails when target is a directory'
@@ -277,6 +281,23 @@ EOF
       
       When call cat "$HOME/.vim/plugin/test.vim"
       The output should equal "\" plugin"
+    End
+  End
+  
+  Describe 'Clean deployment'
+    It 'verifies symlinks do not exist before deployment'
+      # Create source file
+      echo "\" vim config" > "$DOTFILES_ROOT/vim/.vimrc"
+      
+      # Verify symlink doesn't exist yet
+      The result of function verify_symlink_deployed "vim" ".vimrc" "$HOME" "not-deployed" should be successful
+      
+      # Now deploy
+      When call "$DODOT" deploy vim
+      The status should be success
+      
+      # And verify it exists
+      The result of function verify_symlink_deployed "vim" ".vimrc" should be successful
     End
   End
 End
