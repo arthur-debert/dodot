@@ -45,9 +45,8 @@ EOF
       When call "$DODOT" deploy multitest
       The status should be success
       
-      # Verify both powerups executed
-      The file "$HOME/.bashrc" should be symlink
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/multitest.sh" should exist
+      # Verify both powerups using composite function
+      The result of function verify_pack_deployed "multitest" "symlink:.bashrc" "shell_profile:aliases.sh" should be successful
     End
     
     It 'handles all three deploy types in one pack'
@@ -96,13 +95,11 @@ actions = [
 ]
 EOF
       
-      When call "$DODOT" deploy
+      When call "$DODOT" deploy complete
       The status should be success
       
-      # All three types should be deployed
-      The file "$HOME/.vimrc" should be symlink
-      The file "$HOME/.local/share/dodot/deployed/shell_profile/complete.sh" should exist
-      The file "$HOME/.local/share/dodot/deployed/shell_add_path/bin" should exist
+      # Verify all three powerups using composite function
+      The result of function verify_pack_deployed "complete" "symlink:.vimrc" "shell_profile:aliases.sh" "shell_add_path:bin" should be successful
     End
     
     It 'executes powerups in priority order'
