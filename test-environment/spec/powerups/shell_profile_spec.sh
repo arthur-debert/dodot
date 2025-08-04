@@ -82,10 +82,9 @@ EOF
       # Manually create zsh deployment (since mock doesn't handle it yet)
       ln -sf "$DOTFILES_ROOT/zsh/zsh_aliases.sh" "$HOME/.local/share/dodot/deployed/shell_profile/zsh.sh"
       
-      # Check both exist
-      When call ls "$HOME/.local/share/dodot/deployed/shell_profile/"
-      The output should include "bash.sh"
-      The output should include "zsh.sh"
+      # Check both profiles were deployed
+      The result of function verify_shell_profile_deployed "bash" "aliases.sh" should be successful
+      The result of function verify_shell_profile_deployed "zsh" "zsh_aliases.sh" should be successful
     End
   End
   

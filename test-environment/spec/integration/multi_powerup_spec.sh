@@ -328,12 +328,14 @@ EOF
       # First run deploy - should only run deploy powerups
       When call "$DODOT" deploy
       The status should be success
-      The file "$HOME/.bashrc" should be symlink
+      # Verify deploy powerup worked
+      The result of function verify_symlink_deployed "deploy-install" ".bashrc" should be successful
       
       # Then run install - should only run install powerups
       When call "$DODOT" install
       The status should be success
-      The path "$HOME/.local/share/dodot/sentinels/install" should be directory
+      # Verify install powerup worked (directory check is implicit in verification)
+      The result of function verify_install_script_deployed "deploy-install" "install.sh" should be successful
     End
     
     It 'runs deploy powerups on every dodot deploy'
@@ -402,7 +404,7 @@ EOF
       # Run deploy first (should succeed)
       When call "$DODOT" deploy
       The status should be success
-      The file "$HOME/.vimrc" should be symlink
+      The result of function verify_symlink_deployed "partial-fail" ".vimrc" should be successful
       
       # Then run install (should fail)
       When call "$DODOT" install  
@@ -410,7 +412,7 @@ EOF
       The output should include "About to fail"
       
       # But deploy should still be intact
-      The file "$HOME/.vimrc" should be symlink
+      The result of function verify_symlink_deployed "partial-fail" ".vimrc" should be successful
     End
   End
   
