@@ -95,8 +95,8 @@ brew "tmux"
       The status should be success
       The output should include "Skipping Brewfile (already installed)"
       
-      # Should NOT have called brew bundle again
-      The file "/tmp/brew-calls.log" should not exist
+      # Verify idempotent behavior using enhanced verification
+      The result of function verify_brewfile_deployed "apps" "idempotent" should be successful
     End
     
     It 'reinstalls when Brewfile changes'
