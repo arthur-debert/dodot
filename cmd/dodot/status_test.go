@@ -139,7 +139,7 @@ echo "Installing vim plugins..."`
 			wantErr: false,
 		},
 		{
-			name: "status of pack with brewfile",
+			name: "status of pack with homebrew",
 			setup: func(t *testing.T) (string, string) {
 				tmpDir := t.TempDir()
 				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
@@ -163,7 +163,7 @@ brew 'neovim'`
 			args: []string{"tools"},
 			expectedOutput: []string{
 				"tools:",
-				"brewfile: Not Installed",
+				"homebrew: Not Installed",
 				"Brewfile not yet executed",
 			},
 			wantErr: false,
@@ -276,7 +276,7 @@ echo "New install script content"`
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up any existing sentinel files
 			_ = os.RemoveAll(paths.GetInstallDir())
-			_ = os.RemoveAll(paths.GetBrewfileDir())
+			_ = os.RemoveAll(paths.GetHomebrewDir())
 
 			dotfilesRoot, homeDir := tt.setup(t)
 

@@ -340,7 +340,7 @@ func TestDeploymentPathStructure(t *testing.T) {
 		"symlink":       p.SymlinkDir(),
 		"shell":         p.ShellDir(),
 		"install":       p.InstallDir(),
-		"brewfile":      p.BrewfileDir(),
+		"brewfile":      p.HomebrewDir(),
 	}
 
 	// All deployment paths should be under data directory

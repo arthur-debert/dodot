@@ -31,7 +31,7 @@ func TestGetCompletePackTemplate(t *testing.T) {
 	// Check Brewfile template
 	brewfile, exists := templateMap["Brewfile"]
 	assert.True(t, exists, "Should have Brewfile template")
-	assert.Equal(t, "brewfile", brewfile.PowerUpName)
+	assert.Equal(t, "homebrew", brewfile.PowerUpName)
 	assert.Contains(t, brewfile.Content, "Homebrew dependencies for testpack pack")
 	assert.Equal(t, uint32(0644), brewfile.Mode)
 

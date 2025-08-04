@@ -394,7 +394,7 @@ func (e *SynthfsExecutor) validateSafePath(path string) error {
 		// All subdirectories under DataDir are safe
 		e.paths.DeployedDir(),
 		e.paths.BackupsDir(),
-		e.paths.BrewfileDir(),
+		e.paths.HomebrewDir(),
 		e.paths.InstallDir(),
 		e.paths.ShellDir(),
 		e.paths.TemplatesDir(),

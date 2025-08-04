@@ -6,7 +6,7 @@ package powerups
 import (
 	// Import all powerup implementations to ensure they register themselves
 	_ "github.com/arthur-debert/dodot/pkg/powerups/bin"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/brewfile"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/homebrew"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/install"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_profile"

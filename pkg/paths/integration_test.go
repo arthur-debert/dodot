@@ -113,8 +113,8 @@ func TestMigrationFromOldPaths(t *testing.T) {
 		deployedDir := p.DeployedDir()
 		testutil.AssertEqual(t, filepath.Join(oldDataDir, "deployed"), deployedDir)
 
-		brewfileDir := p.BrewfileDir()
-		testutil.AssertEqual(t, filepath.Join(oldDataDir, "brewfile"), brewfileDir)
+		homebrewDir := p.HomebrewDir()
+		testutil.AssertEqual(t, filepath.Join(oldDataDir, "homebrew"), homebrewDir)
 	})
 
 	// Test that new API gives consistent results
@@ -126,7 +126,7 @@ func TestMigrationFromOldPaths(t *testing.T) {
 
 		testutil.AssertEqual(t, p1.DataDir(), p2.DataDir())
 		testutil.AssertEqual(t, p1.DeployedDir(), p2.DeployedDir())
-		testutil.AssertEqual(t, p1.BrewfileDir(), p2.BrewfileDir())
+		testutil.AssertEqual(t, p1.HomebrewDir(), p2.HomebrewDir())
 		testutil.AssertEqual(t, p1.InstallDir(), p2.InstallDir())
 	})
 }

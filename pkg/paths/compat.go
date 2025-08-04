@@ -77,9 +77,9 @@ func GetInstallDir() string {
 	return p.InstallDir()
 }
 
-// GetBrewfileDir returns the brewfile sentinel directory
+// GetHomebrewDir returns the homebrew sentinel directory
 // This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetBrewfileDir() string {
+func GetHomebrewDir() string {
 	p, err := getDefaultPaths()
 	if err != nil {
 		// Fallback to basic logic if initialization fails
@@ -88,7 +88,7 @@ func GetBrewfileDir() string {
 			homeDir := GetHomeDirectoryWithDefault("/tmp")
 			dataDir = filepath.Join(homeDir, ".local", "share", "dodot")
 		}
-		return filepath.Join(dataDir, BrewfileDir)
+		return filepath.Join(dataDir, HomebrewDir)
 	}
-	return p.BrewfileDir()
+	return p.HomebrewDir()
 }

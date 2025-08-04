@@ -74,7 +74,7 @@ echo "Tools installation complete!"
 	for _, op := range result.Operations {
 		switch {
 		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
-			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/homebrew":
 			brewOps++
 		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
 			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":
@@ -92,7 +92,7 @@ echo "Tools installation complete!"
 	require.NoError(t, err)
 
 	// Verify Brewfile sentinel file was created
-	brewSentinel := filepath.Join(testEnv.DataDir(), "brewfile", "tools")
+	brewSentinel := filepath.Join(testEnv.DataDir(), "homebrew", "tools")
 	info, err := os.Stat(brewSentinel)
 	require.NoError(t, err, "Expected Brewfile sentinel to exist")
 	assert.True(t, info.Mode().IsRegular(), "Expected Brewfile sentinel to be a regular file")
@@ -132,7 +132,7 @@ echo "Tools installation complete!"
 	for _, op := range result2.Operations {
 		switch {
 		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
-			filepath.Dir(op.Target) == testEnv.DataDir()+"/brewfile":
+			filepath.Dir(op.Target) == testEnv.DataDir()+"/homebrew":
 			brewOps2++
 		case op.Type == "write_file" && filepath.Base(op.Target) == "tools" &&
 			filepath.Dir(op.Target) == testEnv.DataDir()+"/install":

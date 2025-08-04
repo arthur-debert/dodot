@@ -48,7 +48,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 			PowerUpState: make([]types.PowerUpStatus, 0),
 		}
 
-		// Check run-once power-up status (install, brewfile)
+		// Check run-once power-up status (install, homebrew)
 		installStatus, err := core.GetRunOnceStatus(pack.Path, "install")
 		if err == nil && installStatus != nil {
 			state := "Not Installed"
@@ -68,20 +68,20 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 			})
 		}
 
-		brewfileStatus, err := core.GetRunOnceStatus(pack.Path, "brewfile")
-		if err == nil && brewfileStatus != nil {
+		homebrewStatus, err := core.GetRunOnceStatus(pack.Path, "homebrew")
+		if err == nil && homebrewStatus != nil {
 			state := "Not Installed"
 			description := "Brewfile not yet executed"
-			if brewfileStatus.Executed {
+			if homebrewStatus.Executed {
 				state = "Installed"
-				description = fmt.Sprintf("Installed on %s", brewfileStatus.ExecutedAt.Format("2006-01-02 15:04:05"))
-				if brewfileStatus.Changed {
+				description = fmt.Sprintf("Installed on %s", homebrewStatus.ExecutedAt.Format("2006-01-02 15:04:05"))
+				if homebrewStatus.Changed {
 					state = "Changed"
 					description += " (Brewfile has changed since execution)"
 				}
 			}
 			packStatus.PowerUpState = append(packStatus.PowerUpState, types.PowerUpStatus{
-				Name:        "brewfile",
+				Name:        "homebrew",
 				State:       state,
 				Description: description,
 			})

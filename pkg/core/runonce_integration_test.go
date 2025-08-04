@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/powerups/brewfile"
+	"github.com/arthur-debert/dodot/pkg/powerups/homebrew"
 	"github.com/arthur-debert/dodot/pkg/powerups/install"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -48,7 +48,7 @@ echo install`
 			Type:        types.ActionTypeBrew,
 			Source:      brewfilePath,
 			Pack:        "tools",
-			PowerUpName: brewfile.BrewfilePowerUpName,
+			PowerUpName: homebrew.HomebrewPowerUpName,
 			Metadata: map[string]interface{}{
 				"checksum": brewChecksum,
 				"pack":     "tools",
@@ -154,7 +154,7 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 			Type:        types.ActionTypeBrew,
 			Source:      brewfilePath,
 			Pack:        pack,
-			PowerUpName: brewfile.BrewfilePowerUpName,
+			PowerUpName: homebrew.HomebrewPowerUpName,
 			Metadata: map[string]interface{}{
 				"checksum": checksum,
 				"pack":     pack,
@@ -168,14 +168,14 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 	testutil.AssertEqual(t, 3, len(filtered))
 
 	// Create sentinel for only "tools" pack
-	brewfileDir := paths.GetBrewfileDir()
-	_ = os.MkdirAll(brewfileDir, 0755)
+	homebrewDir := paths.GetHomebrewDir()
+	_ = os.MkdirAll(homebrewDir, 0755)
 
 	// Find and create sentinel for tools pack
 	for _, action := range actions {
 		if action.Pack == "tools" {
 			if checksum, ok := action.Metadata["checksum"].(string); ok {
-				sentinelPath := filepath.Join(brewfileDir, "tools")
+				sentinelPath := filepath.Join(homebrewDir, "tools")
 				_ = os.WriteFile(sentinelPath, []byte(checksum), 0644)
 			}
 		}
@@ -215,7 +215,7 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 			actions = append(actions, types.Action{
 				Type:        types.ActionTypeBrew,
 				Pack:        packName,
-				PowerUpName: brewfile.BrewfilePowerUpName,
+				PowerUpName: homebrew.HomebrewPowerUpName,
 				Metadata: map[string]interface{}{
 					"checksum": fmt.Sprintf("checksum%d", i),
 					"pack":     packName,
@@ -240,14 +240,14 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 	}
 
 	// Create some sentinel files
-	brewfileDir := paths.GetBrewfileDir()
+	homebrewDir := paths.GetHomebrewDir()
 	installDir := paths.GetInstallDir()
-	_ = os.MkdirAll(brewfileDir, 0755)
+	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
 
 	// Mark half of the run-once actions as already executed
 	for i := 0; i < 50; i += 6 {
-		sentinelPath := filepath.Join(brewfileDir, fmt.Sprintf("pack%d", i))
+		sentinelPath := filepath.Join(homebrewDir, fmt.Sprintf("pack%d", i))
 		_ = os.WriteFile(sentinelPath, []byte(fmt.Sprintf("checksum%d", i)), 0644)
 	}
 

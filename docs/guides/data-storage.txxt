@@ -81,7 +81,7 @@ Purpose: Track run-once operations to prevent re-execution
 Structure:
 ```
 ~/.local/share/dodot/
-├── brewfile/
+├── homebrew/
 │   ├── pack1           # checksum of pack1/Brewfile
 │   └── pack2           # checksum of pack2/Brewfile
 └── install/

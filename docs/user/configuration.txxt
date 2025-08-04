@@ -36,7 +36,7 @@ Configuration Format
 # Override default power-up behavior
 [[override]]
   path = "macos-dependencies.txt"
-  powerup = "brewfile"
+  powerup = "homebrew"
 
 [[override]]
   path = "htoprc"

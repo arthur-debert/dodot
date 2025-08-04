@@ -79,7 +79,7 @@ Example:
   with = { prepend = true }
 ```
 
-4. Brewfile Power-up (brewfile)
+4. Brewfile Power-up (homebrew)
 -------------------------------
 
 Purpose: Processes Brewfiles to install Homebrew packages. Enables
@@ -156,7 +156,7 @@ special behavior:
    been executed
 
 Sentinel file locations:
-• Brewfile: $DODOT_DATA_DIR/brewfile/<pack>
+• Brewfile: $DODOT_DATA_DIR/homebrew/<pack>
 • Install Script: $DODOT_DATA_DIR/install/<pack>
 
 This prevents expensive operations from running repeatedly while allowing

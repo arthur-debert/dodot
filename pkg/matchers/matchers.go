@@ -10,7 +10,7 @@ import (
 
 	// Import powerups and triggers to register them via init() functions
 	_ "github.com/arthur-debert/dodot/pkg/powerups/bin"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/brewfile"
+	_ "github.com/arthur-debert/dodot/pkg/powerups/homebrew"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/install"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
@@ -53,7 +53,7 @@ func DefaultMatchers() []types.Matcher {
 		{
 			Name:        "brewfile",
 			TriggerName: "filename",
-			PowerUpName: "brewfile",
+			PowerUpName: "homebrew",
 			Priority:    90,
 			TriggerOptions: map[string]interface{}{
 				"pattern": "Brewfile",

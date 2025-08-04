@@ -19,9 +19,9 @@ func TestShouldRunOnceAction(t *testing.T) {
 	})
 
 	// Create sentinel directories
-	brewfileDir := filepath.Join(tmpDir, "brewfile")
+	homebrewDir := filepath.Join(tmpDir, "homebrew")
 	installDir := filepath.Join(tmpDir, "install")
-	_ = os.MkdirAll(brewfileDir, 0755)
+	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
 
 	tests := []struct {
@@ -92,7 +92,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 				},
 			},
 			setupFunc: func() {
-				sentinelPath := filepath.Join(brewfileDir, "tools")
+				sentinelPath := filepath.Join(homebrewDir, "tools")
 				_ = os.WriteFile(sentinelPath, []byte("abc123"), 0644)
 			},
 			shouldRun: false,
@@ -107,7 +107,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 				},
 			},
 			setupFunc: func() {
-				sentinelPath := filepath.Join(brewfileDir, "tools")
+				sentinelPath := filepath.Join(homebrewDir, "tools")
 				_ = os.WriteFile(sentinelPath, []byte("abc123"), 0644)
 			},
 			shouldRun: true,
@@ -148,7 +148,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 				},
 			},
 			setupFunc: func() {
-				sentinelPath := filepath.Join(brewfileDir, "badsentinel")
+				sentinelPath := filepath.Join(homebrewDir, "badsentinel")
 				_ = os.Mkdir(sentinelPath, 0755)
 			},
 			shouldRun: true,
@@ -158,9 +158,9 @@ func TestShouldRunOnceAction(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up any previous sentinel files
-			_ = os.RemoveAll(brewfileDir)
+			_ = os.RemoveAll(homebrewDir)
 			_ = os.RemoveAll(installDir)
-			_ = os.MkdirAll(brewfileDir, 0755)
+			_ = os.MkdirAll(homebrewDir, 0755)
 			_ = os.MkdirAll(installDir, 0755)
 
 			if tt.setupFunc != nil {
@@ -189,11 +189,11 @@ func TestFilterRunOnceActions(t *testing.T) {
 	})
 
 	// Create sentinel directories and files
-	brewfileDir := filepath.Join(tmpDir, "brewfile")
+	homebrewDir := filepath.Join(tmpDir, "homebrew")
 	installDir := filepath.Join(tmpDir, "install")
-	_ = os.MkdirAll(brewfileDir, 0755)
+	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
-	_ = os.WriteFile(filepath.Join(brewfileDir, "tools"), []byte("brew123"), 0644)
+	_ = os.WriteFile(filepath.Join(homebrewDir, "tools"), []byte("brew123"), 0644)
 	_ = os.WriteFile(filepath.Join(installDir, "dev"), []byte("install456"), 0644)
 
 	actions := []types.Action{
@@ -366,9 +366,9 @@ func BenchmarkShouldRunOnceAction(b *testing.B) {
 	tmpDir := b.TempDir()
 	_ = os.Setenv("DODOT_DATA_DIR", tmpDir)
 
-	brewfileDir := filepath.Join(tmpDir, "brewfile")
-	_ = os.MkdirAll(brewfileDir, 0755)
-	_ = os.WriteFile(filepath.Join(brewfileDir, "tools"), []byte("abc123"), 0644)
+	homebrewDir := filepath.Join(tmpDir, "homebrew")
+	_ = os.MkdirAll(homebrewDir, 0755)
+	_ = os.WriteFile(filepath.Join(homebrewDir, "tools"), []byte("abc123"), 0644)
 
 	action := types.Action{
 		Type: types.ActionTypeBrew,

@@ -1,4 +1,4 @@
-package brewfile
+package homebrew
 
 import (
 	"strings"
@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestBrewfilePowerUp_GetTemplateContent(t *testing.T) {
-	powerup := NewBrewfilePowerUp()
+func TestHomebrewPowerUp_GetTemplateContent(t *testing.T) {
+	powerup := NewHomebrewPowerUp()
 
 	content := powerup.GetTemplateContent()
 

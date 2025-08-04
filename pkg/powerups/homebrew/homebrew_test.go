@@ -1,4 +1,4 @@
-package brewfile
+package homebrew
 
 import (
 	"os"
@@ -10,17 +10,17 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestBrewfilePowerUp_Basic(t *testing.T) {
-	powerup := NewBrewfilePowerUp()
+func TestHomebrewPowerUp_Basic(t *testing.T) {
+	powerup := NewHomebrewPowerUp()
 
-	testutil.AssertEqual(t, BrewfilePowerUpName, powerup.Name())
+	testutil.AssertEqual(t, HomebrewPowerUpName, powerup.Name())
 	testutil.AssertEqual(t, "Processes Brewfiles to install Homebrew packages", powerup.Description())
 	testutil.AssertEqual(t, types.RunModeOnce, powerup.RunMode())
 }
 
-func TestBrewfilePowerUp_Process(t *testing.T) {
+func TestHomebrewPowerUp_Process(t *testing.T) {
 	// Create test files
-	tmpDir := testutil.TempDir(t, "brewfile-test")
+	tmpDir := testutil.TempDir(t, "homebrew-test")
 
 	// Create a test Brewfile
 	brewfilePath := filepath.Join(tmpDir, "Brewfile")
@@ -30,7 +30,7 @@ cask "visual-studio-code"`
 	err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644)
 	testutil.AssertNoError(t, err)
 
-	powerup := NewBrewfilePowerUp()
+	powerup := NewHomebrewPowerUp()
 
 	matches := []types.TriggerMatch{
 		{
@@ -50,7 +50,7 @@ cask "visual-studio-code"`
 	testutil.AssertEqual(t, types.ActionTypeChecksum, checksumAction.Type)
 	testutil.AssertEqual(t, brewfilePath, checksumAction.Source)
 	testutil.AssertEqual(t, "tools", checksumAction.Pack)
-	testutil.AssertEqual(t, BrewfilePowerUpName, checksumAction.PowerUpName)
+	testutil.AssertEqual(t, HomebrewPowerUpName, checksumAction.PowerUpName)
 	testutil.AssertEqual(t, 101, checksumAction.Priority) // Higher priority
 	testutil.AssertContains(t, checksumAction.Description, "Calculate checksum")
 
@@ -59,7 +59,7 @@ cask "visual-studio-code"`
 	testutil.AssertEqual(t, types.ActionTypeBrew, brewAction.Type)
 	testutil.AssertEqual(t, brewfilePath, brewAction.Source)
 	testutil.AssertEqual(t, "tools", brewAction.Pack)
-	testutil.AssertEqual(t, BrewfilePowerUpName, brewAction.PowerUpName)
+	testutil.AssertEqual(t, HomebrewPowerUpName, brewAction.PowerUpName)
 	testutil.AssertEqual(t, 100, brewAction.Priority)
 	testutil.AssertContains(t, brewAction.Description, "Install packages from")
 
@@ -68,8 +68,8 @@ cask "visual-studio-code"`
 	testutil.AssertEqual(t, "tools", brewAction.Metadata["pack"])
 }
 
-func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
-	tmpDir := testutil.TempDir(t, "brewfile-test")
+func TestHomebrewPowerUp_Process_MultipleMatches(t *testing.T) {
+	tmpDir := testutil.TempDir(t, "homebrew-test")
 
 	// Create multiple Brewfiles
 	brewfile1 := filepath.Join(tmpDir, "Brewfile1")
@@ -80,7 +80,7 @@ func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
 	err = os.WriteFile(brewfile2, []byte("brew \"node\""), 0644)
 	testutil.AssertNoError(t, err)
 
-	powerup := NewBrewfilePowerUp()
+	powerup := NewHomebrewPowerUp()
 
 	matches := []types.TriggerMatch{
 		{
@@ -123,8 +123,8 @@ func TestBrewfilePowerUp_Process_MultipleMatches(t *testing.T) {
 	testutil.AssertEqual(t, 200, actions[3].Priority)
 }
 
-func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
-	powerup := NewBrewfilePowerUp()
+func TestHomebrewPowerUp_Process_ChecksumError(t *testing.T) {
+	powerup := NewHomebrewPowerUp()
 
 	matches := []types.TriggerMatch{
 		{
@@ -149,8 +149,8 @@ func TestBrewfilePowerUp_Process_ChecksumError(t *testing.T) {
 	testutil.AssertEqual(t, types.ActionTypeBrew, actions[1].Type)
 }
 
-func TestBrewfilePowerUp_ValidateOptions(t *testing.T) {
-	powerup := NewBrewfilePowerUp()
+func TestHomebrewPowerUp_ValidateOptions(t *testing.T) {
+	powerup := NewHomebrewPowerUp()
 
 	// Brewfile power-up doesn't have options, so any options should be accepted
 	err := powerup.ValidateOptions(nil)
@@ -166,7 +166,7 @@ func TestBrewfilePowerUp_ValidateOptions(t *testing.T) {
 }
 
 func TestCalculateFileChecksum(t *testing.T) {
-	tmpDir := testutil.TempDir(t, "brewfile-test")
+	tmpDir := testutil.TempDir(t, "homebrew-test")
 
 	// Test with a known content
 	testFile := filepath.Join(tmpDir, "test.txt")
@@ -184,11 +184,11 @@ func TestCalculateFileChecksum(t *testing.T) {
 	testutil.AssertError(t, err)
 }
 
-func TestGetBrewfileSentinelPath(t *testing.T) {
+func TestGetHomebrewSentinelPath(t *testing.T) {
 	pack := "mypack"
-	path := GetBrewfileSentinelPath(pack)
+	path := GetHomebrewSentinelPath(pack)
 
-	expected := filepath.Join(paths.GetBrewfileDir(), pack)
+	expected := filepath.Join(paths.GetHomebrewDir(), pack)
 	testutil.AssertEqual(t, expected, path)
 }
 
@@ -201,7 +201,7 @@ func BenchmarkBrewfilePowerUp_Process(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	powerup := NewBrewfilePowerUp()
+	powerup := NewHomebrewPowerUp()
 	matches := []types.TriggerMatch{
 		{
 			Path:         "Brewfile",
