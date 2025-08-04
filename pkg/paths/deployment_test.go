@@ -127,22 +127,6 @@ func TestCompatibilityFunctions(t *testing.T) {
 		verify func(t *testing.T, result string)
 	}{
 		{
-			name: "GetDodotDataDir",
-			fn:   GetDodotDataDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, filepath.IsAbs(result), "Path should be absolute")
-			},
-		},
-		{
-			name: "GetDeployedDir",
-			fn:   GetDeployedDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "deployed"), "Should end with 'deployed'")
-			},
-		},
-		{
 			name: "GetShellProfileDir",
 			fn:   GetShellProfileDir,
 			verify: func(t *testing.T, result string) {

@@ -102,24 +102,30 @@ func BenchmarkExpandHome(b *testing.B) {
 	}
 }
 
-func BenchmarkCompatibilityFunctions(b *testing.B) {
-	// Benchmark the compatibility wrappers to ensure they don't add significant overhead
+func BenchmarkPathsAPI(b *testing.B) {
+	// Benchmark the Paths API methods
 
-	b.Run("GetDodotDataDir", func(b *testing.B) {
+	b.Run("Paths.DataDir", func(b *testing.B) {
+		p, _ := New("")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = GetDodotDataDir()
+			_ = p.DataDir()
 		}
 	})
 
-	b.Run("GetDeployedDir", func(b *testing.B) {
+	b.Run("Paths.DeployedDir", func(b *testing.B) {
+		p, _ := New("")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = GetDeployedDir()
+			_ = p.DeployedDir()
 		}
 	})
 
-	b.Run("GetBrewfileDir", func(b *testing.B) {
+	b.Run("Paths.BrewfileDir", func(b *testing.B) {
+		p, _ := New("")
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			_ = GetBrewfileDir()
+			_ = p.BrewfileDir()
 		}
 	})
 }
