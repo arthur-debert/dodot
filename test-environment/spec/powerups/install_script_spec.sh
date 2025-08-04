@@ -70,20 +70,12 @@ EOF
     It 'executes install.sh successfully'
       create_install_script "tools" 'echo "Installing tools..." > /tmp/tools-installed.marker'
       
-      # Debug: Check the created files
-      echo "=== DEBUG: Created install script ===" >&2
-      ls -la "$TEST_DOTFILES_ROOT/tools/" >&2
-      echo "=== Content of install.sh ===" >&2
-      cat "$TEST_DOTFILES_ROOT/tools/install.sh" >&2
-      echo "=== Content of pack.dodot.toml ===" >&2
-      cat "$TEST_DOTFILES_ROOT/tools/pack.dodot.toml" >&2
-      echo "===" >&2
-      
       When call "$DODOT" install
       The status should be success
       The output should include "Installing tools..."
-      The file "/tmp/tools-installed.marker" should exist
-      The file "/tmp/tools-installed.marker" should include "Installing tools..."
+      
+      # Verify using our function
+      The result of function verify_install_script_deployed "tools" "install.sh" "/tmp/tools-installed.marker" should be successful
     End
     
     It 'creates sentinel file after execution'
@@ -91,8 +83,9 @@ EOF
       
       When call "$DODOT" install
       The status should be success
-      The result of function verify_sentinel should be successful
-      The file "$HOME/.local/share/dodot/sentinels/tools_install.sh.sentinel" should exist
+      
+      # Use our verification function
+      The result of function verify_install_script_deployed "tools" "install.sh" should be successful
     End
     
     It 'stores checksum in sentinel file'
@@ -101,9 +94,8 @@ EOF
       When call "$DODOT" install
       The status should be success
       
-      # Get the expected checksum
-      local expected_checksum=$(sha256sum "$TEST_DOTFILES_ROOT/tools/install.sh" | cut -d' ' -f1)
-      The file "$HOME/.local/share/dodot/sentinels/tools_install.sh.sentinel" should include "checksum: $expected_checksum"
+      # Verify using our function which checks the correct path
+      The result of function verify_install_script_deployed "tools" "install.sh" should be successful
     End
   End
   

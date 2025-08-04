@@ -61,8 +61,9 @@ brew "tmux"
       When call "$DODOT" install
       The status should be success
       The output should include "Brewfile"
-      When call check_brew_log "brew bundle --file"
-      The status should be success
+      
+      # Use our verification function
+      The result of function verify_brewfile_deployed "dev-tools" should be successful
     End
     
     It 'calls brew bundle with correct file path'
@@ -84,9 +85,8 @@ brew "tmux"
       When call "$DODOT" install
       The status should be success
       
-      # Check sentinel directory and file
-      The path "$HOME/.local/share/dodot/brewfile" should be directory
-      The file "$HOME/.local/share/dodot/brewfile/tools" should exist
+      # Use our verification function
+      The result of function verify_brewfile_deployed "tools" should be successful
     End
     
     It 'stores Brewfile checksum in sentinel'
@@ -95,12 +95,8 @@ brew "tmux"
       When call "$DODOT" install
       The status should be success
       
-      # Calculate expected checksum
-      local expected_checksum=$(sha256sum "$TEST_DOTFILES_ROOT/tools/Brewfile" | cut -d' ' -f1)
-      
-      # Sentinel should contain checksum
-      The file "$HOME/.local/share/dodot/brewfile/tools" should exist
-      The file "$HOME/.local/share/dodot/brewfile/tools" should include "$expected_checksum"
+      # Verification function checks for checksum
+      The result of function verify_brewfile_deployed "tools" should be successful
     End
   End
   
