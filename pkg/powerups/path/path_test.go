@@ -1,4 +1,4 @@
-package bin
+package path
 
 import (
 	"testing"
@@ -7,16 +7,16 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestBinPowerUp_Basic(t *testing.T) {
-	powerup := NewBinPowerUp()
+func TestPathPowerUp_Basic(t *testing.T) {
+	powerup := NewPathPowerUp()
 
 	// Test basic properties
-	testutil.AssertEqual(t, BinPowerUpName, powerup.Name())
+	testutil.AssertEqual(t, PathPowerUpName, powerup.Name())
 	testutil.AssertEqual(t, "Creates symlinks for executable files in ~/bin", powerup.Description())
 	testutil.AssertEqual(t, types.RunModeMany, powerup.RunMode())
 }
 
-func TestBinPowerUp_Process(t *testing.T) {
+func TestPathPowerUp_Process(t *testing.T) {
 	tests := []struct {
 		name          string
 		matches       []types.TriggerMatch
@@ -32,7 +32,7 @@ func TestBinPowerUp_Process(t *testing.T) {
 					Path:         "bin/script.sh",
 					AbsolutePath: "/home/user/dotfiles/test-pack/bin/script.sh",
 					TriggerName:  "filename",
-					PowerUpName:  BinPowerUpName,
+					PowerUpName:  PathPowerUpName,
 				},
 			},
 			expectedCount: 1,
@@ -42,8 +42,8 @@ func TestBinPowerUp_Process(t *testing.T) {
 				testutil.AssertEqual(t, "/home/user/dotfiles/test-pack/bin/script.sh", action.Source)
 				testutil.AssertEqual(t, "~/bin/script.sh", action.Target)
 				testutil.AssertEqual(t, "test-pack", action.Pack)
-				testutil.AssertEqual(t, BinPowerUpName, action.PowerUpName)
-				testutil.AssertEqual(t, BinPowerUpPriority, action.Priority)
+				testutil.AssertEqual(t, PathPowerUpName, action.PowerUpName)
+				testutil.AssertEqual(t, PathPowerUpPriority, action.Priority)
 			},
 		},
 		{
@@ -54,14 +54,14 @@ func TestBinPowerUp_Process(t *testing.T) {
 					Path:         "bin/tool1",
 					AbsolutePath: "/dotfiles/pack1/bin/tool1",
 					TriggerName:  "filename",
-					PowerUpName:  BinPowerUpName,
+					PowerUpName:  PathPowerUpName,
 				},
 				{
 					Pack:         "pack2",
 					Path:         ".local/bin/tool2",
 					AbsolutePath: "/dotfiles/pack2/.local/bin/tool2",
 					TriggerName:  "filename",
-					PowerUpName:  BinPowerUpName,
+					PowerUpName:  PathPowerUpName,
 				},
 			},
 			expectedCount: 2,
@@ -80,7 +80,7 @@ func TestBinPowerUp_Process(t *testing.T) {
 					Path:         "bin/script",
 					AbsolutePath: "/dotfiles/test-pack/bin/script",
 					TriggerName:  "filename",
-					PowerUpName:  BinPowerUpName,
+					PowerUpName:  PathPowerUpName,
 					PowerUpOptions: map[string]interface{}{
 						"target": "~/.local/bin",
 					},
@@ -99,14 +99,14 @@ func TestBinPowerUp_Process(t *testing.T) {
 					Path:         "bin/tool",
 					AbsolutePath: "/dotfiles/pack1/bin/tool",
 					TriggerName:  "filename",
-					PowerUpName:  BinPowerUpName,
+					PowerUpName:  PathPowerUpName,
 				},
 				{
 					Pack:         "pack2",
 					Path:         "scripts/tool",
 					AbsolutePath: "/dotfiles/pack2/scripts/tool",
 					TriggerName:  "filename",
-					PowerUpName:  BinPowerUpName,
+					PowerUpName:  PathPowerUpName,
 				},
 			},
 			expectError: true,
@@ -120,7 +120,7 @@ func TestBinPowerUp_Process(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			powerup := NewBinPowerUp()
+			powerup := NewPathPowerUp()
 			actions, err := powerup.Process(tt.matches)
 
 			if tt.expectError {
@@ -138,8 +138,8 @@ func TestBinPowerUp_Process(t *testing.T) {
 	}
 }
 
-func TestBinPowerUp_ValidateOptions(t *testing.T) {
-	powerup := NewBinPowerUp()
+func TestPathPowerUp_ValidateOptions(t *testing.T) {
+	powerup := NewPathPowerUp()
 
 	tests := []struct {
 		name        string

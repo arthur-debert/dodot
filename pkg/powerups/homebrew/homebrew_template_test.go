@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/powerups/bin"
 	"github.com/arthur-debert/dodot/pkg/powerups/install"
+	"github.com/arthur-debert/dodot/pkg/powerups/path"
 	"github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
 	"github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
 	"github.com/arthur-debert/dodot/pkg/powerups/symlink"
@@ -44,7 +44,7 @@ func TestOtherPowerUps_GetTemplateContent(t *testing.T) {
 		expectedContent []string // content that should be present if hasTemplate is true
 	}{
 		{"SymlinkPowerUp", symlink.NewSymlinkPowerUp(), false, nil},
-		{"BinPowerUp", bin.NewBinPowerUp(), false, nil},
+		{"PathPowerUp", path.NewPathPowerUp(), false, nil},
 		{"InstallScriptPowerUp", install.NewInstallScriptPowerUp(), true, []string{"#!/usr/bin/env bash", "dodot install", "PACK_NAME"}},
 		{"ShellAddPathPowerUp", shell_add_path.NewShellAddPathPowerUp(), true, []string{"#!/usr/bin/env sh", "PATH modifications", "PACK_NAME"}},
 		{"ShellProfilePowerUp", shell_profile.NewShellProfilePowerUp(), true, []string{"#!/usr/bin/env sh", "Shell aliases", "PACK_NAME"}},

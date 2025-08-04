@@ -55,7 +55,7 @@ More detailed explanation if needed.
 
 For Bug Fixes:
 ```
-fixes #42: correct PATH handling in bin powerup
+fixes #42: correct PATH handling in path powerup
 
 The issue was caused by shell quoting when paths contained spaces.
 Now properly escape paths before adding to shell configuration.
