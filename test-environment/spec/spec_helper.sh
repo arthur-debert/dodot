@@ -25,7 +25,7 @@ export HOME_TEMPLATE="$TEST_ENV_DIR/home-template"
 export DOTFILES_TEMPLATE="$TEST_ENV_DIR/dotfiles-root-template"
 
 # Source powerup verification functions
-source "$SPEC_DIR/powerup_verification.sh"
+source "/test-environment/spec/powerup_verification.sh"
 
 # Forward declaration - actual implementation is at end of file
 # This ensures the enhanced version with verification is used

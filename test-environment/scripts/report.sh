@@ -5,9 +5,6 @@
 
 set -euo pipefail
 
-echo "=== Report Phase: Detailed Test Results ==="
-echo
-
 # Get test result from argument
 TEST_RESULT="${1:-UNKNOWN}"
 
@@ -18,61 +15,37 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔍 Test Result: $TEST_RESULT${NC}"
-echo
-
-# === Test Results Analysis ===
-echo "=== 📊 TEST RESULTS ANALYSIS ==="
-echo
-
-if [ -f "/tmp/test-results/test-results.tap" ]; then
-    echo -e "${GREEN}✅ TAP Results Found${NC}"
-    
-    # Count test results
-    TOTAL_TESTS=$(grep -c "^ok\|^not ok" /tmp/test-results/test-results.tap || echo "0")
-    PASSED_TESTS=$(grep -c "^ok" /tmp/test-results/test-results.tap || echo "0")
-    FAILED_TESTS=$(grep -c "^not ok" /tmp/test-results/test-results.tap || echo "0")
-    
-    echo "📈 Test Statistics:"
-    echo "  Total Tests:  $TOTAL_TESTS"
-    if [ "$PASSED_TESTS" -gt 0 ]; then
-        echo -e "  ${GREEN}Passed: $PASSED_TESTS${NC}"
-    fi
-    if [ "$FAILED_TESTS" -gt 0 ]; then
-        echo -e "  ${RED}Failed: $FAILED_TESTS${NC}"
-    fi
-    
-    # Show failed tests if any
-    if [ "$FAILED_TESTS" -gt 0 ]; then
-        echo
-        echo -e "${RED}❌ Failed Tests:${NC}"
-        echo "----------------"
-        grep "^not ok" /tmp/test-results/test-results.tap || echo "No failures found"
-    fi
-    
-    echo
-else
-    echo -e "${YELLOW}⚠️  No TAP results found${NC}"
-fi
+echo "📊 TEST RESULTS SUMMARY"
+echo "======================"
 
 # === JUnit XML Analysis ===
-if [ -f "/tmp/test-results/junit.xml" ]; then
+if [ -f "/test-environment/results/junit.xml" ]; then
     echo -e "${GREEN}✅ JUnit XML Results Found${NC}"
     
     # Extract basic stats from JUnit XML
     if command -v xmllint &> /dev/null; then
-        TESTS=$(xmllint --xpath 'string(//testsuite/@tests)' /tmp/test-results/junit.xml 2>/dev/null || echo "N/A")
-        FAILURES=$(xmllint --xpath 'string(//testsuite/@failures)' /tmp/test-results/junit.xml 2>/dev/null || echo "N/A")
-        ERRORS=$(xmllint --xpath 'string(//testsuite/@errors)' /tmp/test-results/junit.xml 2>/dev/null || echo "N/A")
-        TIME=$(xmllint --xpath 'string(//testsuite/@time)' /tmp/test-results/junit.xml 2>/dev/null || echo "N/A")
+        TESTS=$(xmllint --xpath 'string(//testsuite/@tests)' /test-environment/results/junit.xml 2>/dev/null || echo "N/A")
+        FAILURES=$(xmllint --xpath 'string(//testsuite/@failures)' /test-environment/results/junit.xml 2>/dev/null || echo "N/A")
+        ERRORS=$(xmllint --xpath 'string(//testsuite/@errors)' /test-environment/results/junit.xml 2>/dev/null || echo "N/A")
+        TIME=$(xmllint --xpath 'string(//testsuite/@time)' /test-environment/results/junit.xml 2>/dev/null || echo "N/A")
         
         echo "📋 JUnit Summary:"
         echo "  Tests: $TESTS"
         echo "  Failures: $FAILURES" 
         echo "  Errors: $ERRORS"
         echo "  Time: ${TIME}s"
+        
+        # Show failed tests if any
+        if [ "$FAILURES" != "0" ] && [ "$FAILURES" != "N/A" ]; then
+            echo
+            echo -e "${RED}❌ Failed Tests:${NC}"
+            echo "----------------"
+            xmllint --xpath '//testcase[failure]/@name' /test-environment/results/junit.xml 2>/dev/null | sed 's/ name="/\n  /g; s/"//g' | grep -v '^$' || echo "  (Could not extract failure details)"
+        fi
     fi
     echo
+else
+    echo -e "${YELLOW}⚠️  No JUnit XML results found${NC}"
 fi
 
 # === Dodot Log Analysis ===
@@ -117,11 +90,8 @@ echo "Container: $(hostname)"
 # Available reports
 echo
 echo "📁 Generated Reports:"
-if [ -f "/tmp/test-results/junit.xml" ]; then
-    echo "  ✅ JUnit XML: /tmp/test-results/junit.xml"
-fi
-if [ -f "/tmp/test-results/test-results.tap" ]; then
-    echo "  ✅ TAP format: /tmp/test-results/test-results.tap"
+if [ -f "/test-environment/results/junit.xml" ]; then
+    echo "  ✅ JUnit XML: /test-environment/results/junit.xml"
 fi
 if [ -f "/tmp/test-results/test-output.log" ]; then
     echo "  ✅ Full output: /tmp/test-results/test-output.log"
