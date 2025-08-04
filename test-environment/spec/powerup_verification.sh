@@ -153,38 +153,78 @@ verify_install_script_deployed() {
 }
 
 # Verify brewfile powerup deployment
-# Usage: verify_brewfile_deployed <pack>
+# Usage: verify_brewfile_deployed <pack> [mode]
+# Modes: deployed (default), not-deployed, idempotent
 # Example: verify_brewfile_deployed "tools"
+# Example: verify_brewfile_deployed "tools" "idempotent"
 verify_brewfile_deployed() {
   local pack=$1
+  local mode=${2:-"deployed"}
   local sentinel_file="$HOME/.local/share/dodot/brewfile/$pack"
   local brew_log="/tmp/brew-calls.log"
   
-  # Check sentinel exists
-  if [ ! -f "$sentinel_file" ]; then
-    echo "ERROR: Sentinel file $sentinel_file does not exist" >&2
-    return 1
-  fi
-  
-  # Verify sentinel contains checksum (64 hex chars)
-  if ! grep -qE "^[a-f0-9]{64}$" "$sentinel_file"; then
-    echo "ERROR: Sentinel file $sentinel_file does not contain valid checksum" >&2
-    return 1
-  fi
-  
-  # Verify brew was called with correct arguments (mock behavior)
-  if [ ! -f "$brew_log" ]; then
-    echo "ERROR: Brew log file $brew_log does not exist" >&2
-    return 1
-  fi
-  
-  # Check that brew bundle was called with the correct file path
-  local brewfile_path="$TEST_DOTFILES_ROOT/$pack/Brewfile"
-  if ! grep -q "brew bundle --file $brewfile_path" "$brew_log"; then
-    echo "ERROR: No brew bundle call found with correct path in $brew_log" >&2
-    echo "Expected: brew bundle --file $brewfile_path" >&2
-    return 1
-  fi
+  case "$mode" in
+    "deployed")
+      # Check sentinel exists
+      if [ ! -f "$sentinel_file" ]; then
+        echo "ERROR: Sentinel file $sentinel_file does not exist" >&2
+        return 1
+      fi
+      
+      # Verify sentinel contains checksum (64 hex chars)
+      if ! grep -qE "^[a-f0-9]{64}$" "$sentinel_file"; then
+        echo "ERROR: Sentinel file $sentinel_file does not contain valid checksum" >&2
+        return 1
+      fi
+      
+      # Verify brew was called with correct arguments (mock behavior)
+      if [ ! -f "$brew_log" ]; then
+        echo "ERROR: Brew log file $brew_log does not exist" >&2
+        return 1
+      fi
+      
+      # Check that brew bundle was called with the correct file path
+      local brewfile_path="$TEST_DOTFILES_ROOT/$pack/Brewfile"
+      if ! grep -q "brew bundle --file $brewfile_path" "$brew_log"; then
+        echo "ERROR: No brew bundle call found with correct path in $brew_log" >&2
+        echo "Expected: brew bundle --file $brewfile_path" >&2
+        return 1
+      fi
+      ;;
+      
+    "not-deployed")
+      # Check sentinel does not exist
+      if [ -f "$sentinel_file" ]; then
+        echo "ERROR: Sentinel file $sentinel_file exists when it shouldn't" >&2
+        return 1
+      fi
+      
+      # Check brew was not called
+      if [ -f "$brew_log" ] && grep -q "brew bundle" "$brew_log"; then
+        echo "ERROR: Brew bundle was called when it shouldn't have been" >&2
+        return 1
+      fi
+      ;;
+      
+    "idempotent")
+      # Check sentinel exists (from previous run)
+      if [ ! -f "$sentinel_file" ]; then
+        echo "ERROR: Sentinel file $sentinel_file does not exist (should exist from previous run)" >&2
+        return 1
+      fi
+      
+      # Check brew was NOT called (log should not exist or not contain bundle command)
+      if [ -f "$brew_log" ] && grep -q "brew bundle" "$brew_log"; then
+        echo "ERROR: Brew bundle was called on idempotent run" >&2
+        return 1
+      fi
+      ;;
+      
+    *)
+      echo "ERROR: Unknown mode '$mode'. Valid modes: deployed, not-deployed, idempotent" >&2
+      return 1
+      ;;
+  esac
   
   return 0
 }
