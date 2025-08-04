@@ -159,35 +159,11 @@ func TestCompatibilityFunctions(t *testing.T) {
 			},
 		},
 		{
-			name: "GetShellSourceDir",
-			fn:   GetShellSourceDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "shell_source"), "Should end with 'shell_source'")
-			},
-		},
-		{
 			name: "GetSymlinkDir",
 			fn:   GetSymlinkDir,
 			verify: func(t *testing.T, result string) {
 				testutil.AssertNotEmpty(t, result)
 				testutil.AssertTrue(t, strings.HasSuffix(result, "symlink"), "Should end with 'symlink'")
-			},
-		},
-		{
-			name: "GetShellDir",
-			fn:   GetShellDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "shell"), "Should end with 'shell'")
-			},
-		},
-		{
-			name: "GetInitScriptPath",
-			fn:   GetInitScriptPath,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "dodot-init.sh"), "Should end with 'dodot-init.sh'")
 			},
 		},
 		{

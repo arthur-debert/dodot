@@ -58,16 +58,6 @@ func GetPathDir() string {
 	return p.PathDir()
 }
 
-// GetShellSourceDir returns the shell source deployment directory
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetShellSourceDir() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetDeployedDir(), "shell_source")
-	}
-	return p.ShellSourceDir()
-}
-
 // GetSymlinkDir returns the symlink deployment directory
 // This is a compatibility wrapper for migration from pkg/types/paths.go
 func GetSymlinkDir() string {
@@ -76,26 +66,6 @@ func GetSymlinkDir() string {
 		return filepath.Join(GetDeployedDir(), "symlink")
 	}
 	return p.SymlinkDir()
-}
-
-// GetShellDir returns the shell scripts directory
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetShellDir() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetDodotDataDir(), ShellDir)
-	}
-	return p.ShellDir()
-}
-
-// GetInitScriptPath returns the path to the dodot-init.sh script
-// This is a compatibility wrapper for migration from pkg/types/paths.go
-func GetInitScriptPath() string {
-	p, err := getDefaultPaths()
-	if err != nil {
-		return filepath.Join(GetShellDir(), InitScriptName)
-	}
-	return p.InitScriptPath()
 }
 
 // GetInstallDir returns the install scripts sentinel directory
