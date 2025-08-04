@@ -323,6 +323,36 @@ func TestSynthfsExecutor_Symlink(t *testing.T) {
 		"Symlink should have been created")
 }
 
+func TestSynthfsExecutor_Rollback(t *testing.T) {
+	// Use a temp directory that mimics dodot structure
+	tempDir := testutil.TempDir(t, "synthfs-rollback")
+	t.Setenv("HOME", tempDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempDir, ".local", "share", "dodot"))
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
+
+	testutil.CreateDir(t, tempDir, ".local")
+	testutil.CreateDir(t, filepath.Join(tempDir, ".local"), "share")
+	testutil.CreateDir(t, filepath.Join(tempDir, ".local", "share"), "dodot")
+
+	// Create paths and executor with rollback enabled (default)
+	p, err := paths.New("")
+	testutil.AssertNoError(t, err)
+	executor := NewSynthfsExecutorWithPaths(false, p)
+
+	t.Run("rollback enabled by default", func(t *testing.T) {
+		// The executor should have rollback enabled by default
+		testutil.AssertTrue(t, executor.enableRollback, "Rollback should be enabled by default")
+	})
+
+	t.Run("can disable rollback", func(t *testing.T) {
+		executor.EnableRollback(false)
+		testutil.AssertFalse(t, executor.enableRollback, "Rollback should be disabled")
+
+		// Re-enable for next tests
+		executor.EnableRollback(true)
+	})
+}
+
 func TestSynthfsExecutor_Force(t *testing.T) {
 	// Use a temp directory that mimics dodot structure
 	tempDir := testutil.TempDir(t, "synthfs-force")

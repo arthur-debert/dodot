@@ -37,6 +37,7 @@ type SynthfsExecutor struct {
 	paths             *paths.Paths
 	allowHomeSymlinks bool
 	backupExisting    bool
+	enableRollback    bool
 }
 
 // NewSynthfsExecutor creates a new synthfs-based executor
@@ -54,6 +55,7 @@ func NewSynthfsExecutor(dryRun bool) *SynthfsExecutor {
 		paths:             p,
 		allowHomeSymlinks: false, // Default to safe mode
 		backupExisting:    true,  // Default to backing up existing files
+		enableRollback:    true,  // Default to enabling rollback for safety
 	}
 }
 
@@ -70,6 +72,7 @@ func NewSynthfsExecutorWithPaths(dryRun bool, p *paths.Paths) *SynthfsExecutor {
 		paths:             p,
 		allowHomeSymlinks: false,
 		backupExisting:    true,
+		enableRollback:    true,
 	}
 }
 
@@ -84,6 +87,12 @@ func (e *SynthfsExecutor) EnableHomeSymlinks(backup bool) *SynthfsExecutor {
 // EnableForce enables or disables force mode (overwrite existing files)
 func (e *SynthfsExecutor) EnableForce(force bool) *SynthfsExecutor {
 	e.force = force
+	return e
+}
+
+// EnableRollback enables or disables automatic rollback on errors
+func (e *SynthfsExecutor) EnableRollback(enable bool) *SynthfsExecutor {
+	e.enableRollback = enable
 	return e
 }
 
@@ -127,11 +136,33 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 	}
 
 	// Execute the batch
-	e.logger.Info().Int("operationCount", len(batch.Operations())).Msg("Executing operations")
+	e.logger.Info().
+		Int("operationCount", len(batch.Operations())).
+		Bool("rollbackEnabled", e.enableRollback).
+		Msg("Executing operations")
 
 	ctx := context.Background()
-	if err := batch.WithContext(ctx).Execute(); err != nil {
-		e.logger.Error().Err(err).Msg("Batch execution failed")
+	var err error
+
+	if e.enableRollback {
+		// Use ExecuteWithRollback for safer operations
+		err = batch.WithContext(ctx).ExecuteWithRollback()
+		if err != nil {
+			e.logger.Error().
+				Err(err).
+				Msg("Batch execution failed, rollback was attempted")
+		}
+	} else {
+		// Use regular Execute without rollback
+		err = batch.WithContext(ctx).Execute()
+		if err != nil {
+			e.logger.Error().
+				Err(err).
+				Msg("Batch execution failed")
+		}
+	}
+
+	if err != nil {
 		return errors.Wrapf(err, errors.ErrActionExecute,
 			"failed to execute operations")
 	}
