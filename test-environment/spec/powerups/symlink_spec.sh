@@ -249,97 +249,11 @@ EOF
       echo "\" plugin" > "$DOTFILES_ROOT/vim/.vim/plugin/test.vim"
       echo "\" gvimrc" > "$DOTFILES_ROOT/vim/.gvimrc"
       
-      # Update config to include .gvimrc
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".vimrc" },
-    { type = "FileName", pattern = ".gvimrc" },
-    { type = "Directory", pattern = ".vim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
       When call "$DODOT" deploy vim
       The status should be success
-    End
-    
-    It 'verifies .vimrc symlink exists'
-      # Setup from previous test
-      echo "\" vimrc" > "$DOTFILES_ROOT/vim/.vimrc"
-      echo "\" gvimrc" > "$DOTFILES_ROOT/vim/.gvimrc"
-      mkdir -p "$DOTFILES_ROOT/vim/.vim/plugin"
-      echo "\" plugin" > "$DOTFILES_ROOT/vim/.vim/plugin/test.vim"
       
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".vimrc" },
-    { type = "FileName", pattern = ".gvimrc" },
-    { type = "Directory", pattern = ".vim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      When call test -L "$HOME/.vimrc"
-      The status should be success
-    End
-    
-    It 'verifies .gvimrc symlink exists'
-      # Setup files
-      echo "\" vimrc" > "$DOTFILES_ROOT/vim/.vimrc"
-      echo "\" gvimrc" > "$DOTFILES_ROOT/vim/.gvimrc"
-      
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "FileName", pattern = ".vimrc" },
-    { type = "FileName", pattern = ".gvimrc" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      When call test -L "$HOME/.gvimrc"
-      The status should be success
-    End
-    
-    It 'verifies .vim directory symlink exists'
-      # Setup files
-      mkdir -p "$DOTFILES_ROOT/vim/.vim/plugin"
-      echo "\" plugin" > "$DOTFILES_ROOT/vim/.vim/plugin/test.vim"
-      
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = ".vim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      When call test -L "$HOME/.vim"
-      The status should be success
+      # Verify all symlinks using composite function
+      The result of function verify_pack_deployed "vim" "symlink:.vimrc" "symlink:.gvimrc" "symlink:.vim" should be successful
     End
     
     It 'accesses content through directory symlink'
