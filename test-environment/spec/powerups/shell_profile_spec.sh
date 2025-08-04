@@ -12,13 +12,12 @@ Describe 'Shell Profile PowerUp'
       The error should not include "ERROR"
     End
     
-    It 'creates shell profile symlink'
+    It 'creates shell profile deployment structure'
       # Run deploy first
       "$DODOT" deploy bash >/dev/null 2>&1
       
-      # Check that shell_profile directory was created
-      When call test -d "$HOME/.local/share/dodot/deployed/shell_profile"
-      The status should be success
+      # Verification function checks directory structure is created correctly
+      The result of function verify_shell_profile_deployed "bash" "aliases.sh" should be successful
     End
     
     It 'creates bash.sh symlink in shell_profile directory'

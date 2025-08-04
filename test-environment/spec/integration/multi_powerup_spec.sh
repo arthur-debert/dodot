@@ -235,9 +235,9 @@ EOF
       When call "$DODOT" install
       The status should be success
       
-      # Both should create sentinels
-      The path "$HOME/.local/share/dodot/sentinels/install" should be directory
-      The path "$HOME/.local/share/dodot/sentinels/brewfile" should be directory
+      # Both should be deployed - verification functions check sentinel creation
+      The result of function verify_install_script_deployed "installers" "install.sh" "/tmp/multi-install.log" should be successful
+      The result of function verify_brewfile_deployed "installers" should be successful
     End
     
     It 'runs both installers on first deploy'
