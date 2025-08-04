@@ -267,9 +267,9 @@ EOF
       # First run
       "$DODOT" install >/dev/null 2>&1
       
-      # Check sentinels exist
-      The path "$HOME/.local/share/dodot/sentinels/install/sentinel-test" should be file
-      The path "$HOME/.local/share/dodot/sentinels/brewfile/sentinel-test" should be file
+      # Check both powerups deployed (sentinels created)
+      The result of function verify_install_script_deployed "sentinel-test" "install.sh" should be successful
+      The result of function verify_brewfile_deployed "sentinel-test" should be successful
     End
     
     It 'handles one installer failing'
