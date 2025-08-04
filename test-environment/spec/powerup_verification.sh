@@ -80,40 +80,80 @@ verify_symlink_deployed() {
 }
 
 # Verify shell profile powerup deployment
-# Usage: verify_shell_profile_deployed <pack> [source_file]
+# Usage: verify_shell_profile_deployed <pack> [source_file] [mode]
+# Modes: deployed (default), not-deployed, no-source
 # Example: verify_shell_profile_deployed "bash" "aliases.sh"
+# Example: verify_shell_profile_deployed "bash" "aliases.sh" "not-deployed"
 verify_shell_profile_deployed() {
   local pack=$1
   local source_file=${2:-"aliases.sh"}
+  local mode=${3:-"deployed"}
   local profile_dir="$HOME/.local/share/dodot/deployed/shell_profile"
   local deployed_file="$profile_dir/${pack}.sh"
   
-  # Check directory exists
-  if [ ! -d "$profile_dir" ]; then
-    echo "ERROR: Shell profile directory $profile_dir does not exist" >&2
-    return 1
-  fi
-  
-  # Check symlink exists
-  if [ ! -L "$deployed_file" ]; then
-    echo "ERROR: Expected symlink at $deployed_file does not exist" >&2
-    return 1
-  fi
-  
-  # Verify symlink points to source
-  local link_target=$(readlink "$deployed_file")
-  if [[ "$link_target" != *"$pack/$source_file"* ]]; then
-    echo "ERROR: Symlink $deployed_file points to $link_target, not $pack/$source_file" >&2
-    return 1
-  fi
-  
-  # Verify we can source it and check marker (if present)
-  # Convention: <PACK>_PROFILE_LOADED=1
-  local marker="${pack^^}_PROFILE_LOADED"
-  if ! bash -c "source '$deployed_file' 2>/dev/null && [ \"\$$marker\" = '1' ]"; then
-    # Marker check is optional for backward compatibility
-    echo "WARNING: Shell profile marker $marker not found in $deployed_file" >&2
-  fi
+  case "$mode" in
+    "deployed")
+      # Check directory exists
+      if [ ! -d "$profile_dir" ]; then
+        echo "ERROR: Shell profile directory $profile_dir does not exist" >&2
+        return 1
+      fi
+      
+      # Check symlink exists
+      if [ ! -L "$deployed_file" ]; then
+        echo "ERROR: Expected symlink at $deployed_file does not exist" >&2
+        return 1
+      fi
+      
+      # Verify symlink points to source
+      local link_target=$(readlink "$deployed_file")
+      if [[ "$link_target" != *"$pack/$source_file"* ]]; then
+        echo "ERROR: Symlink $deployed_file points to $link_target, not $pack/$source_file" >&2
+        return 1
+      fi
+      
+      # Verify we can source it and check marker (if present)
+      # Convention: <PACK>_PROFILE_LOADED=1
+      local marker="${pack^^}_PROFILE_LOADED"
+      if ! bash -c "source '$deployed_file' 2>/dev/null && [ \"\$$marker\" = '1' ]"; then
+        # Marker check is optional for backward compatibility
+        echo "WARNING: Shell profile marker $marker not found in $deployed_file" >&2
+      fi
+      ;;
+      
+    "not-deployed")
+      # Check deployed file does not exist
+      if [ -L "$deployed_file" ] || [ -e "$deployed_file" ]; then
+        echo "ERROR: Shell profile file $deployed_file exists when it shouldn't" >&2
+        return 1
+      fi
+      ;;
+      
+    "no-source")
+      # Check directory exists but file is not sourceable
+      # Useful for testing error conditions
+      if [ ! -d "$profile_dir" ]; then
+        echo "ERROR: Shell profile directory $profile_dir does not exist" >&2
+        return 1
+      fi
+      
+      if [ ! -e "$deployed_file" ]; then
+        echo "ERROR: Expected file at $deployed_file for no-source test" >&2
+        return 1
+      fi
+      
+      # Try to source it and expect failure
+      if bash -c "source '$deployed_file' 2>/dev/null"; then
+        echo "ERROR: Shell profile file $deployed_file is sourceable when it shouldn't be" >&2
+        return 1
+      fi
+      ;;
+      
+    *)
+      echo "ERROR: Unknown mode '$mode'. Valid modes: deployed, not-deployed, no-source" >&2
+      return 1
+      ;;
+  esac
   
   return 0
 }
