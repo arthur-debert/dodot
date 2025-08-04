@@ -29,15 +29,6 @@ Describe 'Shell Profile PowerUp'
       The status should be success
     End
     
-    It 'symlink points to aliases.sh'
-      # Run deploy first
-      "$DODOT" deploy bash >/dev/null 2>&1
-      
-      # This test is now redundant as verify_shell_profile_deployed checks this
-      When call verify_shell_profile_deployed "bash" "aliases.sh"
-      The status should be success
-    End
-    
     It 'can read aliases through symlink'
       # Run deploy first
       "$DODOT" deploy bash >/dev/null 2>&1

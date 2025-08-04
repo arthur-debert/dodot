@@ -28,24 +28,6 @@ Describe 'Shell Add Path PowerUp'
       The status should be success
     End
     
-    It 'symlink points to tools/bin directory'
-      # Run deploy first
-      "$DODOT" deploy tools >/dev/null 2>&1
-      
-      # This test is redundant as verify_shell_add_path_deployed checks this
-      When call verify_shell_add_path_deployed "tools" "bin"
-      The status should be success
-    End
-    
-    It 'can access files through symlink'
-      # Run deploy first
-      "$DODOT" deploy tools >/dev/null 2>&1
-      
-      # verify_shell_add_path_deployed already checks for executable files
-      When call verify_shell_add_path_deployed "tools" "bin"
-      The status should be success
-    End
-    
     It 'script is executable through deployed path'
       # Run deploy first
       "$DODOT" deploy tools >/dev/null 2>&1

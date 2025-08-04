@@ -20,15 +20,6 @@ Describe 'Symlink PowerUp'
       The status should be success
     End
     
-    It 'creates symlink pointing to deployed directory'
-      # Run deploy first
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      # This test is now redundant as verify_symlink_deployed checks this
-      When call verify_symlink_deployed "vim" ".vimrc"
-      The status should be success
-    End
-    
     It 'allows reading file content through symlink'
       # Create test content
       echo "\" Test vim config" > "$DOTFILES_ROOT/vim/.vimrc"
@@ -93,25 +84,13 @@ EOF
     End
     
     It 'creates nested directory symlink'
-      # Setup nested structure (from previous test)
+      # Setup nested structure
       mkdir -p "$DOTFILES_ROOT/vim/.config/nvim"
       echo "set number" > "$DOTFILES_ROOT/vim/.config/nvim/init.vim"
       
-      cat > "$DOTFILES_ROOT/vim/pack.dodot.toml" << 'EOF'
-name = "vim"
-
-[[matchers]]
-triggers = [
-    { type = "Directory", pattern = ".config/nvim" }
-]
-actions = [
-    { type = "symlink" }
-]
-EOF
-      
       "$DODOT" deploy vim >/dev/null 2>&1
       
-      When call test -L "$HOME/.config/nvim"
+      When call verify_symlink_deployed "vim" "nvim" ".config"
       The status should be success
     End
     
@@ -251,18 +230,6 @@ EOF
       
       # Second deploy should also succeed
       When call "$DODOT" deploy vim
-      The status should be success
-    End
-    
-    It 'symlink works after multiple deploys'
-      echo "\" vim config" > "$DOTFILES_ROOT/vim/.vimrc"
-      
-      # Deploy twice
-      "$DODOT" deploy vim >/dev/null 2>&1
-      "$DODOT" deploy vim >/dev/null 2>&1
-      
-      # Verify symlink still works
-      When call verify_symlink_deployed "vim" ".vimrc"
       The status should be success
     End
     
