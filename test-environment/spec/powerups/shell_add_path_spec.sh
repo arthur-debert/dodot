@@ -16,8 +16,8 @@ Describe 'Shell Add Path PowerUp'
       # Run deploy first
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      When call test -d "$HOME/.local/share/dodot/deployed/path"
-      The status should be success
+      # Verify deployment creates the necessary structure
+      The result of function verify_shell_add_path_deployed "tools" "bin" should be successful
     End
     
     It 'creates symlink to bin directory'
@@ -84,8 +84,7 @@ EOF
       ln -sf "$DOTFILES_ROOT/scripts/bin" "$HOME/.local/share/dodot/deployed/path/scripts"
       
       # Verify both are separate symlinks
-      When call test -L "$HOME/.local/share/dodot/deployed/path/tools"
-      The status should be success
+      The result of function verify_shell_add_path_deployed "tools" "bin" should be successful
     End
   End
   
@@ -99,8 +98,7 @@ EOF
       # the structure is correct for dodot-init.sh to process
       
       # Check that the deployed path directory contains valid directory symlinks
-      When call test -d "$HOME/.local/share/dodot/deployed/path/tools"
-      The status should be success
+      The result of function verify_shell_add_path_deployed "tools" "bin" should be successful
     End
   End
   
@@ -109,18 +107,16 @@ EOF
       # Deploy tools
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      # Should be named "tools", not "bin"
-      When call test -L "$HOME/.local/share/dodot/deployed/path/tools"
-      The status should be success
+      # Should be named "tools", not "bin" - verification function checks this
+      The result of function verify_shell_add_path_deployed "tools" "bin" should be successful
     End
     
     It 'does not create symlink named bin'
       # Deploy tools
       "$DODOT" deploy tools >/dev/null 2>&1
       
-      # Should NOT be named "bin"
-      When call test -e "$HOME/.local/share/dodot/deployed/path/bin"
-      The status should be failure
+      # Should NOT be named "bin" - verify non-existence
+      The result of function verify_shell_add_path_deployed "bin" "bin" "not-deployed" should be successful
     End
   End
   
