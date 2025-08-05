@@ -1,10 +1,11 @@
-package commands
+package homebrew_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +35,7 @@ cask 'visual-studio-code'
 	testutil.CreateFile(t, toolsPack, "Brewfile", brewfileContent)
 
 	// First install should create operations
-	result, err := InstallPacks(InstallPacksOptions{
+	result, err := commands.InstallPacks(commands.InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackNames:    []string{"tools"},
 		DryRun:       false,
@@ -72,7 +73,7 @@ cask 'visual-studio-code'
 	assert.NotEmpty(t, string(content), "Expected sentinel to contain checksum")
 
 	// Second install should not generate Brewfile operations (already installed)
-	result2, err := InstallPacks(InstallPacksOptions{
+	result2, err := commands.InstallPacks(commands.InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackNames:    []string{"tools"},
 		DryRun:       false,

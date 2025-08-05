@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package commands_test
+package homebrew_test
 
 import (
 	"os"
