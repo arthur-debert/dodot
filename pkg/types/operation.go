@@ -44,6 +44,8 @@ const (
 	StatusConflict OperationStatus = "conflict"
 	// StatusError means the operation resulted in an error
 	StatusError OperationStatus = "error"
+	// StatusUnknown means the status could not be determined
+	StatusUnknown OperationStatus = "unknown"
 )
 
 // Operation represents a low-level file system operation

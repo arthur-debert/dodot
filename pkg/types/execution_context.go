@@ -226,3 +226,29 @@ func (per *PackExecutionResult) GroupOperationsByGroupID() map[string][]*Operati
 
 	return groups
 }
+
+// FileStatus represents the current status of a file managed by dodot
+type FileStatus struct {
+	// Path is the file or directory path
+	Path string
+
+	// PowerUp is the power-up that manages this file
+	PowerUp string
+
+	// Status is the current status of the file
+	Status OperationStatus
+
+	// Message provides additional context about the status
+	Message string
+
+	// LastApplied is when the file was last successfully applied
+	LastApplied time.Time
+
+	// Metadata contains power-up specific status information
+	// For example:
+	// - Symlinks: target path, whether link is valid
+	// - Profiles: which shell files contain entries
+	// - PATH: whether directory is in PATH
+	// - Homebrew: package version, installation status
+	Metadata map[string]interface{}
+}
