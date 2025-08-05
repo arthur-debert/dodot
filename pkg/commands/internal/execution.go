@@ -80,7 +80,24 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 	// 7. Create execution context
 	ctx := core.NewExecutionContext(opts.Force, pathsInstance)
 
-	// 8. Convert actions to operations (PLANNING PHASE)
+	// 8. Extract and execute checksum operations early (for run-once actions)
+	// This is needed because brew/install actions need checksums during conversion
+	if !opts.DryRun && opts.RunMode == types.RunModeOnce {
+		// First, convert actions to get checksum operations
+		tempOps, err := core.ConvertActionsToOperationsWithContext(filteredActions, ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		// Execute only checksum operations to populate the context
+		_, err = ctx.ExecuteChecksumOperations(tempOps)
+		if err != nil {
+			logger.Warn().Err(err).Msg("Failed to execute checksum operations")
+			// Continue anyway - the operations will fail later if checksums are required
+		}
+	}
+
+	// 9. Convert actions to operations (PLANNING PHASE)
 	// This converts high-level actions into low-level operations
 	// No actual file system changes happen at this stage
 	var ops []types.Operation
@@ -106,7 +123,7 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 		}
 	}
 
-	// 9. Construct and return the result
+	// 10. Construct and return the result
 	// Note: At this point we have PLANNED operations but have NOT EXECUTED them
 	// Execution happens in the command handlers using executors
 	result := &types.ExecutionResult{

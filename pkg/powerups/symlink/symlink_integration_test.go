@@ -42,7 +42,7 @@ func TestSymlinkPowerUp_Integration(t *testing.T) {
 	// Execute operations (this is what the CLI does)
 	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
 	// Verify the symlink was created in home directory

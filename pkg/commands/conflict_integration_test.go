@@ -60,7 +60,7 @@ func TestConflictHandling_PreexistingFile_Integration(t *testing.T) {
 	// Execute operations - the conflicting one should be skipped
 	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err, "Executor should handle skippable operations gracefully")
 
 	// Verify the original file is untouched
@@ -92,7 +92,7 @@ func TestConflictHandling_PreexistingFile_Integration(t *testing.T) {
 
 	// Execute operations with force mode enabled
 	executor.EnableForce(true)
-	err = executor.ExecuteOperations(resultForce.Operations)
+	_, err = executor.ExecuteOperations(resultForce.Operations)
 	require.NoError(t, err)
 
 	// Verify the file is now a symlink

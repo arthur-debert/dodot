@@ -45,9 +45,9 @@ func (e *CombinedExecutor) EnableHomeSymlinks(backup bool) *CombinedExecutor {
 }
 
 // ExecuteOperations executes operations in the correct order, handling dependencies
-func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) error {
+func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) ([]types.OperationResult, error) {
 	if len(operations) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Separate operations into three categories:
@@ -56,6 +56,7 @@ func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) error
 	// 3. Sentinel file operations (must run after successful command execution)
 
 	var filesystemOps, commandOps, sentinelOps []types.Operation
+	allResults := make([]types.OperationResult, 0, len(operations))
 
 	for _, op := range operations {
 		if op.Status != types.StatusReady {
@@ -82,29 +83,35 @@ func (e *CombinedExecutor) ExecuteOperations(operations []types.Operation) error
 	// The synthfs library will handle dependency resolution (e.g., creating directories before files)
 	if len(filesystemOps) > 0 {
 		e.logger.Debug().Int("count", len(filesystemOps)).Msg("Executing filesystem operations")
-		if err := e.synthfsExecutor.ExecuteOperations(filesystemOps); err != nil {
-			return errors.Wrap(err, errors.ErrActionExecute, "failed to execute filesystem operations")
+		results, err := e.synthfsExecutor.ExecuteOperations(filesystemOps)
+		allResults = append(allResults, results...)
+		if err != nil {
+			return allResults, errors.Wrap(err, errors.ErrActionExecute, "failed to execute filesystem operations")
 		}
 	}
 
 	// 2. Execute commands (must happen after filesystem is set up)
 	if len(commandOps) > 0 {
 		e.logger.Debug().Int("count", len(commandOps)).Msg("Executing command operations")
-		if err := e.commandExecutor.ExecuteOperations(commandOps); err != nil {
+		results, err := e.commandExecutor.ExecuteOperations(commandOps)
+		allResults = append(allResults, results...)
+		if err != nil {
 			// If command execution fails, don't proceed to sentinel creation
-			return errors.Wrap(err, errors.ErrActionExecute, "failed to execute commands")
+			return allResults, errors.Wrap(err, errors.ErrActionExecute, "failed to execute commands")
 		}
 	}
 
 	// 3. Create sentinel files only after successful command execution
 	if len(sentinelOps) > 0 {
 		e.logger.Debug().Int("count", len(sentinelOps)).Msg("Creating sentinel files")
-		if err := e.synthfsExecutor.ExecuteOperations(sentinelOps); err != nil {
-			return errors.Wrap(err, errors.ErrActionExecute, "failed to create sentinel files")
+		results, err := e.synthfsExecutor.ExecuteOperations(sentinelOps)
+		allResults = append(allResults, results...)
+		if err != nil {
+			return allResults, errors.Wrap(err, errors.ErrActionExecute, "failed to create sentinel files")
 		}
 	}
 
-	return nil
+	return allResults, nil
 }
 
 // isSentinelWrite checks if a write operation is for a sentinel file

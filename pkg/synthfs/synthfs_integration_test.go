@@ -63,7 +63,7 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 	}
 
 	// Execute operations
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertNoError(t, err)
 
 	// Verify results
@@ -111,7 +111,7 @@ func TestSynthfsExecutor_Integration_Errors(t *testing.T) {
 		},
 	}
 
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertError(t, err)
 	if !strings.Contains(err.Error(), "outside dodot-controlled directories") {
 		t.Errorf("Expected error to contain 'outside dodot-controlled directories', got: %v", err)

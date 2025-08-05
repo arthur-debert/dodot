@@ -49,7 +49,7 @@ func TestFillPack_Integration(t *testing.T) {
 	testPaths, err := paths.New(testEnv.DotfilesRoot())
 	require.NoError(t, err)
 	executor := synthfs.NewSynthfsExecutorWithPaths(false, testPaths)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
 	// Verify files were created
@@ -185,7 +185,7 @@ func TestInitPack_Integration(t *testing.T) {
 	testPaths, err := paths.New(testEnv.DotfilesRoot())
 	require.NoError(t, err)
 	executor := synthfs.NewSynthfsExecutorWithPaths(false, testPaths)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
 	// Verify pack directory was created
