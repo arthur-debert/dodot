@@ -71,7 +71,7 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 
 	// 6. Filter run-once actions based on --force flag
 	if opts.RunMode == types.RunModeOnce {
-		filteredActions, err = core.FilterRunOnceActions(filteredActions, opts.Force)
+		filteredActions, err = core.FilterRunOnceActions(filteredActions, opts.Force, pathsInstance)
 		if err != nil {
 			return nil, err
 		}

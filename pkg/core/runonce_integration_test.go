@@ -66,13 +66,14 @@ echo install`
 		},
 	}
 
+	// Create execution context with checksums
+	testPaths := createTestPaths(t)
+
 	// Test 1: First run - both actions should execute
-	filtered, err := FilterRunOnceActions(actions, false)
+	filtered, err := FilterRunOnceActions(actions, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(filtered))
 
-	// Create execution context with checksums
-	testPaths := createTestPaths(t)
 	ctx := NewExecutionContext(false, testPaths)
 	ctx.ChecksumResults[brewfilePath] = brewChecksum
 	ctx.ChecksumResults[installPath] = installChecksum
@@ -101,12 +102,12 @@ echo install`
 	}
 
 	// Test 2: Second run - no actions should execute
-	filtered2, err := FilterRunOnceActions(actions, false)
+	filtered2, err := FilterRunOnceActions(actions, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 0, len(filtered2))
 
 	// Test 3: Force flag - both actions should execute
-	filtered3, err := FilterRunOnceActions(actions, true)
+	filtered3, err := FilterRunOnceActions(actions, true, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(filtered3))
 
@@ -120,7 +121,7 @@ echo install`
 	actions[0].Metadata["checksum"] = newBrewChecksum
 
 	// Should run Brewfile action only
-	filtered4, err := FilterRunOnceActions(actions, false)
+	filtered4, err := FilterRunOnceActions(actions, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 1, len(filtered4))
 	testutil.AssertEqual(t, types.ActionTypeBrew, filtered4[0].Type)
@@ -137,6 +138,9 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 	t.Cleanup(func() {
 		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
 	})
+
+	// Create paths instance for testing
+	testPaths := createTestPaths(t)
 
 	// Create actions for multiple packs
 	var actions []types.Action
@@ -164,7 +168,7 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 	}
 
 	// All should run first time
-	filtered, err := FilterRunOnceActions(actions, false)
+	filtered, err := FilterRunOnceActions(actions, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 3, len(filtered))
 
@@ -183,7 +187,7 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 	}
 
 	// Second run - only dev and network should run
-	filtered2, err := FilterRunOnceActions(actions, false)
+	filtered2, err := FilterRunOnceActions(actions, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(filtered2))
 
@@ -254,6 +258,7 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = FilterRunOnceActions(actions, false)
+		testPaths := createTestPaths(b)
+		_, _ = FilterRunOnceActions(actions, false, testPaths)
 	}
 }
