@@ -139,9 +139,3 @@ powerup = "template"
 	// Verify catchall still caught the remaining file
 	testutil.AssertEqual(t, "symlink", matchMap["random.txt"])
 }
-
-func TestProcessPackTriggers_NoCatchallIfDisabled(t *testing.T) {
-	// This test would require the ability to disable matchers,
-	// which might be added in the future
-	t.Skip("Test for disabling catchall matcher - to be implemented")
-}
