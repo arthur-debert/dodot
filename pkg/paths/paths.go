@@ -405,6 +405,30 @@ func (p *Paths) HomebrewDir() string {
 	return p.GetDataSubdir(HomebrewDir)
 }
 
+// SentinelPath returns the path to a sentinel file for a given powerup and pack.
+// This provides a unified way to construct sentinel file paths across the codebase.
+// The sentinel file is used to track whether a run-once action has been executed.
+//
+// The path structure is: <DataDir>/<powerUpType>/<packName>
+// For example: ~/.local/share/dodot/install/vim
+//
+// Currently supported powerUpTypes:
+//   - "install" - for install.sh scripts
+//   - "homebrew" - for Brewfile executions
+func (p *Paths) SentinelPath(powerUpType, packName string) string {
+	switch powerUpType {
+	case "install":
+		return filepath.Join(p.InstallDir(), packName)
+	case "homebrew":
+		return filepath.Join(p.HomebrewDir(), packName)
+	default:
+		// For future extensibility, we could use a generic sentinel directory
+		// return filepath.Join(p.GetDataSubdir("sentinels"), powerUpType, packName)
+		// For now, we'll just return the same pattern as existing code
+		return filepath.Join(p.GetDataSubdir(powerUpType), packName)
+	}
+}
+
 // GetHomeDirectory returns the user's home directory with proper error handling
 // This is migrated from pkg/utils/home.go
 func GetHomeDirectory() (string, error) {

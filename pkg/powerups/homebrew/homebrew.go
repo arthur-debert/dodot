@@ -3,7 +3,6 @@ package homebrew
 import (
 	_ "embed"
 	"fmt"
-	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -107,9 +106,10 @@ func (p *HomebrewPowerUp) GetTemplateContent() string {
 	return homebrewTemplate
 }
 
-// GetSentinelPath returns the path to the sentinel file for a pack
+// GetHomebrewSentinelPath returns the path to the sentinel file for a pack
+// Deprecated: Use pathsInstance.SentinelPath("homebrew", pack) instead
 func GetHomebrewSentinelPath(pack string, pathsInstance *paths.Paths) string {
-	return filepath.Join(pathsInstance.HomebrewDir(), pack)
+	return pathsInstance.SentinelPath("homebrew", pack)
 }
 
 func init() {

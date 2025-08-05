@@ -61,13 +61,14 @@ func ShouldRunOnceAction(action types.Action, force bool, pathsInstance *paths.P
 	}
 
 	// Determine sentinel path based on action type
-	var sentinelPath string
+	var powerUpType string
 	switch action.Type {
 	case types.ActionTypeBrew:
-		sentinelPath = filepath.Join(pathsInstance.HomebrewDir(), pack)
+		powerUpType = "homebrew"
 	case types.ActionTypeInstall:
-		sentinelPath = filepath.Join(pathsInstance.InstallDir(), pack)
+		powerUpType = "install"
 	}
+	sentinelPath := pathsInstance.SentinelPath(powerUpType, pack)
 
 	// Check if sentinel file exists
 	info, err := os.Stat(sentinelPath)
@@ -189,18 +190,19 @@ func GetRunOnceStatus(packPath, powerUpName string, pathsInstance *paths.Paths) 
 
 	// Map power-up names to their file patterns
 	var filePattern string
-	var sentinelDir string
 
 	switch powerUpName {
 	case "install":
 		filePattern = "install.sh"
-		sentinelDir = filepath.Join(pathsInstance.InstallDir(), filepath.Base(packPath))
 	case "homebrew":
 		filePattern = "Brewfile"
-		sentinelDir = filepath.Join(pathsInstance.HomebrewDir(), filepath.Base(packPath))
 	default:
 		return nil, fmt.Errorf("unknown run-once power-up: %s", powerUpName)
 	}
+
+	// Get the sentinel path using the unified API
+	packName := filepath.Base(packPath)
+	sentinelDir := pathsInstance.SentinelPath(powerUpName, packName)
 
 	// Check if the source file exists
 	sourceFile := filepath.Join(packPath, filePattern)
