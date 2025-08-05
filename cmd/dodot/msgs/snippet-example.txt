@@ -1,0 +1,11 @@
+  # Output the shell integration snippet for bash/zsh
+  dodot snippet
+
+  # Add to your shell config
+  dodot snippet >> ~/.zshrc
+
+  # For Fish shell
+  dodot snippet --shell fish >> ~/.config/fish/config.fish
+
+  # Preview what will be added without appending
+  dodot snippet --shell bash

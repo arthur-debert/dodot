@@ -1,0 +1,9 @@
+The snippet command outputs the shell integration code that you need to add to your shell configuration file (e.g., .bashrc, .zshrc, .config/fish/config.fish).
+
+By default, it outputs the snippet for bash/zsh. Use the --shell flag to specify fish or other shells.
+
+This command is designed to make shell integration setup more convenient:
+
+    dodot snippet >> ~/.zshrc
+
+After adding the snippet to your shell config, restart your shell or source the config file to enable dodot's shell integration.

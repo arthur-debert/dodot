@@ -11,6 +11,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -75,6 +76,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newTopicsCmd())
 	rootCmd.AddCommand(newCompletionCmd())
 
@@ -507,6 +509,49 @@ func newTopicsCmd() *cobra.Command {
 			return fmt.Errorf("help command not found")
 		},
 	}
+}
+
+func newSnippetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "snippet",
+		Short:   MsgSnippetShort,
+		Long:    MsgSnippetLong,
+		Example: MsgSnippetExample,
+		GroupID: "misc",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			shell, _ := cmd.Flags().GetString("shell")
+
+			// Initialize paths to get custom data directory if set
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Get custom data directory if using non-default paths
+			var customDataDir string
+			if p.UsedFallback() {
+				// Using default location, no custom dir needed
+				customDataDir = ""
+			} else {
+				// Check if using custom DODOT_DATA_DIR
+				if dataDir := os.Getenv("DODOT_DATA_DIR"); dataDir != "" {
+					customDataDir = dataDir
+				}
+			}
+
+			// Get the appropriate snippet for the shell
+			snippet := types.GetShellIntegrationSnippet(shell, customDataDir)
+
+			// Output the snippet
+			fmt.Print(snippet)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringP("shell", "s", "bash", "Shell type (bash, zsh, fish)")
+
+	return cmd
 }
 
 func newCompletionCmd() *cobra.Command {
