@@ -4,7 +4,7 @@ project_name: dodot
 
 builds:
   - id: dodot
-    main: ./cmd/dodot
+    main: ./cmd/dodot/main
     binary: dodot
     ldflags:
       - -s -w -X github.com/arthur-debert/dodot/internal/version.Version={{.Version}} -X github.com/arthur-debert/dodot/internal/version.Commit={{.Commit}} -X github.com/arthur-debert/dodot/internal/version.Date={{.Date}}
