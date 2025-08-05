@@ -126,9 +126,9 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 	case types.ActionTypeMkdir:
 		ops, err = convertMkdirAction(action)
 	case types.ActionTypeShellSource:
-		ops, err = convertShellSourceAction(action)
+		ops, err = convertShellSourceActionWithContext(action, ctx)
 	case types.ActionTypePathAdd:
-		ops, err = convertPathAddAction(action)
+		ops, err = convertPathAddActionWithContext(action, ctx)
 	case types.ActionTypeRun:
 		logger.Debug().Msg("Run actions are not converted to file operations")
 		return nil, nil
@@ -335,10 +335,14 @@ func convertMkdirAction(action types.Action) ([]types.Operation, error) {
 	return ops, nil
 }
 
-// convertShellSourceAction converts shell source action to operations
-func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
+// convertShellSourceActionWithContext converts shell source action to operations with execution context
+func convertShellSourceActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "shell_source action requires source")
+	}
+
+	if ctx == nil || ctx.Paths == nil {
+		return nil, errors.New(errors.ErrActionInvalid, "shell_source action requires execution context with paths")
 	}
 
 	// Create symlink in shell_profile deployment directory
@@ -347,7 +351,7 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	if action.Pack == "" {
 		deployedName = filepath.Base(source)
 	}
-	deployedPath := filepath.Join(paths.GetShellProfileDir(), deployedName)
+	deployedPath := filepath.Join(ctx.Paths.ShellProfileDir(), deployedName)
 
 	ops := []types.Operation{
 		{
@@ -361,17 +365,21 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	// Ensure deployment directory exists
 	ops = append([]types.Operation{{
 		Type:        types.OperationCreateDir,
-		Target:      paths.GetShellProfileDir(),
+		Target:      ctx.Paths.ShellProfileDir(),
 		Description: "Create shell profile deployment directory",
 	}}, ops...)
 
 	return ops, nil
 }
 
-// convertPathAddAction converts path add action to operations
-func convertPathAddAction(action types.Action) ([]types.Operation, error) {
+// convertPathAddActionWithContext converts path add action to operations with execution context
+func convertPathAddActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "path_add action requires source")
+	}
+
+	if ctx == nil || ctx.Paths == nil {
+		return nil, errors.New(errors.ErrActionInvalid, "path_add action requires execution context with paths")
 	}
 
 	// Create symlink in path deployment directory
@@ -380,7 +388,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	if deployedName == "" {
 		deployedName = filepath.Base(source)
 	}
-	deployedPath := filepath.Join(paths.GetPathDir(), deployedName)
+	deployedPath := filepath.Join(ctx.Paths.PathDir(), deployedName)
 
 	ops := []types.Operation{
 		{
@@ -394,7 +402,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	// Ensure deployment directory exists
 	ops = append([]types.Operation{{
 		Type:        types.OperationCreateDir,
-		Target:      paths.GetPathDir(),
+		Target:      ctx.Paths.PathDir(),
 		Description: "Create PATH deployment directory",
 	}}, ops...)
 
