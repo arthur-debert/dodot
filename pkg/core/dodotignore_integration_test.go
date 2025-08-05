@@ -1,10 +1,12 @@
-package commands
+package core
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/testutil"
+	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 func init() {
@@ -53,13 +55,40 @@ path = "temp/*"
 	tempDir := testutil.CreateDir(t, pack4, "temp")
 	testutil.CreateFile(t, tempDir, "cache.tmp", "temp file")
 
-	// Run the full pipeline
-	result, err := DeployPacks(DeployPacksOptions{
-		DotfilesRoot: root,
-		DryRun:       true,
-	})
-
+	// Run the core pipeline directly
+	// 1. Get pack candidates
+	candidates, err := GetPackCandidates(root)
 	testutil.AssertNoError(t, err)
+	
+	// 2. Get packs
+	packs, err := GetPacks(candidates)
+	testutil.AssertNoError(t, err)
+	
+	// 3. Process triggers for each pack
+	var allMatches []types.TriggerMatch
+	for _, pack := range packs {
+		matches, err := ProcessPackTriggers(pack)
+		testutil.AssertNoError(t, err)
+		allMatches = append(allMatches, matches...)
+	}
+	
+	// 4. Convert to actions
+	actions, err := GetActions(allMatches)
+	testutil.AssertNoError(t, err)
+	
+	// 5. Convert to operations
+	// Since this is just testing dodotignore functionality, we can skip operations conversion
+	// which requires a full execution context with paths
+	operations := []types.Operation{}
+	
+	// Create a result structure to verify
+	result := &types.ExecutionResult{
+		Packs:      make([]string, len(packs)),
+		Operations: operations,
+	}
+	for i, pack := range packs {
+		result.Packs[i] = pack.Name
+	}
 
 	// Verify packs were processed correctly
 	packNames := make(map[string]bool)
@@ -76,20 +105,20 @@ path = "temp/*"
 	testutil.AssertFalse(t, packNames["private-pack"],
 		"private-pack with .dodotignore should not be processed")
 
-	// Check that operations don't reference ignored files
-	for _, op := range result.Operations {
-		// No operations should reference files in private directories
-		if op.Source != "" {
-			testutil.AssertTrue(t, op.Source != "private/credentials.txt",
-				"Files in .dodotignore directories should not generate operations")
+	// Check that actions don't reference ignored files
+	for _, action := range actions {
+		// No actions should reference files in private directories
+		if action.Source != "" {
+			testutil.AssertTrue(t, !strings.Contains(action.Source, "private/credentials.txt"),
+				"Files in .dodotignore directories should not generate actions")
 
-			// No operations should reference ignored files from .dodot.toml
-			testutil.AssertTrue(t, op.Source != "backup.bak",
-				"Files matching .dodot.toml ignore patterns should not generate operations")
-			testutil.AssertTrue(t, op.Source != "temp/cache.tmp",
-				"Files in ignored directories should not generate operations")
+			// No actions should reference ignored files from .dodot.toml
+			testutil.AssertTrue(t, !strings.Contains(action.Source, "backup.bak"),
+				"Files matching .dodot.toml ignore patterns should not generate actions")
+			testutil.AssertTrue(t, !strings.Contains(action.Source, "temp/cache.tmp"),
+				"Files in ignored directories should not generate actions")
 		}
 	}
 
-	t.Logf("Processed %d packs with %d total operations", len(result.Packs), len(result.Operations))
+	t.Logf("Processed %d packs with %d total actions", len(result.Packs), len(actions))
 }

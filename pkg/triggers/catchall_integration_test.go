@@ -1,10 +1,11 @@
-package core
+package triggers_test
 
 import (
 	"path/filepath"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -45,7 +46,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	}
 
 	// Process triggers
-	matches, err := ProcessPackTriggers(pack)
+	matches, err := core.ProcessPackTriggers(pack)
 	testutil.AssertNoError(t, err)
 
 	// Build a map of matched files to their power-ups
@@ -122,7 +123,7 @@ powerup = "template"
 	}
 
 	// Process triggers
-	matches, err := ProcessPackTriggers(pack)
+	matches, err := core.ProcessPackTriggers(pack)
 	testutil.AssertNoError(t, err)
 
 	// Build a map of matched files to their power-ups

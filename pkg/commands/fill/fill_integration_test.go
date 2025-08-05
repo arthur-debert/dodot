@@ -1,10 +1,11 @@
-package commands
+package fill
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
@@ -168,7 +169,7 @@ func TestInitPack_Integration(t *testing.T) {
 	packName := "newpack"
 
 	// Execute InitPack
-	result, err := InitPack(InitPackOptions{
+	result, err := initialize.InitPack(initialize.InitPackOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackName:     packName,
 	})
@@ -220,7 +221,7 @@ func TestInitPack_ExistingPack(t *testing.T) {
 	require.NoError(t, os.MkdirAll(packPath, 0755))
 
 	// Try to init existing pack
-	result, err := InitPack(InitPackOptions{
+	result, err := initialize.InitPack(initialize.InitPackOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackName:     packName,
 	})
@@ -249,7 +250,7 @@ func TestInitPack_InvalidName(t *testing.T) {
 	}
 
 	for _, name := range invalidNames {
-		result, err := InitPack(InitPackOptions{
+		result, err := initialize.InitPack(initialize.InitPackOptions{
 			DotfilesRoot: testEnv.DotfilesRoot(),
 			PackName:     name,
 		})
