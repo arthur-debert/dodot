@@ -265,3 +265,50 @@ func (e *testError) Error() string {
 func (e *testError) Code() string {
 	return e.code
 }
+
+func TestRenderPackStatuses(t *testing.T) {
+	renderer := NewTerminalRenderer()
+
+	packs := []PackStatus{
+		{
+			Name:      "vim",
+			Status:    StatusSuccess,
+			HasConfig: true,
+			Files: []FileStatus{
+				{
+					PowerUp:  "symlink",
+					FilePath: ".vimrc",
+					Status:   StatusSuccess,
+					Target:   "$HOME/.vimrc",
+				},
+			},
+		},
+		{
+			Name:      "ignored",
+			Status:    StatusIgnored,
+			IsIgnored: true,
+		},
+	}
+
+	result := renderer.RenderPackStatuses(packs)
+
+	// Check for pack names
+	if !strings.Contains(result, "vim:") {
+		t.Error("Expected vim pack in output")
+	}
+	if !strings.Contains(result, "ignored:") {
+		t.Error("Expected ignored pack in output")
+	}
+
+	// Check for spacing between packs
+	lines := strings.Split(result, "\n")
+	emptyLineCount := 0
+	for _, line := range lines {
+		if line == "" {
+			emptyLineCount++
+		}
+	}
+	if emptyLineCount < 1 {
+		t.Error("Expected spacing between packs")
+	}
+}

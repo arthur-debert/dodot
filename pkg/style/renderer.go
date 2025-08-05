@@ -14,6 +14,7 @@ type Renderer interface {
 	RenderOperations(ops []types.Operation) string
 	RenderError(err error) string
 	RenderProgress(current, total int, message string) string
+	RenderPackStatuses(packs []PackStatus) string
 }
 
 // TerminalRenderer implements Renderer with rich terminal output
@@ -167,6 +168,25 @@ func (r *TerminalRenderer) RenderProgress(current, total int, message string) st
 		message)
 }
 
+// RenderPackStatuses renders multiple pack statuses
+func (r *TerminalRenderer) RenderPackStatuses(packs []PackStatus) string {
+	if len(packs) == 0 {
+		return MutedStyle.Sprint("No packs to display")
+	}
+
+	var result strings.Builder
+
+	for i, pack := range packs {
+		result.WriteString(RenderPackStatus(pack))
+		// Add spacing between packs except for the last one
+		if i < len(packs)-1 {
+			result.WriteString("\n\n")
+		}
+	}
+
+	return result.String()
+}
+
 // PlainRenderer implements Renderer with plain text output (no styling)
 type PlainRenderer struct{}
 
@@ -217,4 +237,68 @@ func (r *PlainRenderer) RenderError(err error) string {
 // RenderProgress renders plain progress
 func (r *PlainRenderer) RenderProgress(current, total int, message string) string {
 	return fmt.Sprintf("Progress: %d/%d - %s", current, total, message)
+}
+
+// RenderPackStatuses renders multiple pack statuses in plain text
+func (r *PlainRenderer) RenderPackStatuses(packs []PackStatus) string {
+	if len(packs) == 0 {
+		return "No packs to display"
+	}
+
+	var result strings.Builder
+
+	for i, pack := range packs {
+		result.WriteString(r.renderPlainPackStatus(pack))
+		// Add spacing between packs except for the last one
+		if i < len(packs)-1 {
+			result.WriteString("\n\n")
+		}
+	}
+
+	return result.String()
+}
+
+// renderPlainPackStatus renders a single pack status in plain text
+func (r *PlainRenderer) renderPlainPackStatus(ps PackStatus) string {
+	var result strings.Builder
+
+	// Pack header
+	result.WriteString(ps.Name + ":\n")
+
+	// Special case: ignored directory
+	if ps.IsIgnored {
+		result.WriteString("    .dodotignore : dodot is ignoring this dir\n")
+		return result.String()
+	}
+
+	// Config file if present
+	if ps.HasConfig {
+		result.WriteString("    config      : .dodot.toml : dodot config file found\n")
+	}
+
+	// File statuses
+	for _, fs := range ps.Files {
+		powerUp := fmt.Sprintf("%-10s", fs.PowerUp)
+		filePath := fmt.Sprintf("%-15s", fs.FilePath)
+
+		// Build status message
+		var statusMsg string
+		if verbs, ok := PowerUpVerbs[fs.PowerUp]; ok {
+			switch fs.Status {
+			case StatusSuccess:
+				statusMsg = fmt.Sprintf("%s %s", verbs.Past, fs.Target)
+				if fs.Date != "" {
+					statusMsg += fmt.Sprintf(" (%s)", fs.Date)
+				}
+			case StatusQueue:
+				statusMsg = fmt.Sprintf("%s %s", verbs.Future, fs.Target)
+			case StatusError:
+				statusMsg = fmt.Sprintf("failed to %s %s", strings.ToLower(fs.PowerUp), fs.Target)
+			}
+		}
+
+		result.WriteString(fmt.Sprintf("    %s : %s : %s\n", powerUp, filePath, statusMsg))
+	}
+
+	return strings.TrimRight(result.String(), "\n")
 }
