@@ -93,7 +93,6 @@ func TestDeployPacks(t *testing.T) {
 }
 
 func TestInstallPacks_RunOnceFiltering(t *testing.T) {
-	t.Skip("Skipping due to known failure condition")
 	root, packPath := setupExecutionTest(t)
 
 	opts := InstallPacksOptions{
@@ -112,7 +111,8 @@ func TestInstallPacks_RunOnceFiltering(t *testing.T) {
 		if strings.Contains(op.Description, "many-powerup") {
 			hasManyOp1 = true
 		}
-		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+		// Look for the sentinel file creation operation (not the execute operation)
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Description, "Create install sentinel for test-pack") {
 			hasOnceOp1 = true
 			// Simulate the operation by creating the sentinel file for the next run
 			testutil.CreateDir(t, filepath.Dir(op.Target), "")
@@ -133,7 +133,8 @@ func TestInstallPacks_RunOnceFiltering(t *testing.T) {
 		if strings.Contains(op.Description, "many-powerup") {
 			hasManyOp2 = true
 		}
-		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+		// The sentinel file should prevent the install operation from running again
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Description, "Create install sentinel for test-pack") {
 			hasOnceOp2 = true
 		}
 	}
@@ -152,7 +153,8 @@ func TestInstallPacks_RunOnceFiltering(t *testing.T) {
 		if strings.Contains(op.Description, "many-powerup") {
 			hasManyOp3 = true
 		}
-		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+		// Force flag should cause the install operation to run again
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Description, "Create install sentinel for test-pack") {
 			hasOnceOp3 = true
 		}
 	}
@@ -173,7 +175,8 @@ func TestInstallPacks_RunOnceFiltering(t *testing.T) {
 		if strings.Contains(op.Description, "many-powerup") {
 			hasManyOp4 = true
 		}
-		if op.Type == types.OperationWriteFile && strings.Contains(op.Target, filepath.Join("install", "test-pack")) {
+		// File change should cause the install operation to run again
+		if op.Type == types.OperationWriteFile && strings.Contains(op.Description, "Create install sentinel for test-pack") {
 			hasOnceOp4 = true
 		}
 	}
@@ -256,8 +259,13 @@ powerup = "many-powerup"
 	tempStateDir := testutil.TempDir(t, "dodot-state")
 	testutil.Setenv(t, "HOME", tempStateDir)
 
-	testutil.CreateDir(t, tempStateDir, ".local/share/dodot/symlinks")
-	testutil.CreateDir(t, tempStateDir, ".local/share/dodot/install")
+	// Set DODOT_DATA_DIR to ensure consistent paths across all paths.New() calls
+	dataDir := filepath.Join(tempStateDir, "dodot-data")
+	testutil.Setenv(t, "DODOT_DATA_DIR", dataDir)
+
+	// Create the necessary directories
+	testutil.CreateDir(t, dataDir, "symlinks")
+	testutil.CreateDir(t, dataDir, "install")
 
 	return root, packPath
 }
