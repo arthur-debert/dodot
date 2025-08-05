@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/style"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
@@ -213,19 +214,13 @@ func newDeployCmd() *cobra.Command {
 				}
 			}
 
-			// Display results
+			// Display results using rich output
 			if dryRun {
 				fmt.Println(MsgDryRunNotice)
 			}
 
-			if len(result.Operations) == 0 {
-				fmt.Println(MsgNoOperations)
-			} else {
-				fmt.Printf(MsgOperationsFormat, len(result.Operations))
-				for _, op := range result.Operations {
-					fmt.Printf(MsgOperationItem, op.Description)
-				}
-			}
+			renderer := style.NewTerminalRenderer()
+			fmt.Println(renderer.RenderOperations(result.Operations))
 
 			return nil
 		},
@@ -279,19 +274,13 @@ func newInstallCmd() *cobra.Command {
 				}
 			}
 
-			// Display results
+			// Display results using rich output
 			if dryRun {
 				fmt.Println(MsgDryRunNotice)
 			}
 
-			if len(result.Operations) == 0 {
-				fmt.Println(MsgNoOperations)
-			} else {
-				fmt.Printf(MsgOperationsFormat, len(result.Operations))
-				for _, op := range result.Operations {
-					fmt.Printf(MsgOperationItem, op.Description)
-				}
-			}
+			renderer := style.NewTerminalRenderer()
+			fmt.Println(renderer.RenderOperations(result.Operations))
 
 			return nil
 		},
@@ -322,15 +311,9 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrListPacks, err)
 			}
 
-			// Display the packs
-			if len(result.Packs) == 0 {
-				fmt.Println(MsgNoPacksFound)
-			} else {
-				fmt.Println(MsgAvailablePacks)
-				for _, pack := range result.Packs {
-					fmt.Printf(MsgPackItem, pack.Name)
-				}
-			}
+			// Display the packs using rich output
+			renderer := style.NewTerminalRenderer()
+			fmt.Println(renderer.RenderPackList(result.Packs))
 
 			return nil
 		},
@@ -363,19 +346,15 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrStatusPacks, err)
 			}
 
-			// Display status for each pack
-			for _, packStatus := range result.Packs {
-				fmt.Printf(MsgPackStatusFormat, packStatus.Name)
+			// Convert and display status using rich output
+			renderer := style.NewTerminalRenderer()
+			var packStatuses []style.PackStatus
 
-				// Show power-up statuses
-				for _, ps := range packStatus.PowerUpState {
-					fmt.Printf(MsgPowerUpStatus, ps.Name, ps.State)
-					if ps.Description != "" {
-						fmt.Printf(MsgPowerUpDesc, ps.Description)
-					}
-					fmt.Println()
-				}
+			for _, ps := range result.Packs {
+				packStatuses = append(packStatuses, style.ConvertPackStatus(ps))
 			}
+
+			fmt.Println(renderer.RenderPackStatuses(packStatuses))
 
 			return nil
 		},

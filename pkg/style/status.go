@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/pterm/pterm"
 )
 
@@ -175,4 +176,42 @@ func AggregatePackStatus(files []FileStatus) Status {
 
 	// Mixed state defaults to queue
 	return StatusQueue
+}
+
+// ConvertPackStatus converts from types.PackStatus to style.PackStatus
+// This is a temporary converter until we can properly map the data
+func ConvertPackStatus(pack types.PackStatus) PackStatus {
+	// For now, create a simple conversion
+	// TODO: This needs proper mapping based on actual power-up data
+	var files []FileStatus
+
+	for _, ps := range pack.PowerUpState {
+		// Map state to our Status type
+		var status Status
+		switch ps.State {
+		case "Installed", "installed":
+			status = StatusSuccess
+		case "Not Installed", "not installed", "pending":
+			status = StatusQueue
+		case "Failed", "failed", "error":
+			status = StatusError
+		default:
+			status = StatusQueue
+		}
+
+		// Create file status from power-up status
+		// This is simplified - real implementation would need more data
+		files = append(files, FileStatus{
+			PowerUp:  ps.Name,
+			FilePath: ps.Name, // This should be actual file path
+			Status:   status,
+			Target:   ps.Description,
+		})
+	}
+
+	return PackStatus{
+		Name:   pack.Name,
+		Status: AggregatePackStatus(files),
+		Files:  files,
+	}
 }
