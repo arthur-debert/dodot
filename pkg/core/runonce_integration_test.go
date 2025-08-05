@@ -173,7 +173,7 @@ func TestRunOncePowerUpsWithMultiplePacks(t *testing.T) {
 	testutil.AssertEqual(t, 3, len(filtered))
 
 	// Create sentinel for only "tools" pack
-	homebrewDir := paths.GetHomebrewDir()
+	homebrewDir := testPaths.HomebrewDir()
 	_ = os.MkdirAll(homebrewDir, 0755)
 
 	// Find and create sentinel for tools pack
@@ -245,8 +245,13 @@ func BenchmarkRunOnceFiltering(b *testing.B) {
 	}
 
 	// Create some sentinel files
-	homebrewDir := paths.GetHomebrewDir()
-	installDir := paths.GetInstallDir()
+	// Create a paths instance for benchmark setup
+	benchPaths, err := paths.New(tmpDir)
+	if err != nil {
+		b.Fatal(err)
+	}
+	homebrewDir := benchPaths.HomebrewDir()
+	installDir := benchPaths.InstallDir()
 	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
 
