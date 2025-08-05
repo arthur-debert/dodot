@@ -11,6 +11,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -75,6 +76,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newTopicsCmd())
 	rootCmd.AddCommand(newCompletionCmd())
 
@@ -507,6 +509,50 @@ func newTopicsCmd() *cobra.Command {
 			return fmt.Errorf("help command not found")
 		},
 	}
+}
+
+func newSnippetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "snippet",
+		Short:   MsgSnippetShort,
+		Long:    MsgSnippetLong,
+		Example: MsgSnippetExample,
+		GroupID: "misc",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			shell, _ := cmd.Flags().GetString("shell")
+			install, _ := cmd.Flags().GetBool("install")
+
+			// Initialize paths to get custom data directory if set
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Always use the actual data directory for the snippet
+			dataDir := p.DataDir()
+
+			// Install shell scripts if requested
+			if install {
+				if err := commands.InstallShellIntegration(dataDir); err != nil {
+					return fmt.Errorf("failed to install shell integration: %w", err)
+				}
+				fmt.Fprintf(os.Stderr, "Shell integration scripts installed to %s/shell/\n", dataDir)
+			}
+
+			// Get the appropriate snippet for the shell using the actual data directory
+			snippet := types.GetShellIntegrationSnippet(shell, dataDir)
+
+			// Output the snippet
+			fmt.Print(snippet)
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringP("shell", "s", "bash", "Shell type (bash, zsh, fish)")
+	cmd.Flags().Bool("install", false, "Install shell integration scripts to data directory")
+
+	return cmd
 }
 
 func newCompletionCmd() *cobra.Command {

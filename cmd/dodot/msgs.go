@@ -19,6 +19,7 @@ const (
 	MsgTopicsShort     = "Display available documentation topics"
 	MsgTopicsLong      = "Display a list of all available help topics that provide additional documentation beyond command help."
 	MsgCompletionShort = "Generate shell completion script"
+	MsgSnippetShort    = "Output shell integration snippet"
 
 	// Status messages
 	MsgDryRunNotice      = "\nDRY RUN MODE - No changes were made"
@@ -116,4 +117,12 @@ var (
 	//go:embed msgs/completion-long.txt
 	msgCompletionLongRaw string
 	MsgCompletionLong    = strings.TrimSpace(msgCompletionLongRaw)
+
+	//go:embed msgs/snippet-long.txt
+	msgSnippetLongRaw string
+	MsgSnippetLong    = strings.TrimSpace(msgSnippetLongRaw)
+
+	//go:embed msgs/snippet-example.txt
+	msgSnippetExampleRaw string
+	MsgSnippetExample    = strings.TrimSpace(msgSnippetExampleRaw)
 )
