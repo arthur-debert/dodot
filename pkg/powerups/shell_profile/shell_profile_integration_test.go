@@ -1,14 +1,19 @@
-package commands
+package shell_profile_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Import to register triggers and powerups
+	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 // TestProfilePowerUp_Integration verifies that the profile powerup deploys shell scripts
@@ -32,7 +37,7 @@ alias gs='git status'
 	require.NoError(t, os.Chmod(filepath.Join(bashPack, "aliases.sh"), 0755))
 
 	// Deploy the pack
-	result, err := DeployPacks(DeployPacksOptions{
+	result, err := commands.DeployPacks(commands.DeployPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackNames:    []string{"bash"},
 		DryRun:       false,

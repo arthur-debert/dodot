@@ -1,14 +1,19 @@
-package commands
+package symlink_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Import to register triggers and powerups
+	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 // TestSymlinkPowerUp_Integration verifies that the symlink powerup creates actual symlinks
@@ -25,7 +30,7 @@ func TestSymlinkPowerUp_Integration(t *testing.T) {
 	testutil.CreateFile(t, vimPack, ".vimrc", vimrcContent)
 
 	// Deploy the pack
-	result, err := DeployPacks(DeployPacksOptions{
+	result, err := commands.DeployPacks(commands.DeployPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackNames:    []string{"vim"},
 		DryRun:       false,

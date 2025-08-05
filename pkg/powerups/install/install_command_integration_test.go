@@ -1,10 +1,11 @@
-package commands
+package install_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
@@ -47,7 +48,7 @@ echo "Development setup complete!"
 	require.NoError(t, err)
 
 	// First install should create operations
-	result, err := InstallPacks(InstallPacksOptions{
+	result, err := commands.InstallPacks(commands.InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackNames:    []string{"dev"},
 		DryRun:       false,
@@ -87,7 +88,7 @@ echo "Development setup complete!"
 	assert.NotEmpty(t, string(content), "Expected sentinel to contain checksum")
 
 	// Second install should not generate install operations (already installed)
-	result2, err := InstallPacks(InstallPacksOptions{
+	result2, err := commands.InstallPacks(commands.InstallPacksOptions{
 		DotfilesRoot: testEnv.DotfilesRoot(),
 		PackNames:    []string{"dev"},
 		DryRun:       false,
