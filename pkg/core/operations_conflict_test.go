@@ -56,7 +56,8 @@ func TestResolveOperationConflicts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := NewExecutionContext(tt.force)
+			testPaths := createTestPaths(t)
+			ctx := NewExecutionContext(tt.force, testPaths)
 			resolveOperationConflicts(&tt.ops, ctx)
 
 			if tt.checkOps != nil {
@@ -81,7 +82,9 @@ func TestConvertActionsToOperations_WithConflictResolution(t *testing.T) {
 		{Type: types.ActionTypeWrite, Target: "~/.vimrc", Content: "\"vimrc\""},
 	}
 
-	ops, err := ConvertActionsToOperations(actions)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
+	ops, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err) // Should not error, but mark ops as conflict
 
 	conflictCount := 0

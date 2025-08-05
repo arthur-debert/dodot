@@ -9,7 +9,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -30,6 +29,7 @@ func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
 
 // ConvertActionsToOperations converts actions into file system operations
 // This is the planning phase - no actual file system changes are made.
+// DEPRECATED: Use ConvertActionsToOperationsWithContext instead.
 func ConvertActionsToOperations(actions []types.Action) ([]types.Operation, error) {
 	return ConvertActionsToOperationsWithContext(actions, nil)
 }
@@ -96,6 +96,7 @@ func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *Executio
 // It modifies the operations slice in place.
 
 // ConvertAction converts a single action to one or more operations
+// DEPRECATED: Use ConvertActionWithContext instead.
 func ConvertAction(action types.Action) ([]types.Operation, error) {
 	return ConvertActionWithContext(action, nil)
 }
@@ -114,7 +115,7 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 
 	switch action.Type {
 	case types.ActionTypeLink:
-		ops, err = convertLinkAction(action)
+		ops, err = convertLinkActionWithContext(action, ctx)
 	case types.ActionTypeCopy:
 		ops, err = convertCopyAction(action)
 	case types.ActionTypeWrite:
@@ -124,9 +125,9 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 	case types.ActionTypeMkdir:
 		ops, err = convertMkdirAction(action)
 	case types.ActionTypeShellSource:
-		ops, err = convertShellSourceAction(action)
+		ops, err = convertShellSourceActionWithContext(action, ctx)
 	case types.ActionTypePathAdd:
-		ops, err = convertPathAddAction(action)
+		ops, err = convertPathAddActionWithContext(action, ctx)
 	case types.ActionTypeRun:
 		logger.Debug().Msg("Run actions are not converted to file operations")
 		return nil, nil
@@ -162,15 +163,19 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 	return ops, nil
 }
 
-// convertLinkAction converts a link action to symlink operations
-func convertLinkAction(action types.Action) ([]types.Operation, error) {
+// convertLinkActionWithContext converts a link action to symlink operations
+func convertLinkActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" || action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "link action requires source and target")
 	}
 
+	if ctx == nil || ctx.Paths == nil {
+		return nil, errors.New(errors.ErrActionInvalid, "link action requires execution context with paths")
+	}
+
 	source := operations.ExpandHome(action.Source)
 	target := operations.ExpandHome(action.Target)
-	deployedPath := filepath.Join(paths.GetSymlinkDir(), filepath.Base(target))
+	deployedPath := filepath.Join(ctx.Paths.SymlinkDir(), filepath.Base(target))
 
 	ops := []types.Operation{
 		{
@@ -199,9 +204,6 @@ func convertLinkAction(action types.Action) ([]types.Operation, error) {
 	return ops, nil
 }
 
-// ... (other convert functions remain the same, but without setting status)
-
-// convertCopyAction, convertWriteAction, etc. are not shown for brevity but are assumed
 // to be updated to not set the status, as it's now handled in ConvertActionWithContext.
 
 // resolveOperationConflicts checks for and resolves conflicts.
@@ -332,10 +334,14 @@ func convertMkdirAction(action types.Action) ([]types.Operation, error) {
 	return ops, nil
 }
 
-// convertShellSourceAction converts shell source action to operations
-func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
+// convertShellSourceActionWithContext converts shell source action to operations with execution context
+func convertShellSourceActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "shell_source action requires source")
+	}
+
+	if ctx == nil || ctx.Paths == nil {
+		return nil, errors.New(errors.ErrActionInvalid, "shell_source action requires execution context with paths")
 	}
 
 	// Create symlink in shell_profile deployment directory
@@ -344,7 +350,7 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	if action.Pack == "" {
 		deployedName = filepath.Base(source)
 	}
-	deployedPath := filepath.Join(paths.GetShellProfileDir(), deployedName)
+	deployedPath := filepath.Join(ctx.Paths.ShellProfileDir(), deployedName)
 
 	ops := []types.Operation{
 		{
@@ -358,17 +364,21 @@ func convertShellSourceAction(action types.Action) ([]types.Operation, error) {
 	// Ensure deployment directory exists
 	ops = append([]types.Operation{{
 		Type:        types.OperationCreateDir,
-		Target:      paths.GetShellProfileDir(),
+		Target:      ctx.Paths.ShellProfileDir(),
 		Description: "Create shell profile deployment directory",
 	}}, ops...)
 
 	return ops, nil
 }
 
-// convertPathAddAction converts path add action to operations
-func convertPathAddAction(action types.Action) ([]types.Operation, error) {
+// convertPathAddActionWithContext converts path add action to operations with execution context
+func convertPathAddActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "path_add action requires source")
+	}
+
+	if ctx == nil || ctx.Paths == nil {
+		return nil, errors.New(errors.ErrActionInvalid, "path_add action requires execution context with paths")
 	}
 
 	// Create symlink in path deployment directory
@@ -377,7 +387,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	if deployedName == "" {
 		deployedName = filepath.Base(source)
 	}
-	deployedPath := filepath.Join(paths.GetPathDir(), deployedName)
+	deployedPath := filepath.Join(ctx.Paths.PathDir(), deployedName)
 
 	ops := []types.Operation{
 		{
@@ -391,7 +401,7 @@ func convertPathAddAction(action types.Action) ([]types.Operation, error) {
 	// Ensure deployment directory exists
 	ops = append([]types.Operation{{
 		Type:        types.OperationCreateDir,
-		Target:      paths.GetPathDir(),
+		Target:      ctx.Paths.PathDir(),
 		Description: "Create PATH deployment directory",
 	}}, ops...)
 
@@ -432,13 +442,13 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(paths.GetHomebrewDir(), pack)
+	sentinelPath := ctx.Paths.SentinelPath("homebrew", pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      paths.GetHomebrewDir(),
+			Target:      ctx.Paths.HomebrewDir(),
 			Description: "Create brewfile sentinel directory",
 		},
 		// Execute brew bundle command
@@ -494,13 +504,13 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(paths.GetInstallDir(), pack)
+	sentinelPath := ctx.Paths.SentinelPath("install", pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      paths.GetInstallDir(),
+			Target:      ctx.Paths.InstallDir(),
 			Description: "Create install sentinel directory",
 		},
 		// Execute the install script

@@ -3,7 +3,6 @@ package install
 import (
 	_ "embed"
 	"fmt"
-	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -109,9 +108,10 @@ func (p *InstallScriptPowerUp) GetTemplateContent() string {
 	return installTemplate
 }
 
-// GetSentinelPath returns the path to the sentinel file for a pack
-func GetInstallSentinelPath(pack string) string {
-	return filepath.Join(paths.GetInstallDir(), pack)
+// GetInstallSentinelPath returns the path to the sentinel file for a pack
+// Deprecated: Use pathsInstance.SentinelPath("install", pack) instead
+func GetInstallSentinelPath(pack string, pathsInstance *paths.Paths) string {
+	return pathsInstance.SentinelPath("install", pack)
 }
 
 func init() {

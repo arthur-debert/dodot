@@ -17,7 +17,7 @@ import (
 // ShouldRunOnceAction checks if a run-once action should be executed
 // based on its sentinel file and checksum. Returns true if the action
 // should run, false if it has already run with the same checksum.
-func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
+func ShouldRunOnceAction(action types.Action, force bool, pathsInstance *paths.Paths) (bool, error) {
 	logger := logging.GetLogger("core.runonce")
 
 	// If force flag is set, always run
@@ -61,13 +61,14 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 	}
 
 	// Determine sentinel path based on action type
-	var sentinelPath string
+	var powerUpType string
 	switch action.Type {
 	case types.ActionTypeBrew:
-		sentinelPath = filepath.Join(paths.GetHomebrewDir(), pack)
+		powerUpType = "homebrew"
 	case types.ActionTypeInstall:
-		sentinelPath = filepath.Join(paths.GetInstallDir(), pack)
+		powerUpType = "install"
 	}
+	sentinelPath := pathsInstance.SentinelPath(powerUpType, pack)
 
 	// Check if sentinel file exists
 	info, err := os.Stat(sentinelPath)
@@ -120,7 +121,7 @@ func ShouldRunOnceAction(action types.Action, force bool) (bool, error) {
 // FilterRunOnceActions filters a list of actions based on their run-once status.
 // It removes actions that have already been executed with the same checksum,
 // unless the force flag is set.
-func FilterRunOnceActions(actions []types.Action, force bool) ([]types.Action, error) {
+func FilterRunOnceActions(actions []types.Action, force bool, pathsInstance *paths.Paths) ([]types.Action, error) {
 	logger := logging.GetLogger("core.runonce")
 	logger.Debug().
 		Int("action_count", len(actions)).
@@ -134,7 +135,7 @@ func FilterRunOnceActions(actions []types.Action, force bool) ([]types.Action, e
 	filtered := make([]types.Action, 0, len(actions))
 
 	for _, action := range actions {
-		shouldRun, err := ShouldRunOnceAction(action, force)
+		shouldRun, err := ShouldRunOnceAction(action, force, pathsInstance)
 		if err != nil {
 			return nil, err
 		}
@@ -184,23 +185,24 @@ type RunOnceStatus struct {
 }
 
 // GetRunOnceStatus checks the status of a run-once power-up for a specific pack
-func GetRunOnceStatus(packPath, powerUpName string) (*RunOnceStatus, error) {
+func GetRunOnceStatus(packPath, powerUpName string, pathsInstance *paths.Paths) (*RunOnceStatus, error) {
 	logger := logging.GetLogger("core.runonce")
 
 	// Map power-up names to their file patterns
 	var filePattern string
-	var sentinelDir string
 
 	switch powerUpName {
 	case "install":
 		filePattern = "install.sh"
-		sentinelDir = filepath.Join(paths.GetInstallDir(), filepath.Base(packPath))
 	case "homebrew":
 		filePattern = "Brewfile"
-		sentinelDir = filepath.Join(paths.GetHomebrewDir(), filepath.Base(packPath))
 	default:
 		return nil, fmt.Errorf("unknown run-once power-up: %s", powerUpName)
 	}
+
+	// Get the sentinel path using the unified API
+	packName := filepath.Base(packPath)
+	sentinelDir := pathsInstance.SentinelPath(powerUpName, packName)
 
 	// Check if the source file exists
 	sourceFile := filepath.Join(packPath, filePattern)

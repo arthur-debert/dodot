@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -26,14 +27,16 @@ type OperationResult struct {
 type ExecutionContext struct {
 	ChecksumResults map[string]string // Maps file path to checksum
 	Force           bool              // Whether to force operations
+	Paths           *paths.Paths      // Paths configuration for the execution
 	logger          zerolog.Logger
 }
 
 // NewExecutionContext creates a new execution context
-func NewExecutionContext(force bool) *ExecutionContext {
+func NewExecutionContext(force bool, paths *paths.Paths) *ExecutionContext {
 	return &ExecutionContext{
 		ChecksumResults: make(map[string]string),
 		Force:           force,
+		Paths:           paths,
 		logger:          logging.GetLogger("core.executor"),
 	}
 }

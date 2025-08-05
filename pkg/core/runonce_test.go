@@ -18,11 +18,14 @@ func TestShouldRunOnceAction(t *testing.T) {
 		_ = os.Setenv("DODOT_DATA_DIR", origDataDir)
 	})
 
-	// Create sentinel directories
+	// Create sentinel directories and paths instance
 	homebrewDir := filepath.Join(tmpDir, "homebrew")
 	installDir := filepath.Join(tmpDir, "install")
 	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
+
+	// Create paths instance for testing
+	testPaths := createTestPaths(t)
 
 	tests := []struct {
 		name        string
@@ -167,7 +170,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 				tt.setupFunc()
 			}
 
-			shouldRun, err := ShouldRunOnceAction(tt.action, tt.force)
+			shouldRun, err := ShouldRunOnceAction(tt.action, tt.force, testPaths)
 
 			if tt.expectError {
 				testutil.AssertError(t, err)
@@ -195,6 +198,9 @@ func TestFilterRunOnceActions(t *testing.T) {
 	_ = os.MkdirAll(installDir, 0755)
 	_ = os.WriteFile(filepath.Join(homebrewDir, "tools"), []byte("brew123"), 0644)
 	_ = os.WriteFile(filepath.Join(installDir, "dev"), []byte("install456"), 0644)
+
+	// Create paths instance for testing
+	testPaths := createTestPaths(t)
 
 	actions := []types.Action{
 		// Regular action - always included
@@ -266,7 +272,7 @@ func TestFilterRunOnceActions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filtered, err := FilterRunOnceActions(actions, tt.force)
+			filtered, err := FilterRunOnceActions(actions, tt.force, testPaths)
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, tt.expectedCount, len(filtered))
 
@@ -281,11 +287,12 @@ func TestFilterRunOnceActions(t *testing.T) {
 }
 
 func TestFilterRunOnceActions_Empty(t *testing.T) {
-	filtered, err := FilterRunOnceActions([]types.Action{}, false)
+	testPaths := createTestPaths(t)
+	filtered, err := FilterRunOnceActions([]types.Action{}, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 0, len(filtered))
 
-	filtered, err = FilterRunOnceActions(nil, false)
+	filtered, err = FilterRunOnceActions(nil, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertNil(t, filtered)
 }
@@ -378,9 +385,11 @@ func BenchmarkShouldRunOnceAction(b *testing.B) {
 		},
 	}
 
+	testPaths := createTestPaths(b)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = ShouldRunOnceAction(action, false)
+		_, _ = ShouldRunOnceAction(action, false, testPaths)
 	}
 }
 
@@ -414,8 +423,10 @@ func BenchmarkFilterRunOnceActions(b *testing.B) {
 		}
 	}
 
+	testPaths := createTestPaths(b)
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = FilterRunOnceActions(actions, false)
+		_, _ = FilterRunOnceActions(actions, false, testPaths)
 	}
 }

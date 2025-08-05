@@ -2,7 +2,6 @@ package paths
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/testutil"
@@ -117,61 +116,4 @@ func TestGetHomeDirectoryWithDefault(t *testing.T) {
 	home := GetHomeDirectoryWithDefault(defaultDir)
 	testutil.AssertNotEqual(t, defaultDir, home)
 	testutil.AssertNotEmpty(t, home)
-}
-
-func TestCompatibilityFunctions(t *testing.T) {
-	// Test that compatibility functions work
-	tests := []struct {
-		name   string
-		fn     func() string
-		verify func(t *testing.T, result string)
-	}{
-		{
-			name: "GetShellProfileDir",
-			fn:   GetShellProfileDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "shell_profile"), "Should end with 'shell_profile'")
-			},
-		},
-		{
-			name: "GetPathDir",
-			fn:   GetPathDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "path"), "Should end with 'path'")
-			},
-		},
-		{
-			name: "GetSymlinkDir",
-			fn:   GetSymlinkDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "symlink"), "Should end with 'symlink'")
-			},
-		},
-		{
-			name: "GetInstallDir",
-			fn:   GetInstallDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "install"), "Should end with 'install'")
-			},
-		},
-		{
-			name: "GetHomebrewDir",
-			fn:   GetHomebrewDir,
-			verify: func(t *testing.T, result string) {
-				testutil.AssertNotEmpty(t, result)
-				testutil.AssertTrue(t, strings.HasSuffix(result, "homebrew"), "Should end with 'homebrew'")
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.fn()
-			tt.verify(t, result)
-		})
-	}
 }

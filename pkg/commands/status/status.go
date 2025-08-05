@@ -5,6 +5,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -20,6 +21,12 @@ type StatusPacksOptions struct {
 func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "StatusPacks").Msg("Executing command")
+
+	// 0. Initialize Paths instance
+	pathsInstance, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	// 1. Get all packs
 	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
@@ -49,7 +56,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 		}
 
 		// Check run-once power-up status (install, homebrew)
-		installStatus, err := core.GetRunOnceStatus(pack.Path, "install")
+		installStatus, err := core.GetRunOnceStatus(pack.Path, "install", pathsInstance)
 		if err == nil && installStatus != nil {
 			state := "Not Installed"
 			description := "Install script not yet executed"
@@ -68,7 +75,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 			})
 		}
 
-		homebrewStatus, err := core.GetRunOnceStatus(pack.Path, "homebrew")
+		homebrewStatus, err := core.GetRunOnceStatus(pack.Path, "homebrew", pathsInstance)
 		if err == nil && homebrewStatus != nil {
 			state := "Not Installed"
 			description := "Brewfile not yet executed"

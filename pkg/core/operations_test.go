@@ -164,7 +164,25 @@ func TestConvertActionsToOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := ConvertActionsToOperations(tt.actions)
+			// Create context for tests that have link actions
+			var ops []types.Operation
+			var err error
+
+			hasLinkActions := false
+			for _, action := range tt.actions {
+				if action.Type == types.ActionTypeLink || action.Type == types.ActionTypeShellSource || action.Type == types.ActionTypePathAdd {
+					hasLinkActions = true
+					break
+				}
+			}
+
+			if hasLinkActions {
+				testPaths := createTestPaths(t)
+				ctx := NewExecutionContext(false, testPaths)
+				ops, err = ConvertActionsToOperationsWithContext(tt.actions, ctx)
+			} else {
+				ops, err = ConvertActionsToOperationsWithContext(tt.actions, nil)
+			}
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -184,10 +202,13 @@ func TestConvertActionsToOperations(t *testing.T) {
 func TestConvertAction(t *testing.T) {
 	homeDir, _ := os.UserHomeDir()
 
+	// Create a test paths instance that will be used for all tests
+	testPaths := createTestPaths(t)
+
 	tests := []struct {
 		name      string
 		action    types.Action
-		wantOps   []types.Operation
+		wantOps   func(*paths.Paths) []types.Operation
 		wantError bool
 		errorCode doerrors.ErrorCode
 	}{
@@ -200,24 +221,26 @@ func TestConvertAction(t *testing.T) {
 				Source:      "/dotfiles/vim/.vimrc",
 				Target:      "~/.vimrc",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      homeDir,
-					Description: "Create parent directory for .vimrc",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      "/dotfiles/vim/.vimrc",
-					Target:      filepath.Join(paths.GetSymlinkDir(), ".vimrc"),
-					Description: "Deploy symlink for .vimrc",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      filepath.Join(paths.GetSymlinkDir(), ".vimrc"),
-					Target:      filepath.Join(homeDir, ".vimrc"),
-					Description: "Link vimrc",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      homeDir,
+						Description: "Create parent directory for .vimrc",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      "/dotfiles/vim/.vimrc",
+						Target:      filepath.Join(p.SymlinkDir(), ".vimrc"),
+						Description: "Deploy symlink for .vimrc",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      filepath.Join(p.SymlinkDir(), ".vimrc"),
+						Target:      filepath.Join(homeDir, ".vimrc"),
+						Description: "Link vimrc",
+					},
+				}
 			},
 		},
 		{
@@ -227,24 +250,26 @@ func TestConvertAction(t *testing.T) {
 				Source: "/source/config.yml",
 				Target: "~/.config/app/config.yml",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      filepath.Join(homeDir, ".config/app"),
-					Description: "Create parent directory for config.yml",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      "/source/config.yml",
-					Target:      filepath.Join(paths.GetSymlinkDir(), "config.yml"),
-					Description: "Deploy symlink for config.yml",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      filepath.Join(paths.GetSymlinkDir(), "config.yml"),
-					Target:      filepath.Join(homeDir, ".config/app/config.yml"),
-					Description: "",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      filepath.Join(homeDir, ".config/app"),
+						Description: "Create parent directory for config.yml",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      "/source/config.yml",
+						Target:      filepath.Join(p.SymlinkDir(), "config.yml"),
+						Description: "Deploy symlink for config.yml",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      filepath.Join(p.SymlinkDir(), "config.yml"),
+						Target:      filepath.Join(homeDir, ".config/app/config.yml"),
+						Description: "",
+					},
+				}
 			},
 		},
 		{
@@ -254,6 +279,7 @@ func TestConvertAction(t *testing.T) {
 				Source: "",
 				Target: "~/target",
 			},
+			wantOps:   nil,
 			wantError: true,
 			errorCode: doerrors.ErrActionInvalid,
 		},
@@ -276,18 +302,20 @@ func TestConvertAction(t *testing.T) {
 				Source:      "/templates/gitconfig",
 				Target:      "~/.gitconfig",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      homeDir,
-					Description: "Create parent directory for .gitconfig",
-				},
-				{
-					Type:        types.OperationCopyFile,
-					Source:      "/templates/gitconfig",
-					Target:      filepath.Join(homeDir, ".gitconfig"),
-					Description: "Copy template",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      homeDir,
+						Description: "Create parent directory for .gitconfig",
+					},
+					{
+						Type:        types.OperationCopyFile,
+						Source:      "/templates/gitconfig",
+						Target:      filepath.Join(homeDir, ".gitconfig"),
+						Description: "Copy template",
+					},
+				}
 			},
 		},
 		{
@@ -297,18 +325,20 @@ func TestConvertAction(t *testing.T) {
 				Source: "/source/data.json",
 				Target: "~/.config/app/data.json",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      filepath.Join(homeDir, ".config/app"),
-					Description: "Create parent directory for data.json",
-				},
-				{
-					Type:        types.OperationCopyFile,
-					Source:      "/source/data.json",
-					Target:      filepath.Join(homeDir, ".config/app/data.json"),
-					Description: "",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      filepath.Join(homeDir, ".config/app"),
+						Description: "Create parent directory for data.json",
+					},
+					{
+						Type:        types.OperationCopyFile,
+						Source:      "/source/data.json",
+						Target:      filepath.Join(homeDir, ".config/app/data.json"),
+						Description: "",
+					},
+				}
 			},
 		},
 		{
@@ -330,19 +360,21 @@ func TestConvertAction(t *testing.T) {
 				Content:     "# My App Config\nkey=value",
 				Mode:        0644,
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      homeDir,
-					Description: "Create parent directory for .myapp.conf",
-				},
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(homeDir, ".myapp.conf"),
-					Content:     "# My App Config\nkey=value",
-					Mode:        operations.Uint32Ptr(0644),
-					Description: "Create config",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      homeDir,
+						Description: "Create parent directory for .myapp.conf",
+					},
+					{
+						Type:        types.OperationWriteFile,
+						Target:      filepath.Join(homeDir, ".myapp.conf"),
+						Content:     "# My App Config\nkey=value",
+						Mode:        operations.Uint32Ptr(0644),
+						Description: "Create config",
+					},
+				}
 			},
 		},
 		{
@@ -352,19 +384,21 @@ func TestConvertAction(t *testing.T) {
 				Target:  "~/file.txt",
 				Content: "content",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      homeDir,
-					Description: "Create parent directory for file.txt",
-				},
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(homeDir, "file.txt"),
-					Content:     "content",
-					Mode:        nil,
-					Description: "",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      homeDir,
+						Description: "Create parent directory for file.txt",
+					},
+					{
+						Type:        types.OperationWriteFile,
+						Target:      filepath.Join(homeDir, "file.txt"),
+						Content:     "content",
+						Mode:        nil,
+						Description: "",
+					},
+				}
 			},
 		},
 		{
@@ -384,13 +418,15 @@ func TestConvertAction(t *testing.T) {
 				Target:  "~/.bashrc",
 				Content: "\n# Added by dodot\nexport FOO=bar",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationWriteFile,
-					Target:      filepath.Join(homeDir, ".bashrc"),
-					Content:     "\n# Added by dodot\nexport FOO=bar",
-					Description: "Append to ~/.bashrc",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationWriteFile,
+						Target:      filepath.Join(homeDir, ".bashrc"),
+						Content:     "\n# Added by dodot\nexport FOO=bar",
+						Description: "Append to ~/.bashrc",
+					},
+				}
 			},
 		},
 		{
@@ -411,13 +447,15 @@ func TestConvertAction(t *testing.T) {
 				Target:      "~/.config/myapp",
 				Mode:        0755,
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      filepath.Join(homeDir, ".config/myapp"),
-					Mode:        operations.Uint32Ptr(0755),
-					Description: "Create app dir",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      filepath.Join(homeDir, ".config/myapp"),
+						Mode:        operations.Uint32Ptr(0755),
+						Description: "Create app dir",
+					},
+				}
 			},
 		},
 		{
@@ -426,13 +464,15 @@ func TestConvertAction(t *testing.T) {
 				Type:   types.ActionTypeMkdir,
 				Target: "~/somedir",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      filepath.Join(homeDir, "somedir"),
-					Mode:        nil,
-					Description: "",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      filepath.Join(homeDir, "somedir"),
+						Mode:        nil,
+						Description: "",
+					},
+				}
 			},
 		},
 		{
@@ -451,18 +491,20 @@ func TestConvertAction(t *testing.T) {
 				Source: "/dotfiles/shell/aliases.sh",
 				Pack:   "shell",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetShellProfileDir(),
-					Description: "Create shell profile deployment directory",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      "/dotfiles/shell/aliases.sh",
-					Target:      filepath.Join(paths.GetShellProfileDir(), "shell.sh"),
-					Description: "Deploy shell profile script from shell",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      p.ShellProfileDir(),
+						Description: "Create shell profile deployment directory",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      "/dotfiles/shell/aliases.sh",
+						Target:      filepath.Join(p.ShellProfileDir(), "shell.sh"),
+						Description: "Deploy shell profile script from shell",
+					},
+				}
 			},
 		},
 		{
@@ -471,18 +513,20 @@ func TestConvertAction(t *testing.T) {
 				Type:   types.ActionTypeShellSource,
 				Source: "/dotfiles/custom.sh",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetShellProfileDir(),
-					Description: "Create shell profile deployment directory",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      "/dotfiles/custom.sh",
-					Target:      filepath.Join(paths.GetShellProfileDir(), "custom.sh"),
-					Description: "Deploy shell profile script from ",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      p.ShellProfileDir(),
+						Description: "Create shell profile deployment directory",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      "/dotfiles/custom.sh",
+						Target:      filepath.Join(p.ShellProfileDir(), "custom.sh"),
+						Description: "Deploy shell profile script from ",
+					},
+				}
 			},
 		},
 		{
@@ -501,18 +545,20 @@ func TestConvertAction(t *testing.T) {
 				Source: "/dotfiles/bin",
 				Pack:   "tools",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetPathDir(),
-					Description: "Create PATH deployment directory",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      "/dotfiles/bin",
-					Target:      filepath.Join(paths.GetPathDir(), "tools"),
-					Description: "Add tools to PATH",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      p.PathDir(),
+						Description: "Create PATH deployment directory",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      "/dotfiles/bin",
+						Target:      filepath.Join(p.PathDir(), "tools"),
+						Description: "Add tools to PATH",
+					},
+				}
 			},
 		},
 		{
@@ -521,18 +567,20 @@ func TestConvertAction(t *testing.T) {
 				Type:   types.ActionTypePathAdd,
 				Source: "/usr/local/mybin",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationCreateDir,
-					Target:      paths.GetPathDir(),
-					Description: "Create PATH deployment directory",
-				},
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      "/usr/local/mybin",
-					Target:      filepath.Join(paths.GetPathDir(), "mybin"),
-					Description: "Add mybin to PATH",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationCreateDir,
+						Target:      p.PathDir(),
+						Description: "Create PATH deployment directory",
+					},
+					{
+						Type:        types.OperationCreateSymlink,
+						Source:      "/usr/local/mybin",
+						Target:      filepath.Join(p.PathDir(), "mybin"),
+						Description: "Add mybin to PATH",
+					},
+				}
 			},
 		},
 		{
@@ -659,12 +707,14 @@ func TestConvertAction(t *testing.T) {
 				Type:   types.ActionTypeRead,
 				Source: "/packs/vim/.vimrc",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationReadFile,
-					Source:      "/packs/vim/.vimrc",
-					Description: "Read file .vimrc",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationReadFile,
+						Source:      "/packs/vim/.vimrc",
+						Description: "Read file .vimrc",
+					},
+				}
 			},
 		},
 		{
@@ -681,12 +731,14 @@ func TestConvertAction(t *testing.T) {
 				Type:   types.ActionTypeChecksum,
 				Source: "/packs/tools/Brewfile",
 			},
-			wantOps: []types.Operation{
-				{
-					Type:        types.OperationChecksum,
-					Source:      "/packs/tools/Brewfile",
-					Description: "Calculate checksum for Brewfile",
-				},
+			wantOps: func(p *paths.Paths) []types.Operation {
+				return []types.Operation{
+					{
+						Type:        types.OperationChecksum,
+						Source:      "/packs/tools/Brewfile",
+						Description: "Calculate checksum for Brewfile",
+					},
+				}
 			},
 		},
 		{
@@ -701,7 +753,18 @@ func TestConvertAction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := ConvertAction(tt.action)
+			var ops []types.Operation
+			var err error
+
+			// For actions that require context, create one
+			if tt.action.Type == types.ActionTypeLink || tt.action.Type == types.ActionTypeShellSource || tt.action.Type == types.ActionTypePathAdd {
+				testPaths := createTestPaths(t)
+				ctx := NewExecutionContext(false, testPaths)
+				ops, err = ConvertActionWithContext(tt.action, ctx)
+			} else {
+				// For other actions (brew, install), use nil context to test skipping behavior
+				ops, err = ConvertActionWithContext(tt.action, nil)
+			}
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -715,10 +778,17 @@ func TestConvertAction(t *testing.T) {
 			}
 
 			testutil.AssertNoError(t, err)
-			testutil.AssertEqual(t, len(tt.wantOps), len(ops),
-				"Expected %d operations, got %d", len(tt.wantOps), len(ops))
 
-			for i, wantOp := range tt.wantOps {
+			// Generate expected operations if function is provided
+			var expectedOps []types.Operation
+			if tt.wantOps != nil {
+				expectedOps = tt.wantOps(testPaths)
+			}
+
+			testutil.AssertEqual(t, len(expectedOps), len(ops),
+				"Expected %d operations, got %d", len(expectedOps), len(ops))
+
+			for i, wantOp := range expectedOps {
 				if i >= len(ops) {
 					break
 				}
@@ -853,7 +923,9 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := ConvertActionsToOperations(actions)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
+	ops, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
 
 	// Count directory creation operations for the home directory
@@ -881,7 +953,8 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 // TestConvertActionsToOperationsWithContext_BrewAndInstall tests brew and install actions with context
 func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Create context with checksums
-	ctx := NewExecutionContext(false)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
 	ctx.ChecksumResults["/packs/tools/Brewfile"] = "brew123"
 	ctx.ChecksumResults["/packs/dev/install.sh"] = "install456"
 
@@ -911,7 +984,7 @@ func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Install action should be processed first (higher priority)
 	// First: create install directory
 	assert.Equal(t, types.OperationCreateDir, ops[0].Type)
-	assert.Equal(t, paths.GetInstallDir(), ops[0].Target)
+	assert.Equal(t, testPaths.InstallDir(), ops[0].Target)
 
 	// Second: execute install script
 	assert.Equal(t, types.OperationExecute, ops[1].Type)
@@ -925,7 +998,7 @@ func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Then brew action
 	// Fourth: create brewfile directory
 	assert.Equal(t, types.OperationCreateDir, ops[3].Type)
-	assert.Equal(t, paths.GetHomebrewDir(), ops[3].Target)
+	assert.Equal(t, testPaths.HomebrewDir(), ops[3].Target)
 
 	// Fifth: write brewfile sentinel (execute was deduplicated)
 	assert.Equal(t, types.OperationWriteFile, ops[4].Type)
@@ -963,7 +1036,8 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 	}
 
 	// Create context with checksum result
-	ctx := NewExecutionContext(false)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
 	ctx.ChecksumResults["/dotfiles/brew/Brewfile"] = "abc123"
 
 	// Generate operations with context (this is what the pipeline does)

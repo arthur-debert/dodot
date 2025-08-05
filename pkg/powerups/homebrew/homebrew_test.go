@@ -185,10 +185,15 @@ func TestCalculateFileChecksum(t *testing.T) {
 }
 
 func TestGetHomebrewSentinelPath(t *testing.T) {
-	pack := "mypack"
-	path := GetHomebrewSentinelPath(pack)
+	// Create paths instance for testing
+	tempDir := testutil.TempDir(t, "homebrew-test")
+	pathsInstance, err := paths.New(tempDir)
+	testutil.AssertNoError(t, err)
 
-	expected := filepath.Join(paths.GetHomebrewDir(), pack)
+	pack := "mypack"
+	path := GetHomebrewSentinelPath(pack, pathsInstance)
+
+	expected := filepath.Join(pathsInstance.HomebrewDir(), pack)
 	testutil.AssertEqual(t, expected, path)
 }
 

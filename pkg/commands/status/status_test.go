@@ -13,9 +13,14 @@ import (
 )
 
 func TestStatusPacks(t *testing.T) {
+	// Create paths instance for testing
+	tempDir := testutil.TempDir(t, "status-packs-test")
+	pathsInstance, err := paths.New(tempDir)
+	testutil.AssertNoError(t, err)
+
 	// Clean up any existing sentinel files before running tests
-	_ = os.RemoveAll(paths.GetInstallDir())
-	_ = os.RemoveAll(paths.GetHomebrewDir())
+	_ = os.RemoveAll(pathsInstance.InstallDir())
+	_ = os.RemoveAll(pathsInstance.HomebrewDir())
 	tests := []struct {
 		name      string
 		setup     func(t *testing.T) (string, []string)
@@ -65,7 +70,7 @@ func TestStatusPacks(t *testing.T) {
 				}
 
 				// Create sentinel file to simulate executed install
-				sentinelPath := filepath.Join(paths.GetInstallDir(), "test-pack")
+				sentinelPath := filepath.Join(pathsInstance.InstallDir(), "test-pack")
 				sentinelDir := filepath.Dir(sentinelPath)
 				err = os.MkdirAll(sentinelDir, 0755)
 				if err != nil {
@@ -102,7 +107,7 @@ func TestStatusPacks(t *testing.T) {
 				pack := testutil.CreateDir(t, root, "test-pack")
 
 				// Create sentinel file with old checksum
-				sentinelPath := filepath.Join(paths.GetInstallDir(), "test-pack")
+				sentinelPath := filepath.Join(pathsInstance.InstallDir(), "test-pack")
 				sentinelDir := filepath.Dir(sentinelPath)
 				err := os.MkdirAll(sentinelDir, 0755)
 				if err != nil {
@@ -181,7 +186,7 @@ func TestStatusPacks(t *testing.T) {
 				}
 
 				// Create sentinel file
-				sentinelPath := filepath.Join(paths.GetHomebrewDir(), "test-pack")
+				sentinelPath := filepath.Join(pathsInstance.HomebrewDir(), "test-pack")
 				sentinelDir := filepath.Dir(sentinelPath)
 				err = os.MkdirAll(sentinelDir, 0755)
 				if err != nil {
@@ -371,9 +376,14 @@ func TestStatusPacks(t *testing.T) {
 }
 
 func TestGetRunOnceStatus(t *testing.T) {
+	// Create paths instance for testing
+	tempDir := testutil.TempDir(t, "status-test")
+	pathsInstance, err := paths.New(tempDir)
+	testutil.AssertNoError(t, err)
+
 	// Clean up any existing sentinel files
-	_ = os.RemoveAll(paths.GetInstallDir())
-	_ = os.RemoveAll(paths.GetHomebrewDir())
+	_ = os.RemoveAll(pathsInstance.InstallDir())
+	_ = os.RemoveAll(pathsInstance.HomebrewDir())
 
 	tests := []struct {
 		name     string
@@ -425,7 +435,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 				}
 
 				// Create sentinel
-				sentinelPath := filepath.Join(paths.GetInstallDir(), packName)
+				sentinelPath := filepath.Join(pathsInstance.InstallDir(), packName)
 				err = os.MkdirAll(filepath.Dir(sentinelPath), 0755)
 				if err != nil {
 					t.Fatal(err)
@@ -464,7 +474,7 @@ func TestGetRunOnceStatus(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			packPath := tt.setup(t)
 
-			status, err := core.GetRunOnceStatus(packPath, tt.powerup)
+			status, err := core.GetRunOnceStatus(packPath, tt.powerup, pathsInstance)
 			testutil.AssertNoError(t, err)
 
 			if tt.wantNil {

@@ -176,7 +176,9 @@ func TestPipelineIntegration(t *testing.T) {
 			},
 		}
 
-		operations, err := ConvertActionsToOperations(actions)
+		testPaths := createTestPaths(t)
+		ctx := NewExecutionContext(false, testPaths)
+		operations, err := ConvertActionsToOperationsWithContext(actions, ctx)
 		testutil.AssertNoError(t, err)
 
 		// Should have operations for:
@@ -366,7 +368,9 @@ func BenchmarkPipelineEndToEnd(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		_, err = ConvertActionsToOperations(actions)
+		testPaths := createTestPaths(b)
+		ctx := NewExecutionContext(false, testPaths)
+		_, err = ConvertActionsToOperationsWithContext(actions, ctx)
 		if err != nil {
 			b.Fatal(err)
 		}
