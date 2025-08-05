@@ -37,6 +37,8 @@ archives:
         dst: "completions"
       - src: "dist/build/man/man1/*"
         dst: "man/man1"
+      - src: "pkg/shell/*"
+        dst: "shell"
 
 checksum:
   name_template: "checksums.txt"

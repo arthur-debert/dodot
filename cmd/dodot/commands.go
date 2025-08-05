@@ -520,6 +520,7 @@ func newSnippetCmd() *cobra.Command {
 		GroupID: "misc",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shell, _ := cmd.Flags().GetString("shell")
+			install, _ := cmd.Flags().GetBool("install")
 
 			// Initialize paths to get custom data directory if set
 			p, err := initPaths()
@@ -527,20 +528,19 @@ func newSnippetCmd() *cobra.Command {
 				return err
 			}
 
-			// Get custom data directory if using non-default paths
-			var customDataDir string
-			if p.UsedFallback() {
-				// Using default location, no custom dir needed
-				customDataDir = ""
-			} else {
-				// Check if using custom DODOT_DATA_DIR
-				if dataDir := os.Getenv("DODOT_DATA_DIR"); dataDir != "" {
-					customDataDir = dataDir
+			// Always use the actual data directory for the snippet
+			dataDir := p.DataDir()
+
+			// Install shell scripts if requested
+			if install {
+				if err := commands.InstallShellIntegration(dataDir); err != nil {
+					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
+				fmt.Fprintf(os.Stderr, "Shell integration scripts installed to %s/shell/\n", dataDir)
 			}
 
-			// Get the appropriate snippet for the shell
-			snippet := types.GetShellIntegrationSnippet(shell, customDataDir)
+			// Get the appropriate snippet for the shell using the actual data directory
+			snippet := types.GetShellIntegrationSnippet(shell, dataDir)
 
 			// Output the snippet
 			fmt.Print(snippet)
@@ -550,6 +550,7 @@ func newSnippetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringP("shell", "s", "bash", "Shell type (bash, zsh, fish)")
+	cmd.Flags().Bool("install", false, "Install shell integration scripts to data directory")
 
 	return cmd
 }

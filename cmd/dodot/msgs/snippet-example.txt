@@ -1,7 +1,11 @@
+  # First time setup - install scripts and add to shell config
+  dodot snippet --install >> ~/.zshrc
+  dodot snippet --install --shell fish >> ~/.config/fish/config.fish
+
   # Output the shell integration snippet for bash/zsh
   dodot snippet
 
-  # Add to your shell config
+  # Add to your shell config (after scripts are installed)
   dodot snippet >> ~/.zshrc
 
   # For Fish shell

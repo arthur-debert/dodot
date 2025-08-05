@@ -19,18 +19,20 @@ end`
 )
 
 // GetShellIntegrationSnippet returns the appropriate shell integration snippet
-func GetShellIntegrationSnippet(shell string, customDataDir string) string {
+// If dataDir is provided, it uses that path; otherwise it uses the default snippet
+func GetShellIntegrationSnippet(shell string, dataDir string) string {
 	switch shell {
 	case "fish":
-		if customDataDir != "" {
-			return `if test -f "` + customDataDir + `/shell/dodot-init.fish"
-    source "` + customDataDir + `/shell/dodot-init.fish"
-end`
+		if dataDir != "" {
+			return fmt.Sprintf(`if test -f "%s/shell/dodot-init.fish"
+    source "%s/shell/dodot-init.fish"
+end`, dataDir, dataDir)
 		}
 		return FishIntegrationSnippet
 	default:
-		if customDataDir != "" {
-			return fmt.Sprintf(ShellIntegrationSnippetWithCustomDir, customDataDir, customDataDir)
+		// bash/zsh
+		if dataDir != "" {
+			return fmt.Sprintf(`[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"`, dataDir, dataDir)
 		}
 		return ShellIntegrationSnippet
 	}
