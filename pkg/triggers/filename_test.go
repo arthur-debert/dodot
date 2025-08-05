@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -182,7 +183,7 @@ func TestFileNameTrigger_Properties(t *testing.T) {
 
 		assert.Equal(t, FileNameTriggerName, trigger.Name())
 		assert.Equal(t, "Matches files by exact name: .vimrc", trigger.Description())
-		assert.Equal(t, FileNameTriggerPriority, trigger.Priority())
+		assert.Equal(t, config.Default().Priorities.Triggers["filename"], trigger.Priority())
 	})
 
 	t.Run("glob match properties", func(t *testing.T) {
@@ -190,7 +191,7 @@ func TestFileNameTrigger_Properties(t *testing.T) {
 
 		assert.Equal(t, FileNameTriggerName, trigger.Name())
 		assert.Equal(t, "Matches files by glob pattern: *.go", trigger.Description())
-		assert.Equal(t, FileNameTriggerPriority, trigger.Priority())
+		assert.Equal(t, config.Default().Priorities.Triggers["filename"], trigger.Priority())
 	})
 }
 

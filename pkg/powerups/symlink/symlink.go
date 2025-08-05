@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
@@ -12,8 +13,7 @@ import (
 )
 
 const (
-	SymlinkPowerUpName     = "symlink"
-	SymlinkPowerUpPriority = 100
+	SymlinkPowerUpName = "symlink"
 )
 
 // SymlinkPowerUp creates symbolic links from matched files to target locations
@@ -87,6 +87,7 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 		targetMap[targetPath] = match.AbsolutePath
 
 		// Create symlink action
+		cfg := config.Default()
 		action := types.Action{
 			Type:        types.ActionTypeLink,
 			Description: fmt.Sprintf("Symlink %s -> %s", match.Path, targetPath),
@@ -94,7 +95,7 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 			Target:      targetPath,
 			Pack:        match.Pack,
 			PowerUpName: p.Name(),
-			Priority:    SymlinkPowerUpPriority,
+			Priority:    cfg.Priorities.PowerUps["symlink"],
 			Metadata: map[string]interface{}{
 				"trigger": match.TriggerName,
 			},

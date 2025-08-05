@@ -5,14 +5,14 @@ import (
 	"io/fs"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 const (
-	CatchallTriggerName     = "catchall"
-	CatchallTriggerPriority = 0 // Lowest priority to run last
+	CatchallTriggerName = "catchall"
 )
 
 // CatchallTrigger matches all files and directories not matched by other triggers
@@ -24,13 +24,11 @@ type CatchallTrigger struct {
 // NewCatchallTrigger creates a new CatchallTrigger with the given options
 func NewCatchallTrigger(options map[string]interface{}) (*CatchallTrigger, error) {
 	logger := logging.GetLogger("triggers.catchall")
+	cfg := config.Default()
 
 	trigger := &CatchallTrigger{
-		excludePatterns: []string{
-			".dodot.toml",
-			".dodotignore",
-		},
-		priority: CatchallTriggerPriority,
+		excludePatterns: cfg.Patterns.CatchallExclude,
+		priority:        cfg.Priorities.Triggers["catchall"],
 	}
 
 	// Extract additional exclude patterns from options if provided

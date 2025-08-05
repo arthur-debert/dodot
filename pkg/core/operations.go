@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
@@ -453,7 +454,7 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
 			Content:     checksum,
-			Mode:        operations.Uint32Ptr(0644),
+			Mode:        operations.Uint32Ptr(uint32(config.Default().FilePermissions.File)),
 			Description: fmt.Sprintf("Create brewfile sentinel for %s", pack),
 		},
 	}
@@ -515,7 +516,7 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 			Type:        types.OperationWriteFile,
 			Target:      sentinelPath,
 			Content:     checksum,
-			Mode:        operations.Uint32Ptr(0644),
+			Mode:        operations.Uint32Ptr(uint32(config.Default().FilePermissions.File)),
 			Description: fmt.Sprintf("Create install sentinel for %s", pack),
 		},
 	}

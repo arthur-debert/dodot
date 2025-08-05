@@ -3,6 +3,7 @@ package template
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -47,7 +48,7 @@ func TestTemplatePowerUp_Process(t *testing.T) {
 				testutil.AssertEqual(t, "~/config", action.Target) // .tmpl removed
 				testutil.AssertEqual(t, "test-pack", action.Pack)
 				testutil.AssertEqual(t, TemplatePowerUpName, action.PowerUpName)
-				testutil.AssertEqual(t, TemplatePowerUpPriority, action.Priority)
+				testutil.AssertEqual(t, config.Default().Priorities.PowerUps["template"], action.Priority)
 
 				// Check metadata contains variables
 				vars, ok := action.Metadata["variables"].(map[string]string)

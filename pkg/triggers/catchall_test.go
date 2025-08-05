@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -22,6 +23,7 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
+				"pack.dodot.toml",
 				".dodotignore",
 			},
 		},
@@ -33,6 +35,7 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
+				"pack.dodot.toml",
 				".dodotignore",
 				"*.tmp",
 				"*.bak",
@@ -46,6 +49,7 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
+				"pack.dodot.toml",
 				".dodotignore",
 				"*.log",
 				"temp*",
@@ -57,6 +61,7 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
+				"pack.dodot.toml",
 				".dodotignore",
 			},
 		},
@@ -74,7 +79,7 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			testutil.AssertNoError(t, err)
 			testutil.AssertNotNil(t, trigger)
 			testutil.AssertEqual(t, CatchallTriggerName, trigger.Name())
-			testutil.AssertEqual(t, CatchallTriggerPriority, trigger.Priority())
+			testutil.AssertEqual(t, config.Default().Priorities.Triggers["catchall"], trigger.Priority())
 			testutil.AssertEqual(t, types.TriggerTypeCatchall, trigger.Type())
 			testutil.AssertSliceEqual(t, tt.expectExcludes, trigger.excludePatterns)
 		})
