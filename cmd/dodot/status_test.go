@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -51,7 +50,7 @@ func captureOutput(f func()) (string, error) {
 }
 
 func TestStatusCommand(t *testing.T) {
-	t.Skip("TODO: Fix test environment path setup - see issue #443")
+	// t.Skip("TODO: Fix test environment path setup - see issue #443")
 	tests := []struct {
 		name           string
 		setup          func(t *testing.T) (string, string) // returns dotfilesRoot, homeDir
@@ -125,9 +124,10 @@ echo "Installing vim plugins..."`
 				checksum, err := testutil.CalculateFileChecksum(scriptPath)
 				require.NoError(t, err)
 
-				pathsInstance, err := paths.New(dotfilesRoot)
-				require.NoError(t, err)
-				sentinelPath := filepath.Join(pathsInstance.InstallDir(), "vim")
+				// Create sentinel file in the test-specific data directory
+				// This must match the DODOT_DATA_DIR that will be set later
+				testDataDir := filepath.Join(homeDir, ".local", "share", "dodot")
+				sentinelPath := filepath.Join(testDataDir, "install", "vim")
 				require.NoError(t, os.MkdirAll(filepath.Dir(sentinelPath), 0755))
 				require.NoError(t, os.WriteFile(sentinelPath, []byte(checksum), 0644))
 
@@ -247,9 +247,9 @@ brew 'neovim'`
 				require.NoError(t, os.MkdirAll(vimDir, 0755))
 
 				// First create sentinel with old checksum
-				pathsInstance, err := paths.New(dotfilesRoot)
-				require.NoError(t, err)
-				sentinelPath := filepath.Join(pathsInstance.InstallDir(), "vim")
+				// This must match the DODOT_DATA_DIR that will be set later
+				testDataDir := filepath.Join(homeDir, ".local", "share", "dodot")
+				sentinelPath := filepath.Join(testDataDir, "install", "vim")
 				require.NoError(t, os.MkdirAll(filepath.Dir(sentinelPath), 0755))
 				require.NoError(t, os.WriteFile(sentinelPath, []byte("old-checksum"), 0644))
 
@@ -281,23 +281,22 @@ echo "New install script content"`
 		t.Run(tt.name, func(t *testing.T) {
 			dotfilesRoot, homeDir := tt.setup(t)
 
-			// Clean up any existing sentinel files in test environment
-			pathsInstance, err := paths.New(dotfilesRoot)
-			if err == nil {
-				_ = os.RemoveAll(pathsInstance.InstallDir())
-				_ = os.RemoveAll(pathsInstance.HomebrewDir())
-			}
+			// No need to clean up sentinel files here as each test uses a fresh temp directory
 
 			// Set environment variables
 			t.Setenv("DOTFILES_ROOT", dotfilesRoot)
 			t.Setenv("HOME", homeDir)
 			t.Setenv("DODOT_TEST_MODE", "true")
+			// Override XDG directories to use test-specific paths
+			t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+			t.Setenv("DODOT_CONFIG_DIR", filepath.Join(homeDir, ".config", "dodot"))
+			t.Setenv("DODOT_CACHE_DIR", filepath.Join(homeDir, ".cache", "dodot"))
 
 			// Execute command and capture output
 			var output string
 			var cmdErr error
 
-			output, cmdErr = captureOutput(func() {
+			output, captureErr := captureOutput(func() {
 				// Create command
 				cmd := NewRootCmd()
 
@@ -308,7 +307,7 @@ echo "New install script content"`
 				// Execute command
 				cmdErr = cmd.Execute()
 			})
-			require.NoError(t, err, "Failed to capture output")
+			require.NoError(t, captureErr, "Failed to capture output")
 
 			if tt.wantErr {
 				assert.Error(t, cmdErr)
@@ -355,6 +354,10 @@ func TestStatusCommandWithSymlinks(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesRoot)
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DODOT_TEST_MODE", "true")
+	// Override XDG directories to use test-specific paths
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+	t.Setenv("DODOT_CONFIG_DIR", filepath.Join(homeDir, ".config", "dodot"))
+	t.Setenv("DODOT_CACHE_DIR", filepath.Join(homeDir, ".cache", "dodot"))
 
 	// Execute and capture output
 	output, err := captureOutput(func() {
