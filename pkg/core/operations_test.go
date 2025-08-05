@@ -164,7 +164,25 @@ func TestConvertActionsToOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := ConvertActionsToOperations(tt.actions)
+			// Create context for tests that have link actions
+			var ops []types.Operation
+			var err error
+
+			hasLinkActions := false
+			for _, action := range tt.actions {
+				if action.Type == types.ActionTypeLink || action.Type == types.ActionTypeShellSource || action.Type == types.ActionTypePathAdd {
+					hasLinkActions = true
+					break
+				}
+			}
+
+			if hasLinkActions {
+				testPaths := createTestPaths(t)
+				ctx := NewExecutionContext(false, testPaths)
+				ops, err = ConvertActionsToOperationsWithContext(tt.actions, ctx)
+			} else {
+				ops, err = ConvertActionsToOperationsWithContext(tt.actions, nil)
+			}
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -701,7 +719,18 @@ func TestConvertAction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := ConvertAction(tt.action)
+			var ops []types.Operation
+			var err error
+
+			// For actions that require context, create one
+			if tt.action.Type == types.ActionTypeLink || tt.action.Type == types.ActionTypeShellSource || tt.action.Type == types.ActionTypePathAdd {
+				testPaths := createTestPaths(t)
+				ctx := NewExecutionContext(false, testPaths)
+				ops, err = ConvertActionWithContext(tt.action, ctx)
+			} else {
+				// For other actions (brew, install), use nil context to test skipping behavior
+				ops, err = ConvertActionWithContext(tt.action, nil)
+			}
 
 			if tt.wantError {
 				testutil.AssertError(t, err)
@@ -853,7 +882,9 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := ConvertActionsToOperations(actions)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
+	ops, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err)
 
 	// Count directory creation operations for the home directory
@@ -881,7 +912,8 @@ func TestNoDuplicateDirectoryOperations(t *testing.T) {
 // TestConvertActionsToOperationsWithContext_BrewAndInstall tests brew and install actions with context
 func TestConvertActionsToOperationsWithContext_BrewAndInstall(t *testing.T) {
 	// Create context with checksums
-	ctx := NewExecutionContext(false)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
 	ctx.ChecksumResults["/packs/tools/Brewfile"] = "brew123"
 	ctx.ChecksumResults["/packs/dev/install.sh"] = "install456"
 
@@ -963,7 +995,8 @@ func TestExecutionPipelineNoDuplicateOperations(t *testing.T) {
 	}
 
 	// Create context with checksum result
-	ctx := NewExecutionContext(false)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
 	ctx.ChecksumResults["/dotfiles/brew/Brewfile"] = "abc123"
 
 	// Generate operations with context (this is what the pipeline does)

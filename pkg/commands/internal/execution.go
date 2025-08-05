@@ -3,6 +3,7 @@ package internal
 import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -26,6 +27,12 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 		Str("runMode", string(opts.RunMode)).
 		Bool("force", opts.Force).
 		Msg("Starting execution pipeline")
+
+	// 0. Initialize Paths instance
+	pathsInstance, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return nil, err
+	}
 
 	// 1. Get Pack Candidates
 	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
@@ -71,7 +78,7 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 7. Create execution context
-	ctx := core.NewExecutionContext(opts.Force)
+	ctx := core.NewExecutionContext(opts.Force, pathsInstance)
 
 	// 8. Convert actions to operations (PLANNING PHASE)
 	// This converts high-level actions into low-level operations

@@ -30,6 +30,7 @@ func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
 
 // ConvertActionsToOperations converts actions into file system operations
 // This is the planning phase - no actual file system changes are made.
+// DEPRECATED: Use ConvertActionsToOperationsWithContext instead.
 func ConvertActionsToOperations(actions []types.Action) ([]types.Operation, error) {
 	return ConvertActionsToOperationsWithContext(actions, nil)
 }
@@ -96,6 +97,7 @@ func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *Executio
 // It modifies the operations slice in place.
 
 // ConvertAction converts a single action to one or more operations
+// DEPRECATED: Use ConvertActionWithContext instead.
 func ConvertAction(action types.Action) ([]types.Operation, error) {
 	return ConvertActionWithContext(action, nil)
 }
@@ -114,7 +116,7 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 
 	switch action.Type {
 	case types.ActionTypeLink:
-		ops, err = convertLinkAction(action)
+		ops, err = convertLinkActionWithContext(action, ctx)
 	case types.ActionTypeCopy:
 		ops, err = convertCopyAction(action)
 	case types.ActionTypeWrite:
@@ -162,15 +164,19 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 	return ops, nil
 }
 
-// convertLinkAction converts a link action to symlink operations
-func convertLinkAction(action types.Action) ([]types.Operation, error) {
+// convertLinkActionWithContext converts a link action to symlink operations
+func convertLinkActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
 	if action.Source == "" || action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "link action requires source and target")
 	}
 
+	if ctx == nil || ctx.Paths == nil {
+		return nil, errors.New(errors.ErrActionInvalid, "link action requires execution context with paths")
+	}
+
 	source := operations.ExpandHome(action.Source)
 	target := operations.ExpandHome(action.Target)
-	deployedPath := filepath.Join(paths.GetSymlinkDir(), filepath.Base(target))
+	deployedPath := filepath.Join(ctx.Paths.SymlinkDir(), filepath.Base(target))
 
 	ops := []types.Operation{
 		{
@@ -199,9 +205,6 @@ func convertLinkAction(action types.Action) ([]types.Operation, error) {
 	return ops, nil
 }
 
-// ... (other convert functions remain the same, but without setting status)
-
-// convertCopyAction, convertWriteAction, etc. are not shown for brevity but are assumed
 // to be updated to not set the status, as it's now handled in ConvertActionWithContext.
 
 // resolveOperationConflicts checks for and resolves conflicts.

@@ -72,7 +72,8 @@ echo install`
 	testutil.AssertEqual(t, 2, len(filtered))
 
 	// Create execution context with checksums
-	ctx := NewExecutionContext(false)
+	testPaths := createTestPaths(t)
+	ctx := NewExecutionContext(false, testPaths)
 	ctx.ChecksumResults[brewfilePath] = brewChecksum
 	ctx.ChecksumResults[installPath] = installChecksum
 
