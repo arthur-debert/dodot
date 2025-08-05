@@ -1,5 +1,9 @@
 package types
 
+import (
+	"fmt"
+)
+
 // Shell integration constants
 const (
 	// ShellIntegrationSnippet is the line users need to add to their shell config
@@ -26,7 +30,7 @@ end`
 		return FishIntegrationSnippet
 	default:
 		if customDataDir != "" {
-			return `[ -f "` + customDataDir + `/shell/dodot-init.sh" ] && source "` + customDataDir + `/shell/dodot-init.sh"`
+			return fmt.Sprintf(ShellIntegrationSnippetWithCustomDir, customDataDir, customDataDir)
 		}
 		return ShellIntegrationSnippet
 	}

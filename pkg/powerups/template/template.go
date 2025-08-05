@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -14,9 +15,6 @@ import (
 const (
 	// TemplatePowerUpName is the unique name for the template power-up
 	TemplatePowerUpName = "template"
-
-	// TemplatePowerUpPriority is the priority for template operations
-	TemplatePowerUpPriority = 70
 )
 
 // TemplatePowerUp processes template files and expands variables
@@ -96,6 +94,7 @@ func (p *TemplatePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 		targetPath := filepath.Join(targetDir, filename)
 
 		// Create template processing action
+		cfg := config.Default()
 		action := types.Action{
 			Type:        types.ActionTypeTemplate,
 			Description: fmt.Sprintf("Process template %s -> %s", match.Path, targetPath),
@@ -103,7 +102,7 @@ func (p *TemplatePowerUp) Process(matches []types.TriggerMatch) ([]types.Action,
 			Target:      targetPath,
 			Pack:        match.Pack,
 			PowerUpName: p.Name(),
-			Priority:    TemplatePowerUpPriority,
+			Priority:    cfg.Priorities.PowerUps["template"],
 			Metadata: map[string]interface{}{
 				"trigger":   match.TriggerName,
 				"variables": variables,

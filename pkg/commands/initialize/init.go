@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -44,6 +45,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	}
 
 	// 3. Generate actions for creating pack
+	cfg := config.Default()
 	var actions []types.Action
 
 	// Create directory action
@@ -51,7 +53,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		Type:        types.ActionTypeMkdir,
 		Description: fmt.Sprintf("Create pack directory %s", opts.PackName),
 		Target:      packPath,
-		Mode:        0755,
+		Mode:        uint32(cfg.FilePermissions.Directory),
 		Pack:        opts.PackName,
 		PowerUpName: "init_pack_internal",
 		Priority:    200, // Higher priority to create dir first
@@ -82,7 +84,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		Description: "Create .dodot.toml configuration",
 		Target:      configPath,
 		Content:     configContent,
-		Mode:        0644,
+		Mode:        uint32(cfg.FilePermissions.File),
 		Pack:        opts.PackName,
 		PowerUpName: "init_pack_internal",
 		Priority:    100,
@@ -118,7 +120,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 		Description: "Create README.txt",
 		Target:      readmePath,
 		Content:     readmeContent,
-		Mode:        0644,
+		Mode:        uint32(cfg.FilePermissions.File),
 		Pack:        opts.PackName,
 		PowerUpName: "init_pack_internal",
 		Priority:    100,

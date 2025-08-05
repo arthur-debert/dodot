@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/rs/zerolog"
 )
@@ -11,18 +12,20 @@ import (
 // IgnoreChecker provides unified interface for checking if packs or files should be ignored
 type IgnoreChecker struct {
 	logger zerolog.Logger
+	config *config.Config
 }
 
 // NewIgnoreChecker creates a new IgnoreChecker instance
 func NewIgnoreChecker() *IgnoreChecker {
 	return &IgnoreChecker{
 		logger: logging.GetLogger("packs.ignore"),
+		config: config.Default(),
 	}
 }
 
 // ShouldIgnorePackDirectory checks if a pack directory should be ignored due to .dodotignore file
 func (ic *IgnoreChecker) ShouldIgnorePackDirectory(packPath string) bool {
-	ignoreFilePath := filepath.Join(packPath, ".dodotignore")
+	ignoreFilePath := filepath.Join(packPath, ic.config.Patterns.SpecialFiles.IgnoreFile)
 	if _, err := os.Stat(ignoreFilePath); err == nil {
 		ic.logger.Debug().
 			Str("pack", filepath.Base(packPath)).
@@ -35,7 +38,7 @@ func (ic *IgnoreChecker) ShouldIgnorePackDirectory(packPath string) bool {
 // ShouldIgnoreDirectoryDuringTraversal checks if a directory should be skipped during file traversal
 // This is used when walking through pack contents to find files
 func (ic *IgnoreChecker) ShouldIgnoreDirectoryDuringTraversal(dirPath string, relPath string) bool {
-	ignoreFilePath := filepath.Join(dirPath, ".dodotignore")
+	ignoreFilePath := filepath.Join(dirPath, ic.config.Patterns.SpecialFiles.IgnoreFile)
 	if _, err := os.Stat(ignoreFilePath); err == nil {
 		ic.logger.Debug().
 			Str("dir", relPath).
@@ -47,7 +50,7 @@ func (ic *IgnoreChecker) ShouldIgnoreDirectoryDuringTraversal(dirPath string, re
 
 // HasIgnoreFile checks if a directory contains a .dodotignore file
 func (ic *IgnoreChecker) HasIgnoreFile(dirPath string) bool {
-	ignoreFilePath := filepath.Join(dirPath, ".dodotignore")
+	ignoreFilePath := filepath.Join(dirPath, ic.config.Patterns.SpecialFiles.IgnoreFile)
 	if _, err := os.Stat(ignoreFilePath); err == nil {
 		return true
 	}

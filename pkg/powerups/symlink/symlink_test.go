@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -66,7 +67,7 @@ func TestSymlinkPowerUp_ProcessMatches(t *testing.T) {
 	assert.Equal(t, filepath.Join(homeDir, ".vimrc"), actions[0].Target)
 	assert.Equal(t, "vim", actions[0].Pack)
 	assert.Equal(t, SymlinkPowerUpName, actions[0].PowerUpName)
-	assert.Equal(t, SymlinkPowerUpPriority, actions[0].Priority)
+	assert.Equal(t, config.Default().Priorities.PowerUps["symlink"], actions[0].Priority)
 
 	// Check second action
 	assert.Equal(t, types.ActionTypeLink, actions[1].Type)

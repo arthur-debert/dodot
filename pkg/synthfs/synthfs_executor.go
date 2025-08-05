@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -14,19 +15,6 @@ import (
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 	"github.com/rs/zerolog"
 )
-
-// protectedPathsMap contains paths that should never be symlinked for security reasons
-var protectedPathsMap = map[string]bool{
-	".ssh/authorized_keys": true,
-	".ssh/id_rsa":          true,
-	".ssh/id_ed25519":      true,
-	".gnupg":               true,
-	".password-store":      true,
-	".config/gh/hosts.yml": true, // GitHub CLI auth
-	".aws/credentials":     true,
-	".kube/config":         true,
-	".docker/config.json":  true,
-}
 
 // SynthfsExecutor executes dodot operations using synthfs
 type SynthfsExecutor struct {
@@ -38,6 +26,7 @@ type SynthfsExecutor struct {
 	allowHomeSymlinks bool
 	backupExisting    bool
 	enableRollback    bool
+	config            *config.Config
 }
 
 // NewSynthfsExecutor creates a new synthfs-based executor
@@ -47,15 +36,17 @@ func NewSynthfsExecutor(dryRun bool) *SynthfsExecutor {
 	// Use PathAwareFileSystem to handle absolute paths directly
 	osfs := filesystem.NewOSFileSystem("/")
 	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+	cfg := config.Default()
 
 	return &SynthfsExecutor{
 		logger:            logging.GetLogger("core.synthfs"),
 		dryRun:            dryRun,
 		filesystem:        pathAwareFS,
 		paths:             p,
-		allowHomeSymlinks: false, // Default to safe mode
-		backupExisting:    true,  // Default to backing up existing files
-		enableRollback:    true,  // Default to enabling rollback for safety
+		allowHomeSymlinks: cfg.Security.AllowHomeSymlinks,
+		backupExisting:    cfg.Security.BackupExisting,
+		enableRollback:    cfg.Security.EnableRollback,
+		config:            cfg,
 	}
 }
 
@@ -64,15 +55,17 @@ func NewSynthfsExecutorWithPaths(dryRun bool, p *paths.Paths) *SynthfsExecutor {
 	// Use PathAwareFileSystem to handle absolute paths directly
 	osfs := filesystem.NewOSFileSystem("/")
 	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+	cfg := config.Default()
 
 	return &SynthfsExecutor{
 		logger:            logging.GetLogger("core.synthfs"),
 		dryRun:            dryRun,
 		filesystem:        pathAwareFS,
 		paths:             p,
-		allowHomeSymlinks: false,
-		backupExisting:    true,
-		enableRollback:    true,
+		allowHomeSymlinks: cfg.Security.AllowHomeSymlinks,
+		backupExisting:    cfg.Security.BackupExisting,
+		enableRollback:    cfg.Security.EnableRollback,
+		config:            cfg,
 	}
 }
 
@@ -229,7 +222,7 @@ func (e *SynthfsExecutor) addCreateDir(batch *synthfs.SimpleBatch, op types.Oper
 		return err
 	}
 
-	mode := os.FileMode(0755)
+	mode := e.config.FilePermissions.Directory
 	if op.Mode != nil {
 		mode = os.FileMode(*op.Mode)
 	}
@@ -256,7 +249,7 @@ func (e *SynthfsExecutor) addWriteFile(batch *synthfs.SimpleBatch, op types.Oper
 		return err
 	}
 
-	mode := os.FileMode(0644)
+	mode := e.config.FilePermissions.File
 	if op.Mode != nil {
 		mode = os.FileMode(*op.Mode)
 	}
@@ -585,7 +578,7 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 
 	// Check if the relative path matches any protected path
 	// First check exact match
-	if protectedPathsMap[relPath] {
+	if e.config.Security.ProtectedPaths[relPath] {
 		e.logger.Warn().
 			Str("path", path).
 			Str("relPath", relPath).
@@ -595,7 +588,7 @@ func (e *SynthfsExecutor) validateNotSystemFile(path string) error {
 	}
 
 	// Then check if the path is within a protected directory
-	for protectedPath := range protectedPathsMap {
+	for protectedPath := range e.config.Security.ProtectedPaths {
 		if strings.HasPrefix(relPath, protectedPath+"/") {
 			e.logger.Warn().
 				Str("path", path).

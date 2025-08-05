@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -38,116 +39,19 @@ func RegisterDefaultMatcher(name string, matcher types.Matcher) {
 
 // DefaultMatchers returns a set of common matchers for typical dotfiles
 func DefaultMatchers() []types.Matcher {
-	matchers := []types.Matcher{
-		// Install powerups (run once)
-		{
-			Name:        "install-script",
-			TriggerName: "filename",
-			PowerUpName: "install_script",
-			Priority:    90,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "install.sh",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "brewfile",
-			TriggerName: "filename",
-			PowerUpName: "homebrew",
-			Priority:    90,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "Brewfile",
-			},
-			Enabled: true,
-		},
+	cfg := config.Default()
+	matchers := make([]types.Matcher, len(cfg.Matchers))
 
-		// Shell profile integration
-		{
-			Name:        "shell-aliases",
-			TriggerName: "filename",
-			PowerUpName: "shell_profile",
-			Priority:    80,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "*aliases.sh",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "shell-profile",
-			TriggerName: "filename",
-			PowerUpName: "shell_profile",
-			Priority:    80,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "profile.sh",
-			},
-			Enabled: true,
-		},
-
-		// Bin directories - handled by both path and shell_add_path powerups
-		{
-			Name:        "bin-dir",
-			TriggerName: "directory",
-			PowerUpName: "path",
-			Priority:    90,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "bin",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "bin-path",
-			TriggerName: "directory",
-			PowerUpName: "shell_add_path",
-			Priority:    80,
-			TriggerOptions: map[string]interface{}{
-				"pattern": "bin",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "local-bin-dir",
-			TriggerName: "directory",
-			PowerUpName: "path",
-			Priority:    90,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".local/bin",
-			},
-			Enabled: true,
-		},
-		{
-			Name:        "local-bin-path",
-			TriggerName: "directory",
-			PowerUpName: "shell_add_path",
-			Priority:    80,
-			TriggerOptions: map[string]interface{}{
-				"pattern": ".local/bin",
-			},
-			Enabled: true,
-		},
-
-		// Template power-up matcher
-		{
-			Name:        "template",
-			TriggerName: "extension",
-			PowerUpName: "template",
-			Priority:    70,
-			TriggerOptions: map[string]interface{}{
-				"extension": ".tmpl",
-			},
-			Enabled: true,
-		},
-
-		// Catchall symlink matcher - must be last with lowest priority
-		{
-			Name:           "symlink-catchall",
-			TriggerName:    "catchall",
-			PowerUpName:    "symlink",
-			Priority:       0, // Lowest priority to run last
-			TriggerOptions: map[string]interface{}{
-				// Default excludes are handled by the catchall trigger itself
-			},
-			Enabled: true,
-		},
+	for i, mc := range cfg.Matchers {
+		matchers[i] = types.Matcher{
+			Name:           mc.Name,
+			TriggerName:    mc.TriggerType,
+			PowerUpName:    mc.PowerUpType,
+			Priority:       mc.Priority,
+			TriggerOptions: mc.TriggerData,
+			PowerUpOptions: mc.PowerUpData,
+			Enabled:        true,
+		}
 	}
 
 	// Add any dynamically registered matchers

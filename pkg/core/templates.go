@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
 	"github.com/arthur-debert/dodot/pkg/registry"
@@ -74,9 +75,10 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 				filename = strings.TrimPrefix(filename, "*")
 
 				// Determine file mode based on file type
-				mode := uint32(0644)
+				cfg := config.Default()
+				mode := uint32(cfg.FilePermissions.File)
 				if strings.HasSuffix(filename, ".sh") || filename == "install.sh" {
-					mode = 0755
+					mode = uint32(cfg.FilePermissions.Executable)
 				}
 
 				templates = append(templates, PackTemplateFile{

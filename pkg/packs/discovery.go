@@ -13,18 +13,6 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// DefaultIgnorePatterns contains patterns for directories to ignore
-var DefaultIgnorePatterns = []string{
-	".git",
-	".svn",
-	".hg",
-	"node_modules",
-	".DS_Store",
-	"*.swp",
-	"*~",
-	"#*#",
-}
-
 // GetPackCandidates returns all potential pack directories in the dotfiles root
 func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
@@ -86,7 +74,8 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 
 // shouldIgnore checks if a name matches any ignore pattern
 func shouldIgnore(name string) bool {
-	for _, pattern := range DefaultIgnorePatterns {
+	cfg := config.Default()
+	for _, pattern := range cfg.Patterns.PackIgnore {
 		// Simple pattern matching (could be enhanced with glob)
 		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
@@ -210,7 +199,8 @@ func ValidatePack(packPath string) error {
 	}
 
 	// Check if it has a .dodot.toml with skip=true
-	configPath := filepath.Join(packPath, ".dodot.toml")
+	cfg := config.Default()
+	configPath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.PackConfig)
 	if config.FileExists(configPath) {
 		_, err := loadPackConfig(configPath)
 		if err != nil {

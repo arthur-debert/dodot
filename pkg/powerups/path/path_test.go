@@ -3,6 +3,7 @@ package path
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -43,7 +44,7 @@ func TestPathPowerUp_Process(t *testing.T) {
 				testutil.AssertEqual(t, "~/bin/script.sh", action.Target)
 				testutil.AssertEqual(t, "test-pack", action.Pack)
 				testutil.AssertEqual(t, PathPowerUpName, action.PowerUpName)
-				testutil.AssertEqual(t, PathPowerUpPriority, action.Priority)
+				testutil.AssertEqual(t, config.Default().Priorities.PowerUps["path"], action.Priority)
 			},
 		},
 		{

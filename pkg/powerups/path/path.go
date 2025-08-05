@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -12,9 +13,6 @@ import (
 const (
 	// PathPowerUpName is the unique name for the path power-up
 	PathPowerUpName = "path"
-
-	// PathPowerUpPriority is the priority for path operations
-	PathPowerUpPriority = 90
 )
 
 // PathPowerUp handles executable files by creating symlinks in ~/bin
@@ -79,6 +77,7 @@ func (p *PathPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, err
 		targetMap[targetPath] = match.AbsolutePath
 
 		// Create symlink action
+		cfg := config.Default()
 		action := types.Action{
 			Type:        types.ActionTypeLink,
 			Description: fmt.Sprintf("Link executable %s -> %s", match.Path, targetPath),
@@ -86,7 +85,7 @@ func (p *PathPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, err
 			Target:      targetPath,
 			Pack:        match.Pack,
 			PowerUpName: p.Name(),
-			Priority:    PathPowerUpPriority,
+			Priority:    cfg.Priorities.PowerUps["path"],
 			Metadata: map[string]interface{}{
 				"trigger":    match.TriggerName,
 				"executable": true,

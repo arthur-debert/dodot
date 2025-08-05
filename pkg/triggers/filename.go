@@ -5,14 +5,14 @@ import (
 	"io/fs"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 const (
-	FileNameTriggerName     = "filename"
-	FileNameTriggerPriority = 100
+	FileNameTriggerName = "filename"
 )
 
 // FileNameTrigger matches files based on their name or glob pattern
@@ -25,10 +25,11 @@ type FileNameTrigger struct {
 // NewFileNameTrigger creates a new FileNameTrigger with the given pattern
 func NewFileNameTrigger(pattern string) *FileNameTrigger {
 	isGlob := containsGlobChars(pattern)
+	cfg := config.Default()
 	return &FileNameTrigger{
 		pattern:  pattern,
 		isGlob:   isGlob,
-		priority: FileNameTriggerPriority,
+		priority: cfg.Priorities.Triggers["filename"],
 	}
 }
 
