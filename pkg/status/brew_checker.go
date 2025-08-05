@@ -80,7 +80,9 @@ func (bc *BrewChecker) CheckStatus(op *types.Operation, fs filesystem.FullFileSy
 		status.Message = fmt.Sprintf("Failed to read sentinel file: %v", err)
 		return status, nil
 	}
-	defer reader.Close()
+	defer func() {
+		_ = reader.Close()
+	}()
 
 	storedChecksumBytes, err := io.ReadAll(reader)
 	if err != nil {

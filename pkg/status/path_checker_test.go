@@ -87,8 +87,10 @@ func TestPathChecker_CheckStatus_InCurrentPath(t *testing.T) {
 	// Set PATH to include the deployed directory
 	absDeployedPath, _ := filepath.Abs(deployedPath)
 	oldPath := os.Getenv("PATH")
-	defer os.Setenv("PATH", oldPath)
-	os.Setenv("PATH", oldPath+string(os.PathListSeparator)+absDeployedPath)
+	defer func() {
+		_ = os.Setenv("PATH", oldPath)
+	}()
+	_ = os.Setenv("PATH", oldPath+string(os.PathListSeparator)+absDeployedPath)
 
 	op := &types.Operation{
 		Type:    types.OperationCreateSymlink,
