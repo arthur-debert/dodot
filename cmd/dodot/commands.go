@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/style"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
@@ -322,13 +323,19 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrListPacks, err)
 			}
 
-			// Display the packs
-			if len(result.Packs) == 0 {
-				fmt.Println(MsgNoPacksFound)
+			// Test rich output if TEST_RICH env var is set
+			if os.Getenv("TEST_RICH") != "" {
+				renderer := style.NewTerminalRenderer()
+				fmt.Println(renderer.RenderPackList(result.Packs))
 			} else {
-				fmt.Println(MsgAvailablePacks)
-				for _, pack := range result.Packs {
-					fmt.Printf(MsgPackItem, pack.Name)
+				// Display the packs (original code)
+				if len(result.Packs) == 0 {
+					fmt.Println(MsgNoPacksFound)
+				} else {
+					fmt.Println(MsgAvailablePacks)
+					for _, pack := range result.Packs {
+						fmt.Printf(MsgPackItem, pack.Name)
+					}
 				}
 			}
 
