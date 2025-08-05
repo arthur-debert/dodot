@@ -2,106 +2,86 @@ package style
 
 import (
 	"github.com/charmbracelet/lipgloss"
+	"github.com/pterm/pterm"
 )
 
-// Base styles
+// Initialize pterm styles with our custom colors
+func init() {
+	// Configure pterm with our theme colors
+	pterm.Success.Prefix = pterm.Prefix{
+		Text:  "✓",
+		Style: pterm.NewStyle(pterm.FgGreen, pterm.Bold),
+	}
+
+	pterm.Error.Prefix = pterm.Prefix{
+		Text:  "✗",
+		Style: pterm.NewStyle(pterm.FgRed, pterm.Bold),
+	}
+
+	pterm.Warning.Prefix = pterm.Prefix{
+		Text:  "!",
+		Style: pterm.NewStyle(pterm.FgYellow, pterm.Bold),
+	}
+
+	pterm.Info.Prefix = pterm.Prefix{
+		Text:  "•",
+		Style: pterm.NewStyle(pterm.FgCyan),
+	}
+}
+
+// Create pterm styles for our use cases
 var (
-	// Headers and titles
-	TitleStyle = lipgloss.NewStyle().
-			Foreground(HeadingColor).
-			Bold(true).
-			MarginBottom(1)
+	// Text styles using pterm
+	TitleStyle    = pterm.NewStyle(pterm.Bold)
+	SubtitleStyle = pterm.NewStyle(pterm.Bold)
+	MutedStyle    = pterm.NewStyle(pterm.FgGray)
 
-	SubtitleStyle = lipgloss.NewStyle().
-			Foreground(HeadingColor).
-			Bold(true)
+	// PowerUp styles with custom colors
+	SymlinkStyle       = pterm.NewStyle(pterm.FgLightBlue, pterm.Bold)
+	ProfileStyle       = pterm.NewStyle(pterm.FgMagenta, pterm.Bold)
+	InstallScriptStyle = pterm.NewStyle(pterm.FgYellow, pterm.Bold)
+	HomebrewStyle      = pterm.NewStyle(pterm.FgGreen, pterm.Bold)
 
-	// Text styles
-	NormalStyle = lipgloss.NewStyle().
-			Foreground(TextColor)
-
-	MutedStyle = lipgloss.NewStyle().
-			Foreground(MutedColor)
-
-	// Status styles
-	SuccessStyle = lipgloss.NewStyle().
-			Foreground(SuccessColor).
-			Bold(true)
-
-	ErrorStyle = lipgloss.NewStyle().
-			Foreground(ErrorColor).
-			Bold(true)
-
-	WarningStyle = lipgloss.NewStyle().
-			Foreground(WarningColor).
-			Bold(true)
-
-	InfoStyle = lipgloss.NewStyle().
-			Foreground(InfoColor)
-
-	// Box and container styles
-	BoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(BorderColor).
-			Padding(1, 2)
-
-	// List styles
-	ListItemStyle = lipgloss.NewStyle().
-			PaddingLeft(2)
-
-	// Code and path styles
-	CodeStyle = lipgloss.NewStyle().
-			Foreground(PrimaryColor).
-			Background(SurfaceColor).
-			Padding(0, 1)
-
-	PathStyle = lipgloss.NewStyle().
-			Foreground(SecondaryColor).
-			Italic(true)
+	// Path style
+	PathStyle = pterm.NewStyle(pterm.FgGray, pterm.Italic)
 )
 
-// PowerUp styles
+// Operation indicators using pterm
 var (
-	SymlinkStyle = lipgloss.NewStyle().
-			Foreground(SymlinkColor).
-			Bold(true)
-
-	ProfileStyle = lipgloss.NewStyle().
-			Foreground(ProfileColor).
-			Bold(true)
-
-	InstallScriptStyle = lipgloss.NewStyle().
-				Foreground(InstallScriptColor).
-				Bold(true)
-
-	HomebrewStyle = lipgloss.NewStyle().
-			Foreground(HomebrewColor).
-			Bold(true)
+	SuccessIndicator  = pterm.Success.Prefix.Text
+	ErrorIndicator    = pterm.Error.Prefix.Text
+	WarningIndicator  = pterm.Warning.Prefix.Text
+	InfoIndicator     = pterm.Info.Prefix.Text
+	PendingIndicator  = "○"
+	ProgressIndicator = "⟳"
 )
 
-// Operation indicator styles
-var (
-	SuccessIndicator  = SuccessStyle.Render("✓")
-	ErrorIndicator    = ErrorStyle.Render("✗")
-	WarningIndicator  = WarningStyle.Render("!")
-	InfoIndicator     = InfoStyle.Render("•")
-	PendingIndicator  = MutedStyle.Render("○")
-	ProgressIndicator = InfoStyle.Render("⟳")
-)
-
-// Helper functions
+// Helper functions using pterm
 func Indent(s string, level int) string {
-	return lipgloss.NewStyle().PaddingLeft(level * 2).Render(s)
+	// Use spaces for indentation
+	indent := ""
+	for i := 0; i < level*2; i++ {
+		indent += " "
+	}
+	return indent + s
 }
 
 func Bold(s string) string {
-	return lipgloss.NewStyle().Bold(true).Render(s)
+	return pterm.Bold.Sprint(s)
 }
 
 func Italic(s string) string {
-	return lipgloss.NewStyle().Italic(true).Render(s)
+	return pterm.Italic.Sprint(s)
 }
 
 func Underline(s string) string {
-	return lipgloss.NewStyle().Underline(true).Render(s)
+	return pterm.Underscore.Sprint(s)
 }
+
+// Lipgloss styles for more complex layouts (boxes, etc)
+var (
+	BoxStyle = lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(BorderColor).
+		Padding(1, 2)
+)

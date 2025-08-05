@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/pterm/pterm"
 )
 
 // Renderer defines the interface for rendering various output types
@@ -18,15 +18,13 @@ type Renderer interface {
 
 // TerminalRenderer implements Renderer with rich terminal output
 type TerminalRenderer struct {
-	parser *MarkupParser
-	width  int
+	width int
 }
 
 // NewTerminalRenderer creates a new terminal renderer
 func NewTerminalRenderer() *TerminalRenderer {
 	return &TerminalRenderer{
-		parser: NewMarkupParser(),
-		width:  80, // Default width, can be updated
+		width: 80, // Default width, can be updated
 	}
 }
 
@@ -38,20 +36,20 @@ func (r *TerminalRenderer) SetWidth(width int) {
 // RenderPackList renders a list of packs
 func (r *TerminalRenderer) RenderPackList(packs []types.PackInfo) string {
 	if len(packs) == 0 {
-		return MutedStyle.Render("No packs found")
+		return MutedStyle.Sprint("No packs found")
 	}
 
 	var result strings.Builder
-	result.WriteString(TitleStyle.Render("Available Packs") + "\n\n")
+	result.WriteString(TitleStyle.Sprint("Available Packs") + "\n\n")
 
 	for _, pack := range packs {
 		// Pack name with icon
-		packLine := fmt.Sprintf("%s %s", InfoIndicator, Bold(pack.Name))
+		packLine := fmt.Sprintf("%s %s", pterm.Info.Prefix.Text, Bold(pack.Name))
 		result.WriteString(packLine + "\n")
 
 		// Pack path (indented and muted)
 		if pack.Path != "" {
-			pathLine := Indent(MutedStyle.Render(pack.Path), 1)
+			pathLine := Indent(MutedStyle.Sprint(pack.Path), 1)
 			result.WriteString(pathLine + "\n")
 		}
 
@@ -65,14 +63,14 @@ func (r *TerminalRenderer) RenderPackList(packs []types.PackInfo) string {
 // RenderOperations renders a list of operations
 func (r *TerminalRenderer) RenderOperations(ops []types.Operation) string {
 	if len(ops) == 0 {
-		return MutedStyle.Render("No operations to perform")
+		return MutedStyle.Sprint("No operations to perform")
 	}
 
 	var result strings.Builder
 
 	// For now, render operations without grouping by pack
 	// since Operation struct doesn't have a Pack field
-	result.WriteString(TitleStyle.Render("Operations") + "\n\n")
+	result.WriteString(TitleStyle.Sprint("Operations") + "\n\n")
 
 	// Render each operation
 	for _, op := range ops {
@@ -101,7 +99,7 @@ func (r *TerminalRenderer) renderOperation(op types.Operation) string {
 	}
 
 	// Choose style based on operation type
-	var typeStyle lipgloss.Style
+	var typeStyle *pterm.Style
 	var typeName string
 	switch op.Type {
 	case types.OperationCreateSymlink:
@@ -114,19 +112,19 @@ func (r *TerminalRenderer) renderOperation(op types.Operation) string {
 		typeStyle = InstallScriptStyle
 		typeName = "execute"
 	default:
-		typeStyle = InfoStyle
+		typeStyle = pterm.Info.MessageStyle
 		typeName = string(op.Type)
 	}
 
 	// Format operation
-	opType := typeStyle.Render(typeName)
+	opType := typeStyle.Sprint(typeName)
 
 	// Build operation description
 	var desc string
 	if op.Source != "" && op.Target != "" {
 		desc = fmt.Sprintf("%s → %s",
-			PathStyle.Render(op.Source),
-			PathStyle.Render(op.Target))
+			PathStyle.Sprint(op.Source),
+			PathStyle.Sprint(op.Target))
 	} else if op.Description != "" {
 		desc = op.Description
 	}
@@ -143,13 +141,13 @@ func (r *TerminalRenderer) RenderError(err error) string {
 	// Check if it's a dodot error with code
 	if dodotErr, ok := err.(interface{ Code() string }); ok {
 		return fmt.Sprintf("%s Error [%s]: %s",
-			ErrorIndicator,
-			ErrorStyle.Render(dodotErr.Code()),
+			pterm.Error.Prefix.Text,
+			pterm.Error.MessageStyle.Sprint(dodotErr.Code()),
 			err.Error())
 	}
 
 	// Generic error
-	return fmt.Sprintf("%s %s", ErrorIndicator, ErrorStyle.Render(err.Error()))
+	return fmt.Sprintf("%s %s", pterm.Error.Prefix.Text, pterm.Error.MessageStyle.Sprint(err.Error()))
 }
 
 // RenderProgress renders a progress indicator
@@ -163,7 +161,7 @@ func (r *TerminalRenderer) RenderProgress(current, total int, message string) st
 
 	return fmt.Sprintf("%s [%s] %d/%d %s",
 		ProgressIndicator,
-		InfoStyle.Render(bar),
+		pterm.Info.MessageStyle.Sprint(bar),
 		current,
 		total,
 		message)
