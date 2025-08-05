@@ -9,7 +9,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -443,13 +442,13 @@ func convertBrewActionWithContext(action types.Action, ctx *ExecutionContext) ([
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(paths.GetHomebrewDir(), pack)
+	sentinelPath := filepath.Join(ctx.Paths.HomebrewDir(), pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      paths.GetHomebrewDir(),
+			Target:      ctx.Paths.HomebrewDir(),
 			Description: "Create brewfile sentinel directory",
 		},
 		// Execute brew bundle command
@@ -505,13 +504,13 @@ func convertInstallActionWithContext(action types.Action, ctx *ExecutionContext)
 	}
 
 	// Create sentinel file with checksum
-	sentinelPath := filepath.Join(paths.GetInstallDir(), pack)
+	sentinelPath := filepath.Join(ctx.Paths.InstallDir(), pack)
 
 	ops := []types.Operation{
 		// Ensure sentinel directory exists
 		{
 			Type:        types.OperationCreateDir,
-			Target:      paths.GetInstallDir(),
+			Target:      ctx.Paths.InstallDir(),
 			Description: "Create install sentinel directory",
 		},
 		// Execute the install script
