@@ -46,12 +46,12 @@ var (
 	PathStyle = pterm.NewStyle(pterm.FgGray, pterm.Italic)
 )
 
-// Operation indicators using pterm
+// Operation indicators - use the Unicode symbols directly
 var (
-	SuccessIndicator  = pterm.Success.Prefix.Text
-	ErrorIndicator    = pterm.Error.Prefix.Text
-	WarningIndicator  = pterm.Warning.Prefix.Text
-	InfoIndicator     = pterm.Info.Prefix.Text
+	SuccessIndicator  = "✓"
+	ErrorIndicator    = "✗"
+	WarningIndicator  = "!"
+	InfoIndicator     = "•"
 	PendingIndicator  = "○"
 	ProgressIndicator = "⟳"
 )
