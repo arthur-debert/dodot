@@ -170,10 +170,15 @@ func TestInstallScriptPowerUp_ValidateOptions(t *testing.T) {
 }
 
 func TestGetInstallSentinelPath(t *testing.T) {
-	pack := "mypack"
-	path := GetInstallSentinelPath(pack)
+	// Create paths instance for testing
+	tempDir := testutil.TempDir(t, "install-test")
+	pathsInstance, err := paths.New(tempDir)
+	testutil.AssertNoError(t, err)
 
-	expected := filepath.Join(paths.GetInstallDir(), pack)
+	pack := "mypack"
+	path := GetInstallSentinelPath(pack, pathsInstance)
+
+	expected := filepath.Join(pathsInstance.InstallDir(), pack)
 	testutil.AssertEqual(t, expected, path)
 }
 

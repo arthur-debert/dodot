@@ -110,8 +110,8 @@ func (p *InstallScriptPowerUp) GetTemplateContent() string {
 }
 
 // GetSentinelPath returns the path to the sentinel file for a pack
-func GetInstallSentinelPath(pack string) string {
-	return filepath.Join(paths.GetInstallDir(), pack)
+func GetInstallSentinelPath(pack string, pathsInstance *paths.Paths) string {
+	return filepath.Join(pathsInstance.InstallDir(), pack)
 }
 
 func init() {

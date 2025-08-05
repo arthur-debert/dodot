@@ -85,7 +85,9 @@ trigger = { file_name = "install.sh" }
 		assert.Equal(t, "SUCCESS\n", string(content), "Marker file should contain SUCCESS")
 
 		// Verify sentinel file was created
-		sentinelPath := filepath.Join(paths.GetInstallDir(), "testpack")
+		pathsInstance, err := paths.New(dotfilesRoot)
+		require.NoError(t, err)
+		sentinelPath := filepath.Join(pathsInstance.InstallDir(), "testpack")
 		_, err = os.Stat(sentinelPath)
 		assert.NoError(t, err, "Sentinel file should exist after successful execution")
 	})
@@ -143,7 +145,9 @@ trigger = { file_name = "install.sh" }
 		assert.Error(t, err, "Command execution should fail when script exits with non-zero")
 
 		// Verify sentinel file was NOT created due to failure
-		sentinelPath := filepath.Join(paths.GetInstallDir(), "failpack")
+		pathsInstance, err := paths.New(dotfilesRoot)
+		require.NoError(t, err)
+		sentinelPath := filepath.Join(pathsInstance.InstallDir(), "failpack")
 		_, err = os.Stat(sentinelPath)
 		assert.True(t, os.IsNotExist(err), "Sentinel file should not exist after failed execution")
 	})

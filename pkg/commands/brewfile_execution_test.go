@@ -98,7 +98,9 @@ trigger = { file_name = "Brewfile" }
 		assert.Contains(t, logContent, brewfile, "Brew should be called with the Brewfile path")
 
 		// Verify sentinel file was created
-		sentinelPath := filepath.Join(paths.GetHomebrewDir(), "testpack")
+		pathsInstance, err := paths.New(dotfilesRoot)
+		require.NoError(t, err)
+		sentinelPath := filepath.Join(pathsInstance.HomebrewDir(), "testpack")
 		_, err = os.Stat(sentinelPath)
 		assert.NoError(t, err, "Sentinel file should exist after successful execution")
 	})
@@ -167,7 +169,9 @@ trigger = { file_name = "Brewfile" }
 		assert.Error(t, err, "Command execution should fail when brew exits with non-zero")
 
 		// Verify sentinel file was NOT created due to failure
-		sentinelPath := filepath.Join(paths.GetHomebrewDir(), "failpack")
+		pathsInstance, err := paths.New(dotfilesRoot)
+		require.NoError(t, err)
+		sentinelPath := filepath.Join(pathsInstance.HomebrewDir(), "failpack")
 		_, err = os.Stat(sentinelPath)
 		assert.True(t, os.IsNotExist(err), "Sentinel file should not exist after failed execution")
 	})

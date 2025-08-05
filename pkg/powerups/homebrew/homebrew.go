@@ -108,8 +108,8 @@ func (p *HomebrewPowerUp) GetTemplateContent() string {
 }
 
 // GetSentinelPath returns the path to the sentinel file for a pack
-func GetHomebrewSentinelPath(pack string) string {
-	return filepath.Join(paths.GetHomebrewDir(), pack)
+func GetHomebrewSentinelPath(pack string, pathsInstance *paths.Paths) string {
+	return filepath.Join(pathsInstance.HomebrewDir(), pack)
 }
 
 func init() {
