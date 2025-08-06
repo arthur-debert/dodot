@@ -37,8 +37,8 @@ type RichRenderer struct {
 // NewRichRenderer creates a new rich terminal renderer
 func NewRichRenderer() *RichRenderer {
 	return &RichRenderer{
-		actionWidth:  15,
-		pathWidth:    40,
+		actionWidth:  10, // As per design spec
+		pathWidth:    15, // As per design spec
 		messageWidth: 30,
 	}
 }
@@ -117,23 +117,26 @@ func (r *RichRenderer) RenderPackResult(pack PackResult) string {
 
 // RenderFileResult renders a single file result in three-column format
 func (r *RichRenderer) RenderFileResult(file FileResult) string {
-	// Column 1: Action verb with appropriate styling
+	// Column 1: Power-up name (not action verb) with appropriate styling
 	actionStyle := r.getActionStyle(file.PowerUp)
-	action := actionStyle.Sprint(r.padRight(file.Action, r.actionWidth))
+	powerUpName := r.padRight(file.PowerUp, r.actionWidth)
+	powerUp := actionStyle.Sprint(powerUpName)
 
 	// Column 2: File path
-	path := style.PathStyle.Sprint(r.padRight(file.Path, r.pathWidth))
+	pathName := r.padRight(file.Path, r.pathWidth)
+	path := style.PathStyle.Sprint(pathName)
 
-	// Column 3: Status message with indicator
-	statusIndicator := r.getStatusIndicator(file.Status)
-	message := r.padRight(file.Message, r.messageWidth)
+	// Column 3: Status message
+	message := file.Message
 
 	// Add output indicator if command produced output
 	if file.HasOutput() {
 		message += " [output]"
 	}
 
-	return fmt.Sprintf("%s %s %s %s", statusIndicator, action, path, message)
+	// Use " : " separator as per design spec
+	// Format: <power-up> : <file-path> : <status-message>
+	return fmt.Sprintf("%s : %s : %s", powerUp, path, message)
 }
 
 // RenderSummary renders the command summary
@@ -186,22 +189,6 @@ func (r *RichRenderer) getPackStatusIndicator(status types.ExecutionStatus) stri
 		return style.ErrorIndicator
 	case types.ExecutionStatusSkipped:
 		return style.InfoIndicator
-	default:
-		return style.PendingIndicator
-	}
-}
-
-// getStatusIndicator returns the appropriate indicator for an operation status
-func (r *RichRenderer) getStatusIndicator(status types.OperationStatus) string {
-	switch status {
-	case types.StatusReady:
-		return style.SuccessIndicator
-	case types.StatusSkipped:
-		return style.InfoIndicator
-	case types.StatusConflict:
-		return style.WarningIndicator
-	case types.StatusError:
-		return style.ErrorIndicator
 	default:
 		return style.PendingIndicator
 	}
@@ -310,14 +297,23 @@ func (r *PlainRenderer) RenderPackResult(pack PackResult) string {
 
 // RenderFileResult renders a file result as plain text
 func (r *PlainRenderer) RenderFileResult(file FileResult) string {
-	status := "[ ]"
-	if file.IsSuccess() {
-		status = "[✓]"
-	} else if file.Status == types.StatusError {
-		status = "[✗]"
-	}
+	// Format: <power-up> : <file-path> : <status-message>
+	// Pad power-up to 10 chars and path to 15 chars
+	powerUp := r.padRight(file.PowerUp, 10)
+	path := r.padRight(file.Path, 15)
 
-	return fmt.Sprintf("%s %s %s - %s", status, file.Action, file.Path, file.Message)
+	return fmt.Sprintf("%s : %s : %s", powerUp, path, file.Message)
+}
+
+// padRight pads a string to the specified width
+func (r *PlainRenderer) padRight(s string, width int) string {
+	if len(s) > width {
+		return s[:width-1] + "…"
+	}
+	if len(s) == width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-len(s))
 }
 
 // RenderSummary renders the summary as plain text

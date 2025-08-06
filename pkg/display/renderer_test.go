@@ -25,7 +25,7 @@ func TestRichRenderer_RenderFileResult(t *testing.T) {
 				Message: "Applied",
 				PowerUp: "symlink",
 			},
-			contains: []string{"Link", "~/.vimrc", "Applied"},
+			contains: []string{"symlink", "~/.vimrc", "Applied"},
 		},
 		{
 			name: "skipped with output",
@@ -37,7 +37,7 @@ func TestRichRenderer_RenderFileResult(t *testing.T) {
 				PowerUp: "homebrew",
 				Output:  "brew output here",
 			},
-			contains: []string{"Install", "~/Brewfile", "Already processed", "[output]"},
+			contains: []string{"homebrew", "~/Brewfile", "Already processed", "[output]"},
 		},
 		{
 			name: "error status",
@@ -48,7 +48,7 @@ func TestRichRenderer_RenderFileResult(t *testing.T) {
 				Message: "Error: permission denied",
 				PowerUp: "install",
 			},
-			contains: []string{"Execute", "~/scripts/install.sh", "Error: permission denied"},
+			contains: []string{"install", "~/scripts/inst", "Error: permission denied"},
 		},
 	}
 
@@ -203,10 +203,11 @@ func TestPlainRenderer_RenderFileResult(t *testing.T) {
 
 	result := renderer.RenderFileResult(file)
 
-	assert.Contains(t, result, "[✓]")
-	assert.Contains(t, result, "Link")
+	// Plain renderer now uses the three-column format: <power-up> : <file-path> : <status-message>
+	assert.Contains(t, result, "symlink")
 	assert.Contains(t, result, "~/.vimrc")
 	assert.Contains(t, result, "Applied")
+	assert.Contains(t, result, " : ") // Check for proper separator
 }
 
 func TestPlainRenderer_RenderCommandResult(t *testing.T) {

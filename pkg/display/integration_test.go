@@ -47,9 +47,9 @@ func TestDisplayIntegration(t *testing.T) {
 	assert.Contains(t, richOutput, "Deploy (dry run)")
 	assert.Contains(t, richOutput, "vim")
 	assert.Contains(t, richOutput, "tmux")
-	assert.Contains(t, richOutput, "Link")
+	assert.Contains(t, richOutput, "symlink")
 	assert.Contains(t, richOutput, "~/.vimrc")
-	assert.Contains(t, richOutput, "Install")
+	assert.Contains(t, richOutput, "homebrew")
 	assert.Contains(t, richOutput, "Summary")
 
 	// Render with plain renderer
@@ -60,8 +60,7 @@ func TestDisplayIntegration(t *testing.T) {
 	assert.Contains(t, plainOutput, "DEPLOY (DRY RUN)")
 	assert.Contains(t, plainOutput, "vim:")
 	assert.Contains(t, plainOutput, "tmux:")
-	assert.Contains(t, plainOutput, "[✓]")
-	assert.Contains(t, plainOutput, "[✗]")
+	assert.Contains(t, plainOutput, " : ") // Check for proper column separators
 }
 
 // TestFileStatusConversion tests converting FileStatus to display format
