@@ -81,7 +81,17 @@ func (r *RichRenderer) RenderPackResult(pack PackResult) string {
 
 	// Pack header with status indicator
 	statusIndicator := r.getPackStatusIndicator(pack.Status)
-	packHeader := fmt.Sprintf("%s %s", statusIndicator, style.Bold(pack.Name))
+	packName := pack.Name
+
+	// Apply ALERT styling for packs with errors
+	if pack.Status == types.ExecutionStatusError {
+		// Use ALERT style for pack name when it has errors
+		packName = style.StatusStyle(style.StatusAlert).Sprint(packName)
+	} else {
+		packName = style.Bold(packName)
+	}
+
+	packHeader := fmt.Sprintf("%s %s", statusIndicator, packName)
 	output.WriteString(packHeader + "\n")
 
 	// Pack description if available
@@ -208,8 +218,8 @@ func (r *RichRenderer) getActionStyle(powerUp string) *pterm.Style {
 	case "template":
 		return pterm.Info.MessageStyle
 	case "config":
-		// Config files use cyan/info style
-		return pterm.Info.MessageStyle
+		// Config files use cyan style
+		return style.ConfigStyle
 	default:
 		return pterm.Info.MessageStyle
 	}

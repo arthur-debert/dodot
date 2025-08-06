@@ -41,6 +41,7 @@ var (
 	ProfileStyle       = pterm.NewStyle(pterm.FgMagenta, pterm.Bold)
 	InstallScriptStyle = pterm.NewStyle(pterm.FgYellow, pterm.Bold)
 	HomebrewStyle      = pterm.NewStyle(pterm.FgGreen, pterm.Bold)
+	ConfigStyle        = pterm.NewStyle(pterm.FgCyan) // For .dodot.toml files
 
 	// Path style
 	PathStyle = pterm.NewStyle(pterm.FgGray, pterm.Italic)
