@@ -27,7 +27,7 @@ We have done quite a bit work on the cli layer for dodot.
 
             Cobra handles things like manpage generation and shell completions which is great. But it's not ideal to have these exposed as the main program's sub commands as these are not needed by users, only by the internal tools (like the build and release workflow). 
 
-            There fore these are available in specialized binaries, like cmd/<app>-completions and cmd/<app>-manpage . This makes the main binary help output cleaner and avoids the complexity of handling / managing meta internal tools like this for the end user. 
+            Therefore, these are available in specialized binaries located in the `cmd/` directory (e.g., `cmd/dodot-completions` and `cmd/dodot-manpage`). This makes the main binary's help output cleaner and avoids the complexity of exposing internal build tools to the end user. 
 
     1.4. Easy to iterate and fine tune the user experience
 

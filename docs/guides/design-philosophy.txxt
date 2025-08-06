@@ -21,11 +21,12 @@ we ensure your dotfiles repository IS your deployment. Combined with live
 changes, this means files under source control are the actual deployed
 files - not copies.
 
-This is achieved through symbolic links: the file in your repository acts
-as the link source. There's nothing to "update" since changes to config
-files are immediately live on the system.
+This is achieved primarily through symbolic links. For many power-ups
+(`symlink`, `shell_profile`), the file in your repository acts as the link
+source. There's nothing to "update" since changes to these config files
+are immediately live on the system.
 
-This enables stateless deployments - just linking paths from your system
+This enables stateless deployments—just linking paths from your system
 to your source-controlled repository.
 
 File Organization Philosophy
@@ -42,44 +43,47 @@ grouping criteria is entirely up to you:
 File Naming Conventions:
 dodot works primarily through file naming conventions:
 • "bin" directory → added to system PATH
-• "alias.sh" file → sourced into shell profile
+• "aliases.sh" file → sourced into shell profile
 • "vimrc" file → symlinked to ~/.vimrc
 • "Brewfile" → processed by Homebrew
 
-Override any convention using .dodot.toml configuration files.
+Override any convention using a `.dodot.toml` configuration file.
 
 Trade-offs and Consequences
 ---------------------------
 
 Benefits:
-• Simple mental model - your git repo is your deployment
-• Live editing - changes are immediately active
-• No complex state management or databases
-• Easy backup and portability (just git)
-• Works with any existing git repository structure
+• Simple mental model - your git repo is your deployment.
+• Live editing for symlinked files - changes are immediately active.
+• No complex state management or databases.
+• Easy backup and portability (just git).
+• Works with any existing git repository structure.
 
 Limitations:
-• No controlled deploy flow - changes are live immediately
-• No built-in versioning beyond git
-• Structural changes (new files) require redeployment
-• Install scripts must be idempotent
+• Some power-ups (`install`, `homebrew`) require a `dodot deploy` run to apply changes.
+• No built-in versioning beyond git.
+• Structural changes (adding new files) require redeployment.
+• `install` scripts must be idempotent.
 
 Examples of Trade-offs:
 
-Immediate Changes:
-Edit an already-deployed alias.sh file, and the next shell login picks up
-changes automatically. Great for rapid iteration, but not suitable if you
-need controlled deployment flows.
+Immediate vs. Deployed Changes:
+• **Live:** Edit a file handled by the `symlink` or `shell_profile`
+  power-ups. The changes are live instantly (or on the next shell start).
+• **Requires Deployment:** Edit an `install.sh` script or a `Brewfile`.
+  You must run `dodot deploy` for the changes to take effect.
 
 Structural Changes:
-If you deploy a pack without alias.sh, then later add alias.sh, it won't
-be active until redeployment (since no link was created initially). Use
-the fill command to create placeholder files if needed.
+If you deploy a pack without an `aliases.sh` file, then later add one, it
+won't be active until you run `dodot deploy` again, as the necessary
+symlink wasn't created initially. Use the `dodot fill` command to create
+placeholder files if needed.
 
 Run-Once Operations:
-Actions like install.sh scripts and Brewfiles run every deployment unless
-you write defensive code. Homebrew handles this well; install scripts
-should be idempotent.
+Actions like `install.sh` scripts and `Brewfile` processing are tracked
+via sentinel files to prevent them from running on every single deployment.
+They only re-run if the source file changes.
+
 
 The Stateless Advantage
 -----------------------

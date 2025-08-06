@@ -41,43 +41,40 @@ Error Handling Conventions
 
 Error Types:
 ```go
-// Define error codes as typed constants
-type ErrorCode string
-
+// Define error codes as exported constants.
 const (
-    PackNotFound     ErrorCode = "PACK_NOT_FOUND"
-    InvalidConfig    ErrorCode = "INVALID_CONFIG"
-    TriggerFailed    ErrorCode = "TRIGGER_FAILED"
+    ErrPackNotFound  = "PACK_NOT_FOUND"
+    ErrInvalidConfig = "INVALID_CONFIG"
+    // ...
 )
 
-// Use structured errors
-type DodotError struct {
-    Code    ErrorCode
-    Message string
-    Details map[string]interface{}
+// The DodotError type is returned by the errors package.
+type DodotError interface {
+    error
+    Code() string
+    // ...
 }
 ```
 
 Error Creation:
 ```go
-// Factory functions for common errors
-func NewPackNotFoundError(packName string) *DodotError {
-    return &DodotError{
-        Code:    PackNotFound,
-        Message: fmt.Sprintf("pack not found: %s", packName),
-        Details: map[string]interface{}{
-            "pack_name": packName,
-        },
-    }
-}
+// Use the factory functions from pkg/errors.
+// For a new error:
+err := errors.New(ErrInvalidConfig, "power-up options are invalid")
+
+// To wrap an existing error with more context:
+wrappedErr := errors.Wrapf(err, ErrTriggerFailed, "failed to execute trigger %s", triggerName)
 ```
 
 Error Testing:
 ```go
-// Test error codes, never messages
+// Test error codes, never messages.
 err := ProcessPack("nonexistent")
 require.Error(t, err)
-assert.Equal(t, errors.PackNotFound, err.Code)
+
+var dodotErr errors.DodotError
+require.True(t, errors.As(err, &dodotErr))
+assert.Equal(t, errors.ErrPackNotFound, dodotErr.Code())
 ```
 
 Logging Conventions
