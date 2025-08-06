@@ -207,6 +207,9 @@ func (r *RichRenderer) getActionStyle(powerUp string) *pterm.Style {
 		return style.InstallScriptStyle
 	case "template":
 		return pterm.Info.MessageStyle
+	case "config":
+		// Config files use cyan/info style
+		return pterm.Info.MessageStyle
 	default:
 		return pterm.Info.MessageStyle
 	}

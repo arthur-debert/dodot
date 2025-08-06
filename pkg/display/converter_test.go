@@ -9,6 +9,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestConverter_ConvertOperationWithOverride(t *testing.T) {
+	converter := NewConverter("/home/user")
+
+	// Create an operation that was overridden
+	or := &types.OperationResult{
+		Operation: &types.Operation{
+			Type:    types.OperationExecute,
+			PowerUp: "install",
+			Source:  "/home/user/dotfiles/vim/runme.sh",
+			Target:  "/home/user/.local/bin/runme.sh",
+			TriggerInfo: &types.TriggerMatchInfo{
+				TriggerName:  "override-rule",
+				OriginalPath: "runme.sh",
+				Priority:     100,
+			},
+		},
+		Status: types.StatusReady,
+	}
+
+	// Convert
+	result := converter.ConvertOperationResult(or)
+
+	// Path should have asterisk prefix and show the original filename
+	assert.Equal(t, "*runme.sh", result.Path)
+	assert.Equal(t, "install", result.PowerUp)
+}
+
+func TestConverter_ConvertPackWithConfig(t *testing.T) {
+	converter := NewConverter("/home/user")
+
+	// Create a pack with config
+	pack := &types.Pack{
+		Name: "vim",
+		Path: "/home/user/dotfiles/vim",
+		Config: types.PackConfig{
+			Override: []types.OverrideRule{
+				{Path: "vimrc", Powerup: "symlink"},
+			},
+		},
+	}
+
+	// Create pack execution result
+	per := &types.PackExecutionResult{
+		Pack:   pack,
+		Status: types.ExecutionStatusSuccess,
+		Operations: []*types.OperationResult{
+			{
+				Operation: &types.Operation{
+					PowerUp: "symlink",
+					Target:  "/home/user/.vimrc",
+				},
+				Status: types.StatusReady,
+			},
+		},
+	}
+
+	// Convert
+	result := converter.ConvertPackExecutionResult("vim", per)
+
+	// Should have 2 files: config + operation
+	assert.Len(t, result.Files, 2)
+
+	// First file should be config
+	configFile := result.Files[0]
+	assert.Equal(t, "config", configFile.PowerUp)
+	assert.Equal(t, ".dodot.toml", configFile.Path)
+	assert.Equal(t, "dodot config file found", configFile.Message)
+	assert.Equal(t, types.StatusReady, configFile.Status)
+}
+
 func TestConverter_ConvertExecutionContext(t *testing.T) {
 	converter := NewConverter("/home/user")
 

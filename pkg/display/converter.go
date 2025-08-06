@@ -75,7 +75,7 @@ func (c *Converter) ConvertPackExecutionResult(packName string, per *types.PackE
 		CompletedOperations: per.CompletedOperations,
 		FailedOperations:    per.FailedOperations,
 		SkippedOperations:   per.SkippedOperations,
-		Files:               make([]FileResult, 0, len(per.Operations)),
+		Files:               make([]FileResult, 0, len(per.Operations)+1), // +1 for potential config file
 	}
 
 	// Set pack description from metadata if available
@@ -83,6 +83,17 @@ func (c *Converter) ConvertPackExecutionResult(packName string, per *types.PackE
 		if desc, ok := per.Pack.Metadata["description"].(string); ok {
 			result.Description = desc
 		}
+	}
+
+	// Check if pack has a config file and add it as a special file result
+	if per.Pack != nil && c.packHasConfig(per.Pack) {
+		configFile := FileResult{
+			PowerUp: "config",
+			Path:    ".dodot.toml",
+			Message: "dodot config file found",
+			Status:  types.StatusReady, // Config files are always "ready"
+		}
+		result.Files = append(result.Files, configFile)
 	}
 
 	// Convert each operation result
@@ -98,9 +109,17 @@ func (c *Converter) ConvertPackExecutionResult(packName string, per *types.PackE
 func (c *Converter) ConvertOperationResult(or *types.OperationResult) FileResult {
 	op := or.Operation
 
+	// Get the display path
+	displayPath := c.makePathRelative(c.getDisplayPath(op))
+
+	// Check if this file was overridden (marked with asterisk)
+	if op.TriggerInfo != nil && op.TriggerInfo.TriggerName == "override-rule" {
+		displayPath = "*" + displayPath
+	}
+
 	result := FileResult{
 		Action:      c.getActionVerb(op),
-		Path:        c.makePathRelative(c.getDisplayPath(op)),
+		Path:        displayPath,
 		Status:      or.Status,
 		Message:     c.getStatusMessage(or),
 		PowerUp:     op.PowerUp,
@@ -156,6 +175,11 @@ func (c *Converter) getActionVerb(op *types.Operation) string {
 // getDisplayPath returns the most appropriate path to display for an operation
 // Prioritizes the target path for operations that create/modify files
 func (c *Converter) getDisplayPath(op *types.Operation) string {
+	// For execute operations (install scripts), show the source file name
+	if op.Type == types.OperationExecute && op.TriggerInfo != nil && op.TriggerInfo.OriginalPath != "" {
+		return op.TriggerInfo.OriginalPath
+	}
+
 	// For most operations, show the target path
 	if op.Target != "" {
 		return op.Target
@@ -232,6 +256,12 @@ func (c *Converter) ConvertFileStatus(fs *types.FileStatus) FileResult {
 	result.Message = fs.Message
 
 	return result
+}
+
+// packHasConfig checks if a pack has a .dodot.toml configuration file
+func (c *Converter) packHasConfig(pack *types.Pack) bool {
+	// Check if the pack has any configuration rules
+	return len(pack.Config.Ignore) > 0 || len(pack.Config.Override) > 0
 }
 
 // GroupPacksByStatus groups packs by their execution status for summary display
