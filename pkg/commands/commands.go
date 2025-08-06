@@ -52,7 +52,7 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 // StatusPacks checks the deployment status of specified packs.
 type StatusPacksOptions = status.StatusPacksOptions
 
-func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
+func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	return status.StatusPacks(opts)
 }
 

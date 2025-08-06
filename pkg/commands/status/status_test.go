@@ -2,7 +2,6 @@ package status
 
 import (
 	"testing"
-	"time"
 
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -14,52 +13,52 @@ func TestDisplayPackStatusAggregation(t *testing.T) {
 	tests := []struct {
 		name           string
 		files          []types.DisplayFile
-		expectedStatus types.DisplayStatus
+		expectedStatus string
 	}{
 		{
 			name:           "empty pack returns queue",
 			files:          []types.DisplayFile{},
-			expectedStatus: types.DisplayStatusQueue,
+			expectedStatus: "queue",
 		},
 		{
 			name: "all success returns success",
 			files: []types.DisplayFile{
-				{Path: ".vimrc", PowerUp: "symlink", Status: types.DisplayStatusSuccess},
-				{Path: ".vim/", PowerUp: "symlink", Status: types.DisplayStatusSuccess},
+				{Path: ".vimrc", PowerUp: "symlink", Status: "success"},
+				{Path: ".vim/", PowerUp: "symlink", Status: "success"},
 			},
-			expectedStatus: types.DisplayStatusSuccess,
+			expectedStatus: "success",
 		},
 		{
-			name: "any error returns error",
+			name: "any error returns alert",
 			files: []types.DisplayFile{
-				{Path: ".vimrc", PowerUp: "symlink", Status: types.DisplayStatusSuccess},
-				{Path: "install.sh", PowerUp: "install", Status: types.DisplayStatusError},
+				{Path: ".vimrc", PowerUp: "symlink", Status: "success"},
+				{Path: "install.sh", PowerUp: "install", Status: "error"},
 			},
-			expectedStatus: types.DisplayStatusError,
+			expectedStatus: "alert",
 		},
 		{
 			name: "all queue returns queue",
 			files: []types.DisplayFile{
-				{Path: ".vimrc", PowerUp: "symlink", Status: types.DisplayStatusQueue},
-				{Path: ".vim/", PowerUp: "symlink", Status: types.DisplayStatusQueue},
+				{Path: ".vimrc", PowerUp: "symlink", Status: "queue"},
+				{Path: ".vim/", PowerUp: "symlink", Status: "queue"},
 			},
-			expectedStatus: types.DisplayStatusQueue,
+			expectedStatus: "queue",
 		},
 		{
 			name: "mixed success and queue returns queue",
 			files: []types.DisplayFile{
-				{Path: ".vimrc", PowerUp: "symlink", Status: types.DisplayStatusSuccess},
-				{Path: "install.sh", PowerUp: "install", Status: types.DisplayStatusQueue},
+				{Path: ".vimrc", PowerUp: "symlink", Status: "success"},
+				{Path: "install.sh", PowerUp: "install", Status: "queue"},
 			},
-			expectedStatus: types.DisplayStatusQueue,
+			expectedStatus: "queue",
 		},
 		{
 			name: "config files are ignored in aggregation",
 			files: []types.DisplayFile{
-				{Path: ".dodot.toml", PowerUp: "config", Status: types.DisplayStatusConfig},
-				{Path: ".vimrc", PowerUp: "symlink", Status: types.DisplayStatusSuccess},
+				{Path: ".dodot.toml", PowerUp: "config", Status: "config"},
+				{Path: ".vimrc", PowerUp: "symlink", Status: "success"},
 			},
-			expectedStatus: types.DisplayStatusSuccess,
+			expectedStatus: "success",
 		},
 	}
 
@@ -76,203 +75,82 @@ func TestDisplayPackStatusAggregation(t *testing.T) {
 	}
 }
 
-// TestStatusPacksWithNewModel tests StatusPacks using the new display model
-// This test is written for the refactored version that will use the core pipeline
+// TestCreateDisplayResultFromOperations tests the transformation function
+func TestCreateDisplayResultFromOperations(t *testing.T) {
+	packs := []types.Pack{
+		{
+			Name: "vim",
+			Path: "/home/user/dotfiles/vim",
+		},
+	}
+
+	operations := []types.Operation{
+		{
+			Type:    types.OperationCreateSymlink,
+			Source:  "/home/user/dotfiles/vim/.vimrc",
+			Target:  "/home/user/.vimrc",
+			PowerUp: "symlink",
+			Pack:    "vim",
+			Status:  types.StatusReady,
+			TriggerInfo: &types.TriggerMatchInfo{
+				OriginalPath: ".vimrc",
+			},
+		},
+		{
+			Type:    types.OperationExecute,
+			Source:  "/home/user/dotfiles/vim/install.sh",
+			PowerUp: "install",
+			Pack:    "vim",
+			Status:  types.StatusReady,
+			TriggerInfo: &types.TriggerMatchInfo{
+				TriggerName:  "override-rule",
+				OriginalPath: "install.sh",
+			},
+		},
+	}
+
+	result := CreateDisplayResultFromOperations(operations, packs, "status")
+
+	require.NotNil(t, result)
+	assert.Equal(t, "status", result.Command)
+	assert.Len(t, result.Packs, 1)
+
+	pack := result.Packs[0]
+	assert.Equal(t, "vim", pack.Name)
+	assert.Len(t, pack.Files, 2)
+
+	// Check first file (symlink)
+	file1 := pack.Files[0]
+	assert.Equal(t, ".vimrc", file1.Path)
+	assert.Equal(t, "symlink", file1.PowerUp)
+	assert.Equal(t, "queue", file1.Status)
+	assert.Equal(t, "will be linked to target", file1.Message)
+	assert.False(t, file1.IsOverride)
+
+	// Check second file (install with override)
+	file2 := pack.Files[1]
+	assert.Equal(t, "*install.sh", file2.Path)
+	assert.Equal(t, "install", file2.PowerUp)
+	assert.Equal(t, "queue", file2.Status)
+	assert.Equal(t, "to be executed", file2.Message)
+	assert.True(t, file2.IsOverride)
+}
+
+// TestStatusPacksWithNewModel tests StatusPacks returns DisplayResult
 func TestStatusPacksWithNewModel(t *testing.T) {
-	// This test will be implemented after refactoring StatusPacks
-	// to use the core pipeline and return DisplayResult
+	t.Skip("Integration test - requires full environment setup")
 
-	tests := []struct {
-		name           string
-		opts           StatusPacksOptions
-		expectedResult *types.DisplayResult
-		expectedError  bool
-	}{
-		{
-			name: "status shows files with their power-ups",
-			opts: StatusPacksOptions{
-				DotfilesRoot: "/test/dotfiles",
-				PackNames:    []string{"vim"},
-			},
-			expectedResult: &types.DisplayResult{
-				Command: "status",
-				Packs: []types.DisplayPack{
-					{
-						Name:   "vim",
-						Status: types.DisplayStatusQueue,
-						Files: []types.DisplayFile{
-							{
-								Path:    ".vimrc",
-								PowerUp: "symlink",
-								Status:  types.DisplayStatusQueue,
-								Message: "will be linked to target",
-							},
-							{
-								Path:    "init.vim",
-								PowerUp: "symlink",
-								Status:  types.DisplayStatusQueue,
-								Message: "will be linked to target",
-							},
-						},
-					},
-				},
-			},
-			expectedError: false,
-		},
-		{
-			name: "status shows installed files with past tense",
-			opts: StatusPacksOptions{
-				DotfilesRoot: "/test/dotfiles",
-				PackNames:    []string{"brew"},
-			},
-			expectedResult: &types.DisplayResult{
-				Command: "status",
-				Packs: []types.DisplayPack{
-					{
-						Name:   "brew",
-						Status: types.DisplayStatusSuccess,
-						Files: []types.DisplayFile{
-							{
-								Path:         "Brewfile",
-								PowerUp:      "homebrew",
-								Status:       types.DisplayStatusSuccess,
-								Message:      "executed",
-								LastExecuted: timePtr(time.Now().Add(-24 * time.Hour)),
-							},
-						},
-					},
-				},
-			},
-			expectedError: false,
-		},
-		{
-			name: "status shows config files",
-			opts: StatusPacksOptions{
-				DotfilesRoot: "/test/dotfiles",
-				PackNames:    []string{"configured"},
-			},
-			expectedResult: &types.DisplayResult{
-				Command: "status",
-				Packs: []types.DisplayPack{
-					{
-						Name:      "configured",
-						Status:    types.DisplayStatusQueue,
-						HasConfig: true,
-						Files: []types.DisplayFile{
-							{
-								Path:    ".dodot.toml",
-								PowerUp: "config",
-								Status:  types.DisplayStatusConfig,
-								Message: "dodot config file found",
-							},
-							{
-								Path:       "*custom.sh",
-								PowerUp:    "install",
-								Status:     types.DisplayStatusQueue,
-								Message:    "to be executed",
-								IsOverride: true,
-							},
-						},
-					},
-				},
-			},
-			expectedError: false,
-		},
+	opts := StatusPacksOptions{
+		DotfilesRoot: "/test/dotfiles",
+		PackNames:    []string{"vim"},
 	}
 
-	// These tests will fail until StatusPacks is refactored
-	// They serve as the specification for the refactoring
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Skip("Waiting for StatusPacks refactoring")
+	result, err := StatusPacks(opts)
 
-			result, err := StatusPacks(tt.opts)
+	require.NoError(t, err)
+	require.NotNil(t, result)
 
-			if tt.expectedError {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			require.NotNil(t, result)
-
-			// Compare the results
-			// assert.Equal(t, tt.expectedResult.Command, result.Command)
-			// assert.Len(t, result.Packs, len(tt.expectedResult.Packs))
-
-			// Detailed pack comparison would go here
-		})
-	}
-}
-
-// TestConvertOperationsToDisplayFiles tests converting operations to display files
-// This will be used in the refactored StatusPacks
-func TestConvertOperationsToDisplayFiles(t *testing.T) {
-	tests := []struct {
-		name          string
-		operations    []types.Operation
-		expectedFiles []types.DisplayFile
-	}{
-		{
-			name: "symlink operations become display files",
-			operations: []types.Operation{
-				{
-					Type:    types.OperationCreateSymlink,
-					Source:  "/dotfiles/vim/.vimrc",
-					Target:  "/home/user/.vimrc",
-					PowerUp: "symlink",
-					Pack:    "vim",
-					Status:  types.StatusReady,
-					TriggerInfo: &types.TriggerMatchInfo{
-						OriginalPath: ".vimrc",
-					},
-				},
-			},
-			expectedFiles: []types.DisplayFile{
-				{
-					Path:    ".vimrc",
-					PowerUp: "symlink",
-					Status:  types.DisplayStatusQueue,
-					Message: "will be linked to target",
-				},
-			},
-		},
-		{
-			name: "install operations with override",
-			operations: []types.Operation{
-				{
-					Type:    types.OperationExecute,
-					Source:  "/dotfiles/vim/install.sh",
-					PowerUp: "install",
-					Pack:    "vim",
-					Status:  types.StatusReady,
-					TriggerInfo: &types.TriggerMatchInfo{
-						TriggerName:  "override-rule",
-						OriginalPath: "install.sh",
-					},
-				},
-			},
-			expectedFiles: []types.DisplayFile{
-				{
-					Path:       "*install.sh",
-					PowerUp:    "install",
-					Status:     types.DisplayStatusQueue,
-					Message:    "to be executed",
-					IsOverride: true,
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// This function will be implemented as part of the refactoring
-			// files := convertOperationsToDisplayFiles(tt.operations)
-			// assert.Equal(t, tt.expectedFiles, files)
-		})
-	}
-}
-
-func timePtr(t time.Time) *time.Time {
-	return &t
+	// Verify it returns DisplayResult
+	assert.Equal(t, "status", result.Command)
+	assert.IsType(t, &types.DisplayResult{}, result)
 }

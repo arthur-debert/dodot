@@ -357,7 +357,7 @@ func newStatusCmd() *cobra.Command {
 			var packStatuses []style.PackStatus
 
 			for _, ps := range result.Packs {
-				packStatuses = append(packStatuses, style.ConvertPackStatus(ps))
+				packStatuses = append(packStatuses, style.ConvertDisplayPackToPackStatus(ps))
 			}
 
 			fmt.Println(renderer.RenderPackStatuses(packStatuses))
