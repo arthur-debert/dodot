@@ -1,42 +1,32 @@
 package status
 
 import (
-	"fmt"
-	"io"
 	"os/exec"
 	"path/filepath"
-	"strings"
-	"time"
 
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 )
 
 // BrewChecker checks the status of Homebrew operations
-type BrewChecker struct{}
+type BrewChecker struct {
+	*BaseChecker
+	*SentinelChecker
+}
 
 // NewBrewChecker creates a new Homebrew status checker
 func NewBrewChecker() *BrewChecker {
-	return &BrewChecker{}
+	return &BrewChecker{
+		BaseChecker:     &BaseChecker{PowerUpName: "homebrew"},
+		SentinelChecker: NewSentinelChecker("homebrew"),
+	}
 }
 
 // CheckStatus checks if Homebrew packages are installed and up to date
 func (bc *BrewChecker) CheckStatus(op *types.Operation, fs filesystem.FullFileSystem) (*types.FileStatus, error) {
-	status := &types.FileStatus{
-		Path:        op.Source, // Brewfile path
-		PowerUp:     "homebrew",
-		Status:      types.StatusReady,
-		Message:     "Brewfile not processed",
-		LastApplied: time.Time{},
-		Metadata:    make(map[string]interface{}),
-	}
+	status := bc.InitializeStatus(op.Source, "Brewfile not processed")
 
-	// For homebrew, we check:
-	// 1. If a sentinel file exists with the checksum
-	// 2. If the checksum matches the current Brewfile
-	// 3. Optionally check if packages are actually installed
-
-	// Extract pack name from metadata or operation
+	// Extract pack name for metadata
 	pack := ""
 	if op.Metadata != nil {
 		if p, ok := op.Metadata["pack"].(string); ok {
@@ -48,75 +38,37 @@ func (bc *BrewChecker) CheckStatus(op *types.Operation, fs filesystem.FullFileSy
 		pack = filepath.Base(filepath.Dir(op.Source))
 	}
 
-	status.Metadata["pack"] = pack
 	status.Metadata["brewfile"] = op.Source
 
-	// Check for sentinel file
-	// The sentinel path would be in the data directory: deployed/homebrew/<pack>
-	sentinelPath := filepath.Join(filepath.Dir(op.Target), pack)
-	if op.Type == types.OperationWriteFile && strings.Contains(op.Target, "/homebrew/") {
-		// This is the sentinel file write operation
-		sentinelPath = op.Target
-	}
+	// Compute and check sentinel file
+	sentinelPath := bc.ComputeSentinelPath(op)
+	result := bc.CheckSentinel(fs, sentinelPath, op)
 
-	_, err := fs.Stat(sentinelPath)
-	if err != nil {
-		if isNotExist(err) {
-			// No sentinel file, packages need to be installed
-			status.Status = types.StatusReady
-			status.Message = "Brewfile not processed (no sentinel file)"
-			status.Metadata["sentinel_exists"] = false
-			return status, nil
-		}
-		status.Status = types.StatusError
-		status.Message = fmt.Sprintf("Failed to check sentinel file: %v", err)
+	// Handle sentinel check errors
+	if result.Error != nil {
+		bc.SetError(status, "check sentinel", result.Error)
 		return status, nil
 	}
 
-	// Read sentinel file to get stored checksum
-	reader, err := fs.Open(sentinelPath)
-	if err != nil {
-		status.Status = types.StatusError
-		status.Message = fmt.Sprintf("Failed to read sentinel file: %v", err)
-		return status, nil
-	}
-	defer func() {
-		_ = reader.Close()
-	}()
+	// Set sentinel metadata
+	bc.SetSentinelMetadata(status, result, pack)
 
-	storedChecksumBytes, err := io.ReadAll(reader)
-	if err != nil {
-		status.Status = types.StatusError
-		status.Message = fmt.Sprintf("Failed to read sentinel checksum: %v", err)
+	// Handle based on sentinel status
+	if !result.Exists {
+		status.Status = types.StatusReady
+		status.Message = "Brewfile not processed (no sentinel file)"
 		return status, nil
 	}
 
-	storedChecksum := strings.TrimSpace(string(storedChecksumBytes))
-	status.Metadata["stored_checksum"] = storedChecksum
-	status.Metadata["sentinel_exists"] = true
-
-	// Get current checksum from operation content or metadata
-	currentChecksum := ""
-	if op.Content != "" {
-		// This is the sentinel write operation, content is the checksum
-		currentChecksum = op.Content
-	} else if op.Metadata != nil {
-		if cs, ok := op.Metadata["checksum"].(string); ok {
-			currentChecksum = cs
-		}
-	}
-
-	if currentChecksum == "" {
-		// Can't determine current checksum
+	// Sentinel exists, check if we have current checksum
+	if result.CurrentChecksum == "" {
 		status.Status = types.StatusUnknown
 		status.Message = "Cannot determine current Brewfile checksum"
 		return status, nil
 	}
 
-	status.Metadata["current_checksum"] = currentChecksum
-
 	// Compare checksums
-	if storedChecksum == currentChecksum {
+	if result.StoredChecksum == result.CurrentChecksum {
 		// Checksums match, packages should be installed
 		status.Status = types.StatusSkipped
 		status.Message = "Brewfile already processed (checksum matches)"
@@ -137,7 +89,6 @@ func (bc *BrewChecker) CheckStatus(op *types.Operation, fs filesystem.FullFileSy
 		// Checksums don't match, Brewfile has changed
 		status.Status = types.StatusReady
 		status.Message = "Brewfile has changed (checksum mismatch)"
-		status.Metadata["checksum_match"] = false
 	}
 
 	return status, nil

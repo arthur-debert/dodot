@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -35,20 +36,9 @@ func TestListPacks(t *testing.T) {
 		{
 			name: "list with single pack",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-
-				// Create vim pack
-				vimDir := filepath.Join(dotfilesRoot, "vim")
-				require.NoError(t, os.MkdirAll(vimDir, 0755))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(vimDir, ".vimrc"),
-					[]byte("\" vim config"),
-					0644,
-				))
-
-				return dotfilesRoot
+				pack := testutil.SetupTestPack(t, "vim")
+				pack.AddFile(t, ".vimrc", "\" vim config")
+				return pack.Root
 			},
 			wantPacks: []string{"vim"},
 			wantErr:   false,
@@ -56,24 +46,12 @@ func TestListPacks(t *testing.T) {
 		{
 			name: "list with multiple packs",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-
-				// Create packs
-				packs := []string{"zsh", "vim", "git", "tmux", "bash"}
-				for _, pack := range packs {
-					packDir := filepath.Join(dotfilesRoot, pack)
-					require.NoError(t, os.MkdirAll(packDir, 0755))
+				packs := testutil.SetupMultiplePacks(t, "zsh", "vim", "git", "tmux", "bash")
+				for name, pack := range packs {
 					// Add a file to make it a valid pack
-					require.NoError(t, os.WriteFile(
-						filepath.Join(packDir, "config"),
-						[]byte("# "+pack+" config"),
-						0644,
-					))
+					pack.AddFile(t, "config", "# "+name+" config")
 				}
-
-				return dotfilesRoot
+				return packs["vim"].Root
 			},
 			wantPacks: []string{"bash", "git", "tmux", "vim", "zsh"},
 			wantErr:   false,
@@ -81,21 +59,11 @@ func TestListPacks(t *testing.T) {
 		{
 			name: "list ignores hidden directories",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
-
-				// Create regular packs
-				vimDir := filepath.Join(dotfilesRoot, "vim")
-				require.NoError(t, os.MkdirAll(vimDir, 0755))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(vimDir, ".vimrc"),
-					[]byte("\" vim config"),
-					0644,
-				))
+				pack := testutil.SetupTestPack(t, "vim")
+				pack.AddFile(t, ".vimrc", "\" vim config")
 
 				// Create hidden directory (should be ignored)
-				hiddenDir := filepath.Join(dotfilesRoot, ".hidden")
+				hiddenDir := filepath.Join(pack.Root, ".hidden")
 				require.NoError(t, os.MkdirAll(hiddenDir, 0755))
 				require.NoError(t, os.WriteFile(
 					filepath.Join(hiddenDir, "config"),
@@ -104,10 +72,10 @@ func TestListPacks(t *testing.T) {
 				))
 
 				// Create .git directory (should be ignored)
-				gitDir := filepath.Join(dotfilesRoot, ".git")
+				gitDir := filepath.Join(pack.Root, ".git")
 				require.NoError(t, os.MkdirAll(gitDir, 0755))
 
-				return dotfilesRoot
+				return pack.Root
 			},
 			wantPacks: []string{"vim"},
 			wantErr:   false,
@@ -115,34 +83,16 @@ func TestListPacks(t *testing.T) {
 		{
 			name: "list respects .dodotignore",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				require.NoError(t, os.MkdirAll(dotfilesRoot, 0755))
+				packs := testutil.SetupMultiplePacks(t, "vim", "ignored")
 
-				// Create normal pack
-				vimDir := filepath.Join(dotfilesRoot, "vim")
-				require.NoError(t, os.MkdirAll(vimDir, 0755))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(vimDir, ".vimrc"),
-					[]byte("\" vim config"),
-					0644,
-				))
+				// Add content to vim pack
+				packs["vim"].AddFile(t, ".vimrc", "\" vim config")
 
-				// Create ignored pack
-				ignoredDir := filepath.Join(dotfilesRoot, "ignored")
-				require.NoError(t, os.MkdirAll(ignoredDir, 0755))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(ignoredDir, ".dodotignore"),
-					[]byte(""),
-					0644,
-				))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(ignoredDir, "config"),
-					[]byte("# ignored config"),
-					0644,
-				))
+				// Create ignored pack with .dodotignore
+				packs["ignored"].AddFile(t, ".dodotignore", "")
+				packs["ignored"].AddFile(t, "config", "# ignored config")
 
-				return dotfilesRoot
+				return packs["vim"].Root
 			},
 			wantPacks: []string{"vim"},
 			wantErr:   false,

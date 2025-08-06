@@ -12,6 +12,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/synthfs"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,20 +20,14 @@ import (
 
 func TestBrewfileActuallyExecutes(t *testing.T) {
 	t.Run("brewfile executes brew bundle command", func(t *testing.T) {
-		// Create temp directories
-		tempDir := t.TempDir()
-		homeDir := filepath.Join(tempDir, "home")
-		dotfilesRoot := filepath.Join(tempDir, "dotfiles")
-		packDir := filepath.Join(dotfilesRoot, "testpack")
-
-		// Create directories
-		require.NoError(t, os.MkdirAll(homeDir, 0755))
-		require.NoError(t, os.MkdirAll(packDir, 0755))
+		// Create test pack with home directory
+		pack, homeDir := testutil.SetupTestPackWithHome(t, "testpack")
 
 		// Set paths via environment variables
-		t.Setenv("HOME", homeDir)
-		t.Setenv("DOTFILES_ROOT", dotfilesRoot)
+		t.Setenv("DOTFILES_ROOT", pack.Root)
 		t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+		tempDir := filepath.Dir(pack.Root)
 
 		// Create a mock brew script that logs calls
 		mockBrewPath := filepath.Join(tempDir, "bin")
@@ -53,27 +48,25 @@ exit 0
 		t.Setenv("PATH", mockBrewPath+":"+os.Getenv("PATH"))
 
 		// Create Brewfile
-		brewfile := filepath.Join(packDir, "Brewfile")
 		brewfileContent := `# Test Brewfile
 brew "git"
 brew "vim"
 cask "visual-studio-code"
 `
-		require.NoError(t, os.WriteFile(brewfile, []byte(brewfileContent), 0644))
+		pack.AddFile(t, "Brewfile", brewfileContent)
 
 		// Create pack.toml
-		packToml := filepath.Join(packDir, "pack.toml")
 		packContent := `name = "testpack"
 description = "Test pack"
 
 [[brewfile]]
 trigger = { file_name = "Brewfile" }
 `
-		require.NoError(t, os.WriteFile(packToml, []byte(packContent), 0644))
+		pack.AddFile(t, "pack.toml", packContent)
 
 		// Run install command
 		result, err := commands.InstallPacks(commands.InstallPacksOptions{
-			DotfilesRoot: dotfilesRoot,
+			DotfilesRoot: pack.Root,
 			PackNames:    []string{"testpack"},
 			DryRun:       false,
 			Force:        true, // Force to run even if previously run

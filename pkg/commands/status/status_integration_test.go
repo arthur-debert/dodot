@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,17 +42,13 @@ func TestStatusPacksIntegration(t *testing.T) {
 		{
 			name: "single pack with symlink files",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				vimDir := filepath.Join(dotfilesRoot, "vim")
-
-				require.NoError(t, os.MkdirAll(vimDir, 0755))
+				pack := testutil.SetupTestPack(t, "vim")
 
 				// Create files that trigger symlink
-				require.NoError(t, os.WriteFile(filepath.Join(vimDir, ".vimrc"), []byte("set number"), 0644))
-				require.NoError(t, os.MkdirAll(filepath.Join(vimDir, ".vim", "colors"), 0755))
+				pack.AddFile(t, ".vimrc", "set number")
+				require.NoError(t, os.MkdirAll(filepath.Join(pack.Dir, ".vim", "colors"), 0755))
 
-				return dotfilesRoot
+				return pack.Root
 			},
 			packNames: []string{"vim"},
 			validate: func(t *testing.T, result *types.DisplayResult) {
@@ -85,18 +82,14 @@ func TestStatusPacksIntegration(t *testing.T) {
 		{
 			name: "pack with install script",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				zshDir := filepath.Join(dotfilesRoot, "zsh")
-
-				require.NoError(t, os.MkdirAll(zshDir, 0755))
+				pack := testutil.SetupTestPack(t, "zsh")
 
 				installScript := `#!/bin/bash
 echo "Installing zsh plugins..."
 `
-				require.NoError(t, os.WriteFile(filepath.Join(zshDir, "install.sh"), []byte(installScript), 0755))
+				pack.AddExecutable(t, "install.sh", installScript)
 
-				return dotfilesRoot
+				return pack.Root
 			},
 			packNames: []string{}, // Test all packs
 			validate: func(t *testing.T, result *types.DisplayResult) {
@@ -123,11 +116,7 @@ echo "Installing zsh plugins..."
 		{
 			name: "pack with config file",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-				gitDir := filepath.Join(dotfilesRoot, "git")
-
-				require.NoError(t, os.MkdirAll(gitDir, 0755))
+				pack := testutil.SetupTestPack(t, "git")
 
 				// Create .dodot.toml config
 				configContent := `
@@ -136,12 +125,12 @@ trigger = "filename"
 pattern = ".gitconfig"
 powerup = "symlink"
 `
-				require.NoError(t, os.WriteFile(filepath.Join(gitDir, ".dodot.toml"), []byte(configContent), 0644))
+				pack.AddDodotConfig(t, configContent)
 
 				// Create .gitconfig
-				require.NoError(t, os.WriteFile(filepath.Join(gitDir, ".gitconfig"), []byte("[user]\n\tname = Test"), 0644))
+				pack.AddFile(t, ".gitconfig", "[user]\n\tname = Test")
 
-				return dotfilesRoot
+				return pack.Root
 			},
 			validate: func(t *testing.T, result *types.DisplayResult) {
 				require.Len(t, result.Packs, 1)
@@ -193,24 +182,17 @@ powerup = "symlink"
 		{
 			name: "multiple packs with mixed states",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
+				packs := testutil.SetupMultiplePacks(t, "vim", "zsh", "git")
 
 				// Pack 1: vim with files
-				vimDir := filepath.Join(dotfilesRoot, "vim")
-				require.NoError(t, os.MkdirAll(vimDir, 0755))
-				require.NoError(t, os.WriteFile(filepath.Join(vimDir, ".vimrc"), []byte("set number"), 0644))
+				packs["vim"].AddFile(t, ".vimrc", "set number")
 
 				// Pack 2: zsh with install
-				zshDir := filepath.Join(dotfilesRoot, "zsh")
-				require.NoError(t, os.MkdirAll(zshDir, 0755))
-				require.NoError(t, os.WriteFile(filepath.Join(zshDir, "install.sh"), []byte("#!/bin/bash\necho test"), 0755))
+				packs["zsh"].AddExecutable(t, "install.sh", "#!/bin/bash\necho test")
 
-				// Pack 3: git - empty
-				gitDir := filepath.Join(dotfilesRoot, "git")
-				require.NoError(t, os.MkdirAll(gitDir, 0755))
+				// Pack 3: git - empty (no files added)
 
-				return dotfilesRoot
+				return packs["vim"].Root
 			},
 			packNames: []string{}, // All packs
 			validate: func(t *testing.T, result *types.DisplayResult) {
@@ -241,17 +223,14 @@ powerup = "symlink"
 		{
 			name: "pack selection by name",
 			setup: func(t *testing.T) string {
-				tmpDir := t.TempDir()
-				dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
+				packs := testutil.SetupMultiplePacks(t, "vim", "zsh", "git")
 
-				// Create multiple packs
-				for _, pack := range []string{"vim", "zsh", "git"} {
-					dir := filepath.Join(dotfilesRoot, pack)
-					require.NoError(t, os.MkdirAll(dir, 0755))
-					require.NoError(t, os.WriteFile(filepath.Join(dir, ".keep"), []byte(""), 0644))
+				// Add files to each pack
+				for _, pack := range packs {
+					pack.AddFile(t, ".keep", "")
 				}
 
-				return dotfilesRoot
+				return packs["vim"].Root
 			},
 			packNames: []string{"vim", "git"}, // Select specific packs
 			validate: func(t *testing.T, result *types.DisplayResult) {
