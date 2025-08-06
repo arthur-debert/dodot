@@ -8,10 +8,10 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
+	"github.com/arthur-debert/dodot/pkg/commands/execution"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/style"
-	"github.com/arthur-debert/dodot/pkg/synthfs"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -203,19 +203,18 @@ func newDeployCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
-			// Execute operations if not in dry-run mode
-			if !dryRun && len(result.Operations) > 0 {
-				// Use combined executor to handle operations in the correct order
-				executor := synthfs.NewCombinedExecutor(dryRun)
-				// Enable home symlinks for deployment
-				executor.EnableHomeSymlinks(true)
-				opResults, err := executor.ExecuteOperations(result.Operations)
-				if err != nil {
-					return fmt.Errorf("failed to execute operations: %w", err)
-				}
-				// TODO: Use opResults for better display/tracking
-				_ = opResults
+			// Execute operations
+			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
+				Operations:          result.Operations,
+				DryRun:              dryRun,
+				EnableHomeSymlinks:  true,
+				UseCombinedExecutor: true,
+			})
+			if err != nil {
+				return err
 			}
+			// TODO: Use opResults for better display/tracking
+			_ = opResults
 
 			// Display results using rich output
 			if dryRun {
@@ -266,19 +265,18 @@ func newInstallCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
 
-			// Execute operations if not in dry-run mode
-			if !dryRun && len(result.Operations) > 0 {
-				// Use combined executor to handle operations in the correct order
-				executor := synthfs.NewCombinedExecutor(dryRun)
-				// Enable home symlinks for deployment
-				executor.EnableHomeSymlinks(true)
-				opResults, err := executor.ExecuteOperations(result.Operations)
-				if err != nil {
-					return fmt.Errorf("failed to execute operations: %w", err)
-				}
-				// TODO: Use opResults for better display/tracking
-				_ = opResults
+			// Execute operations
+			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
+				Operations:          result.Operations,
+				DryRun:              dryRun,
+				EnableHomeSymlinks:  true,
+				UseCombinedExecutor: true,
+			})
+			if err != nil {
+				return err
 			}
+			// TODO: Use opResults for better display/tracking
+			_ = opResults
 
 			// Display results using rich output
 			if dryRun {
@@ -398,16 +396,18 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
-			// Execute operations if any
-			if len(result.Operations) > 0 {
-				executor := synthfs.NewSynthfsExecutor(false)
-				opResults, err := executor.ExecuteOperations(result.Operations)
-				if err != nil {
-					return fmt.Errorf("failed to execute operations: %w", err)
-				}
-				// TODO: Use opResults for better display/tracking
-				_ = opResults
+			// Execute operations
+			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
+				Operations:          result.Operations,
+				DryRun:              false,
+				EnableHomeSymlinks:  false,
+				UseCombinedExecutor: false,
+			})
+			if err != nil {
+				return err
 			}
+			// TODO: Use opResults for better display/tracking
+			_ = opResults
 
 			// Display results
 			fmt.Printf(MsgPackCreatedFormat, packName)
@@ -455,16 +455,18 @@ func newFillCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrFillPack, err)
 			}
 
-			// Execute operations if any
-			if len(result.Operations) > 0 {
-				executor := synthfs.NewSynthfsExecutor(false)
-				opResults, err := executor.ExecuteOperations(result.Operations)
-				if err != nil {
-					return fmt.Errorf("failed to execute operations: %w", err)
-				}
-				// TODO: Use opResults for better display/tracking
-				_ = opResults
+			// Execute operations
+			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
+				Operations:          result.Operations,
+				DryRun:              false,
+				EnableHomeSymlinks:  false,
+				UseCombinedExecutor: false,
+			})
+			if err != nil {
+				return err
 			}
+			// TODO: Use opResults for better display/tracking
+			_ = opResults
 
 			// Display results
 			if len(result.FilesCreated) == 0 {
