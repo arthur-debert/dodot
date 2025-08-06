@@ -97,7 +97,7 @@ SYMLINK
 - Future: "will be linked to"
 - Example: ".vimrc : linked to $HOME/.vimrc"
 
-PROFILE  
+shell_profile  
 - Past: "included in"
 - Future: "to be included in"
 - Example: "alias.sh : included in zsh"
@@ -130,7 +130,7 @@ Here's a comprehensive example showing various states:
     neovim:
         config      : .dodot.toml  : dodot config file found
         symlink     : .vimrc       : linked to $HOME/.vimrc
-        profile     : alias.sh     : included in zsh
+        shell_profile     : alias.sh     : included in zsh
         homebrew    : Brewfile     : executed on 2024-01-15
         path        : bin          : added to $PATH
         install     : *setup.sh    : to be executed

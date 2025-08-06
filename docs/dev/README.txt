@@ -82,14 +82,14 @@ Detailed Guidelines
 #### 2.3. Error Handling
 
 *   ALL errors MUST have both code and message.
-*   Use the `DodotError` type from `pkg/errors`.
+*   Use the factory functions from `pkg/errors` (e.g., `errors.New`, `errors.Wrapf`) which return a `DodotError` type.
 *   Error codes enable:
     *   Stable testing (test codes, not strings)
     *   Future internationalization
     *   Programmatic error handling
 *   Test error codes explicitly:
     ```go
-    assert.Equal(t, errors.TRIGGER_NOT_FOUND, err.Code)
+    assert.Equal(t, errors.ErrTriggerNotFound, err.Code())
     ```
 *   Never test error message strings.
 

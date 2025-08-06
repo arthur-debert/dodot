@@ -34,9 +34,9 @@ package core
 
 func GetPackCandidates(dotfilesRoot string) ([]string, error)
 func GetPacks(candidates []string) ([]types.Pack, error)
-func GetFiringTriggers(packs []types.Pack, matchers []types.Matcher) ([]types.TriggerMatch, error)
-func GetActions(triggerMatches []types.TriggerMatch, powerups types.PowerupRegistry) ([]types.Action, error)
-func GetFsOps(actions []types.Action) ([]synthfs.Operation, error)
+func GetFiringTriggers(packs []types.Pack) ([]types.TriggerMatch, error)
+func GetActions(triggerMatches []types.TriggerMatch) ([]types.Action, error)
+func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error)
 ```
 
 Each function handles one stage of the pipeline:
@@ -44,7 +44,7 @@ Each function handles one stage of the pipeline:
 2. Load pack configurations  
 3. Match files to triggers
 4. Generate actions from matches
-5. Convert actions to filesystem operations
+5. Convert actions to low-level filesystem operations
 
 Key Interfaces
 --------------
@@ -62,8 +62,8 @@ PowerUp Interface:
 ```go
 type PowerUp interface {
     Name() string
-    ProcessMatches(matches []types.TriggerMatch) ([]types.Action, error)
-    Validate(options map[string]interface{}) error
+    Process(matches []types.TriggerMatch) ([]types.Action, error)
+    ValidateOptions(options map[string]interface{}) error
 }
 ```
 
@@ -85,30 +85,48 @@ Pack:
 type Pack struct {
     Name   string
     Path   string
-    Config PackConfig  // from .dodot.toml
+    Config types.PackConfig  // from .dodot.toml
 }
 ```
 
 TriggerMatch:
 ```go
 type TriggerMatch struct {
-    File     FileInfo
-    Pack     Pack
-    Trigger  string
-    PowerUp  string
-    Options  map[string]interface{}
-    Metadata map[string]interface{}
+    Path         string
+    AbsolutePath string
+    Pack         string
+    TriggerName  string
+    PowerUpName  string
+    Priority     int
+    // ... and other fields
 }
 ```
 
 Action:
 ```go
+// Action represents a high-level intent from a power-up.
 type Action struct {
-    Type        string
+    Type        ActionType
     Description string
-    Data        map[string]interface{}
-    Pack        string
     Source      string
+    Target      string
+    Content     string
+    Pack        string
+    PowerUpName string
+    // ... and other fields
+}
+```
+
+Operation:
+```go
+// Operation represents a concrete, low-level task for an executor.
+type Operation struct {
+    Type        OperationType
+    Description string
+    Source      string
+    Target      string
+    Content     string
+    // ... and other fields
 }
 ```
 
@@ -141,11 +159,8 @@ Registry System
 All major components use type-safe registries:
 
 ```go
-type Libraries struct {
-    Triggers  Registry[Trigger]
-    PowerUps  Registry[PowerUp]
-    Actions   Registry[ActionConverter]
-}
+// Registries are managed globally for triggers and power-ups.
+// e.g., registry.RegisterPowerUpFactory(...)
 ```
 
 Benefits:
@@ -157,8 +172,8 @@ Benefits:
 Registration happens in init() functions:
 ```go
 func init() {
-    defaultTriggers.Register("filename", &FileNameTrigger{})
-    defaultTriggers.Register("directory", &DirectoryTrigger{})
+    registry.RegisterTriggerFactory("filename", NewFileNameTrigger)
+    registry.RegisterPowerUpFactory("symlink", NewSymlinkPowerUp)
 }
 ```
 
@@ -179,27 +194,25 @@ Using koanf library for unified configuration management:
 Filesystem Abstraction
 ----------------------
 
-All filesystem operations go through synthfs library:
+All filesystem operations go through the go-synthfs library:
 • Provides operation descriptions, not direct operations
 • Enables dry-run and validation capabilities
-• Basic rollback support for error recovery
+• Handles dependency resolution (e.g., creating dirs before files)
 
 Operation Translation:
 ```go
-// Actions describe WHAT to do
+// Actions describe WHAT to do (high-level intent)
 action := types.Action{
-    Type: "link",
-    Data: map[string]interface{}{
-        "source": "/dotfiles/pack/vimrc",
-        "target": "/home/user/.vimrc",
-    },
+    Type:   types.ActionTypeLink,
+    Source: "/path/to/dotfiles/pack/vimrc",
+    Target: "/home/user/.vimrc",
 }
 
-// Operations describe HOW to do it
-op := synthfs.CreateSymlink{
-    Source: "/dotfiles/pack/vimrc",
+// Operations describe HOW to do it (low-level task)
+op := types.Operation{
+    Type:   types.OperationCreateSymlink,
+    Source: "/path/to/dotfiles/pack/vimrc",
     Target: "/home/user/.vimrc",
-    CreateDirs: true,
 }
 ```
 
@@ -232,14 +245,11 @@ Error System
 
 Typed errors with codes enable stable testing:
 ```go
-type DodotError struct {
-    Code    ErrorCode
-    Message string
-    Details map[string]interface{}
-}
+// pkg/errors provides factory functions
+err := errors.New(errors.ErrPackNotFound, "pack not found")
 
 // Test error codes, not messages
-assert.Equal(t, errors.PACK_NOT_FOUND, err.Code)
+assert.Equal(t, errors.ErrPackNotFound, err.Code())
 ```
 
 Logging System
