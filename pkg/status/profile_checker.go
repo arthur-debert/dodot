@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	iosfs "io/fs"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -64,12 +65,22 @@ func (pc *ProfileChecker) CheckStatus(op *types.Operation, fs filesystem.FullFil
 		return status, nil
 	}
 
+	// Compare targets - handle both absolute and relative paths
+	// The filesystem might return relative paths even when absolute paths were used
+	sourceAbs := op.Source
+	targetAbs := actualTarget
+
+	// If actualTarget is relative and op.Source is absolute, make actualTarget absolute
+	if !filepath.IsAbs(actualTarget) && filepath.IsAbs(op.Source) {
+		targetAbs = filepath.Join("/", actualTarget)
+	}
+
 	status.Metadata["source_script"] = op.Source
 	status.Metadata["deployed_symlink"] = op.Target
-	status.Metadata["actual_target"] = actualTarget
+	status.Metadata["actual_target"] = targetAbs
 
 	// Compare targets
-	if actualTarget == op.Source {
+	if targetAbs == sourceAbs {
 		// Symlink exists and points to correct script
 		status.Status = types.StatusSkipped
 		status.Message = "Profile script already deployed"

@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	iosfs "io/fs"
+	"path/filepath"
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -67,10 +68,21 @@ func (sc *SymlinkChecker) CheckStatus(op *types.Operation, fs filesystem.FullFil
 		return status, nil
 	}
 
-	status.Metadata["actual_target"] = actualTarget
+	// Compare targets - handle both absolute and relative paths
+	// The filesystem might return relative paths even when absolute paths were used
+	sourceAbs := op.Source
+	targetAbs := actualTarget
+
+	// If actualTarget is relative and op.Source is absolute, make actualTarget absolute
+	if !filepath.IsAbs(actualTarget) && filepath.IsAbs(op.Source) {
+		targetAbs = filepath.Join("/", actualTarget)
+	}
+
+	status.Metadata["actual_target"] = targetAbs
+	status.Metadata["expected_target"] = op.Source
 
 	// Compare targets
-	if actualTarget == op.Source {
+	if targetAbs == sourceAbs {
 		// Symlink exists and points to the correct target
 		status.Status = types.StatusSkipped
 		status.Message = "Symlink already exists with correct target"
