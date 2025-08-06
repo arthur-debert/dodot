@@ -62,7 +62,12 @@ func TestBrewChecker_CheckStatus_ValidSentinel(t *testing.T) {
 	require.NotNil(t, status)
 
 	assert.Equal(t, types.StatusSkipped, status.Status)
-	assert.Equal(t, "Brewfile already processed (checksum matches)", status.Message)
+	// Message depends on whether brew command is available
+	if brewAvailable, ok := status.Metadata["brew_available"].(bool); ok && !brewAvailable {
+		assert.Equal(t, "Brewfile processed but brew command not found", status.Message)
+	} else {
+		assert.Equal(t, "Brewfile already processed (checksum matches)", status.Message)
+	}
 	assert.Equal(t, true, status.Metadata["sentinel_exists"])
 	assert.Equal(t, "abc123checksum", status.Metadata["stored_checksum"])
 	assert.Equal(t, "abc123checksum", status.Metadata["current_checksum"])
