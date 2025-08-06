@@ -1,93 +1,73 @@
 package status
 
 import (
-	"fmt"
-	iosfs "io/fs"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 )
 
 // ProfileChecker checks the status of shell profile operations
-type ProfileChecker struct{}
+type ProfileChecker struct {
+	BaseChecker
+}
 
 // NewProfileChecker creates a new profile status checker
 func NewProfileChecker() *ProfileChecker {
-	return &ProfileChecker{}
+	return &ProfileChecker{
+		BaseChecker: BaseChecker{
+			PowerUpName: "shell_profile",
+		},
+	}
 }
 
 // CheckStatus checks if a shell profile entry exists
 func (pc *ProfileChecker) CheckStatus(op *types.Operation, fs filesystem.FullFileSystem) (*types.FileStatus, error) {
-	status := &types.FileStatus{
-		Path:        op.Target,
-		PowerUp:     "shell_profile",
-		Status:      types.StatusReady,
-		Message:     "Profile entry not configured",
-		LastApplied: time.Time{},
-		Metadata:    make(map[string]interface{}),
-	}
+	status := pc.InitializeStatus(op.Target, "Profile entry not configured")
 
 	// For shell_profile, operations create symlinks in the deployment directory
 	// Check if the symlink exists
-	info, err := fs.Stat(op.Target)
+	result, err := pc.CheckSymlink(fs, op.Target)
 	if err != nil {
-		if isNotExist(err) {
-			// Symlink doesn't exist in deployment directory
-			status.Status = types.StatusReady
-			status.Message = "Profile script not deployed"
-			return status, nil
-		}
-		status.Status = types.StatusError
-		status.Message = fmt.Sprintf("Failed to check profile symlink: %v", err)
-		return status, nil
-	}
-	if err != nil {
-		status.Status = types.StatusError
-		status.Message = fmt.Sprintf("Failed to stat profile symlink: %v", err)
+		pc.SetError(status, "check profile symlink", err)
 		return status, nil
 	}
 
-	if info.Mode()&iosfs.ModeSymlink == 0 {
+	if !result.Exists {
+		// Symlink doesn't exist in deployment directory
+		status.Status = types.StatusReady
+		status.Message = "Profile script not deployed"
+		return status, nil
+	}
+
+	if !result.IsSymlink {
 		// Path exists but is not a symlink
 		status.Status = types.StatusConflict
 		status.Message = "Deployment path exists but is not a symlink"
 		return status, nil
 	}
 
-	// Check if symlink points to the correct source
-	actualTarget, err := fs.Readlink(op.Target)
-	if err != nil {
-		status.Status = types.StatusError
-		status.Message = fmt.Sprintf("Failed to read symlink target: %v", err)
-		return status, nil
-	}
-
-	// Compare targets - handle both absolute and relative paths
-	// The filesystem might return relative paths even when absolute paths were used
-	sourceAbs := op.Source
-	targetAbs := actualTarget
-
-	// If actualTarget is relative and op.Source is absolute, make actualTarget absolute
-	if !filepath.IsAbs(actualTarget) && filepath.IsAbs(op.Source) {
-		targetAbs = filepath.Join("/", actualTarget)
-	}
-
+	// Set symlink metadata
+	pc.SetSymlinkMetadata(status, result, op.Source)
 	status.Metadata["source_script"] = op.Source
 	status.Metadata["deployed_symlink"] = op.Target
-	status.Metadata["actual_target"] = targetAbs
+
+	// Override actual_target with the processed version for backward compatibility
+	actualAbs := result.ActualTarget
+	if !filepath.IsAbs(result.ActualTarget) && filepath.IsAbs(op.Source) {
+		actualAbs = filepath.Join("/", result.ActualTarget)
+	}
+	status.Metadata["actual_target"] = actualAbs
 
 	// Compare targets
-	if targetAbs == sourceAbs {
+	if pc.CompareSymlinkTargets(op.Source, result.ActualTarget) {
 		// Symlink exists and points to correct script
 		status.Status = types.StatusSkipped
 		status.Message = "Profile script already deployed"
-		status.LastApplied = info.ModTime()
 
 		// Check if the source script exists
-		_, sourceErr := fs.Stat(actualTarget)
+		_, sourceErr := fs.Stat(result.ActualTarget)
 		status.Metadata["source_exists"] = sourceErr == nil
 
 		// Add which shell files would source this script
