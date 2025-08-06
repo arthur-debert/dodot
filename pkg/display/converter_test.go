@@ -149,14 +149,14 @@ func TestConverter_ConvertExecutionContext(t *testing.T) {
 	assert.Equal(t, "Link", file1.Action)
 	assert.Equal(t, "~/.vimrc", file1.Path)
 	assert.Equal(t, types.StatusReady, file1.Status)
-	assert.Equal(t, "Applied", file1.Message)
+	assert.Equal(t, "will be linked to target", file1.Message)
 	assert.True(t, file1.IsNewChange)
 
 	file2 := pack.Files[1]
 	assert.Equal(t, "Link", file2.Action)
 	assert.Equal(t, "~/.vim", file2.Path)
 	assert.Equal(t, types.StatusSkipped, file2.Status)
-	assert.Equal(t, "Already up to date", file2.Message)
+	assert.Equal(t, "linked to target", file2.Message)
 	assert.False(t, file2.IsNewChange)
 
 	// Check summary
@@ -273,11 +273,14 @@ func TestConverter_GetStatusMessage(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "ready status",
+			name: "ready symlink",
 			or: &types.OperationResult{
 				Status: types.StatusReady,
+				Operation: &types.Operation{
+					PowerUp: "symlink",
+				},
 			},
-			expected: "Applied",
+			expected: "will be linked to target",
 		},
 		{
 			name: "skipped homebrew",
@@ -287,23 +290,26 @@ func TestConverter_GetStatusMessage(t *testing.T) {
 					PowerUp: "homebrew",
 				},
 			},
-			expected: "Already processed (checksum match)",
+			expected: "executed",
 		},
 		{
-			name: "skipped other",
+			name: "skipped symlink",
 			or: &types.OperationResult{
 				Status: types.StatusSkipped,
 				Operation: &types.Operation{
 					PowerUp: "symlink",
 				},
 			},
-			expected: "Already up to date",
+			expected: "linked to target",
 		},
 		{
 			name: "conflict with error",
 			or: &types.OperationResult{
 				Status: types.StatusConflict,
-				Error:  assert.AnError,
+				Operation: &types.Operation{
+					PowerUp: "symlink",
+				},
+				Error: assert.AnError,
 			},
 			expected: "Conflict: assert.AnError general error for testing",
 		},
@@ -311,7 +317,10 @@ func TestConverter_GetStatusMessage(t *testing.T) {
 			name: "error with message",
 			or: &types.OperationResult{
 				Status: types.StatusError,
-				Error:  assert.AnError,
+				Operation: &types.Operation{
+					PowerUp: "symlink",
+				},
+				Error: assert.AnError,
 			},
 			expected: "Error: assert.AnError general error for testing",
 		},

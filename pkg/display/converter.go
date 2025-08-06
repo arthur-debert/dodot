@@ -211,15 +211,16 @@ func (c *Converter) makePathRelative(path string) string {
 // getStatusMessage generates an appropriate message based on operation status
 // and any error information
 func (c *Converter) getStatusMessage(or *types.OperationResult) string {
+	// Get the appropriate verb tense based on status and PowerUp
+	verb := c.getVerbForStatus(or.Operation.PowerUp, or.Status)
+
 	switch or.Status {
 	case types.StatusReady:
-		return "Applied"
+		// For operations that are ready to be executed (future tense)
+		return verb
 	case types.StatusSkipped:
-		// Provide more context for skipped operations
-		if or.Operation.PowerUp == "homebrew" || or.Operation.PowerUp == "install" {
-			return "Already processed (checksum match)"
-		}
-		return "Already up to date"
+		// For operations that were skipped because already done (past tense)
+		return verb
 	case types.StatusConflict:
 		if or.Error != nil {
 			return fmt.Sprintf("Conflict: %s", or.Error.Error())
@@ -233,6 +234,38 @@ func (c *Converter) getStatusMessage(or *types.OperationResult) string {
 	default:
 		return string(or.Status)
 	}
+}
+
+// getVerbForStatus returns the appropriate verb tense based on PowerUp type and status
+func (c *Converter) getVerbForStatus(powerUp string, status types.OperationStatus) string {
+	// Define verb forms for each PowerUp type
+	verbForms := map[string]struct {
+		past   string
+		future string
+	}{
+		"symlink":       {past: "linked to target", future: "will be linked to target"},
+		"shell_profile": {past: "included in shell", future: "to be included in shell"},
+		"homebrew":      {past: "executed", future: "to be installed"},
+		"add_path":      {past: "added to $PATH", future: "to be added to $PATH"},
+		"install":       {past: "executed during installation", future: "to be executed"},
+		"template":      {past: "generated from template", future: "to be generated"},
+		"config":        {past: "found", future: "found"}, // Config always uses present tense
+	}
+
+	verbs, ok := verbForms[powerUp]
+	if !ok {
+		// Fallback for unknown PowerUps
+		if status == types.StatusReady {
+			return "to be processed"
+		}
+		return "processed"
+	}
+
+	// Choose past or future tense based on status
+	if status == types.StatusReady {
+		return verbs.future
+	}
+	return verbs.past
 }
 
 // ConvertFileStatus transforms a FileStatus (from status checking) into a FileResult
