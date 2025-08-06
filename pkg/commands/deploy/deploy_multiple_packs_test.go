@@ -1,11 +1,10 @@
 package deploy
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/require"
 
 	// Import to register triggers and powerups
@@ -16,35 +15,16 @@ import (
 // TestDeployMultiplePacksExecutesOperations tests that deploying multiple packs
 // executes operations correctly
 func TestDeployMultiplePacksExecutesOperations(t *testing.T) {
-	// Create a temporary directory for testing
-	tmpDir := t.TempDir()
-	dotfilesRoot := filepath.Join(tmpDir, "dotfiles")
-	homeDir := filepath.Join(tmpDir, "home")
+	// Create multiple packs with home directory using new helpers
+	packs := testutil.SetupMultiplePacks(t, "vim", "bash")
 
-	// Create directories
-	require.NoError(t, os.MkdirAll(filepath.Join(dotfilesRoot, "vim"), 0755))
-	require.NoError(t, os.MkdirAll(filepath.Join(dotfilesRoot, "bash"), 0755))
-	require.NoError(t, os.MkdirAll(homeDir, 0755))
-
-	// Create pack configs (no pack config needed for default matchers)
-
-	// Create files to be symlinked
-	vimrcContent := "\" Test vimrc"
-	vimrcPath := filepath.Join(dotfilesRoot, "vim", ".vimrc")
-	require.NoError(t, os.WriteFile(vimrcPath, []byte(vimrcContent), 0644))
-
-	bashrcContent := "# Test bashrc"
-	bashrcPath := filepath.Join(dotfilesRoot, "bash", ".bashrc")
-	require.NoError(t, os.WriteFile(bashrcPath, []byte(bashrcContent), 0644))
-
-	// Override home directory for the test
-	origHome := os.Getenv("HOME")
-	require.NoError(t, os.Setenv("HOME", homeDir))
-	defer func() { _ = os.Setenv("HOME", origHome) }()
+	// Add dotfiles to each pack
+	packs["vim"].AddFile(t, ".vimrc", "\" Test vimrc")
+	packs["bash"].AddFile(t, ".bashrc", "# Test bashrc")
 
 	// Execute the deploy command directly with dry-run to verify operations
 	result, err := DeployPacks(DeployPacksOptions{
-		DotfilesRoot: dotfilesRoot,
+		DotfilesRoot: packs["vim"].Root,
 		PackNames:    []string{"vim", "bash"},
 		DryRun:       true, // Just verify operations are generated
 	})
