@@ -169,7 +169,7 @@ func TestSynthfsExecutor_ExecuteOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := executor.ExecuteOperations(tt.operations)
+			_, err := executor.ExecuteOperations(tt.operations)
 			if tt.expectErr {
 				testutil.AssertError(t, err)
 			} else {
@@ -214,7 +214,7 @@ func TestSynthfsExecutor_DryRun(t *testing.T) {
 	executor := NewSynthfsExecutorWithPaths(true, p) // dry run mode
 
 	// Execute in dry run mode
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertNoError(t, err)
 
 	// Verify nothing was actually created
@@ -228,7 +228,7 @@ func TestSynthfsExecutor_ExecuteOperations_EmptyList(t *testing.T) {
 	executor := NewSynthfsExecutor(false)
 
 	// Execute with empty operations list
-	err := executor.ExecuteOperations([]types.Operation{})
+	_, err := executor.ExecuteOperations([]types.Operation{})
 	testutil.AssertNoError(t, err)
 }
 
@@ -271,7 +271,7 @@ func TestSynthfsExecutor_SkipNonMutatingOperations(t *testing.T) {
 	}
 
 	// Execute operations
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertNoError(t, err)
 
 	// Only the create directory operation should have been executed
@@ -315,7 +315,7 @@ func TestSynthfsExecutor_Symlink(t *testing.T) {
 		},
 	}
 
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertNoError(t, err)
 
 	// Verify symlink was created
@@ -392,7 +392,7 @@ func TestSynthfsExecutor_Force(t *testing.T) {
 		},
 	}
 
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertNoError(t, err)
 
 	// Verify symlink was created (replacing the existing file)

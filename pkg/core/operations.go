@@ -155,9 +155,38 @@ func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]typ
 		return nil, err
 	}
 
-	// Set default status for all new operations
+	// Set default status and preserve context for all new operations
 	for i := range ops {
 		ops[i].Status = types.StatusReady
+
+		// Preserve pack and powerup context from the action
+		ops[i].Pack = action.Pack
+		ops[i].PowerUp = action.PowerUpName
+
+		// Preserve metadata from the action
+		if action.Metadata != nil {
+			ops[i].Metadata = make(map[string]interface{})
+			for k, v := range action.Metadata {
+				ops[i].Metadata[k] = v
+			}
+		}
+
+		// Create TriggerInfo if we have trigger information in metadata
+		if triggerName, ok := action.Metadata["trigger"].(string); ok {
+			ops[i].TriggerInfo = &types.TriggerMatchInfo{
+				TriggerName: triggerName,
+				Priority:    action.Priority,
+			}
+			if originalPath, ok := action.Metadata["originalPath"].(string); ok {
+				ops[i].TriggerInfo.OriginalPath = originalPath
+			}
+		}
+
+		// Generate GroupID to group related operations
+		// Use pack + powerup + action description hash as a simple grouping
+		if ops[i].Pack != "" && ops[i].PowerUp != "" {
+			ops[i].GroupID = fmt.Sprintf("%s-%s-%d", ops[i].Pack, ops[i].PowerUp, action.Priority)
+		}
 	}
 
 	return ops, nil

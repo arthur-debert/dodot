@@ -47,7 +47,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 			},
 		}
 
-		err := executor.ExecuteOperations(operations)
+		_, err := executor.ExecuteOperations(operations)
 		testutil.AssertError(t, err)
 		testutil.AssertErrorContains(t, err, "outside dodot-controlled directories")
 	})
@@ -66,7 +66,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 			},
 		}
 
-		err := executor.ExecuteOperations(operations)
+		_, err := executor.ExecuteOperations(operations)
 		testutil.AssertNoError(t, err)
 
 		// Verify symlink was created
@@ -96,7 +96,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 			},
 		}
 
-		err := executor.ExecuteOperations(operations)
+		_, err := executor.ExecuteOperations(operations)
 		testutil.AssertError(t, err)
 		// The error could be either from our validation or from synthfs trying to create in /etc
 		if !strings.Contains(err.Error(), "must be in home directory") &&
@@ -122,7 +122,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 		// Create .ssh directory
 		testutil.CreateDir(t, tempHome, ".ssh")
 
-		err := executor.ExecuteOperations(operations)
+		_, err := executor.ExecuteOperations(operations)
 		testutil.AssertError(t, err)
 		testutil.AssertErrorContains(t, err, "protected file")
 	})
@@ -145,7 +145,7 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 			},
 		}
 
-		err := executor.ExecuteOperations(operations)
+		_, err := executor.ExecuteOperations(operations)
 		testutil.AssertError(t, err)
 		testutil.AssertErrorContains(t, err, "must be from dotfiles or deployed directory")
 	})
@@ -209,7 +209,7 @@ func TestSynthfsExecutor_ProtectedPaths(t *testing.T) {
 				},
 			}
 
-			err := executor.ExecuteOperations(operations)
+			_, err := executor.ExecuteOperations(operations)
 			if err == nil {
 				// Check if symlink was actually created
 				if testutil.SymlinkExists(t, target) {
@@ -259,7 +259,7 @@ func TestSynthfsExecutor_ExistingFileWarning(t *testing.T) {
 
 	// synthfs will fail if the file already exists
 	// This is a limitation of synthfs - it doesn't replace existing files
-	err = executor.ExecuteOperations(operations)
+	_, err = executor.ExecuteOperations(operations)
 
 	// For now, we expect this to fail with synthfs
 	// In a real implementation, we might want to:

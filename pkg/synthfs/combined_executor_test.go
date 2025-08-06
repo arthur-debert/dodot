@@ -74,7 +74,7 @@ func TestCombinedExecutor_OperationOrdering(t *testing.T) {
 		p, err := paths.New(filepath.Join(tempDir, "dotfiles"))
 		require.NoError(t, err)
 		executor := NewCombinedExecutorWithPaths(false, p)
-		err = executor.ExecuteOperations(operations)
+		_, err = executor.ExecuteOperations(operations)
 		require.NoError(t, err)
 
 		// Verify results
@@ -122,7 +122,7 @@ func TestCombinedExecutor_OperationOrdering(t *testing.T) {
 		p, err := paths.New(filepath.Join(tempDir, "dotfiles"))
 		require.NoError(t, err)
 		executor := NewCombinedExecutorWithPaths(false, p)
-		err = executor.ExecuteOperations(operations)
+		_, err = executor.ExecuteOperations(operations)
 
 		// Should fail due to command execution error
 		require.Error(t, err)
@@ -136,7 +136,7 @@ func TestCombinedExecutor_OperationOrdering(t *testing.T) {
 		p, err := paths.New(filepath.Join(tempDir, "dotfiles"))
 		require.NoError(t, err)
 		executor := NewCombinedExecutorWithPaths(false, p)
-		err = executor.ExecuteOperations([]types.Operation{})
+		_, err = executor.ExecuteOperations([]types.Operation{})
 		require.NoError(t, err)
 	})
 
@@ -154,7 +154,7 @@ func TestCombinedExecutor_OperationOrdering(t *testing.T) {
 		p, err := paths.New(filepath.Join(tempDir, "dotfiles"))
 		require.NoError(t, err)
 		executor := NewCombinedExecutorWithPaths(false, p)
-		err = executor.ExecuteOperations(operations)
+		_, err = executor.ExecuteOperations(operations)
 		require.NoError(t, err)
 
 		// File should not exist

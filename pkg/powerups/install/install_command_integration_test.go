@@ -73,7 +73,7 @@ echo "Development setup complete!"
 	// This only creates directories and writes files, but never runs the install script
 	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
 	// Verify sentinel file was created

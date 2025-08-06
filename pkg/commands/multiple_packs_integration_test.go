@@ -144,7 +144,7 @@ brew 'bash-completion'
 	// Execute operations
 	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
 	// ===== VERIFY PACK 1 (VIM) - Deploy powerups =====

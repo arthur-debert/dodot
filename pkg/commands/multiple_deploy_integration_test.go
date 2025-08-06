@@ -81,7 +81,7 @@ set -o vi
 	// Execute operations
 	executor := synthfs.NewSynthfsExecutor(false)
 	executor.EnableHomeSymlinks(true)
-	err = executor.ExecuteOperations(result.Operations)
+	_, err = executor.ExecuteOperations(result.Operations)
 	require.NoError(t, err)
 
 	// Verify .vimrc symlink was created

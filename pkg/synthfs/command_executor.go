@@ -30,31 +30,59 @@ func NewCommandExecutor(dryRun bool) *CommandExecutor {
 }
 
 // ExecuteOperations executes only OperationExecute type operations
-func (e *CommandExecutor) ExecuteOperations(ops []types.Operation) error {
-	for _, op := range ops {
+func (e *CommandExecutor) ExecuteOperations(ops []types.Operation) ([]types.OperationResult, error) {
+	results := make([]types.OperationResult, 0, len(ops))
+
+	for i, op := range ops {
 		if op.Type != types.OperationExecute {
 			continue
 		}
+
+		startTime := time.Now()
 
 		if op.Status != types.StatusReady {
 			e.logger.Debug().
 				Str("command", op.Command).
 				Str("status", string(op.Status)).
 				Msg("Skipping operation with non-ready status")
+
+			results = append(results, types.OperationResult{
+				Operation: &ops[i],
+				Status:    op.Status,
+				StartTime: startTime,
+				EndTime:   time.Now(),
+			})
 			continue
 		}
 
-		if err := e.executeOperation(op); err != nil {
-			return err
+		output, err := e.executeOperationWithOutput(op)
+		endTime := time.Now()
+
+		result := types.OperationResult{
+			Operation: &ops[i],
+			StartTime: startTime,
+			EndTime:   endTime,
+			Output:    output,
 		}
+
+		if err != nil {
+			result.Status = types.StatusError
+			result.Error = err
+			results = append(results, result)
+			return results, err
+		}
+
+		result.Status = types.StatusReady
+		results = append(results, result)
 	}
-	return nil
+
+	return results, nil
 }
 
-// executeOperation executes a single command operation
-func (e *CommandExecutor) executeOperation(op types.Operation) error {
+// executeOperationWithOutput executes a single command operation and returns output
+func (e *CommandExecutor) executeOperationWithOutput(op types.Operation) (string, error) {
 	if op.Command == "" {
-		return errors.New(errors.ErrInvalidInput, "execute operation requires command")
+		return "", errors.New(errors.ErrInvalidInput, "execute operation requires command")
 	}
 
 	e.logger.Info().
@@ -66,7 +94,7 @@ func (e *CommandExecutor) executeOperation(op types.Operation) error {
 
 	if e.dryRun {
 		e.logger.Info().Msg("Dry run mode - command would be executed")
-		return nil
+		return "", nil
 	}
 
 	// Create command
@@ -79,7 +107,7 @@ func (e *CommandExecutor) executeOperation(op types.Operation) error {
 	if op.WorkingDir != "" {
 		// Ensure working directory exists
 		if _, err := os.Stat(op.WorkingDir); os.IsNotExist(err) {
-			return errors.Newf(errors.ErrFileAccess,
+			return "", errors.Newf(errors.ErrFileAccess,
 				"working directory does not exist: %s", op.WorkingDir)
 		}
 		cmd.Dir = op.WorkingDir
@@ -127,6 +155,15 @@ func (e *CommandExecutor) executeOperation(op types.Operation) error {
 			Msg("Command stderr")
 	}
 
+	// Combine output for return
+	output := stdout.String()
+	if stderr.Len() > 0 {
+		if output != "" {
+			output += "\n"
+		}
+		output += stderr.String()
+	}
+
 	if err != nil {
 		e.logger.Error().
 			Err(err).
@@ -136,7 +173,7 @@ func (e *CommandExecutor) executeOperation(op types.Operation) error {
 			Str("stderr", stderr.String()).
 			Msg("Command execution failed")
 
-		return errors.Wrapf(err, errors.ErrActionExecute,
+		return output, errors.Wrapf(err, errors.ErrActionExecute,
 			"failed to execute command: %s", op.Command)
 	}
 
@@ -144,7 +181,7 @@ func (e *CommandExecutor) executeOperation(op types.Operation) error {
 		Str("command", op.Command).
 		Msg("Command executed successfully")
 
-	return nil
+	return output, nil
 }
 
 // Result represents the result of a command execution

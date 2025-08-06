@@ -86,7 +86,7 @@ trigger = { file_name = "Brewfile" }
 
 		// Execute operations using combined executor
 		executor := synthfs.NewCombinedExecutor(false)
-		err = executor.ExecuteOperations(result.Operations)
+		_, err = executor.ExecuteOperations(result.Operations)
 		require.NoError(t, err)
 
 		// Verify brew was actually called
@@ -165,7 +165,7 @@ trigger = { file_name = "Brewfile" }
 
 		// Execute operations using combined executor - this should fail
 		executor := synthfs.NewCombinedExecutor(false)
-		err = executor.ExecuteOperations(result.Operations)
+		_, err = executor.ExecuteOperations(result.Operations)
 		assert.Error(t, err, "Command execution should fail when brew exits with non-zero")
 
 		// Verify sentinel file was NOT created due to failure

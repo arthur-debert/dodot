@@ -41,17 +41,18 @@ var (
 	ProfileStyle       = pterm.NewStyle(pterm.FgMagenta, pterm.Bold)
 	InstallScriptStyle = pterm.NewStyle(pterm.FgYellow, pterm.Bold)
 	HomebrewStyle      = pterm.NewStyle(pterm.FgGreen, pterm.Bold)
+	ConfigStyle        = pterm.NewStyle(pterm.FgCyan) // For .dodot.toml files
 
 	// Path style
 	PathStyle = pterm.NewStyle(pterm.FgGray, pterm.Italic)
 )
 
-// Operation indicators using pterm
+// Operation indicators - use the Unicode symbols directly
 var (
-	SuccessIndicator  = pterm.Success.Prefix.Text
-	ErrorIndicator    = pterm.Error.Prefix.Text
-	WarningIndicator  = pterm.Warning.Prefix.Text
-	InfoIndicator     = pterm.Info.Prefix.Text
+	SuccessIndicator  = "✓"
+	ErrorIndicator    = "✗"
+	WarningIndicator  = "!"
+	InfoIndicator     = "•"
 	PendingIndicator  = "○"
 	ProgressIndicator = "⟳"
 )

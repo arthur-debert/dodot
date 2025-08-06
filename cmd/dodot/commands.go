@@ -209,9 +209,12 @@ func newDeployCmd() *cobra.Command {
 				executor := synthfs.NewCombinedExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
-				if err := executor.ExecuteOperations(result.Operations); err != nil {
+				opResults, err := executor.ExecuteOperations(result.Operations)
+				if err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}
+				// TODO: Use opResults for better display/tracking
+				_ = opResults
 			}
 
 			// Display results using rich output
@@ -269,9 +272,12 @@ func newInstallCmd() *cobra.Command {
 				executor := synthfs.NewCombinedExecutor(dryRun)
 				// Enable home symlinks for deployment
 				executor.EnableHomeSymlinks(true)
-				if err := executor.ExecuteOperations(result.Operations); err != nil {
+				opResults, err := executor.ExecuteOperations(result.Operations)
+				if err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}
+				// TODO: Use opResults for better display/tracking
+				_ = opResults
 			}
 
 			// Display results using rich output
@@ -351,7 +357,7 @@ func newStatusCmd() *cobra.Command {
 			var packStatuses []style.PackStatus
 
 			for _, ps := range result.Packs {
-				packStatuses = append(packStatuses, style.ConvertPackStatus(ps))
+				packStatuses = append(packStatuses, style.ConvertDisplayPackToPackStatus(ps))
 			}
 
 			fmt.Println(renderer.RenderPackStatuses(packStatuses))
@@ -395,9 +401,12 @@ func newInitCmd() *cobra.Command {
 			// Execute operations if any
 			if len(result.Operations) > 0 {
 				executor := synthfs.NewSynthfsExecutor(false)
-				if err := executor.ExecuteOperations(result.Operations); err != nil {
+				opResults, err := executor.ExecuteOperations(result.Operations)
+				if err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}
+				// TODO: Use opResults for better display/tracking
+				_ = opResults
 			}
 
 			// Display results
@@ -449,9 +458,12 @@ func newFillCmd() *cobra.Command {
 			// Execute operations if any
 			if len(result.Operations) > 0 {
 				executor := synthfs.NewSynthfsExecutor(false)
-				if err := executor.ExecuteOperations(result.Operations); err != nil {
+				opResults, err := executor.ExecuteOperations(result.Operations)
+				if err != nil {
 					return fmt.Errorf("failed to execute operations: %w", err)
 				}
+				// TODO: Use opResults for better display/tracking
+				_ = opResults
 			}
 
 			// Display results

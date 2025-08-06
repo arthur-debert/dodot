@@ -1,5 +1,7 @@
 package types
 
+import "time"
+
 // ListPacksResult holds the result of the 'list' command.
 type ListPacksResult struct {
 	Packs []PackInfo `json:"packs"`
@@ -11,22 +13,68 @@ type PackInfo struct {
 	Path string `json:"path"`
 }
 
-// PackStatusResult holds the status of one or more packs.
-type PackStatusResult struct {
-	Packs []PackStatus `json:"packs"`
+// DisplayResult is the top-level structure for commands that produce rich output.
+// This replaces the old PackStatusResult and is used by status, deploy, and install commands.
+type DisplayResult struct {
+	Command   string        `json:"command"` // "status", "deploy", "install"
+	Packs     []DisplayPack `json:"packs"`
+	DryRun    bool          `json:"dryRun"` // For deploy/install commands
+	Timestamp time.Time     `json:"timestamp"`
 }
 
-// PackStatus represents the detailed status of a single pack.
-type PackStatus struct {
-	Name         string          `json:"name"`
-	PowerUpState []PowerUpStatus `json:"powerUpState"`
+// DisplayPack represents a single pack for display.
+type DisplayPack struct {
+	Name      string        `json:"name"`
+	Status    string        `json:"status"` // Aggregated: "alert", "success", "queue"
+	Files     []DisplayFile `json:"files"`
+	HasConfig bool          `json:"hasConfig"` // Pack has .dodot.toml
+	IsIgnored bool          `json:"isIgnored"` // Pack has .dodotignore
 }
 
-// PowerUpStatus describes the state of a single power-up within a pack.
-type PowerUpStatus struct {
-	Name        string `json:"name"`
-	State       string `json:"state"` // e.g., "Installed", "Not Installed", "Changed"
-	Description string `json:"description"`
+// DisplayFile represents a single file within a pack for display.
+type DisplayFile struct {
+	PowerUp      string     `json:"powerUp"`
+	Path         string     `json:"path"`
+	Status       string     `json:"status"` // File-level: "success", "error", "queue", "config", "ignored"
+	Message      string     `json:"message"`
+	IsOverride   bool       `json:"isOverride"`   // File power-up was overridden in .dodot.toml
+	LastExecuted *time.Time `json:"lastExecuted"` // When operation was last executed
+}
+
+// GetPackStatus determines the pack-level status based on its files.
+// Following the aggregation rules from the design:
+// - If ANY file has ERROR status → Pack status is "alert"
+// - If ALL files have SUCCESS status → Pack status is "success"
+// - Empty pack or mixed states → Pack status is "queue"
+func (dp *DisplayPack) GetPackStatus() string {
+	if len(dp.Files) == 0 {
+		return "queue"
+	}
+
+	hasError := false
+	allSuccess := true
+
+	for _, file := range dp.Files {
+		// Skip config files in status calculation
+		if file.Status == "config" {
+			continue
+		}
+
+		if file.Status == "error" {
+			hasError = true
+		}
+		if file.Status != "success" {
+			allSuccess = false
+		}
+	}
+
+	if hasError {
+		return "alert" // Will be displayed with ALERT styling
+	}
+	if allSuccess {
+		return "success"
+	}
+	return "queue"
 }
 
 // ExecutionResult holds the outcome of an 'install' or 'deploy' command.

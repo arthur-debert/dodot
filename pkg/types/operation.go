@@ -44,6 +44,8 @@ const (
 	StatusConflict OperationStatus = "conflict"
 	// StatusError means the operation resulted in an error
 	StatusError OperationStatus = "error"
+	// StatusUnknown means the status could not be determined
+	StatusUnknown OperationStatus = "unknown"
 )
 
 // Operation represents a low-level file system operation
@@ -81,4 +83,32 @@ type Operation struct {
 
 	// EnvironmentVars are additional environment variables (optional)
 	EnvironmentVars map[string]string
+
+	// Pack is the name of the pack that originated this operation
+	Pack string
+
+	// PowerUp is the name of the PowerUp that generated this operation
+	PowerUp string
+
+	// TriggerInfo contains information about the original trigger match
+	TriggerInfo *TriggerMatchInfo
+
+	// Metadata preserves custom metadata from the Action
+	Metadata map[string]interface{}
+
+	// GroupID allows grouping related operations together
+	GroupID string
+}
+
+// TriggerMatchInfo contains essential information from the original trigger match
+// This is a lightweight version of TriggerMatch for preservation in Operations
+type TriggerMatchInfo struct {
+	// TriggerName is the name of the trigger that matched
+	TriggerName string
+
+	// OriginalPath is the relative path within the pack that was matched
+	OriginalPath string
+
+	// Priority from the original trigger match
+	Priority int
 }

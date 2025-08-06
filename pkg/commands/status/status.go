@@ -1,10 +1,9 @@
 package status
 
 import (
-	"fmt"
-
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -18,17 +17,17 @@ type StatusPacksOptions struct {
 }
 
 // StatusPacks checks the deployment status of the specified packs.
-func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
+func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "StatusPacks").Msg("Executing command")
 
-	// 0. Initialize Paths instance
+	// Initialize Paths instance
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
 		return nil, err
 	}
 
-	// 1. Get all packs
+	// 1. Get all packs using the core pipeline
 	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
 	if err != nil {
 		return nil, err
@@ -39,72 +38,30 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackStatusResult, error) {
 	}
 
 	// 2. Filter to selected packs
-	selectedPacks, err := core.SelectPacks(allPacks, opts.PackNames)
+	selectedPacks, err := packs.SelectPacks(allPacks, opts.PackNames)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Check status for each pack
-	result := &types.PackStatusResult{
-		Packs: make([]types.PackStatus, 0, len(selectedPacks)),
+	// 3. Run the full pipeline to get operations (same as deploy command)
+	triggerMatches, err := core.GetFiringTriggers(selectedPacks)
+	if err != nil {
+		return nil, err
 	}
 
-	for _, pack := range selectedPacks {
-		packStatus := types.PackStatus{
-			Name:         pack.Name,
-			PowerUpState: make([]types.PowerUpStatus, 0),
-		}
-
-		// Check run-once power-up status (install, homebrew)
-		installStatus, err := core.GetRunOnceStatus(pack.Path, "install", pathsInstance)
-		if err == nil && installStatus != nil {
-			state := "Not Installed"
-			description := "Install script not yet executed"
-			if installStatus.Executed {
-				state = "Installed"
-				description = fmt.Sprintf("Installed on %s", installStatus.ExecutedAt.Format("2006-01-02 15:04:05"))
-				if installStatus.Changed {
-					state = "Changed"
-					description += " (script has changed since execution)"
-				}
-			}
-			packStatus.PowerUpState = append(packStatus.PowerUpState, types.PowerUpStatus{
-				Name:        "install",
-				State:       state,
-				Description: description,
-			})
-		}
-
-		homebrewStatus, err := core.GetRunOnceStatus(pack.Path, "homebrew", pathsInstance)
-		if err == nil && homebrewStatus != nil {
-			state := "Not Installed"
-			description := "Brewfile not yet executed"
-			if homebrewStatus.Executed {
-				state = "Installed"
-				description = fmt.Sprintf("Installed on %s", homebrewStatus.ExecutedAt.Format("2006-01-02 15:04:05"))
-				if homebrewStatus.Changed {
-					state = "Changed"
-					description += " (Brewfile has changed since execution)"
-				}
-			}
-			packStatus.PowerUpState = append(packStatus.PowerUpState, types.PowerUpStatus{
-				Name:        "homebrew",
-				State:       state,
-				Description: description,
-			})
-		}
-
-		// For symlink status, we'd need to check actual symlinks in the filesystem
-		// This is a simplified version - in reality we'd check if symlinks exist
-		// and point to the correct locations
-		packStatus.PowerUpState = append(packStatus.PowerUpState, types.PowerUpStatus{
-			Name:        "symlink",
-			State:       "Unknown",
-			Description: "Symlink status checking not yet implemented",
-		})
-
-		result.Packs = append(result.Packs, packStatus)
+	actions, err := core.GetActions(triggerMatches)
+	if err != nil {
+		return nil, err
 	}
+
+	ctx := core.NewExecutionContext(false, pathsInstance)
+	operations, err := core.ConvertActionsToOperationsWithContext(actions, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Transform operations into DisplayResult
+	result := CreateDisplayResultFromOperations(operations, selectedPacks, "status")
 
 	log.Info().Str("command", "StatusPacks").Int("packCount", len(result.Packs)).Msg("Command finished")
 	return result, nil

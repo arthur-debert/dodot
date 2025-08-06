@@ -178,40 +178,53 @@ func AggregatePackStatus(files []FileStatus) Status {
 	return StatusQueue
 }
 
-// ConvertPackStatus converts from types.PackStatus to style.PackStatus
-// This is a temporary converter until we can properly map the data
-func ConvertPackStatus(pack types.PackStatus) PackStatus {
-	// For now, create a simple conversion
-	// TODO: This needs proper mapping based on actual power-up data
+// ConvertDisplayPackToPackStatus converts from types.DisplayPack to style.PackStatus
+// This bridges the new DisplayResult model with the existing style rendering
+func ConvertDisplayPackToPackStatus(pack types.DisplayPack) PackStatus {
 	var files []FileStatus
 
-	for _, ps := range pack.PowerUpState {
-		// Map state to our Status type
+	for _, file := range pack.Files {
+		// Map status strings to Status type
 		var status Status
-		switch ps.State {
-		case "Installed", "installed":
+		switch file.Status {
+		case "success":
 			status = StatusSuccess
-		case "Not Installed", "not installed", "pending":
-			status = StatusQueue
-		case "Failed", "failed", "error":
+		case "error", "alert":
 			status = StatusError
+		case "queue":
+			status = StatusQueue
+		case "config":
+			status = StatusSuccess // Config files show as success
+		case "ignored":
+			status = StatusQueue // Ignored files show as queue
 		default:
 			status = StatusQueue
 		}
 
-		// Create file status from power-up status
-		// This is simplified - real implementation would need more data
 		files = append(files, FileStatus{
-			PowerUp:  ps.Name,
-			FilePath: ps.Name, // This should be actual file path
+			PowerUp:  file.PowerUp,
+			FilePath: file.Path,
 			Status:   status,
-			Target:   ps.Description,
+			Target:   file.Message,
 		})
+	}
+
+	// Map pack status strings
+	var packStatus Status
+	switch pack.Status {
+	case "success":
+		packStatus = StatusSuccess
+	case "alert":
+		packStatus = StatusError
+	case "queue", "ignored":
+		packStatus = StatusQueue
+	default:
+		packStatus = AggregatePackStatus(files)
 	}
 
 	return PackStatus{
 		Name:   pack.Name,
-		Status: AggregatePackStatus(files),
+		Status: packStatus,
 		Files:  files,
 	}
 }

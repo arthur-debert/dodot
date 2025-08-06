@@ -39,7 +39,7 @@ echo "Line 2 of output"
 			Status:      types.StatusReady,
 		}
 
-		err := executor.ExecuteOperations([]types.Operation{op})
+		_, err := executor.ExecuteOperations([]types.Operation{op})
 		require.NoError(t, err)
 
 		// Restore stdout and read captured output
@@ -81,7 +81,7 @@ exit 0
 			Status:      types.StatusReady,
 		}
 
-		err := executor.ExecuteOperations([]types.Operation{op})
+		_, err := executor.ExecuteOperations([]types.Operation{op})
 		require.NoError(t, err)
 
 		// Restore stderr and read captured output
@@ -121,7 +121,7 @@ echo "Should not see this in dry run"
 			Status:      types.StatusReady,
 		}
 
-		err := executor.ExecuteOperations([]types.Operation{op})
+		_, err := executor.ExecuteOperations([]types.Operation{op})
 		require.NoError(t, err)
 
 		// Restore stdout and read captured output

@@ -71,7 +71,7 @@ trigger = { file_name = "install.sh" }
 
 		// Execute operations using combined executor
 		executor := synthfs.NewCombinedExecutor(false)
-		err = executor.ExecuteOperations(result.Operations)
+		_, err = executor.ExecuteOperations(result.Operations)
 		require.NoError(t, err)
 
 		// Verify the install script actually ran
@@ -141,7 +141,7 @@ trigger = { file_name = "install.sh" }
 
 		// Execute operations using combined executor - this should fail
 		executor := synthfs.NewCombinedExecutor(false)
-		err = executor.ExecuteOperations(result.Operations)
+		_, err = executor.ExecuteOperations(result.Operations)
 		assert.Error(t, err, "Command execution should fail when script exits with non-zero")
 
 		// Verify sentinel file was NOT created due to failure

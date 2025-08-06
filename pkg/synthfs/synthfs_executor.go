@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
@@ -90,42 +91,82 @@ func (e *SynthfsExecutor) EnableRollback(enable bool) *SynthfsExecutor {
 }
 
 // ExecuteOperations executes a list of operations using synthfs
-func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
+func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) ([]types.OperationResult, error) {
+	results := make([]types.OperationResult, 0, len(ops))
+
 	if e.dryRun {
 		e.logger.Info().Msg("Dry run mode - operations would be executed:")
 		for _, op := range ops {
+			startTime := time.Now()
+			result := types.OperationResult{
+				Operation: &op,
+				StartTime: startTime,
+				EndTime:   startTime, // Immediate for dry run
+			}
+
 			if op.Status == types.StatusReady {
 				e.logOperation(op)
+				result.Status = types.StatusReady
+			} else {
+				result.Status = op.Status
 			}
+
+			results = append(results, result)
 		}
-		return nil
+		return results, nil
 	}
 
 	// Create a SimpleBatch for collecting operations
 	batch := synthfs.NewSimpleBatch(e.filesystem)
 
+	// Create a map to track which operations are in the batch
+	opIndexMap := make(map[int]bool)
+
 	// Process each operation
-	for _, op := range ops {
+	for i, op := range ops {
+		startTime := time.Now()
+
 		if op.Status != types.StatusReady {
 			e.logger.Debug().
 				Str("type", string(op.Type)).
 				Str("target", op.Target).
 				Str("status", string(op.Status)).
 				Msg("Skipping operation with non-ready status")
+
+			// Track skipped operation
+			results = append(results, types.OperationResult{
+				Operation: &ops[i],
+				Status:    op.Status,
+				StartTime: startTime,
+				EndTime:   time.Now(),
+			})
 			continue
 		}
 
 		// Add the operation to the batch
 		if err := e.addOperationToBatch(batch, op); err != nil {
-			return errors.Wrapf(err, errors.ErrActionExecute,
+			// Track failed operation
+			results = append(results, types.OperationResult{
+				Operation: &ops[i],
+				Status:    types.StatusError,
+				Error:     err,
+				StartTime: startTime,
+				EndTime:   time.Now(),
+			})
+
+			return results, errors.Wrapf(err, errors.ErrActionExecute,
 				"failed to add operation: %s", op.Description)
 		}
+
+		// Mark this operation as being in the batch
+		opIndexMap[i] = true
 	}
 
 	// Check if we have any operations to execute
 	if len(batch.Operations()) == 0 {
 		e.logger.Info().Msg("No operations to execute")
-		return nil
+		// All operations were skipped, results already tracked
+		return results, nil
 	}
 
 	// Execute the batch
@@ -135,6 +176,7 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 		Msg("Executing operations")
 
 	ctx := context.Background()
+	batchStartTime := time.Now()
 	var err error
 
 	if e.enableRollback {
@@ -155,13 +197,35 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) error {
 		}
 	}
 
+	batchEndTime := time.Now()
+
+	// Record results for operations that were in the batch
+	for i := range ops {
+		if opIndexMap[i] {
+			result := types.OperationResult{
+				Operation: &ops[i],
+				StartTime: batchStartTime,
+				EndTime:   batchEndTime,
+			}
+
+			if err != nil {
+				result.Status = types.StatusError
+				result.Error = err
+			} else {
+				result.Status = types.StatusReady
+			}
+
+			results = append(results, result)
+		}
+	}
+
 	if err != nil {
-		return errors.Wrapf(err, errors.ErrActionExecute,
+		return results, errors.Wrapf(err, errors.ErrActionExecute,
 			"failed to execute operations")
 	}
 
 	e.logger.Info().Msg("All operations executed successfully")
-	return nil
+	return results, nil
 }
 
 // addOperationToBatch adds a dodot operation to the synthfs batch
