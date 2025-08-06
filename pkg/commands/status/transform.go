@@ -2,6 +2,7 @@ package status
 
 import (
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/config"
@@ -153,7 +154,7 @@ func getRelativeFilePath(op types.Operation, packPath string) string {
 	// Try to extract from source path
 	if op.Source != "" {
 		relPath, err := filepath.Rel(packPath, op.Source)
-		if err == nil && !filepath.IsAbs(relPath) && relPath != "." {
+		if err == nil && !filepath.IsAbs(relPath) && relPath != "." && !strings.HasPrefix(relPath, "..") {
 			return relPath
 		}
 		// Fallback to base name

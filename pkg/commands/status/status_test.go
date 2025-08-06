@@ -119,21 +119,30 @@ func TestCreateDisplayResultFromOperations(t *testing.T) {
 	assert.Equal(t, "vim", pack.Name)
 	assert.Len(t, pack.Files, 2)
 
-	// Check first file (symlink)
-	file1 := pack.Files[0]
-	assert.Equal(t, ".vimrc", file1.Path)
-	assert.Equal(t, "symlink", file1.PowerUp)
-	assert.Equal(t, "queue", file1.Status)
-	assert.Equal(t, "will be linked to target", file1.Message)
-	assert.False(t, file1.IsOverride)
+	// Find files by path (order is not guaranteed)
+	var vimrcFile, installFile *types.DisplayFile
+	for i := range pack.Files {
+		switch pack.Files[i].Path {
+		case ".vimrc":
+			vimrcFile = &pack.Files[i]
+		case "*install.sh":
+			installFile = &pack.Files[i]
+		}
+	}
 
-	// Check second file (install with override)
-	file2 := pack.Files[1]
-	assert.Equal(t, "*install.sh", file2.Path)
-	assert.Equal(t, "install", file2.PowerUp)
-	assert.Equal(t, "queue", file2.Status)
-	assert.Equal(t, "to be executed", file2.Message)
-	assert.True(t, file2.IsOverride)
+	// Check symlink file
+	require.NotNil(t, vimrcFile, ".vimrc file should exist")
+	assert.Equal(t, "symlink", vimrcFile.PowerUp)
+	assert.Equal(t, "queue", vimrcFile.Status)
+	assert.Equal(t, "will be linked to target", vimrcFile.Message)
+	assert.False(t, vimrcFile.IsOverride)
+
+	// Check install file with override
+	require.NotNil(t, installFile, "install.sh file should exist")
+	assert.Equal(t, "install", installFile.PowerUp)
+	assert.Equal(t, "queue", installFile.Status)
+	assert.Equal(t, "to be executed", installFile.Message)
+	assert.True(t, installFile.IsOverride)
 }
 
 // TestStatusPacksWithNewModel tests StatusPacks returns DisplayResult
