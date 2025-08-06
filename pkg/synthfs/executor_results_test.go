@@ -155,7 +155,15 @@ func TestSynthfsExecutor_ExecuteOperations_ReturnsResults(t *testing.T) {
 	}
 }
 
-func TestCommandExecutor_ExecuteOperations_ReturnsResults(t *testing.T) {
+func TestSynthfsExecutor_ExecuteOperations_ShellCommands(t *testing.T) {
+	// Setup test paths
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+	t.Setenv("DOTFILES_ROOT", filepath.Join(tempDir, "dotfiles"))
+
+	p, err := paths.New("")
+	require.NoError(t, err)
+
 	tests := []struct {
 		name       string
 		operations []types.Operation
@@ -189,11 +197,11 @@ func TestCommandExecutor_ExecuteOperations_ReturnsResults(t *testing.T) {
 			},
 		},
 		{
-			name: "non-execute operations are ignored",
+			name: "mixed operations execute in order",
 			operations: []types.Operation{
 				{
 					Type:        types.OperationCreateDir,
-					Target:      "/tmp/test",
+					Target:      filepath.Join(p.DataDir(), "shell-test"),
 					Description: "Create directory",
 					Status:      types.StatusReady,
 				},
@@ -208,23 +216,24 @@ func TestCommandExecutor_ExecuteOperations_ReturnsResults(t *testing.T) {
 			dryRun: false,
 			validate: func(t *testing.T, results []types.OperationResult, err error) {
 				require.NoError(t, err)
-				// Only execute operations should be in results
-				assert.Len(t, results, 1)
-				assert.Equal(t, types.OperationExecute, results[0].Operation.Type)
+				// Both operations should be in results
+				assert.Len(t, results, 2)
+				assert.Equal(t, types.OperationCreateDir, results[0].Operation.Type)
+				assert.Equal(t, types.OperationExecute, results[1].Operation.Type)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			executor := NewCommandExecutor(tt.dryRun)
+			executor := NewSynthfsExecutorWithPaths(tt.dryRun, p)
 			results, err := executor.ExecuteOperations(tt.operations)
 			tt.validate(t, results, err)
 		})
 	}
 }
 
-func TestCombinedExecutor_ExecuteOperations_ReturnsResults(t *testing.T) {
+func TestSynthfsExecutor_MixedOperations_ReturnsResults(t *testing.T) {
 	// Setup test paths
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
@@ -262,7 +271,7 @@ func TestCombinedExecutor_ExecuteOperations_ReturnsResults(t *testing.T) {
 		},
 	}
 
-	executor := NewCombinedExecutorWithPaths(true, p) // dry run
+	executor := NewSynthfsExecutorWithPaths(true, p) // dry run
 	results, err := executor.ExecuteOperations(operations)
 
 	require.NoError(t, err)

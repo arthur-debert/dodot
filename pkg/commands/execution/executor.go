@@ -12,7 +12,7 @@ type ExecuteOperationsOptions struct {
 	Operations          []types.Operation
 	DryRun              bool
 	EnableHomeSymlinks  bool
-	UseCombinedExecutor bool // true for deploy/install, false for init/fill
+	UseCombinedExecutor bool // Deprecated: all operations now use SynthfsExecutor
 }
 
 // ExecuteOperations creates the appropriate executor and executes operations
@@ -21,18 +21,10 @@ func ExecuteOperations(opts ExecuteOperationsOptions) ([]types.OperationResult, 
 		return nil, nil
 	}
 
-	var executor interface {
-		ExecuteOperations([]types.Operation) ([]types.OperationResult, error)
-	}
-
-	if opts.UseCombinedExecutor {
-		combinedExecutor := synthfs.NewCombinedExecutor(opts.DryRun)
-		if opts.EnableHomeSymlinks {
-			combinedExecutor.EnableHomeSymlinks(true)
-		}
-		executor = combinedExecutor
-	} else {
-		executor = synthfs.NewSynthfsExecutor(opts.DryRun)
+	// Always use SynthfsExecutor now that it supports shell commands via synthfs
+	executor := synthfs.NewSynthfsExecutor(opts.DryRun)
+	if opts.EnableHomeSymlinks {
+		executor.EnableHomeSymlinks(true)
 	}
 
 	opResults, err := executor.ExecuteOperations(opts.Operations)

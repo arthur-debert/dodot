@@ -2,6 +2,7 @@ package synthfs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,132 +93,78 @@ func (e *SynthfsExecutor) EnableRollback(enable bool) *SynthfsExecutor {
 
 // ExecuteOperations executes a list of operations using synthfs
 func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) ([]types.OperationResult, error) {
-	results := make([]types.OperationResult, 0, len(ops))
-
-	if e.dryRun {
-		e.logger.Info().Msg("Dry run mode - operations would be executed:")
-		for _, op := range ops {
-			startTime := time.Now()
-			result := types.OperationResult{
-				Operation: &op,
-				StartTime: startTime,
-				EndTime:   startTime, // Immediate for dry run
-			}
-
-			if op.Status == types.StatusReady {
-				e.logOperation(op)
-				result.Status = types.StatusReady
-			} else {
-				result.Status = op.Status
-			}
-
-			results = append(results, result)
-		}
-		return results, nil
+	if len(ops) == 0 {
+		return []types.OperationResult{}, nil
 	}
 
-	// Create a SimpleBatch for collecting operations
-	batch := synthfs.NewSimpleBatch(e.filesystem)
+	// For dry run, just log what would be done
+	if e.dryRun {
+		return e.executeDryRun(ops), nil
+	}
 
-	// Create a map to track which operations are in the batch
-	opIndexMap := make(map[int]bool)
+	// Create synthfs instance
+	sfs := synthfs.New()
+	ctx := context.Background()
 
-	// Process each operation
-	for i, op := range ops {
-		startTime := time.Now()
+	// Convert dodot operations to synthfs operations
+	synthfsOps := []synthfs.Operation{}
+	dodotOpMap := make(map[synthfs.OperationID]*types.Operation)
+	skippedResults := []types.OperationResult{}
 
+	for i := range ops {
+		op := &ops[i]
+
+		// Handle non-ready operations
 		if op.Status != types.StatusReady {
-			e.logger.Debug().
-				Str("type", string(op.Type)).
-				Str("target", op.Target).
-				Str("status", string(op.Status)).
-				Msg("Skipping operation with non-ready status")
-
-			// Track skipped operation
-			results = append(results, types.OperationResult{
-				Operation: &ops[i],
+			skippedResults = append(skippedResults, types.OperationResult{
+				Operation: op,
 				Status:    op.Status,
-				StartTime: startTime,
+				StartTime: time.Now(),
 				EndTime:   time.Now(),
 			})
 			continue
 		}
 
-		// Add the operation to the batch
-		if err := e.addOperationToBatch(batch, op); err != nil {
-			// Track failed operation
-			results = append(results, types.OperationResult{
-				Operation: &ops[i],
-				Status:    types.StatusError,
-				Error:     err,
-				StartTime: startTime,
-				EndTime:   time.Now(),
-			})
-
-			return results, errors.Wrapf(err, errors.ErrActionExecute,
-				"failed to add operation: %s", op.Description)
+		// Convert to synthfs operation
+		synthfsOp, err := e.convertToSynthfsOp(sfs, *op)
+		if err != nil {
+			e.logger.Error().
+				Err(err).
+				Str("type", string(op.Type)).
+				Str("target", op.Target).
+				Msg("Failed to convert operation")
+			return nil, errors.Wrapf(err, errors.ErrActionExecute,
+				"failed to convert operation: %s", op.Description)
 		}
 
-		// Mark this operation as being in the batch
-		opIndexMap[i] = true
+		if synthfsOp != nil {
+			synthfsOps = append(synthfsOps, synthfsOp)
+			dodotOpMap[synthfsOp.ID()] = op
+		}
 	}
 
-	// Check if we have any operations to execute
-	if len(batch.Operations()) == 0 {
-		e.logger.Info().Msg("No operations to execute")
-		// All operations were skipped, results already tracked
-		return results, nil
+	// If no operations to execute, return skipped results
+	if len(synthfsOps) == 0 {
+		return skippedResults, nil
 	}
 
-	// Execute the batch
+	// Set up pipeline options
+	options := synthfs.DefaultPipelineOptions()
+	options.RollbackOnError = e.enableRollback
+
+	// Execute all operations together
 	e.logger.Info().
-		Int("operationCount", len(batch.Operations())).
+		Int("operationCount", len(synthfsOps)).
 		Bool("rollbackEnabled", e.enableRollback).
 		Msg("Executing operations")
 
-	ctx := context.Background()
-	batchStartTime := time.Now()
-	var err error
+	result, err := synthfs.RunWithOptions(ctx, e.filesystem, options, synthfsOps...)
 
-	if e.enableRollback {
-		// Use ExecuteWithRollback for safer operations
-		err = batch.WithContext(ctx).ExecuteWithRollback()
-		if err != nil {
-			e.logger.Error().
-				Err(err).
-				Msg("Batch execution failed, rollback was attempted")
-		}
-	} else {
-		// Use regular Execute without rollback
-		err = batch.WithContext(ctx).Execute()
-		if err != nil {
-			e.logger.Error().
-				Err(err).
-				Msg("Batch execution failed")
-		}
-	}
+	// Convert synthfs results to dodot results
+	results := e.convertResults(result, dodotOpMap)
 
-	batchEndTime := time.Now()
-
-	// Record results for operations that were in the batch
-	for i := range ops {
-		if opIndexMap[i] {
-			result := types.OperationResult{
-				Operation: &ops[i],
-				StartTime: batchStartTime,
-				EndTime:   batchEndTime,
-			}
-
-			if err != nil {
-				result.Status = types.StatusError
-				result.Error = err
-			} else {
-				result.Status = types.StatusReady
-			}
-
-			results = append(results, result)
-		}
-	}
+	// Prepend skipped results
+	results = append(skippedResults, results...)
 
 	if err != nil {
 		return results, errors.Wrapf(err, errors.ErrActionExecute,
@@ -228,62 +175,80 @@ func (e *SynthfsExecutor) ExecuteOperations(ops []types.Operation) ([]types.Oper
 	return results, nil
 }
 
-// addOperationToBatch adds a dodot operation to the synthfs batch
-func (e *SynthfsExecutor) addOperationToBatch(batch *synthfs.SimpleBatch, op types.Operation) error {
+// executeDryRun handles dry run mode
+func (e *SynthfsExecutor) executeDryRun(ops []types.Operation) []types.OperationResult {
+	e.logger.Info().Msg("Dry run mode - operations would be executed:")
+	results := make([]types.OperationResult, len(ops))
+
+	for i, op := range ops {
+		startTime := time.Now()
+		result := types.OperationResult{
+			Operation: &ops[i],
+			StartTime: startTime,
+			EndTime:   startTime, // Immediate for dry run
+		}
+
+		if op.Status == types.StatusReady {
+			e.logOperation(op)
+			result.Status = types.StatusReady
+		} else {
+			result.Status = op.Status
+		}
+
+		results[i] = result
+	}
+
+	return results
+}
+
+// convertToSynthfsOp converts a dodot operation to a synthfs operation
+func (e *SynthfsExecutor) convertToSynthfsOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	// Handle force mode for symlinks by pre-deleting existing files
 	if e.force && op.Type == types.OperationCreateSymlink {
 		if _, err := os.Lstat(op.Target); err == nil {
 			e.logger.Debug().
 				Str("target", op.Target).
-				Msg("Adding delete operation for existing file in force mode")
-			// PathAwareFileSystem handles absolute paths directly
-			batch.Delete(op.Target)
+				Msg("Force mode: will overwrite existing file")
 		}
 	}
 
 	switch op.Type {
 	case types.OperationCreateDir:
-		return e.addCreateDir(batch, op)
+		return e.createDirOp(sfs, op)
 	case types.OperationWriteFile:
-		return e.addWriteFile(batch, op)
+		return e.createWriteFileOp(sfs, op)
 	case types.OperationCreateSymlink:
-		return e.addCreateSymlink(batch, op)
+		return e.createSymlinkOp(sfs, op)
 	case types.OperationCopyFile:
-		return e.addCopyFile(batch, op)
+		return e.createCopyOp(sfs, op)
 	case types.OperationDeleteFile:
-		return e.addDeleteFile(batch, op)
+		return e.createDeleteOp(sfs, op)
 	case types.OperationBackupFile:
-		return e.addBackupFile(batch, op)
+		return e.createBackupOp(sfs, op)
+	case types.OperationExecute:
+		return e.createShellCommandOp(sfs, op)
 	case types.OperationReadFile, types.OperationChecksum:
 		// These are not actual file operations
 		e.logger.Debug().
 			Str("type", string(op.Type)).
 			Msg("Skipping non-mutating operation")
-		return nil
-	case types.OperationExecute:
-		// Execute operations need special handling outside of synthfs
-		// For now, skip them in synthfs and handle them separately
-		e.logger.Debug().
-			Str("type", string(op.Type)).
-			Str("command", op.Command).
-			Msg("Skipping execute operation in synthfs (needs separate handling)")
-		return nil
+		return nil, nil
 	default:
-		return errors.Newf(errors.ErrActionInvalid,
+		return nil, errors.Newf(errors.ErrActionInvalid,
 			"unsupported operation type: %s", op.Type)
 	}
 }
 
-// addCreateDir adds a create directory operation to the batch
-func (e *SynthfsExecutor) addCreateDir(batch *synthfs.SimpleBatch, op types.Operation) error {
+// createDirOp creates a directory creation operation
+func (e *SynthfsExecutor) createDirOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	if op.Target == "" {
-		return errors.New(errors.ErrInvalidInput,
+		return nil, errors.New(errors.ErrInvalidInput,
 			"create directory operation requires target")
 	}
 
 	// Ensure we're only creating directories in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return err
+		return nil, err
 	}
 
 	mode := e.config.FilePermissions.Directory
@@ -294,23 +259,23 @@ func (e *SynthfsExecutor) addCreateDir(batch *synthfs.SimpleBatch, op types.Oper
 	e.logger.Debug().
 		Str("target", op.Target).
 		Str("mode", mode.String()).
-		Msg("Adding create directory operation")
+		Msg("Creating directory operation")
 
-	// PathAwareFileSystem handles absolute paths directly
-	batch.CreateDir(op.Target, mode)
-	return nil
+	// Generate a unique ID based on the operation
+	id := fmt.Sprintf("createdir_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+	return sfs.CreateDirWithID(id, op.Target, mode), nil
 }
 
-// addWriteFile adds a write file operation to the batch
-func (e *SynthfsExecutor) addWriteFile(batch *synthfs.SimpleBatch, op types.Operation) error {
+// createWriteFileOp creates a write file operation
+func (e *SynthfsExecutor) createWriteFileOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	if op.Target == "" {
-		return errors.New(errors.ErrInvalidInput,
+		return nil, errors.New(errors.ErrInvalidInput,
 			"write file operation requires target")
 	}
 
 	// Ensure we're only writing files in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return err
+		return nil, err
 	}
 
 	mode := e.config.FilePermissions.File
@@ -322,99 +287,230 @@ func (e *SynthfsExecutor) addWriteFile(batch *synthfs.SimpleBatch, op types.Oper
 		Str("target", op.Target).
 		Str("mode", mode.String()).
 		Int("contentLen", len(op.Content)).
-		Msg("Adding write file operation")
+		Msg("Creating write file operation")
 
-	// PathAwareFileSystem handles absolute paths directly
-	batch.WriteFile(op.Target, []byte(op.Content), mode)
-	return nil
+	id := fmt.Sprintf("writefile_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+	return sfs.CreateFileWithID(id, op.Target, []byte(op.Content), mode), nil
 }
 
-// addCreateSymlink adds a create symlink operation to the batch
-func (e *SynthfsExecutor) addCreateSymlink(batch *synthfs.SimpleBatch, op types.Operation) error {
+// createSymlinkOp creates a symlink operation
+func (e *SynthfsExecutor) createSymlinkOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	if op.Source == "" || op.Target == "" {
-		return errors.New(errors.ErrInvalidInput,
+		return nil, errors.New(errors.ErrInvalidInput,
 			"symlink operation requires source and target")
 	}
 
 	// For issue #71, handle symlinks in home directory with special validation
 	if err := e.validateSymlinkPath(op.Target, op.Source); err != nil {
-		return err
+		return nil, err
 	}
 
 	e.logger.Info().
 		Str("source", op.Source).
 		Str("target", op.Target).
-		Msg("Adding symlink operation")
+		Msg("Creating symlink operation")
 
-	// PathAwareFileSystem handles absolute paths directly
-	batch.CreateSymlink(op.Source, op.Target)
-	return nil
+	// If force mode, create a delete operation first
+	if e.force {
+		if _, err := os.Lstat(op.Target); err == nil {
+			// Target exists, need to delete it first
+			// We'll handle this by creating a custom operation that deletes then creates
+			id := fmt.Sprintf("symlink_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+			return sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
+				// Delete existing file/symlink
+				if err := fs.Remove(op.Target); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+				// Create new symlink
+				return fs.Symlink(op.Source, op.Target)
+			}), nil
+		}
+	}
+
+	id := fmt.Sprintf("symlink_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+	return sfs.CreateSymlinkWithID(id, op.Source, op.Target), nil
 }
 
-// addCopyFile adds a copy file operation to the batch
-func (e *SynthfsExecutor) addCopyFile(batch *synthfs.SimpleBatch, op types.Operation) error {
+// createCopyOp creates a copy operation
+func (e *SynthfsExecutor) createCopyOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	if op.Source == "" || op.Target == "" {
-		return errors.New(errors.ErrInvalidInput,
+		return nil, errors.New(errors.ErrInvalidInput,
 			"copy file operation requires source and target")
 	}
 
 	// Ensure we're only copying to safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return err
+		return nil, err
 	}
 
 	e.logger.Debug().
 		Str("source", op.Source).
 		Str("target", op.Target).
-		Msg("Adding copy file operation")
+		Msg("Creating copy operation")
 
-	// PathAwareFileSystem handles absolute paths directly
-	batch.Copy(op.Source, op.Target)
-	return nil
+	id := fmt.Sprintf("copy_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+	return sfs.CopyWithID(id, op.Source, op.Target), nil
 }
 
-// addDeleteFile adds a delete file operation to the batch
-func (e *SynthfsExecutor) addDeleteFile(batch *synthfs.SimpleBatch, op types.Operation) error {
+// createDeleteOp creates a delete operation
+func (e *SynthfsExecutor) createDeleteOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	if op.Target == "" {
-		return errors.New(errors.ErrInvalidInput,
+		return nil, errors.New(errors.ErrInvalidInput,
 			"delete file operation requires target")
 	}
 
 	// Ensure we're only deleting files in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return err
+		return nil, err
 	}
 
 	e.logger.Debug().
 		Str("target", op.Target).
-		Msg("Adding delete file operation")
+		Msg("Creating delete operation")
 
-	// PathAwareFileSystem handles absolute paths directly
-	batch.Delete(op.Target)
-	return nil
+	id := fmt.Sprintf("delete_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+	return sfs.DeleteWithID(id, op.Target), nil
 }
 
-// addBackupFile adds a backup file operation to the batch
-func (e *SynthfsExecutor) addBackupFile(batch *synthfs.SimpleBatch, op types.Operation) error {
+// createBackupOp creates a backup (copy) operation
+func (e *SynthfsExecutor) createBackupOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
 	if op.Source == "" || op.Target == "" {
-		return errors.New(errors.ErrInvalidInput,
+		return nil, errors.New(errors.ErrInvalidInput,
 			"backup file operation requires source and target")
 	}
 
 	// Ensure we're only creating backups in safe locations
 	if err := e.validateSafePath(op.Target); err != nil {
-		return err
+		return nil, err
 	}
 
 	e.logger.Debug().
 		Str("source", op.Source).
 		Str("target", op.Target).
-		Msg("Adding backup (copy) operation")
+		Msg("Creating backup (copy) operation")
 
-	// PathAwareFileSystem handles absolute paths directly
-	// Backup is essentially a copy operation
-	batch.Copy(op.Source, op.Target)
-	return nil
+	id := fmt.Sprintf("backup_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
+	return sfs.CopyWithID(id, op.Source, op.Target), nil
+}
+
+// createShellCommandOp creates a shell command operation
+func (e *SynthfsExecutor) createShellCommandOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
+	if op.Command == "" {
+		return nil, errors.New(errors.ErrInvalidInput,
+			"execute operation requires command")
+	}
+
+	// Construct the full command
+	fullCommand := op.Command
+	if len(op.Args) > 0 {
+		// Properly quote arguments that contain spaces
+		quotedArgs := make([]string, len(op.Args))
+		for i, arg := range op.Args {
+			if strings.Contains(arg, " ") {
+				quotedArgs[i] = fmt.Sprintf("%q", arg)
+			} else {
+				quotedArgs[i] = arg
+			}
+		}
+		fullCommand = fmt.Sprintf("%s %s", op.Command, strings.Join(quotedArgs, " "))
+	}
+
+	// Create shell command options
+	var options []synthfs.ShellCommandOption
+
+	// Set working directory if provided
+	if op.WorkingDir != "" {
+		options = append(options, synthfs.WithWorkDir(op.WorkingDir))
+	}
+
+	// Set environment variables if provided
+	if len(op.EnvironmentVars) > 0 {
+		options = append(options, synthfs.WithEnv(op.EnvironmentVars))
+	}
+
+	// Always capture output for logging and result tracking
+	options = append(options, synthfs.WithCaptureOutput())
+
+	// Set timeout (default was 30 seconds in CommandExecutor)
+	options = append(options, synthfs.WithTimeout(30*time.Second))
+
+	e.logger.Info().
+		Str("command", fullCommand).
+		Str("workingDir", op.WorkingDir).
+		Str("description", op.Description).
+		Msg("Creating shell command operation")
+
+	id := fmt.Sprintf("exec_%s_%d", strings.Fields(op.Command)[0], time.Now().UnixNano())
+	return sfs.ShellCommandWithID(id, fullCommand, options...), nil
+}
+
+// convertResults converts synthfs results to dodot results
+func (e *SynthfsExecutor) convertResults(result *synthfs.Result, dodotOpMap map[synthfs.OperationID]*types.Operation) []types.OperationResult {
+	if result == nil {
+		return []types.OperationResult{}
+	}
+
+	results := []types.OperationResult{}
+	operations := result.GetOperations()
+
+	for _, opResult := range operations {
+		if synthfsResult, ok := opResult.(synthfs.OperationResult); ok {
+			dodotOp, exists := dodotOpMap[synthfsResult.OperationID]
+			if !exists {
+				e.logger.Warn().
+					Str("operationID", string(synthfsResult.OperationID)).
+					Msg("Could not find dodot operation for synthfs result")
+				continue
+			}
+
+			// Convert status
+			var status types.OperationStatus
+			switch synthfsResult.Status {
+			case synthfs.StatusSuccess:
+				status = types.StatusReady
+			case synthfs.StatusFailure:
+				status = types.StatusError
+			case synthfs.StatusValidation:
+				status = types.StatusError
+			default:
+				status = types.StatusError
+			}
+
+			// Extract output if available
+			var output string
+			if synthfsResult.Operation != nil {
+				desc := synthfsResult.Operation.Describe()
+				if desc.Details != nil {
+					if stdout, ok := desc.Details["stdout"].(string); ok {
+						output = stdout
+					}
+					if stderr, ok := desc.Details["stderr"].(string); ok && stderr != "" {
+						if output != "" {
+							output += "\n[stderr]\n" + stderr
+						} else {
+							output = "[stderr]\n" + stderr
+						}
+					}
+				}
+			}
+
+			// Calculate times from duration
+			// Note: synthfs doesn't provide exact start/end times, so we approximate
+			endTime := time.Now()
+			startTime := endTime.Add(-synthfsResult.Duration)
+
+			results = append(results, types.OperationResult{
+				Operation: dodotOp,
+				Status:    status,
+				Error:     synthfsResult.Error,
+				StartTime: startTime,
+				EndTime:   endTime,
+				Output:    output,
+			})
+		}
+	}
+
+	return results
 }
 
 // validateSafePath ensures the path is within dodot-controlled directories
@@ -710,6 +806,12 @@ func (e *SynthfsExecutor) logOperation(op types.Operation) {
 		logger.Info().
 			Str("target", op.Target).
 			Msg("Would delete file")
+	case types.OperationExecute:
+		logger.Info().
+			Str("command", op.Command).
+			Strs("args", op.Args).
+			Str("workingDir", op.WorkingDir).
+			Msg("Would execute command")
 	default:
 		logger.Info().Msg("Would execute operation")
 	}
