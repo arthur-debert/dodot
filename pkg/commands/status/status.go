@@ -4,7 +4,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -16,16 +15,10 @@ type StatusPacksOptions struct {
 	PackNames []string
 }
 
-// StatusPacks checks the deployment status of the specified packs.
+// StatusPacks checks the deployment status using the direct action-based approach.
 func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "StatusPacks").Msg("Executing command")
-
-	// Initialize Paths instance
-	pathsInstance, err := paths.New(opts.DotfilesRoot)
-	if err != nil {
-		return nil, err
-	}
 
 	// 1. Get all packs using the core pipeline
 	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
@@ -43,7 +36,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 		return nil, err
 	}
 
-	// 3. Run the full pipeline to get operations (same as deploy command)
+	// 3. Get actions directly (no conversion to operations)
 	triggerMatches, err := core.GetFiringTriggers(selectedPacks)
 	if err != nil {
 		return nil, err
@@ -54,16 +47,15 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 		return nil, err
 	}
 
-	// Create execution context with home symlinks enabled to match deploy/install behavior
-	ctx := core.NewExecutionContextWithHomeSymlinks(false, pathsInstance, true, nil)
-	operations, err := core.ConvertActionsToOperationsWithContext(actions, ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// 4. Transform operations into DisplayResult
-	result := CreateDisplayResultFromOperations(operations, selectedPacks, "status")
+	// 4. Transform actions into DisplayResult (new function)
+	result := CreateDisplayResultFromActions(actions, selectedPacks, "status")
 
 	log.Info().Str("command", "StatusPacks").Int("packCount", len(result.Packs)).Msg("Command finished")
 	return result, nil
+}
+
+// StatusPacksDirect is an alias for StatusPacks for backward compatibility.
+// Deprecated: Use StatusPacks instead.
+func StatusPacksDirect(opts StatusPacksOptions) (*types.DisplayResult, error) {
+	return StatusPacks(opts)
 }

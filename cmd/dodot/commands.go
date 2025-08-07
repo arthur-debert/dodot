@@ -193,36 +193,34 @@ func newDeployCmd() *cobra.Command {
 				Bool("dry_run", dryRun).
 				Msg("Deploying from dotfiles root")
 
-			// Use the actual DeployPacks implementation
-			result, err := commands.DeployPacks(commands.DeployPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
+			// Use the new DeployPacks implementation with DirectExecutor
+			context, err := commands.DeployPacks(commands.DeployPacksOptions{
+				DotfilesRoot:       p.DotfilesRoot(),
+				PackNames:          args,
+				DryRun:             dryRun,
+				EnableHomeSymlinks: true,
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
-
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              dryRun,
-				EnableHomeSymlinks:  true,
-				UseCombinedExecutor: true,
-			})
-			if err != nil {
-				return err
-			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
 
 			// Display results using rich output
 			if dryRun {
 				fmt.Println(MsgDryRunNotice)
 			}
 
+			// Convert execution context to operations for display
+			var operations []types.Operation
+			for _, packResult := range context.PackResults {
+				for _, opResult := range packResult.Operations {
+					if opResult.Operation != nil {
+						operations = append(operations, *opResult.Operation)
+					}
+				}
+			}
+
 			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderOperations(result.Operations))
+			fmt.Println(renderer.RenderOperations(operations))
 
 			return nil
 		},
@@ -254,37 +252,35 @@ func newInstallCmd() *cobra.Command {
 				Bool("force", force).
 				Msg("Installing from dotfiles root")
 
-			// Use the actual InstallPacks implementation
-			result, err := commands.InstallPacks(commands.InstallPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-				Force:        force,
+			// Use the new InstallPacks implementation with DirectExecutor
+			context, err := commands.InstallPacks(commands.InstallPacksOptions{
+				DotfilesRoot:       p.DotfilesRoot(),
+				PackNames:          args,
+				DryRun:             dryRun,
+				Force:              force,
+				EnableHomeSymlinks: true,
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
-
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              dryRun,
-				EnableHomeSymlinks:  true,
-				UseCombinedExecutor: true,
-			})
-			if err != nil {
-				return err
-			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
 
 			// Display results using rich output
 			if dryRun {
 				fmt.Println(MsgDryRunNotice)
 			}
 
+			// Convert execution context to operations for display
+			var operations []types.Operation
+			for _, packResult := range context.PackResults {
+				for _, opResult := range packResult.Operations {
+					if opResult.Operation != nil {
+						operations = append(operations, *opResult.Operation)
+					}
+				}
+			}
+
 			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderOperations(result.Operations))
+			fmt.Println(renderer.RenderOperations(operations))
 
 			return nil
 		},
@@ -341,7 +337,7 @@ func newStatusCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
 
-			// Use the actual StatusPacks implementation
+			// Use the new StatusPacks implementation
 			result, err := commands.StatusPacks(commands.StatusPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				PackNames:    args,

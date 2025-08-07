@@ -35,21 +35,21 @@ func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	return list.ListPacks(opts)
 }
 
-// DeployPacks runs deployment logic for specified packs (RunModeMany power-ups).
+// DeployPacks runs deployment logic using the direct executor approach.
 type DeployPacksOptions = deploy.DeployPacksOptions
 
-func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
+func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
 	return deploy.DeployPacks(opts)
 }
 
-// InstallPacks runs installation + deployment (RunModeOnce then RunModeMany power-ups).
+// InstallPacks runs installation + deployment using the direct executor approach.
 type InstallPacksOptions = install.InstallPacksOptions
 
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
+func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	return install.InstallPacks(opts)
 }
 
-// StatusPacks checks the deployment status of specified packs.
+// StatusPacks checks deployment status using the direct action-based approach.
 type StatusPacksOptions = status.StatusPacksOptions
 
 func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {

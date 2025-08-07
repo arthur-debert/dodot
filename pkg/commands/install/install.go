@@ -20,11 +20,14 @@ type InstallPacksOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// InstallPacks runs the installation and deployment logic for the specified packs.
+// InstallPacks runs the installation and deployment logic using the direct executor approach.
 // It first executes power-ups with RunModeOnce, then those with RunModeMany.
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
+func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "InstallPacks").Msg("Executing command")
+
+	// Create combined execution context
+	combinedContext := types.NewExecutionContext("install", opts.DryRun)
 
 	// Step 1: Run "once" power-ups
 	onceOpts := internal.ExecutionOptions{
@@ -35,7 +38,7 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 		Force:              opts.Force,
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
-	onceResult, err := internal.RunExecutionPipeline(onceOpts)
+	onceContext, err := internal.RunExecutionPipeline(onceOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -49,18 +52,34 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 		Force:              opts.Force,
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
-	manyResult, err := internal.RunExecutionPipeline(manyOpts)
+	manyContext, err := internal.RunExecutionPipeline(manyOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 3: Merge results
-	mergedResult := &types.ExecutionResult{
-		Packs:      onceResult.Packs,
-		Operations: append(onceResult.Operations, manyResult.Operations...),
-		DryRun:     opts.DryRun,
+	// Step 3: Merge contexts
+	// Copy results from both contexts into the combined context
+	for packName, packResult := range onceContext.PackResults {
+		combinedContext.AddPackResult(packName, packResult)
+	}
+	for packName, packResult := range manyContext.PackResults {
+		if existingResult, exists := combinedContext.PackResults[packName]; exists {
+			// Merge operation results from both contexts
+			for _, opResult := range packResult.Operations {
+				existingResult.AddOperationResult(opResult)
+			}
+		} else {
+			combinedContext.AddPackResult(packName, packResult)
+		}
 	}
 
+	combinedContext.Complete()
 	log.Info().Str("command", "InstallPacks").Msg("Command finished")
-	return mergedResult, nil
+	return combinedContext, nil
+}
+
+// InstallPacksDirect is an alias for InstallPacks for backward compatibility.
+// Deprecated: Use InstallPacks instead.
+func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
+	return InstallPacks(opts)
 }
