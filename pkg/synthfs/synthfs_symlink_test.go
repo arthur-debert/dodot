@@ -100,7 +100,8 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 		testutil.AssertError(t, err)
 		// The error could be either from our validation or from synthfs trying to create in /etc
 		if !strings.Contains(err.Error(), "must be in home directory") &&
-			!strings.Contains(err.Error(), "permission denied") {
+			!strings.Contains(err.Error(), "permission denied") &&
+			!strings.Contains(err.Error(), "outside dodot-controlled directories") {
 			t.Errorf("Expected permission error, got: %v", err)
 		}
 	})

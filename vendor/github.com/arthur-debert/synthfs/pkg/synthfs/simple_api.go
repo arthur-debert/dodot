@@ -2,7 +2,6 @@ package synthfs
 
 import (
 	"context"
-	"time"
 
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 )
@@ -44,9 +43,15 @@ func Run(ctx context.Context, fs filesystem.FullFileSystem, ops ...Operation) (*
 }
 
 // RunWithOptions executes operations with custom options.
-// Note: This simplified runner does not currently support all pipeline options (e.g., DryRun).
-// It executes operations sequentially and does not perform a pre-validation step for the entire pipeline.
+// It builds a pipeline with the given operations and runs it using the main executor.
+// This ensures that all operations are validated before execution begins.
 func RunWithOptions(ctx context.Context, fs filesystem.FullFileSystem, options PipelineOptions, ops ...Operation) (*Result, error) {
+	// For the simple API, we disable prerequisite resolution by default to allow for the straightforward,
+	// ordered execution of operations without requiring explicit dependency declarations.
+	// For complex workflows with non-linear dependencies, users should use the
+	// BuildPipeline function directly to leverage the full capabilities of the dependency resolution engine.
+	options.ResolvePrerequisites = false
+
 	if options.DryRun {
 		fs = NewDryRunFS()
 	}
@@ -59,104 +64,56 @@ func RunWithOptions(ctx context.Context, fs filesystem.FullFileSystem, options P
 		}, nil
 	}
 
-	results := make([]interface{}, 0, len(ops))
-	successfulOps := make([]Operation, 0, len(ops))
-	startTime := time.Now()
+	// For the simple API, we need to validate operations with projected state
+	// to support sequential operations where later ops depend on earlier ones
+	projectedFS := NewProjectedFileSystem(fs)
 
-	for i, op := range ops {
-		// Validate before execute
-		if err := op.Validate(ctx, fs); err != nil {
-			return handleOpError(ctx, fs, options, err, op, i, ops, results, successfulOps, startTime, true)
+	// First, validate all operations with projected state
+	for _, op := range ops {
+		// Validate against projected filesystem state
+		if err := op.Validate(ctx, projectedFS); err != nil {
+			// Return a failed result with the error
+			return &Result{
+				success:    false,
+				operations: []interface{}{},
+				duration:   0,
+				err:        err,
+			}, err
 		}
-
-		// Execute operation
-		startOpTime := time.Now()
-		err := op.Execute(ctx, fs)
-		duration := time.Since(startOpTime)
-
-		opResult := OperationResult{
-			OperationID: op.ID(),
-			Operation:   op,
-			Status:      StatusSuccess,
-			Error:       err,
-			Duration:    duration,
-		}
-
-		if err != nil {
-			opResult.Status = StatusFailure
-			results = append(results, opResult)
-			return handleOpError(ctx, fs, options, err, op, i, ops, results, successfulOps, startTime, false)
-		}
-
-		results = append(results, opResult)
-		successfulOps = append(successfulOps, op)
-	}
-
-	return &Result{
-		success:    true,
-		operations: results,
-		duration:   time.Since(startTime),
-	}, nil
-}
-
-func handleOpError(
-	ctx context.Context,
-	fs FileSystem,
-	options PipelineOptions,
-	err error,
-	op Operation,
-	i int,
-	ops []Operation,
-	results []interface{},
-	successfulOps []Operation,
-	startTime time.Time,
-	isValidation bool,
-) (*Result, error) {
-	if isValidation {
-		opResult := OperationResult{
-			OperationID: op.ID(),
-			Operation:   op,
-			Status:      StatusValidation,
-			Error:       err,
-			Duration:    0,
-		}
-		results = append(results, opResult)
-	}
-
-	// Attempt rollback if requested
-	if options.RollbackOnError {
-		rollbackErrs := make(map[OperationID]error)
-		for k := len(successfulOps) - 1; k >= 0; k-- {
-			opToRollback := successfulOps[k]
-			if rollbackErr := opToRollback.Rollback(ctx, fs); rollbackErr != nil {
-				rollbackErrs[opToRollback.ID()] = rollbackErr
-			}
-		}
-		if len(rollbackErrs) > 0 {
-			err = &RollbackError{
-				OriginalErr:  err,
-				RollbackErrs: rollbackErrs,
-			}
+		// Update projected state to reflect this operation
+		if err := projectedFS.UpdateProjectedState(op); err != nil {
+			// Return a failed result with the error
+			return &Result{
+				success:    false,
+				operations: []interface{}{},
+				duration:   0,
+				err:        err,
+			}, err
 		}
 	}
 
-	var successfulOpIDs []OperationID
-	for _, successfulOp := range successfulOps {
-		successfulOpIDs = append(successfulOpIDs, successfulOp.ID())
+	// Build a pipeline from the operations.
+	pipeline := NewMemPipeline()
+	for _, op := range ops {
+		if err := pipeline.Add(op); err != nil {
+			// This can happen if there are duplicate operation IDs, for example.
+			return nil, err
+		}
 	}
 
-	pipelineErr := &PipelineError{
-		FailedOp:      op,
-		FailedIndex:   i + 1,
-		TotalOps:      len(ops),
-		Err:           err,
-		SuccessfulOps: successfulOpIDs,
+	// Wrap the pipeline to skip validation since we already validated with projected state
+	prevalidatedPipeline := newPrevalidatedPipeline(pipeline)
+
+	// Use the main executor to run the pipeline.
+	executor := NewExecutor()
+	result := executor.RunWithOptions(ctx, prevalidatedPipeline, fs, options)
+
+	// The executor's result is already in the desired format.
+	// We just need to extract the top-level error for the return signature.
+	var err error
+	if !result.IsSuccess() {
+		err = result.GetError()
 	}
 
-	return &Result{
-		success:    false,
-		operations: results,
-		duration:   time.Since(startTime),
-		err:        err,
-	}, pipelineErr
+	return result, err
 }

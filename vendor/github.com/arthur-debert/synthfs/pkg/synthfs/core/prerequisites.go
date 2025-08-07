@@ -3,6 +3,7 @@ package core
 
 import (
 	"fmt"
+	"io/fs"
 	"path/filepath"
 )
 
@@ -50,18 +51,16 @@ func (p *ParentDirPrerequisite) Validate(fsys interface{}) error {
 		return nil // Root or current directory - no parent needed
 	}
 
-	// Try different filesystem interfaces
+	// Try the correct filesystem interface
 	if stat, ok := fsys.(interface {
-		Stat(string) (interface{}, error)
+		Stat(string) (fs.FileInfo, error)
 	}); ok {
 		if info, err := stat.Stat(parentPath); err != nil {
 			return fmt.Errorf("parent directory %s does not exist", parentPath)
 		} else {
 			// Check if it's actually a directory
-			if dirChecker, ok := info.(interface{ IsDir() bool }); ok {
-				if !dirChecker.IsDir() {
-					return fmt.Errorf("parent path %s exists but is not a directory", parentPath)
-				}
+			if !info.IsDir() {
+				return fmt.Errorf("parent path %s exists but is not a directory", parentPath)
 			}
 		}
 		return nil
@@ -91,9 +90,9 @@ func (p *NoConflictPrerequisite) Path() string {
 }
 
 func (p *NoConflictPrerequisite) Validate(fsys interface{}) error {
-	// Try different filesystem interfaces
+	// Try the correct filesystem interface
 	if stat, ok := fsys.(interface {
-		Stat(string) (interface{}, error)
+		Stat(string) (fs.FileInfo, error)
 	}); ok {
 		if _, err := stat.Stat(p.path); err == nil {
 			return fmt.Errorf("path %s already exists", p.path)
@@ -126,9 +125,9 @@ func (p *SourceExistsPrerequisite) Path() string {
 }
 
 func (p *SourceExistsPrerequisite) Validate(fsys interface{}) error {
-	// Try different filesystem interfaces
+	// Try the correct filesystem interface
 	if stat, ok := fsys.(interface {
-		Stat(string) (interface{}, error)
+		Stat(string) (fs.FileInfo, error)
 	}); ok {
 		if _, err := stat.Stat(p.path); err != nil {
 			return fmt.Errorf("source path %s does not exist", p.path)

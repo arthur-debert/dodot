@@ -78,7 +78,7 @@ trigger = { file_name = "Brewfile" }
 		require.NotEmpty(t, result.Operations)
 
 		// Execute operations using combined executor
-		executor := synthfs.NewCombinedExecutor(false)
+		executor := synthfs.NewSynthfsExecutor(false)
 		_, err = executor.ExecuteOperations(result.Operations)
 		require.NoError(t, err)
 
@@ -157,7 +157,7 @@ trigger = { file_name = "Brewfile" }
 		require.NotEmpty(t, result.Operations)
 
 		// Execute operations using combined executor - this should fail
-		executor := synthfs.NewCombinedExecutor(false)
+		executor := synthfs.NewSynthfsExecutor(false)
 		_, err = executor.ExecuteOperations(result.Operations)
 		assert.Error(t, err, "Command execution should fail when brew exits with non-zero")
 
