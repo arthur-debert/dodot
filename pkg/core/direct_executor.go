@@ -67,9 +67,9 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 }
 
 // ExecuteActions executes actions directly using synthfs
-func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.OperationResult, error) {
+func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionResult, error) {
 	if len(actions) == 0 {
-		return []types.OperationResult{}, nil
+		return []types.ActionResult{}, nil
 	}
 
 	e.logger.Info().Int("actionCount", len(actions)).Msg("Executing actions directly")
@@ -121,7 +121,7 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.Operati
 	}
 
 	if len(synthfsOps) == 0 {
-		return []types.OperationResult{}, nil
+		return []types.ActionResult{}, nil
 	}
 
 	// Set up pipeline options
@@ -136,7 +136,7 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.Operati
 
 	result, err := synthfs.RunWithOptions(ctx, e.filesystem, options, synthfsOps...)
 
-	// Convert synthfs results to operation results
+	// Convert synthfs results to action results
 	results := e.convertResults(result, actionMap)
 
 	if err != nil {
@@ -279,22 +279,19 @@ func expandHome(path string) string {
 }
 
 // executeDryRun handles dry run mode
-func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.OperationResult {
+func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.ActionResult {
 	e.logger.Info().Msg("Dry run mode - actions would be executed:")
-	results := make([]types.OperationResult, len(actions))
+	results := make([]types.ActionResult, len(actions))
 
+	now := time.Now()
 	for i, action := range actions {
 		e.logAction(action)
-		results[i] = types.OperationResult{
-			Operation: &types.Operation{
-				Type:        types.OperationType(action.Type),
-				Description: action.Description,
-				Pack:        action.Pack,
-				PowerUp:     action.PowerUpName,
-			},
+		results[i] = types.ActionResult{
+			Action:    action,
 			Status:    types.StatusReady,
-			StartTime: time.Now(),
-			EndTime:   time.Now(),
+			StartTime: now,
+			EndTime:   now,
+			Message:   "Dry run - action would be executed",
 		}
 	}
 
@@ -329,10 +326,10 @@ func (e *DirectExecutor) logAction(action types.Action) {
 	}
 }
 
-// convertResults converts synthfs results to operation results
-func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[synthfs.OperationID]*types.Action) []types.OperationResult {
+// convertResults converts synthfs results to action results
+func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[synthfs.OperationID]*types.Action) []types.ActionResult {
 	if result == nil {
-		return []types.OperationResult{}
+		return []types.ActionResult{}
 	}
 
 	statusMap := map[synthfs.OperationStatus]types.OperationStatus{
@@ -341,7 +338,8 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 		synthfs.StatusValidation: types.StatusError,
 	}
 
-	results := []types.OperationResult{}
+	// Group operations by action to create proper ActionResults
+	actionResults := make(map[*types.Action]*types.ActionResult)
 	operations := result.GetOperations()
 
 	for _, opResult := range operations {
@@ -359,30 +357,36 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 				status = types.StatusError
 			}
 
-			// FIXME: ARCHITECTURAL PROBLEM - Creating fake Operations defeats the purpose!
-			// DirectExecutor should return PowerUpResults, not OperationResults.
-			// Execution system should roll up all operation statuses to PowerUp level:
-			// - If ANY operation in PowerUp fails, PowerUp fails (atomic unit)
-			// - UI shows PowerUp status, not individual operation statuses
-			// See docs/design/display.txxt
-			// Create a pseudo-operation for the result
-			// In the real implementation, we might want to refactor OperationResult
-			// to work with Actions directly
-			results = append(results, types.OperationResult{
-				Operation: &types.Operation{
-					Type:        types.OperationType(action.Type),
-					Description: action.Description,
-					Pack:        action.Pack,
-					PowerUp:     action.PowerUpName,
-					Source:      action.Source,
-					Target:      action.Target,
-				},
-				Status:    status,
-				Error:     synthfsResult.Error,
-				StartTime: time.Now().Add(-synthfsResult.Duration),
-				EndTime:   time.Now(),
-			})
+			// Get or create ActionResult for this action
+			if actionResult, exists := actionResults[action]; exists {
+				// Update existing result - if any operation fails, the entire action fails
+				if status == types.StatusError {
+					actionResult.Status = types.StatusError
+					if actionResult.Error == nil {
+						actionResult.Error = synthfsResult.Error
+					}
+				}
+				// Track all synthfs operation IDs for debugging
+				actionResult.SynthfsOperationIDs = append(actionResult.SynthfsOperationIDs, string(synthfsResult.OperationID))
+			} else {
+				// Create new ActionResult
+				now := time.Now()
+				actionResults[action] = &types.ActionResult{
+					Action:              *action,
+					Status:              status,
+					Error:               synthfsResult.Error,
+					StartTime:           now.Add(-synthfsResult.Duration),
+					EndTime:             now,
+					SynthfsOperationIDs: []string{string(synthfsResult.OperationID)},
+				}
+			}
 		}
+	}
+
+	// Convert map to slice
+	results := make([]types.ActionResult, 0, len(actionResults))
+	for _, actionResult := range actionResults {
+		results = append(results, *actionResult)
 	}
 
 	return results

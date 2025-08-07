@@ -64,10 +64,10 @@ func TestDirectExecutor_SymlinkPowerUp(t *testing.T) {
 
 	// Debug: print results
 	for i, r := range results {
-		t.Logf("Result %d: %s -> %s (status: %s)", i, r.Operation.Source, r.Operation.Target, r.Status)
+		t.Logf("Result %d: %s -> %s (status: %s)", i, r.Action.Source, r.Action.Target, r.Status)
 	}
 
-	testutil.AssertTrue(t, len(results) >= 2, fmt.Sprintf("Expected at least 2 results, got %d", len(results)))
+	testutil.AssertTrue(t, len(results) == 1, fmt.Sprintf("Expected 1 result per action, got %d", len(results)))
 
 	// Verify symlinks were created
 	targetLink := filepath.Join(homeDir, ".vimrc")
@@ -318,11 +318,11 @@ func TestDirectExecutor_MixedPowerUps(t *testing.T) {
 
 	// Debug: print results
 	for i, r := range results {
-		t.Logf("Result %d: %s -> %s (status: %s)", i, r.Operation.Source, r.Operation.Target, r.Status)
+		t.Logf("Result %d: %s -> %s (status: %s)", i, r.Action.Source, r.Action.Target, r.Status)
 	}
 
-	// Should have results for: deploy link, target link, copy, chmod, write
-	testutil.AssertTrue(t, len(results) >= 5, fmt.Sprintf("Expected at least 5 results, got %d", len(results)))
+	// Should have results for: link action, copy action, run action, write action (4 actions total)
+	testutil.AssertTrue(t, len(results) == 4, fmt.Sprintf("Expected 4 results (one per action), got %d", len(results)))
 
 	// Verify all operations succeeded
 	for i, result := range results {
