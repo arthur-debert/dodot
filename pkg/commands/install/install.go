@@ -20,56 +20,11 @@ type InstallPacksOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// InstallPacks runs the installation and deployment logic for the specified packs.
+// InstallPacks runs the installation and deployment logic using the direct executor approach.
 // It first executes power-ups with RunModeOnce, then those with RunModeMany.
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
+func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "InstallPacks").Msg("Executing command")
-
-	// Step 1: Run "once" power-ups
-	onceOpts := internal.ExecutionOptions{
-		DotfilesRoot:       opts.DotfilesRoot,
-		PackNames:          opts.PackNames,
-		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeOnce,
-		Force:              opts.Force,
-		EnableHomeSymlinks: opts.EnableHomeSymlinks,
-	}
-	onceResult, err := internal.RunExecutionPipeline(onceOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Step 2: Run "many" power-ups (deploy)
-	manyOpts := internal.ExecutionOptions{
-		DotfilesRoot:       opts.DotfilesRoot,
-		PackNames:          opts.PackNames,
-		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeMany,
-		Force:              opts.Force,
-		EnableHomeSymlinks: opts.EnableHomeSymlinks,
-	}
-	manyResult, err := internal.RunExecutionPipeline(manyOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	// Step 3: Merge results
-	mergedResult := &types.ExecutionResult{
-		Packs:      onceResult.Packs,
-		Operations: append(onceResult.Operations, manyResult.Operations...),
-		DryRun:     opts.DryRun,
-	}
-
-	log.Info().Str("command", "InstallPacks").Msg("Command finished")
-	return mergedResult, nil
-}
-
-// InstallPacksDirect runs the installation and deployment logic using the direct executor approach.
-// It first executes power-ups with RunModeOnce, then those with RunModeMany.
-func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
-	log := logging.GetLogger("core.commands")
-	log.Debug().Str("command", "InstallPacksDirect").Msg("Executing command")
 
 	// Create combined execution context
 	combinedContext := types.NewExecutionContext("install", opts.DryRun)
@@ -83,7 +38,7 @@ func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, erro
 		Force:              opts.Force,
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
-	onceContext, err := internal.RunDirectExecutionPipeline(onceOpts)
+	onceContext, err := internal.RunExecutionPipeline(onceOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +52,7 @@ func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, erro
 		Force:              opts.Force,
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
-	manyContext, err := internal.RunDirectExecutionPipeline(manyOpts)
+	manyContext, err := internal.RunExecutionPipeline(manyOpts)
 	if err != nil {
 		return nil, err
 	}
@@ -119,6 +74,12 @@ func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, erro
 	}
 
 	combinedContext.Complete()
-	log.Info().Str("command", "InstallPacksDirect").Msg("Command finished")
+	log.Info().Str("command", "InstallPacks").Msg("Command finished")
 	return combinedContext, nil
+}
+
+// InstallPacksDirect is an alias for InstallPacks for backward compatibility.
+// Deprecated: Use InstallPacks instead.
+func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
+	return InstallPacks(opts)
 }
