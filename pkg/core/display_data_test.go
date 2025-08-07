@@ -3,6 +3,7 @@ package core
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -330,4 +331,86 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 	regularFile := fileMap["regular-file"]
 	testutil.AssertTrue(t, regularFile != nil, "regular-file should exist")
 	testutil.AssertFalse(t, regularFile.IsOverride, "regular-file should have IsOverride=false")
+}
+
+func TestToDisplayResult_LastExecutedTimestamps(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "timestamp-test")
+	packDir := filepath.Join(tempDir, "test-pack")
+	testutil.CreateDir(t, tempDir, "test-pack")
+	testutil.CreateFile(t, packDir, "test-file", "# test")
+
+	// Create ExecutionContext
+	ctx := types.NewExecutionContext("test", false)
+
+	// Create pack
+	pack := &types.Pack{
+		Name: "test-pack",
+		Path: packDir,
+	}
+
+	packResult := types.NewPackExecutionResult(pack)
+
+	// Create PowerUpResults with different statuses and timestamps
+	successTime := time.Now().Add(-1 * time.Hour)
+
+	// Successful PowerUpResult with timestamp
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "symlink",
+		Files:       []string{filepath.Join(packDir, "test-file")},
+		Status:      types.StatusReady,
+		EndTime:     successTime,
+		Message:     "linked successfully",
+	})
+
+	// Failed PowerUpResult (should not have LastExecuted)
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "install",
+		Files:       []string{filepath.Join(packDir, "install-file")},
+		Status:      types.StatusError,
+		EndTime:     time.Now(),
+		Message:     "failed to install",
+	})
+
+	// Skipped PowerUpResult (should not have LastExecuted)
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "homebrew",
+		Files:       []string{filepath.Join(packDir, "Brewfile")},
+		Status:      types.StatusSkipped,
+		EndTime:     time.Now(),
+		Message:     "skipped",
+	})
+
+	ctx.AddPackResult("test-pack", packResult)
+	ctx.Complete()
+
+	// Transform to DisplayResult
+	displayResult := ctx.ToDisplayResult()
+
+	// Verify results
+	testutil.AssertEqual(t, 1, len(displayResult.Packs))
+	pack1 := displayResult.Packs[0]
+	testutil.AssertEqual(t, 3, len(pack1.Files))
+
+	// Find files by PowerUp
+	fileMap := make(map[string]*types.DisplayFile)
+	for i := range pack1.Files {
+		fileMap[pack1.Files[i].PowerUp] = &pack1.Files[i]
+	}
+
+	// Test successful PowerUpResult has LastExecuted timestamp
+	symlinkFile := fileMap["symlink"]
+	testutil.AssertTrue(t, symlinkFile != nil, "symlink file should exist")
+	testutil.AssertTrue(t, symlinkFile.LastExecuted != nil, "symlink should have LastExecuted timestamp")
+	testutil.AssertTrue(t, symlinkFile.LastExecuted.Equal(successTime), "timestamp should match PowerUpResult EndTime")
+
+	// Test failed PowerUpResult has no LastExecuted timestamp
+	installFile := fileMap["install"]
+	testutil.AssertTrue(t, installFile != nil, "install file should exist")
+	testutil.AssertTrue(t, installFile.LastExecuted == nil, "failed PowerUpResult should not have LastExecuted")
+
+	// Test skipped PowerUpResult has no LastExecuted timestamp
+	brewFile := fileMap["homebrew"]
+	testutil.AssertTrue(t, brewFile != nil, "homebrew file should exist")
+	testutil.AssertTrue(t, brewFile.LastExecuted == nil, "skipped PowerUpResult should not have LastExecuted")
 }

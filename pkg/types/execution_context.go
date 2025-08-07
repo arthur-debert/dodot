@@ -293,13 +293,19 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 					isOverride = (override != nil)
 				}
 
+				// Use PowerUpResult EndTime as LastExecuted if execution completed
+				var lastExecuted *time.Time
+				if pur.Status == StatusReady && !pur.EndTime.IsZero() {
+					lastExecuted = &pur.EndTime
+				}
+
 				displayFile := DisplayFile{
-					PowerUp:    pur.PowerUpName,
-					Path:       filePath,
-					Status:     mapOperationStatusToDisplayStatus(pur.Status),
-					Message:    pur.Message,
-					IsOverride: isOverride,
-					// TODO: Add LastExecuted when available
+					PowerUp:      pur.PowerUpName,
+					Path:         filePath,
+					Status:       mapOperationStatusToDisplayStatus(pur.Status),
+					Message:      pur.Message,
+					IsOverride:   isOverride,
+					LastExecuted: lastExecuted,
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
 			}
