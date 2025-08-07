@@ -160,3 +160,80 @@ func TestToDisplayResult_PackConfiguration(t *testing.T) {
 	testutil.AssertFalse(t, noConfigPack.HasConfig, "pack-no-config should have HasConfig=false")
 	testutil.AssertFalse(t, noConfigPack.IsIgnored, "pack-no-config should have IsIgnored=false")
 }
+
+func TestToDisplayResult_ConfigFilesAsDisplayItems(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "display-items-test")
+
+	// Create pack with config file
+	packWithConfigDir := filepath.Join(tempDir, "pack-with-config")
+	testutil.CreateDir(t, tempDir, "pack-with-config")
+	testutil.CreateFile(t, packWithConfigDir, ".dodot.toml", "# Test config")
+
+	// Create pack with ignore file
+	packWithIgnoreDir := filepath.Join(tempDir, "pack-with-ignore")
+	testutil.CreateDir(t, tempDir, "pack-with-ignore")
+	testutil.CreateFile(t, packWithIgnoreDir, ".dodotignore", "*.tmp")
+
+	// Create pack with both files
+	packWithBothDir := filepath.Join(tempDir, "pack-with-both")
+	testutil.CreateDir(t, tempDir, "pack-with-both")
+	testutil.CreateFile(t, packWithBothDir, ".dodot.toml", "# Test config")
+	testutil.CreateFile(t, packWithBothDir, ".dodotignore", "*.tmp")
+
+	// Create ExecutionContext
+	ctx := types.NewExecutionContext("deploy", false)
+
+	// Add pack results
+	packWithConfig := &types.Pack{Name: "pack-with-config", Path: packWithConfigDir}
+	packWithIgnore := &types.Pack{Name: "pack-with-ignore", Path: packWithIgnoreDir}
+	packWithBoth := &types.Pack{Name: "pack-with-both", Path: packWithBothDir}
+
+	ctx.AddPackResult("pack-with-config", types.NewPackExecutionResult(packWithConfig))
+	ctx.AddPackResult("pack-with-ignore", types.NewPackExecutionResult(packWithIgnore))
+	ctx.AddPackResult("pack-with-both", types.NewPackExecutionResult(packWithBoth))
+	ctx.Complete()
+
+	// Transform to DisplayResult
+	displayResult := ctx.ToDisplayResult()
+
+	// Verify results
+	testutil.AssertEqual(t, 3, len(displayResult.Packs))
+
+	// Find packs in result
+	packMap := make(map[string]*types.DisplayPack)
+	for i := range displayResult.Packs {
+		packMap[displayResult.Packs[i].Name] = &displayResult.Packs[i]
+	}
+
+	// Test pack with config file
+	configPack := packMap["pack-with-config"]
+	testutil.AssertTrue(t, configPack != nil, "pack-with-config should exist")
+	testutil.AssertEqual(t, 1, len(configPack.Files))
+
+	configFile := configPack.Files[0]
+	testutil.AssertEqual(t, "config", configFile.PowerUp)
+	testutil.AssertEqual(t, ".dodot.toml", configFile.Path)
+	testutil.AssertEqual(t, "config", configFile.Status)
+	testutil.AssertEqual(t, "dodot config file found", configFile.Message)
+
+	// Test pack with ignore file
+	ignorePack := packMap["pack-with-ignore"]
+	testutil.AssertTrue(t, ignorePack != nil, "pack-with-ignore should exist")
+	testutil.AssertEqual(t, 1, len(ignorePack.Files))
+
+	ignoreFile := ignorePack.Files[0]
+	testutil.AssertEqual(t, ".dodotignore", ignoreFile.PowerUp)
+	testutil.AssertEqual(t, "", ignoreFile.Path)
+	testutil.AssertEqual(t, "ignored", ignoreFile.Status)
+	testutil.AssertEqual(t, "dodot is ignoring this dir", ignoreFile.Message)
+
+	// Test pack with both files
+	bothPack := packMap["pack-with-both"]
+	testutil.AssertTrue(t, bothPack != nil, "pack-with-both should exist")
+	testutil.AssertEqual(t, 2, len(bothPack.Files))
+
+	// Files should be in order: config first, then ignore
+	testutil.AssertEqual(t, "config", bothPack.Files[0].PowerUp)
+	testutil.AssertEqual(t, ".dodotignore", bothPack.Files[1].PowerUp)
+}

@@ -263,6 +263,24 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 			IsIgnored: isIgnored,
 		}
 
+		// Add config files as display items (per display.txxt spec)
+		if hasConfig {
+			displayPack.Files = append(displayPack.Files, DisplayFile{
+				PowerUp: "config",
+				Path:    ".dodot.toml",
+				Status:  "config",
+				Message: "dodot config file found",
+			})
+		}
+		if isIgnored {
+			displayPack.Files = append(displayPack.Files, DisplayFile{
+				PowerUp: ".dodotignore",
+				Path:    "",
+				Status:  "ignored",
+				Message: "dodot is ignoring this dir",
+			})
+		}
+
 		// Transform PowerUpResults to DisplayFiles
 		for _, pur := range packResult.PowerUpResults {
 			// Create a DisplayFile for each file in the PowerUpResult
