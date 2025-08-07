@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"github.com/arthur-debert/dodot/pkg/commands/internal"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -18,14 +19,27 @@ type DeployPacksOptions struct {
 }
 
 // DeployPacks runs the deployment logic using the direct executor approach.
-// TODO: Implement new DirectExecutor-based deployment (internal execution pipeline removed)
+// It executes RunModeMany actions only (symlinks, shell profiles, path) while
+// skipping RunModeOnce actions (install scripts, brewfiles).
 func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
-	log := logging.GetLogger("core.commands")
+	log := logging.GetLogger("commands.deploy")
 	log.Debug().Str("command", "DeployPacks").Msg("Executing command")
 
-	// Minimal implementation to satisfy tests - just return empty context
-	ctx := types.NewExecutionContext("deploy", opts.DryRun)
-	ctx.Complete()
+	// Use the internal pipeline with RunModeMany (deploy mode)
+	ctx, err := internal.RunPipeline(internal.PipelineOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany, // Key: only run repeatable actions
+		Force:              false,             // Deploy doesn't use force flag
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	})
+
+	if err != nil {
+		log.Error().Err(err).Msg("Deploy failed")
+		return ctx, err
+	}
+
 	log.Info().Str("command", "DeployPacks").Msg("Command finished")
 	return ctx, nil
 }
