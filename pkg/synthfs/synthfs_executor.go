@@ -203,251 +203,151 @@ func (e *SynthfsExecutor) executeDryRun(ops []types.Operation) []types.Operation
 
 // convertToSynthfsOp converts a dodot operation to a synthfs operation
 func (e *SynthfsExecutor) convertToSynthfsOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	// Handle force mode for symlinks by pre-deleting existing files
-	if e.force && op.Type == types.OperationCreateSymlink {
-		if _, err := os.Lstat(op.Target); err == nil {
-			e.logger.Debug().
-				Str("target", op.Target).
-				Msg("Force mode: will overwrite existing file")
+	// Skip non-mutating operations
+	if op.Type == types.OperationReadFile || op.Type == types.OperationChecksum {
+		e.logger.Debug().Str("type", string(op.Type)).Msg("Skipping non-mutating operation")
+		return nil, nil
+	}
+
+	// Generate unique ID
+	target := op.Target
+	if target == "" && op.Command != "" {
+		cmdParts := strings.Fields(op.Command)
+		if len(cmdParts) > 0 {
+			target = cmdParts[0]
+		} else {
+			target = "empty"
+		}
+	}
+	id := fmt.Sprintf("%s_%s_%d", op.Type, filepath.Base(target), time.Now().UnixNano())
+
+	// Common validation for filesystem operations
+	if op.Type != types.OperationExecute && op.Target != "" {
+		if err := e.validateSafePath(op.Target); err != nil {
+			return nil, err
 		}
 	}
 
+	// Log the operation
+	e.logger.Debug().
+		Str("type", string(op.Type)).
+		Str("target", op.Target).
+		Str("description", op.Description).
+		Msg("Converting operation")
+
+	// Convert based on type
 	switch op.Type {
 	case types.OperationCreateDir:
-		return e.createDirOp(sfs, op)
-	case types.OperationWriteFile:
-		return e.createWriteFileOp(sfs, op)
-	case types.OperationCreateSymlink:
-		return e.createSymlinkOp(sfs, op)
-	case types.OperationCopyFile:
-		return e.createCopyOp(sfs, op)
-	case types.OperationDeleteFile:
-		return e.createDeleteOp(sfs, op)
-	case types.OperationBackupFile:
-		return e.createBackupOp(sfs, op)
-	case types.OperationExecute:
-		return e.createShellCommandOp(sfs, op)
-	case types.OperationReadFile, types.OperationChecksum:
-		// These are not actual file operations
-		e.logger.Debug().
-			Str("type", string(op.Type)).
-			Msg("Skipping non-mutating operation")
-		return nil, nil
-	default:
-		return nil, errors.Newf(errors.ErrActionInvalid,
-			"unsupported operation type: %s", op.Type)
-	}
-}
-
-// createDirOp creates a directory creation operation
-func (e *SynthfsExecutor) createDirOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"create directory operation requires target")
-	}
-
-	// Ensure we're only creating directories in safe locations
-	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
-	}
-
-	mode := e.config.FilePermissions.Directory
-	if op.Mode != nil {
-		mode = os.FileMode(*op.Mode)
-	}
-
-	e.logger.Debug().
-		Str("target", op.Target).
-		Str("mode", mode.String()).
-		Msg("Creating directory operation")
-
-	// Generate a unique ID based on the operation
-	id := fmt.Sprintf("createdir_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-	return sfs.CreateDirWithID(id, op.Target, mode), nil
-}
-
-// createWriteFileOp creates a write file operation
-func (e *SynthfsExecutor) createWriteFileOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"write file operation requires target")
-	}
-
-	// Ensure we're only writing files in safe locations
-	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
-	}
-
-	mode := e.config.FilePermissions.File
-	if op.Mode != nil {
-		mode = os.FileMode(*op.Mode)
-	}
-
-	e.logger.Debug().
-		Str("target", op.Target).
-		Str("mode", mode.String()).
-		Int("contentLen", len(op.Content)).
-		Msg("Creating write file operation")
-
-	id := fmt.Sprintf("writefile_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-	return sfs.CreateFileWithID(id, op.Target, []byte(op.Content), mode), nil
-}
-
-// createSymlinkOp creates a symlink operation
-func (e *SynthfsExecutor) createSymlinkOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Source == "" || op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"symlink operation requires source and target")
-	}
-
-	// For issue #71, handle symlinks in home directory with special validation
-	if err := e.validateSymlinkPath(op.Target, op.Source); err != nil {
-		return nil, err
-	}
-
-	e.logger.Info().
-		Str("source", op.Source).
-		Str("target", op.Target).
-		Msg("Creating symlink operation")
-
-	// If force mode, create a delete operation first
-	if e.force {
-		if _, err := os.Lstat(op.Target); err == nil {
-			// Target exists, need to delete it first
-			// We'll handle this by creating a custom operation that deletes then creates
-			id := fmt.Sprintf("symlink_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-			return sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-				// Delete existing file/symlink
-				if err := fs.Remove(op.Target); err != nil && !os.IsNotExist(err) {
-					return err
-				}
-				// Create new symlink
-				return fs.Symlink(op.Source, op.Target)
-			}), nil
+		if op.Target == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "create directory operation requires target")
 		}
-	}
+		mode := e.config.FilePermissions.Directory
+		if op.Mode != nil {
+			mode = os.FileMode(*op.Mode)
+		}
+		return sfs.CreateDirWithID(id, op.Target, mode), nil
 
-	id := fmt.Sprintf("symlink_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-	return sfs.CreateSymlinkWithID(id, op.Source, op.Target), nil
-}
+	case types.OperationWriteFile:
+		if op.Target == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "write file operation requires target")
+		}
+		mode := e.config.FilePermissions.File
+		if op.Mode != nil {
+			mode = os.FileMode(*op.Mode)
+		}
+		return sfs.CreateFileWithID(id, op.Target, []byte(op.Content), mode), nil
 
-// createCopyOp creates a copy operation
-func (e *SynthfsExecutor) createCopyOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Source == "" || op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"copy file operation requires source and target")
-	}
+	case types.OperationCreateSymlink:
+		if op.Source == "" || op.Target == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "symlink operation requires source and target")
+		}
+		// Special validation for symlinks
+		if err := e.validateSymlinkPath(op.Target, op.Source); err != nil {
+			return nil, err
+		}
+		e.logger.Info().Str("source", op.Source).Str("target", op.Target).Msg("Creating symlink operation")
 
-	// Ensure we're only copying to safe locations
-	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
-	}
-
-	e.logger.Debug().
-		Str("source", op.Source).
-		Str("target", op.Target).
-		Msg("Creating copy operation")
-
-	id := fmt.Sprintf("copy_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-	return sfs.CopyWithID(id, op.Source, op.Target), nil
-}
-
-// createDeleteOp creates a delete operation
-func (e *SynthfsExecutor) createDeleteOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"delete file operation requires target")
-	}
-
-	// Ensure we're only deleting files in safe locations
-	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
-	}
-
-	e.logger.Debug().
-		Str("target", op.Target).
-		Msg("Creating delete operation")
-
-	id := fmt.Sprintf("delete_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-	return sfs.DeleteWithID(id, op.Target), nil
-}
-
-// createBackupOp creates a backup (copy) operation
-func (e *SynthfsExecutor) createBackupOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Source == "" || op.Target == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"backup file operation requires source and target")
-	}
-
-	// Ensure we're only creating backups in safe locations
-	if err := e.validateSafePath(op.Target); err != nil {
-		return nil, err
-	}
-
-	e.logger.Debug().
-		Str("source", op.Source).
-		Str("target", op.Target).
-		Msg("Creating backup (copy) operation")
-
-	id := fmt.Sprintf("backup_%s_%d", filepath.Base(op.Target), time.Now().UnixNano())
-	return sfs.CopyWithID(id, op.Source, op.Target), nil
-}
-
-// createShellCommandOp creates a shell command operation
-func (e *SynthfsExecutor) createShellCommandOp(sfs *synthfs.SynthFS, op types.Operation) (synthfs.Operation, error) {
-	if op.Command == "" {
-		return nil, errors.New(errors.ErrInvalidInput,
-			"execute operation requires command")
-	}
-
-	// Construct the full command
-	fullCommand := op.Command
-	if len(op.Args) > 0 {
-		// Properly quote arguments that contain spaces
-		quotedArgs := make([]string, len(op.Args))
-		for i, arg := range op.Args {
-			if strings.Contains(arg, " ") {
-				quotedArgs[i] = fmt.Sprintf("%q", arg)
-			} else {
-				quotedArgs[i] = arg
+		// Handle force mode
+		if e.force {
+			if _, err := os.Lstat(op.Target); err == nil {
+				// Create custom operation that deletes then creates
+				return sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
+					if err := fs.Remove(op.Target); err != nil && !os.IsNotExist(err) {
+						return err
+					}
+					return fs.Symlink(op.Source, op.Target)
+				}), nil
 			}
 		}
-		fullCommand = fmt.Sprintf("%s %s", op.Command, strings.Join(quotedArgs, " "))
+		return sfs.CreateSymlinkWithID(id, op.Source, op.Target), nil
+
+	case types.OperationCopyFile:
+		if op.Source == "" || op.Target == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "copy file operation requires source and target")
+		}
+		return sfs.CopyWithID(id, op.Source, op.Target), nil
+
+	case types.OperationDeleteFile:
+		if op.Target == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "delete file operation requires target")
+		}
+		return sfs.DeleteWithID(id, op.Target), nil
+
+	case types.OperationBackupFile:
+		if op.Source == "" || op.Target == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "backup file operation requires source and target")
+		}
+		return sfs.CopyWithID(id, op.Source, op.Target), nil
+
+	case types.OperationExecute:
+		if op.Command == "" {
+			return nil, errors.New(errors.ErrInvalidInput, "execute operation requires command")
+		}
+
+		// Construct full command
+		fullCommand := op.Command
+		if len(op.Args) > 0 {
+			quotedArgs := make([]string, len(op.Args))
+			for i, arg := range op.Args {
+				if strings.Contains(arg, " ") {
+					quotedArgs[i] = fmt.Sprintf("%q", arg)
+				} else {
+					quotedArgs[i] = arg
+				}
+			}
+			fullCommand = fmt.Sprintf("%s %s", op.Command, strings.Join(quotedArgs, " "))
+		}
+
+		// Build options
+		var options []synthfs.ShellCommandOption
+		if op.WorkingDir != "" {
+			options = append(options, synthfs.WithWorkDir(op.WorkingDir))
+		}
+		if len(op.EnvironmentVars) > 0 {
+			options = append(options, synthfs.WithEnv(op.EnvironmentVars))
+		}
+		options = append(options, synthfs.WithCaptureOutput())
+		options = append(options, synthfs.WithTimeout(30*time.Second))
+
+		e.logger.Info().Str("command", fullCommand).Str("workingDir", op.WorkingDir).Msg("Creating shell command operation")
+		return sfs.ShellCommandWithID(id, fullCommand, options...), nil
+
+	default:
+		return nil, errors.Newf(errors.ErrActionInvalid, "unsupported operation type: %s", op.Type)
 	}
-
-	// Create shell command options
-	var options []synthfs.ShellCommandOption
-
-	// Set working directory if provided
-	if op.WorkingDir != "" {
-		options = append(options, synthfs.WithWorkDir(op.WorkingDir))
-	}
-
-	// Set environment variables if provided
-	if len(op.EnvironmentVars) > 0 {
-		options = append(options, synthfs.WithEnv(op.EnvironmentVars))
-	}
-
-	// Always capture output for logging and result tracking
-	options = append(options, synthfs.WithCaptureOutput())
-
-	// Set timeout (default was 30 seconds in CommandExecutor)
-	options = append(options, synthfs.WithTimeout(30*time.Second))
-
-	e.logger.Info().
-		Str("command", fullCommand).
-		Str("workingDir", op.WorkingDir).
-		Str("description", op.Description).
-		Msg("Creating shell command operation")
-
-	id := fmt.Sprintf("exec_%s_%d", strings.Fields(op.Command)[0], time.Now().UnixNano())
-	return sfs.ShellCommandWithID(id, fullCommand, options...), nil
 }
 
 // convertResults converts synthfs results to dodot results
 func (e *SynthfsExecutor) convertResults(result *synthfs.Result, dodotOpMap map[synthfs.OperationID]*types.Operation) []types.OperationResult {
 	if result == nil {
 		return []types.OperationResult{}
+	}
+
+	// Status mapping
+	statusMap := map[synthfs.OperationStatus]types.OperationStatus{
+		synthfs.StatusSuccess:    types.StatusReady,
+		synthfs.StatusFailure:    types.StatusError,
+		synthfs.StatusValidation: types.StatusError,
 	}
 
 	results := []types.OperationResult{}
@@ -463,16 +363,9 @@ func (e *SynthfsExecutor) convertResults(result *synthfs.Result, dodotOpMap map[
 				continue
 			}
 
-			// Convert status
-			var status types.OperationStatus
-			switch synthfsResult.Status {
-			case synthfs.StatusSuccess:
-				status = types.StatusReady
-			case synthfs.StatusFailure:
-				status = types.StatusError
-			case synthfs.StatusValidation:
-				status = types.StatusError
-			default:
+			// Map status
+			status := statusMap[synthfsResult.Status]
+			if status == "" {
 				status = types.StatusError
 			}
 
