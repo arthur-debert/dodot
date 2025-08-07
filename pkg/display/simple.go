@@ -7,20 +7,20 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// SimpleRenderer provides minimal text output for dodot commands
-type SimpleRenderer struct {
+// TextRenderer provides minimal text output for dodot commands
+type TextRenderer struct {
 	writer io.Writer
 }
 
-// NewSimpleRenderer creates a new simple renderer
-func NewSimpleRenderer(w io.Writer) *SimpleRenderer {
-	return &SimpleRenderer{
+// NewTextRenderer creates a new text renderer
+func NewTextRenderer(w io.Writer) *TextRenderer {
+	return &TextRenderer{
 		writer: w,
 	}
 }
 
 // Render outputs the DisplayResult in a simple text format
-func (r *SimpleRenderer) Render(result *types.DisplayResult) error {
+func (r *TextRenderer) Render(result *types.DisplayResult) error {
 	if result == nil {
 		return nil
 	}
@@ -57,7 +57,7 @@ func (r *SimpleRenderer) Render(result *types.DisplayResult) error {
 }
 
 // renderPack renders a single pack
-func (r *SimpleRenderer) renderPack(pack types.DisplayPack) error {
+func (r *TextRenderer) renderPack(pack types.DisplayPack) error {
 	// Pack header with status indicator
 	statusChar := r.getStatusChar(pack.Status)
 	if _, err := fmt.Fprintf(r.writer, "\n%s %s\n", statusChar, pack.Name); err != nil {
@@ -82,7 +82,7 @@ func (r *SimpleRenderer) renderPack(pack types.DisplayPack) error {
 }
 
 // renderFile renders a single file
-func (r *SimpleRenderer) renderFile(file types.DisplayFile) error {
+func (r *TextRenderer) renderFile(file types.DisplayFile) error {
 	statusChar := r.getStatusChar(file.Status)
 
 	// Format: status powerup : path : message
@@ -95,7 +95,7 @@ func (r *SimpleRenderer) renderFile(file types.DisplayFile) error {
 }
 
 // getStatusChar returns a simple character to represent status
-func (r *SimpleRenderer) getStatusChar(status string) string {
+func (r *TextRenderer) getStatusChar(status string) string {
 	switch status {
 	case "success":
 		return "✓"
@@ -128,7 +128,7 @@ func truncatePath(path string, maxLen int) string {
 }
 
 // RenderExecutionContext is a convenience method that transforms and renders an ExecutionContext
-func (r *SimpleRenderer) RenderExecutionContext(ctx *types.ExecutionContext) error {
+func (r *TextRenderer) RenderExecutionContext(ctx *types.ExecutionContext) error {
 	if ctx == nil {
 		return nil
 	}

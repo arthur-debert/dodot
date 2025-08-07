@@ -205,7 +205,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			// Display results using the new display system
-			renderer := display.NewSimpleRenderer(os.Stdout)
+			renderer := display.NewTextRenderer(os.Stdout)
 			if err := renderer.RenderExecutionContext(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
@@ -253,7 +253,7 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			// Display results using the new display system
-			renderer := display.NewSimpleRenderer(os.Stdout)
+			renderer := display.NewTextRenderer(os.Stdout)
 			if err := renderer.RenderExecutionContext(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}

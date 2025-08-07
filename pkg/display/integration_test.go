@@ -73,7 +73,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 
 	// Render the result
 	var buf bytes.Buffer
-	renderer := NewSimpleRenderer(&buf)
+	renderer := NewTextRenderer(&buf)
 
 	err := renderer.RenderExecutionContext(ctx)
 	testutil.AssertNoError(t, err)

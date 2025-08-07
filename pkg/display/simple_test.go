@@ -10,7 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestSimpleRenderer_Render(t *testing.T) {
+func TestTextRenderer_Render(t *testing.T) {
 	tests := []struct {
 		name     string
 		result   *types.DisplayResult
@@ -141,7 +141,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			renderer := NewSimpleRenderer(&buf)
+			renderer := NewTextRenderer(&buf)
 
 			err := renderer.Render(tt.result)
 			testutil.AssertNoError(t, err)
@@ -155,7 +155,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 	}
 }
 
-func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
+func TestTextRenderer_RenderExecutionContext(t *testing.T) {
 	// Create a sample execution context
 	ctx := types.NewExecutionContext("deploy", false)
 
@@ -184,7 +184,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 
 	// Render
 	var buf bytes.Buffer
-	renderer := NewSimpleRenderer(&buf)
+	renderer := NewTextRenderer(&buf)
 
 	err := renderer.RenderExecutionContext(ctx)
 	testutil.AssertNoError(t, err)
