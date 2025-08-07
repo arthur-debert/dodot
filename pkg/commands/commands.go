@@ -66,6 +66,11 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	return status.StatusPacks(opts)
 }
 
+// StatusPacksDirect checks deployment status using the direct action-based approach.
+func StatusPacksDirect(opts StatusPacksOptions) (*types.DisplayResult, error) {
+	return status.StatusPacksDirect(opts)
+}
+
 // FillPack adds missing template files to an existing pack.
 type FillPackOptions = fill.FillPackOptions
 
