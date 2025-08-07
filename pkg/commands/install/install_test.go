@@ -416,7 +416,7 @@ func TestInstallPacks_ShellIntegration(t *testing.T) {
 
 	// Create a simple pack with just a symlink (to have successful actions)
 	testutil.CreateDir(t, dotfilesDir, "shell-test")
-	testutil.CreateFile(t, dotfilesDir, "shell-test/config", "test config")
+	testutil.CreateFile(t, dotfilesDir, "shell-test/bashrc", "# test bashrc")
 
 	// Install the pack
 	ctx, err := InstallPacks(InstallPacksOptions{
