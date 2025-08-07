@@ -237,3 +237,97 @@ func TestToDisplayResult_ConfigFilesAsDisplayItems(t *testing.T) {
 	testutil.AssertEqual(t, "config", bothPack.Files[0].PowerUp)
 	testutil.AssertEqual(t, ".dodotignore", bothPack.Files[1].PowerUp)
 }
+
+func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "override-test")
+
+	// Create pack with override configuration
+	packDir := filepath.Join(tempDir, "test-pack")
+	testutil.CreateDir(t, tempDir, "test-pack")
+
+	// Create files that will have overrides
+	testutil.CreateFile(t, packDir, "vimrc", "# vim config")
+	testutil.CreateFile(t, packDir, "bashrc", "# bash config")
+	testutil.CreateFile(t, packDir, "regular-file", "# no override")
+
+	// Create ExecutionContext
+	ctx := types.NewExecutionContext("test", false)
+
+	// Create pack with override config
+	pack := &types.Pack{
+		Name: "test-pack",
+		Path: packDir,
+		Config: types.PackConfig{
+			Override: []types.OverrideRule{
+				{
+					Path:    "vimrc",
+					Powerup: "symlink",
+				},
+				{
+					Path:    "bash*", // Pattern match
+					Powerup: "shell_profile",
+				},
+			},
+		},
+	}
+
+	packResult := types.NewPackExecutionResult(pack)
+
+	// Add PowerUpResults with different files
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "symlink",
+		Files:       []string{filepath.Join(packDir, "vimrc")},
+		Status:      types.StatusReady,
+		Message:     "linked",
+	})
+
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "shell_profile",
+		Files:       []string{filepath.Join(packDir, "bashrc")},
+		Status:      types.StatusReady,
+		Message:     "included",
+	})
+
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "default",
+		Files:       []string{filepath.Join(packDir, "regular-file")},
+		Status:      types.StatusReady,
+		Message:     "processed",
+	})
+
+	ctx.AddPackResult("test-pack", packResult)
+	ctx.Complete()
+
+	// Transform to DisplayResult
+	displayResult := ctx.ToDisplayResult()
+
+	// Verify results
+	testutil.AssertEqual(t, 1, len(displayResult.Packs))
+	pack1 := displayResult.Packs[0]
+
+	// Should have files from PowerUpResults (no config files since no .dodot.toml exists)
+	testutil.AssertEqual(t, 3, len(pack1.Files))
+
+	// Find files by path
+	fileMap := make(map[string]*types.DisplayFile)
+	for i := range pack1.Files {
+		fileName := filepath.Base(pack1.Files[i].Path)
+		fileMap[fileName] = &pack1.Files[i]
+	}
+
+	// Test vimrc has override (exact match)
+	vimrcFile := fileMap["vimrc"]
+	testutil.AssertTrue(t, vimrcFile != nil, "vimrc file should exist")
+	testutil.AssertTrue(t, vimrcFile.IsOverride, "vimrc should have IsOverride=true")
+
+	// Test bashrc has override (pattern match)
+	bashrcFile := fileMap["bashrc"]
+	testutil.AssertTrue(t, bashrcFile != nil, "bashrc file should exist")
+	testutil.AssertTrue(t, bashrcFile.IsOverride, "bashrc should have IsOverride=true")
+
+	// Test regular-file has no override
+	regularFile := fileMap["regular-file"]
+	testutil.AssertTrue(t, regularFile != nil, "regular-file should exist")
+	testutil.AssertFalse(t, regularFile.IsOverride, "regular-file should have IsOverride=false")
+}

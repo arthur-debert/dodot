@@ -285,12 +285,21 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 		for _, pur := range packResult.PowerUpResults {
 			// Create a DisplayFile for each file in the PowerUpResult
 			for _, filePath := range pur.Files {
+				// Check if this file has a power-up override in .dodot.toml
+				fileName := filepath.Base(filePath)
+				isOverride := false
+				if packResult.Pack != nil {
+					override := packResult.Pack.Config.FindOverride(fileName)
+					isOverride = (override != nil)
+				}
+
 				displayFile := DisplayFile{
-					PowerUp: pur.PowerUpName,
-					Path:    filePath,
-					Status:  mapOperationStatusToDisplayStatus(pur.Status),
-					Message: pur.Message,
-					// TODO: Add IsOverride and LastExecuted when available
+					PowerUp:    pur.PowerUpName,
+					Path:       filePath,
+					Status:     mapOperationStatusToDisplayStatus(pur.Status),
+					Message:    pur.Message,
+					IsOverride: isOverride,
+					// TODO: Add LastExecuted when available
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
 			}
