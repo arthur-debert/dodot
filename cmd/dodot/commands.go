@@ -193,7 +193,7 @@ func newDeployCmd() *cobra.Command {
 				Bool("dry_run", dryRun).
 				Msg("Deploying from dotfiles root")
 
-			// Use the new DeployPacks implementation with DirectExecutor
+			// Use the new DeployPacks implementation with Executor
 			ctx, err := commands.DeployPacks(commands.DeployPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
@@ -240,7 +240,7 @@ func newInstallCmd() *cobra.Command {
 				Bool("force", force).
 				Msg("Installing from dotfiles root")
 
-			// Use the new InstallPacks implementation with DirectExecutor
+			// Use the new InstallPacks implementation with Executor
 			ctx, err := commands.InstallPacks(commands.InstallPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,

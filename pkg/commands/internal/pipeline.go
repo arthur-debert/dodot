@@ -21,7 +21,7 @@ type PipelineOptions struct {
 }
 
 // RunPipeline executes the core pipeline: GetPacks -> GetTriggers -> GetActions -> Execute
-// This replaces the old RunExecutionPipeline but works with DirectExecutor instead of Operations
+// This replaces the old RunExecutionPipeline but works with Executor instead of Operations
 func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	logger := logging.GetLogger("commands.internal.pipeline")
 	logger.Debug().
@@ -117,8 +117,8 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		return ctx, nil
 	}
 
-	// 10. Create and configure DirectExecutor
-	executorOpts := &core.DirectExecutorOptions{
+	// 10. Create and configure Executor
+	executorOpts := &core.ExecutorOptions{
 		Paths:             pathsInstance,
 		DryRun:            opts.DryRun,
 		Force:             opts.Force,
@@ -126,7 +126,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Config:            config.Default(),
 	}
 
-	executor := core.NewDirectExecutor(executorOpts)
+	executor := core.NewExecutor(executorOpts)
 
 	// 11. Execute actions
 	logger.Info().

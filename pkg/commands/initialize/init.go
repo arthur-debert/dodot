@@ -149,7 +149,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 		actions = append(actions, action)
 	}
 
-	// 6. Execute actions using DirectExecutor (Operations no longer returned)
+	// 6. Execute actions using Executor (Operations no longer returned)
 	if len(actions) > 0 {
 		// Initialize paths
 		pathsInstance, err := paths.New(opts.DotfilesRoot)
@@ -157,8 +157,8 @@ For more information, see: https://github.com/arthur-debert/dodot
 			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
 		}
 
-		// Create DirectExecutor
-		directExecutorOpts := &core.DirectExecutorOptions{
+		// Create Executor
+		directExecutorOpts := &core.ExecutorOptions{
 			Paths:             pathsInstance,
 			DryRun:            false,
 			Force:             true,
@@ -166,7 +166,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 			Config:            config.Default(),
 		}
 
-		executor := core.NewDirectExecutor(directExecutorOpts)
+		executor := core.NewExecutor(directExecutorOpts)
 
 		// Execute actions and extract operations from results
 		results, err := executor.ExecuteActions(actions)

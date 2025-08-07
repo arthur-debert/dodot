@@ -20,8 +20,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// DirectExecutorOptions contains options for the direct executor
-type DirectExecutorOptions struct {
+// ExecutorOptions contains options for the direct executor
+type ExecutorOptions struct {
 	Paths             *paths.Paths
 	DryRun            bool
 	Force             bool
@@ -29,8 +29,8 @@ type DirectExecutorOptions struct {
 	Config            *config.Config
 }
 
-// DirectExecutor executes actions directly without intermediate Operation type
-type DirectExecutor struct {
+// Executor executes actions directly without intermediate Operation type
+type Executor struct {
 	logger            zerolog.Logger
 	dryRun            bool
 	force             bool
@@ -42,8 +42,8 @@ type DirectExecutor struct {
 	// pathValidator removed - validation will be handled directly on Actions
 }
 
-// NewDirectExecutor creates a new direct executor
-func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
+// NewExecutor creates a new executor
+func NewExecutor(opts *ExecutorOptions) *Executor {
 	// Use PathAwareFileSystem to handle absolute paths directly
 	osfs := filesystem.NewOSFileSystem("/")
 	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
@@ -53,7 +53,7 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 		cfg = config.Default()
 	}
 
-	return &DirectExecutor{
+	return &Executor{
 		logger:            logging.GetLogger("core.direct_executor"),
 		dryRun:            opts.DryRun,
 		force:             opts.Force,
@@ -67,7 +67,7 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 }
 
 // ExecuteActions executes actions directly using synthfs
-func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionResult, error) {
+func (e *Executor) ExecuteActions(actions []types.Action) ([]types.ActionResult, error) {
 	if len(actions) == 0 {
 		return []types.ActionResult{}, nil
 	}
@@ -160,7 +160,7 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionR
 }
 
 // convertActionToSynthfsOps converts a single action to synthfs operations
-func (e *DirectExecutor) convertActionToSynthfsOps(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertActionToSynthfsOps(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	switch action.Type {
 	case types.ActionTypeLink:
 		return e.convertLinkAction(sfs, action)
@@ -194,7 +194,7 @@ func (e *DirectExecutor) convertActionToSynthfsOps(sfs *synthfs.SynthFS, action 
 }
 
 // convertLinkAction converts a link action to synthfs operations
-func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertLinkAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" || action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "link action requires source and target")
 	}
@@ -237,7 +237,7 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 }
 
 // convertCopyAction converts a copy action to synthfs operations
-func (e *DirectExecutor) convertCopyAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertCopyAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" || action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "copy action requires source and target")
 	}
@@ -252,7 +252,7 @@ func (e *DirectExecutor) convertCopyAction(sfs *synthfs.SynthFS, action types.Ac
 }
 
 // convertWriteAction converts a write action to synthfs operations
-func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertWriteAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "write action requires target")
 	}
@@ -284,7 +284,7 @@ func expandHome(path string) string {
 }
 
 // executeDryRun handles dry run mode
-func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.ActionResult {
+func (e *Executor) executeDryRun(actions []types.Action) []types.ActionResult {
 	e.logger.Info().Msg("Dry run mode - actions would be executed:")
 	results := make([]types.ActionResult, len(actions))
 
@@ -305,7 +305,7 @@ func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.ActionRes
 }
 
 // logAction logs details about an action
-func (e *DirectExecutor) logAction(action types.Action) {
+func (e *Executor) logAction(action types.Action) {
 	logger := e.logger.With().
 		Str("type", string(action.Type)).
 		Str("description", action.Description).
@@ -333,7 +333,7 @@ func (e *DirectExecutor) logAction(action types.Action) {
 }
 
 // convertResults converts synthfs results to action results
-func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[synthfs.OperationID]*types.Action) []types.ActionResult {
+func (e *Executor) convertResults(result *synthfs.Result, actionMap map[synthfs.OperationID]*types.Action) []types.ActionResult {
 	if result == nil {
 		return []types.ActionResult{}
 	}
@@ -401,7 +401,7 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 }
 
 // generateActionMessage creates user-friendly messages based on action type and status
-func (e *DirectExecutor) generateActionMessage(action *types.Action, status types.OperationStatus, err error) string {
+func (e *Executor) generateActionMessage(action *types.Action, status types.OperationStatus, err error) string {
 	// If there's an error, return a contextual error message
 	if err != nil {
 		return e.generateErrorMessage(action, err)
@@ -484,7 +484,7 @@ func (e *DirectExecutor) generateActionMessage(action *types.Action, status type
 }
 
 // generateErrorMessage creates user-friendly error messages based on action type
-func (e *DirectExecutor) generateErrorMessage(action *types.Action, err error) string {
+func (e *Executor) generateErrorMessage(action *types.Action, err error) string {
 	baseMsg := ""
 	switch action.Type {
 	case types.ActionTypeLink:
@@ -521,7 +521,7 @@ func (e *DirectExecutor) generateErrorMessage(action *types.Action, err error) s
 }
 
 // convertAppendAction converts an append action to synthfs operations
-func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertAppendAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "append action requires target")
 	}
@@ -541,7 +541,7 @@ func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.
 	}, nil
 }
 
-func (e *DirectExecutor) convertMkdirAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertMkdirAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "mkdir action requires target")
 	}
@@ -558,7 +558,7 @@ func (e *DirectExecutor) convertMkdirAction(sfs *synthfs.SynthFS, action types.A
 	return []synthfs.Operation{sfs.CreateDirWithID(id, target, mode)}, nil
 }
 
-func (e *DirectExecutor) convertShellSourceAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertShellSourceAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "shell source action requires source")
 	}
@@ -574,7 +574,7 @@ func (e *DirectExecutor) convertShellSourceAction(sfs *synthfs.SynthFS, action t
 	}, nil
 }
 
-func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertPathAddAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "path add action requires target")
 	}
@@ -603,7 +603,7 @@ func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types
 	}, nil
 }
 
-func (e *DirectExecutor) convertRunAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertRunAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Command == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "run action requires command")
 	}
@@ -629,7 +629,7 @@ func (e *DirectExecutor) convertRunAction(sfs *synthfs.SynthFS, action types.Act
 	}, nil
 }
 
-func (e *DirectExecutor) convertBrewAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertBrewAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source Brewfile")
 	}
@@ -669,7 +669,7 @@ func (e *DirectExecutor) convertBrewAction(sfs *synthfs.SynthFS, action types.Ac
 	return ops, nil
 }
 
-func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertInstallAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "install action requires source")
 	}
@@ -733,7 +733,7 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	return ops, nil
 }
 
-func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" || action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "template action requires source and target")
 	}
@@ -805,7 +805,7 @@ func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action type
 }
 
 // validateAction performs comprehensive validation on an Action before execution
-func (e *DirectExecutor) validateAction(action types.Action) error {
+func (e *Executor) validateAction(action types.Action) error {
 	// Check action type-specific validation
 	switch action.Type {
 	case types.ActionTypeLink:
@@ -836,7 +836,7 @@ func (e *DirectExecutor) validateAction(action types.Action) error {
 }
 
 // validateLinkAction validates paths for link actions
-func (e *DirectExecutor) validateLinkAction(source, target string) error {
+func (e *Executor) validateLinkAction(source, target string) error {
 	// Validate source exists in dotfiles
 	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
 		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
@@ -873,7 +873,7 @@ func (e *DirectExecutor) validateLinkAction(source, target string) error {
 }
 
 // validateCopyAction validates paths for copy actions
-func (e *DirectExecutor) validateCopyAction(source, target string) error {
+func (e *Executor) validateCopyAction(source, target string) error {
 	// Source should be from dotfiles
 	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
 		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
@@ -884,7 +884,7 @@ func (e *DirectExecutor) validateCopyAction(source, target string) error {
 }
 
 // validateWriteAction validates target path for write/append actions
-func (e *DirectExecutor) validateWriteAction(target string) error {
+func (e *Executor) validateWriteAction(target string) error {
 	// Check if target is a protected system file
 	if err := e.validateNotSystemFile(target); err != nil {
 		return err
@@ -895,13 +895,13 @@ func (e *DirectExecutor) validateWriteAction(target string) error {
 }
 
 // validateMkdirAction validates target path for mkdir actions
-func (e *DirectExecutor) validateMkdirAction(target string) error {
+func (e *Executor) validateMkdirAction(target string) error {
 	// Directories should only be created in safe locations
 	return e.validateSafePath(target)
 }
 
 // validateTemplateAction validates paths for template actions
-func (e *DirectExecutor) validateTemplateAction(source, target string) error {
+func (e *Executor) validateTemplateAction(source, target string) error {
 	// Source should be from dotfiles
 	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
 		return errors.Newf(errors.ErrInvalidInput, "template source path %s is outside dotfiles directory", source)
@@ -917,7 +917,7 @@ func (e *DirectExecutor) validateTemplateAction(source, target string) error {
 }
 
 // validateSafePath ensures operations only occur in dodot-controlled directories
-func (e *DirectExecutor) validateSafePath(path string) error {
+func (e *Executor) validateSafePath(path string) error {
 	// Normalize the path
 	path = expandHome(path)
 	absPath, err := filepath.Abs(path)
@@ -959,7 +959,7 @@ func (e *DirectExecutor) validateSafePath(path string) error {
 }
 
 // validateNotSystemFile prevents overwriting critical system files
-func (e *DirectExecutor) validateNotSystemFile(path string) error {
+func (e *Executor) validateNotSystemFile(path string) error {
 	// Normalize the path
 	path = expandHome(path)
 
@@ -988,7 +988,7 @@ func (e *DirectExecutor) validateNotSystemFile(path string) error {
 }
 
 // convertReadAction converts a read action to synthfs operations
-func (e *DirectExecutor) convertReadAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertReadAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "read action requires source")
 	}
@@ -1001,7 +1001,7 @@ func (e *DirectExecutor) convertReadAction(sfs *synthfs.SynthFS, action types.Ac
 }
 
 // convertChecksumAction converts a checksum action to synthfs operations
-func (e *DirectExecutor) convertChecksumAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+func (e *Executor) convertChecksumAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Source == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "checksum action requires source")
 	}
@@ -1031,7 +1031,7 @@ func (e *DirectExecutor) convertChecksumAction(sfs *synthfs.SynthFS, action type
 }
 
 // createAppendFileOperation creates a reusable function for appending content to files
-func (e *DirectExecutor) createAppendFileOperation(target, content string, mode os.FileMode) func(context.Context, filesystem.FileSystem) error {
+func (e *Executor) createAppendFileOperation(target, content string, mode os.FileMode) func(context.Context, filesystem.FileSystem) error {
 	return func(ctx context.Context, fs filesystem.FileSystem) error {
 		// Ensure parent directory exists
 		parentDir := filepath.Dir(target)
