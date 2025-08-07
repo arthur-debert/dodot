@@ -583,8 +583,28 @@ func (e *DirectExecutor) convertBrewAction(sfs *synthfs.SynthFS, action types.Ac
 }
 
 func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
-	// Execute install script
-	return nil, errors.New(errors.ErrNotImplemented, "install action not implemented in POC")
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "install action requires source")
+	}
+
+	// Install script execution - copy script and run it
+	var ops []synthfs.Operation
+
+	// Copy the script to install directory
+	scriptTarget := filepath.Join(e.paths.InstallDir(), filepath.Base(action.Source))
+	copyID := fmt.Sprintf("install_copy_%s_%d", action.Pack, time.Now().UnixNano())
+	ops = append(ops, sfs.CopyWithID(copyID, action.Source, scriptTarget))
+
+	// Make script executable using shell command
+	chmodID := fmt.Sprintf("install_chmod_%s_%d", action.Pack, time.Now().UnixNano())
+	ops = append(ops, sfs.ShellCommandWithID(chmodID, fmt.Sprintf("chmod +x %q", scriptTarget)))
+
+	// Create sentinel file to mark as completed
+	sentinelPath := e.paths.SentinelPath("install", action.Pack)
+	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
+	ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte("completed"), 0644))
+
+	return ops, nil
 }
 
 func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {

@@ -106,6 +106,152 @@ func CreateDisplayResultFromOperations(operations []types.Operation, packs []typ
 	return result
 }
 
+// CreateDisplayResultFromActions transforms a list of actions into a DisplayResult.
+// This is similar to CreateDisplayResultFromOperations but works with Actions directly.
+func CreateDisplayResultFromActions(actions []types.Action, packs []types.Pack, command string) *types.DisplayResult {
+	result := &types.DisplayResult{
+		Command:   command,
+		Timestamp: time.Now(),
+		Packs:     make([]types.DisplayPack, 0),
+	}
+
+	// Create a map to organize actions by pack
+	packActionsMap := make(map[string][]types.Action)
+	packMap := make(map[string]types.Pack)
+
+	// Also track which packs we've seen
+	for _, pack := range packs {
+		packMap[pack.Name] = pack
+		packActionsMap[pack.Name] = []types.Action{} // Initialize even if no actions
+	}
+
+	// Group actions by pack
+	for _, action := range actions {
+		if action.Pack != "" {
+			packActionsMap[action.Pack] = append(packActionsMap[action.Pack], action)
+		}
+	}
+
+	// Process each pack
+	for packName, pack := range packMap {
+		displayPack := types.DisplayPack{
+			Name:  packName,
+			Files: make([]types.DisplayFile, 0),
+		}
+
+		// Check for config file
+		configPath := filepath.Join(pack.Path, ".dodot.toml")
+		if config.FileExists(configPath) {
+			displayPack.HasConfig = true
+			displayPack.Files = append(displayPack.Files, types.DisplayFile{
+				Path:    ".dodot.toml",
+				PowerUp: "config",
+				Status:  "config",
+				Message: "dodot config file found",
+			})
+		}
+
+		// Check for .dodotignore
+		ignorePath := filepath.Join(pack.Path, ".dodotignore")
+		if config.FileExists(ignorePath) {
+			displayPack.IsIgnored = true
+			// If pack is ignored, only show the ignore file
+			displayPack.Files = []types.DisplayFile{
+				{
+					Path:    ".dodotignore",
+					PowerUp: "",
+					Status:  "ignored",
+					Message: "dodot is ignoring this dir",
+				},
+			}
+			displayPack.Status = "ignored"
+			result.Packs = append(result.Packs, displayPack)
+			continue
+		}
+
+		// Convert actions to display files
+		filesMap := make(map[string]*types.DisplayFile)
+
+		for _, action := range packActionsMap[packName] {
+			filePath := getRelativeFilePathFromAction(action, pack.Path)
+
+			// Skip if we already have this file
+			if existingFile, exists := filesMap[filePath]; exists {
+				// If multiple actions affect the same file, that's an error
+				if existingFile.PowerUp != action.PowerUpName {
+					existingFile.Status = "error"
+					existingFile.Message = "Multiple power-ups for same file"
+				}
+				continue
+			}
+
+			displayFile := convertActionToDisplayFile(action, filePath)
+			filesMap[filePath] = &displayFile
+		}
+
+		// Add all files to the pack
+		for _, file := range filesMap {
+			displayPack.Files = append(displayPack.Files, *file)
+		}
+
+		// Calculate and set pack status
+		displayPack.Status = displayPack.GetPackStatus()
+
+		result.Packs = append(result.Packs, displayPack)
+	}
+
+	return result
+}
+
+// convertActionToDisplayFile converts a single action to a display file
+func convertActionToDisplayFile(action types.Action, filePath string) types.DisplayFile {
+	displayFile := types.DisplayFile{
+		Path:    filePath,
+		PowerUp: action.PowerUpName,
+	}
+
+	// Mark overrides based on metadata (if available)
+	if action.Metadata != nil {
+		if triggerName, ok := action.Metadata["trigger_name"].(string); ok && triggerName == "override-rule" {
+			displayFile.IsOverride = true
+			displayFile.Path = "*" + displayFile.Path
+		}
+	}
+
+	// Actions are always ready to execute, unlike Operations which have different statuses
+	displayFile.Status = "queue"
+	displayFile.Message = getVerbForPowerUp(action.PowerUpName, false) // future tense
+
+	return displayFile
+}
+
+// getRelativeFilePathFromAction extracts the file path relative to the pack from an action
+func getRelativeFilePathFromAction(action types.Action, packPath string) string {
+	// Use original path from metadata if available (most accurate)
+	if action.Metadata != nil {
+		if originalPath, ok := action.Metadata["original_path"].(string); ok && originalPath != "" {
+			return originalPath
+		}
+	}
+
+	// Try to extract from source path
+	if action.Source != "" {
+		relPath, err := filepath.Rel(packPath, action.Source)
+		if err == nil && !filepath.IsAbs(relPath) && relPath != "." && !strings.HasPrefix(relPath, "..") {
+			return relPath
+		}
+		// Fallback to base name
+		return filepath.Base(action.Source)
+	}
+
+	// For actions without source, use target
+	if action.Target != "" {
+		return filepath.Base(action.Target)
+	}
+
+	return "unknown"
+}
+
 // convertOperationToDisplayFile converts a single operation to a display file
 func convertOperationToDisplayFile(op types.Operation, filePath string) types.DisplayFile {
 	displayFile := types.DisplayFile{

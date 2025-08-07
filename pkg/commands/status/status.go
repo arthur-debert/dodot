@@ -67,3 +67,42 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	log.Info().Str("command", "StatusPacks").Int("packCount", len(result.Packs)).Msg("Command finished")
 	return result, nil
 }
+
+// StatusPacksDirect checks the deployment status using the direct action-based approach.
+func StatusPacksDirect(opts StatusPacksOptions) (*types.DisplayResult, error) {
+	log := logging.GetLogger("core.commands")
+	log.Debug().Str("command", "StatusPacksDirect").Msg("Executing command")
+
+	// 1. Get all packs using the core pipeline
+	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
+	if err != nil {
+		return nil, err
+	}
+	allPacks, err := core.GetPacks(candidates)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Filter to selected packs
+	selectedPacks, err := packs.SelectPacks(allPacks, opts.PackNames)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Get actions directly (no conversion to operations)
+	triggerMatches, err := core.GetFiringTriggers(selectedPacks)
+	if err != nil {
+		return nil, err
+	}
+
+	actions, err := core.GetActions(triggerMatches)
+	if err != nil {
+		return nil, err
+	}
+
+	// 4. Transform actions into DisplayResult (new function)
+	result := CreateDisplayResultFromActions(actions, selectedPacks, "status")
+
+	log.Info().Str("command", "StatusPacksDirect").Int("packCount", len(result.Packs)).Msg("Command finished")
+	return result, nil
+}

@@ -34,3 +34,23 @@ func ExecuteOperations(opts ExecuteOperationsOptions) ([]types.OperationResult, 
 
 	return opResults, nil
 }
+
+// ExecuteActionsDirectly provides a bridge for direct execution compatibility.
+// Since DirectExecutor executes during pipeline execution, this function is primarily
+// for interface compatibility and returns operation results from ExecutionContext.
+func ExecuteActionsDirectly(context *types.ExecutionContext) ([]types.OperationResult, error) {
+	if context == nil {
+		return nil, nil
+	}
+
+	var allResults []types.OperationResult
+
+	// Extract operation results from all pack execution results
+	for _, packResult := range context.PackResults {
+		for _, opResult := range packResult.Operations {
+			allResults = append(allResults, *opResult)
+		}
+	}
+
+	return allResults, nil
+}

@@ -64,3 +64,61 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 	log.Info().Str("command", "InstallPacks").Msg("Command finished")
 	return mergedResult, nil
 }
+
+// InstallPacksDirect runs the installation and deployment logic using the direct executor approach.
+// It first executes power-ups with RunModeOnce, then those with RunModeMany.
+func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
+	log := logging.GetLogger("core.commands")
+	log.Debug().Str("command", "InstallPacksDirect").Msg("Executing command")
+
+	// Create combined execution context
+	combinedContext := types.NewExecutionContext("install", opts.DryRun)
+
+	// Step 1: Run "once" power-ups
+	onceOpts := internal.ExecutionOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeOnce,
+		Force:              opts.Force,
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	}
+	onceContext, err := internal.RunDirectExecutionPipeline(onceOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 2: Run "many" power-ups (deploy)
+	manyOpts := internal.ExecutionOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany,
+		Force:              opts.Force,
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	}
+	manyContext, err := internal.RunDirectExecutionPipeline(manyOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 3: Merge contexts
+	// Copy results from both contexts into the combined context
+	for packName, packResult := range onceContext.PackResults {
+		combinedContext.AddPackResult(packName, packResult)
+	}
+	for packName, packResult := range manyContext.PackResults {
+		if existingResult, exists := combinedContext.PackResults[packName]; exists {
+			// Merge operation results from both contexts
+			for _, opResult := range packResult.Operations {
+				existingResult.AddOperationResult(opResult)
+			}
+		} else {
+			combinedContext.AddPackResult(packName, packResult)
+		}
+	}
+
+	combinedContext.Complete()
+	log.Info().Str("command", "InstallPacksDirect").Msg("Command finished")
+	return combinedContext, nil
+}

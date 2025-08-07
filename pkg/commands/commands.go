@@ -42,6 +42,11 @@ func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
 	return deploy.DeployPacks(opts)
 }
 
+// DeployPacksDirect runs deployment logic using the direct executor approach.
+func DeployPacksDirect(opts DeployPacksOptions) (*types.ExecutionContext, error) {
+	return deploy.DeployPacksDirect(opts)
+}
+
 // InstallPacks runs installation + deployment (RunModeOnce then RunModeMany power-ups).
 type InstallPacksOptions = install.InstallPacksOptions
 
@@ -49,11 +54,21 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 	return install.InstallPacks(opts)
 }
 
+// InstallPacksDirect runs installation + deployment using the direct executor approach.
+func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
+	return install.InstallPacksDirect(opts)
+}
+
 // StatusPacks checks the deployment status of specified packs.
 type StatusPacksOptions = status.StatusPacksOptions
 
 func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	return status.StatusPacks(opts)
+}
+
+// StatusPacksDirect checks deployment status using the direct action-based approach.
+func StatusPacksDirect(opts StatusPacksOptions) (*types.DisplayResult, error) {
+	return status.StatusPacksDirect(opts)
 }
 
 // FillPack adds missing template files to an existing pack.
