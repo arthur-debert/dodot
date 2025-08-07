@@ -549,3 +549,370 @@ func TestDirectExecutor_ForceMode(t *testing.T) {
 	testutil.AssertNoError(t, err)
 	testutil.AssertTrue(t, info.Mode()&os.ModeSymlink != 0, "Target should be a symlink")
 }
+
+func TestDirectExecutor_BrewAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-brew")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/homebrew")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a Brewfile
+	brewfileContent := `tap "homebrew/cask"
+brew "git"
+brew "vim"
+cask "visual-studio-code"`
+	testutil.CreateFile(t, dotfilesDir, "Brewfile", brewfileContent)
+	brewfile := filepath.Join(dotfilesDir, "Brewfile")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            true, // Use dry run to avoid actually running brew
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create brew action with checksum metadata
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeBrew,
+			Description: "Install packages from Brewfile",
+			Source:      brewfile,
+			Pack:        "homebrew",
+			PowerUpName: "homebrew",
+			Priority:    90,
+			Metadata: map[string]interface{}{
+				"pack":     "homebrew",
+				"checksum": "abc123", // Mock checksum
+			},
+		},
+	}
+
+	// Execute in dry run mode
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+}
+
+func TestDirectExecutor_TemplateAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-template")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a template file
+	templateContent := `# Configuration for {{.USER}}
+Host: {{.HOSTNAME}}
+Home: ${HOME}
+Custom: {{.CUSTOM_VAR}}`
+	testutil.CreateFile(t, dotfilesDir, "config.tmpl", templateContent)
+	templateFile := filepath.Join(dotfilesDir, "config.tmpl")
+	targetFile := filepath.Join(homeDir, ".config", "app.conf")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create template action with variables
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeTemplate,
+			Description: "Process configuration template",
+			Source:      templateFile,
+			Target:      targetFile,
+			Pack:        "config",
+			PowerUpName: "template",
+			Priority:    80,
+			Metadata: map[string]interface{}{
+				"variables": map[string]string{
+					"USER":       "testuser",
+					"HOSTNAME":   "testhost",
+					"HOME":       homeDir,
+					"CUSTOM_VAR": "custom_value",
+				},
+			},
+		},
+	}
+
+	// Execute
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// Verify template was processed
+	testutil.AssertTrue(t, testutil.FileExists(t, targetFile), "Target file should exist")
+	content := testutil.ReadFile(t, targetFile)
+	testutil.AssertContains(t, content, "# Configuration for testuser")
+	testutil.AssertContains(t, content, "Host: testhost")
+	testutil.AssertContains(t, content, "Home: "+homeDir)
+	testutil.AssertContains(t, content, "Custom: custom_value")
+}
+
+func TestDirectExecutor_InstallAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-install")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create an install script
+	installScript := `#!/bin/bash
+echo "Installing tools..."
+echo "Done!"`
+	testutil.CreateFile(t, dotfilesDir, "install.sh", installScript)
+	scriptPath := filepath.Join(dotfilesDir, "install.sh")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create install action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeInstall,
+			Description: "Run install script",
+			Source:      scriptPath,
+			Pack:        "tools",
+			PowerUpName: "install_script",
+			Priority:    90,
+		},
+	}
+
+	// Execute
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// Verify script was copied to install directory
+	targetScript := filepath.Join(p.InstallDir(), "install.sh")
+	testutil.AssertTrue(t, testutil.FileExists(t, targetScript), "Install script should be copied")
+
+	// Verify sentinel file was created
+	sentinelPath := p.SentinelPath("install", "tools")
+	testutil.AssertTrue(t, testutil.FileExists(t, sentinelPath), "Sentinel file should exist")
+}
+
+func TestDirectExecutor_AppendAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-append")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create an existing file to append to
+	existingContent := "# Existing content\n"
+	targetFile := filepath.Join(homeDir, ".bashrc")
+	testutil.CreateFile(t, homeDir, ".bashrc", existingContent)
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create append action
+	appendContent := "\n# Added by dodot\nexport PATH=$PATH:/usr/local/bin\n"
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeAppend,
+			Description: "Append to .bashrc",
+			Target:      targetFile,
+			Content:     appendContent,
+			Pack:        "shell",
+			PowerUpName: "shell_profile",
+			Priority:    80,
+		},
+	}
+
+	// Execute
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// Verify content was appended
+	content := testutil.ReadFile(t, targetFile)
+	testutil.AssertContains(t, content, existingContent)
+	testutil.AssertContains(t, content, appendContent)
+	testutil.AssertEqual(t, existingContent+appendContent, content)
+}
+
+func TestDirectExecutor_ShellSourceAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-shellsource")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a shell script to source
+	shellScript := `# Custom shell functions
+function myfunc() {
+    echo "Hello from myfunc"
+}`
+	testutil.CreateFile(t, dotfilesDir, "functions.sh", shellScript)
+	scriptPath := filepath.Join(dotfilesDir, "functions.sh")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create shell source action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeShellSource,
+			Description: "Source shell functions",
+			Source:      scriptPath,
+			Pack:        "shell",
+			PowerUpName: "shell_profile",
+			Priority:    80,
+		},
+	}
+
+	// Execute
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// Verify source command was added to shell init file
+	shellInitFile := filepath.Join(p.ShellDir(), "init.sh")
+	testutil.AssertTrue(t, testutil.FileExists(t, shellInitFile), "Shell init file should exist")
+	content := testutil.ReadFile(t, shellInitFile)
+	testutil.AssertContains(t, content, "source \""+scriptPath+"\"")
+}
+
+func TestDirectExecutor_PathAddAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-pathadd")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a bin directory to add to PATH
+	binDir := filepath.Join(dotfilesDir, "bin")
+	testutil.CreateDir(t, dotfilesDir, "bin")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create path add action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypePathAdd,
+			Description: "Add bin directory to PATH",
+			Target:      binDir,
+			Pack:        "tools",
+			PowerUpName: "path",
+			Priority:    90,
+		},
+	}
+
+	// Execute
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// Verify PATH export was added to shell init file
+	shellInitFile := filepath.Join(p.ShellDir(), "init.sh")
+	testutil.AssertTrue(t, testutil.FileExists(t, shellInitFile), "Shell init file should exist")
+	content := testutil.ReadFile(t, shellInitFile)
+	testutil.AssertContains(t, content, "export PATH=\""+binDir+":$PATH\"")
+}
