@@ -16,6 +16,8 @@ type InstallPacksOptions struct {
 	DryRun bool
 	// Force re-runs power-ups that normally only run once.
 	Force bool
+	// EnableHomeSymlinks allows symlink operations to target the user's home directory.
+	EnableHomeSymlinks bool
 }
 
 // InstallPacks runs the installation and deployment logic for the specified packs.
@@ -26,11 +28,12 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 
 	// Step 1: Run "once" power-ups
 	onceOpts := internal.ExecutionOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		RunMode:      types.RunModeOnce,
-		Force:        opts.Force,
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeOnce,
+		Force:              opts.Force,
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
 	onceResult, err := internal.RunExecutionPipeline(onceOpts)
 	if err != nil {
@@ -39,11 +42,12 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
 
 	// Step 2: Run "many" power-ups (deploy)
 	manyOpts := internal.ExecutionOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		RunMode:      types.RunModeMany,
-		Force:        opts.Force,
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany,
+		Force:              opts.Force,
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
 	manyResult, err := internal.RunExecutionPipeline(manyOpts)
 	if err != nil {

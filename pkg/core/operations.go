@@ -76,6 +76,18 @@ func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *Executio
 		allOperations = append(allOperations, ops...)
 	}
 
+	// Validate operations immediately after generation (fail fast)
+	if ctx != nil && ctx.PathValidator != nil {
+		logger.Debug().Int("operationCount", len(allOperations)).Msg("Validating operations")
+		if err := ctx.PathValidator.ValidateOperations(allOperations); err != nil {
+			logger.Error().
+				Err(err).
+				Msg("Operation validation failed")
+			return nil, errors.Wrap(err, errors.ErrActionExecute, "operation validation failed")
+		}
+		logger.Debug().Msg("All operations validated successfully")
+	}
+
 	// Deduplicate operations (especially directory creation)
 	logger.Debug().
 		Int("beforeDedup", len(allOperations)).

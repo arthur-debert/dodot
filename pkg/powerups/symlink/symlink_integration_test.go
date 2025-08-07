@@ -31,9 +31,10 @@ func TestSymlinkPowerUp_Integration(t *testing.T) {
 
 	// Deploy the pack
 	result, err := commands.DeployPacks(commands.DeployPacksOptions{
-		DotfilesRoot: testEnv.DotfilesRoot(),
-		PackNames:    []string{"vim"},
-		DryRun:       false,
+		DotfilesRoot:       testEnv.DotfilesRoot(),
+		PackNames:          []string{"vim"},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
 	})
 	require.NoError(t, err)
 	assert.Len(t, result.Packs, 1)

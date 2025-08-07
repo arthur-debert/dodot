@@ -10,11 +10,12 @@ import (
 
 // ExecutionOptions is an internal struct to pass to the pipeline runner.
 type ExecutionOptions struct {
-	DotfilesRoot string
-	PackNames    []string
-	DryRun       bool
-	RunMode      types.RunMode
-	Force        bool
+	DotfilesRoot       string
+	PackNames          []string
+	DryRun             bool
+	RunMode            types.RunMode
+	Force              bool
+	EnableHomeSymlinks bool
 }
 
 // RunExecutionPipeline is the core logic for deploy and install.
@@ -78,7 +79,12 @@ func RunExecutionPipeline(opts ExecutionOptions) (*types.ExecutionResult, error)
 	}
 
 	// 7. Create execution context
-	ctx := core.NewExecutionContext(opts.Force, pathsInstance)
+	var ctx *core.ExecutionContext
+	if opts.EnableHomeSymlinks {
+		ctx = core.NewExecutionContextWithHomeSymlinks(opts.Force, pathsInstance, opts.EnableHomeSymlinks, nil)
+	} else {
+		ctx = core.NewExecutionContext(opts.Force, pathsInstance)
+	}
 
 	// 8. Extract and execute checksum operations early (for run-once actions)
 	// This is needed because brew/install actions need checksums during conversion

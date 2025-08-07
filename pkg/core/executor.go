@@ -7,11 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/validation"
 	"github.com/rs/zerolog"
 )
 
@@ -25,9 +27,10 @@ type OperationResult struct {
 
 // ExecutionContext holds results from operation execution
 type ExecutionContext struct {
-	ChecksumResults map[string]string // Maps file path to checksum
-	Force           bool              // Whether to force operations
-	Paths           *paths.Paths      // Paths configuration for the execution
+	ChecksumResults map[string]string         // Maps file path to checksum
+	Force           bool                      // Whether to force operations
+	Paths           *paths.Paths              // Paths configuration for the execution
+	PathValidator   *validation.PathValidator // Path validator for operations
 	logger          zerolog.Logger
 }
 
@@ -37,6 +40,21 @@ func NewExecutionContext(force bool, paths *paths.Paths) *ExecutionContext {
 		ChecksumResults: make(map[string]string),
 		Force:           force,
 		Paths:           paths,
+		PathValidator:   validation.NewPathValidator(paths, false, config.Default()),
+		logger:          logging.GetLogger("core.executor"),
+	}
+}
+
+// NewExecutionContextWithHomeSymlinks creates a new execution context with home symlinks enabled
+func NewExecutionContextWithHomeSymlinks(force bool, paths *paths.Paths, allowHomeSymlinks bool, cfg *config.Config) *ExecutionContext {
+	if cfg == nil {
+		cfg = config.Default()
+	}
+	return &ExecutionContext{
+		ChecksumResults: make(map[string]string),
+		Force:           force,
+		Paths:           paths,
+		PathValidator:   validation.NewPathValidator(paths, allowHomeSymlinks, cfg),
 		logger:          logging.GetLogger("core.executor"),
 	}
 }
