@@ -1,6 +1,10 @@
 package types
 
-import "time"
+import (
+	"os"
+	"path/filepath"
+	"time"
+)
 
 // ExecutionStatus represents the overall status of a pack's execution
 type ExecutionStatus string
@@ -248,11 +252,15 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 	// Transform each pack
 	for _, packName := range packNames {
 		packResult := ec.PackResults[packName]
+
+		// Check for configuration files
+		hasConfig, isIgnored := checkPackConfiguration(packResult.Pack)
+
 		displayPack := DisplayPack{
 			Name:      packName,
 			Files:     make([]DisplayFile, 0),
-			HasConfig: false, // TODO: Check if pack has .dodot.toml file
-			IsIgnored: false, // TODO: Check if pack has .dodotignore file
+			HasConfig: hasConfig,
+			IsIgnored: isIgnored,
 		}
 
 		// Transform PowerUpResults to DisplayFiles
@@ -297,4 +305,25 @@ func mapOperationStatusToDisplayStatus(status OperationStatus) string {
 	default:
 		return "queue"
 	}
+}
+
+// checkPackConfiguration checks for .dodot.toml and .dodotignore files in the pack directory
+func checkPackConfiguration(pack *Pack) (hasConfig bool, isIgnored bool) {
+	if pack == nil || pack.Path == "" {
+		return false, false
+	}
+
+	// Check for .dodot.toml file
+	configPath := filepath.Join(pack.Path, ".dodot.toml")
+	if _, err := os.Stat(configPath); err == nil {
+		hasConfig = true
+	}
+
+	// Check for .dodotignore file
+	ignorePath := filepath.Join(pack.Path, ".dodotignore")
+	if _, err := os.Stat(ignorePath); err == nil {
+		isIgnored = true
+	}
+
+	return hasConfig, isIgnored
 }
