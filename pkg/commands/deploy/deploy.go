@@ -40,3 +40,26 @@ func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
 	log.Info().Str("command", "DeployPacks").Msg("Command finished")
 	return result, nil
 }
+
+// DeployPacksDirect runs the deployment logic using the direct executor approach.
+// This executes power-ups with RunModeMany directly without intermediate Operations.
+func DeployPacksDirect(opts DeployPacksOptions) (*types.ExecutionContext, error) {
+	log := logging.GetLogger("core.commands")
+	log.Debug().Str("command", "DeployPacksDirect").Msg("Executing command")
+
+	execOpts := internal.ExecutionOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany,
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	}
+
+	context, err := internal.RunDirectExecutionPipeline(execOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info().Str("command", "DeployPacksDirect").Msg("Command finished")
+	return context, nil
+}
