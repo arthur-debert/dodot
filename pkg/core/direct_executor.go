@@ -185,11 +185,9 @@ func (e *DirectExecutor) convertActionToSynthfsOps(sfs *synthfs.SynthFS, action 
 	case types.ActionTypeTemplate:
 		return e.convertTemplateAction(sfs, action)
 	case types.ActionTypeRead:
-		// Read actions don't produce synthfs operations
-		return nil, nil
+		return e.convertReadAction(sfs, action)
 	case types.ActionTypeChecksum:
-		// Checksum actions don't produce synthfs operations
-		return nil, nil
+		return e.convertChecksumAction(sfs, action)
 	default:
 		return nil, errors.Newf(errors.ErrActionInvalid, "unknown action type: %s", action.Type)
 	}
@@ -399,7 +397,7 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 	return results
 }
 
-// Placeholder implementations for other action types
+// convertAppendAction converts an append action to synthfs operations
 func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "append action requires target")
@@ -410,31 +408,13 @@ func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.
 
 	// For append, we need to read existing content first
 	id := fmt.Sprintf("append_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
+	mode := os.FileMode(0644)
+	if action.Mode != 0 {
+		mode = os.FileMode(action.Mode)
+	}
+
 	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Read existing content
-			file, err := fs.Open(target)
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			var existing []byte
-			if err == nil {
-				defer func() { _ = file.Close() }()
-				existing, err = io.ReadAll(file)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Append new content
-			newContent := string(existing) + action.Content
-			mode := os.FileMode(0644)
-			if action.Mode != 0 {
-				mode = os.FileMode(action.Mode)
-			}
-
-			return fs.WriteFile(target, []byte(newContent), mode)
-		}),
+		sfs.CustomOperationWithID(id, e.createAppendFileOperation(target, action.Content, mode)),
 	}, nil
 }
 
@@ -467,30 +447,7 @@ func (e *DirectExecutor) convertShellSourceAction(sfs *synthfs.SynthFS, action t
 
 	id := fmt.Sprintf("shell_source_%s_%d", action.Pack, time.Now().UnixNano())
 	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Ensure shell directory exists
-			if err := fs.MkdirAll(e.paths.ShellDir(), 0755); err != nil {
-				return err
-			}
-
-			// Read existing content
-			file, err := fs.Open(shellInitFile)
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			var existing []byte
-			if err == nil {
-				defer func() { _ = file.Close() }()
-				existing, err = io.ReadAll(file)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Append new content
-			newContent := string(existing) + content
-			return fs.WriteFile(shellInitFile, []byte(newContent), 0644)
-		}),
+		sfs.CustomOperationWithID(id, e.createAppendFileOperation(shellInitFile, content, 0644)),
 	}, nil
 }
 
@@ -507,33 +464,18 @@ func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types
 	id := fmt.Sprintf("path_add_%s_%d", action.Pack, time.Now().UnixNano())
 	return []synthfs.Operation{
 		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Ensure shell directory exists
-			if err := fs.MkdirAll(e.paths.ShellDir(), 0755); err != nil {
-				return err
-			}
-
-			// Read existing content
+			// First check if path is already added
 			file, err := fs.Open(shellInitFile)
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			var existing []byte
 			if err == nil {
 				defer func() { _ = file.Close() }()
-				existing, err = io.ReadAll(file)
-				if err != nil {
-					return err
+				existing, err := io.ReadAll(file)
+				if err == nil && strings.Contains(string(existing), action.Target) {
+					return nil // Already added
 				}
 			}
 
-			// Check if path is already added
-			if strings.Contains(string(existing), action.Target) {
-				return nil // Already added
-			}
-
-			// Append new content
-			newContent := string(existing) + content
-			return fs.WriteFile(shellInitFile, []byte(newContent), 0644)
+			// Use the helper to append
+			return e.createAppendFileOperation(shellInitFile, content, 0644)(ctx, fs)
 		}),
 	}, nil
 }
@@ -881,4 +823,83 @@ func (e *DirectExecutor) validateNotSystemFile(path string) error {
 	}
 
 	return nil
+}
+
+// convertReadAction converts a read action to synthfs operations
+func (e *DirectExecutor) convertReadAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "read action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	// Create read operation
+	id := fmt.Sprintf("read_%s_%s_%d", action.Pack, filepath.Base(source), time.Now().UnixNano())
+	return []synthfs.Operation{sfs.ReadFileWithID(id, source)}, nil
+}
+
+// convertChecksumAction converts a checksum action to synthfs operations
+func (e *DirectExecutor) convertChecksumAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "checksum action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	// Get algorithm from metadata, default to SHA256
+	algorithm := synthfs.SHA256
+	if action.Metadata != nil {
+		if alg, ok := action.Metadata["algorithm"].(string); ok {
+			switch strings.ToLower(alg) {
+			case "md5":
+				algorithm = synthfs.MD5
+			case "sha1":
+				algorithm = synthfs.SHA1
+			case "sha256":
+				algorithm = synthfs.SHA256
+			case "sha512":
+				algorithm = synthfs.SHA512
+			}
+		}
+	}
+
+	// Create checksum operation
+	id := fmt.Sprintf("checksum_%s_%s_%d", action.Pack, filepath.Base(source), time.Now().UnixNano())
+	return []synthfs.Operation{sfs.ChecksumWithID(id, source, algorithm)}, nil
+}
+
+// createAppendFileOperation creates a reusable function for appending content to files
+func (e *DirectExecutor) createAppendFileOperation(target, content string, mode os.FileMode) func(context.Context, filesystem.FileSystem) error {
+	return func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Ensure parent directory exists
+		parentDir := filepath.Dir(target)
+		if parentDir != "." && parentDir != "/" {
+			if err := fs.MkdirAll(parentDir, 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory %s: %w", parentDir, err)
+			}
+		}
+
+		// Read existing content
+		file, err := fs.Open(target)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to open file %s: %w", target, err)
+		}
+		var existing []byte
+		if err == nil {
+			defer func() { _ = file.Close() }()
+			existing, err = io.ReadAll(file)
+			if err != nil {
+				return fmt.Errorf("failed to read file %s: %w", target, err)
+			}
+		}
+
+		// Append new content
+		newContent := string(existing) + content
+		err = fs.WriteFile(target, []byte(newContent), mode)
+		if err != nil {
+			return fmt.Errorf("failed to write file %s: %w", target, err)
+		}
+
+		return nil
+	}
 }
