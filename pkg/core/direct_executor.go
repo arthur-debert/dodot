@@ -15,7 +15,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/arthur-debert/dodot/pkg/validation"
 	"github.com/arthur-debert/synthfs/pkg/synthfs"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 	"github.com/rs/zerolog"
@@ -40,7 +39,7 @@ type DirectExecutor struct {
 	config            *config.Config
 	allowHomeSymlinks bool
 	enableRollback    bool
-	pathValidator     *validation.PathValidator
+	// pathValidator removed - validation will be handled directly on Actions
 }
 
 // NewDirectExecutor creates a new direct executor
@@ -54,9 +53,6 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 		cfg = config.Default()
 	}
 
-	// Create path validator
-	pathValidator := validation.NewPathValidator(opts.Paths, opts.AllowHomeSymlinks, cfg)
-
 	return &DirectExecutor{
 		logger:            logging.GetLogger("core.direct_executor"),
 		dryRun:            opts.DryRun,
@@ -66,14 +62,14 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 		config:            cfg,
 		allowHomeSymlinks: opts.AllowHomeSymlinks,
 		enableRollback:    cfg.Security.EnableRollback,
-		pathValidator:     pathValidator,
+		// pathValidator removed - validation will be handled directly on Actions
 	}
 }
 
 // ExecuteActions executes actions directly using synthfs
-func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.OperationResult, error) {
+func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionResult, error) {
 	if len(actions) == 0 {
-		return []types.OperationResult{}, nil
+		return []types.ActionResult{}, nil
 	}
 
 	e.logger.Info().Int("actionCount", len(actions)).Msg("Executing actions directly")
@@ -107,6 +103,17 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.Operati
 	for i := range sortedActions {
 		action := &sortedActions[i]
 
+		// Validate action before processing
+		if err := e.validateAction(*action); err != nil {
+			e.logger.Error().
+				Err(err).
+				Str("type", string(action.Type)).
+				Str("description", action.Description).
+				Msg("Action failed validation")
+			return nil, errors.Wrapf(err, errors.ErrActionInvalid,
+				"action validation failed: %s", action.Description)
+		}
+
 		ops, err := e.convertActionToSynthfsOps(sfs, *action)
 		if err != nil {
 			e.logger.Error().
@@ -125,7 +132,7 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.Operati
 	}
 
 	if len(synthfsOps) == 0 {
-		return []types.OperationResult{}, nil
+		return []types.ActionResult{}, nil
 	}
 
 	// Set up pipeline options
@@ -140,7 +147,7 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.Operati
 
 	result, err := synthfs.RunWithOptions(ctx, e.filesystem, options, synthfsOps...)
 
-	// Convert synthfs results to operation results
+	// Convert synthfs results to action results
 	results := e.convertResults(result, actionMap)
 
 	if err != nil {
@@ -178,11 +185,9 @@ func (e *DirectExecutor) convertActionToSynthfsOps(sfs *synthfs.SynthFS, action 
 	case types.ActionTypeTemplate:
 		return e.convertTemplateAction(sfs, action)
 	case types.ActionTypeRead:
-		// Read actions don't produce synthfs operations
-		return nil, nil
+		return e.convertReadAction(sfs, action)
 	case types.ActionTypeChecksum:
-		// Checksum actions don't produce synthfs operations
-		return nil, nil
+		return e.convertChecksumAction(sfs, action)
 	default:
 		return nil, errors.Newf(errors.ErrActionInvalid, "unknown action type: %s", action.Type)
 	}
@@ -197,10 +202,7 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 	source := expandHome(action.Source)
 	target := expandHome(action.Target)
 
-	// Validate paths
-	if err := e.validateSymlinkPaths(source, target); err != nil {
-		return nil, err
-	}
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	deployedPath := filepath.Join(e.paths.SymlinkDir(), filepath.Base(target))
 
@@ -243,10 +245,7 @@ func (e *DirectExecutor) convertCopyAction(sfs *synthfs.SynthFS, action types.Ac
 	source := expandHome(action.Source)
 	target := expandHome(action.Target)
 
-	// Validate paths
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	id := fmt.Sprintf("copy_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
 	return []synthfs.Operation{sfs.CopyWithID(id, source, target)}, nil
@@ -260,10 +259,7 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 	target := expandHome(action.Target)
 
-	// Validate path
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	mode := os.FileMode(0644)
 	if action.Mode != 0 {
@@ -276,24 +272,7 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 // Other conversion methods would follow similar patterns...
 
-// validatePath validates a single path
-func (e *DirectExecutor) validatePath(path string) error {
-	op := types.Operation{
-		Type:   types.OperationWriteFile,
-		Target: path,
-	}
-	return e.pathValidator.ValidateOperation(op)
-}
-
-// validateSymlinkPaths validates symlink source and target paths
-func (e *DirectExecutor) validateSymlinkPaths(source, target string) error {
-	op := types.Operation{
-		Type:   types.OperationCreateSymlink,
-		Source: source,
-		Target: target,
-	}
-	return e.pathValidator.ValidateOperation(op)
-}
+// Action validation is implemented in validateAction method
 
 // expandHome expands ~ to home directory
 func expandHome(path string) string {
@@ -305,22 +284,20 @@ func expandHome(path string) string {
 }
 
 // executeDryRun handles dry run mode
-func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.OperationResult {
+func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.ActionResult {
 	e.logger.Info().Msg("Dry run mode - actions would be executed:")
-	results := make([]types.OperationResult, len(actions))
+	results := make([]types.ActionResult, len(actions))
 
+	now := time.Now()
 	for i, action := range actions {
 		e.logAction(action)
-		results[i] = types.OperationResult{
-			Operation: &types.Operation{
-				Type:        types.OperationType(action.Type),
-				Description: action.Description,
-				Pack:        action.Pack,
-				PowerUp:     action.PowerUpName,
-			},
+		message := e.generateActionMessage(&action, types.StatusReady, nil)
+		results[i] = types.ActionResult{
+			Action:    action,
 			Status:    types.StatusReady,
-			StartTime: time.Now(),
-			EndTime:   time.Now(),
+			StartTime: now,
+			EndTime:   now,
+			Message:   message,
 		}
 	}
 
@@ -355,10 +332,10 @@ func (e *DirectExecutor) logAction(action types.Action) {
 	}
 }
 
-// convertResults converts synthfs results to operation results
-func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[synthfs.OperationID]*types.Action) []types.OperationResult {
+// convertResults converts synthfs results to action results
+func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[synthfs.OperationID]*types.Action) []types.ActionResult {
 	if result == nil {
-		return []types.OperationResult{}
+		return []types.ActionResult{}
 	}
 
 	statusMap := map[synthfs.OperationStatus]types.OperationStatus{
@@ -367,7 +344,8 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 		synthfs.StatusValidation: types.StatusError,
 	}
 
-	results := []types.OperationResult{}
+	// Group operations by action to create proper ActionResults
+	actionResults := make(map[*types.Action]*types.ActionResult)
 	operations := result.GetOperations()
 
 	for _, opResult := range operations {
@@ -385,67 +363,181 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 				status = types.StatusError
 			}
 
-			// Create a pseudo-operation for the result
-			// In the real implementation, we might want to refactor OperationResult
-			// to work with Actions directly
-			results = append(results, types.OperationResult{
-				Operation: &types.Operation{
-					Type:        types.OperationType(action.Type),
-					Description: action.Description,
-					Pack:        action.Pack,
-					PowerUp:     action.PowerUpName,
-					Source:      action.Source,
-					Target:      action.Target,
-				},
-				Status:    status,
-				Error:     synthfsResult.Error,
-				StartTime: time.Now().Add(-synthfsResult.Duration),
-				EndTime:   time.Now(),
-			})
+			// Get or create ActionResult for this action
+			if actionResult, exists := actionResults[action]; exists {
+				// Update existing result - if any operation fails, the entire action fails
+				if status == types.StatusError {
+					actionResult.Status = types.StatusError
+					if actionResult.Error == nil {
+						actionResult.Error = synthfsResult.Error
+					}
+				}
+				// Track all synthfs operation IDs for debugging
+				actionResult.SynthfsOperationIDs = append(actionResult.SynthfsOperationIDs, string(synthfsResult.OperationID))
+			} else {
+				// Create new ActionResult
+				now := time.Now()
+				message := e.generateActionMessage(action, status, synthfsResult.Error)
+				actionResults[action] = &types.ActionResult{
+					Action:              *action,
+					Status:              status,
+					Error:               synthfsResult.Error,
+					Message:             message,
+					StartTime:           now.Add(-synthfsResult.Duration),
+					EndTime:             now,
+					SynthfsOperationIDs: []string{string(synthfsResult.OperationID)},
+				}
+			}
 		}
+	}
+
+	// Convert map to slice
+	results := make([]types.ActionResult, 0, len(actionResults))
+	for _, actionResult := range actionResults {
+		results = append(results, *actionResult)
 	}
 
 	return results
 }
 
-// Placeholder implementations for other action types
+// generateActionMessage creates user-friendly messages based on action type and status
+func (e *DirectExecutor) generateActionMessage(action *types.Action, status types.OperationStatus, err error) string {
+	// If there's an error, return a contextual error message
+	if err != nil {
+		return e.generateErrorMessage(action, err)
+	}
+
+	// Generate success messages based on action type
+	switch action.Type {
+	case types.ActionTypeLink:
+		if status == types.StatusReady {
+			return fmt.Sprintf("linked to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared symlink to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeCopy:
+		if status == types.StatusReady {
+			return fmt.Sprintf("copied to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared copy to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeWrite:
+		if status == types.StatusReady {
+			return fmt.Sprintf("wrote %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared write to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeAppend:
+		if status == types.StatusReady {
+			return fmt.Sprintf("appended to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared append to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeMkdir:
+		if status == types.StatusReady {
+			return fmt.Sprintf("created directory %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared directory %s", filepath.Base(action.Target))
+
+	case types.ActionTypeShellSource:
+		if status == types.StatusReady {
+			return "added to shell profile"
+		}
+		return "prepared shell profile update"
+
+	case types.ActionTypePathAdd:
+		if status == types.StatusReady {
+			return fmt.Sprintf("added %s to PATH", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared PATH addition for %s", filepath.Base(action.Target))
+
+	case types.ActionTypeRun:
+		if status == types.StatusReady {
+			return "executed successfully"
+		}
+		return "prepared for execution"
+
+	case types.ActionTypeBrew:
+		if status == types.StatusReady {
+			return "Homebrew packages installed"
+		}
+		return "prepared Homebrew installation"
+
+	case types.ActionTypeInstall:
+		if status == types.StatusReady {
+			return "install script executed"
+		}
+		return "prepared install script"
+
+	case types.ActionTypeTemplate:
+		if status == types.StatusReady {
+			return fmt.Sprintf("rendered template to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared template for %s", filepath.Base(action.Target))
+
+	default:
+		if status == types.StatusReady {
+			return "completed successfully"
+		}
+		return "prepared"
+	}
+}
+
+// generateErrorMessage creates user-friendly error messages based on action type
+func (e *DirectExecutor) generateErrorMessage(action *types.Action, err error) string {
+	baseMsg := ""
+	switch action.Type {
+	case types.ActionTypeLink:
+		baseMsg = fmt.Sprintf("failed to create symlink to %s", filepath.Base(action.Target))
+	case types.ActionTypeCopy:
+		baseMsg = fmt.Sprintf("failed to copy to %s", filepath.Base(action.Target))
+	case types.ActionTypeWrite:
+		baseMsg = fmt.Sprintf("failed to write %s", filepath.Base(action.Target))
+	case types.ActionTypeAppend:
+		baseMsg = fmt.Sprintf("failed to append to %s", filepath.Base(action.Target))
+	case types.ActionTypeMkdir:
+		baseMsg = fmt.Sprintf("failed to create directory %s", filepath.Base(action.Target))
+	case types.ActionTypeShellSource:
+		baseMsg = "failed to update shell profile"
+	case types.ActionTypePathAdd:
+		baseMsg = fmt.Sprintf("failed to add %s to PATH", filepath.Base(action.Target))
+	case types.ActionTypeRun:
+		baseMsg = "command execution failed"
+	case types.ActionTypeBrew:
+		baseMsg = "Homebrew installation failed"
+	case types.ActionTypeInstall:
+		baseMsg = "install script failed"
+	case types.ActionTypeTemplate:
+		baseMsg = fmt.Sprintf("failed to render template to %s", filepath.Base(action.Target))
+	default:
+		baseMsg = "action failed"
+	}
+
+	// Add error details if available
+	if err != nil {
+		return fmt.Sprintf("%s: %v", baseMsg, err)
+	}
+	return baseMsg
+}
+
+// convertAppendAction converts an append action to synthfs operations
 func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	if action.Target == "" {
 		return nil, errors.New(errors.ErrActionInvalid, "append action requires target")
 	}
 
 	target := expandHome(action.Target)
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	// For append, we need to read existing content first
 	id := fmt.Sprintf("append_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
+	mode := os.FileMode(0644)
+	if action.Mode != 0 {
+		mode = os.FileMode(action.Mode)
+	}
+
 	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Read existing content
-			file, err := fs.Open(target)
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			var existing []byte
-			if err == nil {
-				defer func() { _ = file.Close() }()
-				existing, err = io.ReadAll(file)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Append new content
-			newContent := string(existing) + action.Content
-			mode := os.FileMode(0644)
-			if action.Mode != 0 {
-				mode = os.FileMode(action.Mode)
-			}
-
-			return fs.WriteFile(target, []byte(newContent), mode)
-		}),
+		sfs.CustomOperationWithID(id, e.createAppendFileOperation(target, action.Content, mode)),
 	}, nil
 }
 
@@ -455,9 +547,7 @@ func (e *DirectExecutor) convertMkdirAction(sfs *synthfs.SynthFS, action types.A
 	}
 
 	target := expandHome(action.Target)
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	mode := os.FileMode(0755)
 	if action.Mode != 0 {
@@ -480,30 +570,7 @@ func (e *DirectExecutor) convertShellSourceAction(sfs *synthfs.SynthFS, action t
 
 	id := fmt.Sprintf("shell_source_%s_%d", action.Pack, time.Now().UnixNano())
 	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Ensure shell directory exists
-			if err := fs.MkdirAll(e.paths.ShellDir(), 0755); err != nil {
-				return err
-			}
-
-			// Read existing content
-			file, err := fs.Open(shellInitFile)
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			var existing []byte
-			if err == nil {
-				defer func() { _ = file.Close() }()
-				existing, err = io.ReadAll(file)
-				if err != nil {
-					return err
-				}
-			}
-
-			// Append new content
-			newContent := string(existing) + content
-			return fs.WriteFile(shellInitFile, []byte(newContent), 0644)
-		}),
+		sfs.CustomOperationWithID(id, e.createAppendFileOperation(shellInitFile, content, 0644)),
 	}, nil
 }
 
@@ -520,33 +587,18 @@ func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types
 	id := fmt.Sprintf("path_add_%s_%d", action.Pack, time.Now().UnixNano())
 	return []synthfs.Operation{
 		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Ensure shell directory exists
-			if err := fs.MkdirAll(e.paths.ShellDir(), 0755); err != nil {
-				return err
-			}
-
-			// Read existing content
+			// First check if path is already added
 			file, err := fs.Open(shellInitFile)
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			var existing []byte
 			if err == nil {
 				defer func() { _ = file.Close() }()
-				existing, err = io.ReadAll(file)
-				if err != nil {
-					return err
+				existing, err := io.ReadAll(file)
+				if err == nil && strings.Contains(string(existing), action.Target) {
+					return nil // Already added
 				}
 			}
 
-			// Check if path is already added
-			if strings.Contains(string(existing), action.Target) {
-				return nil // Already added
-			}
-
-			// Append new content
-			newContent := string(existing) + content
-			return fs.WriteFile(shellInitFile, []byte(newContent), 0644)
+			// Use the helper to append
+			return e.createAppendFileOperation(shellInitFile, content, 0644)(ctx, fs)
 		}),
 	}, nil
 }
@@ -578,8 +630,43 @@ func (e *DirectExecutor) convertRunAction(sfs *synthfs.SynthFS, action types.Act
 }
 
 func (e *DirectExecutor) convertBrewAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
-	// Execute brew bundle
-	return nil, errors.New(errors.ErrNotImplemented, "brew action not implemented in POC")
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source Brewfile")
+	}
+
+	// Brew actions execute 'brew bundle --file=<brewfile>'
+	// This installs/updates packages from a Brewfile
+	brewfile := expandHome(action.Source)
+
+	// Path validation is now handled by validateAction in ExecuteActions
+
+	// Execute brew bundle command
+	command := fmt.Sprintf("brew bundle --file=%q", brewfile)
+	id := fmt.Sprintf("brew_%s_%d", action.Pack, time.Now().UnixNano())
+
+	ops := []synthfs.Operation{
+		sfs.ShellCommandWithID(id, command,
+			synthfs.WithCaptureOutput(),
+			synthfs.WithTimeout(300*time.Second)), // 5 minutes for brew operations
+	}
+
+	// Create sentinel file to mark as completed (for run-once behavior)
+	if action.Pack != "" {
+		sentinelPath := e.paths.SentinelPath("homebrew", action.Pack)
+		sentinelID := fmt.Sprintf("brew_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
+
+		// Write checksum from metadata if available
+		checksumContent := "completed"
+		if action.Metadata != nil {
+			if checksum, ok := action.Metadata["checksum"].(string); ok && checksum != "" {
+				checksumContent = checksum
+			}
+		}
+
+		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(checksumContent), 0644))
+	}
+
+	return ops, nil
 }
 
 func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
@@ -590,10 +677,23 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	// Install script execution - copy script and run it
 	var ops []synthfs.Operation
 
-	// Copy the script to install directory
-	scriptTarget := filepath.Join(e.paths.InstallDir(), filepath.Base(action.Source))
+	// Copy the script to install directory (include pack name to avoid conflicts)
+	scriptTarget := filepath.Join(e.paths.InstallDir(), action.Pack, filepath.Base(action.Source))
 	copyID := fmt.Sprintf("install_copy_%s_%d", action.Pack, time.Now().UnixNano())
-	ops = append(ops, sfs.CopyWithID(copyID, action.Source, scriptTarget))
+
+	if e.force {
+		// If force is enabled, use custom operation to handle existing files
+		ops = append(ops, sfs.CustomOperationWithID(copyID, func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Remove existing file if it exists
+			if err := fs.Remove(scriptTarget); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			// Copy the file
+			return copyFile(fs, action.Source, scriptTarget)
+		}))
+	} else {
+		ops = append(ops, sfs.CopyWithID(copyID, action.Source, scriptTarget))
+	}
 
 	// Make script executable using shell command
 	chmodID := fmt.Sprintf("install_chmod_%s_%d", action.Pack, time.Now().UnixNano())
@@ -602,12 +702,406 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	// Create sentinel file to mark as completed
 	sentinelPath := e.paths.SentinelPath("install", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
-	ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte("completed"), 0644))
+
+	// Get checksum from metadata if available
+	checksumContent := "completed"
+	if action.Metadata != nil {
+		if checksum, ok := action.Metadata["checksum"].(string); ok && checksum != "" {
+			checksumContent = checksum
+		}
+	}
+
+	if e.force {
+		// If force is enabled, use custom operation to overwrite sentinel file
+		ops = append(ops, sfs.CustomOperationWithID(sentinelID, func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Ensure parent directory exists
+			sentinelDir := filepath.Dir(sentinelPath)
+			if err := fs.MkdirAll(sentinelDir, 0755); err != nil {
+				return err
+			}
+			// Remove existing sentinel if it exists
+			if err := fs.Remove(sentinelPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			// Create new sentinel
+			return fs.WriteFile(sentinelPath, []byte(checksumContent), 0644)
+		}))
+	} else {
+		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(checksumContent), 0644))
+	}
 
 	return ops, nil
 }
 
 func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
-	// Process template and write file
-	return nil, errors.New(errors.ErrNotImplemented, "template action not implemented in POC")
+	if action.Source == "" || action.Target == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "template action requires source and target")
+	}
+
+	source := expandHome(action.Source)
+	target := expandHome(action.Target)
+
+	// Path validation is now handled by validateAction in ExecuteActions
+
+	// Template processing: read template file, substitute variables, write result
+	id := fmt.Sprintf("template_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
+
+	return []synthfs.Operation{
+		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Read template content
+			file, err := fs.Open(source)
+			if err != nil {
+				return fmt.Errorf("failed to open template file %s: %w", source, err)
+			}
+			defer func() { _ = file.Close() }()
+
+			templateContent, err := io.ReadAll(file)
+			if err != nil {
+				return fmt.Errorf("failed to read template file %s: %w", source, err)
+			}
+
+			// Get variables from metadata
+			variables := make(map[string]string)
+			if action.Metadata != nil {
+				if vars, ok := action.Metadata["variables"].(map[string]string); ok {
+					variables = vars
+				}
+			}
+
+			// Process template - simple string replacement for now
+			// A full template engine could be added later (e.g., text/template)
+			processedContent := string(templateContent)
+			for key, value := range variables {
+				placeholder := fmt.Sprintf("{{.%s}}", key)
+				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+
+				// Also support ${VAR} syntax
+				placeholder = fmt.Sprintf("${%s}", key)
+				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+			}
+
+			// Ensure target directory exists
+			targetDir := filepath.Dir(target)
+			if targetDir != "." && targetDir != "/" {
+				if err := fs.MkdirAll(targetDir, 0755); err != nil {
+					return fmt.Errorf("failed to create target directory %s: %w", targetDir, err)
+				}
+			}
+
+			// Write processed content to target
+			mode := os.FileMode(0644)
+			if action.Mode != 0 {
+				mode = os.FileMode(action.Mode)
+			}
+
+			err = fs.WriteFile(target, []byte(processedContent), mode)
+			if err != nil {
+				return fmt.Errorf("failed to write processed template to %s: %w", target, err)
+			}
+
+			return nil
+		}),
+	}, nil
+}
+
+// validateAction performs comprehensive validation on an Action before execution
+func (e *DirectExecutor) validateAction(action types.Action) error {
+	// Check action type-specific validation
+	switch action.Type {
+	case types.ActionTypeLink:
+		return e.validateLinkAction(action.Source, action.Target)
+	case types.ActionTypeCopy:
+		return e.validateCopyAction(action.Source, action.Target)
+	case types.ActionTypeWrite, types.ActionTypeAppend:
+		return e.validateWriteAction(action.Target)
+	case types.ActionTypeMkdir:
+		return e.validateMkdirAction(action.Target)
+	case types.ActionTypeTemplate:
+		return e.validateTemplateAction(action.Source, action.Target)
+	case types.ActionTypeRun:
+		// Command execution doesn't need path validation
+		return nil
+	case types.ActionTypeBrew, types.ActionTypeInstall:
+		// These have their own safety mechanisms (sentinel files, checksums)
+		return nil
+	case types.ActionTypeShellSource, types.ActionTypePathAdd:
+		// These write to dodot-controlled directories
+		return nil
+	case types.ActionTypeRead, types.ActionTypeChecksum:
+		// Read-only operations are safe
+		return nil
+	default:
+		return errors.Newf(errors.ErrActionInvalid, "unknown action type for validation: %s", action.Type)
+	}
+}
+
+// validateLinkAction validates paths for link actions
+func (e *DirectExecutor) validateLinkAction(source, target string) error {
+	// Validate source exists in dotfiles
+	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
+		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
+	}
+
+	// Check if target is a protected system file
+	if err := e.validateNotSystemFile(target); err != nil {
+		return err
+	}
+
+	// If home symlinks are not allowed, check if target is in home directory
+	if !e.allowHomeSymlinks {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+		}
+
+		// Check if target is outside dodot-controlled directories
+		dodotDataDir := e.paths.DataDir()
+		dodotSymlinkDir := e.paths.SymlinkDir()
+
+		// Allow targets in dodot directories
+		if strings.HasPrefix(target, dodotDataDir) || strings.HasPrefix(target, dodotSymlinkDir) {
+			return nil
+		}
+
+		// Check if target is in home directory
+		if strings.HasPrefix(target, homeDir) {
+			return errors.Newf(errors.ErrInvalidInput, "target path %s is outside dodot-controlled directories", target)
+		}
+	}
+
+	return nil
+}
+
+// validateCopyAction validates paths for copy actions
+func (e *DirectExecutor) validateCopyAction(source, target string) error {
+	// Source should be from dotfiles
+	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
+		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
+	}
+
+	// Target should be in a safe location
+	return e.validateSafePath(target)
+}
+
+// validateWriteAction validates target path for write/append actions
+func (e *DirectExecutor) validateWriteAction(target string) error {
+	// Check if target is a protected system file
+	if err := e.validateNotSystemFile(target); err != nil {
+		return err
+	}
+
+	// Ensure target is in a safe location
+	return e.validateSafePath(target)
+}
+
+// validateMkdirAction validates target path for mkdir actions
+func (e *DirectExecutor) validateMkdirAction(target string) error {
+	// Directories should only be created in safe locations
+	return e.validateSafePath(target)
+}
+
+// validateTemplateAction validates paths for template actions
+func (e *DirectExecutor) validateTemplateAction(source, target string) error {
+	// Source should be from dotfiles
+	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
+		return errors.Newf(errors.ErrInvalidInput, "template source path %s is outside dotfiles directory", source)
+	}
+
+	// Check if target is a protected system file
+	if err := e.validateNotSystemFile(target); err != nil {
+		return err
+	}
+
+	// Target should be in a safe location
+	return e.validateSafePath(target)
+}
+
+// validateSafePath ensures operations only occur in dodot-controlled directories
+func (e *DirectExecutor) validateSafePath(path string) error {
+	// Normalize the path
+	path = expandHome(path)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrInvalidInput, "invalid path: %s", path)
+	}
+
+	// Get safe directories
+	safeDirectories := []string{
+		e.paths.DotfilesRoot(), // Allow operations in dotfiles root
+		e.paths.DataDir(),
+		e.paths.ConfigDir(),
+		e.paths.CacheDir(),
+		e.paths.StateDir(),
+		e.paths.SymlinkDir(),
+		e.paths.InstallDir(),
+		e.paths.ShellDir(),
+	}
+
+	// Check if path is within any safe directory
+	for _, safeDir := range safeDirectories {
+		if strings.HasPrefix(absPath, safeDir) {
+			return nil
+		}
+	}
+
+	// If home symlinks are allowed, home directory is also safe
+	if e.allowHomeSymlinks {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+		}
+		if strings.HasPrefix(absPath, homeDir) {
+			return nil
+		}
+	}
+
+	return errors.Newf(errors.ErrInvalidInput, "path %s is outside dodot-controlled directories", path)
+}
+
+// validateNotSystemFile prevents overwriting critical system files
+func (e *DirectExecutor) validateNotSystemFile(path string) error {
+	// Normalize the path
+	path = expandHome(path)
+
+	// Get home directory for relative checks
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+	}
+
+	// Check against protected paths from config
+	for protectedPath := range e.config.Security.ProtectedPaths {
+		// Convert protected path to absolute
+		checkPath := protectedPath
+		if !filepath.IsAbs(checkPath) {
+			checkPath = filepath.Join(homeDir, checkPath)
+		}
+
+		// Check if the target path matches or is within a protected path
+		if path == checkPath || strings.HasPrefix(path, checkPath+string(filepath.Separator)) {
+			return errors.Newf(errors.ErrInvalidInput,
+				"cannot modify protected system file: %s", protectedPath)
+		}
+	}
+
+	return nil
+}
+
+// convertReadAction converts a read action to synthfs operations
+func (e *DirectExecutor) convertReadAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "read action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	// Create read operation
+	id := fmt.Sprintf("read_%s_%s_%d", action.Pack, filepath.Base(source), time.Now().UnixNano())
+	return []synthfs.Operation{sfs.ReadFileWithID(id, source)}, nil
+}
+
+// convertChecksumAction converts a checksum action to synthfs operations
+func (e *DirectExecutor) convertChecksumAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "checksum action requires source")
+	}
+
+	source := expandHome(action.Source)
+
+	// Get algorithm from metadata, default to SHA256
+	algorithm := synthfs.SHA256
+	if action.Metadata != nil {
+		if alg, ok := action.Metadata["algorithm"].(string); ok {
+			switch strings.ToLower(alg) {
+			case "md5":
+				algorithm = synthfs.MD5
+			case "sha1":
+				algorithm = synthfs.SHA1
+			case "sha256":
+				algorithm = synthfs.SHA256
+			case "sha512":
+				algorithm = synthfs.SHA512
+			}
+		}
+	}
+
+	// Create checksum operation
+	id := fmt.Sprintf("checksum_%s_%s_%d", action.Pack, filepath.Base(source), time.Now().UnixNano())
+	return []synthfs.Operation{sfs.ChecksumWithID(id, source, algorithm)}, nil
+}
+
+// createAppendFileOperation creates a reusable function for appending content to files
+func (e *DirectExecutor) createAppendFileOperation(target, content string, mode os.FileMode) func(context.Context, filesystem.FileSystem) error {
+	return func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Ensure parent directory exists
+		parentDir := filepath.Dir(target)
+		if parentDir != "." && parentDir != "/" {
+			if err := fs.MkdirAll(parentDir, 0755); err != nil {
+				return fmt.Errorf("failed to create parent directory %s: %w", parentDir, err)
+			}
+		}
+
+		// Read existing content
+		file, err := fs.Open(target)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to open file %s: %w", target, err)
+		}
+		var existing []byte
+		if err == nil {
+			defer func() { _ = file.Close() }()
+			existing, err = io.ReadAll(file)
+			if err != nil {
+				return fmt.Errorf("failed to read file %s: %w", target, err)
+			}
+		}
+
+		// Append new content
+		newContent := string(existing) + content
+		err = fs.WriteFile(target, []byte(newContent), mode)
+		if err != nil {
+			return fmt.Errorf("failed to write file %s: %w", target, err)
+		}
+
+		return nil
+	}
+}
+
+// copyFile copies a file from source to destination using the filesystem interface
+func copyFile(fs filesystem.FileSystem, source, destination string) error {
+	// Ensure destination directory exists
+	destDir := filepath.Dir(destination)
+	if destDir != "." && destDir != "/" {
+		if err := fs.MkdirAll(destDir, 0755); err != nil {
+			return fmt.Errorf("failed to create destination directory %s: %w", destDir, err)
+		}
+	}
+
+	// Open source file
+	srcFile, err := fs.Open(source)
+	if err != nil {
+		return fmt.Errorf("failed to open source file %s: %w", source, err)
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	// Read source content
+	content, err := io.ReadAll(srcFile)
+	if err != nil {
+		return fmt.Errorf("failed to read source file %s: %w", source, err)
+	}
+
+	// Get source file info for permissions (if filesystem supports Stat)
+	var mode os.FileMode = 0644 // Default permissions
+	if fullFS, ok := fs.(filesystem.FullFileSystem); ok {
+		if srcInfo, err := fullFS.Stat(source); err == nil {
+			mode = srcInfo.Mode()
+		}
+	}
+
+	// Write to destination
+	err = fs.WriteFile(destination, content, mode)
+	if err != nil {
+		return fmt.Errorf("failed to write destination file %s: %w", destination, err)
+	}
+
+	return nil
 }

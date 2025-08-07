@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -148,18 +149,42 @@ For more information, see: https://github.com/arthur-debert/dodot
 		actions = append(actions, action)
 	}
 
-	// 6. Convert actions to operations
-	ops, err := core.ConvertActionsToOperationsWithContext(actions, nil)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
+	// 6. Execute actions using DirectExecutor (Operations no longer returned)
+	if len(actions) > 0 {
+		// Initialize paths
+		pathsInstance, err := paths.New(opts.DotfilesRoot)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
+		}
+
+		// Create DirectExecutor
+		directExecutorOpts := &core.DirectExecutorOptions{
+			Paths:             pathsInstance,
+			DryRun:            false,
+			Force:             true,
+			AllowHomeSymlinks: false,
+			Config:            config.Default(),
+		}
+
+		executor := core.NewDirectExecutor(directExecutorOpts)
+
+		// Execute actions and extract operations from results
+		results, err := executor.ExecuteActions(actions)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute init actions")
+		}
+
+		// FIXME: ARCHITECTURAL PROBLEM - init command should return Pack+PowerUp+File information
+		// NOT operation details. See docs/design/display.txxt
+		// Operations are no longer returned (part of Operation layer elimination)
+		_ = results // Results processed but not exposed in return value
 	}
 
-	// 7. Return result with operations
+	// 7. Return result (Operations field removed as part of Operation elimination)
 	result := &types.InitResult{
 		PackName:     opts.PackName,
 		Path:         packPath,
 		FilesCreated: []string{},
-		Operations:   ops,
 	}
 
 	// Report all files that would be created
@@ -182,8 +207,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 
 	log.Debug().
 		Int("actionCount", len(actions)).
-		Int("operationCount", len(ops)).
-		Msg("Generated operations for InitPack")
+		Msg("Executed actions for InitPack")
 
 	log.Info().Str("command", "InitPack").
 		Str("pack", opts.PackName).

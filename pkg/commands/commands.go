@@ -7,7 +7,7 @@
 //   - list/     - ListPacks command
 //   - deploy/   - DeployPacks command
 //   - install/  - InstallPacks command
-//   - status/   - StatusPacks command
+//   - (status command removed)
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
 //   - internal/ - Shared execution pipeline logic
@@ -22,7 +22,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/commands/install"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
-	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -49,12 +48,8 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	return install.InstallPacks(opts)
 }
 
-// StatusPacks checks deployment status using the direct action-based approach.
-type StatusPacksOptions = status.StatusPacksOptions
-
-func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
-	return status.StatusPacks(opts)
-}
+// StatusPacks is not currently implemented (removed as part of Operation elimination)
+// TODO: Implement new Action/PowerUp based status checking
 
 // FillPack adds missing template files to an existing pack.
 type FillPackOptions = fill.FillPackOptions
