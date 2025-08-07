@@ -1,8 +1,11 @@
 package synthfs
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
@@ -76,19 +79,21 @@ func TestSynthfsExecutor_ExecuteOperations(t *testing.T) {
 			},
 		},
 		{
-			name: "operation outside safe directory",
+			name: "operation outside safe directory succeeds (validation moved to conversion phase)",
 			operations: []types.Operation{
 				{
 					Type:        types.OperationWriteFile,
-					Target:      "/tmp/unsafe.txt",
-					Content:     "Should fail",
-					Description: "Unsafe write",
+					Target:      filepath.Join(os.TempDir(), fmt.Sprintf("dodot-test-%d.txt", time.Now().UnixNano())),
+					Content:     "This will succeed",
+					Description: "Write outside safe dir",
 					Status:      types.StatusReady,
 				},
 			},
-			expectErr: true,
+			expectErr: false, // No validation at executor level
 			checkFunc: func(t *testing.T) {
-				// Nothing to check - operation should fail
+				// Note: Validation is now done during operation conversion phase,
+				// not during execution. See pkg/validation/paths_test.go
+				// The executor will execute whatever operations it receives.
 			},
 		},
 		{
