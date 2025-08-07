@@ -8,7 +8,6 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
-	"github.com/arthur-debert/dodot/pkg/commands/execution"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/style"
@@ -392,18 +391,8 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              false,
-				EnableHomeSymlinks:  false,
-				UseCombinedExecutor: false,
-			})
-			if err != nil {
-				return err
-			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
+			// Operations are already executed by the command
+			// No need to execute them again
 
 			// Display results
 			fmt.Printf(MsgPackCreatedFormat, packName)
@@ -451,18 +440,8 @@ func newFillCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrFillPack, err)
 			}
 
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              false,
-				EnableHomeSymlinks:  false,
-				UseCombinedExecutor: false,
-			})
-			if err != nil {
-				return err
-			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
+			// Operations are already executed by the command
+			// No need to execute them again
 
 			// Display results
 			if len(result.FilesCreated) == 0 {

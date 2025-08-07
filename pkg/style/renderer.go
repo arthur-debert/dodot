@@ -211,6 +211,12 @@ func (r *PlainRenderer) RenderPackList(packs []types.PackInfo) string {
 	return strings.TrimRight(result.String(), "\n")
 }
 
+// FIXME: ARCHITECTURAL PROBLEM - UI should NOT render Operation types!
+// User-facing display should show Pack->PowerUp->File status, not operations.
+// Operations are internal implementation details. Users understand:
+// - "vim pack: symlink .vimrc -> ~/.vimrc" (PowerUp level)
+// NOT "Operation: CreateSymlink source=/path target=/path" (Operation level)
+// See docs/design/display.txxt
 // RenderOperations renders plain operations
 func (r *PlainRenderer) RenderOperations(ops []types.Operation) string {
 	if len(ops) == 0 {

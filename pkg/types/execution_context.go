@@ -82,6 +82,13 @@ type PackExecutionResult struct {
 	SkippedOperations int
 }
 
+// FIXME: ARCHITECTURAL PROBLEM - We should NOT track individual operation results!
+// The atomic unit is PowerUp, not Operation. Execution system should:
+// 1. Execute all operations for a PowerUp
+// 2. Roll up status: if ANY operation fails, PowerUp fails
+// 3. Store PowerUpResult (not OperationResult)
+// 4. UI displays PowerUp status: "vim: symlink .vimrc -> failed" (user-level info)
+// NOT operation details: "CreateDir: success, CreateSymlink: failed" (implementation details)
 // OperationResult tracks the result of a single operation execution
 type OperationResult struct {
 	// Operation that was executed

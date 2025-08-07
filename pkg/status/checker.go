@@ -5,6 +5,9 @@ import (
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 )
 
+// FIXME: ARCHITECTURAL PROBLEM - Checker interface should NOT work with Operation types!
+// It should work with Pack+PowerUp+File information instead.
+// CheckStatus should be: CheckStatus(pack, powerup, file, fs) -> PowerUpStatus
 // Checker defines the interface for checking the status of files
 // managed by different PowerUps
 type Checker interface {
@@ -34,6 +37,11 @@ func NewPowerUpChecker(fs filesystem.FullFileSystem) *PowerUpChecker {
 	return pc
 }
 
+// FIXME: ARCHITECTURAL PROBLEM - This function should NOT take Operation types!
+// The status system should work at PowerUp level with Pack+PowerUp+File, not Operations.
+// Operations are internal implementation details. Status checking should be:
+// CheckPowerUpStatus(pack, powerup, file) -> PowerUpStatus (not individual operation statuses)
+// See docs/design/display.txxt - UI shows status at PowerUp level, not Operation level.
 // CheckOperationStatus checks the status of an operation based on its PowerUp type
 func (pc *PowerUpChecker) CheckOperationStatus(op *types.Operation) (*types.FileStatus, error) {
 	checker, exists := pc.checkers[op.PowerUp]

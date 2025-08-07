@@ -7,6 +7,13 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// FIXME: ARCHITECTURAL PROBLEM - Display converter should NOT work with Operations!
+// It should work with Pack+PowerUp+File results, not operation results.
+// The execution system should roll up operation status to PowerUp level:
+// - PowerUp has 7 operations, any fail = PowerUp fails (atomic unit)
+// - UI shows status at PowerUp level: "vim: symlink .vimrc -> failed"
+// - NOT individual operation statuses: "Operation CreateDir: success, Operation CreateSymlink: failed"
+// See docs/design/display.txxt
 // Converter transforms execution context data into display-friendly formats
 type Converter struct {
 	// homeDir is used to make paths relative when possible

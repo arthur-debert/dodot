@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -148,10 +149,43 @@ For more information, see: https://github.com/arthur-debert/dodot
 		actions = append(actions, action)
 	}
 
-	// 6. Convert actions to operations
-	ops, err := core.ConvertActionsToOperationsWithContext(actions, nil)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrActionInvalid, "failed to convert actions to operations")
+	// 6. Execute actions using DirectExecutor and get operations from results
+	var ops []types.Operation
+	if len(actions) > 0 {
+		// Initialize paths
+		pathsInstance, err := paths.New(opts.DotfilesRoot)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
+		}
+
+		// Create DirectExecutor
+		directExecutorOpts := &core.DirectExecutorOptions{
+			Paths:             pathsInstance,
+			DryRun:            false,
+			Force:             true,
+			AllowHomeSymlinks: false,
+			Config:            config.Default(),
+		}
+
+		executor := core.NewDirectExecutor(directExecutorOpts)
+
+		// Execute actions and extract operations from results
+		results, err := executor.ExecuteActions(actions)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute init actions")
+		}
+
+		// FIXME: ARCHITECTURAL PROBLEM - init command should NOT return Operation types!
+		// User-facing commands should return Pack+PowerUp+File information:
+		// - "Created vim pack with .vimrc for symlink, aliases.sh for shell_profile"
+		// NOT operation details: "Operation: WriteFile, Operation: CreateDir"
+		// See docs/design/display.txxt - users understand packs/powerups/files, not operations
+		// Extract operations from operation results for compatibility
+		for _, result := range results {
+			if result.Operation != nil {
+				ops = append(ops, *result.Operation)
+			}
+		}
 	}
 
 	// 7. Return result with operations
@@ -183,7 +217,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 	log.Debug().
 		Int("actionCount", len(actions)).
 		Int("operationCount", len(ops)).
-		Msg("Generated operations for InitPack")
+		Msg("Executed actions for InitPack")
 
 	log.Info().Str("command", "InitPack").
 		Str("pack", opts.PackName).

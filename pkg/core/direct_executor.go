@@ -276,6 +276,9 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 // Other conversion methods would follow similar patterns...
 
+// FIXME: ARCHITECTURAL PROBLEM - Creating fake Operations for validation!
+// DirectExecutor should validate Actions directly, not convert to Operations.
+// Validation should work on Action types, not Operation types.
 // validatePath validates a single path
 func (e *DirectExecutor) validatePath(path string) error {
 	op := types.Operation{
@@ -285,6 +288,8 @@ func (e *DirectExecutor) validatePath(path string) error {
 	return e.pathValidator.ValidateOperation(op)
 }
 
+// FIXME: ARCHITECTURAL PROBLEM - Creating fake Operations for validation!
+// DirectExecutor should validate Actions directly, not convert to Operations.
 // validateSymlinkPaths validates symlink source and target paths
 func (e *DirectExecutor) validateSymlinkPaths(source, target string) error {
 	op := types.Operation{
@@ -385,6 +390,12 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 				status = types.StatusError
 			}
 
+			// FIXME: ARCHITECTURAL PROBLEM - Creating fake Operations defeats the purpose!
+			// DirectExecutor should return PowerUpResults, not OperationResults.
+			// Execution system should roll up all operation statuses to PowerUp level:
+			// - If ANY operation in PowerUp fails, PowerUp fails (atomic unit)
+			// - UI shows PowerUp status, not individual operation statuses
+			// See docs/design/display.txxt
 			// Create a pseudo-operation for the result
 			// In the real implementation, we might want to refactor OperationResult
 			// to work with Actions directly
