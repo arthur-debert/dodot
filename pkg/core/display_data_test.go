@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -413,4 +414,118 @@ func TestToDisplayResult_LastExecutedTimestamps(t *testing.T) {
 	brewFile := fileMap["homebrew"]
 	testutil.AssertTrue(t, brewFile != nil, "homebrew file should exist")
 	testutil.AssertTrue(t, brewFile.LastExecuted == nil, "skipped PowerUpResult should not have LastExecuted")
+}
+
+func TestToDisplayResult_PowerUpAwareMessages(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "powerup-messages-test")
+	packDir := filepath.Join(tempDir, "test-pack")
+	testutil.CreateDir(t, tempDir, "test-pack")
+
+	// Create ExecutionContext
+	ctx := types.NewExecutionContext("test", false)
+
+	pack := &types.Pack{
+		Name: "test-pack",
+		Path: packDir,
+	}
+
+	packResult := types.NewPackExecutionResult(pack)
+
+	// Test different PowerUp types with different statuses
+	testTime := time.Now().Add(-2 * time.Hour)
+
+	// Test symlink PowerUp - success
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "symlink",
+		Files:       []string{filepath.Join(packDir, ".vimrc")},
+		Status:      types.StatusReady,
+		EndTime:     testTime,
+	})
+
+	// Test symlink PowerUp - pending
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "symlink",
+		Files:       []string{filepath.Join(packDir, ".bashrc")},
+		Status:      types.StatusSkipped, // Maps to "queue"
+	})
+
+	// Test homebrew PowerUp - success with timestamp
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "homebrew",
+		Files:       []string{filepath.Join(packDir, "Brewfile")},
+		Status:      types.StatusReady,
+		EndTime:     testTime,
+	})
+
+	// Test shell_profile PowerUp - success
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "shell_profile",
+		Files:       []string{filepath.Join(packDir, "aliases.sh")},
+		Status:      types.StatusReady,
+		EndTime:     testTime,
+	})
+
+	// Test install PowerUp - error
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "install",
+		Files:       []string{filepath.Join(packDir, "setup.sh")},
+		Status:      types.StatusError,
+	})
+
+	// Test path PowerUp - pending
+	packResult.AddPowerUpResult(&types.PowerUpResult{
+		PowerUpName: "path",
+		Files:       []string{filepath.Join(packDir, "bin")},
+		Status:      types.StatusSkipped, // Maps to "queue"
+	})
+
+	ctx.AddPackResult("test-pack", packResult)
+	ctx.Complete()
+
+	// Transform to DisplayResult
+	displayResult := ctx.ToDisplayResult()
+
+	// Verify results
+	testutil.AssertEqual(t, 1, len(displayResult.Packs))
+	pack1 := displayResult.Packs[0]
+	testutil.AssertEqual(t, 6, len(pack1.Files))
+
+	// Create map for easy lookup
+	fileMap := make(map[string]*types.DisplayFile)
+	for i := range pack1.Files {
+		key := pack1.Files[i].PowerUp + "_" + filepath.Base(pack1.Files[i].Path)
+		fileMap[key] = &pack1.Files[i]
+	}
+
+	// Test symlink success message
+	symlinkSuccess := fileMap["symlink_.vimrc"]
+	testutil.AssertTrue(t, symlinkSuccess != nil, "symlink success file should exist")
+	testutil.AssertEqual(t, "linked to $HOME/.vimrc", symlinkSuccess.Message)
+
+	// Test symlink pending message
+	symlinkPending := fileMap["symlink_.bashrc"]
+	testutil.AssertTrue(t, symlinkPending != nil, "symlink pending file should exist")
+	testutil.AssertEqual(t, "will be linked to $HOME/.bashrc", symlinkPending.Message)
+
+	// Test homebrew success message with date
+	homebrewSuccess := fileMap["homebrew_Brewfile"]
+	testutil.AssertTrue(t, homebrewSuccess != nil, "homebrew success file should exist")
+	expectedDate := testTime.Format("2006-01-02")
+	testutil.AssertEqual(t, fmt.Sprintf("executed on %s", expectedDate), homebrewSuccess.Message)
+
+	// Test shell_profile success message
+	shellSuccess := fileMap["shell_profile_aliases.sh"]
+	testutil.AssertTrue(t, shellSuccess != nil, "shell_profile success file should exist")
+	testutil.AssertEqual(t, "included in shell profile", shellSuccess.Message)
+
+	// Test install error message
+	installError := fileMap["install_setup.sh"]
+	testutil.AssertTrue(t, installError != nil, "install error file should exist")
+	testutil.AssertEqual(t, "installation failed", installError.Message)
+
+	// Test path pending message
+	pathPending := fileMap["path_bin"]
+	testutil.AssertTrue(t, pathPending != nil, "path pending file should exist")
+	testutil.AssertEqual(t, "bin to be added to $PATH", pathPending.Message)
 }

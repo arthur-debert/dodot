@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -299,11 +300,15 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 					lastExecuted = &pur.EndTime
 				}
 
+				// Generate PowerUp-aware display message
+				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
+				displayMessage := generatePowerUpMessage(pur.PowerUpName, filePath, displayStatus, lastExecuted)
+
 				displayFile := DisplayFile{
 					PowerUp:      pur.PowerUpName,
 					Path:         filePath,
-					Status:       mapOperationStatusToDisplayStatus(pur.Status),
-					Message:      pur.Message,
+					Status:       displayStatus,
+					Message:      displayMessage,
 					IsOverride:   isOverride,
 					LastExecuted: lastExecuted,
 				}
@@ -359,4 +364,84 @@ func checkPackConfiguration(pack *Pack) (hasConfig bool, isIgnored bool) {
 	}
 
 	return hasConfig, isIgnored
+}
+
+// generatePowerUpMessage creates PowerUp-specific display messages following display.txxt spec
+func generatePowerUpMessage(powerUpName, filePath, status string, lastExecuted *time.Time) string {
+	fileName := filepath.Base(filePath)
+
+	switch powerUpName {
+	case "symlink":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return fmt.Sprintf("linked to $HOME/%s", fileName)
+			}
+			return fmt.Sprintf("linked to %s", fileName)
+		case "error":
+			return fmt.Sprintf("failed to link to $HOME/%s", fileName)
+		default: // queue
+			return fmt.Sprintf("will be linked to $HOME/%s", fileName)
+		}
+
+	case "shell_profile", "shell_add_path":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return "included in shell profile"
+			}
+			return "added to shell profile"
+		case "error":
+			return "failed to add to shell profile"
+		default: // queue
+			return "to be included in shell profile"
+		}
+
+	case "homebrew":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return fmt.Sprintf("executed on %s", lastExecuted.Format("2006-01-02"))
+			}
+			return "packages installed"
+		case "error":
+			return "failed to install packages"
+		default: // queue
+			return "packages to be installed"
+		}
+
+	case "path":
+		switch status {
+		case "success":
+			return fmt.Sprintf("added %s to $PATH", fileName)
+		case "error":
+			return fmt.Sprintf("failed to add %s to $PATH", fileName)
+		default: // queue
+			return fmt.Sprintf("%s to be added to $PATH", fileName)
+		}
+
+	case "install", "install_script":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return fmt.Sprintf("executed during installation on %s", lastExecuted.Format("2006-01-02"))
+			}
+			return "installation completed"
+		case "error":
+			return "installation failed"
+		default: // queue
+			return "to be executed during installation"
+		}
+
+	default:
+		// Fallback for unknown PowerUp types
+		switch status {
+		case "success":
+			return "completed successfully"
+		case "error":
+			return "execution failed"
+		default: // queue
+			return "pending execution"
+		}
+	}
 }

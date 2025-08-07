@@ -73,7 +73,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 
 	// Render the result
 	var buf bytes.Buffer
-	renderer := NewSimpleRenderer(&buf)
+	renderer := NewTextRenderer(&buf)
 
 	err := renderer.RenderExecutionContext(ctx)
 	testutil.AssertNoError(t, err)
@@ -83,14 +83,14 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	// Verify output contains expected elements
 	expectedStrings := []string{
 		"deploy",
-		"✓ vim",            // Pack succeeded
-		"✓ symlink",        // Symlink succeeded
-		"linked to .vimrc", // Message
-		"✗ shell",          // Pack has errors (alert status)
-		"✓ symlink",        // First operation succeeded
-		"linked to .bashrc",
-		"✗ install_script", // Second operation failed
-		"install script failed",
+		"✓ vim",                  // Pack succeeded
+		"✓ symlink",              // Symlink succeeded
+		"linked to $HOME/vimrc",  // PowerUp-aware message
+		"✗ shell",                // Pack has errors (alert status)
+		"✓ symlink",              // First operation succeeded
+		"linked to $HOME/bashrc", // PowerUp-aware message
+		"✗ install_script",       // Second operation failed
+		"installation failed",    // PowerUp-aware error message
 	}
 
 	for _, expected := range expectedStrings {

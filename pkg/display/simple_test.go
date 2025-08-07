@@ -141,7 +141,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			renderer := NewSimpleRenderer(&buf)
+			renderer := NewTextRenderer(&buf)
 
 			err := renderer.Render(tt.result)
 			testutil.AssertNoError(t, err)
@@ -184,7 +184,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 
 	// Render
 	var buf bytes.Buffer
-	renderer := NewSimpleRenderer(&buf)
+	renderer := NewTextRenderer(&buf)
 
 	err := renderer.RenderExecutionContext(ctx)
 	testutil.AssertNoError(t, err)
@@ -195,7 +195,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	testutil.AssertTrue(t, strings.Contains(output, "deploy"), "Should contain command name")
 	testutil.AssertTrue(t, strings.Contains(output, "test-pack"), "Should contain pack name")
 	testutil.AssertTrue(t, strings.Contains(output, "symlink"), "Should contain powerup name")
-	testutil.AssertTrue(t, strings.Contains(output, "linked to .testfile"), "Should contain message")
+	testutil.AssertTrue(t, strings.Contains(output, "linked to $HOME/testfile"), "Should contain PowerUp-aware message")
 }
 
 func TestTruncatePath(t *testing.T) {
