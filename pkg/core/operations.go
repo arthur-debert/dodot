@@ -27,13 +27,6 @@ func resolveOperationConflicts(ops *[]types.Operation, ctx *ExecutionContext) {
 	operations.ResolveOperationConflicts(ops, ctx)
 }
 
-// ConvertActionsToOperations converts actions into file system operations
-// This is the planning phase - no actual file system changes are made.
-// DEPRECATED: Use ConvertActionsToOperationsWithContext instead.
-func ConvertActionsToOperations(actions []types.Action) ([]types.Operation, error) {
-	return ConvertActionsToOperationsWithContext(actions, nil)
-}
-
 // ConvertActionsToOperationsWithContext converts actions into file system operations with execution context
 // This is the planning phase - no actual file system changes are made.
 func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *ExecutionContext) ([]types.Operation, error) {
@@ -106,12 +99,6 @@ func ConvertActionsToOperationsWithContext(actions []types.Action, ctx *Executio
 
 // ResolveConflicts checks for and resolves conflicts.
 // It modifies the operations slice in place.
-
-// ConvertAction converts a single action to one or more operations
-// DEPRECATED: Use ConvertActionWithContext instead.
-func ConvertAction(action types.Action) ([]types.Operation, error) {
-	return ConvertActionWithContext(action, nil)
-}
 
 // ConvertActionWithContext converts a single action to one or more operations with execution context
 func ConvertActionWithContext(action types.Action, ctx *ExecutionContext) ([]types.Operation, error) {

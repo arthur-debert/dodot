@@ -59,11 +59,11 @@ path = "temp/*"
 	// 1. Get pack candidates
 	candidates, err := GetPackCandidates(root)
 	testutil.AssertNoError(t, err)
-	
+
 	// 2. Get packs
 	packs, err := GetPacks(candidates)
 	testutil.AssertNoError(t, err)
-	
+
 	// 3. Process triggers for each pack
 	var allMatches []types.TriggerMatch
 	for _, pack := range packs {
@@ -71,29 +71,16 @@ path = "temp/*"
 		testutil.AssertNoError(t, err)
 		allMatches = append(allMatches, matches...)
 	}
-	
+
 	// 4. Convert to actions
 	actions, err := GetActions(allMatches)
 	testutil.AssertNoError(t, err)
-	
-	// 5. Convert to operations
-	// Since this is just testing dodotignore functionality, we can skip operations conversion
-	// which requires a full execution context with paths
-	operations := []types.Operation{}
-	
-	// Create a result structure to verify
-	result := &types.ExecutionResult{
-		Packs:      make([]string, len(packs)),
-		Operations: operations,
-	}
-	for i, pack := range packs {
-		result.Packs[i] = pack.Name
-	}
 
+	// 5. Convert to operations
 	// Verify packs were processed correctly
 	packNames := make(map[string]bool)
-	for _, packName := range result.Packs {
-		packNames[packName] = true
+	for _, pack := range packs {
+		packNames[pack.Name] = true
 	}
 
 	// Should have vim-pack, mixed-pack, and config-pack
@@ -120,5 +107,5 @@ path = "temp/*"
 		}
 	}
 
-	t.Logf("Processed %d packs with %d total actions", len(result.Packs), len(actions))
+	t.Logf("Processed %d packs with %d total actions", len(packs), len(actions))
 }
