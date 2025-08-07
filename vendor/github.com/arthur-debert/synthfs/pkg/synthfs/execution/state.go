@@ -233,6 +233,13 @@ func (pst *PathStateTracker) updateStateForCreate(opID core.OperationID, path st
 	}
 
 	if state.WillExist {
+		// Special handling for directory creation - it's idempotent
+		if createType == core.PathStateDir && state.WillBeType == core.PathStateDir {
+			// Directory creation is idempotent - creating a directory that already exists should succeed
+			// This matches the behavior of 'mkdir -p' and individual directory operation validation
+			return nil
+		}
+
 		return fmt.Errorf("operation %s conflicts with existing state: cannot create %s because it is projected to already exist", opID, path)
 	}
 	if state.DeletedBy != "" {

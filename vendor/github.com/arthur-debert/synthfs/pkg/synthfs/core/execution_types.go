@@ -43,8 +43,9 @@ type OperationResult struct {
 	Status       OperationStatus
 	Error        error
 	Duration     time.Duration
-	BackupData   *BackupData // Backup data for restoration (only if restorable=true)
-	BackupSizeMB float64     // Actual backup size consumed
+	BackupData   *BackupData            // Backup data for restoration (only if restorable=true)
+	BackupSizeMB float64                // Actual backup size consumed
+	Metadata     map[string]interface{} // User-defined metadata for the operation
 }
 
 // Result holds the overall outcome of running a pipeline of operations
@@ -56,6 +57,7 @@ type Result struct {
 	Rollback   func(context.Context) error // Rollback function for failed transactions
 
 	// Enhanced restoration functionality
-	Budget     *BackupBudget // Backup budget information (only if restorable=true)
-	RestoreOps []interface{} // Generated reverse operations for restoration
+	Budget     *BackupBudget          // Backup budget information (only if restorable=true)
+	RestoreOps []interface{}          // Generated reverse operations for restoration
+	Metadata   map[string]interface{} // User-defined metadata for the batch/pipeline
 }

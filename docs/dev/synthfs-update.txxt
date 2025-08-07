@@ -1,90 +1,49 @@
-Title: Refactoring `pkg/synthfs` with the new `go-synthfs` Simple API
+Title: Filesystem Execution with `go-synthfs` Simple API
 
 ## 1. Overview
 
-The `go-synthfs` library has released a new "Simple API" that will significantly simplify our filesystem operations, address team feedback about complexity, and improve the robustness of our code. This document outlines the plan and guidelines for migrating our `pkg/synthfs` implementation to this new API.
+dodot's filesystem operations are powered by the `go-synthfs` library, specifically its "Simple API." This approach simplifies our internal code, improves robustness, and makes working with filesystem side effects more intuitive.
 
-The primary benefits of this migration are:
-- **Reduced Complexity:** Eliminates the vast majority of boilerplate code currently in `pkg/synthfs/synthfs_executor.go`, including manual operation conversion, custom item types, and pipeline management.
-- **Improved Readability:** Replaces low-level, imperative operation building with a high-level, declarative API.
-- **Enhanced Robustness:** Leverages the library's built-in dependency resolution, error handling, and path management, reducing the surface area for bugs in our code.
-- **Better Developer Experience:** Makes working with filesystem side effects simpler and more intuitive, aligning with our original goals for adopting `synthfs`.
+The primary benefits of this architecture are:
+- **Reduced Complexity:** It eliminates the need for manual operation conversion, custom item types, and complex pipeline management within our executor code.
+- **Improved Readability:** The code uses a high-level, declarative API for filesystem operations instead of low-level, imperative logic.
+- **Enhanced Robustness:** It leverages the library's built-in dependency resolution (e.g., creating directories before files), error handling, and path management, reducing the surface area for bugs in our code.
 
-## 2. Proposed Changes
+## 2. Core Implementation
 
-The refactoring will focus on two main areas: the `SynthfsExecutor` and the `CombinedExecutor`.
+The implementation is centered on the `SynthfsExecutor` and the `CombinedExecutor`.
 
-### 2.1. `SynthfsExecutor` Refactoring
+### 2.1. `SynthfsExecutor`
 
-The current `SynthfsExecutor` will be almost completely rewritten. The core responsibility of converting `dodot` operations into `synthfs` operations will be replaced by direct calls to the new API.
+The `SynthfsExecutor` is responsible for executing all core filesystem operations (creating files, directories, and symlinks).
 
-**Key Changes:**
-- **Eliminate `convertToSynthfsOperation`:** The entire switch statement and its helper functions (`convertCreateDir`, `convertWriteFile`, etc.) will be removed.
-- **Adopt `SimpleBatch`:** We will use the `synthfs.SimpleBatch` API to collect and execute filesystem operations.
-- **Remove Custom Item Structs:** The `fileItem`, `directoryItem`, and `symlinkItem` structs will no longer be needed.
-- **Simplify `ExecuteOperations`:** This method will be simplified to:
-    1. Create a new `SimpleBatch`.
-    2. Iterate through `dodot` operations and add them to the batch using the new high-level methods (e.g., `batch.CreateDir()`, `batch.WriteFile()`).
-    3. Execute the batch.
+Its implementation uses the `synthfs.SimpleBatch` API to collect and execute these operations. The `ExecuteOperations` method:
+    1. Creates a new `SimpleBatch`.
+    2. Iterates through dodot's planned `Operations`.
+    3. Calls application-level safety checks (e.g., `validateSafePath`).
+    4. Adds the corresponding task to the batch using high-level methods (e.g., `batch.CreateDir()`, `batch.WriteFile()`).
+    5. Executes the entire batch, letting `go-synthfs` handle the dependencies and execution order.
 
-### 2.2. `CombinedExecutor` Refactoring
+### 2.2. `CombinedExecutor`
 
-The `CombinedExecutor`'s manual, multi-stage execution logic will be streamlined.
+The `CombinedExecutor` orchestrates the overall execution flow, which involves both filesystem operations and shell commands (e.g., for the `install` power-up).
 
-**Key Changes:**
-- **Remove Manual Operation Grouping:** The logic for separating operations into `dirOps`, `executeOps`, `fileOps`, etc., will be removed.
-- **Leverage Batch Dependency Management:** Filesystem operations will be added to a single `SimpleBatch`, and `synthfs` will handle the dependency resolution (e.g., creating directories before files within them).
-- **Clarify Command Execution Flow:** The execution flow will be simplified to:
-    1. Prepare a `SimpleBatch` for all filesystem operations.
-    2. Execute the batch.
-    3. Execute any shell command operations.
-    4. If necessary for cases like "sentinel files," a second, smaller batch can be executed after the commands. This is still a major improvement over the current implementation.
+It streamlines this process by:
+1.  Grouping all filesystem-related `Operations` into a single slice.
+2.  Passing this slice to the `SynthfsExecutor` to be executed in one batch.
+3.  Executing any shell command `Operations` separately, after the filesystem changes are complete.
+4.  Handling any subsequent filesystem operations, such as writing "sentinel files" to track that a command has been run.
 
-## 3. Refactoring Guidelines
+This approach leverages the power of `go-synthfs` for filesystem tasks while maintaining application-specific logic for command execution order.
 
-To ensure a smooth and consistent migration, please follow these guidelines:
+## 3. Development Guidelines
 
-1.  **Use the `SimpleBatch` API:** For any sequence of more than one filesystem operation, use `synthfs.NewSimpleBatch(fs)` to collect operations. For single operations, direct function calls (e.g., `synthfs.WriteFile(...)`) are acceptable but using a batch is preferred for consistency.
+When working with filesystem operations in dodot, follow these guidelines:
 
-2.  **Preserve Safety Checks:** Our application-specific safety checks, such as `validateNotSystemFile` and `validateSafePath`, must be preserved. These should be called *before* adding an operation to the batch.
+1.  **Use the `SimpleBatch` API:** For any sequence of filesystem operations, use `synthfs.NewSimpleBatch(fs)` to collect them. This ensures that dependencies are handled correctly.
 
-3.  **Update Path Handling:** Remove all manual path manipulation (`filepath.Rel`) and rely on `synthfs`'s automatic path resolution. Ensure that all paths passed to `synthfs` are absolute paths as they are in the current implementation.
+2.  **Preserve Safety Checks:** Application-specific safety checks, such as `validateNotSystemFile` and `validateSafePath`, must be preserved. They should be called *before* adding an operation to a batch.
 
-4.  **Handle `force` Mode Correctly:** The current crude implementation of `force` mode (pre-deleting files) should be replaced. The new API may offer a more elegant way to handle overwrites. The `SimpleBatch` API should be checked for an "overwrite" or "force" option.
+3.  **Rely on `synthfs` for Path Handling:** Avoid manual path manipulation. `go-synthfs` handles path resolution automatically. All paths passed to the library should be absolute.
 
-5.  **Refactor in Place:** The changes should be made directly within the existing `pkg/synthfs` files. The goal is to replace the implementation, not the package's public API.
-
-6.  **Update Tests:** All tests in `pkg/synthfs` must be updated to reflect the new implementation. The tests should be simpler to write, as they will no longer need to mock the low-level `synthfs` pipeline components.
-
-## 4. Incremental Refactoring Plan
-
-To avoid a single, large, and risky commit, the refactoring will be performed in two distinct phases. This approach allows for easier code review and ensures the system remains in a testable state at each step.
-
-### Commit 1: Refactor `SynthfsExecutor` Internals
-
-**Goal:** Replace the internal implementation of `SynthfsExecutor` to use the new `SimpleBatch` API, without changing its public methods.
-
-1.  **Modify `SynthfsExecutor.ExecuteOperations`:**
-    *   Rewrite the method to use `synthfs.SimpleBatch`. It will iterate through `dodot` operations and add them to the batch using the new high-level methods.
-    *   Preserve existing application-level safety checks (`validateSafePath`, `validateNotSystemFile`) by calling them *before* adding an operation to the batch.
-2.  **Delete Dead Code:**
-    *   Remove the `convertToSynthfsOperation` function and all its helpers (`convertCreateDir`, etc.).
-    *   Remove the `fileItem`, `directoryItem`, and `symlinkItem` structs.
-3.  **Update Tests:**
-    *   Update the unit and integration tests for `SynthfsExecutor` to reflect the new implementation.
-
-**Outcome:** The core filesystem execution logic is modernized, but its interface remains unchanged, ensuring no impact on the rest of the application.
-
-### Commit 2: Simplify `CombinedExecutor`
-
-**Goal:** Refactor the `CombinedExecutor` to leverage the dependency management of the newly refactored `SynthfsExecutor`.
-
-1.  **Modify `CombinedExecutor.ExecuteOperations`:**
-    *   Remove the manual grouping of filesystem operations (e.g., `dirOps`, `otherOps`).
-    *   Combine all filesystem operations into a single slice and pass them to `synthfsExecutor.ExecuteOperations` in one call.
-2.  **Preserve Application Logic:**
-    *   The explicit ordering for shell commands (`executeOps`) and sentinel file writes relative to the filesystem operations will be maintained, as this is application-specific logic.
-3.  **Update Tests:**
-    *   Update the tests for `CombinedExecutor` to reflect its simpler, more streamlined logic.
-
-**Outcome:** The orchestration logic is simplified, demonstrating the benefits of the new `synthfs` API and completing the refactor.
+4.  **Handle `force` Mode Correctly:** The `force` mode is handled by passing the appropriate options to `go-synthfs` methods, which manage overwriting existing files or symlinks gracefully.

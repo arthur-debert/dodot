@@ -89,11 +89,14 @@ Structure:
     └── pack2           # checksum of pack2/install.sh
 ```
 
-Shell Integration Files:
-dodot creates wrapper files for shell integration:
-• ~/.dodot_aliases - sources all pack alias files
-• ~/.dodot_path - manages PATH additions
-• These are sourced from your shell profile
+Shell Integration Method:
+dodot uses a central directory for shell integration. It creates symlinks
+from your source files (e.g., `aliases.sh`) into this directory:
+`~/.local/share/dodot/shell/profile.d/`
+
+Your shell startup script (e.g., `.zshrc`, `.bashrc`) is configured once
+to source all `.sh` files from that directory. This avoids creating
+multiple `~/.dodot_*` files in your home directory.
 
 No State Database:
 dodot deliberately avoids state databases. Deployment status is determined

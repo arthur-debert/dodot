@@ -28,48 +28,48 @@ func (b *Batch) Operations() []interface{} {
 // Operation creation methods
 
 // CreateDir adds a directory creation operation to the batch.
-func (b *Batch) CreateDir(path string, mode ...fs.FileMode) (interface{}, error) {
-	return b.impl.CreateDir(path, mode...)
+func (b *Batch) CreateDir(path string, mode fs.FileMode, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.CreateDir(path, mode, metadata...)
 }
 
 // CreateFile adds a file creation operation to the batch.
-func (b *Batch) CreateFile(path string, content []byte, mode ...fs.FileMode) (interface{}, error) {
-	return b.impl.CreateFile(path, content, mode...)
+func (b *Batch) CreateFile(path string, content []byte, mode fs.FileMode, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.CreateFile(path, content, mode, metadata...)
 }
 
 // Copy adds a copy operation to the batch.
-func (b *Batch) Copy(src, dst string) (interface{}, error) {
-	return b.impl.Copy(src, dst)
+func (b *Batch) Copy(src, dst string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.Copy(src, dst, metadata...)
 }
 
 // Move adds a move operation to the batch.
-func (b *Batch) Move(src, dst string) (interface{}, error) {
-	return b.impl.Move(src, dst)
+func (b *Batch) Move(src, dst string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.Move(src, dst, metadata...)
 }
 
 // Delete adds a delete operation to the batch.
-func (b *Batch) Delete(path string) (interface{}, error) {
-	return b.impl.Delete(path)
+func (b *Batch) Delete(path string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.Delete(path, metadata...)
 }
 
 // CreateSymlink adds a symbolic link creation operation to the batch.
-func (b *Batch) CreateSymlink(target, linkPath string) (interface{}, error) {
-	return b.impl.CreateSymlink(target, linkPath)
+func (b *Batch) CreateSymlink(target, linkPath string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.CreateSymlink(target, linkPath, metadata...)
 }
 
 // CreateArchive adds an archive creation operation to the batch.
-func (b *Batch) CreateArchive(archivePath string, format interface{}, sources ...string) (interface{}, error) {
-	return b.impl.CreateArchive(archivePath, format, sources...)
+func (b *Batch) CreateArchive(archivePath string, format interface{}, sources []string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.CreateArchive(archivePath, format, sources, metadata...)
 }
 
 // Unarchive adds an unarchive operation to the batch.
-func (b *Batch) Unarchive(archivePath, extractPath string) (interface{}, error) {
-	return b.impl.Unarchive(archivePath, extractPath)
+func (b *Batch) Unarchive(archivePath, extractPath string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.Unarchive(archivePath, extractPath, metadata...)
 }
 
 // UnarchiveWithPatterns adds an unarchive operation with pattern filtering to the batch.
-func (b *Batch) UnarchiveWithPatterns(archivePath, extractPath string, patterns ...string) (interface{}, error) {
-	return b.impl.UnarchiveWithPatterns(archivePath, extractPath, patterns...)
+func (b *Batch) UnarchiveWithPatterns(archivePath, extractPath string, patterns []string, metadata ...map[string]interface{}) (interface{}, error) {
+	return b.impl.UnarchiveWithPatterns(archivePath, extractPath, patterns, metadata...)
 }
 
 // Configuration methods
@@ -95,6 +95,12 @@ func (b *Batch) WithRegistry(registry core.OperationFactory) *Batch {
 // WithLogger sets the logger for the batch.
 func (b *Batch) WithLogger(logger core.Logger) *Batch {
 	b.impl = b.impl.WithLogger(logger)
+	return b
+}
+
+// WithMetadata sets metadata for the batch.
+func (b *Batch) WithMetadata(metadata map[string]interface{}) *Batch {
+	b.impl = b.impl.WithMetadata(metadata)
 	return b
 }
 
@@ -148,6 +154,7 @@ func ConvertBatchResult(batchResult interface{}) *Result {
 		GetError() error
 		GetBudget() interface{}
 		GetRollback() interface{}
+		GetMetadata() map[string]interface{}
 	}); ok {
 		return &Result{
 			success:    r.IsSuccess(),
@@ -157,6 +164,7 @@ func ConvertBatchResult(batchResult interface{}) *Result {
 			err:        r.GetError(),
 			budget:     r.GetBudget(),
 			rollback:   r.GetRollback(),
+			metadata:   r.GetMetadata(),
 		}
 	}
 
@@ -169,6 +177,7 @@ func ConvertBatchResult(batchResult interface{}) *Result {
 		err:        nil,
 		budget:     nil,
 		rollback:   nil,
+		metadata:   nil,
 	}
 }
 
@@ -181,6 +190,7 @@ type Result struct {
 	err        error
 	budget     interface{}
 	rollback   interface{}
+	metadata   map[string]interface{}
 }
 
 // IsSuccess returns whether the batch execution was successful
@@ -216,4 +226,9 @@ func (r *Result) GetBudget() interface{} {
 // GetRollback returns rollback information if available
 func (r *Result) GetRollback() interface{} {
 	return r.rollback
+}
+
+// GetMetadata returns the user-defined metadata for the batch
+func (r *Result) GetMetadata() map[string]interface{} {
+	return r.metadata
 }

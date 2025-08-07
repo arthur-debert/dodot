@@ -2,6 +2,17 @@ package types
 
 import "time"
 
+// OperationStatus defines the state of an operation/action execution
+type OperationStatus string
+
+const (
+	StatusReady    OperationStatus = "ready"
+	StatusSkipped  OperationStatus = "skipped"
+	StatusConflict OperationStatus = "conflict"
+	StatusError    OperationStatus = "error"
+	StatusUnknown  OperationStatus = "unknown"
+)
+
 // ListPacksResult holds the result of the 'list' command.
 type ListPacksResult struct {
 	Packs []PackInfo `json:"packs"`
@@ -77,28 +88,48 @@ func (dp *DisplayPack) GetPackStatus() string {
 	return "queue"
 }
 
-// ExecutionResult holds the outcome of an 'install' or 'deploy' command.
-// It details the operations that were/would be performed.
-// IMPORTANT: This contains PLANNED operations, not executed ones.
-// The operations must still be executed using an appropriate executor
-// (e.g., CombinedExecutor for operations that include OperationExecute).
-type ExecutionResult struct {
-	Packs      []string    `json:"packs"`      // Packs that were processed
-	Operations []Operation `json:"operations"` // Operations planned (not yet executed)
-	DryRun     bool        `json:"dryRun"`     // Whether this was a dry run
-}
-
 // FillResult holds the result of the 'fill' command.
 type FillResult struct {
-	PackName     string      `json:"packName"`
-	FilesCreated []string    `json:"filesCreated"`
-	Operations   []Operation `json:"operations"`
+	PackName     string   `json:"packName"`
+	FilesCreated []string `json:"filesCreated"`
+	// Operations field removed - part of Operation layer elimination
+}
+
+// ActionResult represents the execution result of a single Action
+// This replaces OperationResult and is focused on Action execution, not Operation details
+type ActionResult struct {
+	// Action contains the action that was executed
+	Action Action `json:"action"`
+
+	// Status is the execution status
+	Status OperationStatus `json:"status"`
+
+	// Error contains any error that occurred during execution
+	Error error `json:"error,omitempty"`
+
+	// StartTime is when execution began
+	StartTime time.Time `json:"startTime"`
+
+	// EndTime is when execution completed
+	EndTime time.Time `json:"endTime"`
+
+	// Message provides additional context about the execution
+	Message string `json:"message,omitempty"`
+
+	// SynthfsOperationIDs tracks the synthfs operations that were executed for this action
+	// This is useful for debugging and correlation with synthfs results
+	SynthfsOperationIDs []string `json:"synthfsOperationIds,omitempty"`
+}
+
+// Duration returns the time taken to execute the action
+func (ar *ActionResult) Duration() time.Duration {
+	return ar.EndTime.Sub(ar.StartTime)
 }
 
 // InitResult holds the result of the 'init' command.
 type InitResult struct {
-	PackName     string      `json:"packName"`
-	Path         string      `json:"path"`
-	FilesCreated []string    `json:"filesCreated"`
-	Operations   []Operation `json:"operations"`
+	PackName     string   `json:"packName"`
+	Path         string   `json:"path"`
+	FilesCreated []string `json:"filesCreated"`
+	// Operations field removed - part of Operation layer elimination
 }

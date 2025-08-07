@@ -7,7 +7,7 @@
 //   - list/     - ListPacks command
 //   - deploy/   - DeployPacks command
 //   - install/  - InstallPacks command
-//   - status/   - StatusPacks command
+//   - (status command removed)
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
 //   - internal/ - Shared execution pipeline logic
@@ -22,7 +22,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/commands/install"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
-	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -35,26 +34,22 @@ func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	return list.ListPacks(opts)
 }
 
-// DeployPacks runs deployment logic for specified packs (RunModeMany power-ups).
+// DeployPacks runs deployment logic using the direct executor approach.
 type DeployPacksOptions = deploy.DeployPacksOptions
 
-func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
+func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
 	return deploy.DeployPacks(opts)
 }
 
-// InstallPacks runs installation + deployment (RunModeOnce then RunModeMany power-ups).
+// InstallPacks runs installation + deployment using the direct executor approach.
 type InstallPacksOptions = install.InstallPacksOptions
 
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
+func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	return install.InstallPacks(opts)
 }
 
-// StatusPacks checks the deployment status of specified packs.
-type StatusPacksOptions = status.StatusPacksOptions
-
-func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
-	return status.StatusPacks(opts)
-}
+// StatusPacks is not currently implemented (removed as part of Operation elimination)
+// TODO: Implement new Action/PowerUp based status checking
 
 // FillPack adds missing template files to an existing pack.
 type FillPackOptions = fill.FillPackOptions

@@ -14,26 +14,38 @@ type DeployPacksOptions struct {
 	PackNames []string
 	// DryRun specifies whether to perform a dry run without making changes.
 	DryRun bool
+	// EnableHomeSymlinks allows symlink operations to target the user's home directory.
+	EnableHomeSymlinks bool
 }
 
-// DeployPacks runs the deployment logic for the specified packs.
-// This executes power-ups with RunModeMany.
-func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
-	log := logging.GetLogger("core.commands")
+// DeployPacks runs the deployment logic using the direct executor approach.
+// It executes RunModeMany actions only (symlinks, shell profiles, path) while
+// skipping RunModeOnce actions (install scripts, brewfiles).
+func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
+	log := logging.GetLogger("commands.deploy")
 	log.Debug().Str("command", "DeployPacks").Msg("Executing command")
 
-	execOpts := internal.ExecutionOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		RunMode:      types.RunModeMany,
-	}
+	// Use the internal pipeline with RunModeMany (deploy mode)
+	ctx, err := internal.RunPipeline(internal.PipelineOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany, // Key: only run repeatable actions
+		Force:              false,             // Deploy doesn't use force flag
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	})
 
-	result, err := internal.RunExecutionPipeline(execOpts)
 	if err != nil {
-		return nil, err
+		log.Error().Err(err).Msg("Deploy failed")
+		return ctx, err
 	}
 
 	log.Info().Str("command", "DeployPacks").Msg("Command finished")
-	return result, nil
+	return ctx, nil
+}
+
+// DeployPacksDirect is an alias for DeployPacks for backward compatibility.
+// Deprecated: Use DeployPacks instead.
+func DeployPacksDirect(opts DeployPacksOptions) (*types.ExecutionContext, error) {
+	return DeployPacks(opts)
 }

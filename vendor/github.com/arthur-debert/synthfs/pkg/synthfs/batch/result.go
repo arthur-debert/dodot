@@ -9,8 +9,9 @@ type ResultImpl struct {
 	restoreOps []interface{}
 	duration   time.Duration
 	err        error
-	budget     interface{} // Budget information from execution
-	rollback   interface{} // Rollback function
+	budget     interface{}            // Budget information from execution
+	rollback   interface{}            // Rollback function
+	metadata   map[string]interface{} // User-defined metadata for the batch
 }
 
 // NewResult creates a new batch result.
@@ -25,6 +26,11 @@ func NewResultWithBudget(success bool, operations []interface{}, restoreOps []in
 
 // NewResultWithBudgetAndRollback creates a new batch result with budget information and rollback function.
 func NewResultWithBudgetAndRollback(success bool, operations []interface{}, restoreOps []interface{}, duration time.Duration, err error, budget interface{}, rollback interface{}) Result {
+	return NewResultWithMetadata(success, operations, restoreOps, duration, err, budget, rollback, nil)
+}
+
+// NewResultWithMetadata creates a new batch result with all options including metadata.
+func NewResultWithMetadata(success bool, operations []interface{}, restoreOps []interface{}, duration time.Duration, err error, budget interface{}, rollback interface{}, metadata map[string]interface{}) Result {
 	return &ResultImpl{
 		success:    success,
 		operations: operations,
@@ -33,6 +39,7 @@ func NewResultWithBudgetAndRollback(success bool, operations []interface{}, rest
 		err:        err,
 		budget:     budget,
 		rollback:   rollback,
+		metadata:   metadata,
 	}
 }
 
@@ -69,4 +76,9 @@ func (r *ResultImpl) GetBudget() interface{} {
 // GetRollback returns the rollback function.
 func (r *ResultImpl) GetRollback() interface{} {
 	return r.rollback
+}
+
+// GetMetadata returns the user-defined metadata for the batch.
+func (r *ResultImpl) GetMetadata() map[string]interface{} {
+	return r.metadata
 }

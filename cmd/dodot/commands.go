@@ -8,10 +8,10 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
-	"github.com/arthur-debert/dodot/pkg/commands/execution"
+	"github.com/arthur-debert/dodot/pkg/display"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/style"
+	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -193,36 +193,22 @@ func newDeployCmd() *cobra.Command {
 				Bool("dry_run", dryRun).
 				Msg("Deploying from dotfiles root")
 
-			// Use the actual DeployPacks implementation
-			result, err := commands.DeployPacks(commands.DeployPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
+			// Deploy packs using the new implementation
+			ctx, err := commands.DeployPacks(commands.DeployPacksOptions{
+				DotfilesRoot:       p.DotfilesRoot(),
+				PackNames:          args,
+				DryRun:             dryRun,
+				EnableHomeSymlinks: true,
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              dryRun,
-				EnableHomeSymlinks:  true,
-				UseCombinedExecutor: true,
-			})
-			if err != nil {
-				return err
+			// Display results using the new display system
+			renderer := display.NewTextRenderer(os.Stdout)
+			if err := renderer.RenderExecutionContext(ctx); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
-
-			// Display results using rich output
-			if dryRun {
-				fmt.Println(MsgDryRunNotice)
-			}
-
-			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderOperations(result.Operations))
 
 			return nil
 		},
@@ -254,37 +240,23 @@ func newInstallCmd() *cobra.Command {
 				Bool("force", force).
 				Msg("Installing from dotfiles root")
 
-			// Use the actual InstallPacks implementation
-			result, err := commands.InstallPacks(commands.InstallPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-				Force:        force,
+			// Install packs using the new implementation
+			ctx, err := commands.InstallPacks(commands.InstallPacksOptions{
+				DotfilesRoot:       p.DotfilesRoot(),
+				PackNames:          args,
+				DryRun:             dryRun,
+				Force:              force,
+				EnableHomeSymlinks: true,
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
 
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              dryRun,
-				EnableHomeSymlinks:  true,
-				UseCombinedExecutor: true,
-			})
-			if err != nil {
-				return err
+			// Display results using the new display system
+			renderer := display.NewTextRenderer(os.Stdout)
+			if err := renderer.RenderExecutionContext(ctx); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
-
-			// Display results using rich output
-			if dryRun {
-				fmt.Println(MsgDryRunNotice)
-			}
-
-			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderOperations(result.Operations))
 
 			return nil
 		},
@@ -315,9 +287,15 @@ func newListCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrListPacks, err)
 			}
 
-			// Display the packs using rich output
-			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderPackList(result.Packs))
+			// Display the packs in a simple format
+			if len(result.Packs) == 0 {
+				fmt.Println("No packs found")
+			} else {
+				fmt.Println("Available packs:")
+				for _, pack := range result.Packs {
+					fmt.Printf("  %s\n", pack.Name)
+				}
+			}
 
 			return nil
 		},
@@ -341,26 +319,9 @@ func newStatusCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
 
-			// Use the actual StatusPacks implementation
-			result, err := commands.StatusPacks(commands.StatusPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-			})
-			if err != nil {
-				return fmt.Errorf(MsgErrStatusPacks, err)
-			}
-
-			// Convert and display status using rich output
-			renderer := style.NewTerminalRenderer()
-			var packStatuses []style.PackStatus
-
-			for _, ps := range result.Packs {
-				packStatuses = append(packStatuses, style.ConvertDisplayPackToPackStatus(ps))
-			}
-
-			fmt.Println(renderer.RenderPackStatuses(packStatuses))
-
-			return nil
+			// Status command removed as part of Operation elimination
+			// Will be re-implemented in a future release
+			return fmt.Errorf("status command temporarily unavailable (being reimplemented)")
 		},
 	}
 }
@@ -396,18 +357,8 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              false,
-				EnableHomeSymlinks:  false,
-				UseCombinedExecutor: false,
-			})
-			if err != nil {
-				return err
-			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
+			// Operations are already executed by the command
+			// No need to execute them again
 
 			// Display results
 			fmt.Printf(MsgPackCreatedFormat, packName)
@@ -455,18 +406,8 @@ func newFillCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrFillPack, err)
 			}
 
-			// Execute operations
-			opResults, err := execution.ExecuteOperations(execution.ExecuteOperationsOptions{
-				Operations:          result.Operations,
-				DryRun:              false,
-				EnableHomeSymlinks:  false,
-				UseCombinedExecutor: false,
-			})
-			if err != nil {
-				return err
-			}
-			// TODO: Use opResults for better display/tracking
-			_ = opResults
+			// Operations are already executed by the command
+			// No need to execute them again
 
 			// Display results
 			if len(result.FilesCreated) == 0 {
@@ -526,7 +467,7 @@ func newSnippetCmd() *cobra.Command {
 
 			// Install shell scripts if requested
 			if install {
-				if err := commands.InstallShellIntegration(dataDir); err != nil {
+				if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
 					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
 				fmt.Fprintf(os.Stderr, "Shell integration scripts installed to %s/shell/\n", dataDir)

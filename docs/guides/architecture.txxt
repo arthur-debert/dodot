@@ -20,86 +20,68 @@ Processing Pipeline
 When you run a dodot command, this is what happens:
 
 1. Discovery Phase:
-   • Scan all packs to find files and directories
-   • Build inventory of available content
+   • Scan all packs to find files and directories.
+   • Load pack configurations from `.dodot.toml` files.
 
-2. Trigger Matching:
-   • Test each file/directory against configured matchers
-   • Each matcher specifies a trigger and target power-up
-   • Create TriggerMatch objects containing file paths and power-ups
+2. Trigger Matching Phase:
+   • Test each file against configured triggers (e.g., `filename`, `extension`).
+   • Create `TriggerMatch` objects for files that match, linking them to a power-up.
 
-3. Grouping Phase:
-   • Group TriggerMatches by power-up, pack, and options
-   • Allows power-ups to process related files together
-   • Example: all shell scripts in a pack processed as one group
+3. Action Generation Phase:
+   • Each power-up (e.g., `symlink`, `shell_profile`) processes its `TriggerMatch` objects.
+   • The power-up generates high-level `Actions` that describe an intent, such as "link this file" or "source this script".
 
-4. Action Generation:
-   • Each power-up processes its matched files
-   • Generate high-level actions (create symlink, modify shell profile)
-   • Actions describe intent, not implementation
+4. Operation Planning Phase:
+   • `Actions` are converted into low-level, concrete `Operations`. An `Operation` is a specific task, like `CreateSymlink` or `WriteFile`.
+   • This plan is created without yet touching the filesystem, enabling dry runs.
 
-5. Operation Translation:
-   • Transform actions into low-level filesystem operations
-   • Operations are compatible with the synthfs library
-   • Still no actual filesystem changes at this point
-
-6. Execution:
-   • synthfs executes the filesystem operations
-   • Creates symlinks, directories, and files as needed
-   • Provides basic error handling and rollback
+5. Execution Phase:
+   • A specialized executor (powered by the `go-synthfs` library) safely executes the planned `Operations`.
+   • It handles creating directories, writing files, and setting up symlinks in the correct order.
 
 Component Details
 -----------------
 
 Triggers:
 Triggers implement specific matching strategies:
-• FileNameTrigger - Matches files by name patterns
-• DirectoryTrigger - Matches directories by name
-• ExtensionTrigger - Matches files by extension
-• PathTrigger - Matches by full path patterns
+• FileNameTrigger - Matches files by name patterns (e.g., `*rc`).
+• DirectoryTrigger - Matches directories by name.
+• ExtensionTrigger - Matches files by extension (e.g., `.sh`).
 
-Each trigger returns metadata about matches, not actions. This separation
-allows the same trigger to be used with different power-ups.
+Each trigger simply identifies a file; it doesn't decide what to do with it.
 
 Matchers:
-Matchers bind triggers to power-ups with configuration:
-• Which trigger to use for detection
-• Which power-up should handle matches
-• Options to pass to the power-up
-• Priority for handling conflicts
+Matchers are the glue in your configuration. They bind triggers to power-ups:
+• Which trigger to use for detection.
+• Which power-up should handle the matched files.
+• Custom options for the power-up (e.g., the target directory for a symlink).
 
-Matchers are configured globally with overrides possible per-pack via
-.dodot.toml files.
+Matchers are configured globally and can be overridden per-pack.
 
 Power-ups:
-Power-ups generate actions from matched files:
-• symlink - Creates symbolic links to target locations
-• shell_profile - Modifies shell configuration files
-• shell_add_path - Adds directories to PATH
-• homebrew - Processes Homebrew package files
-• install_script - Executes installation scripts
+Power-ups are the brains of `dodot`. They generate `Actions` from matched files:
+• `symlink` - Creates symbolic links to target locations.
+• `shell_profile` - Ensures shell scripts are sourced by your shell.
+• `shell_add_path` - Adds directories to your system's `$PATH`.
+• `homebrew` - Processes `Brewfile` dependencies.
+• `install` - Executes one-time installation scripts.
 
 Power-ups never perform filesystem operations directly. They only describe
-what should be done through actions.
+what should be done through `Actions`.
 
-Actions:
-Actions are high-level operation descriptions:
-• Type (link, shell_source, brew, install, etc.)
-• Human-readable description
-• Data needed for execution (source, target, options)
+Actions vs. Operations:
+`dodot` makes a key distinction between Actions and Operations:
+• **Action**: A high-level intent (e.g., "link `vimrc`").
+• **Operation**: A low-level, concrete task (e.g., "create a symlink from `/path/to/vimrc` to `~/.vimrc`").
 
-Actions abstract away implementation details from power-ups.
+This separation allows for clear planning and safe execution.
 
 Registry System
 ---------------
 
-All components are registered in a type-safe registry system:
-• TriggerRegistry - Available trigger implementations
-• PowerUpRegistry - Available power-up implementations  
-• MatcherRegistry - Available matcher configurations
-
-This enables extensibility - new triggers and power-ups can be added
-without modifying core code.
+All components (triggers and power-ups) are registered in a type-safe
+registry system. This enables extensibility—new triggers and power-ups can
+be added without modifying the core `dodot` code.
 
 File System Safety
 ------------------
@@ -107,56 +89,56 @@ File System Safety
 dodot uses a layered approach to filesystem operations:
 
 1. Pure Functions:
-   • Power-ups are pure functions (same input → same output)
-   • No side effects during action generation
-   • Easy to test and reason about
+   • Power-ups are pure functions (same input → same output).
+   • No side effects during action generation.
+   • Easy to test and reason about.
 
 2. Synthetic Filesystem:
-   • All operations go through the synthfs library
-   • Operations are validated before execution
-   • Provides transaction-like semantics
+   • All operations go through the `go-synthfs` library.
+   • Operations are validated before execution.
+   • The library automatically handles dependencies (e.g., creating a directory before placing a file in it).
 
 3. Operation Descriptions:
-   • Actions are translated to operation descriptions
-   • Descriptions are data, not execution
-   • Enable dry-run capabilities and validation
+   • The core pipeline produces a list of `Operations`.
+   • This list is just data, which enables powerful features like dry-run validation.
 
 Benefits of This Architecture
 -----------------------------
 
 Separation of Concerns:
-• Triggers focus only on file detection
-• Power-ups focus only on action generation
-• Execution is handled by specialized library
+• Triggers focus only on file detection.
+• Power-ups focus only on generating high-level intents (`Actions`).
+• The core engine handles planning (`Operations`).
+• The executor handles the safety of writing to disk.
 
 Extensibility:
-• New triggers can be used with existing power-ups
-• New power-ups can work with existing triggers
-• Registry system enables plugin-like architecture
+• New triggers can be used with existing power-ups.
+• New power-ups can work with existing triggers.
+• The registry system enables a plugin-like architecture.
 
 Testability:
-• Each component can be tested in isolation
-• Pure functions enable predictable testing
-• No filesystem dependencies in core logic
+• Each component can be tested in isolation.
+• Pure functions enable predictable testing.
+• No filesystem dependencies in the core logic.
 
 Safety:
-• No direct filesystem operations in application code
-• Validation occurs before any changes
-• Basic rollback capabilities through synthfs
+• No direct filesystem operations in application code.
+• Validation occurs before any changes are made.
+• The executor library provides safe, transactional-like behavior.
 
 Predictability:
-• Same inputs always produce same outputs
-• Clear data flow through the pipeline
-• Easy to debug and understand
+• Same inputs always produce the same outputs.
+• Clear data flow through the pipeline.
+• Easy to debug and understand.
 
 Configuration Flow
 ------------------
 
 Configuration is resolved in this order:
-1. Default matchers (built into dodot)
-2. Global configuration files
-3. Pack-specific .dodot.toml files
-4. Command-line overrides
+1. Default matchers (built into dodot).
+2. Global configuration files.
+3. Pack-specific `.dodot.toml` files.
+4. Command-line overrides.
 
 This allows fine-grained control while maintaining sensible defaults.
 
@@ -164,20 +146,18 @@ Pack Processing
 ---------------
 
 Each pack is processed independently:
-1. Load pack configuration (.dodot.toml if present)
-2. Apply ignore rules (skip matching files)
-3. Run trigger matching for remaining files
-4. Group matches by power-up and options
-5. Generate actions for each group
+1. Load pack configuration (`.dodot.toml` if present).
+2. Apply ignore rules from `.dodotignore` files.
+3. Run the trigger/action/operation pipeline for all files in the pack.
 
-Multiple packs can be processed in parallel since they're independent.
+Multiple packs can be processed in parallel since they are independent.
 
 Error Handling
 --------------
 
 Errors are handled at appropriate levels:
-• Trigger errors - Skip individual files, continue processing
-• Power-up errors - Fail the power-up, continue with others
-• Execution errors - Stop processing, attempt rollback
+• Trigger errors - Skip individual files, continue processing.
+• Power-up errors - Fail the power-up, continue with others.
+• Execution errors - Stop processing and report the failure.
 
 This provides graceful degradation while preventing partial deployments.

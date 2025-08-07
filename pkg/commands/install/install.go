@@ -1,8 +1,14 @@
 package install
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/arthur-debert/dodot/pkg/commands/internal"
+	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -16,47 +22,162 @@ type InstallPacksOptions struct {
 	DryRun bool
 	// Force re-runs power-ups that normally only run once.
 	Force bool
+	// EnableHomeSymlinks allows symlink operations to target the user's home directory.
+	EnableHomeSymlinks bool
 }
 
-// InstallPacks runs the installation and deployment logic for the specified packs.
-// It first executes power-ups with RunModeOnce, then those with RunModeMany.
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionResult, error) {
-	log := logging.GetLogger("core.commands")
+// InstallPacks runs the installation + deployment using the direct executor approach.
+// It executes both RunModeOnce actions (install scripts, brewfiles) and RunModeMany
+// actions (symlinks, shell profiles, path) in sequence.
+func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
+	log := logging.GetLogger("commands.install")
 	log.Debug().Str("command", "InstallPacks").Msg("Executing command")
 
-	// Step 1: Run "once" power-ups
-	onceOpts := internal.ExecutionOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		RunMode:      types.RunModeOnce,
-		Force:        opts.Force,
-	}
-	onceResult, err := internal.RunExecutionPipeline(onceOpts)
+	// Phase 1: Run install scripts, brewfiles, etc. (RunModeOnce actions)
+	log.Debug().Msg("Phase 1: Executing run-once actions (install scripts, brewfiles)")
+	installCtx, err := internal.RunPipeline(internal.PipelineOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeOnce, // Only install scripts, brewfiles
+		Force:              opts.Force,        // Force flag applies to run-once actions
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	})
+
 	if err != nil {
-		return nil, err
+		log.Error().Err(err).Msg("Phase 1 (install) failed")
+		return installCtx, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute install actions")
 	}
 
-	// Step 2: Run "many" power-ups (deploy)
-	manyOpts := internal.ExecutionOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		RunMode:      types.RunModeMany,
-		Force:        opts.Force,
-	}
-	manyResult, err := internal.RunExecutionPipeline(manyOpts)
+	// Phase 2: Run symlinks, shell profiles, etc. (RunModeMany actions)
+	log.Debug().Msg("Phase 2: Executing deployment actions (symlinks, profiles)")
+	deployCtx, err := internal.RunPipeline(internal.PipelineOptions{
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany, // Only symlinks, profiles, etc.
+		Force:              false,             // Force doesn't apply to deploy actions
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	})
+
 	if err != nil {
-		return nil, err
+		log.Error().Err(err).Msg("Phase 2 (deploy) failed")
+		// Return combined context with partial results from both phases
+		return mergeExecutionContexts(installCtx, deployCtx), errors.Wrapf(err, errors.ErrActionExecute, "failed to execute deployment actions")
 	}
 
-	// Step 3: Merge results
-	mergedResult := &types.ExecutionResult{
-		Packs:      onceResult.Packs,
-		Operations: append(onceResult.Operations, manyResult.Operations...),
-		DryRun:     opts.DryRun,
+	// Merge results from both phases
+	mergedCtx := mergeExecutionContexts(installCtx, deployCtx)
+
+	// Install shell integration after successful execution (not in dry-run mode)
+	if !opts.DryRun && (mergedCtx.CompletedActions > 0 || mergedCtx.SkippedActions > 0) {
+		log.Debug().Msg("Installing shell integration")
+
+		// Create paths instance to get data directory
+		p, pathErr := paths.New(opts.DotfilesRoot)
+		if pathErr != nil {
+			log.Warn().Err(pathErr).Msg("Could not create paths instance for shell integration")
+			fmt.Fprintf(os.Stderr, "Warning: Could not set up shell integration: %v\n", pathErr)
+		} else {
+			dataDir := p.DataDir()
+			if err := shell.InstallShellIntegration(dataDir); err != nil {
+				log.Warn().Err(err).Msg("Could not install shell integration")
+				fmt.Fprintf(os.Stderr, "Warning: Could not install shell integration: %v\n", err)
+			} else {
+				log.Info().Str("dataDir", dataDir).Msg("Shell integration installed successfully")
+
+				// Show user what was installed and how to enable it
+				snippet := types.GetShellIntegrationSnippet("bash", dataDir)
+
+				fmt.Println("✅ Shell integration installed successfully!")
+				fmt.Printf("📁 Scripts installed to: %s/shell/\n", dataDir)
+				fmt.Println("🔧 To enable, add this line to your shell config (~/.bashrc, ~/.zshrc, etc.):")
+				fmt.Printf("   %s\n", snippet)
+				fmt.Println("🔄 Then reload your shell or run: source ~/.bashrc")
+			}
+		}
 	}
 
-	log.Info().Str("command", "InstallPacks").Msg("Command finished")
-	return mergedResult, nil
+	log.Info().
+		Int("installActions", installCtx.TotalActions).
+		Int("deployActions", deployCtx.TotalActions).
+		Int("totalActions", mergedCtx.TotalActions).
+		Str("command", "InstallPacks").
+		Msg("Command finished")
+
+	return mergedCtx, nil
+}
+
+// mergeExecutionContexts combines results from install and deploy phases into a single context
+func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *types.ExecutionContext {
+	if installCtx == nil && deployCtx == nil {
+		return types.NewExecutionContext("install", false)
+	}
+	if installCtx == nil {
+		deployCtx.Command = "install" // Update command name
+		return deployCtx
+	}
+	if deployCtx == nil {
+		return installCtx
+	}
+
+	// Create new merged context using install context as base
+	merged := types.NewExecutionContext("install", installCtx.DryRun)
+	merged.StartTime = installCtx.StartTime
+
+	// Add all pack results from install phase
+	for packName, packResult := range installCtx.PackResults {
+		merged.AddPackResult(packName, packResult)
+	}
+
+	// Merge in pack results from deploy phase
+	for packName, deployPackResult := range deployCtx.PackResults {
+		if existingPackResult, exists := merged.PackResults[packName]; exists {
+			// Merge PowerUp results from deploy into existing pack result
+			existingPackResult.PowerUpResults = append(existingPackResult.PowerUpResults, deployPackResult.PowerUpResults...)
+			existingPackResult.TotalPowerUps += deployPackResult.TotalPowerUps
+			existingPackResult.CompletedPowerUps += deployPackResult.CompletedPowerUps
+			existingPackResult.FailedPowerUps += deployPackResult.FailedPowerUps
+			existingPackResult.SkippedPowerUps += deployPackResult.SkippedPowerUps
+
+			// Update pack status - if either phase failed, mark as failed
+			switch deployPackResult.Status {
+			case types.ExecutionStatusError:
+				existingPackResult.Status = types.ExecutionStatusError
+			case types.ExecutionStatusPartial:
+				existingPackResult.Status = types.ExecutionStatusPartial
+			}
+		} else {
+			// Add pack result that only appeared in deploy phase
+			merged.AddPackResult(packName, deployPackResult)
+		}
+	}
+
+	// Use the later end time
+	if deployCtx.EndTime.After(installCtx.EndTime) {
+		merged.EndTime = deployCtx.EndTime
+	} else {
+		merged.EndTime = installCtx.EndTime
+	}
+
+	// Recalculate totals (AddPackResult should have handled this, but be explicit)
+	merged.TotalActions = 0
+	merged.CompletedActions = 0
+	merged.FailedActions = 0
+	merged.SkippedActions = 0
+
+	for _, packResult := range merged.PackResults {
+		merged.TotalActions += packResult.TotalPowerUps
+		merged.CompletedActions += packResult.CompletedPowerUps
+		merged.FailedActions += packResult.FailedPowerUps
+		merged.SkippedActions += packResult.SkippedPowerUps
+	}
+
+	return merged
+}
+
+// InstallPacksDirect is an alias for InstallPacks for backward compatibility.
+// Deprecated: Use InstallPacks instead.
+func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
+	return InstallPacks(opts)
 }

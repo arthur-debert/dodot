@@ -24,6 +24,7 @@ type BatchImpl struct {
 	idCounter  int
 	registry   core.OperationFactory
 	logger     core.Logger
+	metadata   map[string]interface{} // User-defined metadata for the batch
 }
 
 // NewBatch creates a new operation batch with prerequisite resolution enabled.
@@ -35,6 +36,7 @@ func NewBatch(fs interface{}, registry core.OperationFactory) Batch {
 		idCounter:  0,
 		registry:   registry,
 		logger:     nil, // Will be set by WithLogger method
+		metadata:   make(map[string]interface{}),
 	}
 }
 
@@ -67,6 +69,18 @@ func (b *BatchImpl) WithRegistry(registry core.OperationFactory) Batch {
 // WithLogger sets the logger for the batch.
 func (b *BatchImpl) WithLogger(logger core.Logger) Batch {
 	b.logger = logger
+	return b
+}
+
+// WithMetadata sets metadata for the batch.
+func (b *BatchImpl) WithMetadata(metadata map[string]interface{}) Batch {
+	if b.metadata == nil {
+		b.metadata = make(map[string]interface{})
+	}
+	// Copy the metadata to avoid external modification
+	for k, v := range metadata {
+		b.metadata[k] = v
+	}
 	return b
 }
 
@@ -112,11 +126,7 @@ func (b *BatchImpl) validateOperation(op interface{}) error {
 }
 
 // CreateDir adds a directory creation operation to the batch.
-func (b *BatchImpl) CreateDir(path string, mode ...fs.FileMode) (interface{}, error) {
-	fileMode := fs.FileMode(0755) // Default directory mode
-	if len(mode) > 0 {
-		fileMode = mode[0]
-	}
+func (b *BatchImpl) CreateDir(path string, mode fs.FileMode, metadata ...map[string]interface{}) (interface{}, error) {
 
 	// Create the operation using the registry
 	op, err := b.createOperation("create_directory", path)
@@ -125,15 +135,22 @@ func (b *BatchImpl) CreateDir(path string, mode ...fs.FileMode) (interface{}, er
 	}
 
 	// Create and set the directory item for this operation
-	dirItem := targets.NewDirectory(path).WithMode(fileMode)
+	dirItem := targets.NewDirectory(path).WithMode(mode)
 	if err := b.registry.SetItemForOperation(op, dirItem); err != nil {
 		return nil, fmt.Errorf("failed to set item for CreateDir operation: %w", err)
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
-		"mode": fileMode.String(),
-	}); err != nil {
+	details := map[string]interface{}{
+		"mode": mode.String(),
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -146,12 +163,7 @@ func (b *BatchImpl) CreateDir(path string, mode ...fs.FileMode) (interface{}, er
 }
 
 // CreateFile adds a file creation operation to the batch.
-func (b *BatchImpl) CreateFile(path string, content []byte, mode ...fs.FileMode) (interface{}, error) {
-	fileMode := fs.FileMode(0644) // Default file mode
-	if len(mode) > 0 {
-		fileMode = mode[0]
-	}
-
+func (b *BatchImpl) CreateFile(path string, content []byte, mode fs.FileMode, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("create_file", path)
 	if err != nil {
@@ -159,17 +171,24 @@ func (b *BatchImpl) CreateFile(path string, content []byte, mode ...fs.FileMode)
 	}
 
 	// Create and set the file item for this operation
-	fileItem := targets.NewFile(path).WithContent(content).WithMode(fileMode)
+	fileItem := targets.NewFile(path).WithContent(content).WithMode(mode)
 	if err := b.registry.SetItemForOperation(op, fileItem); err != nil {
 		return nil, fmt.Errorf("failed to set item for CreateFile operation: %w", err)
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"content_length": len(content),
-		"mode":           fileMode.String(),
+		"mode":           mode.String(),
 		"content":        content,
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -182,7 +201,7 @@ func (b *BatchImpl) CreateFile(path string, content []byte, mode ...fs.FileMode)
 }
 
 // Copy adds a copy operation to the batch.
-func (b *BatchImpl) Copy(src, dst string) (interface{}, error) {
+func (b *BatchImpl) Copy(src, dst string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("copy", src)
 	if err != nil {
@@ -190,11 +209,18 @@ func (b *BatchImpl) Copy(src, dst string) (interface{}, error) {
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"destination": dst,
 		"src":         src,
 		"dst":         dst,
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -229,7 +255,7 @@ func (b *BatchImpl) Copy(src, dst string) (interface{}, error) {
 }
 
 // Move adds a move operation to the batch.
-func (b *BatchImpl) Move(src, dst string) (interface{}, error) {
+func (b *BatchImpl) Move(src, dst string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("move", src)
 	if err != nil {
@@ -237,11 +263,18 @@ func (b *BatchImpl) Move(src, dst string) (interface{}, error) {
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"destination": dst,
 		"src":         src,
 		"dst":         dst,
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -276,10 +309,24 @@ func (b *BatchImpl) Move(src, dst string) (interface{}, error) {
 }
 
 // Delete adds a delete operation to the batch.
-func (b *BatchImpl) Delete(path string) (interface{}, error) {
+func (b *BatchImpl) Delete(path string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("delete", path)
 	if err != nil {
+		return nil, err
+	}
+
+	// Set operation details
+	details := map[string]interface{}{
+		"path": path,
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -292,7 +339,7 @@ func (b *BatchImpl) Delete(path string) (interface{}, error) {
 }
 
 // CreateSymlink adds a symbolic link creation operation to the batch.
-func (b *BatchImpl) CreateSymlink(target, linkPath string) (interface{}, error) {
+func (b *BatchImpl) CreateSymlink(target, linkPath string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("create_symlink", linkPath)
 	if err != nil {
@@ -306,9 +353,16 @@ func (b *BatchImpl) CreateSymlink(target, linkPath string) (interface{}, error) 
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"target": target,
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -321,7 +375,7 @@ func (b *BatchImpl) CreateSymlink(target, linkPath string) (interface{}, error) 
 }
 
 // CreateArchive adds an archive creation operation to the batch.
-func (b *BatchImpl) CreateArchive(archivePath string, format interface{}, sources ...string) (interface{}, error) {
+func (b *BatchImpl) CreateArchive(archivePath string, format interface{}, sources []string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Validate inputs
 	if len(sources) == 0 {
 		return nil, fmt.Errorf("validation failed for CreateArchive(%s): must specify at least one source", archivePath)
@@ -334,11 +388,18 @@ func (b *BatchImpl) CreateArchive(archivePath string, format interface{}, source
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"format":       format,
 		"source_count": len(sources),
 		"sources":      sources,
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -370,7 +431,7 @@ func (b *BatchImpl) CreateArchive(archivePath string, format interface{}, source
 }
 
 // Unarchive adds an unarchive operation to the batch.
-func (b *BatchImpl) Unarchive(archivePath, extractPath string) (interface{}, error) {
+func (b *BatchImpl) Unarchive(archivePath, extractPath string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("unarchive", archivePath)
 	if err != nil {
@@ -384,9 +445,16 @@ func (b *BatchImpl) Unarchive(archivePath, extractPath string) (interface{}, err
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"extract_path": extractPath,
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
@@ -399,7 +467,7 @@ func (b *BatchImpl) Unarchive(archivePath, extractPath string) (interface{}, err
 }
 
 // UnarchiveWithPatterns adds an unarchive operation with pattern filtering to the batch.
-func (b *BatchImpl) UnarchiveWithPatterns(archivePath, extractPath string, patterns ...string) (interface{}, error) {
+func (b *BatchImpl) UnarchiveWithPatterns(archivePath, extractPath string, patterns []string, metadata ...map[string]interface{}) (interface{}, error) {
 	// Create the operation
 	op, err := b.createOperation("unarchive", archivePath)
 	if err != nil {
@@ -413,11 +481,18 @@ func (b *BatchImpl) UnarchiveWithPatterns(archivePath, extractPath string, patte
 	}
 
 	// Set operation details
-	if err := b.setOperationDetails(op, map[string]interface{}{
+	details := map[string]interface{}{
 		"extract_path":  extractPath,
 		"patterns":      patterns,
 		"pattern_count": len(patterns),
-	}); err != nil {
+	}
+	// Add user metadata if provided
+	if len(metadata) > 0 && metadata[0] != nil {
+		for k, v := range metadata[0] {
+			details[k] = v
+		}
+	}
+	if err := b.setOperationDetails(op, details); err != nil {
 		return nil, err
 	}
 
