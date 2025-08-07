@@ -916,3 +916,138 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	content := testutil.ReadFile(t, shellInitFile)
 	testutil.AssertContains(t, content, "export PATH=\""+binDir+":$PATH\"")
 }
+
+func TestDirectExecutor_ReadAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-read")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a test file to read
+	testContent := "This is test content\nWith multiple lines\n"
+	testutil.CreateFile(t, dotfilesDir, "testfile.txt", testContent)
+	testFile := filepath.Join(dotfilesDir, "testfile.txt")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create read action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeRead,
+			Description: "Read test file",
+			Source:      testFile,
+			Pack:        "test",
+			PowerUpName: "test",
+			Priority:    100,
+		},
+	}
+
+	// Execute
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// The Read operation stores outputs that could be retrieved later
+	// In a real scenario, the synthfs result would contain the file content
+}
+
+func TestDirectExecutor_ChecksumAction(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-checksum")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a test file to checksum
+	testContent := "This is test content for checksum\n"
+	testutil.CreateFile(t, dotfilesDir, "checkfile.txt", testContent)
+	testFile := filepath.Join(dotfilesDir, "checkfile.txt")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Test different algorithms
+	algorithms := []string{"md5", "sha1", "sha256", "sha512"}
+
+	for _, alg := range algorithms {
+		t.Run(alg, func(t *testing.T) {
+			// Create checksum action
+			actions := []types.Action{
+				{
+					Type:        types.ActionTypeChecksum,
+					Description: fmt.Sprintf("Calculate %s checksum", alg),
+					Source:      testFile,
+					Pack:        "test",
+					PowerUpName: "test",
+					Priority:    100,
+					Metadata: map[string]interface{}{
+						"algorithm": alg,
+					},
+				},
+			}
+
+			// Execute
+			results, err := executor.ExecuteActions(actions)
+			testutil.AssertNoError(t, err)
+			testutil.AssertEqual(t, 1, len(results))
+			testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+		})
+	}
+
+	// Test with default algorithm (no metadata)
+	t.Run("default_algorithm", func(t *testing.T) {
+		actions := []types.Action{
+			{
+				Type:        types.ActionTypeChecksum,
+				Description: "Calculate checksum with default algorithm",
+				Source:      testFile,
+				Pack:        "test",
+				PowerUpName: "test",
+				Priority:    100,
+			},
+		}
+
+		// Execute
+		results, err := executor.ExecuteActions(actions)
+		testutil.AssertNoError(t, err)
+		testutil.AssertEqual(t, 1, len(results))
+		testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+	})
+}
