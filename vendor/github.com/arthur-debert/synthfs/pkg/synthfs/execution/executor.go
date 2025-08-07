@@ -288,10 +288,39 @@ func (e *Executor) RunWithOptionsAndResolver(ctx context.Context, pipeline inter
 		}
 
 		result.Operations = append(result.Operations, opResult)
+
+		// Break after recording the failed operation if we should not continue on error
+		if err != nil && !opts.ContinueOnError {
+			break
+		}
 	}
 
 	result.Duration = time.Since(start)
 	result.Rollback = e.createRollbackFunc(rollbackOps, fs)
+
+	// Execute rollback if needed
+	if !result.Success && opts.RollbackOnError && len(rollbackOps) > 0 {
+		e.logger.Info().
+			Int("operations_to_rollback", len(rollbackOps)).
+			Msg("executing rollback due to operation failure")
+
+		if rollbackErr := result.Rollback(ctx); rollbackErr != nil {
+			e.logger.Error().
+				Err(rollbackErr).
+				Msg("rollback encountered errors")
+
+			// Add a marker error to indicate rollback failed
+			// The main executor wrapper will convert this to proper error types
+			originalErr := result.Errors[len(result.Errors)-1]
+			result.Errors[len(result.Errors)-1] = &core.RollbackError{
+				OriginalErr:  originalErr,
+				RollbackErrs: []error{rollbackErr},
+			}
+		} else {
+			e.logger.Info().
+				Msg("rollback completed successfully")
+		}
+	}
 
 	e.logger.Info().
 		Bool("success", result.Success).

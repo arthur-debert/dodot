@@ -23,3 +23,18 @@ func (e *ValidationError) Error() string {
 func (e *ValidationError) Unwrap() error {
 	return e.Cause
 }
+
+// RollbackError represents an error that occurs during a rollback,
+// wrapping the original execution error.
+type RollbackError struct {
+	OriginalErr  error
+	RollbackErrs []error
+}
+
+func (e *RollbackError) Error() string {
+	return fmt.Sprintf("operation failed with rollback errors: original error: %v, rollback errors: %v", e.OriginalErr, e.RollbackErrs)
+}
+
+func (e *RollbackError) Unwrap() error {
+	return e.OriginalErr
+}

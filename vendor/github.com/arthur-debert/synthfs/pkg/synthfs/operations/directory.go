@@ -28,8 +28,9 @@ func (op *CreateDirectoryOperation) Prerequisites() []core.Prerequisite {
 	// Always need parent directory to exist (even if it's current directory)
 	prereqs = append(prereqs, core.NewParentDirPrerequisite(op.description.Path))
 
-	// Need no conflict with existing files (even though mkdir is idempotent for directories)
-	prereqs = append(prereqs, core.NewNoConflictPrerequisite(op.description.Path))
+	// Note: We don't use NoConflictPrerequisite because directory creation is idempotent.
+	// If a directory already exists, the operation should succeed (like mkdir -p).
+	// The individual Validate() method handles conflict detection properly.
 
 	return prereqs
 }

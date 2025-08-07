@@ -97,10 +97,59 @@ func (e *Executor) convertResult(coreResult *core.Result) *Result {
 	restoreOps := make([]interface{}, 0, len(coreResult.RestoreOps))
 	restoreOps = append(restoreOps, coreResult.RestoreOps...)
 
-	// Get first error if any
+	// Get first error if any and wrap it appropriately
 	var firstErr error
 	if len(coreResult.Errors) > 0 {
 		firstErr = coreResult.Errors[0]
+
+		// Check if this is a rollback error by type assertion
+		if rollbackErr, ok := firstErr.(*core.RollbackError); ok {
+			// Find which operation failed
+			var failedOp Operation
+			var failedIndex int
+			for i, opResult := range coreResult.Operations {
+				if opResult.Status == StatusFailure {
+					failedIndex = i + 1
+					if op, ok := opResult.Operation.(Operation); ok {
+						failedOp = op
+					} else if wrapper, ok := opResult.Operation.(*operationWrapper); ok {
+						failedOp = wrapper.op
+					}
+					break
+				}
+			}
+
+			// Create a rich RollbackError
+			rbErr := &RollbackError{
+				OriginalErr:  rollbackErr.OriginalErr,
+				RollbackErrs: make(map[OperationID]error),
+			}
+			// For now, we don't have per-operation rollback errors, so we just add the aggregate.
+			// This can be improved later if the core executor provides more granular errors.
+			if len(rollbackErr.RollbackErrs) > 0 {
+				rbErr.RollbackErrs["rollback"] = rollbackErr.RollbackErrs[0]
+			}
+
+			// Wrap in PipelineError
+			pipelineErr := &PipelineError{
+				FailedOp:      failedOp,
+				FailedIndex:   failedIndex,
+				TotalOps:      len(coreResult.Operations),
+				Err:           rbErr,
+				SuccessfulOps: make([]OperationID, 0),
+			}
+
+			// Add successful operation IDs
+			for i, opResult := range coreResult.Operations {
+				if i >= failedIndex-1 {
+					break
+				}
+				if opResult.Status == StatusSuccess {
+					pipelineErr.SuccessfulOps = append(pipelineErr.SuccessfulOps, opResult.OperationID)
+				}
+			}
+			firstErr = pipelineErr
+		}
 	}
 
 	// Create the result using the simplified structure

@@ -13,21 +13,24 @@ type Batch interface {
 	Operations() []interface{}
 
 	// Operation creation methods
-	CreateDir(path string, mode ...fs.FileMode) (interface{}, error)
-	CreateFile(path string, content []byte, mode ...fs.FileMode) (interface{}, error)
-	Copy(src, dst string) (interface{}, error)
-	Move(src, dst string) (interface{}, error)
-	Delete(path string) (interface{}, error)
-	CreateSymlink(target, linkPath string) (interface{}, error)
-	CreateArchive(archivePath string, format interface{}, sources ...string) (interface{}, error)
-	Unarchive(archivePath, extractPath string) (interface{}, error)
-	UnarchiveWithPatterns(archivePath, extractPath string, patterns ...string) (interface{}, error)
+	CreateDir(path string, mode fs.FileMode, metadata ...map[string]interface{}) (interface{}, error)
+	CreateFile(path string, content []byte, mode fs.FileMode, metadata ...map[string]interface{}) (interface{}, error)
+	Copy(src, dst string, metadata ...map[string]interface{}) (interface{}, error)
+	Move(src, dst string, metadata ...map[string]interface{}) (interface{}, error)
+	Delete(path string, metadata ...map[string]interface{}) (interface{}, error)
+	CreateSymlink(target, linkPath string, metadata ...map[string]interface{}) (interface{}, error)
+	CreateArchive(archivePath string, format interface{}, sources []string, metadata ...map[string]interface{}) (interface{}, error)
+	Unarchive(archivePath, extractPath string, metadata ...map[string]interface{}) (interface{}, error)
+	UnarchiveWithPatterns(archivePath, extractPath string, patterns []string, metadata ...map[string]interface{}) (interface{}, error)
 
 	// Configuration
 	WithFileSystem(fs interface{}) Batch
 	WithContext(ctx context.Context) Batch
 	WithRegistry(registry core.OperationFactory) Batch
 	WithLogger(logger core.Logger) Batch
+
+	// Metadata management
+	WithMetadata(metadata map[string]interface{}) Batch
 
 	// Execution
 	Run() (interface{}, error)
@@ -45,4 +48,5 @@ type Result interface {
 	GetError() error
 	GetBudget() interface{}
 	GetRollback() interface{}
+	GetMetadata() map[string]interface{}
 }
