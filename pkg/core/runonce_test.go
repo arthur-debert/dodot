@@ -136,7 +136,8 @@ func TestShouldRunOnceAction(t *testing.T) {
 				},
 			},
 			setupFunc: func() {
-				sentinelPath := filepath.Join(installDir, "dev")
+				sentinelPath := filepath.Join(installDir, "sentinels", "dev")
+				_ = os.MkdirAll(filepath.Dir(sentinelPath), 0755)
 				_ = os.WriteFile(sentinelPath, []byte("xyz789"), 0644)
 			},
 			shouldRun: false,
@@ -195,9 +196,9 @@ func TestFilterRunOnceActions(t *testing.T) {
 	homebrewDir := filepath.Join(tmpDir, "homebrew")
 	installDir := filepath.Join(tmpDir, "install")
 	_ = os.MkdirAll(homebrewDir, 0755)
-	_ = os.MkdirAll(installDir, 0755)
+	_ = os.MkdirAll(filepath.Join(installDir, "sentinels"), 0755)
 	_ = os.WriteFile(filepath.Join(homebrewDir, "tools"), []byte("brew123"), 0644)
-	_ = os.WriteFile(filepath.Join(installDir, "dev"), []byte("install456"), 0644)
+	_ = os.WriteFile(filepath.Join(installDir, "sentinels", "dev"), []byte("install456"), 0644)
 
 	// Create paths instance for testing
 	testPaths := createTestPaths(t)

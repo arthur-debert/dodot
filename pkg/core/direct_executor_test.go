@@ -733,8 +733,8 @@ echo "Done!"`
 	testutil.AssertEqual(t, 1, len(results))
 	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
 
-	// Verify script was copied to install directory
-	targetScript := filepath.Join(p.InstallDir(), "install.sh")
+	// Verify script was copied to install directory (with pack name)
+	targetScript := filepath.Join(p.InstallDir(), "tools", "install.sh")
 	testutil.AssertTrue(t, testutil.FileExists(t, targetScript), "Install script should be copied")
 
 	// Verify sentinel file was created

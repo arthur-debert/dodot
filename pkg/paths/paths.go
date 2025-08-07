@@ -418,7 +418,7 @@ func (p *Paths) HomebrewDir() string {
 func (p *Paths) SentinelPath(powerUpType, packName string) string {
 	switch powerUpType {
 	case "install":
-		return filepath.Join(p.InstallDir(), packName)
+		return filepath.Join(p.InstallDir(), "sentinels", packName)
 	case "homebrew":
 		return filepath.Join(p.HomebrewDir(), packName)
 	default:

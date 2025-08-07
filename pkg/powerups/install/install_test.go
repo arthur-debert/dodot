@@ -178,7 +178,7 @@ func TestGetInstallSentinelPath(t *testing.T) {
 	pack := "mypack"
 	path := GetInstallSentinelPath(pack, pathsInstance)
 
-	expected := filepath.Join(pathsInstance.InstallDir(), pack)
+	expected := filepath.Join(pathsInstance.InstallDir(), "sentinels", pack)
 	testutil.AssertEqual(t, expected, path)
 }
 

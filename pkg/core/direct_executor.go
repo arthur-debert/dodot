@@ -554,10 +554,23 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	// Install script execution - copy script and run it
 	var ops []synthfs.Operation
 
-	// Copy the script to install directory
-	scriptTarget := filepath.Join(e.paths.InstallDir(), filepath.Base(action.Source))
+	// Copy the script to install directory (include pack name to avoid conflicts)
+	scriptTarget := filepath.Join(e.paths.InstallDir(), action.Pack, filepath.Base(action.Source))
 	copyID := fmt.Sprintf("install_copy_%s_%d", action.Pack, time.Now().UnixNano())
-	ops = append(ops, sfs.CopyWithID(copyID, action.Source, scriptTarget))
+
+	if e.force {
+		// If force is enabled, use custom operation to handle existing files
+		ops = append(ops, sfs.CustomOperationWithID(copyID, func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Remove existing file if it exists
+			if err := fs.Remove(scriptTarget); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			// Copy the file
+			return copyFile(fs, action.Source, scriptTarget)
+		}))
+	} else {
+		ops = append(ops, sfs.CopyWithID(copyID, action.Source, scriptTarget))
+	}
 
 	// Make script executable using shell command
 	chmodID := fmt.Sprintf("install_chmod_%s_%d", action.Pack, time.Now().UnixNano())
@@ -566,7 +579,33 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	// Create sentinel file to mark as completed
 	sentinelPath := e.paths.SentinelPath("install", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
-	ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte("completed"), 0644))
+
+	// Get checksum from metadata if available
+	checksumContent := "completed"
+	if action.Metadata != nil {
+		if checksum, ok := action.Metadata["checksum"].(string); ok && checksum != "" {
+			checksumContent = checksum
+		}
+	}
+
+	if e.force {
+		// If force is enabled, use custom operation to overwrite sentinel file
+		ops = append(ops, sfs.CustomOperationWithID(sentinelID, func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Ensure parent directory exists
+			sentinelDir := filepath.Dir(sentinelPath)
+			if err := fs.MkdirAll(sentinelDir, 0755); err != nil {
+				return err
+			}
+			// Remove existing sentinel if it exists
+			if err := fs.Remove(sentinelPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			// Create new sentinel
+			return fs.WriteFile(sentinelPath, []byte(checksumContent), 0644)
+		}))
+	} else {
+		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(checksumContent), 0644))
+	}
 
 	return ops, nil
 }
@@ -902,4 +941,44 @@ func (e *DirectExecutor) createAppendFileOperation(target, content string, mode 
 
 		return nil
 	}
+}
+
+// copyFile copies a file from source to destination using the filesystem interface
+func copyFile(fs filesystem.FileSystem, source, destination string) error {
+	// Ensure destination directory exists
+	destDir := filepath.Dir(destination)
+	if destDir != "." && destDir != "/" {
+		if err := fs.MkdirAll(destDir, 0755); err != nil {
+			return fmt.Errorf("failed to create destination directory %s: %w", destDir, err)
+		}
+	}
+
+	// Open source file
+	srcFile, err := fs.Open(source)
+	if err != nil {
+		return fmt.Errorf("failed to open source file %s: %w", source, err)
+	}
+	defer func() { _ = srcFile.Close() }()
+
+	// Read source content
+	content, err := io.ReadAll(srcFile)
+	if err != nil {
+		return fmt.Errorf("failed to read source file %s: %w", source, err)
+	}
+
+	// Get source file info for permissions (if filesystem supports Stat)
+	var mode os.FileMode = 0644 // Default permissions
+	if fullFS, ok := fs.(filesystem.FullFileSystem); ok {
+		if srcInfo, err := fullFS.Stat(source); err == nil {
+			mode = srcInfo.Mode()
+		}
+	}
+
+	// Write to destination
+	err = fs.WriteFile(destination, content, mode)
+	if err != nil {
+		return fmt.Errorf("failed to write destination file %s: %w", destination, err)
+	}
+
+	return nil
 }
