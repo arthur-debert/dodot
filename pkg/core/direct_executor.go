@@ -103,6 +103,17 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionR
 	for i := range sortedActions {
 		action := &sortedActions[i]
 
+		// Validate action before processing
+		if err := e.validateAction(*action); err != nil {
+			e.logger.Error().
+				Err(err).
+				Str("type", string(action.Type)).
+				Str("description", action.Description).
+				Msg("Action failed validation")
+			return nil, errors.Wrapf(err, errors.ErrActionInvalid,
+				"action validation failed: %s", action.Description)
+		}
+
 		ops, err := e.convertActionToSynthfsOps(sfs, *action)
 		if err != nil {
 			e.logger.Error().
@@ -193,10 +204,7 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 	source := expandHome(action.Source)
 	target := expandHome(action.Target)
 
-	// Validate paths
-	if err := e.validateLinkAction(source, target); err != nil {
-		return nil, err
-	}
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	deployedPath := filepath.Join(e.paths.SymlinkDir(), filepath.Base(target))
 
@@ -239,8 +247,7 @@ func (e *DirectExecutor) convertCopyAction(sfs *synthfs.SynthFS, action types.Ac
 	source := expandHome(action.Source)
 	target := expandHome(action.Target)
 
-	// Validate paths
-	// TODO: Add direct path validation for Actions (not Operations)
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	id := fmt.Sprintf("copy_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
 	return []synthfs.Operation{sfs.CopyWithID(id, source, target)}, nil
@@ -254,7 +261,7 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 	target := expandHome(action.Target)
 
-	// TODO: Add direct path validation for Actions (not Operations)
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	mode := os.FileMode(0644)
 	if action.Mode != 0 {
@@ -267,7 +274,7 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 // Other conversion methods would follow similar patterns...
 
-// TODO: Implement direct Action validation (removed Operation-based validation)
+// Action validation is implemented in validateAction method
 
 // expandHome expands ~ to home directory
 func expandHome(path string) string {
@@ -399,7 +406,7 @@ func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.
 	}
 
 	target := expandHome(action.Target)
-	// TODO: Add direct path validation for Actions (not Operations)
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	// For append, we need to read existing content first
 	id := fmt.Sprintf("append_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
@@ -437,7 +444,7 @@ func (e *DirectExecutor) convertMkdirAction(sfs *synthfs.SynthFS, action types.A
 	}
 
 	target := expandHome(action.Target)
-	// TODO: Add direct path validation for Actions (not Operations)
+	// Path validation is now handled by validateAction in ExecuteActions
 
 	mode := os.FileMode(0755)
 	if action.Mode != 0 {
@@ -558,8 +565,43 @@ func (e *DirectExecutor) convertRunAction(sfs *synthfs.SynthFS, action types.Act
 }
 
 func (e *DirectExecutor) convertBrewAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
-	// Execute brew bundle
-	return nil, errors.New(errors.ErrNotImplemented, "brew action not implemented in POC")
+	if action.Source == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "brew action requires source Brewfile")
+	}
+
+	// Brew actions execute 'brew bundle --file=<brewfile>'
+	// This installs/updates packages from a Brewfile
+	brewfile := expandHome(action.Source)
+
+	// Path validation is now handled by validateAction in ExecuteActions
+
+	// Execute brew bundle command
+	command := fmt.Sprintf("brew bundle --file=%q", brewfile)
+	id := fmt.Sprintf("brew_%s_%d", action.Pack, time.Now().UnixNano())
+
+	ops := []synthfs.Operation{
+		sfs.ShellCommandWithID(id, command,
+			synthfs.WithCaptureOutput(),
+			synthfs.WithTimeout(300*time.Second)), // 5 minutes for brew operations
+	}
+
+	// Create sentinel file to mark as completed (for run-once behavior)
+	if action.Pack != "" {
+		sentinelPath := e.paths.SentinelPath("homebrew", action.Pack)
+		sentinelID := fmt.Sprintf("brew_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
+
+		// Write checksum from metadata if available
+		checksumContent := "completed"
+		if action.Metadata != nil {
+			if checksum, ok := action.Metadata["checksum"].(string); ok && checksum != "" {
+				checksumContent = checksum
+			}
+		}
+
+		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(checksumContent), 0644))
+	}
+
+	return ops, nil
 }
 
 func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
@@ -588,12 +630,119 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 }
 
 func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
-	// Process template and write file
-	return nil, errors.New(errors.ErrNotImplemented, "template action not implemented in POC")
+	if action.Source == "" || action.Target == "" {
+		return nil, errors.New(errors.ErrActionInvalid, "template action requires source and target")
+	}
+
+	source := expandHome(action.Source)
+	target := expandHome(action.Target)
+
+	// Path validation is now handled by validateAction in ExecuteActions
+
+	// Template processing: read template file, substitute variables, write result
+	id := fmt.Sprintf("template_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
+
+	return []synthfs.Operation{
+		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Read template content
+			file, err := fs.Open(source)
+			if err != nil {
+				return fmt.Errorf("failed to open template file %s: %w", source, err)
+			}
+			defer func() { _ = file.Close() }()
+
+			templateContent, err := io.ReadAll(file)
+			if err != nil {
+				return fmt.Errorf("failed to read template file %s: %w", source, err)
+			}
+
+			// Get variables from metadata
+			variables := make(map[string]string)
+			if action.Metadata != nil {
+				if vars, ok := action.Metadata["variables"].(map[string]string); ok {
+					variables = vars
+				}
+			}
+
+			// Process template - simple string replacement for now
+			// A full template engine could be added later (e.g., text/template)
+			processedContent := string(templateContent)
+			for key, value := range variables {
+				placeholder := fmt.Sprintf("{{.%s}}", key)
+				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+
+				// Also support ${VAR} syntax
+				placeholder = fmt.Sprintf("${%s}", key)
+				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+			}
+
+			// Ensure target directory exists
+			targetDir := filepath.Dir(target)
+			if targetDir != "." && targetDir != "/" {
+				if err := fs.MkdirAll(targetDir, 0755); err != nil {
+					return fmt.Errorf("failed to create target directory %s: %w", targetDir, err)
+				}
+			}
+
+			// Write processed content to target
+			mode := os.FileMode(0644)
+			if action.Mode != 0 {
+				mode = os.FileMode(action.Mode)
+			}
+
+			err = fs.WriteFile(target, []byte(processedContent), mode)
+			if err != nil {
+				return fmt.Errorf("failed to write processed template to %s: %w", target, err)
+			}
+
+			return nil
+		}),
+	}, nil
+}
+
+// validateAction performs comprehensive validation on an Action before execution
+func (e *DirectExecutor) validateAction(action types.Action) error {
+	// Check action type-specific validation
+	switch action.Type {
+	case types.ActionTypeLink:
+		return e.validateLinkAction(action.Source, action.Target)
+	case types.ActionTypeCopy:
+		return e.validateCopyAction(action.Source, action.Target)
+	case types.ActionTypeWrite, types.ActionTypeAppend:
+		return e.validateWriteAction(action.Target)
+	case types.ActionTypeMkdir:
+		return e.validateMkdirAction(action.Target)
+	case types.ActionTypeTemplate:
+		return e.validateTemplateAction(action.Source, action.Target)
+	case types.ActionTypeRun:
+		// Command execution doesn't need path validation
+		return nil
+	case types.ActionTypeBrew, types.ActionTypeInstall:
+		// These have their own safety mechanisms (sentinel files, checksums)
+		return nil
+	case types.ActionTypeShellSource, types.ActionTypePathAdd:
+		// These write to dodot-controlled directories
+		return nil
+	case types.ActionTypeRead, types.ActionTypeChecksum:
+		// Read-only operations are safe
+		return nil
+	default:
+		return errors.Newf(errors.ErrActionInvalid, "unknown action type for validation: %s", action.Type)
+	}
 }
 
 // validateLinkAction validates paths for link actions
 func (e *DirectExecutor) validateLinkAction(source, target string) error {
+	// Validate source exists in dotfiles
+	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
+		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
+	}
+
+	// Check if target is a protected system file
+	if err := e.validateNotSystemFile(target); err != nil {
+		return err
+	}
+
 	// If home symlinks are not allowed, check if target is in home directory
 	if !e.allowHomeSymlinks {
 		homeDir, err := os.UserHomeDir()
@@ -613,6 +762,121 @@ func (e *DirectExecutor) validateLinkAction(source, target string) error {
 		// Check if target is in home directory
 		if strings.HasPrefix(target, homeDir) {
 			return errors.Newf(errors.ErrInvalidInput, "target path %s is outside dodot-controlled directories", target)
+		}
+	}
+
+	return nil
+}
+
+// validateCopyAction validates paths for copy actions
+func (e *DirectExecutor) validateCopyAction(source, target string) error {
+	// Source should be from dotfiles
+	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
+		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
+	}
+
+	// Target should be in a safe location
+	return e.validateSafePath(target)
+}
+
+// validateWriteAction validates target path for write/append actions
+func (e *DirectExecutor) validateWriteAction(target string) error {
+	// Check if target is a protected system file
+	if err := e.validateNotSystemFile(target); err != nil {
+		return err
+	}
+
+	// Ensure target is in a safe location
+	return e.validateSafePath(target)
+}
+
+// validateMkdirAction validates target path for mkdir actions
+func (e *DirectExecutor) validateMkdirAction(target string) error {
+	// Directories should only be created in safe locations
+	return e.validateSafePath(target)
+}
+
+// validateTemplateAction validates paths for template actions
+func (e *DirectExecutor) validateTemplateAction(source, target string) error {
+	// Source should be from dotfiles
+	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
+		return errors.Newf(errors.ErrInvalidInput, "template source path %s is outside dotfiles directory", source)
+	}
+
+	// Check if target is a protected system file
+	if err := e.validateNotSystemFile(target); err != nil {
+		return err
+	}
+
+	// Target should be in a safe location
+	return e.validateSafePath(target)
+}
+
+// validateSafePath ensures operations only occur in dodot-controlled directories
+func (e *DirectExecutor) validateSafePath(path string) error {
+	// Normalize the path
+	path = expandHome(path)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrInvalidInput, "invalid path: %s", path)
+	}
+
+	// Get safe directories
+	safeDirectories := []string{
+		e.paths.DotfilesRoot(), // Allow operations in dotfiles root
+		e.paths.DataDir(),
+		e.paths.ConfigDir(),
+		e.paths.CacheDir(),
+		e.paths.StateDir(),
+		e.paths.SymlinkDir(),
+		e.paths.InstallDir(),
+		e.paths.ShellDir(),
+	}
+
+	// Check if path is within any safe directory
+	for _, safeDir := range safeDirectories {
+		if strings.HasPrefix(absPath, safeDir) {
+			return nil
+		}
+	}
+
+	// If home symlinks are allowed, home directory is also safe
+	if e.allowHomeSymlinks {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+		}
+		if strings.HasPrefix(absPath, homeDir) {
+			return nil
+		}
+	}
+
+	return errors.Newf(errors.ErrInvalidInput, "path %s is outside dodot-controlled directories", path)
+}
+
+// validateNotSystemFile prevents overwriting critical system files
+func (e *DirectExecutor) validateNotSystemFile(path string) error {
+	// Normalize the path
+	path = expandHome(path)
+
+	// Get home directory for relative checks
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+	}
+
+	// Check against protected paths from config
+	for protectedPath := range e.config.Security.ProtectedPaths {
+		// Convert protected path to absolute
+		checkPath := protectedPath
+		if !filepath.IsAbs(checkPath) {
+			checkPath = filepath.Join(homeDir, checkPath)
+		}
+
+		// Check if the target path matches or is within a protected path
+		if path == checkPath || strings.HasPrefix(path, checkPath+string(filepath.Separator)) {
+			return errors.Newf(errors.ErrInvalidInput,
+				"cannot modify protected system file: %s", protectedPath)
 		}
 	}
 

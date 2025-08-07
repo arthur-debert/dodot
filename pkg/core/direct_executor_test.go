@@ -397,16 +397,23 @@ func TestDirectExecutor_DryRun(t *testing.T) {
 func TestDirectExecutor_ValidationErrors(t *testing.T) {
 	// Setup test environment
 	tempDir := testutil.TempDir(t, "direct-executor-validation")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
 	homeDir := filepath.Join(tempDir, "home")
 
+	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
 
 	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
+	// Create a source file in dotfiles directory
+	testutil.CreateFile(t, dotfilesDir, "vimrc", "\" Test vimrc")
+	sourceFile := filepath.Join(dotfilesDir, "vimrc")
+
 	// Create execution context
-	p, err := paths.New("")
+	p, err := paths.New(dotfilesDir)
 	testutil.AssertNoError(t, err)
 
 	opts := &DirectExecutorOptions{
@@ -420,11 +427,12 @@ func TestDirectExecutor_ValidationErrors(t *testing.T) {
 	executor := NewDirectExecutor(opts)
 
 	// Create action that should fail validation
+	// Source is valid (from dotfiles) but target is in home directory with home symlinks disabled
 	actions := []types.Action{
 		{
 			Type:        types.ActionTypeLink,
 			Description: "Link to home directory (should fail)",
-			Source:      "/tmp/source",
+			Source:      sourceFile,
 			Target:      filepath.Join(homeDir, ".vimrc"),
 			Pack:        "vim",
 			PowerUpName: "symlink",
@@ -436,6 +444,51 @@ func TestDirectExecutor_ValidationErrors(t *testing.T) {
 	_, err = executor.ExecuteActions(actions)
 	testutil.AssertError(t, err)
 	testutil.AssertErrorContains(t, err, "outside dodot-controlled directories")
+
+	// Test protected system file validation
+	t.Run("protected_system_file", func(t *testing.T) {
+		// Allow home symlinks but try to write to protected file
+		opts.AllowHomeSymlinks = true
+		executor := NewDirectExecutor(opts)
+
+		actions := []types.Action{
+			{
+				Type:        types.ActionTypeLink,
+				Description: "Link to SSH key (should fail)",
+				Source:      sourceFile,
+				Target:      filepath.Join(homeDir, ".ssh/id_rsa"),
+				Pack:        "ssh",
+				PowerUpName: "symlink",
+				Priority:    100,
+			},
+		}
+
+		_, err := executor.ExecuteActions(actions)
+		testutil.AssertError(t, err)
+		testutil.AssertErrorContains(t, err, "cannot modify protected system file")
+	})
+
+	// Test write action to protected path
+	t.Run("write_to_protected_path", func(t *testing.T) {
+		opts.AllowHomeSymlinks = true
+		executor := NewDirectExecutor(opts)
+
+		actions := []types.Action{
+			{
+				Type:        types.ActionTypeWrite,
+				Description: "Write to AWS credentials (should fail)",
+				Target:      filepath.Join(homeDir, ".aws/credentials"),
+				Content:     "malicious content",
+				Pack:        "aws",
+				PowerUpName: "config",
+				Priority:    100,
+			},
+		}
+
+		_, err := executor.ExecuteActions(actions)
+		testutil.AssertError(t, err)
+		testutil.AssertErrorContains(t, err, "cannot modify protected system file")
+	})
 }
 
 func TestDirectExecutor_ForceMode(t *testing.T) {
