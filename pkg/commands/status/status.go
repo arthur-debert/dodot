@@ -54,7 +54,8 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 		return nil, err
 	}
 
-	ctx := core.NewExecutionContext(false, pathsInstance)
+	// Create execution context with home symlinks enabled to match deploy/install behavior
+	ctx := core.NewExecutionContextWithHomeSymlinks(false, pathsInstance, true, nil)
 	operations, err := core.ConvertActionsToOperationsWithContext(actions, ctx)
 	if err != nil {
 		return nil, err

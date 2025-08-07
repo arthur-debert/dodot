@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/operations"
@@ -57,7 +58,7 @@ func TestResolveOperationConflicts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testPaths := createTestPaths(t)
-			ctx := NewExecutionContext(tt.force, testPaths)
+			ctx := NewExecutionContextWithHomeSymlinks(tt.force, testPaths, true, nil)
 			resolveOperationConflicts(&tt.ops, ctx)
 
 			if tt.checkOps != nil {
@@ -78,12 +79,20 @@ func TestResolveOperationConflicts(t *testing.T) {
 
 func TestConvertActionsToOperations_WithConflictResolution(t *testing.T) {
 	actions := []types.Action{
-		{Type: types.ActionTypeLink, Source: "/dotfiles/vim/.vimrc", Target: "~/.vimrc"},
+		{Type: types.ActionTypeLink, Source: "{{DOTFILES_ROOT}}/vim/.vimrc", Target: "~/.vimrc"},
 		{Type: types.ActionTypeWrite, Target: "~/.vimrc", Content: "\"vimrc\""},
 	}
 
 	testPaths := createTestPaths(t)
-	ctx := NewExecutionContext(false, testPaths)
+
+	// Replace placeholder with actual dotfiles root
+	for i := range actions {
+		if actions[i].Source != "" {
+			actions[i].Source = strings.ReplaceAll(actions[i].Source, "{{DOTFILES_ROOT}}", testPaths.DotfilesRoot())
+		}
+	}
+
+	ctx := NewExecutionContextWithHomeSymlinks(false, testPaths, true, nil)
 	ops, err := ConvertActionsToOperationsWithContext(actions, ctx)
 	require.NoError(t, err) // Should not error, but mark ops as conflict
 

@@ -257,17 +257,44 @@ func (v *PathValidator) validateSymlinkPath(target, source string) error {
 		Str("normalizedHome", normalizedHome).
 		Msg("Checking if target is in home directory")
 
-	// Check if target is in home directory
-	if !isPathWithin(normalizedTarget, normalizedHome) {
-		// Target must be in home directory when allowHomeSymlinks is true
-		return errors.Newf(errors.ErrPermission,
-			"symlink target must be in home directory when using home symlinks: %s", target)
+	// Check if target is in home directory OR in a safe directory (for deploy symlinks)
+	targetInHome := isPathWithin(normalizedTarget, normalizedHome)
+
+	// Check if target is in a safe directory
+	safeDirectories := []string{
+		v.paths.DotfilesRoot(),
+		v.paths.DataDir(),
+		v.paths.ConfigDir(),
+		v.paths.CacheDir(),
+		v.paths.StateDir(),
+		v.paths.DeployedDir(),
+		v.paths.BackupsDir(),
+		v.paths.HomebrewDir(),
+		v.paths.InstallDir(),
+		v.paths.ShellDir(),
+		v.paths.TemplatesDir(),
 	}
 
-	// Target is in home directory, perform additional safety checks
-	// Check for dangerous target locations
-	if err := v.validateNotSystemFile(normalizedTarget); err != nil {
-		return err
+	targetInSafe := false
+	for _, safeDir := range safeDirectories {
+		if isPathWithin(normalizedTarget, safeDir) {
+			targetInSafe = true
+			break
+		}
+	}
+
+	if !targetInHome && !targetInSafe {
+		// Target must be in home directory or safe directory when allowHomeSymlinks is true
+		return errors.Newf(errors.ErrPermission,
+			"symlink target must be in home directory or dodot-controlled directory when using home symlinks: %s", target)
+	}
+
+	// Target is in home directory or safe directory, perform additional safety checks
+	// Check for dangerous target locations (only if in home directory)
+	if targetInHome {
+		if err := v.validateNotSystemFile(normalizedTarget); err != nil {
+			return err
+		}
 	}
 
 	v.logger.Debug().
