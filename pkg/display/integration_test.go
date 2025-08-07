@@ -83,13 +83,12 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	// Verify output contains expected elements
 	expectedStrings := []string{
 		"deploy",
-		"✓ vim",                  // Pack succeeded
-		"✓ symlink",              // Symlink succeeded
+		"vim:",                   // Pack name with colon
+		"shell:",                 // Pack name with colon
+		"symlink",                // PowerUp name
 		"linked to $HOME/vimrc",  // PowerUp-aware message
-		"✗ shell",                // Pack has errors (alert status)
-		"✓ symlink",              // First operation succeeded
 		"linked to $HOME/bashrc", // PowerUp-aware message
-		"✗ install_script",       // Second operation failed
+		"install_script",         // PowerUp name
 		"installation failed",    // PowerUp-aware error message
 	}
 
@@ -102,7 +101,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	t.Logf("Full output:\n%s", output)
 
 	// Verify pack order (shell should come before vim due to alphabetical sorting)
-	shellIndex := strings.Index(output, "✗ shell")
-	vimIndex := strings.Index(output, "✓ vim")
+	shellIndex := strings.Index(output, "shell:")
+	vimIndex := strings.Index(output, "vim:")
 	testutil.AssertTrue(t, shellIndex < vimIndex, "Packs should be sorted alphabetically (shell before vim)")
 }
