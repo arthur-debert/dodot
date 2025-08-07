@@ -43,7 +43,7 @@ powerup = "symlink"
 		EnableHomeSymlinks: true,
 	}
 
-	context, err := DeployPacksDirect(opts)
+	context, err := DeployPacks(opts)
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, context)
 
@@ -103,7 +103,7 @@ powerup = "install"
 		EnableHomeSymlinks: true,
 	}
 
-	context, err := InstallPacksDirect(opts)
+	context, err := InstallPacks(opts)
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, context)
 

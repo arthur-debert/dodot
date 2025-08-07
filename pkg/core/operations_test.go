@@ -895,7 +895,7 @@ func BenchmarkConvertActionsToOperations(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := ConvertActionsToOperations(actions)
+		_, err := ConvertActionsToOperationsWithContext(actions, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -911,7 +911,7 @@ func BenchmarkConvertAction_Link(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := ConvertAction(action)
+		_, err := ConvertActionWithContext(action, nil)
 		if err != nil {
 			b.Fatal(err)
 		}

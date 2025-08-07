@@ -18,9 +18,9 @@ type DeployPacksOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// DeployPacks runs the deployment logic for the specified packs.
-// This executes power-ups with RunModeMany.
-func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
+// DeployPacks runs the deployment logic using the direct executor approach.
+// This executes power-ups with RunModeMany directly without intermediate Operations.
+func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "DeployPacks").Msg("Executing command")
 
@@ -32,34 +32,17 @@ func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
 
-	result, err := internal.RunExecutionPipeline(execOpts)
+	context, err := internal.RunExecutionPipeline(execOpts)
 	if err != nil {
 		return nil, err
 	}
 
 	log.Info().Str("command", "DeployPacks").Msg("Command finished")
-	return result, nil
+	return context, nil
 }
 
-// DeployPacksDirect runs the deployment logic using the direct executor approach.
-// This executes power-ups with RunModeMany directly without intermediate Operations.
+// DeployPacksDirect is an alias for DeployPacks for backward compatibility.
+// Deprecated: Use DeployPacks instead.
 func DeployPacksDirect(opts DeployPacksOptions) (*types.ExecutionContext, error) {
-	log := logging.GetLogger("core.commands")
-	log.Debug().Str("command", "DeployPacksDirect").Msg("Executing command")
-
-	execOpts := internal.ExecutionOptions{
-		DotfilesRoot:       opts.DotfilesRoot,
-		PackNames:          opts.PackNames,
-		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeMany,
-		EnableHomeSymlinks: opts.EnableHomeSymlinks,
-	}
-
-	context, err := internal.RunDirectExecutionPipeline(execOpts)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Info().Str("command", "DeployPacksDirect").Msg("Command finished")
-	return context, nil
+	return DeployPacks(opts)
 }
