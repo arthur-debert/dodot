@@ -23,4 +23,6 @@ jobs:
 
     - name: Test
       run: go test -mod=vendor -v ./...
+      env:
+        PROJECT_ROOT: ${{ github.workspace }}
 
