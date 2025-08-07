@@ -1,8 +1,11 @@
 package synthfs
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
@@ -13,66 +16,8 @@ func modePtr(mode uint32) *uint32 {
 	return &mode
 }
 
-func TestSynthfsExecutor_ValidateSafePath(t *testing.T) {
-	// Create a temp directory to use as home
-	tempHome := testutil.TempDir(t, "synthfs-validate")
-	t.Setenv("HOME", tempHome)
-	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempHome, ".local", "share", "dodot"))
-
-	// Create the necessary directories
-	testutil.CreateDir(t, tempHome, ".local")
-	testutil.CreateDir(t, filepath.Join(tempHome, ".local"), "share")
-	testutil.CreateDir(t, filepath.Join(tempHome, ".local", "share"), "dodot")
-	testutil.CreateDir(t, filepath.Join(tempHome, ".local", "share", "dodot"), "deployed")
-
-	// Create paths and executor
-	p, err := paths.New("")
-	testutil.AssertNoError(t, err)
-	executor := NewSynthfsExecutorWithPaths(false, p)
-
-	tests := []struct {
-		name      string
-		path      string
-		expectErr bool
-	}{
-		{
-			name:      "data directory is safe",
-			path:      filepath.Join(tempHome, ".local", "share", "dodot", "test.txt"),
-			expectErr: false,
-		},
-		{
-			name:      "deployed directory is safe",
-			path:      filepath.Join(tempHome, ".local", "share", "dodot", "deployed", "symlink", "test"),
-			expectErr: false,
-		},
-		{
-			name:      "user home directory is not safe",
-			path:      filepath.Join(tempHome, ".vimrc"),
-			expectErr: true,
-		},
-		{
-			name:      "system directory is not safe",
-			path:      "/etc/passwd",
-			expectErr: true,
-		},
-		{
-			name:      "temp directory is not safe",
-			path:      "/tmp/test.txt",
-			expectErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := executor.validateSafePath(tt.path)
-			if tt.expectErr {
-				testutil.AssertError(t, err)
-			} else {
-				testutil.AssertNoError(t, err)
-			}
-		})
-	}
-}
+// Note: Path validation tests have been moved to pkg/validation/paths_test.go
+// since validation is now done earlier in the pipeline during operation conversion
 
 func TestSynthfsExecutor_ExecuteOperations(t *testing.T) {
 	// Use a temp directory that mimics dodot structure
@@ -134,19 +79,21 @@ func TestSynthfsExecutor_ExecuteOperations(t *testing.T) {
 			},
 		},
 		{
-			name: "operation outside safe directory",
+			name: "operation outside safe directory succeeds (validation moved to conversion phase)",
 			operations: []types.Operation{
 				{
 					Type:        types.OperationWriteFile,
-					Target:      "/tmp/unsafe.txt",
-					Content:     "Should fail",
-					Description: "Unsafe write",
+					Target:      filepath.Join(os.TempDir(), fmt.Sprintf("dodot-test-%d.txt", time.Now().UnixNano())),
+					Content:     "This will succeed",
+					Description: "Write outside safe dir",
 					Status:      types.StatusReady,
 				},
 			},
-			expectErr: true,
+			expectErr: false, // No validation at executor level
 			checkFunc: func(t *testing.T) {
-				// Nothing to check - operation should fail
+				// Note: Validation is now done during operation conversion phase,
+				// not during execution. See pkg/validation/paths_test.go
+				// The executor will execute whatever operations it receives.
 			},
 		},
 		{
