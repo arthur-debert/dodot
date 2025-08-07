@@ -15,7 +15,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/arthur-debert/dodot/pkg/validation"
 	"github.com/arthur-debert/synthfs/pkg/synthfs"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 	"github.com/rs/zerolog"
@@ -40,7 +39,7 @@ type DirectExecutor struct {
 	config            *config.Config
 	allowHomeSymlinks bool
 	enableRollback    bool
-	pathValidator     *validation.PathValidator
+	// pathValidator removed - validation will be handled directly on Actions
 }
 
 // NewDirectExecutor creates a new direct executor
@@ -54,9 +53,6 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 		cfg = config.Default()
 	}
 
-	// Create path validator
-	pathValidator := validation.NewPathValidator(opts.Paths, opts.AllowHomeSymlinks, cfg)
-
 	return &DirectExecutor{
 		logger:            logging.GetLogger("core.direct_executor"),
 		dryRun:            opts.DryRun,
@@ -66,7 +62,7 @@ func NewDirectExecutor(opts *DirectExecutorOptions) *DirectExecutor {
 		config:            cfg,
 		allowHomeSymlinks: opts.AllowHomeSymlinks,
 		enableRollback:    cfg.Security.EnableRollback,
-		pathValidator:     pathValidator,
+		// pathValidator removed - validation will be handled directly on Actions
 	}
 }
 
@@ -197,10 +193,7 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 	source := expandHome(action.Source)
 	target := expandHome(action.Target)
 
-	// Validate paths
-	if err := e.validateSymlinkPaths(source, target); err != nil {
-		return nil, err
-	}
+	// TODO: Add direct path validation for Actions (not Operations)
 
 	deployedPath := filepath.Join(e.paths.SymlinkDir(), filepath.Base(target))
 
@@ -244,9 +237,7 @@ func (e *DirectExecutor) convertCopyAction(sfs *synthfs.SynthFS, action types.Ac
 	target := expandHome(action.Target)
 
 	// Validate paths
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// TODO: Add direct path validation for Actions (not Operations)
 
 	id := fmt.Sprintf("copy_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
 	return []synthfs.Operation{sfs.CopyWithID(id, source, target)}, nil
@@ -260,10 +251,7 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 	target := expandHome(action.Target)
 
-	// Validate path
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// TODO: Add direct path validation for Actions (not Operations)
 
 	mode := os.FileMode(0644)
 	if action.Mode != 0 {
@@ -276,29 +264,7 @@ func (e *DirectExecutor) convertWriteAction(sfs *synthfs.SynthFS, action types.A
 
 // Other conversion methods would follow similar patterns...
 
-// FIXME: ARCHITECTURAL PROBLEM - Creating fake Operations for validation!
-// DirectExecutor should validate Actions directly, not convert to Operations.
-// Validation should work on Action types, not Operation types.
-// validatePath validates a single path
-func (e *DirectExecutor) validatePath(path string) error {
-	op := types.Operation{
-		Type:   types.OperationWriteFile,
-		Target: path,
-	}
-	return e.pathValidator.ValidateOperation(op)
-}
-
-// FIXME: ARCHITECTURAL PROBLEM - Creating fake Operations for validation!
-// DirectExecutor should validate Actions directly, not convert to Operations.
-// validateSymlinkPaths validates symlink source and target paths
-func (e *DirectExecutor) validateSymlinkPaths(source, target string) error {
-	op := types.Operation{
-		Type:   types.OperationCreateSymlink,
-		Source: source,
-		Target: target,
-	}
-	return e.pathValidator.ValidateOperation(op)
-}
+// TODO: Implement direct Action validation (removed Operation-based validation)
 
 // expandHome expands ~ to home directory
 func expandHome(path string) string {
@@ -426,9 +392,7 @@ func (e *DirectExecutor) convertAppendAction(sfs *synthfs.SynthFS, action types.
 	}
 
 	target := expandHome(action.Target)
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// TODO: Add direct path validation for Actions (not Operations)
 
 	// For append, we need to read existing content first
 	id := fmt.Sprintf("append_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
@@ -466,9 +430,7 @@ func (e *DirectExecutor) convertMkdirAction(sfs *synthfs.SynthFS, action types.A
 	}
 
 	target := expandHome(action.Target)
-	if err := e.validatePath(target); err != nil {
-		return nil, err
-	}
+	// TODO: Add direct path validation for Actions (not Operations)
 
 	mode := os.FileMode(0755)
 	if action.Mode != 0 {

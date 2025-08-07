@@ -10,7 +10,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/style"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -193,7 +192,7 @@ func newDeployCmd() *cobra.Command {
 				Msg("Deploying from dotfiles root")
 
 			// Use the new DeployPacks implementation with DirectExecutor
-			context, err := commands.DeployPacks(commands.DeployPacksOptions{
+			_, err = commands.DeployPacks(commands.DeployPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -208,18 +207,8 @@ func newDeployCmd() *cobra.Command {
 				fmt.Println(MsgDryRunNotice)
 			}
 
-			// Convert execution context to operations for display
-			var operations []types.Operation
-			for _, packResult := range context.PackResults {
-				for _, opResult := range packResult.Operations {
-					if opResult.Operation != nil {
-						operations = append(operations, *opResult.Operation)
-					}
-				}
-			}
-
-			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderOperations(operations))
+			// TODO: Implement new rendering system (removed Operation-based display)
+			fmt.Println("Command completed - rendering system removed")
 
 			return nil
 		},
@@ -252,7 +241,7 @@ func newInstallCmd() *cobra.Command {
 				Msg("Installing from dotfiles root")
 
 			// Use the new InstallPacks implementation with DirectExecutor
-			context, err := commands.InstallPacks(commands.InstallPacksOptions{
+			_, err = commands.InstallPacks(commands.InstallPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -268,18 +257,8 @@ func newInstallCmd() *cobra.Command {
 				fmt.Println(MsgDryRunNotice)
 			}
 
-			// Convert execution context to operations for display
-			var operations []types.Operation
-			for _, packResult := range context.PackResults {
-				for _, opResult := range packResult.Operations {
-					if opResult.Operation != nil {
-						operations = append(operations, *opResult.Operation)
-					}
-				}
-			}
-
-			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderOperations(operations))
+			// TODO: Implement new rendering system (removed Operation-based display)
+			fmt.Println("Command completed - rendering system removed")
 
 			return nil
 		},
@@ -303,7 +282,7 @@ func newListCmd() *cobra.Command {
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
 
 			// Use the actual ListPacks implementation
-			result, err := commands.ListPacks(commands.ListPacksOptions{
+			_, err = commands.ListPacks(commands.ListPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 			})
 			if err != nil {
@@ -311,8 +290,8 @@ func newListCmd() *cobra.Command {
 			}
 
 			// Display the packs using rich output
-			renderer := style.NewTerminalRenderer()
-			fmt.Println(renderer.RenderPackList(result.Packs))
+			// TODO: Implement new rendering system (style package removed)
+			fmt.Println("List command output - rendering system removed")
 
 			return nil
 		},
@@ -336,24 +315,8 @@ func newStatusCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
 
-			// Use the new StatusPacks implementation
-			result, err := commands.StatusPacks(commands.StatusPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-			})
-			if err != nil {
-				return fmt.Errorf(MsgErrStatusPacks, err)
-			}
-
-			// Convert and display status using rich output
-			renderer := style.NewTerminalRenderer()
-			var packStatuses []style.PackStatus
-
-			for _, ps := range result.Packs {
-				packStatuses = append(packStatuses, style.ConvertDisplayPackToPackStatus(ps))
-			}
-
-			fmt.Println(renderer.RenderPackStatuses(packStatuses))
+			// TODO: StatusPacks not yet implemented (removed as part of Operation elimination)
+			fmt.Println("Status command not yet implemented - removed as part of Operation elimination")
 
 			return nil
 		},

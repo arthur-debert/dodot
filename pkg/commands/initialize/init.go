@@ -149,8 +149,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 		actions = append(actions, action)
 	}
 
-	// 6. Execute actions using DirectExecutor and get operations from results
-	var ops []types.Operation
+	// 6. Execute actions using DirectExecutor (Operations no longer returned)
 	if len(actions) > 0 {
 		// Initialize paths
 		pathsInstance, err := paths.New(opts.DotfilesRoot)
@@ -175,25 +174,17 @@ For more information, see: https://github.com/arthur-debert/dodot
 			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute init actions")
 		}
 
-		// FIXME: ARCHITECTURAL PROBLEM - init command should NOT return Operation types!
-		// User-facing commands should return Pack+PowerUp+File information:
-		// - "Created vim pack with .vimrc for symlink, aliases.sh for shell_profile"
-		// NOT operation details: "Operation: WriteFile, Operation: CreateDir"
-		// See docs/design/display.txxt - users understand packs/powerups/files, not operations
-		// Extract operations from operation results for compatibility
-		for _, result := range results {
-			if result.Operation != nil {
-				ops = append(ops, *result.Operation)
-			}
-		}
+		// FIXME: ARCHITECTURAL PROBLEM - init command should return Pack+PowerUp+File information
+		// NOT operation details. See docs/design/display.txxt
+		// Operations are no longer returned (part of Operation layer elimination)
+		_ = results // Results processed but not exposed in return value
 	}
 
-	// 7. Return result with operations
+	// 7. Return result (Operations field removed as part of Operation elimination)
 	result := &types.InitResult{
 		PackName:     opts.PackName,
 		Path:         packPath,
 		FilesCreated: []string{},
-		Operations:   ops,
 	}
 
 	// Report all files that would be created
@@ -216,7 +207,6 @@ For more information, see: https://github.com/arthur-debert/dodot
 
 	log.Debug().
 		Int("actionCount", len(actions)).
-		Int("operationCount", len(ops)).
 		Msg("Executed actions for InitPack")
 
 	log.Info().Str("command", "InitPack").

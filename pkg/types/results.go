@@ -79,15 +79,15 @@ func (dp *DisplayPack) GetPackStatus() string {
 
 // FillResult holds the result of the 'fill' command.
 type FillResult struct {
-	PackName     string      `json:"packName"`
-	FilesCreated []string    `json:"filesCreated"`
-	Operations   []Operation `json:"operations"`
+	PackName     string   `json:"packName"`
+	FilesCreated []string `json:"filesCreated"`
+	// Operations field removed - part of Operation layer elimination
 }
 
 // InitResult holds the result of the 'init' command.
 type InitResult struct {
-	PackName     string      `json:"packName"`
-	Path         string      `json:"path"`
-	FilesCreated []string    `json:"filesCreated"`
-	Operations   []Operation `json:"operations"`
+	PackName     string   `json:"packName"`
+	Path         string   `json:"path"`
+	FilesCreated []string `json:"filesCreated"`
+	// Operations field removed - part of Operation layer elimination
 }

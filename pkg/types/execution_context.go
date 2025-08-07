@@ -6,16 +6,16 @@ import "time"
 type ExecutionStatus string
 
 const (
-	// ExecutionStatusSuccess means all operations succeeded
+	// ExecutionStatusSuccess means all actions succeeded
 	ExecutionStatusSuccess ExecutionStatus = "success"
 
-	// ExecutionStatusPartial means some operations succeeded, some failed
+	// ExecutionStatusPartial means some actions succeeded, some failed
 	ExecutionStatusPartial ExecutionStatus = "partial"
 
-	// ExecutionStatusError means all operations failed
+	// ExecutionStatusError means all actions failed
 	ExecutionStatusError ExecutionStatus = "error"
 
-	// ExecutionStatusSkipped means all operations were skipped
+	// ExecutionStatusSkipped means all actions were skipped
 	ExecutionStatusSkipped ExecutionStatus = "skipped"
 
 	// ExecutionStatusPending means execution hasn't started
@@ -39,17 +39,17 @@ type ExecutionContext struct {
 	// DryRun indicates if this was a dry run
 	DryRun bool
 
-	// TotalOperations is the total count of operations across all packs
-	TotalOperations int
+	// TotalActions is the total count of actions across all packs
+	TotalActions int
 
-	// CompletedOperations is the count of successfully completed operations
-	CompletedOperations int
+	// CompletedActions is the count of successfully completed actions
+	CompletedActions int
 
-	// FailedOperations is the count of failed operations
-	FailedOperations int
+	// FailedActions is the count of failed actions
+	FailedActions int
 
-	// SkippedOperations is the count of skipped operations
-	SkippedOperations int
+	// SkippedActions is the count of skipped actions
+	SkippedActions int
 }
 
 // PackExecutionResult contains the execution results for a single pack
@@ -57,8 +57,8 @@ type PackExecutionResult struct {
 	// Pack is the pack being executed
 	Pack *Pack
 
-	// Operations contains all operations and their results
-	Operations []*OperationResult
+	// PowerUpResults contains all PowerUp results and their status
+	PowerUpResults []*PowerUpResult
 
 	// Status is the aggregated status for this pack
 	Status ExecutionStatus
@@ -69,30 +69,27 @@ type PackExecutionResult struct {
 	// EndTime is when this pack's execution completed
 	EndTime time.Time
 
-	// TotalOperations in this pack
-	TotalOperations int
+	// TotalPowerUps in this pack
+	TotalPowerUps int
 
-	// CompletedOperations in this pack
-	CompletedOperations int
+	// CompletedPowerUps in this pack
+	CompletedPowerUps int
 
-	// FailedOperations in this pack
-	FailedOperations int
+	// FailedPowerUps in this pack
+	FailedPowerUps int
 
-	// SkippedOperations in this pack
-	SkippedOperations int
+	// SkippedPowerUps in this pack
+	SkippedPowerUps int
 }
 
-// FIXME: ARCHITECTURAL PROBLEM - We should NOT track individual operation results!
-// The atomic unit is PowerUp, not Operation. Execution system should:
-// 1. Execute all operations for a PowerUp
-// 2. Roll up status: if ANY operation fails, PowerUp fails
-// 3. Store PowerUpResult (not OperationResult)
-// 4. UI displays PowerUp status: "vim: symlink .vimrc -> failed" (user-level info)
-// NOT operation details: "CreateDir: success, CreateSymlink: failed" (implementation details)
-// OperationResult tracks the result of a single operation execution
-type OperationResult struct {
-	// Operation that was executed
-	Operation *Operation
+// PowerUpResult tracks the result of a single PowerUp execution
+// This is the atomic unit - if ANY action in a PowerUp fails, the PowerUp fails
+type PowerUpResult struct {
+	// PowerUpName is the name of the PowerUp (symlink, homebrew, etc.)
+	PowerUpName string
+
+	// Files are the files processed by this PowerUp
+	Files []string
 
 	// Status is the final status after execution
 	Status OperationStatus
@@ -100,17 +97,17 @@ type OperationResult struct {
 	// Error contains any error that occurred
 	Error error
 
-	// StartTime is when the operation began
+	// StartTime is when the PowerUp execution began
 	StartTime time.Time
 
-	// EndTime is when the operation completed
+	// EndTime is when the PowerUp execution completed
 	EndTime time.Time
 
-	// Output contains any output from the operation (for execute operations)
-	Output string
+	// Message provides additional context
+	Message string
 
-	// Metadata can contain additional execution information
-	Metadata map[string]interface{}
+	// Pack is the pack this PowerUp belongs to
+	Pack string
 }
 
 // NewExecutionContext creates a new execution context
@@ -127,17 +124,17 @@ func NewExecutionContext(command string, dryRun bool) *ExecutionContext {
 func (ec *ExecutionContext) AddPackResult(packName string, result *PackExecutionResult) {
 	ec.PackResults[packName] = result
 
-	// Update totals
-	ec.TotalOperations = 0
-	ec.CompletedOperations = 0
-	ec.FailedOperations = 0
-	ec.SkippedOperations = 0
+	// Update totals based on PowerUps, not Operations
+	ec.TotalActions = 0
+	ec.CompletedActions = 0
+	ec.FailedActions = 0
+	ec.SkippedActions = 0
 
 	for _, pr := range ec.PackResults {
-		ec.TotalOperations += pr.TotalOperations
-		ec.CompletedOperations += pr.CompletedOperations
-		ec.FailedOperations += pr.FailedOperations
-		ec.SkippedOperations += pr.SkippedOperations
+		ec.TotalActions += pr.TotalPowerUps
+		ec.CompletedActions += pr.CompletedPowerUps
+		ec.FailedActions += pr.FailedPowerUps
+		ec.SkippedActions += pr.SkippedPowerUps
 	}
 }
 
@@ -155,25 +152,25 @@ func (ec *ExecutionContext) Complete() {
 // NewPackExecutionResult creates a new pack execution result
 func NewPackExecutionResult(pack *Pack) *PackExecutionResult {
 	return &PackExecutionResult{
-		Pack:       pack,
-		Operations: make([]*OperationResult, 0),
-		Status:     ExecutionStatusPending,
-		StartTime:  time.Now(),
+		Pack:           pack,
+		PowerUpResults: make([]*PowerUpResult, 0),
+		Status:         ExecutionStatusPending,
+		StartTime:      time.Now(),
 	}
 }
 
-// AddOperationResult adds an operation result and updates statistics
-func (per *PackExecutionResult) AddOperationResult(result *OperationResult) {
-	per.Operations = append(per.Operations, result)
-	per.TotalOperations++
+// AddPowerUpResult adds a PowerUp result and updates statistics
+func (per *PackExecutionResult) AddPowerUpResult(result *PowerUpResult) {
+	per.PowerUpResults = append(per.PowerUpResults, result)
+	per.TotalPowerUps++
 
 	switch result.Status {
 	case StatusReady:
-		per.CompletedOperations++
+		per.CompletedPowerUps++
 	case StatusSkipped:
-		per.SkippedOperations++
+		per.SkippedPowerUps++
 	case StatusError, StatusConflict:
-		per.FailedOperations++
+		per.FailedPowerUps++
 	}
 
 	// Update pack status
@@ -182,16 +179,16 @@ func (per *PackExecutionResult) AddOperationResult(result *OperationResult) {
 
 // updateStatus recalculates the pack's aggregated status
 func (per *PackExecutionResult) updateStatus() {
-	if per.TotalOperations == 0 {
+	if per.TotalPowerUps == 0 {
 		per.Status = ExecutionStatusPending
 		return
 	}
 
-	if per.FailedOperations == per.TotalOperations {
+	if per.FailedPowerUps == per.TotalPowerUps {
 		per.Status = ExecutionStatusError
-	} else if per.SkippedOperations == per.TotalOperations {
+	} else if per.SkippedPowerUps == per.TotalPowerUps {
 		per.Status = ExecutionStatusSkipped
-	} else if per.FailedOperations > 0 {
+	} else if per.FailedPowerUps > 0 {
 		per.Status = ExecutionStatusPartial
 	} else {
 		per.Status = ExecutionStatusSuccess
@@ -202,36 +199,6 @@ func (per *PackExecutionResult) updateStatus() {
 func (per *PackExecutionResult) Complete() {
 	per.EndTime = time.Now()
 	per.updateStatus()
-}
-
-// GroupOperationsByPowerUp groups operations by their PowerUp for display
-func (per *PackExecutionResult) GroupOperationsByPowerUp() map[string][]*OperationResult {
-	groups := make(map[string][]*OperationResult)
-
-	for _, opResult := range per.Operations {
-		powerUp := opResult.Operation.PowerUp
-		if powerUp == "" {
-			powerUp = "unknown"
-		}
-		groups[powerUp] = append(groups[powerUp], opResult)
-	}
-
-	return groups
-}
-
-// GroupOperationsByGroupID groups operations by their GroupID
-func (per *PackExecutionResult) GroupOperationsByGroupID() map[string][]*OperationResult {
-	groups := make(map[string][]*OperationResult)
-
-	for _, opResult := range per.Operations {
-		groupID := opResult.Operation.GroupID
-		if groupID == "" {
-			groupID = "ungrouped"
-		}
-		groups[groupID] = append(groups[groupID], opResult)
-	}
-
-	return groups
 }
 
 // FileStatus represents the current status of a file managed by dodot
