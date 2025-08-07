@@ -20,8 +20,8 @@ type PipelineOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// RunPipeline executes the core pipeline: GetPacks -> GetTriggers -> GetActions -> Execute
-// This replaces the old RunExecutionPipeline but works with Executor instead of Operations
+// RunPipeline executes the core pipeline: GetPacks -> GetTriggers -> GetActions -> Execute.
+// Returns an ExecutionContext containing results organized by pack and PowerUp.
 func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	logger := logging.GetLogger("commands.internal.pipeline")
 	logger.Debug().

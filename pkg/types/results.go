@@ -25,7 +25,7 @@ type PackInfo struct {
 }
 
 // DisplayResult is the top-level structure for commands that produce rich output.
-// This replaces the old PackStatusResult and is used by status, deploy, and install commands.
+// Used by status, deploy, and install commands for consistent display formatting.
 type DisplayResult struct {
 	Command   string        `json:"command"` // "status", "deploy", "install"
 	Packs     []DisplayPack `json:"packs"`
@@ -95,8 +95,8 @@ type FillResult struct {
 	// Operations field removed - part of Operation layer elimination
 }
 
-// ActionResult represents the execution result of a single Action
-// This replaces OperationResult and is focused on Action execution, not Operation details
+// ActionResult represents the execution result of a single Action.
+// Contains timing, status, and error information for action execution tracking.
 type ActionResult struct {
 	// Action contains the action that was executed
 	Action Action `json:"action"`
