@@ -291,12 +291,13 @@ func (e *DirectExecutor) executeDryRun(actions []types.Action) []types.ActionRes
 	now := time.Now()
 	for i, action := range actions {
 		e.logAction(action)
+		message := e.generateActionMessage(&action, types.StatusReady, nil)
 		results[i] = types.ActionResult{
 			Action:    action,
 			Status:    types.StatusReady,
 			StartTime: now,
 			EndTime:   now,
-			Message:   "Dry run - action would be executed",
+			Message:   message,
 		}
 	}
 
@@ -376,10 +377,12 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 			} else {
 				// Create new ActionResult
 				now := time.Now()
+				message := e.generateActionMessage(action, status, synthfsResult.Error)
 				actionResults[action] = &types.ActionResult{
 					Action:              *action,
 					Status:              status,
 					Error:               synthfsResult.Error,
+					Message:             message,
 					StartTime:           now.Add(-synthfsResult.Duration),
 					EndTime:             now,
 					SynthfsOperationIDs: []string{string(synthfsResult.OperationID)},
@@ -395,6 +398,126 @@ func (e *DirectExecutor) convertResults(result *synthfs.Result, actionMap map[sy
 	}
 
 	return results
+}
+
+// generateActionMessage creates user-friendly messages based on action type and status
+func (e *DirectExecutor) generateActionMessage(action *types.Action, status types.OperationStatus, err error) string {
+	// If there's an error, return a contextual error message
+	if err != nil {
+		return e.generateErrorMessage(action, err)
+	}
+
+	// Generate success messages based on action type
+	switch action.Type {
+	case types.ActionTypeLink:
+		if status == types.StatusReady {
+			return fmt.Sprintf("linked to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared symlink to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeCopy:
+		if status == types.StatusReady {
+			return fmt.Sprintf("copied to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared copy to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeWrite:
+		if status == types.StatusReady {
+			return fmt.Sprintf("wrote %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared write to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeAppend:
+		if status == types.StatusReady {
+			return fmt.Sprintf("appended to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared append to %s", filepath.Base(action.Target))
+
+	case types.ActionTypeMkdir:
+		if status == types.StatusReady {
+			return fmt.Sprintf("created directory %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared directory %s", filepath.Base(action.Target))
+
+	case types.ActionTypeShellSource:
+		if status == types.StatusReady {
+			return "added to shell profile"
+		}
+		return "prepared shell profile update"
+
+	case types.ActionTypePathAdd:
+		if status == types.StatusReady {
+			return fmt.Sprintf("added %s to PATH", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared PATH addition for %s", filepath.Base(action.Target))
+
+	case types.ActionTypeRun:
+		if status == types.StatusReady {
+			return "executed successfully"
+		}
+		return "prepared for execution"
+
+	case types.ActionTypeBrew:
+		if status == types.StatusReady {
+			return "Homebrew packages installed"
+		}
+		return "prepared Homebrew installation"
+
+	case types.ActionTypeInstall:
+		if status == types.StatusReady {
+			return "install script executed"
+		}
+		return "prepared install script"
+
+	case types.ActionTypeTemplate:
+		if status == types.StatusReady {
+			return fmt.Sprintf("rendered template to %s", filepath.Base(action.Target))
+		}
+		return fmt.Sprintf("prepared template for %s", filepath.Base(action.Target))
+
+	default:
+		if status == types.StatusReady {
+			return "completed successfully"
+		}
+		return "prepared"
+	}
+}
+
+// generateErrorMessage creates user-friendly error messages based on action type
+func (e *DirectExecutor) generateErrorMessage(action *types.Action, err error) string {
+	baseMsg := ""
+	switch action.Type {
+	case types.ActionTypeLink:
+		baseMsg = fmt.Sprintf("failed to create symlink to %s", filepath.Base(action.Target))
+	case types.ActionTypeCopy:
+		baseMsg = fmt.Sprintf("failed to copy to %s", filepath.Base(action.Target))
+	case types.ActionTypeWrite:
+		baseMsg = fmt.Sprintf("failed to write %s", filepath.Base(action.Target))
+	case types.ActionTypeAppend:
+		baseMsg = fmt.Sprintf("failed to append to %s", filepath.Base(action.Target))
+	case types.ActionTypeMkdir:
+		baseMsg = fmt.Sprintf("failed to create directory %s", filepath.Base(action.Target))
+	case types.ActionTypeShellSource:
+		baseMsg = "failed to update shell profile"
+	case types.ActionTypePathAdd:
+		baseMsg = fmt.Sprintf("failed to add %s to PATH", filepath.Base(action.Target))
+	case types.ActionTypeRun:
+		baseMsg = "command execution failed"
+	case types.ActionTypeBrew:
+		baseMsg = "Homebrew installation failed"
+	case types.ActionTypeInstall:
+		baseMsg = "install script failed"
+	case types.ActionTypeTemplate:
+		baseMsg = fmt.Sprintf("failed to render template to %s", filepath.Base(action.Target))
+	default:
+		baseMsg = "action failed"
+	}
+
+	// Add error details if available
+	if err != nil {
+		return fmt.Sprintf("%s: %v", baseMsg, err)
+	}
+	return baseMsg
 }
 
 // convertAppendAction converts an append action to synthfs operations

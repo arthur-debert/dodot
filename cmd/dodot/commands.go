@@ -8,6 +8,7 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
+	"github.com/arthur-debert/dodot/pkg/display"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
@@ -193,7 +194,7 @@ func newDeployCmd() *cobra.Command {
 				Msg("Deploying from dotfiles root")
 
 			// Use the new DeployPacks implementation with DirectExecutor
-			_, err = commands.DeployPacks(commands.DeployPacksOptions{
+			ctx, err := commands.DeployPacks(commands.DeployPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -203,13 +204,11 @@ func newDeployCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
-			// Display results using rich output
-			if dryRun {
-				fmt.Println(MsgDryRunNotice)
+			// Display results using the new display system
+			renderer := display.NewSimpleRenderer(os.Stdout)
+			if err := renderer.RenderExecutionContext(ctx); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
-
-			// TODO: Implement new rendering system (removed Operation-based display)
-			fmt.Println("Command completed - rendering system removed")
 
 			return nil
 		},
@@ -242,7 +241,7 @@ func newInstallCmd() *cobra.Command {
 				Msg("Installing from dotfiles root")
 
 			// Use the new InstallPacks implementation with DirectExecutor
-			_, err = commands.InstallPacks(commands.InstallPacksOptions{
+			ctx, err := commands.InstallPacks(commands.InstallPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -253,13 +252,11 @@ func newInstallCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
 
-			// Display results using rich output
-			if dryRun {
-				fmt.Println(MsgDryRunNotice)
+			// Display results using the new display system
+			renderer := display.NewSimpleRenderer(os.Stdout)
+			if err := renderer.RenderExecutionContext(ctx); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
-
-			// TODO: Implement new rendering system (removed Operation-based display)
-			fmt.Println("Command completed - rendering system removed")
 
 			return nil
 		},
@@ -283,16 +280,22 @@ func newListCmd() *cobra.Command {
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
 
 			// Use the actual ListPacks implementation
-			_, err = commands.ListPacks(commands.ListPacksOptions{
+			result, err := commands.ListPacks(commands.ListPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 			})
 			if err != nil {
 				return fmt.Errorf(MsgErrListPacks, err)
 			}
 
-			// Display the packs using rich output
-			// TODO: Implement new rendering system (style package removed)
-			fmt.Println("List command output - rendering system removed")
+			// Display the packs in a simple format
+			if len(result.Packs) == 0 {
+				fmt.Println("No packs found")
+			} else {
+				fmt.Println("Available packs:")
+				for _, pack := range result.Packs {
+					fmt.Printf("  %s\n", pack.Name)
+				}
+			}
 
 			return nil
 		},
@@ -316,10 +319,9 @@ func newStatusCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
 
-			// TODO: StatusPacks not yet implemented (removed as part of Operation elimination)
-			fmt.Println("Status command not yet implemented - removed as part of Operation elimination")
-
-			return nil
+			// Status command removed as part of Operation elimination
+			// Will be re-implemented in a future release
+			return fmt.Errorf("status command temporarily unavailable (being reimplemented)")
 		},
 	}
 }

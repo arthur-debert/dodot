@@ -226,3 +226,75 @@ type FileStatus struct {
 	// - Homebrew: package version, installation status
 	Metadata map[string]interface{}
 }
+
+// ToDisplayResult transforms the ExecutionContext into a DisplayResult suitable for rendering
+func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
+	displayPacks := make([]DisplayPack, 0, len(ec.PackResults))
+
+	// Sort pack names for consistent output
+	packNames := make([]string, 0, len(ec.PackResults))
+	for name := range ec.PackResults {
+		packNames = append(packNames, name)
+	}
+	// Simple sort - could enhance with natural sort later
+	for i := 0; i < len(packNames); i++ {
+		for j := i + 1; j < len(packNames); j++ {
+			if packNames[i] > packNames[j] {
+				packNames[i], packNames[j] = packNames[j], packNames[i]
+			}
+		}
+	}
+
+	// Transform each pack
+	for _, packName := range packNames {
+		packResult := ec.PackResults[packName]
+		displayPack := DisplayPack{
+			Name:      packName,
+			Files:     make([]DisplayFile, 0),
+			HasConfig: false, // TODO: Check if pack has .dodot.toml file
+			IsIgnored: false, // TODO: Check if pack has .dodotignore file
+		}
+
+		// Transform PowerUpResults to DisplayFiles
+		for _, pur := range packResult.PowerUpResults {
+			// Create a DisplayFile for each file in the PowerUpResult
+			for _, filePath := range pur.Files {
+				displayFile := DisplayFile{
+					PowerUp: pur.PowerUpName,
+					Path:    filePath,
+					Status:  mapOperationStatusToDisplayStatus(pur.Status),
+					Message: pur.Message,
+					// TODO: Add IsOverride and LastExecuted when available
+				}
+				displayPack.Files = append(displayPack.Files, displayFile)
+			}
+		}
+
+		// Set pack status based on aggregation rules
+		displayPack.Status = displayPack.GetPackStatus()
+		displayPacks = append(displayPacks, displayPack)
+	}
+
+	return &DisplayResult{
+		Command:   ec.Command,
+		Packs:     displayPacks,
+		DryRun:    ec.DryRun,
+		Timestamp: ec.EndTime,
+	}
+}
+
+// mapOperationStatusToDisplayStatus converts internal OperationStatus to display status string
+func mapOperationStatusToDisplayStatus(status OperationStatus) string {
+	switch status {
+	case StatusReady:
+		return "success"
+	case StatusError:
+		return "error"
+	case StatusSkipped:
+		return "queue"
+	case StatusConflict:
+		return "error"
+	default:
+		return "queue"
+	}
+}
