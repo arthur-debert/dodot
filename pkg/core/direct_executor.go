@@ -193,7 +193,10 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 	source := expandHome(action.Source)
 	target := expandHome(action.Target)
 
-	// TODO: Add direct path validation for Actions (not Operations)
+	// Validate paths
+	if err := e.validateLinkAction(source, target); err != nil {
+		return nil, err
+	}
 
 	deployedPath := filepath.Join(e.paths.SymlinkDir(), filepath.Base(target))
 
@@ -583,4 +586,31 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
 	// Process template and write file
 	return nil, errors.New(errors.ErrNotImplemented, "template action not implemented in POC")
+}
+
+// validateLinkAction validates paths for link actions
+func (e *DirectExecutor) validateLinkAction(source, target string) error {
+	// If home symlinks are not allowed, check if target is in home directory
+	if !e.allowHomeSymlinks {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
+		}
+
+		// Check if target is outside dodot-controlled directories
+		dodotDataDir := e.paths.DataDir()
+		dodotSymlinkDir := e.paths.SymlinkDir()
+
+		// Allow targets in dodot directories
+		if strings.HasPrefix(target, dodotDataDir) || strings.HasPrefix(target, dodotSymlinkDir) {
+			return nil
+		}
+
+		// Check if target is in home directory
+		if strings.HasPrefix(target, homeDir) {
+			return errors.Newf(errors.ErrInvalidInput, "target path %s is outside dodot-controlled directories", target)
+		}
+	}
+
+	return nil
 }
