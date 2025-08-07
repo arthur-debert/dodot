@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -464,7 +465,7 @@ func newSnippetCmd() *cobra.Command {
 
 			// Install shell scripts if requested
 			if install {
-				if err := commands.InstallShellIntegration(dataDir); err != nil {
+				if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
 					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
 				fmt.Fprintf(os.Stderr, "Shell integration scripts installed to %s/shell/\n", dataDir)

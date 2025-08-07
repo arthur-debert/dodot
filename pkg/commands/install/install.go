@@ -1,9 +1,14 @@
 package install
 
 import (
+	"fmt"
+	"os"
+
 	"github.com/arthur-debert/dodot/pkg/commands/internal"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -63,6 +68,35 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 
 	// Merge results from both phases
 	mergedCtx := mergeExecutionContexts(installCtx, deployCtx)
+
+	// Install shell integration after successful execution (not in dry-run mode)
+	if !opts.DryRun && (mergedCtx.CompletedActions > 0 || mergedCtx.SkippedActions > 0) {
+		log.Debug().Msg("Installing shell integration")
+
+		// Create paths instance to get data directory
+		p, pathErr := paths.New(opts.DotfilesRoot)
+		if pathErr != nil {
+			log.Warn().Err(pathErr).Msg("Could not create paths instance for shell integration")
+			fmt.Fprintf(os.Stderr, "Warning: Could not set up shell integration: %v\n", pathErr)
+		} else {
+			dataDir := p.DataDir()
+			if err := shell.InstallShellIntegration(dataDir); err != nil {
+				log.Warn().Err(err).Msg("Could not install shell integration")
+				fmt.Fprintf(os.Stderr, "Warning: Could not install shell integration: %v\n", err)
+			} else {
+				log.Info().Str("dataDir", dataDir).Msg("Shell integration installed successfully")
+
+				// Show user what was installed and how to enable it
+				snippet := types.GetShellIntegrationSnippet("bash", dataDir)
+
+				fmt.Println("✅ Shell integration installed successfully!")
+				fmt.Printf("📁 Scripts installed to: %s/shell/\n", dataDir)
+				fmt.Println("🔧 To enable, add this line to your shell config (~/.bashrc, ~/.zshrc, etc.):")
+				fmt.Printf("   %s\n", snippet)
+				fmt.Println("🔄 Then reload your shell or run: source ~/.bashrc")
+			}
+		}
+	}
 
 	log.Info().
 		Int("installActions", installCtx.TotalActions).

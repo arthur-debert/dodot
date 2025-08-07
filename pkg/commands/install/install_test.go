@@ -399,3 +399,123 @@ func TestInstallPacks_InvalidPack(t *testing.T) {
 		testutil.AssertTrue(t, ctx.EndTime.After(ctx.StartTime), "End time should be set")
 	}
 }
+
+func TestInstallPacks_ShellIntegration(t *testing.T) {
+	// Create test environment
+	tempDir := testutil.TempDir(t, "install-shell-integration")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a simple pack with just a symlink (to have successful actions)
+	testutil.CreateDir(t, dotfilesDir, "shell-test")
+	testutil.CreateFile(t, dotfilesDir, "shell-test/config", "test config")
+
+	// Install the pack
+	ctx, err := InstallPacks(InstallPacksOptions{
+		DotfilesRoot:       dotfilesDir,
+		PackNames:          []string{"shell-test"},
+		DryRun:             false,
+		Force:              false,
+		EnableHomeSymlinks: true,
+	})
+
+	// Verify no errors
+	testutil.AssertNoError(t, err)
+	testutil.AssertNotNil(t, ctx)
+
+	// Verify shell integration was installed (shell scripts should exist)
+	dataDir := filepath.Join(homeDir, ".local", "share", "dodot")
+	shellDir := filepath.Join(dataDir, "shell")
+
+	testutil.AssertTrue(t, testutil.DirExists(t, shellDir), "Shell directory should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(shellDir, "dodot-init.sh")), "Bash shell script should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(shellDir, "dodot-init.fish")), "Fish shell script should exist")
+
+	// Verify scripts are executable
+	bashScript := filepath.Join(shellDir, "dodot-init.sh")
+	if stat, err := os.Stat(bashScript); err == nil {
+		mode := stat.Mode()
+		testutil.AssertTrue(t, mode&0100 != 0, "Bash script should be executable")
+	}
+}
+
+func TestInstallPacks_ShellIntegration_DryRun(t *testing.T) {
+	// Create test environment
+	tempDir := testutil.TempDir(t, "install-shell-dryrun")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a simple pack
+	testutil.CreateDir(t, dotfilesDir, "dryrun-test")
+	testutil.CreateFile(t, dotfilesDir, "dryrun-test/config", "test config")
+
+	// Install in dry-run mode
+	ctx, err := InstallPacks(InstallPacksOptions{
+		DotfilesRoot:       dotfilesDir,
+		PackNames:          []string{"dryrun-test"},
+		DryRun:             true, // Dry run should NOT install shell integration
+		Force:              false,
+		EnableHomeSymlinks: true,
+	})
+
+	// Verify no errors
+	testutil.AssertNoError(t, err)
+	testutil.AssertNotNil(t, ctx)
+
+	// Verify shell integration was NOT installed in dry-run mode
+	dataDir := filepath.Join(homeDir, ".local", "share", "dodot")
+	shellDir := filepath.Join(dataDir, "shell")
+
+	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(shellDir, "dodot-init.sh")), "Shell script should NOT exist in dry run")
+	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(shellDir, "dodot-init.fish")), "Fish script should NOT exist in dry run")
+}
+
+func TestInstallPacks_ShellIntegration_NoActions(t *testing.T) {
+	// Create test environment with no packs (no successful actions)
+	tempDir := testutil.TempDir(t, "install-no-actions")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Install with no packs (should have no successful actions)
+	ctx, err := InstallPacks(InstallPacksOptions{
+		DotfilesRoot:       dotfilesDir,
+		PackNames:          []string{}, // Empty pack list
+		DryRun:             false,
+		Force:              false,
+		EnableHomeSymlinks: true,
+	})
+
+	// Should succeed but have no actions
+	testutil.AssertNoError(t, err)
+	testutil.AssertNotNil(t, ctx)
+	testutil.AssertEqual(t, 0, ctx.CompletedActions)
+	testutil.AssertEqual(t, 0, ctx.SkippedActions)
+
+	// Shell integration should NOT be installed when no actions were completed
+	dataDir := filepath.Join(homeDir, ".local", "share", "dodot")
+	shellDir := filepath.Join(dataDir, "shell")
+
+	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(shellDir, "dodot-init.sh")), "Shell script should NOT exist with no actions")
+}
