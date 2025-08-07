@@ -193,7 +193,7 @@ func newDeployCmd() *cobra.Command {
 				Bool("dry_run", dryRun).
 				Msg("Deploying from dotfiles root")
 
-			// Use the new DeployPacks implementation with DirectExecutor
+			// Deploy packs using the new implementation
 			ctx, err := commands.DeployPacks(commands.DeployPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
@@ -205,7 +205,7 @@ func newDeployCmd() *cobra.Command {
 			}
 
 			// Display results using the new display system
-			renderer := display.NewSimpleRenderer(os.Stdout)
+			renderer := display.NewTextRenderer(os.Stdout)
 			if err := renderer.RenderExecutionContext(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
@@ -240,7 +240,7 @@ func newInstallCmd() *cobra.Command {
 				Bool("force", force).
 				Msg("Installing from dotfiles root")
 
-			// Use the new InstallPacks implementation with DirectExecutor
+			// Install packs using the new implementation
 			ctx, err := commands.InstallPacks(commands.InstallPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
@@ -253,7 +253,7 @@ func newInstallCmd() *cobra.Command {
 			}
 
 			// Display results using the new display system
-			renderer := display.NewSimpleRenderer(os.Stdout)
+			renderer := display.NewTextRenderer(os.Stdout)
 			if err := renderer.RenderExecutionContext(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
