@@ -313,7 +313,11 @@ func (v *PathValidator) validateNotSystemFile(path string) error {
 		Str("path", path).
 		Msg("Checking if path is a protected system file")
 
-	homeDir, _ := paths.GetHomeDirectory()
+	// Use HOME env var if set (for tests), otherwise use GetHomeDirectory
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		homeDir, _ = paths.GetHomeDirectory()
+	}
 	// Normalize home directory for consistent comparison
 	if evalHome, err := filepath.EvalSymlinks(homeDir); err == nil {
 		homeDir = evalHome

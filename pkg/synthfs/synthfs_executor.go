@@ -221,17 +221,6 @@ func (e *SynthfsExecutor) convertToSynthfsOp(sfs *synthfs.SynthFS, op types.Oper
 	}
 	id := fmt.Sprintf("%s_%s_%d", op.Type, filepath.Base(target), time.Now().UnixNano())
 
-	// Note: Path validation is primarily done earlier in the pipeline during operation conversion
-	// This provides better error context and "fail fast" behavior
-	// However, for operations created directly (e.g., in tests), we still do basic validation
-	if op.Type != types.OperationExecute && op.Target != "" {
-		// Only do basic safety check for operations outside the normal pipeline
-		if !e.allowHomeSymlinks && !isInSafeDirectory(op.Target, e.paths) {
-			return nil, errors.Newf(errors.ErrPermission,
-				"operation target is outside dodot-controlled directories: %s", op.Target)
-		}
-	}
-
 	// Log the operation
 	e.logger.Debug().
 		Str("type", string(op.Type)).
@@ -264,30 +253,6 @@ func (e *SynthfsExecutor) convertToSynthfsOp(sfs *synthfs.SynthFS, op types.Oper
 	case types.OperationCreateSymlink:
 		if op.Source == "" || op.Target == "" {
 			return nil, errors.New(errors.ErrInvalidInput, "symlink operation requires source and target")
-		}
-		// Note: Symlink validation is primarily done earlier in the pipeline
-		// For operations created directly, do basic validation
-		if !e.allowHomeSymlinks && !isInSafeDirectory(op.Target, e.paths) {
-			return nil, errors.Newf(errors.ErrPermission,
-				"symlink target is outside dodot-controlled directories: %s", op.Target)
-		}
-
-		// Check for protected paths
-		if e.allowHomeSymlinks && e.config != nil {
-			if err := e.validateNotProtectedPath(op.Target); err != nil {
-				return nil, err
-			}
-		}
-
-		// Validate source is from dotfiles or deployed
-		normalizedSource, err := filepath.Abs(op.Source)
-		if err == nil {
-			dotfilesRoot := e.paths.DotfilesRoot()
-			deployedDir := e.paths.DeployedDir()
-			if !isPathWithin(normalizedSource, dotfilesRoot) && !isPathWithin(normalizedSource, deployedDir) {
-				return nil, errors.Newf(errors.ErrPermission,
-					"symlink source must be from dotfiles or deployed directory: %s", op.Source)
-			}
 		}
 		e.logger.Info().Str("source", op.Source).Str("target", op.Target).Msg("Creating symlink operation")
 
@@ -428,99 +393,6 @@ func (e *SynthfsExecutor) convertResults(result *synthfs.Result, dodotOpMap map[
 	}
 
 	return results
-}
-
-// isInSafeDirectory checks if a path is within any of the safe directories
-// This is a simplified check for operations created outside the normal pipeline
-func isInSafeDirectory(path string, p *paths.Paths) bool {
-	normalizedPath, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
-
-	safeDirectories := []string{
-		p.DotfilesRoot(),
-		p.DataDir(),
-		p.ConfigDir(),
-		p.CacheDir(),
-		p.StateDir(),
-		p.DeployedDir(),
-		p.BackupsDir(),
-		p.HomebrewDir(),
-		p.InstallDir(),
-		p.ShellDir(),
-		p.TemplatesDir(),
-	}
-
-	for _, safeDir := range safeDirectories {
-		if isPathWithin(normalizedPath, safeDir) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// isPathWithin checks if a path is within a parent directory
-func isPathWithin(path, parent string) bool {
-	path = filepath.Clean(path)
-	parent = filepath.Clean(parent)
-
-	rel, err := filepath.Rel(parent, path)
-	if err != nil {
-		return false
-	}
-
-	return !strings.HasPrefix(rel, "..") && !strings.HasPrefix(rel, "/")
-}
-
-// validateNotProtectedPath checks if a path is a protected system file
-// This is a simplified version for operations created outside the normal pipeline
-func (e *SynthfsExecutor) validateNotProtectedPath(path string) error {
-	// In test environments, HOME might be set to a temp directory
-	// Get it from environment first
-	homeDir := os.Getenv("HOME")
-	if homeDir == "" {
-		var err error
-		homeDir, err = paths.GetHomeDirectory()
-		if err != nil {
-			return nil // Can't check, allow it
-		}
-	}
-
-	// Normalize the path
-	normalizedPath, err := filepath.Abs(path)
-	if err != nil {
-		return nil
-	}
-
-	// Get relative path from home
-	relPath, err := filepath.Rel(homeDir, normalizedPath)
-	if err != nil {
-		return nil // Not in home directory
-	}
-
-	e.logger.Debug().
-		Str("path", path).
-		Str("homeDir", homeDir).
-		Str("relPath", relPath).
-		Msg("Checking protected path")
-
-	// Check exact match
-	if e.config.Security.ProtectedPaths[relPath] {
-		return errors.Newf(errors.ErrPermission,
-			"cannot create symlink for protected file: %s", relPath)
-	}
-
-	// Check if within protected directory
-	for protectedPath := range e.config.Security.ProtectedPaths {
-		if strings.HasPrefix(relPath, protectedPath+"/") {
-			return errors.Newf(errors.ErrPermission,
-				"cannot create symlink for protected file: %s", relPath)
-		}
-	}
-
-	return nil
 }
 
 // logOperation logs details about an operation

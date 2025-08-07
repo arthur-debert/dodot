@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -257,10 +258,74 @@ func TestPathValidator_validateSymlinkPath(t *testing.T) {
 	})
 }
 
-func TestPathValidator_validateNotSystemFile(t *testing.T) {
-	// Skip these tests for now - they require complex home directory mocking
-	// The validation logic is simple and is tested implicitly in the integration tests
-	t.Skip("Skipping home directory validation tests - tested in integration")
+func TestPathValidator_ProtectedPaths(t *testing.T) {
+	tempDir := testutil.TempDir(t, "protected-test")
+	t.Setenv("HOME", tempDir)
+
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, ".local/share/dodot")
+
+	p, err := paths.New(dotfilesDir)
+	require.NoError(t, err)
+
+	// Create source file
+	sourceFile := filepath.Join(dotfilesDir, "config")
+	testutil.CreateFile(t, dotfilesDir, "config", "test content")
+
+	validator := NewPathValidator(p, true, config.Default()) // Home symlinks enabled
+
+	protectedPaths := []string{
+		".ssh/id_rsa",
+		".ssh/id_ed25519",
+		".ssh/authorized_keys",
+		".gnupg/private-keys-v1.d/key.key",
+		".aws/credentials",
+		".kube/config",
+		".docker/config.json",
+	}
+
+	for _, protected := range protectedPaths {
+		t.Run(protected, func(t *testing.T) {
+			target := filepath.Join(tempDir, protected)
+
+			// Create parent directory so path normalization works correctly
+			parentDir := filepath.Dir(target)
+			if parentDir != tempDir {
+				err := os.MkdirAll(parentDir, 0755)
+				require.NoError(t, err)
+			}
+
+			ops := []types.Operation{
+				{
+					Type:        types.OperationCreateSymlink,
+					Source:      sourceFile,
+					Target:      target,
+					Description: "Test protected path",
+					Pack:        "test",
+					PowerUp:     "symlink",
+				},
+			}
+
+			err := validator.ValidateOperations(ops)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), "protected file")
+		})
+	}
+
+	t.Run("allows non-protected paths", func(t *testing.T) {
+		ops := []types.Operation{
+			{
+				Type:        types.OperationCreateSymlink,
+				Source:      sourceFile,
+				Target:      filepath.Join(tempDir, ".vimrc"),
+				Description: "Test allowed path",
+			},
+		}
+
+		err := validator.ValidateOperations(ops)
+		assert.NoError(t, err)
+	})
 }
 
 func TestIsPathWithin(t *testing.T) {

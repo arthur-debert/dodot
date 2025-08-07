@@ -34,23 +34,8 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 	p, err := paths.New(tempDotfiles)
 	testutil.AssertNoError(t, err)
 
-	t.Run("home symlinks disabled by default", func(t *testing.T) {
-		executor := NewSynthfsExecutorWithPaths(false, p)
-
-		operations := []types.Operation{
-			{
-				Type:        types.OperationCreateSymlink,
-				Source:      vimrcSource,
-				Target:      filepath.Join(tempHome, ".vimrc"),
-				Description: "Create .vimrc symlink",
-				Status:      types.StatusReady,
-			},
-		}
-
-		_, err := executor.ExecuteOperations(operations)
-		testutil.AssertError(t, err)
-		testutil.AssertErrorContains(t, err, "outside dodot-controlled directories")
-	})
+	// Note: Validation for home symlinks is now done during operation conversion,
+	// not during execution. See pkg/validation/paths_test.go for validation tests.
 
 	t.Run("home symlinks allowed when enabled", func(t *testing.T) {
 		executor := NewSynthfsExecutorWithPaths(false, p)
@@ -106,122 +91,9 @@ func TestSynthfsExecutor_HomeSymlinks(t *testing.T) {
 		}
 	})
 
-	t.Run("reject protected files", func(t *testing.T) {
-		executor := NewSynthfsExecutorWithPaths(false, p)
-		executor.EnableHomeSymlinks(true)
-
-		operations := []types.Operation{
-			{
-				Type:        types.OperationCreateSymlink,
-				Source:      vimrcSource,
-				Target:      filepath.Join(tempHome, ".ssh", "id_rsa"),
-				Description: "Create SSH key symlink",
-				Status:      types.StatusReady,
-			},
-		}
-
-		// Create .ssh directory
-		testutil.CreateDir(t, tempHome, ".ssh")
-
-		_, err := executor.ExecuteOperations(operations)
-		testutil.AssertError(t, err)
-		testutil.AssertErrorContains(t, err, "protected file")
-	})
-
-	t.Run("source must be from dotfiles", func(t *testing.T) {
-		executor := NewSynthfsExecutorWithPaths(false, p)
-		executor.EnableHomeSymlinks(true)
-
-		// Create a file outside dotfiles
-		testutil.CreateFile(t, tempHome, "outside.txt", "content")
-		outsideFile := filepath.Join(tempHome, "outside.txt")
-
-		operations := []types.Operation{
-			{
-				Type:        types.OperationCreateSymlink,
-				Source:      outsideFile, // Not from dotfiles
-				Target:      filepath.Join(tempHome, ".config", "test"),
-				Description: "Create symlink from outside dotfiles",
-				Status:      types.StatusReady,
-			},
-		}
-
-		_, err := executor.ExecuteOperations(operations)
-		testutil.AssertError(t, err)
-		testutil.AssertErrorContains(t, err, "must be from dotfiles or deployed directory")
-	})
 }
 
-func TestSynthfsExecutor_ProtectedPaths(t *testing.T) {
-	// Create a test environment
-	tempHome := testutil.TempDir(t, "synthfs-protected-home")
-	tempDotfiles := testutil.TempDir(t, "synthfs-protected-dotfiles")
-
-	// Important: Set HOME to the actual temp directory we're using for protected paths
-	t.Setenv("HOME", tempHome)
-	t.Setenv("DOTFILES_ROOT", tempDotfiles)
-	t.Setenv("DODOT_DATA_DIR", filepath.Join(tempHome, ".local", "share", "dodot"))
-
-	// Create necessary directories
-	testutil.CreateDir(t, tempHome, ".local")
-	testutil.CreateDir(t, filepath.Join(tempHome, ".local"), "share")
-	testutil.CreateDir(t, filepath.Join(tempHome, ".local", "share"), "dodot")
-
-	// Create source file
-	testutil.CreateFile(t, tempDotfiles, "config", "config content")
-	sourceFile := filepath.Join(tempDotfiles, "config")
-
-	p, err := paths.New(tempDotfiles)
-	testutil.AssertNoError(t, err)
-
-	executor := NewSynthfsExecutorWithPaths(false, p)
-	executor.EnableHomeSymlinks(true)
-
-	protectedPaths := []string{
-		".ssh/authorized_keys",
-		".ssh/id_rsa",
-		".ssh/id_ed25519",
-		".gnupg/private-keys-v1.d/key.key",
-		".password-store/passwords.gpg",
-		".config/gh/hosts.yml",
-		".aws/credentials",
-		".kube/config",
-		".docker/config.json",
-	}
-
-	for _, protected := range protectedPaths {
-		t.Run(protected, func(t *testing.T) {
-			target := filepath.Join(tempHome, protected)
-			t.Logf("Testing protected path - Target: %s, Home: %s", target, tempHome)
-
-			// Create parent directories so synthfs doesn't fail on missing parents
-			parentDir := filepath.Dir(target)
-			if parentDir != tempHome {
-				testutil.CreateDir(t, filepath.Dir(parentDir), filepath.Base(parentDir))
-			}
-
-			operations := []types.Operation{
-				{
-					Type:        types.OperationCreateSymlink,
-					Source:      sourceFile,
-					Target:      target,
-					Description: "Create symlink to protected path",
-					Status:      types.StatusReady,
-				},
-			}
-
-			_, err := executor.ExecuteOperations(operations)
-			if err == nil {
-				// Check if symlink was actually created
-				if testutil.SymlinkExists(t, target) {
-					t.Errorf("Protected symlink was created at %s", target)
-				}
-			}
-			testutil.AssertError(t, err)
-			testutil.AssertErrorContains(t, err, "protected file")
-		})
-	}
-}
+// Note: Protected path validation tests have been moved to pkg/validation/paths_test.go
 
 func TestSynthfsExecutor_ExistingFileWarning(t *testing.T) {
 	// This test verifies that warnings are logged for existing files
