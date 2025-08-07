@@ -69,8 +69,8 @@ func TestSimpleRenderer_Render(t *testing.T) {
 			},
 			expected: []string{
 				"deploy",
-				"✓ vim",
-				"✓ symlink",
+				"vim:",
+				"symlink",
 				"linked to .vimrc",
 				"linked to monokai.vim",
 			},
@@ -97,8 +97,8 @@ func TestSimpleRenderer_Render(t *testing.T) {
 			},
 			expected: []string{
 				"install",
-				"✗ tools",
-				"✗ install_script",
+				"tools:",
+				"install_script",
 				"install script failed",
 			},
 		},
@@ -130,9 +130,9 @@ func TestSimpleRenderer_Render(t *testing.T) {
 			},
 			expected: []string{
 				"status",
-				"• shell",
-				"✓ symlink",
-				"• shell_profile",
+				"shell:",
+				"symlink",
+				"shell_profile",
 				"not yet applied",
 			},
 		},
@@ -193,7 +193,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 
 	// Check output contains expected elements
 	testutil.AssertTrue(t, strings.Contains(output, "deploy"), "Should contain command name")
-	testutil.AssertTrue(t, strings.Contains(output, "test-pack"), "Should contain pack name")
+	testutil.AssertTrue(t, strings.Contains(output, "test-pack:"), "Should contain pack name with colon")
 	testutil.AssertTrue(t, strings.Contains(output, "symlink"), "Should contain powerup name")
 	testutil.AssertTrue(t, strings.Contains(output, "linked to $HOME/testfile"), "Should contain PowerUp-aware message")
 }
