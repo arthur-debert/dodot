@@ -10,7 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestTextRenderer_Render(t *testing.T) {
+func TestSimpleRenderer_Render(t *testing.T) {
 	tests := []struct {
 		name     string
 		result   *types.DisplayResult
@@ -69,10 +69,10 @@ func TestTextRenderer_Render(t *testing.T) {
 			},
 			expected: []string{
 				"deploy",
-				"✓ vim",
-				"✓ symlink",
-				"linked to .vimrc",
-				"linked to monokai.vim",
+				"vim [status=success]:",
+				"symlink",
+				"linked to .vimrc [status=success]",
+				"linked to monokai.vim [status=success]",
 			},
 		},
 		{
@@ -97,9 +97,9 @@ func TestTextRenderer_Render(t *testing.T) {
 			},
 			expected: []string{
 				"install",
-				"✗ tools",
-				"✗ install_script",
-				"install script failed",
+				"tools [status=alert]:",
+				"install_script",
+				"install script failed: exit status 1 [status=error]",
 			},
 		},
 		{
@@ -130,10 +130,11 @@ func TestTextRenderer_Render(t *testing.T) {
 			},
 			expected: []string{
 				"status",
-				"• shell",
-				"✓ symlink",
-				"• shell_profile",
-				"not yet applied",
+				"shell [status=queue]:",
+				"symlink",
+				"shell_profile",
+				"not yet applied [status=queue]",
+				"linked to .bashrc [status=success]",
 			},
 		},
 	}
@@ -155,7 +156,7 @@ func TestTextRenderer_Render(t *testing.T) {
 	}
 }
 
-func TestTextRenderer_RenderExecutionContext(t *testing.T) {
+func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	// Create a sample execution context
 	ctx := types.NewExecutionContext("deploy", false)
 
@@ -193,9 +194,10 @@ func TestTextRenderer_RenderExecutionContext(t *testing.T) {
 
 	// Check output contains expected elements
 	testutil.AssertTrue(t, strings.Contains(output, "deploy"), "Should contain command name")
-	testutil.AssertTrue(t, strings.Contains(output, "test-pack"), "Should contain pack name")
+	testutil.AssertTrue(t, strings.Contains(output, "test-pack [status="), "Should contain pack name with status")
 	testutil.AssertTrue(t, strings.Contains(output, "symlink"), "Should contain powerup name")
-	testutil.AssertTrue(t, strings.Contains(output, "linked to .testfile"), "Should contain message")
+	testutil.AssertTrue(t, strings.Contains(output, "linked to $HOME/testfile"), "Should contain PowerUp-aware message")
+	testutil.AssertTrue(t, strings.Contains(output, "[status=success]"), "Should contain status indicator")
 }
 
 func TestTruncatePath(t *testing.T) {
@@ -216,4 +218,100 @@ func TestTruncatePath(t *testing.T) {
 			testutil.AssertEqual(t, tt.expected, result)
 		})
 	}
+}
+
+func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
+	// Test with all display.txxt features
+	lastExec := time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC)
+
+	result := &types.DisplayResult{
+		Command: "status",
+		Packs: []types.DisplayPack{
+			{
+				Name:      "neovim",
+				Status:    "success",
+				HasConfig: true,
+				IsIgnored: false,
+				Files: []types.DisplayFile{
+					{
+						PowerUp:      "config",
+						Path:         ".dodot.toml",
+						Status:       "config",
+						Message:      "dodot config file found",
+						IsOverride:   false,
+						LastExecuted: nil,
+					},
+					{
+						PowerUp:      "symlink",
+						Path:         ".vimrc",
+						Status:       "success",
+						Message:      "linked to $HOME/.vimrc",
+						IsOverride:   false,
+						LastExecuted: &lastExec,
+					},
+					{
+						PowerUp:      "install",
+						Path:         "setup.sh",
+						Status:       "queue",
+						Message:      "to be executed",
+						IsOverride:   true, // File override example
+						LastExecuted: nil,
+					},
+				},
+			},
+			{
+				Name:      "temp",
+				Status:    "ignored",
+				HasConfig: false,
+				IsIgnored: true,
+				Files:     []types.DisplayFile{}, // Ignored packs have no files processed
+			},
+			{
+				Name:   "broken",
+				Status: "alert",
+				Files: []types.DisplayFile{
+					{
+						PowerUp:      "symlink",
+						Path:         "config",
+						Status:       "error",
+						Message:      "failed to symlink $HOME/.config",
+						IsOverride:   false,
+						LastExecuted: nil,
+					},
+				},
+			},
+		},
+		Timestamp: time.Now(),
+	}
+
+	var buf bytes.Buffer
+	renderer := NewTextRenderer(&buf)
+
+	err := renderer.Render(result)
+	testutil.AssertNoError(t, err)
+
+	output := buf.String()
+
+	// Verify all features are present
+	expectedFeatures := []string{
+		"status",                            // Command name
+		"neovim [status=success] [config]:", // Pack with config
+		"config       : .dodot.toml",        // Config file
+		"symlink      : .vimrc",             // Symlink entry
+		"linked to $HOME/.vimrc [status=success] [executed=2024-01-15]", // Success with timestamp
+		"install      : *setup.sh",                                      // Override (asterisk) and queue
+		"to be executed [status=queue]",                                 // Queue status
+		"temp [status=ignored] [ignored]:",                              // Ignored pack
+		".dodotignore : dodot is ignoring this dir",                     // Ignored directory message
+		"broken [status=alert]:",                                        // Alert pack
+		"failed to symlink $HOME/.config [status=error]",                // Error message
+	}
+
+	for _, expected := range expectedFeatures {
+		testutil.AssertTrue(t, strings.Contains(output, expected),
+			"Expected output to contain '%s', got:\n%s", expected, output)
+	}
+
+	// Debug output for manual verification
+	t.Logf("Comprehensive output:\n%s", output)
 }

@@ -69,7 +69,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		actions = append(actions, action)
 	}
 
-	// 5. Execute actions using Executor (Operations no longer returned)
+	// 5. Execute actions using DirectExecutor (Operations no longer returned)
 	if len(actions) > 0 {
 		// Initialize paths
 		pathsInstance, err := paths.New(opts.DotfilesRoot)
@@ -77,8 +77,8 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
 		}
 
-		// Create Executor
-		directExecutorOpts := &core.ExecutorOptions{
+		// Create DirectExecutor
+		directExecutorOpts := &core.DirectExecutorOptions{
 			Paths:             pathsInstance,
 			DryRun:            false,
 			Force:             true,
@@ -86,7 +86,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 			Config:            config.Default(),
 		}
 
-		executor := core.NewExecutor(directExecutorOpts)
+		executor := core.NewDirectExecutor(directExecutorOpts)
 
 		// Execute actions and extract operations from results
 		results, err := executor.ExecuteActions(actions)

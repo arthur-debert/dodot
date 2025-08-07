@@ -1,6 +1,11 @@
 package types
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
 
 // ExecutionStatus represents the overall status of a pack's execution
 type ExecutionStatus string
@@ -248,23 +253,64 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 	// Transform each pack
 	for _, packName := range packNames {
 		packResult := ec.PackResults[packName]
+
+		// Check for configuration files
+		hasConfig, isIgnored := checkPackConfiguration(packResult.Pack)
+
 		displayPack := DisplayPack{
 			Name:      packName,
 			Files:     make([]DisplayFile, 0),
-			HasConfig: false, // TODO: Check if pack has .dodot.toml file
-			IsIgnored: false, // TODO: Check if pack has .dodotignore file
+			HasConfig: hasConfig,
+			IsIgnored: isIgnored,
+		}
+
+		// Add config files as display items (per display.txxt spec)
+		if hasConfig {
+			displayPack.Files = append(displayPack.Files, DisplayFile{
+				PowerUp: "config",
+				Path:    ".dodot.toml",
+				Status:  "config",
+				Message: "dodot config file found",
+			})
+		}
+		if isIgnored {
+			displayPack.Files = append(displayPack.Files, DisplayFile{
+				PowerUp: ".dodotignore",
+				Path:    "",
+				Status:  "ignored",
+				Message: "dodot is ignoring this dir",
+			})
 		}
 
 		// Transform PowerUpResults to DisplayFiles
 		for _, pur := range packResult.PowerUpResults {
 			// Create a DisplayFile for each file in the PowerUpResult
 			for _, filePath := range pur.Files {
+				// Check if this file has a power-up override in .dodot.toml
+				fileName := filepath.Base(filePath)
+				isOverride := false
+				if packResult.Pack != nil {
+					override := packResult.Pack.Config.FindOverride(fileName)
+					isOverride = (override != nil)
+				}
+
+				// Use PowerUpResult EndTime as LastExecuted if execution completed
+				var lastExecuted *time.Time
+				if pur.Status == StatusReady && !pur.EndTime.IsZero() {
+					lastExecuted = &pur.EndTime
+				}
+
+				// Generate PowerUp-aware display message
+				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
+				displayMessage := generatePowerUpMessage(pur.PowerUpName, filePath, displayStatus, lastExecuted)
+
 				displayFile := DisplayFile{
-					PowerUp: pur.PowerUpName,
-					Path:    filePath,
-					Status:  mapOperationStatusToDisplayStatus(pur.Status),
-					Message: pur.Message,
-					// TODO: Add IsOverride and LastExecuted when available
+					PowerUp:      pur.PowerUpName,
+					Path:         filePath,
+					Status:       displayStatus,
+					Message:      displayMessage,
+					IsOverride:   isOverride,
+					LastExecuted: lastExecuted,
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
 			}
@@ -296,5 +342,106 @@ func mapOperationStatusToDisplayStatus(status OperationStatus) string {
 		return "error"
 	default:
 		return "queue"
+	}
+}
+
+// checkPackConfiguration checks for .dodot.toml and .dodotignore files in the pack directory
+func checkPackConfiguration(pack *Pack) (hasConfig bool, isIgnored bool) {
+	if pack == nil || pack.Path == "" {
+		return false, false
+	}
+
+	// Check for .dodot.toml file
+	configPath := filepath.Join(pack.Path, ".dodot.toml")
+	if _, err := os.Stat(configPath); err == nil {
+		hasConfig = true
+	}
+
+	// Check for .dodotignore file
+	ignorePath := filepath.Join(pack.Path, ".dodotignore")
+	if _, err := os.Stat(ignorePath); err == nil {
+		isIgnored = true
+	}
+
+	return hasConfig, isIgnored
+}
+
+// generatePowerUpMessage creates PowerUp-specific display messages following display.txxt spec
+func generatePowerUpMessage(powerUpName, filePath, status string, lastExecuted *time.Time) string {
+	fileName := filepath.Base(filePath)
+
+	switch powerUpName {
+	case "symlink":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return fmt.Sprintf("linked to $HOME/%s", fileName)
+			}
+			return fmt.Sprintf("linked to %s", fileName)
+		case "error":
+			return fmt.Sprintf("failed to link to $HOME/%s", fileName)
+		default: // queue
+			return fmt.Sprintf("will be linked to $HOME/%s", fileName)
+		}
+
+	case "shell_profile", "shell_add_path":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return "included in shell profile"
+			}
+			return "added to shell profile"
+		case "error":
+			return "failed to add to shell profile"
+		default: // queue
+			return "to be included in shell profile"
+		}
+
+	case "homebrew":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return fmt.Sprintf("executed on %s", lastExecuted.Format("2006-01-02"))
+			}
+			return "packages installed"
+		case "error":
+			return "failed to install packages"
+		default: // queue
+			return "packages to be installed"
+		}
+
+	case "path":
+		switch status {
+		case "success":
+			return fmt.Sprintf("added %s to $PATH", fileName)
+		case "error":
+			return fmt.Sprintf("failed to add %s to $PATH", fileName)
+		default: // queue
+			return fmt.Sprintf("%s to be added to $PATH", fileName)
+		}
+
+	case "install", "install_script":
+		switch status {
+		case "success":
+			if lastExecuted != nil {
+				return fmt.Sprintf("executed during installation on %s", lastExecuted.Format("2006-01-02"))
+			}
+			return "installation completed"
+		case "error":
+			return "installation failed"
+		default: // queue
+			return "to be executed during installation"
+		}
+
+	default:
+		// Fallback for unknown PowerUp types
+		switch status {
+		case "success":
+			return "completed successfully"
+		case "error":
+			return "execution failed"
+		default: // queue
+			return "pending execution"
+		}
 	}
 }
