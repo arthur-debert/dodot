@@ -83,6 +83,9 @@ func TestSynthfsExecutor_Integration(t *testing.T) {
 	testutil.AssertEqual(t, "#!/bin/bash\necho 'Shell initialized'", shellContent)
 }
 
+// Note: Validation tests have been moved to pkg/validation/paths_test.go
+// This test now focuses on actual execution errors, not validation errors
+
 func TestSynthfsExecutor_Integration_Errors(t *testing.T) {
 	// Create a test environment
 	tempHome := testutil.TempDir(t, "synthfs-errors")
@@ -94,26 +97,33 @@ func TestSynthfsExecutor_Integration_Errors(t *testing.T) {
 	testutil.CreateDir(t, tempHome, ".local")
 	testutil.CreateDir(t, filepath.Join(tempHome, ".local"), "share")
 	testutil.CreateDir(t, filepath.Join(tempHome, ".local", "share"), "dodot")
+	dataDir := filepath.Join(tempHome, ".local", "share", "dodot")
 
 	// Create paths and executor
 	p, err := paths.New("")
 	testutil.AssertNoError(t, err)
 	executor := NewSynthfsExecutorWithPaths(false, p)
 
-	// Test operation outside safe directory
+	// Test execution error - trying to create symlink when target already exists
+	existingFile := filepath.Join(dataDir, "existing.txt")
+	testutil.CreateFile(t, dataDir, "existing.txt", "existing content")
+	sourceFile := filepath.Join(dataDir, "source.txt")
+	testutil.CreateFile(t, dataDir, "source.txt", "source content")
+
 	operations := []types.Operation{
 		{
-			Type:        types.OperationWriteFile,
-			Target:      "/etc/passwd",
-			Content:     "This should fail",
-			Description: "Attempt to write to system file",
+			Type:        types.OperationCreateSymlink,
+			Source:      sourceFile,
+			Target:      existingFile,
+			Description: "Attempt to create symlink over existing file",
 			Status:      types.StatusReady,
 		},
 	}
 
 	_, err = executor.ExecuteOperations(operations)
 	testutil.AssertError(t, err)
-	if !strings.Contains(err.Error(), "outside dodot-controlled directories") {
-		t.Errorf("Expected error to contain 'outside dodot-controlled directories', got: %v", err)
+	// synthfs will fail because file already exists
+	if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "file exists") {
+		t.Errorf("Expected error about file already existing, got: %v", err)
 	}
 }

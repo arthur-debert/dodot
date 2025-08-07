@@ -177,7 +177,15 @@ func TestPipelineIntegration(t *testing.T) {
 		}
 
 		testPaths := createTestPaths(t)
-		ctx := NewExecutionContext(false, testPaths)
+
+		// Update action sources to use test dotfiles root
+		for i := range actions {
+			if actions[i].Source != "" {
+				actions[i].Source = filepath.Join(testPaths.DotfilesRoot(), filepath.Base(actions[i].Source))
+			}
+		}
+
+		ctx := NewExecutionContextWithHomeSymlinks(false, testPaths, true, nil)
 		operations, err := ConvertActionsToOperationsWithContext(actions, ctx)
 		testutil.AssertNoError(t, err)
 

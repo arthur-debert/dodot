@@ -14,6 +14,8 @@ type DeployPacksOptions struct {
 	PackNames []string
 	// DryRun specifies whether to perform a dry run without making changes.
 	DryRun bool
+	// EnableHomeSymlinks allows symlink operations to target the user's home directory.
+	EnableHomeSymlinks bool
 }
 
 // DeployPacks runs the deployment logic for the specified packs.
@@ -23,10 +25,11 @@ func DeployPacks(opts DeployPacksOptions) (*types.ExecutionResult, error) {
 	log.Debug().Str("command", "DeployPacks").Msg("Executing command")
 
 	execOpts := internal.ExecutionOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		RunMode:      types.RunModeMany,
+		DotfilesRoot:       opts.DotfilesRoot,
+		PackNames:          opts.PackNames,
+		DryRun:             opts.DryRun,
+		RunMode:            types.RunModeMany,
+		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	}
 
 	result, err := internal.RunExecutionPipeline(execOpts)
