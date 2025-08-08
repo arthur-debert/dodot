@@ -813,6 +813,11 @@ func (e *DirectExecutor) validateAction(action types.Action) error {
 	case types.ActionTypeCopy:
 		return e.validateCopyAction(action.Source, action.Target)
 	case types.ActionTypeWrite, types.ActionTypeAppend:
+		// Special case: shell_profile power-ups can append to shell config files in home
+		if action.Type == types.ActionTypeAppend && action.PowerUpName == "shell_profile" && e.allowHomeSymlinks {
+			// Only validate that it's not a protected system file
+			return e.validateNotSystemFile(action.Target)
+		}
 		return e.validateWriteAction(action.Target)
 	case types.ActionTypeMkdir:
 		return e.validateMkdirAction(action.Target)
@@ -837,9 +842,12 @@ func (e *DirectExecutor) validateAction(action types.Action) error {
 
 // validateLinkAction validates paths for link actions
 func (e *DirectExecutor) validateLinkAction(source, target string) error {
-	// Validate source exists in dotfiles
-	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
-		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
+	// Validate source exists in dotfiles or deployed directory
+	sourceInDotfiles := isPathWithin(source, e.paths.DotfilesRoot())
+	sourceInDeployed := isPathWithin(source, e.paths.DeployedDir())
+
+	if !sourceInDotfiles && !sourceInDeployed {
+		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles or deployed directory", source)
 	}
 
 	// Check if target is a protected system file
@@ -859,12 +867,12 @@ func (e *DirectExecutor) validateLinkAction(source, target string) error {
 		dodotSymlinkDir := e.paths.SymlinkDir()
 
 		// Allow targets in dodot directories
-		if strings.HasPrefix(target, dodotDataDir) || strings.HasPrefix(target, dodotSymlinkDir) {
+		if isPathWithin(target, dodotDataDir) || isPathWithin(target, dodotSymlinkDir) {
 			return nil
 		}
 
 		// Check if target is in home directory
-		if strings.HasPrefix(target, homeDir) {
+		if isPathWithin(target, homeDir) {
 			return errors.Newf(errors.ErrInvalidInput, "target path %s is outside dodot-controlled directories", target)
 		}
 	}
@@ -874,9 +882,12 @@ func (e *DirectExecutor) validateLinkAction(source, target string) error {
 
 // validateCopyAction validates paths for copy actions
 func (e *DirectExecutor) validateCopyAction(source, target string) error {
-	// Source should be from dotfiles
-	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
-		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles directory", source)
+	// Source should be from dotfiles or deployed directory
+	sourceInDotfiles := isPathWithin(source, e.paths.DotfilesRoot())
+	sourceInDeployed := isPathWithin(source, e.paths.DeployedDir())
+
+	if !sourceInDotfiles && !sourceInDeployed {
+		return errors.Newf(errors.ErrInvalidInput, "source path %s is outside dotfiles or deployed directory", source)
 	}
 
 	// Target should be in a safe location
@@ -935,11 +946,29 @@ func (e *DirectExecutor) validateSafePath(path string) error {
 		e.paths.SymlinkDir(),
 		e.paths.InstallDir(),
 		e.paths.ShellDir(),
+		e.paths.DeployedDir(),
+		e.paths.BackupsDir(),
+		e.paths.HomebrewDir(),
+		e.paths.TemplatesDir(),
+	}
+
+	// Resolve symlinks for comparison (handles macOS /var -> /private/var)
+	resolvedPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil && !os.IsNotExist(err) {
+		// If we can't resolve, use the original path
+		resolvedPath = absPath
+	} else if err == nil {
+		// Successfully resolved
+		absPath = resolvedPath
 	}
 
 	// Check if path is within any safe directory
 	for _, safeDir := range safeDirectories {
-		if strings.HasPrefix(absPath, safeDir) {
+		if isPathWithin(absPath, safeDir) {
+			return nil
+		}
+		// Also check the unresolved path in case of symlinks
+		if resolvedPath != absPath && isPathWithin(path, safeDir) {
 			return nil
 		}
 	}
@@ -950,12 +979,29 @@ func (e *DirectExecutor) validateSafePath(path string) error {
 		if err != nil {
 			return errors.Wrapf(err, errors.ErrFileAccess, "failed to get home directory")
 		}
-		if strings.HasPrefix(absPath, homeDir) {
+		if isPathWithin(absPath, homeDir) {
 			return nil
 		}
 	}
 
 	return errors.Newf(errors.ErrInvalidInput, "path %s is outside dodot-controlled directories", path)
+}
+
+// isPathWithin checks if a path is within a parent directory
+// This handles edge cases like symlinks and relative paths properly
+func isPathWithin(path, parent string) bool {
+	// Normalize both paths
+	path = filepath.Clean(path)
+	parent = filepath.Clean(parent)
+
+	// Get relative path
+	rel, err := filepath.Rel(parent, path)
+	if err != nil {
+		return false
+	}
+
+	// If relative path starts with ".." or is absolute, it's outside parent
+	return !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
 // validateNotSystemFile prevents overwriting critical system files
@@ -978,7 +1024,7 @@ func (e *DirectExecutor) validateNotSystemFile(path string) error {
 		}
 
 		// Check if the target path matches or is within a protected path
-		if path == checkPath || strings.HasPrefix(path, checkPath+string(filepath.Separator)) {
+		if path == checkPath || isPathWithin(path, checkPath) {
 			return errors.Newf(errors.ErrInvalidInput,
 				"cannot modify protected system file: %s", protectedPath)
 		}
