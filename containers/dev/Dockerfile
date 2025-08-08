@@ -51,7 +51,7 @@ COPY --from=go-tools /go/bin/* /go/bin/
 # Install Homebrew
 RUN useradd -m -s /bin/bash linuxbrew && \
     echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
-    su - linuxbrew -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" && \
+    su - linuxbrew -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' && \
     chmod -R 755 /home/linuxbrew/.linuxbrew && \
     chown -R linuxbrew:linuxbrew /home/linuxbrew/.linuxbrew
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
