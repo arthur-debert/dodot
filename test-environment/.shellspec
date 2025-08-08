@@ -1,5 +1,0 @@
---require spec_helper
---format documentation
---format junit
---shell zsh
---jobs 1
