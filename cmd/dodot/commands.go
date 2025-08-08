@@ -1,6 +1,7 @@
 package dodot
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/display"
+	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
@@ -201,6 +203,56 @@ func newDeployCmd() *cobra.Command {
 				EnableHomeSymlinks: true,
 			})
 			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					// Display detailed error information
+					fmt.Fprintf(os.Stderr, "\nError: Pack(s) not found\n\n")
+					fmt.Fprintf(os.Stderr, "Searching for your dotfiles root:\n")
+
+					// Show the search process
+					if envRoot := os.Getenv("DOTFILES_ROOT"); envRoot != "" {
+						fmt.Fprintf(os.Stderr, "  1. $DOTFILES_ROOT is set to: %s\n", envRoot)
+					} else {
+						fmt.Fprintf(os.Stderr, "  1. $DOTFILES_ROOT not set: searching for dotfiles repo\n")
+
+						if source, ok := dodotErr.Details["source"].(string); ok {
+							switch source {
+							case "git repository root":
+								fmt.Fprintf(os.Stderr, "  2. Found git repository root: %s\n", p.DotfilesRoot())
+							case "current working directory (fallback)":
+								fmt.Fprintf(os.Stderr, "  2. No git repo found: using current directory\n")
+								fmt.Fprintf(os.Stderr, "  3. Using: %s\n", p.DotfilesRoot())
+							}
+						}
+					}
+
+					fmt.Fprintf(os.Stderr, "\n")
+
+					// Show what we were looking for
+					if notFound, ok := dodotErr.Details["notFound"].([]string); ok && len(notFound) > 0 {
+						fmt.Fprintf(os.Stderr, "Looking for pack(s): %v\n", notFound)
+						fmt.Fprintf(os.Stderr, "No directory named \"%s\" in %s\n\n", notFound[0], p.DotfilesRoot())
+					}
+
+					// Show available packs if any
+					if available, ok := dodotErr.Details["available"].([]string); ok {
+						if len(available) == 0 {
+							fmt.Fprintf(os.Stderr, "No packs found in %s\n", p.DotfilesRoot())
+							fmt.Fprintf(os.Stderr, "This might mean:\n")
+							fmt.Fprintf(os.Stderr, "  - The directory has no subdirectories\n")
+							fmt.Fprintf(os.Stderr, "  - All subdirectories have .dodotignore files\n")
+							fmt.Fprintf(os.Stderr, "  - All subdirectories are empty\n")
+						} else {
+							fmt.Fprintf(os.Stderr, "Available packs in %s:\n", p.DotfilesRoot())
+							for _, pack := range available {
+								fmt.Fprintf(os.Stderr, "  - %s\n", pack)
+							}
+						}
+					}
+
+					return fmt.Errorf("deployment failed")
+				}
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
