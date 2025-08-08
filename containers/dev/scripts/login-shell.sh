@@ -26,6 +26,14 @@ if [ -d "/home/linuxbrew/.linuxbrew" ]; then
     echo "✓ Homebrew configured"
 fi
 
+# Check if dodot binary exists, build if not
+if [ ! -f "/workspace/bin/dodot" ]; then
+    echo "🔨 dodot binary not found, building..."
+    cd /workspace && ./scripts/build
+    echo "✓ dodot built successfully"
+    echo ""
+fi
+
 # Welcome message
 echo "=================================================="
 echo "Welcome to the dodot development container!"
