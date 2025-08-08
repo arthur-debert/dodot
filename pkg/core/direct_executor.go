@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -216,22 +217,87 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 		ops = append(ops, sfs.CreateDirWithID(dirID, targetDir, 0755))
 	}
 
-	// Create deployment symlink
+	// Create deployment symlink (intermediate link in data directory)
+	// This should be idempotent - allow overwrites for repeated deploys
 	deployID := fmt.Sprintf("link_deploy_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
-	ops = append(ops, sfs.CreateSymlinkWithID(deployID, source, deployedPath))
+	ops = append(ops, sfs.CustomOperationWithID(deployID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Ensure the deployed directory exists
+		deployedDir := filepath.Dir(deployedPath)
+		if err := fs.MkdirAll(deployedDir, 0755); err != nil {
+			return fmt.Errorf("failed to create deployed directory %s: %w", deployedDir, err)
+		}
 
-	// Create target symlink
-	targetID := fmt.Sprintf("link_target_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
-	if e.force {
-		ops = append(ops, sfs.CustomOperationWithID(targetID, func(ctx context.Context, fs filesystem.FileSystem) error {
-			if err := fs.Remove(target); err != nil && !os.IsNotExist(err) {
-				return err
+		// Check if the symlink already exists and points to the same source
+		if existingTarget, err := fs.Readlink(deployedPath); err == nil {
+			if existingTarget == source {
+				// Already correct, nothing to do
+				return nil
 			}
-			return fs.Symlink(deployedPath, target)
-		}))
-	} else {
-		ops = append(ops, sfs.CreateSymlinkWithID(targetID, deployedPath, target))
-	}
+			// Remove the existing symlink to recreate it
+			if err := fs.Remove(deployedPath); err != nil {
+				return fmt.Errorf("failed to remove existing deployment symlink: %w", err)
+			}
+		}
+		// Create the symlink
+		return fs.Symlink(source, deployedPath)
+	}))
+
+	// Create target symlink (the actual symlink in user's home or target location)
+	targetID := fmt.Sprintf("link_target_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
+	ops = append(ops, sfs.CustomOperationWithID(targetID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Check if target already exists
+		if existingTarget, err := fs.Readlink(target); err == nil {
+			// It's a symlink, check if it points to our deployed path
+			e.logger.Debug().
+				Str("existingTarget", existingTarget).
+				Str("deployedPath", deployedPath).
+				Msg("Checking if symlink already points to correct location")
+
+			// Compare paths - readlink might return relative or absolute paths
+			if existingTarget == deployedPath {
+				// Already correct, nothing to do
+				return nil
+			}
+
+			// Try resolving both paths to absolute for comparison
+			// Handle the case where existingTarget might be missing leading /
+			if !filepath.IsAbs(existingTarget) && !strings.HasPrefix(existingTarget, "/") {
+				// Check if adding / makes it match
+				if "/"+existingTarget == deployedPath {
+					return nil
+				}
+			}
+
+			// It points somewhere else
+			if !e.force {
+				return fmt.Errorf("target %s already exists and points to %s (use --force to overwrite)", target, existingTarget)
+			}
+		} else if targetFile, openErr := fs.Open(target); openErr == nil {
+			// It's a regular file (we can open it but it's not a symlink)
+			_ = targetFile.Close()
+			if !e.force {
+				// Check if the file content matches what we're trying to deploy
+				sourceContent, readErr := e.readFileContent(ctx, fs, source)
+				if readErr == nil {
+					targetContent, targetReadErr := e.readFileContent(ctx, fs, target)
+					if targetReadErr == nil && bytes.Equal(sourceContent, targetContent) {
+						// Content is identical, we can safely replace with symlink
+						e.logger.Debug().Str("target", target).Msg("Target file has identical content, replacing with symlink")
+					} else {
+						return fmt.Errorf("target %s already exists as a regular file (use --force to overwrite)", target)
+					}
+				}
+			}
+		}
+
+		// Remove existing file/symlink if force is enabled or content matches
+		if err := fs.Remove(target); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing target: %w", err)
+		}
+
+		// Create the symlink
+		return fs.Symlink(deployedPath, target)
+	}))
 
 	return ops, nil
 }
@@ -1151,4 +1217,15 @@ func copyFile(fs filesystem.FileSystem, source, destination string) error {
 	}
 
 	return nil
+}
+
+// readFileContent reads the content of a file using the filesystem interface
+func (e *DirectExecutor) readFileContent(ctx context.Context, fs filesystem.FileSystem, path string) ([]byte, error) {
+	file, err := fs.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	return io.ReadAll(file)
 }
