@@ -42,7 +42,7 @@ if [ $# -gt 0 ]; then
     echo ""
     
     # Run the script and exit, ensuring direnv is loaded first
-    docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "cd /workspace && direnv allow && eval \"\$(direnv export bash)\" && $SCRIPT_PATH $*"
+    docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "cd /workspace && direnv allow >/dev/null 2>&1 && eval \"\$(direnv export bash)\" && $SCRIPT_PATH $*"
 else
     # Interactive mode (default)
     echo "Starting dodot development container..."
