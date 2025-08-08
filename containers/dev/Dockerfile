@@ -48,8 +48,8 @@ ENV CGO_ENABLED=0
 # Copy Go tools from build stage
 COPY --from=go-tools /go/bin/* /go/bin/
 
-# Install Homebrew
-RUN useradd -m -s /bin/bash linuxbrew && \
+# Install Homebrew with specific UID to avoid conflicts
+RUN useradd -m -s /bin/bash -u 1001 linuxbrew && \
     echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
     su - linuxbrew -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' && \
     chmod -R 755 /home/linuxbrew/.linuxbrew && \
@@ -68,7 +68,12 @@ ARG USERNAME=developer
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-RUN (groupadd --gid $USER_GID $USERNAME || true) && \
+# Remove any existing user with UID 1000 if it exists
+RUN if getent passwd $USER_UID >/dev/null 2>&1; then \
+        existing_user=$(getent passwd $USER_UID | cut -d: -f1); \
+        userdel -r $existing_user || true; \
+    fi && \
+    groupadd --gid $USER_GID $USERNAME || true && \
     useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /usr/bin/zsh && \
     echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
     usermod -aG linuxbrew $USERNAME
