@@ -48,26 +48,30 @@ ENV CGO_ENABLED=0
 # Copy Go tools from build stage
 COPY --from=go-tools /go/bin/* /go/bin/
 
-# Create development user first
+# Install Homebrew
+RUN useradd -m -s /bin/bash linuxbrew && \
+    echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+    su - linuxbrew -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' && \
+    chmod -R 755 /home/linuxbrew/.linuxbrew && \
+    chown -R linuxbrew:linuxbrew /home/linuxbrew/.linuxbrew && \
+    mkdir -p /home/linuxbrew/.linuxbrew/var/homebrew/linked && \
+    chown -R linuxbrew:linuxbrew /home/linuxbrew/.linuxbrew/var/homebrew/linked && \
+    chmod -R g+w /home/linuxbrew/.linuxbrew
+    
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
+ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
+ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
+
+# Create development user
 ARG USERNAME=developer
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
 RUN (groupadd --gid $USER_GID $USERNAME || true) && \
     useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /usr/bin/zsh && \
-    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-
-# Install Homebrew as developer user
-USER $USERNAME
-RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Switch back to root for remaining setup
-USER root
-
-ENV PATH="/home/developer/.linuxbrew/bin:${PATH}"
-ENV HOMEBREW_PREFIX="/home/developer/.linuxbrew"
-ENV HOMEBREW_CELLAR="/home/developer/.linuxbrew/Cellar"
-ENV HOMEBREW_REPOSITORY="/home/developer/.linuxbrew/Homebrew"
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    usermod -aG linuxbrew $USERNAME
 
 # Copy git configuration (without user section)
 COPY .gitconfig /home/$USERNAME/.gitconfig
@@ -76,7 +80,7 @@ COPY .gitconfig /home/$USERNAME/.gitconfig
 USER $USERNAME
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
     echo 'export PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"' >> ~/.zshrc && \
-    echo 'eval "$($HOME/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
     echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && \
     echo '# Source login shell script if it exists' >> ~/.zshrc && \
     echo '[ -f /container-scripts/login-shell.sh ] && source /container-scripts/login-shell.sh' >> ~/.zshrc && \
