@@ -19,8 +19,8 @@ if command -v gh &>/dev/null && [ -n "$GITHUB_TOKEN" -o -n "$GH_TOKEN" ]; then
 fi
 
 # Ensure Homebrew is in PATH and configured
-if [ -d "/home/linuxbrew/.linuxbrew" ]; then
-    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+if [ -d "$HOME/.linuxbrew" ]; then
+    eval "$($HOME/.linuxbrew/bin/brew shellenv)"
 fi
 
 # Check if dodot binary exists, build if not
