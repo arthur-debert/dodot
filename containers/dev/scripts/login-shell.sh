@@ -14,6 +14,12 @@ if [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR_EMAIL" ]; then
     echo "✓ Git user configured: $GIT_AUTHOR_NAME <$GIT_AUTHOR_EMAIL>"
 fi
 
+# Configure git to use GitHub CLI for authentication
+if command -v gh &> /dev/null && [ -n "$GITHUB_TOKEN" -o -n "$GH_TOKEN" ]; then
+    git config --global credential.helper "!gh auth git-credential"
+    echo "✓ Git configured to use GitHub CLI for authentication"
+fi
+
 # Welcome message
 echo "=================================================="
 echo "Welcome to the dodot development container!"
