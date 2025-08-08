@@ -1,6 +1,7 @@
 #!/bin/bash
 # Login shell initialization script for dodot development container
 
+PATH="$PATH:/workspace/bin:/workspace/scripts"
 # Set vi mode for shell
 set -o vi
 
