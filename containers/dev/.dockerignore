@@ -1,0 +1,4 @@
+# Ignore everything except what we need for the build
+*
+!deps.txt
+!.gitconfig
