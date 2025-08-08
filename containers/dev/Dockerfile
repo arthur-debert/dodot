@@ -25,6 +25,12 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
+# Install Node.js 20.x (newer version for better compatibility)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \
+    sudo apt-get install -y nodejs && \
+    sudo apt-get clean && \
+    sudo rm -rf /var/lib/apt/lists/*
+
 # Install global npm packages
 RUN sudo npm install -g @google/gemini-cli && \
     sudo npm install -g @anthropic-ai/claude-code
