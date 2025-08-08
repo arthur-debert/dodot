@@ -4,8 +4,8 @@
 # Set vi mode for shell
 set -o vi
 
-# Allow direnv
-direnv allow
+# Allow direnv silently
+(cd /workspace && direnv allow) >/dev/null 2>&1
 
 # Set up git user if environment variables are provided
 if [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR_EMAIL" ]; then
