@@ -41,8 +41,8 @@ if [ $# -gt 0 ]; then
     echo "Executing: $SCRIPT_PATH $@"
     echo ""
     
-    # Run the script and exit
-    docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "$SCRIPT_PATH $*"
+    # Run the script and exit, ensuring direnv is loaded first
+    docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "cd /workspace && direnv allow && eval \"\$(direnv export bash)\" && $SCRIPT_PATH $*"
 else
     # Interactive mode (default)
     echo "Starting dodot development container..."
