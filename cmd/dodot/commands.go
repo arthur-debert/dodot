@@ -528,7 +528,9 @@ func newSnippetCmd() *cobra.Command {
 			// Get the appropriate snippet for the shell using the actual data directory
 			snippet := types.GetShellIntegrationSnippet(shell, dataDir)
 
-			// Output the snippet
+			// Output the snippet with a line break and comment
+			fmt.Println()
+			fmt.Println("# Run the dodot initialization script if it exists")
 			fmt.Print(snippet)
 
 			return nil
