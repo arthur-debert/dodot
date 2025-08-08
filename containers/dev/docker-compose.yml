@@ -1,0 +1,40 @@
+services:
+  dodot-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    image: dodot-dev:latest
+    container_name: dodot-dev
+    volumes:
+      # Mount the repository root
+      - ../..:/workspace:rw
+      # Mount container scripts
+      - ./scripts:/container-scripts:ro
+      # Cache directories for better performance
+      - go-pkg:/go/pkg
+      - go-cache:/home/developer/.cache/go-build
+      # Preserve zsh history
+      - zsh-history:/home/developer/.zsh_history_dir
+    environment:
+      # Pass through git config from host
+      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-}
+      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-}
+      - GIT_COMMITTER_NAME=${GIT_COMMITTER_NAME:-}
+      - GIT_COMMITTER_EMAIL=${GIT_COMMITTER_EMAIL:-}
+      # GitHub CLI token if available
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GH_TOKEN=${GH_TOKEN:-}
+      # Homebrew tap token for releases
+      - HOMEBREW_TAP_TOKEN=${HOMEBREW_TAP_TOKEN:-}
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: /usr/bin/zsh
+    
+volumes:
+  go-pkg:
+  go-cache:
+  zsh-history:
