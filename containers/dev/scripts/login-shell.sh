@@ -15,9 +15,15 @@ if [ -n "$GIT_AUTHOR_NAME" ] && [ -n "$GIT_AUTHOR_EMAIL" ]; then
 fi
 
 # Configure git to use GitHub CLI for authentication
-if command -v gh &> /dev/null && [ -n "$GITHUB_TOKEN" -o -n "$GH_TOKEN" ]; then
+if command -v gh &>/dev/null && [ -n "$GITHUB_TOKEN" -o -n "$GH_TOKEN" ]; then
     git config --global credential.helper "!gh auth git-credential"
     echo "✓ Git configured to use GitHub CLI for authentication"
+fi
+
+# Ensure Homebrew is in PATH and configured
+if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    echo "✓ Homebrew configured"
 fi
 
 # Welcome message
@@ -34,6 +40,10 @@ echo "  ./scripts/lint        - Run linting"
 echo "  ./scripts/test        - Run tests"
 echo "  ./scripts/pre-commit  - Run pre-commit checks"
 echo "  goreleaser build      - Build with goreleaser"
+echo ""
+echo "Package managers:"
+echo "  brew install <pkg>    - Install with Homebrew"
+echo "  sudo apt update && sudo apt install <pkg> - Install with apt"
 echo ""
 echo "=================================================="
 
