@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+# Usage: ./run.sh [script_path] [script_args...]
+#
+# Examples:
+#   ./run.sh                     # Interactive mode - drops into zsh shell
+#   ./run.sh ./scripts/build     # Run build script and exit
+#   ./run.sh ./scripts/test -v   # Run test script with args and exit
+#   ./run.sh bash -c "go test"   # Run arbitrary command and exit
+
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -23,9 +31,24 @@ if git config --global user.email > /dev/null 2>&1; then
     export GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
 fi
 
-echo "Starting dodot development container..."
-echo "You'll be dropped into the repository root at /workspace"
-echo ""
-
-# Run the container using the compose file in containers/dev
-docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev
+# Check if a script path was provided
+if [ $# -gt 0 ]; then
+    # Script execution mode
+    SCRIPT_PATH="$1"
+    shift  # Remove first argument, pass the rest to the script
+    
+    echo "Starting dodot development container in script mode..."
+    echo "Executing: $SCRIPT_PATH $@"
+    echo ""
+    
+    # Run the script and exit
+    docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "$SCRIPT_PATH $*"
+else
+    # Interactive mode (default)
+    echo "Starting dodot development container..."
+    echo "You'll be dropped into the repository root at /workspace"
+    echo ""
+    
+    # Run the container interactively
+    docker-compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev
+fi
