@@ -17,11 +17,15 @@ teardown() {
     clean_test_env
 }
 
-@test "homebrew: processes Brewfile on install" {
+@test "homebrew: YES - Brewfile processed (sentinel exists)" {
     # Run install command on brew pack
     run dodot install brew
     [ "$status" -eq 0 ]
     
     # Verify Brewfile was processed (sentinel created)
     assert_brewfile_processed "brew"
+}
+
+@test "homebrew: NO - Brewfile not processed (verify absence)" {
+    skip "Not implemented"
 }

@@ -16,11 +16,15 @@ teardown() {
     clean_test_env
 }
 
-@test "symlink: deploy single gitconfig file" {
+@test "symlink: YES - deployed successfully" {
     # Deploy git pack
     run dodot deploy git
     [ "$status" -eq 0 ]
     
     # Verify symlink was created correctly
     assert_symlink_deployed "git" "gitconfig" "$HOME/gitconfig"
+}
+
+@test "symlink: NO - not deployed (verify absence)" {
+    skip "Not implemented"
 }

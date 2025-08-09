@@ -17,11 +17,15 @@ teardown() {
     clean_test_env
 }
 
-@test "shell_profile: deploy creates init.sh with source command" {
+@test "shell_profile: YES - profile sourced in init.sh" {
     # Deploy nvim pack
     run dodot deploy nvim
     [ "$status" -eq 0 ]
     
     # Verify init.sh was created and contains the profile entry
     assert_profile_in_init "nvim" "profile.sh"
+}
+
+@test "shell_profile: NO - profile not sourced (verify absence)" {
+    skip "Not implemented"
 }

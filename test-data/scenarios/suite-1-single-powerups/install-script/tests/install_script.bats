@@ -16,7 +16,7 @@ teardown() {
     clean_test_env
 }
 
-@test "install_script: executes install.sh and creates marker file" {
+@test "install_script: YES - script executed (marker created)" {
     # Install dev pack
     run dodot install dev
     [ "$status" -eq 0 ]
@@ -33,4 +33,8 @@ teardown() {
     run cat "$HOME/.local/test/marker.txt"
     [ "$status" -eq 0 ]
     [ "$output" = "installed" ]
+}
+
+@test "install_script: NO - script not executed (verify absence)" {
+    skip "Not implemented"
 }

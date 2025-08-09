@@ -50,9 +50,22 @@ fi
 
 # Find all test scenarios
 SCENARIOS=()
+# Look for old-style scenarios with tests directory
 for scenario in scenarios/*/tests; do
     if [ -d "$scenario" ]; then
         SCENARIOS+=("${scenario%/tests}")
+    fi
+done
+# Look for new suite structure
+for suite in scenarios/suite-*/tests; do
+    if [ -d "$suite" ]; then
+        SCENARIOS+=("${suite%/tests}")
+    fi
+done
+# Look for power-up specific tests in Suite 1
+for powerup in scenarios/suite-1-single-powerups/*/tests; do
+    if [ -d "$powerup" ]; then
+        SCENARIOS+=("${powerup%/tests}")
     fi
 done
 

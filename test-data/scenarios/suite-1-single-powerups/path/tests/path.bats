@@ -17,7 +17,7 @@ teardown() {
     clean_test_env
 }
 
-@test "path: deploys bin directory and creates executable symlink" {
+@test "path: YES - bin directory deployed and accessible" {
     # Deploy tools pack with bin directory  
     run dodot deploy tools
     [ "$status" -eq 0 ]
@@ -30,4 +30,8 @@ teardown() {
     run "$HOME/hello"
     [ "$status" -eq 0 ]
     [ "$output" = "Hello from tools" ]
+}
+
+@test "path: NO - bin directory not deployed (verify absence)" {
+    skip "Not implemented"
 }
