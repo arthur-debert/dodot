@@ -9,8 +9,7 @@ Quick Start
 2. Interactive shell: ./run.sh
 3. Run command: ./run.sh <command>
 4. Run tests: ./run-tests.sh
-   - Quiet mode: ./run-tests.sh (default - shows only failures)
-   - Verbose mode: ./run-tests.sh -v (shows all output)
+   - Use -v flag to see build output (quiet by default)
 
 Scripts
 -------
