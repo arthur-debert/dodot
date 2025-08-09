@@ -27,5 +27,18 @@ teardown() {
 }
 
 @test "shell_profile: NO - profile not sourced (verify absence)" {
-    skip "Not implemented"
+    # Create a pack with no profile.sh file (only other files)
+    mkdir -p "$DOTFILES_ROOT/vim"
+    echo "set number" > "$DOTFILES_ROOT/vim/vimrc"
+    
+    # Verify init.sh doesn't exist initially
+    local init_file="$DODOT_DATA_DIR/shell/init.sh"
+    [ ! -f "$init_file" ]
+    
+    # Deploy the vim pack (which has no profile.sh)
+    run dodot deploy vim
+    [ "$status" -eq 0 ]
+    
+    # Verify init.sh still doesn't exist (no profiles to source)
+    [ ! -f "$init_file" ]
 }
