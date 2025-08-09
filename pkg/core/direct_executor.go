@@ -814,6 +814,32 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	chmodID := fmt.Sprintf("install_chmod_%s_%d", action.Pack, time.Now().UnixNano())
 	ops = append(ops, sfs.ShellCommandWithID(chmodID, fmt.Sprintf("chmod +x %q", scriptTarget)))
 
+	// Execute the install script with environment variables
+	execID := fmt.Sprintf("install_exec_%s_%d", action.Pack, time.Now().UnixNano())
+
+	// Set up environment variables for the script
+	envVars := map[string]string{
+		"DOTFILES_ROOT":  e.paths.DotfilesRoot(),
+		"DODOT_DATA_DIR": e.paths.DataDir(),
+		"DODOT_PACK":     action.Pack,
+	}
+
+	// Add HOME from environment if available
+	if home := os.Getenv("HOME"); home != "" {
+		envVars["HOME"] = home
+	}
+
+	// Build the command with environment variables
+	var envCmd strings.Builder
+	for k, v := range envVars {
+		envCmd.WriteString(fmt.Sprintf("%s=%q ", k, v))
+	}
+	envCmd.WriteString(scriptTarget)
+
+	ops = append(ops, sfs.ShellCommandWithID(execID, envCmd.String(),
+		synthfs.WithCaptureOutput(),
+		synthfs.WithTimeout(300*time.Second))) // 5 minutes for install scripts
+
 	// Create sentinel file to mark as completed
 	sentinelPath := e.paths.SentinelPath("install", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
@@ -878,21 +904,45 @@ func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action type
 			// Get variables from metadata
 			variables := make(map[string]string)
 			if action.Metadata != nil {
+				// Handle both map[string]string and map[string]interface{} types
 				if vars, ok := action.Metadata["variables"].(map[string]string); ok {
 					variables = vars
+				} else if vars, ok := action.Metadata["variables"].(map[string]interface{}); ok {
+					// Convert map[string]interface{} to map[string]string
+					for k, v := range vars {
+						if strVal, ok := v.(string); ok {
+							variables[k] = strVal
+						} else {
+							variables[k] = fmt.Sprintf("%v", v)
+						}
+					}
 				}
 			}
 
 			// Process template - simple string replacement for now
 			// A full template engine could be added later (e.g., text/template)
 			processedContent := string(templateContent)
+
+			// First, handle environment variables with {{.Env.VAR}} syntax
 			for key, value := range variables {
+				// Check if this is an environment variable (HOME, USER, SHELL, etc.)
+				if key == "HOME" || key == "USER" || key == "SHELL" {
+					placeholder := fmt.Sprintf("{{.Env.%s}}", key)
+					processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+				}
+
+				// Also support direct {{.VAR}} syntax
 				placeholder := fmt.Sprintf("{{.%s}}", key)
 				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
 
 				// Also support ${VAR} syntax
 				placeholder = fmt.Sprintf("${%s}", key)
 				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+			}
+
+			// Handle special variables like {{.Hostname}}
+			if hostname, ok := variables["HOSTNAME"]; ok {
+				processedContent = strings.ReplaceAll(processedContent, "{{.Hostname}}", hostname)
 			}
 
 			// Ensure target directory exists
