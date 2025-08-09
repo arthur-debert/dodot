@@ -92,7 +92,7 @@ setup_test_env() {
     fi
     
     if [ -d "$scenario_path/dotfiles" ]; then
-        cp -r "$scenario_path/dotfiles" "$TEST_DOTFILES"
+        cp -r "$scenario_path/dotfiles"/. "$TEST_DOTFILES/"
     else
         echo "WARNING: No dotfiles directory in scenario" >&2
         mkdir -p "$TEST_DOTFILES"
