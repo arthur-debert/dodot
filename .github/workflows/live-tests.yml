@@ -22,18 +22,35 @@ jobs:
         uses: docker/setup-buildx-action@v3
         
       - name: Build development container
-        run: |
-          cd containers/dev
-          ./build.sh
+        uses: docker/build-push-action@v6
+        with:
+          context: containers/dev
+          file: containers/dev/Dockerfile
+          push: false
+          load: true
+          tags: dodot-dev:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            USER_UID=1001
+            USER_GID=118
           
       - name: Run live system tests
         run: |
-          cd containers/dev
-          if [[ "${{ inputs.verbose }}" == "true" ]]; then
-            ./run-tests.sh -v
-          else
-            ./run-tests.sh
-          fi
+          # Build dodot binary inside the container
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            dodot-dev:latest \
+            /bin/bash -c "./scripts/build"
+          
+          # Run the tests
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -e VERBOSE=${{ inputs.verbose }} \
+            dodot-dev:latest \
+            /bin/bash -c "/workspace/test-data/runner.sh"
           
       - name: Upload test results
         if: always()
