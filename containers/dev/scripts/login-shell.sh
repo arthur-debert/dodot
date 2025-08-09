@@ -31,6 +31,9 @@ if [ ! -f "/workspace/bin/dodot" ]; then
     echo ""
 fi
 
+# Run the dodot initialization script if it exists
+[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"
+
 # Welcome message
 echo "=================================================="
 echo "dodot welcomes yall"
