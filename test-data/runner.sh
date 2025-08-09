@@ -27,16 +27,11 @@ if [ ! -f "/workspace/bin/dodot" ] && [ ! -f "/workspace/scripts/build" ]; then
     exit 1
 fi
 
-# Ensure Bats is available
+# Bats is pre-installed in the container
 if ! command -v bats >/dev/null 2>&1; then
-    printf "%-40s" "Installing Bats..."
-    if sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y bats >/dev/null 2>&1; then
-        echo -e "${GREEN}✓${NC}"
-    else
-        echo -e "${RED}✗${NC}"
-        echo -e "${RED}Failed to install Bats${NC}"
-        exit 1
-    fi
+    echo -e "${RED}ERROR: Bats is not installed in the container${NC}"
+    echo "Please rebuild the container with: containers/dev/build.sh"
+    exit 1
 fi
 
 # Find all test scenarios
