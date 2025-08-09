@@ -1158,6 +1158,7 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/path")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -1189,6 +1190,9 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 			Pack:        "tools",
 			PowerUpName: "path",
 			Priority:    90,
+			Metadata: map[string]interface{}{
+				"dirName": "bin",
+			},
 		},
 	}
 
@@ -1198,11 +1202,24 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	testutil.AssertEqual(t, 1, len(results))
 	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
 
+	// Verify symlink was created in deployed/path
+	deployedLink := filepath.Join(p.DeployedDir(), "path", "tools-bin")
+
+	// Check if it's a symlink (FileExists might not work for broken symlinks)
+	if _, err := os.Lstat(deployedLink); err != nil {
+		t.Fatalf("Deployed path symlink should exist: %v", err)
+	}
+
+	// Verify symlink points to the right directory
+	target, err := os.Readlink(deployedLink)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, binDir, target)
+
 	// Verify PATH export was added to shell init file
 	shellInitFile := filepath.Join(p.ShellDir(), "init.sh")
 	testutil.AssertTrue(t, testutil.FileExists(t, shellInitFile), "Shell init file should exist")
 	content := testutil.ReadFile(t, shellInitFile)
-	testutil.AssertContains(t, content, "export PATH=\""+binDir+":$PATH\"")
+	testutil.AssertContains(t, content, "export PATH=\""+deployedLink+":$PATH\"")
 }
 
 func TestDirectExecutor_ReadAction(t *testing.T) {

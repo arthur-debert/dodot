@@ -694,28 +694,47 @@ func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types
 		return nil, errors.New(errors.ErrActionInvalid, "path add action requires target")
 	}
 
-	// Add to PATH in shell init file
+	var ops []synthfs.Operation
+
+	// First, create a symlink in deployed/path directory
+	// The symlink name should be <pack>-<dirname> (e.g., "tools-bin")
+	dirName := filepath.Base(action.Target)
+	if action.Metadata != nil {
+		if dn, ok := action.Metadata["dirName"].(string); ok {
+			dirName = dn
+		}
+	}
+
+	deployedPathDir := filepath.Join(e.paths.DeployedDir(), "path")
+	symlinkName := fmt.Sprintf("%s-%s", action.Pack, dirName)
+	symlinkPath := filepath.Join(deployedPathDir, symlinkName)
+
+	// Create the symlink to the original directory
+	linkID := fmt.Sprintf("path_link_%s_%s_%d", action.Pack, dirName, time.Now().UnixNano())
+	ops = append(ops, sfs.CreateSymlinkWithID(linkID, action.Target, symlinkPath))
+
+	// Then add to PATH in shell init file using the deployed symlink path
 	shellInitFile := filepath.Join(e.paths.ShellDir(), "init.sh")
 	content := fmt.Sprintf("\n# Add %s to PATH from %s\nexport PATH=\"%s:$PATH\"\n",
-		filepath.Base(action.Target), action.Pack, action.Target)
+		dirName, action.Pack, symlinkPath)
 
-	id := fmt.Sprintf("path_add_%s_%d", action.Pack, time.Now().UnixNano())
-	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// First check if path is already added
-			file, err := fs.Open(shellInitFile)
-			if err == nil {
-				defer func() { _ = file.Close() }()
-				existing, err := io.ReadAll(file)
-				if err == nil && strings.Contains(string(existing), action.Target) {
-					return nil // Already added
-				}
+	appendID := fmt.Sprintf("path_append_%s_%d", action.Pack, time.Now().UnixNano())
+	ops = append(ops, sfs.CustomOperationWithID(appendID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// First check if path is already added
+		file, err := fs.Open(shellInitFile)
+		if err == nil {
+			defer func() { _ = file.Close() }()
+			existing, err := io.ReadAll(file)
+			if err == nil && strings.Contains(string(existing), symlinkPath) {
+				return nil // Already added
 			}
+		}
 
-			// Use the helper to append
-			return e.createAppendFileOperation(shellInitFile, content, 0644)(ctx, fs)
-		}),
-	}, nil
+		// Use the helper to append
+		return e.createAppendFileOperation(shellInitFile, content, 0644)(ctx, fs)
+	}))
+
+	return ops, nil
 }
 
 func (e *DirectExecutor) convertRunAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
