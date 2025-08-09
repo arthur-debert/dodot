@@ -51,6 +51,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
 ENV CGO_ENABLED=0
+ENV GOTOOLCHAIN=local
 
 # Create Go directories with proper permissions
 RUN mkdir -p /opt/go/bin /opt/go/pkg /opt/go/cache && \
@@ -90,6 +91,7 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     echo 'export PATH="/usr/local/go/bin:/opt/go/bin:$PATH"' >> ~/.zshrc && \
     echo 'export GOPATH=/opt/go' >> ~/.zshrc && \
     echo 'export GOCACHE=/opt/go/cache' >> ~/.zshrc && \
+    echo 'export GOTOOLCHAIN=local' >> ~/.zshrc && \
     echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
     echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && \
     echo '# Source login shell script if it exists' >> ~/.zshrc && \
