@@ -12,6 +12,6 @@ export USER_UID=$(id -u)
 export USER_GID=$(id -g)
 
 # Build the container
-docker-compose build --build-arg USER_UID=$USER_UID --build-arg USER_GID=$USER_GID
+docker compose build --build-arg USER_UID=$USER_UID --build-arg USER_GID=$USER_GID
 
 echo "✅ Development container built successfully!"
