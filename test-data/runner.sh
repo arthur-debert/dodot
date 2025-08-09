@@ -9,6 +9,16 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Parse arguments
+SHOW_ALL_OUTPUT=false
+for arg in "$@"; do
+    case $arg in
+        -v|--verbose)
+            SHOW_ALL_OUTPUT=true
+            ;;
+    esac
+done
+
 echo "========================================="
 echo "dodot Live System Tests"
 echo "========================================="
@@ -27,8 +37,14 @@ fi
 
 # Ensure Bats is available
 if ! command -v bats >/dev/null 2>&1; then
-    echo -e "${YELLOW}Installing Bats...${NC}"
-    sudo apt-get update && sudo apt-get install -y bats
+    printf "%-40s" "Installing Bats..."
+    if sudo apt-get update >/dev/null 2>&1 && sudo apt-get install -y bats >/dev/null 2>&1; then
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${RED}✗${NC}"
+        echo -e "${RED}Failed to install Bats${NC}"
+        exit 1
+    fi
 fi
 
 # Find all test scenarios
@@ -53,29 +69,55 @@ echo ""
 # Run tests for each scenario
 TOTAL_TESTS=0
 FAILED_TESTS=0
+FAILED_SCENARIOS=()
 
 for scenario in "${SCENARIOS[@]}"; do
     scenario_name=$(basename "$scenario")
-    echo -e "${YELLOW}Running scenario: $scenario_name${NC}"
     
     # Find all .bats files in the scenario
     bats_files=("$scenario/tests"/*.bats)
     
     if [ ${#bats_files[@]} -eq 0 ] || [ ! -f "${bats_files[0]}" ]; then
-        echo "  No tests found"
         continue
     fi
     
     # Run bats tests
-    if bats "${bats_files[@]}"; then
-        echo -e "  ${GREEN}✓ All tests passed${NC}"
+    if $SHOW_ALL_OUTPUT; then
+        # Verbose mode - show full output
+        echo -e "${YELLOW}Running scenario: $scenario_name${NC}"
+        if bats "${bats_files[@]}"; then
+            echo -e "  ${GREEN}✓ All tests passed${NC}"
+        else
+            echo -e "  ${RED}✗ Some tests failed${NC}"
+            FAILED_SCENARIOS+=("$scenario_name")
+            ((FAILED_TESTS++))
+        fi
+        echo ""
     else
-        echo -e "  ${RED}✗ Some tests failed${NC}"
-        ((FAILED_TESTS++))
+        # Quiet mode - capture output
+        printf "%-40s" "Testing $scenario_name..."
+        test_output=$(mktemp)
+        
+        if bats --tap "${bats_files[@]}" > "$test_output" 2>&1; then
+            echo -e "${GREEN}✓${NC}"
+        else
+            echo -e "${RED}✗${NC}"
+            FAILED_SCENARIOS+=("$scenario_name")
+            ((FAILED_TESTS++))
+            
+            # Show only failed test details
+            echo ""
+            echo -e "${YELLOW}Failed tests in $scenario_name:${NC}"
+            awk '/^not ok/ {
+                # Extract test number and description
+                match($0, /^not ok ([0-9]+) (.*)/, arr)
+                printf "  %s✗ %s%s\n", "'$RED'", arr[2], "'$NC'"
+            }' "$test_output"
+        fi
+        
+        rm -f "$test_output"
     fi
-    
     ((TOTAL_TESTS++))
-    echo ""
 done
 
 # Summary
