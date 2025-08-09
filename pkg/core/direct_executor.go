@@ -814,6 +814,32 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	chmodID := fmt.Sprintf("install_chmod_%s_%d", action.Pack, time.Now().UnixNano())
 	ops = append(ops, sfs.ShellCommandWithID(chmodID, fmt.Sprintf("chmod +x %q", scriptTarget)))
 
+	// Execute the install script with environment variables
+	execID := fmt.Sprintf("install_exec_%s_%d", action.Pack, time.Now().UnixNano())
+
+	// Set up environment variables for the script
+	envVars := map[string]string{
+		"DOTFILES_ROOT":  e.paths.DotfilesRoot(),
+		"DODOT_DATA_DIR": e.paths.DataDir(),
+		"DODOT_PACK":     action.Pack,
+	}
+
+	// Add HOME from environment if available
+	if home := os.Getenv("HOME"); home != "" {
+		envVars["HOME"] = home
+	}
+
+	// Build the command with environment variables
+	var envCmd strings.Builder
+	for k, v := range envVars {
+		envCmd.WriteString(fmt.Sprintf("%s=%q ", k, v))
+	}
+	envCmd.WriteString(scriptTarget)
+
+	ops = append(ops, sfs.ShellCommandWithID(execID, envCmd.String(),
+		synthfs.WithCaptureOutput(),
+		synthfs.WithTimeout(300*time.Second))) // 5 minutes for install scripts
+
 	// Create sentinel file to mark as completed
 	sentinelPath := e.paths.SentinelPath("install", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())

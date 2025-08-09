@@ -964,9 +964,11 @@ func TestDirectExecutor_InstallAction(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
-	// Create an install script
+	// Create an install script that creates a marker file
 	installScript := `#!/bin/bash
 echo "Installing tools..."
+mkdir -p "$HOME/.local/test"
+echo "installed" > "$HOME/.local/test/marker.txt"
 echo "Done!"`
 	testutil.CreateFile(t, dotfilesDir, "install.sh", installScript)
 	scriptPath := filepath.Join(dotfilesDir, "install.sh")
@@ -1009,6 +1011,15 @@ echo "Done!"`
 	// Verify sentinel file was created
 	sentinelPath := p.SentinelPath("install", "tools")
 	testutil.AssertTrue(t, testutil.FileExists(t, sentinelPath), "Sentinel file should exist")
+
+	// Verify the install script was actually executed by checking for the marker file
+	markerPath := filepath.Join(homeDir, ".local", "test", "marker.txt")
+	testutil.AssertTrue(t, testutil.FileExists(t, markerPath), "Install script should have created marker file")
+
+	// Verify marker file content
+	content, err := os.ReadFile(markerPath)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, "installed\n", string(content))
 }
 
 func TestDirectExecutor_AppendAction(t *testing.T) {
