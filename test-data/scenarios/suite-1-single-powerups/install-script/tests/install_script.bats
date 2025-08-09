@@ -36,5 +36,17 @@ teardown() {
 }
 
 @test "install_script: NO - script not executed (verify absence)" {
-    skip "Not implemented"
+    # Create a pack with no install.sh file
+    mkdir -p "$DOTFILES_ROOT/config"
+    echo "config=value" > "$DOTFILES_ROOT/config/settings.conf"
+    
+    # Deploy the config pack (which has no install.sh)
+    run dodot deploy config
+    [ "$status" -eq 0 ]
+    
+    # Verify no install sentinel was created (this is the reliable indicator)
+    [ ! -f "$DODOT_DATA_DIR/run-once/install/config" ]
+    
+    # Verify no install.sh was copied to the install directory
+    [ ! -d "$DODOT_DATA_DIR/installed/config" ] || [ -z "$(ls -A "$DODOT_DATA_DIR/installed/config" 2>/dev/null)" ]
 }

@@ -26,5 +26,22 @@ teardown() {
 }
 
 @test "symlink: NO - not deployed (verify absence)" {
-    skip "Not implemented"
+    # Create a pack with only install-type files (no symlink candidates)
+    mkdir -p "$DOTFILES_ROOT/tools"
+    cat > "$DOTFILES_ROOT/tools/install.sh" << 'EOF'
+#!/bin/bash
+echo "Installing tools"
+EOF
+    chmod +x "$DOTFILES_ROOT/tools/install.sh"
+    
+    # Verify no symlinks exist initially
+    assert_symlink_not_deployed "$HOME/gitconfig"
+    
+    # Deploy the tools pack (which has no files for symlink power-up)
+    run dodot deploy tools
+    [ "$status" -eq 0 ]
+    
+    # Verify no symlinks were created
+    assert_symlink_not_deployed "$HOME/gitconfig"
+    [ ! -d "$DODOT_DATA_DIR/deployed/symlink" ] || [ -z "$(ls -A "$DODOT_DATA_DIR/deployed/symlink" 2>/dev/null)" ]
 }
