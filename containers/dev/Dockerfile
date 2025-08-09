@@ -1,5 +1,5 @@
 # Build stage for Go tools
-FROM golang:1.24.5 AS go-tools
+FROM golang:1.23 AS go-tools
 ENV CGO_ENABLED=0
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2 && \
     go install gotest.tools/gotestsum@latest && \
@@ -37,7 +37,7 @@ RUN sudo npm install -g @google/gemini-cli && \
 
 
 # Install Go (detect architecture)
-ENV GO_VERSION=1.24.5
+ENV GO_VERSION=1.23.5
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
