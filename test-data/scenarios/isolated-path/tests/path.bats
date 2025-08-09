@@ -17,18 +17,17 @@ teardown() {
     clean_test_env
 }
 
-@test "path: deploys bin directory and adds to PATH in init.sh" {
-    # Deploy tools pack with bin directory
+@test "path: deploys bin directory and creates executable symlink" {
+    # Deploy tools pack with bin directory  
     run dodot deploy tools
     [ "$status" -eq 0 ]
     
-    # Verify bin directory is deployed
-    assert_path_deployed "tools" "bin"
+    # Verify the individual executable was symlinked to home
+    [ -L "$HOME/hello" ]
     
-    # Verify executable is accessible through deployed path
-    assert_executable_available "hello" "tools-bin"
-    
-    # Verify path is added to init.sh by shell_add_path power-up
-    local deployed_path="$DODOT_DATA_DIR/deployed/path/tools-bin"
-    assert_path_in_shell_init "$deployed_path"
+    # Verify executable is accessible and works
+    [ -x "$HOME/hello" ]
+    run "$HOME/hello"
+    [ "$status" -eq 0 ]
+    [ "$output" = "Hello from tools" ]
 }
