@@ -1222,6 +1222,98 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	testutil.AssertContains(t, content, "export PATH=\""+deployedLink+":$PATH\"")
 }
 
+func TestDirectExecutor_PathAddAction_Idempotent(t *testing.T) {
+	// This test ensures that running path add actions multiple times doesn't fail
+	// Regression test for issue #523 where second install would fail with "symlink already exists"
+
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-path-idempotent")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create a bin directory with executable
+	testutil.CreateDir(t, dotfilesDir, "tools")
+	testutil.CreateDir(t, dotfilesDir, "tools/bin")
+	testutil.CreateFile(t, dotfilesDir, "tools/bin/mytool", "#!/bin/bash\necho 'mytool'")
+	binDir := filepath.Join(dotfilesDir, "tools", "bin")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create path add action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypePathAdd,
+			Description: "Add bin directory to PATH",
+			Target:      binDir,
+			Pack:        "tools",
+			PowerUpName: "path",
+			Priority:    90,
+			Metadata: map[string]interface{}{
+				"dirName": "bin",
+			},
+		},
+	}
+
+	// Execute first time - should succeed
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results))
+	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
+
+	// Verify symlink was created
+	deployedLink := filepath.Join(p.DeployedDir(), "path", "tools-bin")
+	// Check if it's a symlink (FileExists might not work for broken symlinks)
+	if _, err := os.Lstat(deployedLink); err != nil {
+		t.Fatalf("Deployed path symlink should exist: %v", err)
+	}
+
+	// Execute second time - should also succeed (idempotent)
+	results2, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results2))
+	testutil.AssertEqual(t, types.StatusReady, results2[0].Status)
+
+	// Verify symlink still exists and points to the same target
+	target, err := os.Readlink(deployedLink)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, binDir, target)
+
+	// Execute third time with a different source directory - should update
+	newBinDir := filepath.Join(dotfilesDir, "newtools", "bin")
+	testutil.CreateDir(t, dotfilesDir, "newtools")
+	testutil.CreateDir(t, dotfilesDir, "newtools/bin")
+
+	actions[0].Target = newBinDir
+	results3, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, 1, len(results3))
+	testutil.AssertEqual(t, types.StatusReady, results3[0].Status)
+
+	// Verify symlink now points to new target
+	newTarget, err := os.Readlink(deployedLink)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, newBinDir, newTarget)
+}
+
 func TestDirectExecutor_ReadAction(t *testing.T) {
 	// Setup test environment
 	tempDir := testutil.TempDir(t, "direct-executor-read")
