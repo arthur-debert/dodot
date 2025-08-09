@@ -17,6 +17,8 @@ zsh
 direnv
 bat
 bats
+bats-support
+bats-assert
 jq
 tree
 htop
