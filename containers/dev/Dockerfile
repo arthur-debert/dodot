@@ -3,7 +3,7 @@ FROM golang:1.23 AS go-tools
 ENV CGO_ENABLED=0
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2 && \
     go install gotest.tools/gotestsum@latest && \
-    go install github.com/goreleaser/goreleaser/v2@latest
+    go install github.com/goreleaser/goreleaser@v1.26.2
 
 # Main stage
 FROM ubuntu:24.04
