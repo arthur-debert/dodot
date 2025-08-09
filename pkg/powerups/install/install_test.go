@@ -43,19 +43,10 @@ npm install -g typescript`
 
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(actions)) // Now we have checksum + install actions
+	testutil.AssertEqual(t, 1, len(actions)) // Only install action now
 
-	// First action should be checksum
-	checksumAction := actions[0]
-	testutil.AssertEqual(t, types.ActionTypeChecksum, checksumAction.Type)
-	testutil.AssertEqual(t, installPath, checksumAction.Source)
-	testutil.AssertEqual(t, "dev", checksumAction.Pack)
-	testutil.AssertEqual(t, InstallScriptPowerUpName, checksumAction.PowerUpName)
-	testutil.AssertEqual(t, 101, checksumAction.Priority) // Higher priority
-	testutil.AssertContains(t, checksumAction.Description, "Calculate checksum")
-
-	// Second action should be install
-	installAction := actions[1]
+	// Single action should be install
+	installAction := actions[0]
 	testutil.AssertEqual(t, types.ActionTypeInstall, installAction.Type)
 	testutil.AssertEqual(t, installPath, installAction.Source)
 	testutil.AssertEqual(t, installPath, installAction.Command)
@@ -70,6 +61,9 @@ npm install -g typescript`
 	// Check metadata
 	testutil.AssertNotNil(t, installAction.Metadata)
 	testutil.AssertEqual(t, "dev", installAction.Metadata["pack"])
+	// Checksum should NOT be in metadata anymore
+	_, hasChecksum := installAction.Metadata["checksum"]
+	testutil.AssertFalse(t, hasChecksum, "Checksum should not be in metadata")
 }
 
 func TestInstallScriptPowerUp_Process_MultipleMatches(t *testing.T) {
@@ -103,28 +97,18 @@ func TestInstallScriptPowerUp_Process_MultipleMatches(t *testing.T) {
 
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 4, len(actions)) // 2 checksum + 2 install actions
+	testutil.AssertEqual(t, 2, len(actions)) // 2 install actions only
 
 	// Verify actions are in correct order
-	// First checksum for pack1
-	testutil.AssertEqual(t, types.ActionTypeChecksum, actions[0].Type)
+	// First install for pack1
+	testutil.AssertEqual(t, types.ActionTypeInstall, actions[0].Type)
 	testutil.AssertEqual(t, "pack1", actions[0].Pack)
-	testutil.AssertEqual(t, 101, actions[0].Priority)
+	testutil.AssertEqual(t, 100, actions[0].Priority)
 
-	// Then install for pack1
+	// Then install for pack2
 	testutil.AssertEqual(t, types.ActionTypeInstall, actions[1].Type)
-	testutil.AssertEqual(t, "pack1", actions[1].Pack)
-	testutil.AssertEqual(t, 100, actions[1].Priority)
-
-	// Then checksum for pack2
-	testutil.AssertEqual(t, types.ActionTypeChecksum, actions[2].Type)
-	testutil.AssertEqual(t, "pack2", actions[2].Pack)
-	testutil.AssertEqual(t, 201, actions[2].Priority)
-
-	// Finally install for pack2
-	testutil.AssertEqual(t, types.ActionTypeInstall, actions[3].Type)
-	testutil.AssertEqual(t, "pack2", actions[3].Pack)
-	testutil.AssertEqual(t, 200, actions[3].Priority)
+	testutil.AssertEqual(t, "pack2", actions[1].Pack)
+	testutil.AssertEqual(t, 200, actions[1].Priority)
 }
 
 func TestInstallScriptPowerUp_Process_ChecksumError(t *testing.T) {
@@ -139,18 +123,14 @@ func TestInstallScriptPowerUp_Process_ChecksumError(t *testing.T) {
 		},
 	}
 
-	// Since we're no longer calculating checksums directly in the PowerUp,
-	// it should not fail but instead create actions
+	// PowerUp should create action even with non-existent file
 	actions, err := powerup.Process(matches)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(actions))
+	testutil.AssertEqual(t, 1, len(actions))
 
-	// First action should be checksum (which will fail when executed)
-	testutil.AssertEqual(t, types.ActionTypeChecksum, actions[0].Type)
+	// Single action should be install
+	testutil.AssertEqual(t, types.ActionTypeInstall, actions[0].Type)
 	testutil.AssertEqual(t, "/non/existent/file", actions[0].Source)
-
-	// Second action should be install
-	testutil.AssertEqual(t, types.ActionTypeInstall, actions[1].Type)
 }
 
 func TestInstallScriptPowerUp_ValidateOptions(t *testing.T) {

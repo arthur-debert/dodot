@@ -99,6 +99,10 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("totalActions", len(actions)).
 		Msg("Actions generated")
 
+	// 5a. Enrich run-once actions with checksums
+	// This is needed so the executor can write checksums to sentinel files
+	actions = core.EnrichRunOnceActionsWithChecksums(actions)
+
 	// 6. Filter actions by run mode
 	filteredActions, err := filterActionsByRunMode(actions, opts.RunMode)
 	if err != nil {

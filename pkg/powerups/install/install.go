@@ -7,7 +7,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
-	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -53,28 +52,6 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 			Str("pack", match.Pack).
 			Msg("Processing install script")
 
-		// First, create a checksum action
-		checksumAction := types.Action{
-			Type:        types.ActionTypeChecksum,
-			Description: fmt.Sprintf("Calculate checksum for %s", match.Path),
-			Source:      match.AbsolutePath,
-			Pack:        match.Pack,
-			PowerUpName: p.Name(),
-			Priority:    match.Priority + 1, // Higher priority to run first
-		}
-		actions = append(actions, checksumAction)
-
-		// Calculate checksum now for the metadata
-		// This helps with run-once filtering
-		checksum, err := testutil.CalculateFileChecksum(match.AbsolutePath)
-		if err != nil {
-			logger.Warn().
-				Err(err).
-				Str("path", match.AbsolutePath).
-				Msg("Failed to calculate checksum for install script")
-			checksum = ""
-		}
-
 		action := types.Action{
 			Type:        types.ActionTypeInstall,
 			Description: fmt.Sprintf("Run install script %s", match.Path),
@@ -86,8 +63,7 @@ func (p *InstallScriptPowerUp) Process(matches []types.TriggerMatch) ([]types.Ac
 			Command:     match.AbsolutePath,
 			Args:        []string{}, // Could be extended to support arguments
 			Metadata: map[string]interface{}{
-				"pack":     match.Pack,
-				"checksum": checksum,
+				"pack": match.Pack,
 			},
 		}
 

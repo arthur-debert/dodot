@@ -709,9 +709,30 @@ func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types
 	symlinkName := fmt.Sprintf("%s-%s", action.Pack, dirName)
 	symlinkPath := filepath.Join(deployedPathDir, symlinkName)
 
-	// Create the symlink to the original directory
+	// Create the symlink to the original directory (idempotent)
 	linkID := fmt.Sprintf("path_link_%s_%s_%d", action.Pack, dirName, time.Now().UnixNano())
-	ops = append(ops, sfs.CreateSymlinkWithID(linkID, action.Target, symlinkPath))
+	ops = append(ops, sfs.CustomOperationWithID(linkID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Check if symlink already exists and points to correct target
+		if existingTarget, err := fs.Readlink(symlinkPath); err == nil {
+			if existingTarget == action.Target {
+				// Symlink already exists and is correct
+				return nil
+			}
+			// Remove incorrect symlink
+			if err := fs.Remove(symlinkPath); err != nil {
+				return err
+			}
+		}
+
+		// Create parent directory if needed
+		parentDir := filepath.Dir(symlinkPath)
+		if err := fs.MkdirAll(parentDir, 0755); err != nil {
+			return err
+		}
+
+		// Create the symlink
+		return fs.Symlink(action.Target, symlinkPath)
+	}))
 
 	// Then add to PATH in shell init file using the deployed symlink path
 	shellInitFile := filepath.Join(e.paths.ShellDir(), "init.sh")
