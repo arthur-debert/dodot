@@ -6,7 +6,7 @@ echo ""
 
 # Run a command in the container to test functionality
 run_in_container() {
-    docker-compose run --rm dodot-dev /bin/bash -c "$1"
+    docker compose run --rm dodot-dev /bin/bash -c "$1"
 }
 
 echo "1. Testing Go installation..."

@@ -1,9 +1,9 @@
 # Build stage for Go tools
-FROM golang:1.24.5 AS go-tools
+FROM golang:1.23 AS go-tools
 ENV CGO_ENABLED=0
 RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2 && \
     go install gotest.tools/gotestsum@latest && \
-    go install github.com/goreleaser/goreleaser/v2@latest
+    go install github.com/goreleaser/goreleaser@v1.26.2
 
 # Main stage
 FROM ubuntu:24.04
@@ -25,58 +25,62 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 ENV LC_ALL=en_US.UTF-8
 
+# Create development user FIRST (before any other user creation)
+ARG USERNAME=developer
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Create the developer user with the specified UID/GID
+RUN groupadd --gid $USER_GID $USERNAME || true && \
+    useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /usr/bin/zsh && \
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
 # Install Node.js 20.x (newer version for better compatibility)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \
-    sudo apt-get install -y nodejs && \
-    sudo apt-get clean && \
-    sudo rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install global npm packages
-RUN sudo npm install -g @google/gemini-cli && \
-    sudo npm install -g @anthropic-ai/claude-code
-
+RUN npm install -g @google/gemini-cli && \
+    npm install -g @anthropic-ai/claude-code
 
 # Install Go (detect architecture)
-ENV GO_VERSION=1.24.5
+ENV GO_VERSION=1.23.5
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOPATH="/go"
-ENV PATH="${GOPATH}/bin:${PATH}"
 ENV CGO_ENABLED=0
+ENV GOTOOLCHAIN=local
+
+# Create Go directories with proper permissions
+RUN mkdir -p /opt/go/bin /opt/go/pkg /opt/go/cache && \
+    chmod -R 777 /opt/go
+ENV GOPATH="/opt/go"
+ENV GOCACHE="/opt/go/cache"
+ENV PATH="${GOPATH}/bin:${PATH}"
 
 # Copy Go tools from build stage
-COPY --from=go-tools /go/bin/* /go/bin/
+COPY --from=go-tools /go/bin/* /opt/go/bin/
 
-# Install Homebrew with specific UID to avoid conflicts
-RUN useradd -m -s /bin/bash -u 1001 linuxbrew && \
+# Install Homebrew for the developer user (avoid UID conflicts)
+# Use a different UID for linuxbrew if developer is using 1001
+RUN BREW_UID=2001 && \
+    if [ "$USER_UID" = "1001" ]; then BREW_UID=2001; else BREW_UID=1001; fi && \
+    useradd -m -s /bin/bash -u $BREW_UID linuxbrew && \
     echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
     su - linuxbrew -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"' && \
     chmod -R 755 /home/linuxbrew/.linuxbrew && \
     chown -R linuxbrew:linuxbrew /home/linuxbrew/.linuxbrew && \
     mkdir -p /home/linuxbrew/.linuxbrew/var/homebrew/linked && \
     chown -R linuxbrew:linuxbrew /home/linuxbrew/.linuxbrew/var/homebrew/linked && \
-    chmod -R g+w /home/linuxbrew/.linuxbrew
+    chmod -R g+w /home/linuxbrew/.linuxbrew && \
+    usermod -aG linuxbrew $USERNAME
     
 ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
 ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
 ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
 ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
-
-# Create development user
-ARG USERNAME=developer
-ARG USER_UID=1000
-ARG USER_GID=$USER_UID
-
-# Remove any existing user with UID 1000 if it exists
-RUN if getent passwd $USER_UID >/dev/null 2>&1; then \
-        existing_user=$(getent passwd $USER_UID | cut -d: -f1); \
-        userdel -r $existing_user || true; \
-    fi && \
-    groupadd --gid $USER_GID $USERNAME || true && \
-    useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /usr/bin/zsh && \
-    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
-    usermod -aG linuxbrew $USERNAME
 
 # Copy git configuration (without user section)
 COPY .gitconfig /home/$USERNAME/.gitconfig
@@ -84,13 +88,14 @@ COPY .gitconfig /home/$USERNAME/.gitconfig
 # Setup zsh with oh-my-zsh
 USER $USERNAME
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
-    echo 'export PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export PATH="/usr/local/go/bin:/opt/go/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export GOPATH=/opt/go' >> ~/.zshrc && \
+    echo 'export GOCACHE=/opt/go/cache' >> ~/.zshrc && \
+    echo 'export GOTOOLCHAIN=local' >> ~/.zshrc && \
     echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
     echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && \
     echo '# Source login shell script if it exists' >> ~/.zshrc && \
-    echo '[ -f /container-scripts/login-shell.sh ] && source /container-scripts/login-shell.sh' >> ~/.zshrc && \
-    mkdir -p ~/.cache/go-build && \
-    chmod -R 755 ~/.cache
+    echo '[ -f /container-scripts/login-shell.sh ] && source /container-scripts/login-shell.sh' >> ~/.zshrc
 
 # Set working directory
 WORKDIR /workspace

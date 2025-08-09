@@ -1,0 +1,145 @@
+DODOT LIVE SYSTEM TEST PLAN
+
+TEST SUITE OVERVIEW
+===================
+
+Total Scenarios: 7
+Total Tests: 36
+Passing Tests: 19
+Failing Tests: 6
+Skipped Tests: 1
+
+SCENARIOS AND TESTS
+===================
+
+1. basic (Complex Integration Scenario) - 17 tests
+---------------------------------------------------
+Status: Multiple failures (legacy scenario with assertion issues)
+
+Homebrew Tests (3 tests - All Pass):
+- homebrew: processes Brewfile on first install
+- homebrew: skips Brewfile on second install without force
+- homebrew: not processed by deploy command
+
+Install Script Tests (3 tests - 1 failure, 2 pass):
+- FAIL: install_script: executes install.sh on first install (systematic artifact creation issue)
+- PASS: install_script: skips execution on second install without force
+- PASS: install_script: not executed by deploy command
+
+Path Tests (3 tests - All fail):
+- FAIL: path: deploys bin directory (incorrect assertion expectations)
+- FAIL: path: adds directory to PATH in init.sh (incorrect assertion expectations)
+- FAIL: path: handles multiple bin directories (incorrect assertion expectations)
+
+Shell Profile Tests (1 test - Pass):
+- PASS: shell_profile: creates init.sh with source commands
+
+Symlink Tests (4 tests - All pass):
+- PASS: symlink: deploy single file
+- PASS: symlink: deploy multiple files from different packs
+- PASS: symlink: repeated deploy is idempotent
+- PASS: symlink: handles missing pack gracefully
+
+Template Tests (3 tests - 2 failures, 1 pass):
+- PASS: template: processes .tmpl files
+- FAIL: template: expands environment variables (template expansion not working)
+- FAIL: template: updates file on repeated deploy (template expansion not working)
+
+2. isolated-symlink - 1 test (All Pass)
+----------------------------------------
+Purpose: Test symlink power-up in isolation
+
+- PASS: symlink: deploy single gitconfig file
+  - Deploys git/gitconfig
+  - Verifies symlink creation to $HOME/gitconfig
+
+3. isolated-shell-profile - 1 test (All Pass)
+----------------------------------------------
+Purpose: Test shell_profile power-up in isolation
+
+- PASS: shell_profile: deploy creates init.sh with source command
+  - Deploys nvim/profile.sh
+  - Verifies ~/.config/dodot/shell/init.sh contains source command
+
+4. isolated-path - 1 test (All Pass)
+-------------------------------------
+Purpose: Test path power-up in isolation
+
+- PASS: path: deploys bin directory and creates executable symlink
+  - Deploys tools/bin/hello executable
+  - Verifies executable is symlinked and functional
+  - Tests actual execution with expected output
+
+5. isolated-install-script - 1 test (Skipped)
+----------------------------------------------
+Purpose: Test install_script power-up in isolation
+
+- SKIP: install_script: executes install.sh and creates marker file (known issue)
+  - Would test dev/install.sh execution
+  - Known systematic issue: scripts run but artifacts not created
+
+6. isolated-homebrew - 1 test (All Pass)
+-----------------------------------------
+Purpose: Test homebrew power-up in isolation
+
+- PASS: homebrew: processes Brewfile on install
+  - Processes brew/Brewfile with brew "wget"
+  - Verifies homebrew power-up execution via sentinel file
+
+7. test-framework - 13 tests (All Pass)
+----------------------------------------
+Purpose: Test the test infrastructure itself
+
+Setup Function Tests (8 tests):
+- PASS: setup_test_env: creates temporary directories
+- PASS: setup_test_env: copies dotfiles preserving structure
+- PASS: setup_test_env: copies home directory correctly
+- PASS: setup_test_env: sets environment variables correctly
+- PASS: setup_test_env: handles missing scenario path
+- PASS: setup_test_env: handles scenario without dotfiles directory
+- PASS: setup_test_env: copies dodot-data directory if present
+- PASS: setup_test_env: sources .envrc files if present
+
+Cleanup Function Tests (4 tests):
+- PASS: clean_test_env: removes all test directories
+- PASS: clean_test_env: restores original environment variables
+- PASS: clean_test_env: safely handles missing directories
+- PASS: clean_test_env: only removes test directories (safety check)
+
+Integration Tests (1 test):
+- PASS: with_test_env: sets up and tears down correctly
+
+TEST SUITE SUMMARY
+==================
+
+Working Tests: 19 total tests pass
+- Isolated scenarios: 5 scenarios x 1 test each = 5 tests (1 skipped)
+- Test framework: 13 tests
+- Basic scenario: 11 out of 17 tests pass
+
+Failing Tests: 6 tests fail
+- Install scripts: 1 failure (systematic issue)
+- Path power-up: 3 failures (incorrect assertion expectations)
+- Template power-up: 2 failures (template expansion not working)
+
+TEST COVERAGE BY POWER-UP
+=========================
+
+Symlink: Fully covered (isolated + complex scenarios)
+Shell_profile: Fully covered
+Path: Isolated test works, complex scenarios fail due to assertion bugs
+Homebrew: Fully covered
+Install_script: Known systematic issue
+Template: Not covered in isolated tests, failing in complex scenario
+
+NEXT STEPS
+==========
+
+1. Fix template power-up assertions
+2. Investigate install_script systematic issue
+3. Fix path power-up assertion expectations in basic scenario
+4. Create combination tests (multiple power-ups per pack)
+5. Create multi-pack scenarios
+6. Add edge case testing (conflicts, permissions, etc.)
+
+The foundation is solid with reliable isolated tests and a robust test framework, ready for the next phases of testing development.

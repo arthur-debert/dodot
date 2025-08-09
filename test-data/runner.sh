@@ -9,7 +9,21 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# No arguments needed for now
+# Parse arguments
+FAILFAST=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --failfast)
+            FAILFAST=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--failfast]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "========================================="
 echo "dodot Live System Tests"
@@ -36,9 +50,22 @@ fi
 
 # Find all test scenarios
 SCENARIOS=()
+# Look for old-style scenarios with tests directory
 for scenario in scenarios/*/tests; do
     if [ -d "$scenario" ]; then
         SCENARIOS+=("${scenario%/tests}")
+    fi
+done
+# Look for new suite structure
+for suite in scenarios/suite-*/tests; do
+    if [ -d "$suite" ]; then
+        SCENARIOS+=("${suite%/tests}")
+    fi
+done
+# Look for power-up specific tests in Suite 1
+for powerup in scenarios/suite-1-single-powerups/*/tests; do
+    if [ -d "$powerup" ]; then
+        SCENARIOS+=("${powerup%/tests}")
     fi
 done
 
@@ -70,12 +97,35 @@ for scenario in "${SCENARIOS[@]}"; do
     
     # Run bats tests - always show full output
     echo -e "${YELLOW}Running scenario: $scenario_name${NC}"
-    if bats "${bats_files[@]}"; then
-        echo -e "  ${GREEN}✓ All tests passed${NC}"
+    
+    if $FAILFAST; then
+        # Run tests one by one for failfast behavior
+        test_failed=false
+        for bats_file in "${bats_files[@]}"; do
+            if ! bats "$bats_file"; then
+                test_failed=true
+                break
+            fi
+        done
+        if $test_failed; then
+            echo -e "  ${RED}✗ Some tests failed${NC}"
+            FAILED_SCENARIOS+=("$scenario_name")
+            ((FAILED_TESTS++))
+            echo ""
+            echo -e "${RED}Failing fast as requested${NC}"
+            exit 1
+        else
+            echo -e "  ${GREEN}✓ All tests passed${NC}"
+        fi
     else
-        echo -e "  ${RED}✗ Some tests failed${NC}"
-        FAILED_SCENARIOS+=("$scenario_name")
-        ((FAILED_TESTS++))
+        # Normal mode - run all tests at once
+        if bats "${bats_files[@]}"; then
+            echo -e "  ${GREEN}✓ All tests passed${NC}"
+        else
+            echo -e "  ${RED}✗ Some tests failed${NC}"
+            FAILED_SCENARIOS+=("$scenario_name")
+            ((FAILED_TESTS++))
+        fi
     fi
     echo ""
     ((TOTAL_TESTS++))
