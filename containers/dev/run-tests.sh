@@ -57,10 +57,6 @@ run_with_progress() {
 run_with_progress "Building dodot" '"$SCRIPT_DIR/run.sh" ./scripts/build'
 
 echo ""
-# Run the test suite
+# Run the test suite - always show full test output
 echo "Running tests..."
-if $VERBOSE; then
-    "$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh --verbose
-else
-    "$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh
-fi
+"$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh

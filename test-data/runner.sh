@@ -9,15 +9,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Parse arguments
-SHOW_ALL_OUTPUT=false
-for arg in "$@"; do
-    case $arg in
-        -v|--verbose)
-            SHOW_ALL_OUTPUT=true
-            ;;
-    esac
-done
+# No arguments needed for now
 
 echo "========================================="
 echo "dodot Live System Tests"
@@ -81,42 +73,16 @@ for scenario in "${SCENARIOS[@]}"; do
         continue
     fi
     
-    # Run bats tests
-    if $SHOW_ALL_OUTPUT; then
-        # Verbose mode - show full output
-        echo -e "${YELLOW}Running scenario: $scenario_name${NC}"
-        if bats "${bats_files[@]}"; then
-            echo -e "  ${GREEN}✓ All tests passed${NC}"
-        else
-            echo -e "  ${RED}✗ Some tests failed${NC}"
-            FAILED_SCENARIOS+=("$scenario_name")
-            ((FAILED_TESTS++))
-        fi
-        echo ""
+    # Run bats tests - always show full output
+    echo -e "${YELLOW}Running scenario: $scenario_name${NC}"
+    if bats "${bats_files[@]}"; then
+        echo -e "  ${GREEN}✓ All tests passed${NC}"
     else
-        # Quiet mode - capture output
-        printf "%-40s" "Testing $scenario_name..."
-        test_output=$(mktemp)
-        
-        if bats --tap "${bats_files[@]}" > "$test_output" 2>&1; then
-            echo -e "${GREEN}✓${NC}"
-        else
-            echo -e "${RED}✗${NC}"
-            FAILED_SCENARIOS+=("$scenario_name")
-            ((FAILED_TESTS++))
-            
-            # Show only failed test details
-            echo ""
-            echo -e "${YELLOW}Failed tests in $scenario_name:${NC}"
-            awk '/^not ok/ {
-                # Extract test number and description
-                match($0, /^not ok ([0-9]+) (.*)/, arr)
-                printf "  %s✗ %s%s\n", "'$RED'", arr[2], "'$NC'"
-            }' "$test_output"
-        fi
-        
-        rm -f "$test_output"
+        echo -e "  ${RED}✗ Some tests failed${NC}"
+        FAILED_SCENARIOS+=("$scenario_name")
+        ((FAILED_TESTS++))
     fi
+    echo ""
     ((TOTAL_TESTS++))
 done
 
