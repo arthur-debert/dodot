@@ -4,6 +4,9 @@ This document explains the core principles and trade-offs behind dodot's
 design. Understanding these principles helps explain why dodot works the
 way it does and whether it fits your use case.
 
+For technical concepts and implementation details, see 10_understanding-dodot.txxt
+and 20_architecture.txxt.
+
 Core Principles
 ---------------
 

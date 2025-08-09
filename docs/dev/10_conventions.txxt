@@ -1,0 +1,329 @@
+                   Development Conventions
+
+This document defines comprehensive coding standards, patterns, and best
+practices for the dodot codebase. All contributors must follow these
+conventions.
+
+Documentation Standards
+-----------------------
+
+Format Requirements:
+• ALL documentation MUST use txxt format (see specs/txxt-primer.txxt)
+• Use consistent 4-space indentation
+• Even .txt files should be txxt formatted
+
+Documentation Locations:
+• Design documents: docs/design/
+• Developer guides: docs/dev/
+• User documentation: docs/user/
+• API documentation: Inline Go doc comments
+
+Documentation Style:
+• Explain WHY, not WHAT
+• Document design decisions and trade-offs
+• Include examples for complex concepts
+• Reference relevant design docs
+
+Error Handling
+--------------
+
+Error Philosophy:
+All errors MUST have both code and message to enable:
+• Stable testing (test codes, not strings)
+• Future internationalization
+• Programmatic error handling
+
+Error Creation:
+```go
+// Use factory functions from pkg/errors
+err := errors.New(errors.ErrPackNotFound, "pack not found: vim")
+err := errors.Wrapf(existingErr, errors.ErrTriggerFailed, 
+    "failed to execute trigger %s", triggerName)
+```
+
+Error Testing:
+```go
+// Always test error codes, never messages
+var dodotErr errors.DodotError
+require.True(t, errors.As(err, &dodotErr))
+assert.Equal(t, errors.ErrPackNotFound, dodotErr.Code())
+```
+
+Error Constants:
+```go
+// Define at package level
+const (
+    ErrPackNotFound  = "PACK_NOT_FOUND"
+    ErrInvalidConfig = "INVALID_CONFIG"
+)
+```
+
+Logging Standards
+-----------------
+
+Logging is MANDATORY for all new code. Use structured logging with
+appropriate levels.
+
+Log Levels:
+• TRACE (-vvv): Very detailed execution flow
+• DEBUG (-vv): Detailed debugging information  
+• INFO (-v): General operational information
+• WARN (default): Warnings and recoverable errors
+• ERROR: Errors preventing operation completion
+
+Logger Usage:
+```go
+// Get logger with component context
+logger := logging.GetLogger("powerups.symlink")
+
+// Structured logging with context
+logger.Debug().
+    Str("pack", packName).
+    Str("file", fileName).
+    Int("matches", len(matches)).
+    Dur("duration", elapsed).
+    Msg("processing symlink matches")
+```
+
+Logging Best Practices:
+• Include relevant context fields
+• Use structured fields, not sprintf
+• Log at appropriate levels
+• Include operation durations for performance tracking
+
+Code Quality Standards
+----------------------
+
+Pre-commit Hooks:
+• MANDATORY - no exceptions
+• Auto-runs lint and test
+• Install with: scripts/pre-commit install
+• Fix all issues before committing
+
+Type Safety:
+• Write type-safe code throughout
+• Avoid interface{} unless absolutely necessary
+• No magic strings - use constants
+• Define types for domain concepts
+• Leverage Go's type system
+
+User-Facing Strings:
+```go
+// Keep at module level for easy review
+const (
+    msgPackNotFound = "pack not found: %s"
+    msgInvalidConfig = "invalid configuration in %s"
+)
+```
+
+Architecture Principles
+-----------------------
+
+CLI Layer:
+• Must be Cobra-based and thin
+• Business logic in pkg/, not cmd/
+• Only handles argument parsing and output formatting
+• No direct filesystem operations
+
+File System Safety:
+• NO direct filesystem operations in application code
+• ALL operations through synthfs library
+• Enables dry-run, rollback, and transactional operations
+• Only E2E tests touch real filesystem
+
+Pure Functions:
+• Power-ups must be pure functions
+• Same input → same output
+• No side effects during processing
+• Return data structures, not perform actions
+
+Function Design
+---------------
+
+Function Signatures:
+```go
+// Error as last parameter
+func ProcessPack(pack Pack) ([]Action, error)
+
+// Context first when needed
+func ProcessPackWithContext(ctx context.Context, pack Pack) ([]Action, error)
+
+// Options pattern for complex config
+func ProcessPackWithOptions(pack Pack, opts ...ProcessOption) ([]Action, error)
+```
+
+Options Pattern:
+```go
+type ProcessOption func(*ProcessConfig)
+
+func WithDryRun(dryRun bool) ProcessOption {
+    return func(c *ProcessConfig) {
+        c.DryRun = dryRun
+    }
+}
+```
+
+Interface Design
+----------------
+
+Small, Focused Interfaces:
+```go
+// Good: Single responsibility
+type Trigger interface {
+    Match(path string) bool
+}
+
+// Bad: Too many responsibilities  
+type TriggerProcessor interface {
+    Match(path string) bool
+    Process(matches []TriggerMatch) ([]Action, error)
+    Validate() error
+    GetMetadata() map[string]interface{}
+}
+```
+
+Interface Composition:
+```go
+type PowerUp interface {
+    Name() string
+    Process(matches []TriggerMatch) ([]Action, error)
+}
+
+type Validator interface {
+    Validate() error
+}
+
+type ValidatingPowerUp interface {
+    PowerUp
+    Validator
+}
+```
+
+Testing Conventions
+-------------------
+
+Test Organization:
+• Unit tests: Next to code (*_test.go)
+• Integration tests: tests/integration/
+• E2E tests: tests/e2e/ (minimize these)
+• Use t.TempDir() for test directories
+
+Table-Driven Tests:
+```go
+func TestTriggerMatch(t *testing.T) {
+    tests := []struct {
+        name     string
+        input    string
+        expected bool
+        wantErr  bool
+    }{
+        {
+            name:     "matches vimrc",
+            input:    "vimrc",
+            expected: true,
+        },
+        {
+            name:     "ignores directory",
+            input:    "vim/",
+            expected: false,
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            result := trigger.Match(tt.input)
+            assert.Equal(t, tt.expected, result)
+        })
+    }
+}
+```
+
+Test Helpers:
+```go
+// Use testutil package helpers
+pack := testutil.CreateTestPack(t, "vim", map[string]string{
+    "vimrc": "set number",
+})
+
+logs := testutil.CaptureLogOutput(t, func() {
+    _, err := ProcessPack(pack)
+    assert.NoError(t, err)
+})
+
+testutil.AssertLogContains(t, logs, "processing pack")
+```
+
+Package Documentation
+---------------------
+
+Package Comments:
+```go
+// Package triggers provides file and directory matching functionality
+// for the dodot dotfiles manager.
+//
+// Triggers implement pattern-matching strategies to identify files that
+// should be processed by specific power-ups. Each trigger focuses on a
+// single matching criterion.
+package triggers
+```
+
+Type Documentation:
+```go
+// TriggerMatch represents a file that has been matched by a trigger.
+// It contains all context needed for power-up processing.
+type TriggerMatch struct {
+    Path     string                 // Relative path within pack
+    Pack     string                 // Pack name
+    PowerUp  string                 // Target power-up name
+    Priority int                    // Processing priority
+    Metadata map[string]interface{} // Additional context
+}
+```
+
+Development Workflow
+--------------------
+
+Environment Setup:
+• Source .envrc for environment variables
+• Use PROJECT_ROOT for repository root
+• Use tmp/ for all temporary files
+
+Commit Messages:
+• For releases: "Release X.Y.Z: description"
+• For issues: "fixes #123: description"
+• Keep commits focused and atomic
+
+Pull Requests:
+• Create PR early for visibility
+• Keep PRs focused on single feature
+• Ensure all CI checks pass
+• Use gh CLI to verify: gh pr checks
+
+Performance Guidelines
+----------------------
+
+• Profile before optimizing
+• Batch operations where possible
+• Minimize allocations in hot paths
+• Use context for cancellation
+• Parallelize independent operations
+
+Security Considerations
+-----------------------
+
+• Validate all user input
+• Sanitize file paths
+• Check for directory traversal
+• Verify pack ownership
+• Validate symlink targets
+
+File Organization
+-----------------
+
+• Use PROJECT_ROOT/tmp/ for temporary files
+• Clean up test artifacts
+• Don't litter the repository
+• Add tmp/ to .gitignore
+
+Remember: The goal is safe, testable, and maintainable code. When in
+doubt, refer to existing patterns in the codebase or ask for guidance.

@@ -1,0 +1,132 @@
+                   CLI Architecture
+
+This document describes the design and implementation of dodot's command-line
+interface layer.
+
+Design Principles
+-----------------
+
+The CLI layer follows these core principles:
+
+1. **Thin CLI Layer**: The cmd/dodot package only handles CLI concerns:
+   • Command parsing and validation (via Cobra)
+   • Help text and user messages
+   • Output formatting and display
+   
+   Business logic lives in pkg/, not cmd/.
+
+2. **Type-Safe Communication**: Commands are Go functions that:
+   • Accept typed parameters
+   • Return structured data
+   • Never print directly to stdout
+
+3. **Maximize Cobra Usage**: Use Cobra's features out-of-the-box:
+   • Built-in command structure
+   • Flag and argument parsing
+   • Help generation
+   • Validation framework
+   
+   Avoid reinventing what Cobra provides.
+
+4. **Separate Build Tools**: Meta-commands live in separate binaries:
+   • cmd/dodot-completions for shell completions
+   • cmd/dodot-manpage for man page generation
+   
+   This keeps the main CLI focused on user commands.
+
+Message Management
+------------------
+
+All user-facing text is centralized for easy maintenance:
+
+Structure:
+• Single-line messages: Constants in cmd/dodot/msgs.go
+• Multi-line content: Files in cmd/dodot/msgs/*.txt
+• Embedded at compile time using Go's embed package
+
+Benefits:
+• Non-technical contributors can edit messages safely
+• Compile-time validation catches errors
+• No runtime string construction bugs
+• Easy to review all user-facing text
+
+Example:
+```go
+// msgs.go
+const msgPackNotFound = "pack not found: %s"
+
+//go:embed msgs/deploy-long.txt
+var deployLongHelp string
+```
+
+Help System
+-----------
+
+dodot extends Cobra's help with a topics system:
+• `dodot help <topic>` for concept documentation
+• Topics stored as files in cmd/dodot/topics/
+• Supports .txt, .txxt, and .md formats
+• Option topics use "option-" prefix
+
+See 30_help-system.txxt for implementation details.
+
+Command Structure
+-----------------
+
+Each command follows this pattern:
+
+```go
+// CLI layer (cmd/dodot/deploy.go)
+var deployCmd = &cobra.Command{
+    Use:   "deploy [pack...]",
+    Short: "Deploy pack configurations",
+    Long:  deployLongHelp, // From embedded file
+    RunE: func(cmd *cobra.Command, args []string) error {
+        // 1. Parse flags and arguments
+        dryRun, _ := cmd.Flags().GetBool("dry-run")
+        
+        // 2. Call business logic
+        result, err := deploy.Execute(args, deploy.Options{
+            DryRun: dryRun,
+        })
+        
+        // 3. Format output
+        return display.FormatResult(result)
+    },
+}
+
+// Business logic (pkg/commands/deploy/deploy.go)
+func Execute(packs []string, opts Options) (*Result, error) {
+    // Pure business logic, no CLI concerns
+}
+```
+
+Output Formatting
+-----------------
+
+The display package handles all output formatting:
+• Structured data from commands
+• Consistent formatting across commands
+• Color support detection
+• Plain text fallback
+
+See specs/pack-output.txxt for display specifications.
+
+Testing the CLI
+---------------
+
+CLI tests focus on:
+• Command parsing and validation
+• Flag handling
+• Help text generation
+• Output formatting
+
+Business logic tests live with the pkg/ code.
+
+Future Improvements
+-------------------
+
+• Interactive mode for command discovery
+• Shell-specific completion enhancements
+• Contextual help based on current state
+• Richer output formats (JSON, YAML)

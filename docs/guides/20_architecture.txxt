@@ -1,18 +1,8 @@
                    dodot Architecture
 
-This document explains dodot's high-level architecture and how the core
-components work together to process your dotfiles.
-
-Core Components
----------------
-
-dodot's architecture is built around four main concepts that work in
-sequence:
-
-1. Triggers - Pattern-matching engines that find relevant files
-2. Matchers - Configuration that binds triggers to power-ups  
-3. Power-ups - Action generators that process matched files
-4. Actions - High-level descriptions of operations to perform
+This document provides technical implementation details about dodot's
+architecture. For concept definitions and rationale, see
+10_understanding-dodot.txxt.
 
 Processing Pipeline
 -------------------
@@ -39,42 +29,29 @@ When you run a dodot command, this is what happens:
    • A specialized executor (powered by the `go-synthfs` library) safely executes the planned `Operations`.
    • It handles creating directories, writing files, and setting up symlinks in the correct order.
 
-Component Details
------------------
+Implementation Details
+----------------------
 
-Triggers:
-Triggers implement specific matching strategies:
-• FileNameTrigger - Matches files by name patterns (e.g., `*rc`).
-• DirectoryTrigger - Matches directories by name.
-• ExtensionTrigger - Matches files by extension (e.g., `.sh`).
+Trigger Types:
+• FileNameTrigger - Uses glob patterns for name matching
+• DirectoryTrigger - Matches on directory names
+• ExtensionTrigger - Suffix-based matching
+• RegexTrigger - Full regex pattern matching (planned)
 
-Each trigger simply identifies a file; it doesn't decide what to do with it.
+Each trigger type implements the `Trigger` interface with a single
+`Match(path string) bool` method.
 
-Matchers:
-Matchers are the glue in your configuration. They bind triggers to power-ups:
-• Which trigger to use for detection.
-• Which power-up should handle the matched files.
-• Custom options for the power-up (e.g., the target directory for a symlink).
+Power-Up Implementation:
+Power-ups implement the `PowerUp` interface:
+```
+type PowerUp interface {
+    Name() string
+    Process(matches []TriggerMatch) ([]Action, error)
+}
+```
 
-Matchers are configured globally and can be overridden per-pack.
-
-Power-ups:
-Power-ups are the brains of `dodot`. They generate `Actions` from matched files:
-• `symlink` - Creates symbolic links to target locations.
-• `shell_profile` - Ensures shell scripts are sourced by your shell.
-• `shell_add_path` - Adds directories to your system's `$PATH`.
-• `homebrew` - Processes `Brewfile` dependencies.
-• `install` - Executes one-time installation scripts.
-
-Power-ups never perform filesystem operations directly. They only describe
-what should be done through `Actions`.
-
-Actions vs. Operations:
-`dodot` makes a key distinction between Actions and Operations:
-• **Action**: A high-level intent (e.g., "link `vimrc`").
-• **Operation**: A low-level, concrete task (e.g., "create a symlink from `/path/to/vimrc` to `~/.vimrc`").
-
-This separation allows for clear planning and safe execution.
+The Process method must be pure - same inputs always produce same outputs.
+This enables testing, caching, and predictable behavior.
 
 Registry System
 ---------------
@@ -82,6 +59,16 @@ Registry System
 All components (triggers and power-ups) are registered in a type-safe
 registry system. This enables extensibility—new triggers and power-ups can
 be added without modifying the core `dodot` code.
+
+The registry uses Go's init() functions for automatic registration:
+```
+func init() {
+    registry.RegisterPowerUp("symlink", NewSymlinkPowerUp)
+    registry.RegisterTrigger("filename", NewFileNameTrigger)
+}
+```
+
+This approach ensures all components are available before main() runs.
 
 File System Safety
 ------------------
@@ -152,6 +139,18 @@ Each pack is processed independently:
 
 Multiple packs can be processed in parallel since they are independent.
 
+Action to Operation Conversion
+------------------------------
+
+The DirectExecutor converts Actions to synthfs Operations:
+• Link actions → CreateSymlink operations (with parent dir creation)
+• Write actions → CreateFile operations
+• PathAdd actions → CreateSymlink + AppendFile operations
+• Run actions → Custom operations with command execution
+
+Each conversion handles edge cases like existing files, missing directories,
+and permission issues.
+
 Error Handling
 --------------
 
@@ -161,3 +160,33 @@ Errors are handled at appropriate levels:
 • Execution errors - Stop processing and report the failure.
 
 This provides graceful degradation while preventing partial deployments.
+
+Error Codes:
+All errors use structured error codes (not just messages) for stable testing:
+```
+errors.New(errors.ErrFileAccess, "permission denied")
+errors.New(errors.ErrActionInvalid, "missing target path")
+```
+
+Run-Once Mechanism
+------------------
+
+For power-ups like `install` and `homebrew`, a sentinel file system prevents
+repeated execution:
+1. Before execution, check for sentinel file with matching checksum
+2. If found and checksum matches, skip execution
+3. After successful execution, write sentinel with current file checksum
+4. If source file changes, checksum mismatch triggers re-execution
+
+Sentinel files are stored in:
+• ~/.local/share/dodot/install/sentinels/<pack>
+• ~/.local/share/dodot/homebrew/<pack>
+
+Performance Considerations
+--------------------------
+
+• Parallel pack processing when using --all flag
+• File operations batched through synthfs for efficiency
+• Registry lookups are O(1) using Go maps
+• Minimal file I/O during discovery phase
+• Lazy loading of pack configurations
