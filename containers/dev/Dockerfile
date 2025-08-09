@@ -50,12 +50,17 @@ ENV GO_VERSION=1.23.5
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar -C /usr/local -xz
 ENV PATH="/usr/local/go/bin:${PATH}"
-ENV GOPATH="/go"
-ENV PATH="${GOPATH}/bin:${PATH}"
 ENV CGO_ENABLED=0
 
+# Create Go directories with proper permissions
+RUN mkdir -p /opt/go/bin /opt/go/pkg /opt/go/cache && \
+    chmod -R 777 /opt/go
+ENV GOPATH="/opt/go"
+ENV GOCACHE="/opt/go/cache"
+ENV PATH="${GOPATH}/bin:${PATH}"
+
 # Copy Go tools from build stage
-COPY --from=go-tools /go/bin/* /go/bin/
+COPY --from=go-tools /go/bin/* /opt/go/bin/
 
 # Install Homebrew for the developer user (avoid UID conflicts)
 # Use a different UID for linuxbrew if developer is using 1001
@@ -82,13 +87,13 @@ COPY .gitconfig /home/$USERNAME/.gitconfig
 # Setup zsh with oh-my-zsh
 USER $USERNAME
 RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
-    echo 'export PATH="/usr/local/go/bin:$GOPATH/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export PATH="/usr/local/go/bin:/opt/go/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export GOPATH=/opt/go' >> ~/.zshrc && \
+    echo 'export GOCACHE=/opt/go/cache' >> ~/.zshrc && \
     echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
     echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc && \
     echo '# Source login shell script if it exists' >> ~/.zshrc && \
-    echo '[ -f /container-scripts/login-shell.sh ] && source /container-scripts/login-shell.sh' >> ~/.zshrc && \
-    mkdir -p ~/.cache/go-build && \
-    chmod -R 755 ~/.cache
+    echo '[ -f /container-scripts/login-shell.sh ] && source /container-scripts/login-shell.sh' >> ~/.zshrc
 
 # Set working directory
 WORKDIR /workspace
