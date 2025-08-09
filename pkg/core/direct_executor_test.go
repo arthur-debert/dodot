@@ -891,11 +891,13 @@ func TestDirectExecutor_TemplateAction(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
-	// Create a template file
-	templateContent := `# Configuration for {{.USER}}
-Host: {{.HOSTNAME}}
-Home: ${HOME}
-Custom: {{.CUSTOM_VAR}}`
+	// Create a template file using {{.Env.VAR}} syntax
+	templateContent := `# Configuration for {{.Env.USER}}
+Host: {{.Hostname}}
+Home: {{.Env.HOME}}
+Shell: {{.Env.SHELL}}
+Custom: {{.CUSTOM_VAR}}
+Legacy: ${HOME}`
 	testutil.CreateFile(t, dotfilesDir, "config.tmpl", templateContent)
 	templateFile := filepath.Join(dotfilesDir, "config.tmpl")
 	targetFile := filepath.Join(homeDir, ".config", "app.conf")
@@ -924,10 +926,11 @@ Custom: {{.CUSTOM_VAR}}`
 			PowerUpName: "template",
 			Priority:    80,
 			Metadata: map[string]interface{}{
-				"variables": map[string]string{
+				"variables": map[string]interface{}{
 					"USER":       "testuser",
 					"HOSTNAME":   "testhost",
 					"HOME":       homeDir,
+					"SHELL":      "/bin/bash",
 					"CUSTOM_VAR": "custom_value",
 				},
 			},
@@ -940,13 +943,15 @@ Custom: {{.CUSTOM_VAR}}`
 	testutil.AssertEqual(t, 1, len(results))
 	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
 
-	// Verify template was processed
+	// Verify template was processed with both {{.Env.VAR}} and {{.VAR}} syntax
 	testutil.AssertTrue(t, testutil.FileExists(t, targetFile), "Target file should exist")
 	content := testutil.ReadFile(t, targetFile)
-	testutil.AssertContains(t, content, "# Configuration for testuser")
-	testutil.AssertContains(t, content, "Host: testhost")
-	testutil.AssertContains(t, content, "Home: "+homeDir)
-	testutil.AssertContains(t, content, "Custom: custom_value")
+	testutil.AssertContains(t, content, "# Configuration for testuser") // {{.Env.USER}}
+	testutil.AssertContains(t, content, "Host: testhost")               // {{.Hostname}}
+	testutil.AssertContains(t, content, "Home: "+homeDir)               // {{.Env.HOME}}
+	testutil.AssertContains(t, content, "Shell: /bin/bash")             // {{.Env.SHELL}}
+	testutil.AssertContains(t, content, "Custom: custom_value")         // {{.CUSTOM_VAR}}
+	testutil.AssertContains(t, content, "Legacy: "+homeDir)             // ${HOME}
 }
 
 func TestDirectExecutor_InstallAction(t *testing.T) {

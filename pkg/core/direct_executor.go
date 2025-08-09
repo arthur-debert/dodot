@@ -904,21 +904,45 @@ func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action type
 			// Get variables from metadata
 			variables := make(map[string]string)
 			if action.Metadata != nil {
+				// Handle both map[string]string and map[string]interface{} types
 				if vars, ok := action.Metadata["variables"].(map[string]string); ok {
 					variables = vars
+				} else if vars, ok := action.Metadata["variables"].(map[string]interface{}); ok {
+					// Convert map[string]interface{} to map[string]string
+					for k, v := range vars {
+						if strVal, ok := v.(string); ok {
+							variables[k] = strVal
+						} else {
+							variables[k] = fmt.Sprintf("%v", v)
+						}
+					}
 				}
 			}
 
 			// Process template - simple string replacement for now
 			// A full template engine could be added later (e.g., text/template)
 			processedContent := string(templateContent)
+
+			// First, handle environment variables with {{.Env.VAR}} syntax
 			for key, value := range variables {
+				// Check if this is an environment variable (HOME, USER, SHELL, etc.)
+				if key == "HOME" || key == "USER" || key == "SHELL" {
+					placeholder := fmt.Sprintf("{{.Env.%s}}", key)
+					processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+				}
+
+				// Also support direct {{.VAR}} syntax
 				placeholder := fmt.Sprintf("{{.%s}}", key)
 				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
 
 				// Also support ${VAR} syntax
 				placeholder = fmt.Sprintf("${%s}", key)
 				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+			}
+
+			// Handle special variables like {{.Hostname}}
+			if hostname, ok := variables["HOSTNAME"]; ok {
+				processedContent = strings.ReplaceAll(processedContent, "{{.Hostname}}", hostname)
 			}
 
 			// Ensure target directory exists
