@@ -16,6 +16,7 @@ gh
 zsh
 direnv
 bat
+bats
 jq
 tree
 htop
