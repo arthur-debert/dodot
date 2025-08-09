@@ -1,0 +1,45 @@
+name: Live System Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      verbose:
+        description: 'Run tests in verbose mode'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  live-tests:
+    name: Run Live System Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Build development container
+        run: |
+          cd containers/dev
+          ./build.sh
+          
+      - name: Run live system tests
+        run: |
+          cd containers/dev
+          if [[ "${{ inputs.verbose }}" == "true" ]]; then
+            ./run-tests.sh -v
+          else
+            ./run-tests.sh
+          fi
+          
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            tmp/dodot-test-*/
+          retention-days: 7
