@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -156,6 +157,15 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionR
 	}
 
 	e.logger.Info().Msg("All actions executed successfully")
+
+	// Write deployment metadata after successful execution
+	if !e.dryRun && len(results) > 0 {
+		if err := e.writeDeploymentMetadata(); err != nil {
+			// Log error but don't fail the deployment
+			e.logger.Warn().Err(err).Msg("Failed to write deployment metadata")
+		}
+	}
+
 	return results, nil
 }
 
@@ -216,22 +226,127 @@ func (e *DirectExecutor) convertLinkAction(sfs *synthfs.SynthFS, action types.Ac
 		ops = append(ops, sfs.CreateDirWithID(dirID, targetDir, 0755))
 	}
 
-	// Create deployment symlink
+	// STEP 1: Create deployment symlink (intermediate link in data directory)
+	// This implements dodot's two-symlink strategy:
+	//   1. Intermediate symlink: ~/.local/share/dodot/deployed/symlink/.vimrc -> ~/dotfiles/vim/vimrc
+	//   2. Target symlink: ~/.vimrc -> ~/.local/share/dodot/deployed/symlink/.vimrc
+	//
+	// This intermediate link is ALWAYS safe to update because:
+	// - It's in dodot's private data directory
+	// - No user files exist here
+	// - It allows atomic updates without touching user's home directory
+	//
+	// The operation is idempotent - repeated deploys will:
+	// - Do nothing if the link already points to the correct source
+	// - Update the link if it points to a different source (pack was moved)
 	deployID := fmt.Sprintf("link_deploy_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
-	ops = append(ops, sfs.CreateSymlinkWithID(deployID, source, deployedPath))
+	ops = append(ops, sfs.CustomOperationWithID(deployID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Ensure the deployed directory exists
+		deployedDir := filepath.Dir(deployedPath)
+		if err := fs.MkdirAll(deployedDir, 0755); err != nil {
+			return fmt.Errorf("failed to create deployed directory %s: %w", deployedDir, err)
+		}
 
-	// Create target symlink
-	targetID := fmt.Sprintf("link_target_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
-	if e.force {
-		ops = append(ops, sfs.CustomOperationWithID(targetID, func(ctx context.Context, fs filesystem.FileSystem) error {
-			if err := fs.Remove(target); err != nil && !os.IsNotExist(err) {
-				return err
+		// Check if the symlink already exists and points to the same source
+		if existingTarget, err := fs.Readlink(deployedPath); err == nil {
+			if existingTarget == source {
+				// Already correct, nothing to do - idempotent operation
+				return nil
 			}
-			return fs.Symlink(deployedPath, target)
-		}))
-	} else {
-		ops = append(ops, sfs.CreateSymlinkWithID(targetID, deployedPath, target))
-	}
+			// Points to different source - remove and recreate
+			// This handles the case where a pack was moved to a different location
+			if err := fs.Remove(deployedPath); err != nil {
+				return fmt.Errorf("failed to remove existing deployment symlink: %w", err)
+			}
+		}
+		// Create the symlink
+		return fs.Symlink(source, deployedPath)
+	}))
+
+	// STEP 2: Create target symlink (the actual symlink in user's home or target location)
+	// This is where conflict resolution happens. The strategy is:
+	//
+	// 1. If target is already a symlink:
+	//    - If it points to our intermediate link: do nothing (idempotent)
+	//    - If it points elsewhere: conflict (require --force)
+	//
+	// 2. If target is a regular file:
+	//    - Compare content with source file
+	//    - If identical: auto-replace with symlink (safe operation)
+	//    - If different: conflict (require --force to avoid data loss)
+	//
+	// 3. If target doesn't exist: create the symlink
+	//
+	// This approach ensures:
+	// - Repeated deploys are idempotent (no errors on re-run)
+	// - User data is protected (conflicts require explicit --force)
+	// - Common case of identical files is handled automatically
+	targetID := fmt.Sprintf("link_target_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
+	ops = append(ops, sfs.CustomOperationWithID(targetID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// Check if target already exists
+		if existingTarget, err := fs.Readlink(target); err == nil {
+			// CASE 1: Target is a symlink
+			// Check if it points to our deployed path
+			e.logger.Debug().
+				Str("existingTarget", existingTarget).
+				Str("deployedPath", deployedPath).
+				Msg("Checking if symlink already points to correct location")
+
+			// Compare paths - readlink might return relative or absolute paths
+			if existingTarget == deployedPath {
+				// Already correct, nothing to do - idempotent operation
+				return nil
+			}
+
+			// Handle path format differences (readlink sometimes omits leading /)
+			// This is a quirk of some filesystem implementations
+			if !filepath.IsAbs(existingTarget) && !strings.HasPrefix(existingTarget, "/") {
+				// Check if adding / makes it match
+				if "/"+existingTarget == deployedPath {
+					return nil
+				}
+			}
+
+			// Symlink points somewhere else - this is a conflict
+			// User must explicitly use --force to overwrite
+			if !e.force {
+				return fmt.Errorf("target %s already exists and points to %s (use --force to overwrite)", target, existingTarget)
+			}
+		} else if targetFile, openErr := fs.Open(target); openErr == nil {
+			// CASE 2: Target is a regular file
+			// We can open it, but it's not a symlink
+			_ = targetFile.Close()
+			if !e.force {
+				// Smart conflict resolution: check if file content is identical
+				// This handles the common case where user has the same config file
+				// but not yet managed by dodot
+				sourceContent, readErr := e.readFileContent(ctx, fs, source)
+				if readErr == nil {
+					targetContent, targetReadErr := e.readFileContent(ctx, fs, target)
+					if targetReadErr == nil && bytes.Equal(sourceContent, targetContent) {
+						// Content is identical - safe to replace with symlink
+						// This is a quality-of-life feature that makes adoption easier
+						e.logger.Debug().Str("target", target).Msg("Target file has identical content, replacing with symlink")
+					} else {
+						// Content differs - protect user data
+						return fmt.Errorf("target %s already exists as a regular file (use --force to overwrite)", target)
+					}
+				}
+			}
+		}
+		// CASE 3: Target doesn't exist, or we're forcing, or content matches
+
+		// Remove existing file/symlink if needed
+		// This is safe because we've already checked conflicts above
+		if err := fs.Remove(target); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to remove existing target: %w", err)
+		}
+
+		// Create the symlink pointing to our intermediate link
+		// This completes the two-symlink chain:
+		// ~/.vimrc -> ~/.local/share/dodot/deployed/symlink/.vimrc -> ~/dotfiles/vim/vimrc
+		return fs.Symlink(deployedPath, target)
+	}))
 
 	return ops, nil
 }
@@ -1151,4 +1266,30 @@ func copyFile(fs filesystem.FileSystem, source, destination string) error {
 	}
 
 	return nil
+}
+
+// readFileContent reads the content of a file using the filesystem interface
+func (e *DirectExecutor) readFileContent(ctx context.Context, fs filesystem.FileSystem, path string) ([]byte, error) {
+	file, err := fs.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	return io.ReadAll(file)
+}
+
+// writeDeploymentMetadata writes deployment metadata for the shell init script to use
+func (e *DirectExecutor) writeDeploymentMetadata() error {
+	metadataPath := filepath.Join(e.paths.DataDir(), "deployment-metadata")
+
+	// Create the metadata content
+	// We use DODOT_DEPLOYMENT_ROOT to avoid confusion with DOTFILES_ROOT
+	// which might be set by the user
+	content := fmt.Sprintf("# Generated by dodot during deployment\n"+
+		"# This file is sourced by dodot-init.sh\n"+
+		"DODOT_DEPLOYMENT_ROOT=\"%s\"\n", e.paths.DotfilesRoot())
+
+	// Write the file
+	return e.filesystem.WriteFile(metadataPath, []byte(content), 0644)
 }

@@ -160,8 +160,20 @@ func (p *Paths) setupXDGDirs() error {
 	return nil
 }
 
-// findDotfilesRoot determines the dotfiles root from environment or defaults
-// It returns the path and a boolean indicating if fallback to cwd was used
+// findDotfilesRoot determines the dotfiles root using the following priority:
+// 1. DOTFILES_ROOT environment variable (if set)
+// 2. Git repository root (found via 'git rev-parse --show-toplevel')
+// 3. Current working directory (fallback)
+//
+// The function returns:
+// - string: The resolved dotfiles root path
+// - bool: Whether the current working directory was used as fallback
+// - error: Any error that occurred during resolution
+//
+// This allows dodot to work in three common scenarios:
+// - Explicit configuration via DOTFILES_ROOT
+// - Automatic detection when run from within a git-managed dotfiles repo
+// - Fallback to current directory for quick testing or non-git setups
 func findDotfilesRoot() (string, bool, error) {
 	// Check DOTFILES_ROOT first (highest priority)
 	if root := os.Getenv(EnvDotfilesRoot); root != "" {

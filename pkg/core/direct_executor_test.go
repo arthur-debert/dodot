@@ -21,6 +21,7 @@ func TestDirectExecutor_SymlinkPowerUp(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -244,6 +245,7 @@ func TestDirectExecutor_MixedPowerUps(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -403,6 +405,7 @@ func TestDirectExecutor_ValidationErrors(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -491,6 +494,268 @@ func TestDirectExecutor_ValidationErrors(t *testing.T) {
 	})
 }
 
+func TestDirectExecutor_RepeatedDeploy(t *testing.T) {
+	// Test that repeated deploys work without conflicts
+	tempDir := testutil.TempDir(t, "direct-executor-repeated-deploy")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create source file
+	testutil.CreateFile(t, dotfilesDir, "vimrc", "\" Test vimrc")
+	sourceFile := filepath.Join(dotfilesDir, "vimrc")
+	targetFile := filepath.Join(homeDir, ".vimrc")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		Force:             false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create symlink action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeLink,
+			Description: "Link .vimrc to home directory",
+			Source:      sourceFile,
+			Target:      targetFile,
+			Pack:        "vim",
+			PowerUpName: "symlink",
+			Priority:    100,
+		},
+	}
+
+	// First deploy - should succeed
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, len(results) > 0, "Should have results")
+
+	// Verify symlink was created
+	info, err := os.Lstat(targetFile)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, info.Mode()&os.ModeSymlink != 0, "Target should be a symlink")
+
+	// Second deploy - should also succeed (idempotent)
+	results2, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, len(results2) > 0, "Should have results")
+
+	// Verify symlink still exists and is correct
+	info2, err := os.Lstat(targetFile)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, info2.Mode()&os.ModeSymlink != 0, "Target should still be a symlink")
+
+	// Now test the case where user removes the target symlink
+	err = os.Remove(targetFile)
+	testutil.AssertNoError(t, err)
+
+	// Third deploy - should recreate the symlink
+	results3, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, len(results3) > 0, "Should have results")
+
+	// Verify symlink was recreated
+	info3, err := os.Lstat(targetFile)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, info3.Mode()&os.ModeSymlink != 0, "Target should be a symlink again")
+}
+
+func TestDirectExecutor_ConflictWithIdenticalFile(t *testing.T) {
+	// Test that we can replace a regular file with symlink if content is identical
+	tempDir := testutil.TempDir(t, "direct-executor-identical-file")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create source file and identical target file
+	vimrcContent := "\" Test vimrc\nset number\nset autoindent"
+	testutil.CreateFile(t, dotfilesDir, "vimrc", vimrcContent)
+	testutil.CreateFile(t, homeDir, ".vimrc", vimrcContent) // Same content
+	sourceFile := filepath.Join(dotfilesDir, "vimrc")
+	targetFile := filepath.Join(homeDir, ".vimrc")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		Force:             false, // Not using force
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create symlink action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeLink,
+			Description: "Link .vimrc to home directory",
+			Source:      sourceFile,
+			Target:      targetFile,
+			Pack:        "vim",
+			PowerUpName: "symlink",
+			Priority:    100,
+		},
+	}
+
+	// Deploy should succeed because content is identical
+	results, err := executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, len(results) > 0, "Should have results")
+
+	// Verify file was replaced with symlink
+	info, err := os.Lstat(targetFile)
+	testutil.AssertNoError(t, err)
+	testutil.AssertTrue(t, info.Mode()&os.ModeSymlink != 0, "Target should now be a symlink")
+}
+
+func TestDirectExecutor_DeploymentMetadata(t *testing.T) {
+	// Setup test environment
+	tempDir := testutil.TempDir(t, "direct-executor-metadata")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create source file
+	testutil.CreateFile(t, dotfilesDir, "bashrc", "# Test bashrc")
+	sourceFile := filepath.Join(dotfilesDir, "bashrc")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		Force:             false,
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	// Create executor
+	executor := NewDirectExecutor(opts)
+
+	// Create a simple symlink action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeLink,
+			Description: "Link .bashrc",
+			Source:      sourceFile,
+			Target:      filepath.Join(homeDir, ".bashrc"),
+			Pack:        "shell",
+			PowerUpName: "symlink",
+			Priority:    100,
+		},
+	}
+
+	// Execute
+	_, err = executor.ExecuteActions(actions)
+	testutil.AssertNoError(t, err)
+
+	// Verify deployment metadata was written
+	metadataPath := filepath.Join(p.DataDir(), "deployment-metadata")
+	testutil.AssertTrue(t, testutil.FileExists(t, metadataPath), "Deployment metadata should exist")
+
+	// Read and verify content
+	content, err := os.ReadFile(metadataPath)
+	testutil.AssertNoError(t, err)
+
+	expectedContent := fmt.Sprintf("# Generated by dodot during deployment\n"+
+		"# This file is sourced by dodot-init.sh\n"+
+		"DODOT_DEPLOYMENT_ROOT=\"%s\"\n", dotfilesDir)
+
+	testutil.AssertEqual(t, expectedContent, string(content))
+}
+
+func TestDirectExecutor_ConflictWithDifferentFile(t *testing.T) {
+	// Test that we fail when target exists with different content (without force)
+	tempDir := testutil.TempDir(t, "direct-executor-different-file")
+	dotfilesDir := filepath.Join(tempDir, "dotfiles")
+	homeDir := filepath.Join(tempDir, "home")
+
+	testutil.CreateDir(t, tempDir, "dotfiles")
+	testutil.CreateDir(t, tempDir, "home")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
+
+	t.Setenv("HOME", homeDir)
+	t.Setenv("DOTFILES_ROOT", dotfilesDir)
+	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+
+	// Create source file and different target file
+	testutil.CreateFile(t, dotfilesDir, "vimrc", "\" New vimrc content")
+	testutil.CreateFile(t, homeDir, ".vimrc", "\" Old vimrc content - different!")
+	sourceFile := filepath.Join(dotfilesDir, "vimrc")
+	targetFile := filepath.Join(homeDir, ".vimrc")
+
+	// Create execution context
+	p, err := paths.New(dotfilesDir)
+	testutil.AssertNoError(t, err)
+
+	opts := &DirectExecutorOptions{
+		Paths:             p,
+		DryRun:            false,
+		Force:             false, // Not using force
+		AllowHomeSymlinks: true,
+		Config:            config.Default(),
+	}
+
+	executor := NewDirectExecutor(opts)
+
+	// Create symlink action
+	actions := []types.Action{
+		{
+			Type:        types.ActionTypeLink,
+			Description: "Link .vimrc to home directory",
+			Source:      sourceFile,
+			Target:      targetFile,
+			Pack:        "vim",
+			PowerUpName: "symlink",
+			Priority:    100,
+		},
+	}
+
+	// Deploy should fail because content is different
+	_, err = executor.ExecuteActions(actions)
+	testutil.AssertError(t, err)
+	testutil.AssertErrorContains(t, err, "already exists as a regular file")
+}
+
 func TestDirectExecutor_ForceMode(t *testing.T) {
 	// Setup test environment
 	tempDir := testutil.TempDir(t, "direct-executor-force")
@@ -500,6 +765,7 @@ func TestDirectExecutor_ForceMode(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -559,6 +825,7 @@ func TestDirectExecutor_BrewAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot/homebrew")
 
 	t.Setenv("HOME", homeDir)
@@ -618,6 +885,7 @@ func TestDirectExecutor_TemplateAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -690,6 +958,7 @@ func TestDirectExecutor_InstallAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -751,6 +1020,7 @@ func TestDirectExecutor_AppendAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -810,6 +1080,7 @@ func TestDirectExecutor_ShellSourceAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -870,6 +1141,7 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -926,6 +1198,7 @@ func TestDirectExecutor_ReadAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -980,6 +1253,7 @@ func TestDirectExecutor_ChecksumAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "dotfiles")
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)

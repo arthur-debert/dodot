@@ -1,6 +1,7 @@
 #!/bin/bash
 # Login shell initialization script for dodot development container
 
+PATH="$PATH:/workspace/bin:/workspace/scripts"
 # Set vi mode for shell
 set -o vi
 
@@ -29,6 +30,9 @@ if [ ! -f "/workspace/bin/dodot" ]; then
     cd /workspace && ./scripts/build
     echo ""
 fi
+
+# Run the dodot initialization script if it exists
+[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"
 
 # Welcome message
 echo "=================================================="

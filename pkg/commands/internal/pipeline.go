@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"os"
+
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
@@ -52,7 +54,24 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	// 3. Filter to specific packs if requested
 	selectedPacks, err := core.SelectPacks(allPacks, opts.PackNames)
 	if err != nil {
-		return nil, err // SelectPacks already returns properly wrapped errors
+		// Add context about where we searched for packs
+		if dodotErr, ok := err.(*errors.DodotError); ok && dodotErr.Code == errors.ErrPackNotFound {
+			// Enhance error with dotfiles root search information
+			dodotErr = dodotErr.WithDetail("dotfilesRoot", pathsInstance.DotfilesRoot())
+			dodotErr = dodotErr.WithDetail("searchPath", pathsInstance.DotfilesRoot())
+			dodotErr = dodotErr.WithDetail("usedFallback", pathsInstance.UsedFallback())
+
+			// Add information about how dotfiles root was determined
+			if envRoot := os.Getenv("DOTFILES_ROOT"); envRoot != "" {
+				dodotErr = dodotErr.WithDetail("source", "DOTFILES_ROOT environment variable")
+			} else if !pathsInstance.UsedFallback() {
+				dodotErr = dodotErr.WithDetail("source", "git repository root")
+			} else {
+				dodotErr = dodotErr.WithDetail("source", "current working directory (fallback)")
+			}
+			err = dodotErr
+		}
+		return nil, err
 	}
 
 	logger.Debug().

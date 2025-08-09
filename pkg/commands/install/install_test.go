@@ -414,6 +414,21 @@ func TestInstallPacks_ShellIntegration(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
+	// Set PROJECT_ROOT so shell scripts can be found in development
+	// This is needed because the test runs from pkg/commands/install
+	// and needs to find scripts in pkg/shell/
+	// Walk up from current directory to find project root
+	cwd, _ := os.Getwd()
+	for dir := cwd; dir != "/" && dir != ""; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			// Found project root
+			if _, err := os.Stat(filepath.Join(dir, "pkg", "shell", "dodot-init.sh")); err == nil {
+				t.Setenv("PROJECT_ROOT", dir)
+				break
+			}
+		}
+	}
+
 	// Create a simple pack with just a symlink (to have successful actions)
 	testutil.CreateDir(t, dotfilesDir, "shell-test")
 	testutil.CreateFile(t, dotfilesDir, "shell-test/bashrc", "# test bashrc")
