@@ -41,13 +41,19 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
+            -u 1001:118 \
+            -e HOME=/tmp \
+            -e GOCACHE=/tmp/go-cache \
+            -e GOPATH=/tmp/go \
             dodot-dev:latest \
-            /bin/bash -c "./scripts/build"
+            /bin/bash -c "export PATH=/tmp/go/bin:\$PATH && ./scripts/build"
           
           # Run the tests
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
+            -u 1001:118 \
+            -e HOME=/tmp \
             -e VERBOSE=${{ inputs.verbose }} \
             dodot-dev:latest \
             /bin/bash -c "/workspace/test-data/runner.sh"
