@@ -1,0 +1,5 @@
+# Test Brewfile for tools pack
+# Note: In tests we'll just verify the sentinel, not actually install
+
+brew "jq"
+brew "tree"
