@@ -14,9 +14,24 @@ NC='\033[0m' # No Color
 
 # Parse arguments
 VERBOSE=false
-if [[ "$1" == "-v" ]] || [[ "$1" == "--verbose" ]]; then
-    VERBOSE=true
-fi
+FAILFAST=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        --failfast)
+            FAILFAST=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [-v|--verbose] [--failfast]"
+            exit 1
+            ;;
+    esac
+done
 
 echo "Running dodot live system tests..."
 echo ""
@@ -59,4 +74,8 @@ run_with_progress "Building dodot" '"$SCRIPT_DIR/run.sh" ./scripts/build'
 echo ""
 # Run the test suite - always show full test output
 echo "Running tests..."
-"$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh
+if $FAILFAST; then
+    "$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh --failfast
+else
+    "$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh
+fi
