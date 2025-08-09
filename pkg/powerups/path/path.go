@@ -2,7 +2,6 @@ package path
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -15,7 +14,7 @@ const (
 	PathPowerUpName = "path"
 )
 
-// PathPowerUp handles executable files by creating symlinks in ~/bin
+// PathPowerUp handles directories by adding them to PATH
 type PathPowerUp struct {
 	targetDir string
 }
@@ -34,7 +33,7 @@ func (p *PathPowerUp) Name() string {
 
 // Description returns a human-readable description
 func (p *PathPowerUp) Description() string {
-	return "Creates symlinks for executable files in ~/bin"
+	return "Adds directories to PATH"
 }
 
 // RunMode returns when this power-up should run
@@ -42,69 +41,59 @@ func (p *PathPowerUp) RunMode() types.RunMode {
 	return types.RunModeMany
 }
 
-// Process takes executable files and creates symlink actions to ~/bin
+// Process takes directories and creates path add actions
 func (p *PathPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	logger := logging.GetLogger("powerups.path")
 	actions := make([]types.Action, 0, len(matches))
 
-	// Get target directory from options or use default
-	targetDir := p.targetDir
-	if len(matches) > 0 && matches[0].PowerUpOptions != nil {
-		if target, ok := matches[0].PowerUpOptions["target"].(string); ok {
-			targetDir = target
-		}
-	}
-
-	// Track targets to detect conflicts
-	targetMap := make(map[string]string)
+	// Track directories to avoid duplicates
+	seenDirs := make(map[string]bool)
 
 	for _, match := range matches {
-		// For bin files, we want just the filename without any directory structure
-		filename := filepath.Base(match.Path)
-		targetPath := filepath.Join(targetDir, filename)
+		// For directory matches, we want to add the directory to PATH
+		// The match.AbsolutePath should be the directory path
+		dirPath := match.AbsolutePath
 
-		// Check for conflicts
-		if existingSource, exists := targetMap[targetPath]; exists {
-			logger.Error().
-				Str("target", targetPath).
-				Str("source1", existingSource).
-				Str("source2", match.AbsolutePath).
-				Msg("path conflict detected - multiple files want same target")
-			return nil, fmt.Errorf("path conflict: both %s and %s want to link to %s",
-				existingSource, match.AbsolutePath, targetPath)
+		// Skip if we've already processed this directory
+		dirKey := fmt.Sprintf("%s:%s", match.Pack, match.Path)
+		if seenDirs[dirKey] {
+			logger.Debug().
+				Str("directory", dirPath).
+				Str("pack", match.Pack).
+				Msg("skipping duplicate directory")
+			continue
 		}
+		seenDirs[dirKey] = true
 
-		targetMap[targetPath] = match.AbsolutePath
-
-		// Create symlink action
+		// Create path add action
 		cfg := config.Default()
 		action := types.Action{
-			Type:        types.ActionTypeLink,
-			Description: fmt.Sprintf("Link executable %s -> %s", match.Path, targetPath),
-			Source:      match.AbsolutePath,
-			Target:      targetPath,
+			Type:        types.ActionTypePathAdd,
+			Description: fmt.Sprintf("Add %s/%s to PATH", match.Pack, match.Path),
+			Source:      dirPath,
+			Target:      dirPath, // For PATH add, target is the directory to add
 			Pack:        match.Pack,
 			PowerUpName: p.Name(),
 			Priority:    cfg.Priorities.PowerUps["path"],
 			Metadata: map[string]interface{}{
-				"trigger":    match.TriggerName,
-				"executable": true,
+				"trigger": match.TriggerName,
+				"dirName": match.Path, // Store the relative directory name (e.g., "bin")
 			},
 		}
 
 		actions = append(actions, action)
 
 		logger.Debug().
-			Str("source", match.AbsolutePath).
-			Str("target", targetPath).
+			Str("directory", dirPath).
 			Str("pack", match.Pack).
-			Msg("generated path symlink action")
+			Str("path", match.Path).
+			Msg("generated path add action")
 	}
 
 	logger.Info().
 		Int("match_count", len(matches)).
 		Int("action_count", len(actions)).
-		Msg("processed executable matches")
+		Msg("processed directory matches for PATH")
 
 	return actions, nil
 }

@@ -33,5 +33,21 @@ teardown() {
 }
 
 @test "path: NO - bin directory not deployed (verify absence)" {
-    skip "Not implemented"
+    # Create a pack with no bin directory
+    mkdir -p "$DOTFILES_ROOT/config"
+    echo "config=value" > "$DOTFILES_ROOT/config/settings.conf"
+    
+    # Verify no executables are symlinked initially
+    [ ! -L "$HOME/hello" ]
+    [ ! -d "$HOME/bin" ]
+    
+    # Deploy the config pack (which has no bin directory)
+    run dodot deploy config
+    [ "$status" -eq 0 ]
+    
+    # Verify no executables were symlinked
+    [ ! -L "$HOME/hello" ]
+    [ ! -d "$HOME/bin" ]
+    # Also check that no bin-related symlinks exist in deployed
+    [ ! -d "$DODOT_DATA_DIR/deployed/symlink" ] || ! ls "$DODOT_DATA_DIR/deployed/symlink" 2>/dev/null | grep -q "hello"
 }

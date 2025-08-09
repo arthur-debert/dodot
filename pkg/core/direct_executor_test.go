@@ -891,11 +891,13 @@ func TestDirectExecutor_TemplateAction(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
-	// Create a template file
-	templateContent := `# Configuration for {{.USER}}
-Host: {{.HOSTNAME}}
-Home: ${HOME}
-Custom: {{.CUSTOM_VAR}}`
+	// Create a template file using {{.Env.VAR}} syntax
+	templateContent := `# Configuration for {{.Env.USER}}
+Host: {{.Hostname}}
+Home: {{.Env.HOME}}
+Shell: {{.Env.SHELL}}
+Custom: {{.CUSTOM_VAR}}
+Legacy: ${HOME}`
 	testutil.CreateFile(t, dotfilesDir, "config.tmpl", templateContent)
 	templateFile := filepath.Join(dotfilesDir, "config.tmpl")
 	targetFile := filepath.Join(homeDir, ".config", "app.conf")
@@ -924,10 +926,11 @@ Custom: {{.CUSTOM_VAR}}`
 			PowerUpName: "template",
 			Priority:    80,
 			Metadata: map[string]interface{}{
-				"variables": map[string]string{
+				"variables": map[string]interface{}{
 					"USER":       "testuser",
 					"HOSTNAME":   "testhost",
 					"HOME":       homeDir,
+					"SHELL":      "/bin/bash",
 					"CUSTOM_VAR": "custom_value",
 				},
 			},
@@ -940,13 +943,15 @@ Custom: {{.CUSTOM_VAR}}`
 	testutil.AssertEqual(t, 1, len(results))
 	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
 
-	// Verify template was processed
+	// Verify template was processed with both {{.Env.VAR}} and {{.VAR}} syntax
 	testutil.AssertTrue(t, testutil.FileExists(t, targetFile), "Target file should exist")
 	content := testutil.ReadFile(t, targetFile)
-	testutil.AssertContains(t, content, "# Configuration for testuser")
-	testutil.AssertContains(t, content, "Host: testhost")
-	testutil.AssertContains(t, content, "Home: "+homeDir)
-	testutil.AssertContains(t, content, "Custom: custom_value")
+	testutil.AssertContains(t, content, "# Configuration for testuser") // {{.Env.USER}}
+	testutil.AssertContains(t, content, "Host: testhost")               // {{.Hostname}}
+	testutil.AssertContains(t, content, "Home: "+homeDir)               // {{.Env.HOME}}
+	testutil.AssertContains(t, content, "Shell: /bin/bash")             // {{.Env.SHELL}}
+	testutil.AssertContains(t, content, "Custom: custom_value")         // {{.CUSTOM_VAR}}
+	testutil.AssertContains(t, content, "Legacy: "+homeDir)             // ${HOME}
 }
 
 func TestDirectExecutor_InstallAction(t *testing.T) {
@@ -964,9 +969,11 @@ func TestDirectExecutor_InstallAction(t *testing.T) {
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
-	// Create an install script
+	// Create an install script that creates a marker file
 	installScript := `#!/bin/bash
 echo "Installing tools..."
+mkdir -p "$HOME/.local/test"
+echo "installed" > "$HOME/.local/test/marker.txt"
 echo "Done!"`
 	testutil.CreateFile(t, dotfilesDir, "install.sh", installScript)
 	scriptPath := filepath.Join(dotfilesDir, "install.sh")
@@ -1009,6 +1016,15 @@ echo "Done!"`
 	// Verify sentinel file was created
 	sentinelPath := p.SentinelPath("install", "tools")
 	testutil.AssertTrue(t, testutil.FileExists(t, sentinelPath), "Sentinel file should exist")
+
+	// Verify the install script was actually executed by checking for the marker file
+	markerPath := filepath.Join(homeDir, ".local", "test", "marker.txt")
+	testutil.AssertTrue(t, testutil.FileExists(t, markerPath), "Install script should have created marker file")
+
+	// Verify marker file content
+	content, err := os.ReadFile(markerPath)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, "installed\n", string(content))
 }
 
 func TestDirectExecutor_AppendAction(t *testing.T) {
@@ -1142,6 +1158,7 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "home")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot")
 	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/symlink")
+	testutil.CreateDir(t, homeDir, ".local/share/dodot/deployed/path")
 
 	t.Setenv("HOME", homeDir)
 	t.Setenv("DOTFILES_ROOT", dotfilesDir)
@@ -1173,6 +1190,9 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 			Pack:        "tools",
 			PowerUpName: "path",
 			Priority:    90,
+			Metadata: map[string]interface{}{
+				"dirName": "bin",
+			},
 		},
 	}
 
@@ -1182,11 +1202,24 @@ func TestDirectExecutor_PathAddAction(t *testing.T) {
 	testutil.AssertEqual(t, 1, len(results))
 	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
 
+	// Verify symlink was created in deployed/path
+	deployedLink := filepath.Join(p.DeployedDir(), "path", "tools-bin")
+
+	// Check if it's a symlink (FileExists might not work for broken symlinks)
+	if _, err := os.Lstat(deployedLink); err != nil {
+		t.Fatalf("Deployed path symlink should exist: %v", err)
+	}
+
+	// Verify symlink points to the right directory
+	target, err := os.Readlink(deployedLink)
+	testutil.AssertNoError(t, err)
+	testutil.AssertEqual(t, binDir, target)
+
 	// Verify PATH export was added to shell init file
 	shellInitFile := filepath.Join(p.ShellDir(), "init.sh")
 	testutil.AssertTrue(t, testutil.FileExists(t, shellInitFile), "Shell init file should exist")
 	content := testutil.ReadFile(t, shellInitFile)
-	testutil.AssertContains(t, content, "export PATH=\""+binDir+":$PATH\"")
+	testutil.AssertContains(t, content, "export PATH=\""+deployedLink+":$PATH\"")
 }
 
 func TestDirectExecutor_ReadAction(t *testing.T) {

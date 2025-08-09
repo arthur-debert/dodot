@@ -694,28 +694,47 @@ func (e *DirectExecutor) convertPathAddAction(sfs *synthfs.SynthFS, action types
 		return nil, errors.New(errors.ErrActionInvalid, "path add action requires target")
 	}
 
-	// Add to PATH in shell init file
+	var ops []synthfs.Operation
+
+	// First, create a symlink in deployed/path directory
+	// The symlink name should be <pack>-<dirname> (e.g., "tools-bin")
+	dirName := filepath.Base(action.Target)
+	if action.Metadata != nil {
+		if dn, ok := action.Metadata["dirName"].(string); ok {
+			dirName = dn
+		}
+	}
+
+	deployedPathDir := filepath.Join(e.paths.DeployedDir(), "path")
+	symlinkName := fmt.Sprintf("%s-%s", action.Pack, dirName)
+	symlinkPath := filepath.Join(deployedPathDir, symlinkName)
+
+	// Create the symlink to the original directory
+	linkID := fmt.Sprintf("path_link_%s_%s_%d", action.Pack, dirName, time.Now().UnixNano())
+	ops = append(ops, sfs.CreateSymlinkWithID(linkID, action.Target, symlinkPath))
+
+	// Then add to PATH in shell init file using the deployed symlink path
 	shellInitFile := filepath.Join(e.paths.ShellDir(), "init.sh")
 	content := fmt.Sprintf("\n# Add %s to PATH from %s\nexport PATH=\"%s:$PATH\"\n",
-		filepath.Base(action.Target), action.Pack, action.Target)
+		dirName, action.Pack, symlinkPath)
 
-	id := fmt.Sprintf("path_add_%s_%d", action.Pack, time.Now().UnixNano())
-	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// First check if path is already added
-			file, err := fs.Open(shellInitFile)
-			if err == nil {
-				defer func() { _ = file.Close() }()
-				existing, err := io.ReadAll(file)
-				if err == nil && strings.Contains(string(existing), action.Target) {
-					return nil // Already added
-				}
+	appendID := fmt.Sprintf("path_append_%s_%d", action.Pack, time.Now().UnixNano())
+	ops = append(ops, sfs.CustomOperationWithID(appendID, func(ctx context.Context, fs filesystem.FileSystem) error {
+		// First check if path is already added
+		file, err := fs.Open(shellInitFile)
+		if err == nil {
+			defer func() { _ = file.Close() }()
+			existing, err := io.ReadAll(file)
+			if err == nil && strings.Contains(string(existing), symlinkPath) {
+				return nil // Already added
 			}
+		}
 
-			// Use the helper to append
-			return e.createAppendFileOperation(shellInitFile, content, 0644)(ctx, fs)
-		}),
-	}, nil
+		// Use the helper to append
+		return e.createAppendFileOperation(shellInitFile, content, 0644)(ctx, fs)
+	}))
+
+	return ops, nil
 }
 
 func (e *DirectExecutor) convertRunAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
@@ -814,6 +833,32 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	chmodID := fmt.Sprintf("install_chmod_%s_%d", action.Pack, time.Now().UnixNano())
 	ops = append(ops, sfs.ShellCommandWithID(chmodID, fmt.Sprintf("chmod +x %q", scriptTarget)))
 
+	// Execute the install script with environment variables
+	execID := fmt.Sprintf("install_exec_%s_%d", action.Pack, time.Now().UnixNano())
+
+	// Set up environment variables for the script
+	envVars := map[string]string{
+		"DOTFILES_ROOT":  e.paths.DotfilesRoot(),
+		"DODOT_DATA_DIR": e.paths.DataDir(),
+		"DODOT_PACK":     action.Pack,
+	}
+
+	// Add HOME from environment if available
+	if home := os.Getenv("HOME"); home != "" {
+		envVars["HOME"] = home
+	}
+
+	// Build the command with environment variables
+	var envCmd strings.Builder
+	for k, v := range envVars {
+		envCmd.WriteString(fmt.Sprintf("%s=%q ", k, v))
+	}
+	envCmd.WriteString(scriptTarget)
+
+	ops = append(ops, sfs.ShellCommandWithID(execID, envCmd.String(),
+		synthfs.WithCaptureOutput(),
+		synthfs.WithTimeout(300*time.Second))) // 5 minutes for install scripts
+
 	// Create sentinel file to mark as completed
 	sentinelPath := e.paths.SentinelPath("install", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
@@ -878,21 +923,45 @@ func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action type
 			// Get variables from metadata
 			variables := make(map[string]string)
 			if action.Metadata != nil {
+				// Handle both map[string]string and map[string]interface{} types
 				if vars, ok := action.Metadata["variables"].(map[string]string); ok {
 					variables = vars
+				} else if vars, ok := action.Metadata["variables"].(map[string]interface{}); ok {
+					// Convert map[string]interface{} to map[string]string
+					for k, v := range vars {
+						if strVal, ok := v.(string); ok {
+							variables[k] = strVal
+						} else {
+							variables[k] = fmt.Sprintf("%v", v)
+						}
+					}
 				}
 			}
 
 			// Process template - simple string replacement for now
 			// A full template engine could be added later (e.g., text/template)
 			processedContent := string(templateContent)
+
+			// First, handle environment variables with {{.Env.VAR}} syntax
 			for key, value := range variables {
+				// Check if this is an environment variable (HOME, USER, SHELL, etc.)
+				if key == "HOME" || key == "USER" || key == "SHELL" {
+					placeholder := fmt.Sprintf("{{.Env.%s}}", key)
+					processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+				}
+
+				// Also support direct {{.VAR}} syntax
 				placeholder := fmt.Sprintf("{{.%s}}", key)
 				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
 
 				// Also support ${VAR} syntax
 				placeholder = fmt.Sprintf("${%s}", key)
 				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
+			}
+
+			// Handle special variables like {{.Hostname}}
+			if hostname, ok := variables["HOSTNAME"]; ok {
+				processedContent = strings.ReplaceAll(processedContent, "{{.Hostname}}", hostname)
 			}
 
 			// Ensure target directory exists

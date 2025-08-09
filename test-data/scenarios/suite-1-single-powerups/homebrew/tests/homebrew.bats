@@ -27,5 +27,18 @@ teardown() {
 }
 
 @test "homebrew: NO - Brewfile not processed (verify absence)" {
-    skip "Not implemented"
+    # Create a pack with no Brewfile
+    mkdir -p "$DOTFILES_ROOT/tools"
+    echo "#!/bin/bash" > "$DOTFILES_ROOT/tools/install.sh"
+    chmod +x "$DOTFILES_ROOT/tools/install.sh"
+    
+    # Verify no brew sentinel exists initially
+    [ ! -f "$DODOT_DATA_DIR/run-once/homebrew/tools" ]
+    
+    # Install the tools pack (which has no Brewfile)
+    run dodot install tools
+    [ "$status" -eq 0 ]
+    
+    # Verify no brew sentinel was created
+    [ ! -f "$DODOT_DATA_DIR/run-once/homebrew/tools" ]
 }

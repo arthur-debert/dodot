@@ -13,7 +13,7 @@ func TestPathPowerUp_Basic(t *testing.T) {
 
 	// Test basic properties
 	testutil.AssertEqual(t, PathPowerUpName, powerup.Name())
-	testutil.AssertEqual(t, "Creates symlinks for executable files in ~/bin", powerup.Description())
+	testutil.AssertEqual(t, "Adds directories to PATH", powerup.Description())
 	testutil.AssertEqual(t, types.RunModeMany, powerup.RunMode())
 }
 
@@ -26,91 +26,78 @@ func TestPathPowerUp_Process(t *testing.T) {
 		validate      func(t *testing.T, actions []types.Action)
 	}{
 		{
-			name: "single executable",
+			name: "single directory",
 			matches: []types.TriggerMatch{
 				{
 					Pack:         "test-pack",
-					Path:         "bin/script.sh",
-					AbsolutePath: "/home/user/dotfiles/test-pack/bin/script.sh",
-					TriggerName:  "filename",
+					Path:         "bin",
+					AbsolutePath: "/home/user/dotfiles/test-pack/bin",
+					TriggerName:  "directory",
 					PowerUpName:  PathPowerUpName,
 				},
 			},
 			expectedCount: 1,
 			validate: func(t *testing.T, actions []types.Action) {
 				action := actions[0]
-				testutil.AssertEqual(t, types.ActionTypeLink, action.Type)
-				testutil.AssertEqual(t, "/home/user/dotfiles/test-pack/bin/script.sh", action.Source)
-				testutil.AssertEqual(t, "~/bin/script.sh", action.Target)
+				testutil.AssertEqual(t, types.ActionTypePathAdd, action.Type)
+				testutil.AssertEqual(t, "/home/user/dotfiles/test-pack/bin", action.Source)
+				testutil.AssertEqual(t, "/home/user/dotfiles/test-pack/bin", action.Target)
 				testutil.AssertEqual(t, "test-pack", action.Pack)
 				testutil.AssertEqual(t, PathPowerUpName, action.PowerUpName)
 				testutil.AssertEqual(t, config.Default().Priorities.PowerUps["path"], action.Priority)
+				testutil.AssertEqual(t, "bin", action.Metadata["dirName"])
 			},
 		},
 		{
-			name: "multiple executables",
+			name: "multiple directories",
 			matches: []types.TriggerMatch{
 				{
 					Pack:         "pack1",
-					Path:         "bin/tool1",
-					AbsolutePath: "/dotfiles/pack1/bin/tool1",
-					TriggerName:  "filename",
+					Path:         "bin",
+					AbsolutePath: "/dotfiles/pack1/bin",
+					TriggerName:  "directory",
 					PowerUpName:  PathPowerUpName,
 				},
 				{
 					Pack:         "pack2",
-					Path:         ".local/bin/tool2",
-					AbsolutePath: "/dotfiles/pack2/.local/bin/tool2",
-					TriggerName:  "filename",
+					Path:         ".local/bin",
+					AbsolutePath: "/dotfiles/pack2/.local/bin",
+					TriggerName:  "directory",
 					PowerUpName:  PathPowerUpName,
 				},
 			},
 			expectedCount: 2,
 			validate: func(t *testing.T, actions []types.Action) {
 				// First action
-				testutil.AssertEqual(t, "~/bin/tool1", actions[0].Target)
-				// Second action - note it takes just the basename
-				testutil.AssertEqual(t, "~/bin/tool2", actions[1].Target)
+				testutil.AssertEqual(t, "/dotfiles/pack1/bin", actions[0].Target)
+				testutil.AssertEqual(t, "bin", actions[0].Metadata["dirName"])
+				// Second action
+				testutil.AssertEqual(t, "/dotfiles/pack2/.local/bin", actions[1].Target)
+				testutil.AssertEqual(t, ".local/bin", actions[1].Metadata["dirName"])
 			},
 		},
 		{
-			name: "custom target directory",
+			name: "duplicate directories skipped",
 			matches: []types.TriggerMatch{
 				{
 					Pack:         "test-pack",
-					Path:         "bin/script",
-					AbsolutePath: "/dotfiles/test-pack/bin/script",
-					TriggerName:  "filename",
+					Path:         "bin",
+					AbsolutePath: "/dotfiles/test-pack/bin",
+					TriggerName:  "directory",
 					PowerUpName:  PathPowerUpName,
-					PowerUpOptions: map[string]interface{}{
-						"target": "~/.local/bin",
-					},
+				},
+				{
+					Pack:         "test-pack",
+					Path:         "bin",
+					AbsolutePath: "/dotfiles/test-pack/bin",
+					TriggerName:  "directory",
+					PowerUpName:  PathPowerUpName,
 				},
 			},
 			expectedCount: 1,
 			validate: func(t *testing.T, actions []types.Action) {
-				testutil.AssertEqual(t, "~/.local/bin/script", actions[0].Target)
+				testutil.AssertEqual(t, "/dotfiles/test-pack/bin", actions[0].Target)
 			},
-		},
-		{
-			name: "conflict detection",
-			matches: []types.TriggerMatch{
-				{
-					Pack:         "pack1",
-					Path:         "bin/tool",
-					AbsolutePath: "/dotfiles/pack1/bin/tool",
-					TriggerName:  "filename",
-					PowerUpName:  PathPowerUpName,
-				},
-				{
-					Pack:         "pack2",
-					Path:         "scripts/tool",
-					AbsolutePath: "/dotfiles/pack2/scripts/tool",
-					TriggerName:  "filename",
-					PowerUpName:  PathPowerUpName,
-				},
-			},
-			expectError: true,
 		},
 		{
 			name:          "empty matches",
