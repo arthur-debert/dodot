@@ -99,6 +99,19 @@ Combination Tests:
 • Deploy after install
 • Repeated deployments
 
+Test Plan Implementation
+------------------------
+
+The detailed test plan with specific test cases organized in 5 progressive suites
+is maintained in: `containers/dev/test-plan.txt`
+
+This includes:
+• Suite 1: Single power-ups (foundation)
+• Suite 2: Multiple power-ups, single packs
+• Suite 3: Multiple power-ups, multiple packs
+• Suite 4: Single power-up edge cases
+• Suite 5: Complex multi-pack edge cases
+
 Directory Layout
 ----------------
 
@@ -152,31 +165,56 @@ Assertion Library Design
 Each power-up gets specific assertions:
 
 assertions/symlink.sh:
-• assert_symlink_deployed() - verify both intermediate and target links
-• assert_symlink_not_deployed() - verify clean removal
+• assert_symlink_deployed() - verify both intermediate and target links - DONE (test-data/lib/assertions.sh)
+• assert_symlink_not_deployed() - verify clean removal - DONE (test-data/lib/assertions.sh)
 
 assertions/shell_profile.sh:
-• assert_shell_profile_sourced() - check DODOT_SHELL_SOURCE_FLAG
-• assert_profile_in_init() - verify entry in init.sh
+• assert_shell_profile_sourced() - check DODOT_SHELL_SOURCE_FLAG - DONE (test-data/lib/assertions_shell.sh)
+• assert_profile_in_init() - verify entry in init.sh - DONE (test-data/lib/assertions_shell.sh)
+
+assertions/path.sh:
+• assert_path_deployed() - verify bin directory deployment - DONE (test-data/lib/assertions_path.sh)
+• assert_path_added() - verify PATH environment variable - DONE (test-data/lib/assertions_path.sh)
+• assert_path_in_shell_init() - verify PATH in init.sh - DONE (test-data/lib/assertions_path.sh)
+
+assertions/install_script.sh:
+• assert_install_script_executed() - verify script ran - DONE (test-data/lib/assertions_install.sh)
+• assert_install_script_not_executed() - verify script didn't run - DONE (test-data/lib/assertions_install.sh)
+• assert_install_artifact_exists() - verify artifacts created - DONE (test-data/lib/assertions_install.sh)
+
+assertions/homebrew.sh:
+• assert_brewfile_processed() - verify Brewfile execution - DONE (test-data/lib/assertions_homebrew.sh)
+• assert_brewfile_not_processed() - verify Brewfile skipped - DONE (test-data/lib/assertions_homebrew.sh)
+• assert_brew_package_installed() - verify package installed - DONE (test-data/lib/assertions_homebrew.sh)
+
+assertions/template.sh:
+• assert_template_processed() - verify template expansion - DONE (test-data/lib/assertions_template.sh)
+• assert_template_variable_expanded() - verify variable substitution - DONE (test-data/lib/assertions_template.sh)
+• assert_template_contains() - verify content in output - DONE (test-data/lib/assertions_template.sh)
 
 assertions/common.sh:
-• assert_file_exists() - basic file checks
-• assert_dir_exists() - directory checks
-• assert_env_set() - environment validation
+• assert_file_exists() - basic file checks - DONE (test-data/lib/assertions.sh)
+• assert_dir_exists() - directory checks - DONE (test-data/lib/assertions.sh)
+• assert_env_set() - environment validation - DONE (test-data/lib/assertions.sh)
+• assert_executable_available() - verify executable in PATH - DONE (test-data/lib/assertions_path.sh)
 
 Debug Tooling
 -------------
 
 Built-in debug helpers from day one:
 
-debug_state() - dumps complete system state:
+debug_state() - dumps complete system state: - DONE (test-data/lib/debug.sh)
 • Tree view of DOTFILES_ROOT
 • Tree view of HOME (depth limited)
 • Tree view of DODOT_DATA_DIR
 • All relevant environment variables
 • Recent dodot log entries
 
-debug_on_fail() - automatically called on test failures
+debug_on_fail() - automatically called on test failures - DONE (test-data/lib/debug.sh)
+
+Additional debug helpers implemented:
+• debug_symlinks() - shows all symlinks in HOME - DONE (test-data/lib/debug.sh)
+• debug_shell_integration() - shows shell profile state - DONE (test-data/lib/assertions_shell.sh)
 
 Implementation Sequence
 -----------------------
