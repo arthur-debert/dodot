@@ -49,7 +49,22 @@ teardown() {
 
 # Test: symlink + shell_profile combination in deployment
 @test "deploy-type combined: symlink + shell_profile in one pack" {
-    skip "Not implemented"
+    # Deploy shell-config pack with both regular files and shell profile
+    # This should trigger both symlink and shell_profile powerups
+    dodot_run deploy shell-config
+    [ "$status" -eq 0 ]
+    
+    # Verify shell_profile powerup: profile.sh is added to init.sh
+    assert_profile_in_init "shell-config" "profile.sh"
+    
+    # Verify symlink powerup: regular files are symlinked
+    # Note: dodot creates symlinks without dot prefix in HOME
+    assert_symlink_deployed "shell-config" "bashrc" "$HOME/bashrc"
+    assert_symlink_deployed "shell-config" "gitconfig" "$HOME/gitconfig"
+    
+    # Verify content is accessible through symlinks
+    grep -q "PS1=" "$HOME/bashrc"
+    grep -q "test@example.com" "$HOME/gitconfig"
 }
 
 # Test: install_script + homebrew combination for installation
