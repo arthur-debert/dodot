@@ -2,6 +2,13 @@
 # Common test setup that includes all necessary libraries and debug hooks
 # All test files should source this single file instead of individual libraries
 
+# Safety check: Ensure we're running in a container
+if [ -z "$DODOT_TEST_CONTAINER" ] || [ "$DODOT_TEST_CONTAINER" != "1" ]; then
+    echo "ERROR: Tests must be run inside the Docker container!"
+    echo "Use: ./containers/dev/run-tests.sh"
+    exit 1
+fi
+
 # Source all test libraries
 source /workspace/test-data/lib/setup.sh
 source /workspace/test-data/lib/assertions.sh

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Setup and teardown functions for dodot live system tests
 
+# Safety check for direct sourcing
+if [ -z "$DODOT_TEST_CONTAINER" ]; then
+    echo "ERROR: This file should not be sourced outside the test container!"
+    echo "Tests must be run using: ./containers/dev/run-tests.sh"
+    return 1 2>/dev/null || exit 1
+fi
+
 # clean_test_env() - Complete cleanup of test environment
 # Removes test directories and unsets environment variables
 clean_test_env() {

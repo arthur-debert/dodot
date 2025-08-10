@@ -34,12 +34,28 @@ echo ""
 TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$TEST_ROOT"
 
-# Check if running in container
-if [ ! -f "/workspace/bin/dodot" ] && [ ! -f "/workspace/scripts/build" ]; then
-    echo -e "${RED}ERROR: Not running in dodot development container${NC}"
-    echo "Please run: containers/dev/run.sh $0"
+# Safety check: ONLY run tests inside Docker container
+# Multiple checks to ensure we're in the container
+if [ ! -f "/.dockerenv" ] && [ ! -f "/run/.containerenv" ]; then
+    echo -e "${RED}ERROR: TESTS MUST RUN INSIDE DOCKER CONTAINER${NC}"
+    echo -e "${RED}Running tests outside container could damage your system!${NC}"
+    echo ""
+    echo "Please use: ./containers/dev/run-tests.sh"
+    echo ""
+    echo "These tests modify HOME directories and system files."
+    echo "They MUST be run in a sandboxed environment."
     exit 1
 fi
+
+# Additional check for our specific container
+if [ ! -f "/workspace/bin/dodot" ] && [ ! -f "/workspace/scripts/build" ]; then
+    echo -e "${RED}ERROR: Not running in dodot development container${NC}"
+    echo "Please run: ./containers/dev/run-tests.sh"
+    exit 1
+fi
+
+# Set a marker that we're in a safe test environment
+export DODOT_TEST_CONTAINER=1
 
 # Bats is pre-installed in the container
 if ! command -v bats >/dev/null 2>&1; then
@@ -50,24 +66,23 @@ fi
 
 # Find all test scenarios
 SCENARIOS=()
-# Look for old-style scenarios with tests directory
-for scenario in scenarios/*/tests; do
-    if [ -d "$scenario" ]; then
-        SCENARIOS+=("${scenario%/tests}")
+
+# Suite 1 has a special structure with subdirectories for each power-up
+if [ -d "scenarios/suite-1-single-powerups" ]; then
+    SCENARIOS+=("scenarios/suite-1-single-powerups")
+fi
+
+# Suites 2-5 have a standard structure with a tests directory
+for suite_dir in scenarios/suite-[2-5]*; do
+    if [ -d "$suite_dir/tests" ]; then
+        SCENARIOS+=("$suite_dir")
     fi
 done
-# Look for new suite structure
-for suite in scenarios/suite-*/tests; do
-    if [ -d "$suite" ]; then
-        SCENARIOS+=("${suite%/tests}")
-    fi
-done
-# Look for power-up specific tests in Suite 1
-for powerup in scenarios/suite-1-single-powerups/*/tests; do
-    if [ -d "$powerup" ]; then
-        SCENARIOS+=("${powerup%/tests}")
-    fi
-done
+
+# Test framework scenario
+if [ -d "scenarios/test-framework/tests" ]; then
+    SCENARIOS+=("scenarios/test-framework")
+fi
 
 if [ ${#SCENARIOS[@]} -eq 0 ]; then
     echo -e "${RED}No test scenarios found${NC}"
@@ -87,9 +102,25 @@ FAILED_SCENARIOS=()
 
 for scenario in "${SCENARIOS[@]}"; do
     scenario_name=$(basename "$scenario")
+    echo ""  # Add spacing between scenarios
     
     # Find all .bats files in the scenario
-    bats_files=("$scenario/tests"/*.bats)
+    if [ "$scenario_name" = "suite-1-single-powerups" ]; then
+        # Suite 1 has subdirectories for each power-up
+        bats_files=()
+        for powerup_dir in "$scenario"/*/tests; do
+            if [ -d "$powerup_dir" ]; then
+                for bats_file in "$powerup_dir"/*.bats; do
+                    if [ -f "$bats_file" ]; then
+                        bats_files+=("$bats_file")
+                    fi
+                done
+            fi
+        done
+    else
+        # Standard structure with tests directory
+        bats_files=("$scenario/tests"/*.bats)
+    fi
     
     if [ ${#bats_files[@]} -eq 0 ] || [ ! -f "${bats_files[0]}" ]; then
         continue
@@ -132,15 +163,33 @@ for scenario in "${SCENARIOS[@]}"; do
 done
 
 # Summary
+echo ""
 echo "========================================="
-echo "Test Summary"
+echo "TEST SUMMARY" 
 echo "========================================="
-if [ $FAILED_TESTS -eq 0 ]; then
+echo "Total scenarios run: ${#SCENARIOS[@]}"
+echo ""
+
+if [ ${#FAILED_SCENARIOS[@]} -eq 0 ]; then
     echo -e "${GREEN}All scenarios passed!${NC}"
-    echo "Total scenarios: $TOTAL_TESTS"
+    echo ""
+    for scenario in "${SCENARIOS[@]}"; do
+        echo -e "  ${GREEN}✓${NC} $(basename "$scenario")"
+    done
     exit 0
 else
-    echo -e "${RED}$FAILED_TESTS scenario(s) failed${NC}"
-    echo "Total scenarios: $TOTAL_TESTS"
+    echo -e "${RED}${#FAILED_SCENARIOS[@]} scenario(s) failed:${NC}"
+    echo ""
+    for failed in "${FAILED_SCENARIOS[@]}"; do
+        echo -e "  ${RED}✗${NC} $failed"
+    done
+    echo ""
+    echo "Passed scenarios:"
+    for scenario in "${SCENARIOS[@]}"; do
+        scenario_name=$(basename "$scenario")
+        if [[ ! " ${FAILED_SCENARIOS[@]} " =~ " ${scenario_name} " ]]; then
+            echo -e "  ${GREEN}✓${NC} $scenario_name"
+        fi
+    done
     exit 1
 fi
