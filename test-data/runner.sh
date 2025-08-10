@@ -64,6 +64,23 @@ if ! command -v bats >/dev/null 2>&1; then
     exit 1
 fi
 
+# Build dodot once at the start
+echo "Ensuring dodot is built..."
+if [ -x "/workspace/bin/dodot" ]; then
+    echo "dodot already built"
+    export PATH="/workspace/bin:$PATH"
+elif [ -f "/workspace/scripts/build" ]; then
+    echo "Building dodot..."
+    /workspace/scripts/build || {
+        echo -e "${RED}ERROR: Failed to build dodot${NC}"
+        exit 1
+    }
+    export PATH="/workspace/bin:$PATH"
+else
+    echo -e "${RED}ERROR: Cannot find build script${NC}"
+    exit 1
+fi
+
 # Find all test scenarios
 SCENARIOS=()
 
