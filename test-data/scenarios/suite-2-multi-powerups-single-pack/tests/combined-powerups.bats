@@ -5,9 +5,46 @@
 # It verifies that different power-up types can coexist and work together correctly
 # when configured in the same pack directory.
 
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
+
+# Setup before all tests
+setup() {
+    setup_with_debug
+}
+
+# Cleanup after each test
+teardown() {
+    teardown_with_debug
+}
+
 # Test: path + shell_add_path combination
 @test "path + shell_add_path: adds directory to PATH in init.sh" {
-    skip "Migrated from basic scenario - not implemented"
+    # Deploy tools pack with bin directory
+    # This should trigger both path (symlink) and shell_add_path powerups
+    dodot_run deploy tools
+    [ "$status" -eq 0 ]
+    
+    # Verify path powerup: bin directory is deployed
+    assert_path_deployed "tools" "bin"
+    
+    # Verify the bin directory symlink exists in dodot data
+    local bin_link="${DODOT_DATA_DIR}/deployed/path/tools-bin"
+    [ -L "$bin_link" ]
+    
+    # Verify shell_add_path powerup: check init.sh contains PATH addition
+    local init_file="${DODOT_DATA_DIR}/shell/init.sh"
+    [ -f "$init_file" ]
+    grep -q "export PATH=\"${bin_link}:\$PATH\"" "$init_file"
+    
+    # Note: The actual tool files are symlinked individually, not the directory
+    # So we check for the individual symlink
+    [ -L "$HOME/mytool" ]
+    
+    # Verify running the tool works through the symlink
+    run "$HOME/mytool"
+    [ "$status" -eq 0 ]
+    [ "$output" = "mytool from tools pack" ]
 }
 
 # Test: symlink + shell_profile combination in deployment
