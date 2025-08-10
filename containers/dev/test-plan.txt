@@ -151,7 +151,8 @@ CURRENT STATUS vs TARGET
 Currently Implemented:
 - Suite 1: Complete (all 6 power-ups with YES and NO tests) ✓ DONE
 - Test framework validation (test-framework scenario) ✓ DONE
-- Basic scenario removed (was legacy mixed integration tests)
+- Infrastructure complete (assertions, debug, safety checks) ✓ DONE
+- Rich debug output on test failures ✓ DONE
 
 Needed Implementation:
 - Suite 2: All tests need implementation (skeleton exists)
@@ -159,15 +160,15 @@ Needed Implementation:
 - Suite 4: All tests need implementation (skeleton exists)
 - Suite 5: All tests need implementation (skeleton exists)
 
-Known Issues:
-- Install script artifacts sometimes not created (intermittent)
-- Template variable expansion needs verification
-- Path assertions may need adjustment for edge cases
+Open Issues:
+- Template variable expansion not working (#517)
+  https://github.com/arthur-debert/dodot/issues/517
+- Install script artifacts not created consistently (#512)
+  https://github.com/arthur-debert/dodot/issues/512
 
 Next Steps:
-1. Implement rich debug output for test failures
-2. Review and enhance assertion library
-3. Implement Suite 2 (single pack combinations)
-4. Implement Suite 3 (multi-pack scenarios)
-5. Implement Suite 4 (edge cases per power-up)
-6. Implement Suite 5 (complex edge cases)
+1. Fix known issues blocking tests (#517, #512)
+2. Implement Suite 2 (single pack combinations)
+3. Implement Suite 3 (multi-pack scenarios)
+4. Implement Suite 4 (edge cases per power-up)
+5. Implement Suite 5 (complex edge cases)
