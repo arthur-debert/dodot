@@ -161,14 +161,10 @@ Needed Implementation:
 - Suite 5: All tests need implementation (skeleton exists)
 
 Open Issues:
-- Template variable expansion not working (#517)
-  https://github.com/arthur-debert/dodot/issues/517
-- Install script artifacts not created consistently (#512)
-  https://github.com/arthur-debert/dodot/issues/512
+No open issues currently reported.
 
 Next Steps:
-1. Fix known issues blocking tests (#517, #512)
-2. Implement Suite 2 (single pack combinations)
-3. Implement Suite 3 (multi-pack scenarios)
-4. Implement Suite 4 (edge cases per power-up)
-5. Implement Suite 5 (complex edge cases)
+1. Implement Suite 2 (single pack combinations)
+2. Implement Suite 3 (multi-pack scenarios)
+3. Implement Suite 4 (edge cases per power-up)
+4. Implement Suite 5 (complex edge cases)
