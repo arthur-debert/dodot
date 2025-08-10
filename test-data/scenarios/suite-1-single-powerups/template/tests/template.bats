@@ -1,20 +1,19 @@
 #!/usr/bin/env bats
 # Minimal test for template power-up - happy path only
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
-source /workspace/test-data/lib/assertions_template.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # Setup before all tests
 setup() {
-    ensure_dodot_built
-    setup_test_env "$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
 # Cleanup after each test
+
+# Cleanup after each test
 teardown() {
-    clean_test_env
+    teardown_with_debug
 }
 
 @test "template: YES - processed and variables expanded" {
@@ -25,7 +24,7 @@ teardown() {
     export USER="testuser"
     
     # Deploy the tools pack with template
-    run dodot deploy tools
+    dodot_run deploy tools
     [ "$status" -eq 0 ]
     
     # Verify template was processed
@@ -44,7 +43,7 @@ teardown() {
     echo "set number" > "$DOTFILES_ROOT/vim/vimrc"
     
     # Deploy the vim pack (which has no templates)
-    run dodot deploy vim
+    dodot_run deploy vim
     [ "$status" -eq 0 ]
     
     # Verify no template outputs were created

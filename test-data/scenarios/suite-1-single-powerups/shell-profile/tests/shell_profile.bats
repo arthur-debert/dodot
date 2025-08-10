@@ -1,25 +1,24 @@
 #!/usr/bin/env bats
 # Minimal test for shell_profile power-up - happy path only
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
-source /workspace/test-data/lib/assertions_shell.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # Setup before all tests
 setup() {
-    ensure_dodot_built
-    setup_test_env "$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
 # Cleanup after each test
+
+# Cleanup after each test
 teardown() {
-    clean_test_env
+    teardown_with_debug
 }
 
 @test "shell_profile: YES - profile sourced in init.sh" {
     # Deploy nvim pack
-    run dodot deploy nvim
+    dodot_run deploy nvim
     [ "$status" -eq 0 ]
     
     # Verify init.sh was created and contains the profile entry
@@ -36,7 +35,7 @@ teardown() {
     [ ! -f "$init_file" ]
     
     # Deploy the vim pack (which has no profile.sh)
-    run dodot deploy vim
+    dodot_run deploy vim
     [ "$status" -eq 0 ]
     
     # Verify init.sh still doesn't exist (no profiles to source)

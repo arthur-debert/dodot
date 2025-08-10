@@ -1,24 +1,24 @@
 #!/usr/bin/env bats
 # Minimal test for install_script power-up - happy path only
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # Setup before all tests
 setup() {
-    ensure_dodot_built
-    setup_test_env "$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
 # Cleanup after each test
+
+# Cleanup after each test
 teardown() {
-    clean_test_env
+    teardown_with_debug
 }
 
 @test "install_script: YES - script executed (marker created)" {
     # Install dev pack
-    run dodot install dev
+    dodot_run install dev
     [ "$status" -eq 0 ]
     
     # TODO: KNOWN ISSUE - Install scripts run but artifacts not created
@@ -41,7 +41,7 @@ teardown() {
     echo "config=value" > "$DOTFILES_ROOT/config/settings.conf"
     
     # Deploy the config pack (which has no install.sh)
-    run dodot deploy config
+    dodot_run deploy config
     [ "$status" -eq 0 ]
     
     # Verify no install sentinel was created (this is the reliable indicator)
