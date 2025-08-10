@@ -18,7 +18,7 @@ teardown() {
 
 @test "template: YES - processed and variables expanded" {
     # TODO: Template variables are not being expanded - see GitHub issue #517
-    skip "Template variables not expanded - known bug #517"
+    # skip "Template variables not expanded - known bug #517"
     
     # Set test environment variables
     export USER="testuser"
