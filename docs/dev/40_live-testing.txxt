@@ -127,6 +127,25 @@ test-data/
 └── runner.sh                # Main test orchestrator
 ```
 
+
+On How Power-Ups Work
+---------------------
+
+The range of tests and assertions we do here will actually cross work done by
+the matcher, the trigger,power-ups, actions and the execution engine..
+
+Since piercing this information together is laborious, we have a detail
+documentation for each power-up that has the full cycle information and is
+indispensable for this work. See: 
+
+pkg/powerups/homebrew/doc.go
+pkg/powerups/install/doc.go
+pkg/powerups/path/doc.go
+pkg/powerups/shell_add_path/doc.go
+pkg/powerups/shell_profile/doc.go
+pkg/powerups/symlink/doc.go
+pkg/powerups/template/doc.go
+
 Assertion Library Design
 ------------------------
 
