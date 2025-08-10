@@ -69,7 +69,24 @@ teardown() {
 
 # Test: install_script + homebrew combination for installation
 @test "install-type combined: install_script + homebrew in one pack" {
-    skip "Not implemented"
+    # Install dev-tools pack with both install.sh and Brewfile
+    # This should trigger both install_script and homebrew powerups
+    dodot_run install dev-tools
+    [ "$status" -eq 0 ]
+    
+    # Verify install_script powerup: script was executed
+    assert_install_script_executed "dev-tools"
+    
+    # Verify install script created its marker
+    assert_install_artifact_exists "$HOME/.local/dev-tools/install-marker.txt"
+    
+    # Verify marker content
+    run cat "$HOME/.local/dev-tools/install-marker.txt"
+    [ "$status" -eq 0 ]
+    [ "$output" = "dev-tools-installed" ]
+    
+    # Verify homebrew powerup: Brewfile was processed
+    assert_brewfile_processed "dev-tools"
 }
 
 # Test: comprehensive pack with all power-up types
