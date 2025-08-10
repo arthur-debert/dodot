@@ -91,5 +91,39 @@ teardown() {
 
 # Test: comprehensive pack with all power-up types
 @test "all powerups: pack with all 6 power-up types" {
-    skip "Not implemented"
+    # First install to trigger install-type powerups
+    dodot_run install ultimate
+    [ "$status" -eq 0 ]
+    
+    # Verify install_script powerup
+    assert_install_script_executed "ultimate"
+    assert_install_artifact_exists "$HOME/.local/ultimate/marker.txt"
+    
+    # Verify homebrew powerup
+    assert_brewfile_processed "ultimate"
+    
+    # Now deploy to trigger deploy-type powerups
+    dodot_run deploy ultimate
+    [ "$status" -eq 0 ]
+    
+    # Verify symlink powerup (regular config file)
+    assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
+    
+    # Verify template powerup
+    assert_template_processed "ultimate" "config" "$HOME/config"
+    
+    # Verify template variable expansion
+    assert_template_contains "$HOME/config" "username = $USER"
+    
+    # Verify path powerup
+    assert_path_deployed "ultimate" "bin"
+    
+    # Verify shell_profile powerup
+    assert_profile_in_init "ultimate" "profile.sh"
+    
+    # Verify the tool in bin is accessible
+    [ -L "$HOME/ultimate-tool" ]
+    run "$HOME/ultimate-tool"
+    [ "$status" -eq 0 ]
+    [ "$output" = "Ultimate tool v1.0" ]
 }
