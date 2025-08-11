@@ -5,20 +5,35 @@
 # error handling, boundary conditions, and unexpected inputs that might
 # occur when power-ups are used individually.
 
-load "../../../test_helper"
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
-# Setup and teardown for each test
+# Setup before all tests
 setup() {
-    setup_test_environment
+    setup_with_debug
 }
 
+# Cleanup after each test
 teardown() {
-    teardown_test_environment
+    teardown_with_debug
 }
 
 # Symlink edge cases
 @test "symlink: handles missing pack gracefully" {
-    skip "Migrated from basic scenario - not implemented"
+    # Try to deploy a pack that doesn't exist
+    dodot_run deploy nonexistent-pack
+    
+    # Should fail gracefully with non-zero exit code
+    [ "$status" -ne 0 ]
+    
+    # Should have helpful error message
+    [[ "$output" == *"nonexistent-pack"* ]]
+    
+    # No symlinks should be created
+    [ ! -L "$HOME/nonexistent-config" ]
+    
+    # Verify nothing was deployed
+    assert_symlink_not_deployed "nonexistent-pack" "nonexistent-config" "$HOME/nonexistent-config"
 }
 
 @test "symlink: target already exists" {
