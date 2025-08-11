@@ -13,13 +13,36 @@ setup() {
     TEST_SCENARIO_DIR="$BATS_TEST_DIRNAME/.."
     export TEST_SCENARIO_DIR
     
-    setup_with_debug
+    # Save original environment for restoration tests
+    export TEST_ORIG_HOME="${HOME:-}"
+    export TEST_ORIG_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
+    export TEST_ORIG_DODOT_DATA_DIR="${DODOT_DATA_DIR:-}"
+    
+    # For most tests, we don't want to use setup_with_debug because
+    # we're testing the setup functions themselves
+    if [[ "${BATS_TEST_NAME}" != *"setup_test_env"* ]] && [[ "${BATS_TEST_NAME}" != *"clean_test_env"* ]] && [[ "${BATS_TEST_NAME}" != *"with_test_env"* ]]; then
+        setup_with_debug
+    else
+        # Just ensure dodot is built for framework tests
+        ensure_dodot_built
+        # Set up error trap
+        trap 'debug_on_fail' ERR
+    fi
 }
 
 
 # Cleanup after each test
 teardown() {
-    teardown_with_debug
+    # Remove error trap
+    trap - ERR
+    
+    # For framework tests, we need to ensure cleanup happens
+    if [[ "${BATS_TEST_NAME}" == *"setup_test_env"* ]] || [[ "${BATS_TEST_NAME}" == *"clean_test_env"* ]] || [[ "${BATS_TEST_NAME}" == *"with_test_env"* ]]; then
+        # Clean up any test environment that might have been created
+        clean_test_env 2>/dev/null || true
+    else
+        teardown_with_debug
+    fi
 }
 
 @test "setup_test_env: creates temporary directories" {
@@ -184,14 +207,24 @@ teardown() {
 }
 
 @test "with_test_env: sets up and tears down correctly" {
+    # Save current HOME to verify it's not permanently changed
+    local orig_home="$HOME"
+    
     # Use with_test_env to run a command
     run with_test_env "$TEST_SCENARIO_DIR" bash -c 'echo "HOME=$HOME"; ls "$TEST_DOTFILES/test-pack/testfile.txt"'
     [ "$status" -eq 0 ]
     [[ "$output" =~ "test-dotfiles-" ]]
     [[ "$output" =~ "testfile.txt" ]]
     
-    # Verify cleanup happened (environment should be restored)
-    [ "$HOME" = "$TEST_ORIG_HOME" ]
+    # Verify that running with_test_env in a subshell doesn't affect parent
+    [ "$HOME" = "$orig_home" ]
+    
+    # Test that cleanup happens by checking if test directories exist
+    # The directories should be cleaned up after with_test_env completes
+    local test_dirs=$(echo "$output" | grep -o "/tmp/dodot-test-[0-9]*/test-home-[0-9]*" | head -1)
+    if [ -n "$test_dirs" ]; then
+        [ ! -d "$test_dirs" ]
+    fi
 }
 
 @test "setup_test_env: copies dodot-data directory if present" {
@@ -223,6 +256,10 @@ teardown() {
     
     # Run setup
     setup_test_env "$temp_scenario"
+    
+    # Debug: Check if .envrc files exist in the test directories
+    [ -f "$TEST_HOME/.envrc" ] || fail "TEST_HOME/.envrc does not exist"
+    [ -f "$TEST_DOTFILES/.envrc" ] || fail "TEST_DOTFILES/.envrc does not exist"
     
     # Verify .envrc files were sourced
     assert_env_set "TEST_HOME_ENVRC" "loaded"
