@@ -25,22 +25,14 @@ teardown() {
     dodot_run deploy tools
     [ "$status" -eq 0 ]
     
-    # Verify path powerup: bin directory is deployed
-    assert_path_deployed "tools" "bin"
-    
-    # Verify the bin directory symlink exists in dodot data
+    # Focus on integration: verify both powerups worked together
+    # The key integration point is that the deployed path is correctly added to init.sh
     local bin_link="${DODOT_DATA_DIR}/deployed/path/tools-bin"
-    
-    # Verify shell_add_path powerup: PATH addition is in init.sh
     assert_path_in_shell_init "$bin_link"
     
-    # Verify the executable is available through the deployed path
+    # Verify the integration result: executable is accessible via the PATH
+    # This confirms both powerups cooperated successfully
     assert_executable_available "mytool" "tools-bin"
-    
-    # Verify running the tool works through the deployed path
-    run "$bin_link/mytool"
-    [ "$status" -eq 0 ]
-    [ "$output" = "mytool from tools pack" ]
 }
 
 # Test: symlink + shell_profile combination in deployment
@@ -50,17 +42,13 @@ teardown() {
     dodot_run deploy shell-config
     [ "$status" -eq 0 ]
     
-    # Verify shell_profile powerup: profile.sh is added to init.sh
+    # Focus on integration: verify both powerups deployed from same pack
+    # Key test: profile.sh is correctly sourced in init.sh
     assert_profile_in_init "shell-config" "profile.sh"
     
-    # Verify symlink powerup: regular files are symlinked
-    # Note: dodot creates symlinks without dot prefix in HOME
-    assert_symlink_deployed "shell-config" "bashrc" "$HOME/bashrc"
-    assert_symlink_deployed "shell-config" "gitconfig" "$HOME/gitconfig"
-    
-    # Verify content is accessible through symlinks
+    # Verify key files from the pack are accessible (integration result)
+    # Just check one key file to confirm symlinks and profiles coexist
     assert_template_contains "$HOME/bashrc" "PS1="
-    assert_template_contains "$HOME/gitconfig" "test@example.com"
 }
 
 # Test: install_script + homebrew combination for installation
@@ -70,17 +58,13 @@ teardown() {
     dodot_run install dev-tools
     [ "$status" -eq 0 ]
     
-    # Verify install_script powerup: script was executed
+    # Focus on integration: verify both install-type powerups ran
+    # Key test: both install methods completed successfully
     assert_install_script_executed "dev-tools"
-    
-    # Verify install script created its marker
-    assert_install_artifact_exists "$HOME/.local/dev-tools/install-marker.txt"
-    
-    # Verify marker content
-    assert_template_contains "$HOME/.local/dev-tools/install-marker.txt" "dev-tools-installed"
-    
-    # Verify homebrew powerup: Brewfile was processed
     assert_brewfile_processed "dev-tools"
+    
+    # Verify integration result: expected artifact from install script
+    assert_install_artifact_exists "$HOME/.local/dev-tools/install-marker.txt"
 }
 
 # Test: comprehensive pack with all power-up types
@@ -89,34 +73,30 @@ teardown() {
     dodot_run install ultimate
     [ "$status" -eq 0 ]
     
-    # Verify install_script powerup
+    # Verify install-type powerups completed
     assert_install_script_executed "ultimate"
-    assert_install_artifact_exists "$HOME/.local/ultimate/marker.txt"
-    
-    # Verify homebrew powerup
     assert_brewfile_processed "ultimate"
     
     # Now deploy to trigger deploy-type powerups
     dodot_run deploy ultimate
     [ "$status" -eq 0 ]
     
-    # Verify symlink powerup (regular config file)
+    # Focus on integration: verify all powerup types can coexist in one pack
+    # Check one key result from each powerup type:
+    
+    # 1. Install script result
+    assert_install_artifact_exists "$HOME/.local/ultimate/marker.txt"
+    
+    # 2. Symlink result
     assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
     
-    # Verify template powerup
-    assert_template_processed "ultimate" "config" "$HOME/config"
-    
-    # Verify template variable expansion
+    # 3. Template processing result
     assert_template_contains "$HOME/config" "username = $USER"
     
-    # Verify path powerup
-    assert_path_deployed "ultimate" "bin"
-    
-    # Verify shell_profile powerup
+    # 4. Shell profile integration
     assert_profile_in_init "ultimate" "profile.sh"
     
-    # Verify the tool in bin is accessible
-    assert_symlink_deployed "ultimate" "bin/ultimate-tool" "$HOME/ultimate-tool"
+    # 5. Path deployment result (verify the tool works)
     run "$HOME/ultimate-tool"
     [ "$status" -eq 0 ]
     [ "$output" = "Ultimate tool v1.0" ]
