@@ -39,8 +39,9 @@ teardown() {
     # The symlink now contains pack-b's content
     assert_template_contains "$HOME/shared-config" "pack_name=pack-b"
     
-    # pack-a's content has been overwritten
-    ! grep -q "pack_name=pack-a" "$HOME/shared-config"
+    # pack-a's content has been overwritten - verify it's NOT there
+    run grep -q "pack_name=pack-a" "$HOME/shared-config"
+    [ "$status" -ne 0 ]
     
     # Verify both packs tried to deploy to the same symlink name
     assert_symlink_deployed "pack-b" "shared-config" "$HOME/shared-config"
@@ -59,7 +60,7 @@ teardown() {
     
     # Verify install did not complete
     assert_install_script_not_executed "tools-consumer"
-    [ ! -f "$HOME/.local/tools-consumer/marker.txt" ]
+    assert_file_not_exists "$HOME/.local/tools-consumer/marker.txt"
     
     # Now deploy the provider pack first
     dodot_run deploy tools-provider
@@ -67,7 +68,7 @@ teardown() {
     
     # Verify the tool is now available
     assert_path_deployed "tools-provider" "bin"
-    [ -L "$HOME/essential-tool" ]
+    assert_symlink_deployed "tools-provider" "bin/essential-tool" "$HOME/essential-tool"
     
     # Test the tool works
     run "$HOME/essential-tool"
@@ -81,7 +82,7 @@ teardown() {
     # Verify installation completed successfully
     assert_install_script_executed "tools-consumer"
     assert_install_artifact_exists "$HOME/.local/tools-consumer/marker.txt"
-    grep -q "installed-with-dependencies" "$HOME/.local/tools-consumer/marker.txt"
+    assert_template_contains "$HOME/.local/tools-consumer/marker.txt" "installed-with-dependencies"
     
     # Verify consumer config was deployed
     assert_symlink_deployed "tools-consumer" "consumer-config" "$HOME/consumer-config"
@@ -105,7 +106,7 @@ teardown() {
     
     # Verify partial state
     [ -L "$HOME/file1" ]
-    [ ! -L "$HOME/file2" ]  # Missing
+    assert_symlink_not_deployed "$HOME/file2"  # Missing
     [ -L "$HOME/file3" ]
     
     # Run deploy again - dodot should restore missing symlink
@@ -155,8 +156,8 @@ teardown() {
     # Verify path deployments
     assert_path_deployed "pack-4" "bin"
     assert_path_deployed "pack-5" "bin"
-    [ -x "$HOME/tool-4" ]
-    [ -x "$HOME/tool-5" ]
+    assert_file_executable "$HOME/tool-4"
+    assert_file_executable "$HOME/tool-5"
     
     # Deploy shell profile packs (6-7)
     dodot_run deploy pack-6 pack-7
@@ -187,14 +188,14 @@ teardown() {
     
     assert_symlink_deployed "pack-11" "settings" "$HOME/settings"
     assert_path_deployed "pack-11" "bin"
-    [ -x "$HOME/mixed-tool" ]
+    assert_file_executable "$HOME/mixed-tool"
     
     # Install everything pack (12)
     dodot_run install pack-12
     [ "$status" -eq 0 ]
     
     assert_install_script_executed "pack-12"
-    [ -f "$HOME/.local/pack-12/install-time.txt" ]
+    assert_file_exists "$HOME/.local/pack-12/install-time.txt"
     
     # Deploy remaining power-ups for pack-12
     dodot_run deploy pack-12

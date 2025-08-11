@@ -21,12 +21,17 @@ teardown() {
     dodot_run deploy tools
     [ "$status" -eq 0 ]
     
-    # Verify the individual executable was symlinked to home
-    [ -L "$HOME/hello" ]
+    # Verify bin directory is deployed to path
+    assert_path_deployed "tools" "bin"
     
-    # Verify executable is accessible and works
-    [ -x "$HOME/hello" ]
-    run "$HOME/hello"
+    # Verify PATH addition is in shell init
+    assert_path_in_shell_init "$DODOT_DATA_DIR/deployed/path/tools-bin"
+    
+    # Verify executable is available through deployed path
+    assert_executable_available "hello" "tools-bin"
+    
+    # Run the executable to verify it works
+    run "$DODOT_DATA_DIR/deployed/path/tools-bin/hello"
     [ "$status" -eq 0 ]
     [ "$output" = "Hello from tools" ]
 }
@@ -36,17 +41,16 @@ teardown() {
     mkdir -p "$DOTFILES_ROOT/config"
     echo "config=value" > "$DOTFILES_ROOT/config/settings.conf"
     
-    # Verify no executables are symlinked initially
-    [ ! -L "$HOME/hello" ]
-    [ ! -d "$HOME/bin" ]
-    
     # Deploy the config pack (which has no bin directory)
     dodot_run deploy config
     [ "$status" -eq 0 ]
     
-    # Verify no executables were symlinked
-    [ ! -L "$HOME/hello" ]
-    [ ! -d "$HOME/bin" ]
-    # Also check that no bin-related symlinks exist in deployed
-    [ ! -d "$DODOT_DATA_DIR/deployed/symlink" ] || ! ls "$DODOT_DATA_DIR/deployed/symlink" 2>/dev/null | grep -q "hello"
+    # Verify no path deployment occurred
+    [ ! -d "$DODOT_DATA_DIR/deployed/path" ] || [ -z "$(ls -A "$DODOT_DATA_DIR/deployed/path" 2>/dev/null)" ]
+    
+    # Verify init.sh doesn't contain path exports for this pack
+    local init_file="${DODOT_DATA_DIR}/shell/init.sh"
+    if [ -f "$init_file" ]; then
+        ! grep -q "deployed/path/config" "$init_file"
+    fi
 }
