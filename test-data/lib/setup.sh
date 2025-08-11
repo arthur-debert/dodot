@@ -78,10 +78,16 @@ setup_test_env() {
     
     echo "Setting up test environment from: $scenario_path"
     
-    # Save original environment
-    export ORIG_HOME="${HOME:-}"
-    export ORIG_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
-    export ORIG_DODOT_DATA_DIR="${DODOT_DATA_DIR:-}"
+    # Save original environment (only if not already saved)
+    if [ -z "${ORIG_HOME+x}" ]; then
+        export ORIG_HOME="${HOME:-}"
+    fi
+    if [ -z "${ORIG_DOTFILES_ROOT+x}" ]; then
+        export ORIG_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
+    fi
+    if [ -z "${ORIG_DODOT_DATA_DIR+x}" ]; then
+        export ORIG_DODOT_DATA_DIR="${DODOT_DATA_DIR:-}"
+    fi
     
     # Create temporary test directories
     local test_root="/tmp/dodot-test-$$"
@@ -93,7 +99,8 @@ setup_test_env() {
     
     # Copy scenario directories
     if [ -d "$scenario_path/home" ]; then
-        cp -r "$scenario_path/home" "$TEST_HOME"
+        mkdir -p "$TEST_HOME"
+        cp -r "$scenario_path/home"/. "$TEST_HOME/"
     else
         mkdir -p "$TEST_HOME"
     fi
@@ -119,12 +126,19 @@ setup_test_env() {
     export DODOT_DATA_DIR="$TEST_DATA_DIR"
     
     # Source any environment setup from scenario
+    # Use set -a to automatically export all variables set in the sourced files
     if [ -f "$TEST_HOME/.envrc" ]; then
-        source "$TEST_HOME/.envrc"
+        set -a
+        # shellcheck disable=SC1090
+        . "$TEST_HOME/.envrc"
+        set +a
     fi
     
     if [ -f "$TEST_DOTFILES/.envrc" ]; then
-        source "$TEST_DOTFILES/.envrc"
+        set -a
+        # shellcheck disable=SC1090
+        . "$TEST_DOTFILES/.envrc"
+        set +a
     fi
     
     echo "Test environment ready:"
