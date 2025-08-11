@@ -50,9 +50,44 @@ teardown() {
 }
 
 @test "dependency order: pack A depends on pack B" {
-    skip "Not implemented"
-    # Test case where one pack depends on another being deployed first
-    # e.g., pack A needs binaries installed by pack B
+    # Try to install tools-consumer first (should fail due to missing dependency)
+    dodot_run install tools-consumer
+    [ "$status" -ne 0 ]  # Should fail
+    
+    # Error should mention the missing tool
+    [[ "$output" == *"essential-tool"* ]] || [[ "$output" == *"not found"* ]]
+    
+    # Verify install did not complete
+    assert_install_script_not_executed "tools-consumer"
+    [ ! -f "$HOME/.local/tools-consumer/marker.txt" ]
+    
+    # Now deploy the provider pack first
+    dodot_run deploy tools-provider
+    [ "$status" -eq 0 ]
+    
+    # Verify the tool is now available
+    assert_path_deployed "tools-provider" "bin"
+    [ -L "$HOME/essential-tool" ]
+    
+    # Test the tool works
+    run "$HOME/essential-tool"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Essential tool v1.0"* ]]
+    
+    # Now install tools-consumer (should succeed)
+    dodot_run install tools-consumer
+    [ "$status" -eq 0 ]
+    
+    # Verify installation completed successfully
+    assert_install_script_executed "tools-consumer"
+    assert_install_artifact_exists "$HOME/.local/tools-consumer/marker.txt"
+    grep -q "installed-with-dependencies" "$HOME/.local/tools-consumer/marker.txt"
+    
+    # Verify consumer config was deployed
+    assert_symlink_deployed "tools-consumer" "consumer-config" "$HOME/consumer-config"
+    
+    # This test documents that packs can have dependencies on other packs
+    # and deployment order matters for successful installation
 }
 
 @test "state corruption: recovery from partial deployment" {
