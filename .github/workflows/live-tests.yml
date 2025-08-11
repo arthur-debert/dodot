@@ -44,7 +44,7 @@ jobs:
             -u 1001:118 \
             -e DODOT_TEST_CONTAINER=1 \
             dodot-dev:latest \
-            /bin/bash -c "cd /workspace && /workspace/test-data/runner.sh --formatter junit --timing"
+            /bin/bash -c "cd /workspace && /workspace/test-data/runner.sh --formatter=junit --timing"
           
       - name: Upload test results
         if: always()
