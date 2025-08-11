@@ -26,26 +26,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         
-      - name: Build development container
+      - name: Build base container
         uses: docker/build-push-action@v6
         with:
           context: containers/dev
-          file: containers/dev/Dockerfile
+          file: containers/dev/Dockerfile.base
           push: false
           load: true
-          tags: dodot-dev:latest
+          tags: dodot-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          build-args: |
-            USER_UID=1001
-            USER_GID=118
           
       - name: Run live system tests
         run: |
           # Export required env vars for docker-compose
           export USER_UID=1001
           export USER_GID=118
-          # Run the tests with JUnit output using the same script as local
+          # Run the tests with JUnit output using the base container
           ./containers/dev/run-tests.sh --formatter junit > test-results.xml
           
       - name: Upload test results

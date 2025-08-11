@@ -1,13 +1,16 @@
 #!/bin/bash
 set -e
 
-# Usage: ./run.sh [script_path] [script_args...]
+# Usage: ./run-base.sh [script_path] [script_args...]
+#
+# This script runs commands in the base container (without AI tools)
+# Used primarily for CI and test environments
 #
 # Examples:
-#   ./run.sh                     # Interactive mode - drops into zsh shell
-#   ./run.sh ./scripts/build     # Run build script and exit
-#   ./run.sh ./scripts/test -v   # Run test script with args and exit
-#   ./run.sh bash -c "go test"   # Run arbitrary command and exit
+#   ./run-base.sh                     # Interactive mode - drops into zsh shell
+#   ./run-base.sh ./scripts/build     # Run build script and exit
+#   ./run-base.sh ./scripts/test -v   # Run test script with args and exit
+#   ./run-base.sh bash -c "go test"   # Run arbitrary command and exit
 
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -37,18 +40,18 @@ if [ $# -gt 0 ]; then
     SCRIPT_PATH="$1"
     shift  # Remove first argument, pass the rest to the script
     
-    echo "Starting dodot development container in script mode..." >&2
+    echo "Starting dodot base container in script mode..." >&2
     echo "Executing: $SCRIPT_PATH $@" >&2
     echo "" >&2
     
     # Run the script and exit
-    docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "cd /workspace && $SCRIPT_PATH $*"
+    docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-base /bin/bash -c "cd /workspace && $SCRIPT_PATH $*"
 else
     # Interactive mode (default)
-    echo "Starting dodot development container..."
+    echo "Starting dodot base container..."
     echo "You'll be dropped into the repository root at /workspace"
     echo ""
     
     # Run the container interactively
-    docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev
+    docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-base
 fi

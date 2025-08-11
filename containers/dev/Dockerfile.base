@@ -1,0 +1,188 @@
+# Base image for dodot development - includes Go and test dependencies
+# This image is used for:
+# - Building Go binaries
+# - Running goreleaser builds
+# - Running live-system shell tests with Bats
+# - Using Homebrew
+
+FROM golang:1.23 AS go-tools
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2 && \
+    go install gotest.tools/gotestsum@v1.11.0 && \
+    go install github.com/goreleaser/goreleaser/v2@v2.5.0
+
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install base system dependencies for Go development and testing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build essentials
+    ca-certificates \
+    curl \
+    git \
+    gcc \
+    g++ \
+    make \
+    pkg-config \
+    # Shell and testing tools
+    zsh \
+    bats \
+    bats-support \
+    bats-assert \
+    # Required for various tools
+    openssh-client \
+    gnupg \
+    lsb-release \
+    sudo \
+    # Utilities
+    tree \
+    jq \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI (needed for PR creation and GitHub operations)
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
+    gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
+    tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y gh && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Go
+ENV GO_VERSION=1.23.5
+ENV PATH=/usr/local/go/bin:$PATH
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
+
+# Copy Go tools from builder stage
+COPY --from=go-tools /go/bin/golangci-lint /usr/local/bin/
+COPY --from=go-tools /go/bin/gotestsum /usr/local/bin/
+COPY --from=go-tools /go/bin/goreleaser /usr/local/bin/
+
+# Install Homebrew in a separate stage to optimize caching
+FROM ubuntu:24.04 AS homebrew-builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    gcc \
+    g++ \
+    make \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create linuxbrew user for Homebrew installation
+RUN useradd -m -s /bin/bash linuxbrew && \
+    echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+USER linuxbrew
+WORKDIR /home/linuxbrew
+
+# Install Homebrew
+RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Add Homebrew to PATH for the installation user
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH"
+
+# Pre-install any Homebrew packages if needed
+# RUN brew install <package>
+
+# Switch back to root for final stage
+USER root
+
+# Final stage - combine everything
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Re-install all necessary packages in the final stage
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build essentials
+    ca-certificates \
+    curl \
+    git \
+    gcc \
+    g++ \
+    make \
+    pkg-config \
+    # Shell and testing tools
+    zsh \
+    bats \
+    bats-support \
+    bats-assert \
+    # Required for various tools
+    openssh-client \
+    gnupg \
+    lsb-release \
+    sudo \
+    # Utilities
+    tree \
+    jq \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | \
+    gpg --dearmor -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | \
+    tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y gh && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install Go
+ENV GO_VERSION=1.23.5
+ENV PATH=/usr/local/go/bin:$PATH
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xz
+
+# Copy Go tools from builder stage
+COPY --from=go-tools /go/bin/golangci-lint /usr/local/bin/
+COPY --from=go-tools /go/bin/gotestsum /usr/local/bin/
+COPY --from=go-tools /go/bin/goreleaser /usr/local/bin/
+
+# Copy Homebrew installation
+COPY --from=homebrew-builder /home/linuxbrew /home/linuxbrew
+
+# Create developer user
+RUN useradd -m -s /usr/bin/zsh developer && \
+    echo 'developer ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+    usermod -aG sudo developer
+
+# Set up Homebrew permissions for developer user
+RUN chown -R developer:developer /home/linuxbrew/.linuxbrew && \
+    mkdir -p /home/developer/.cache && \
+    chown -R developer:developer /home/developer/.cache
+
+# Configure environment for developer user
+USER developer
+WORKDIR /home/developer
+
+# Set up environment variables
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/go/bin:/home/developer/go/bin:$PATH"
+ENV GOPATH="/home/developer/go"
+ENV HOMEBREW_NO_AUTO_UPDATE=1
+ENV HOMEBREW_NO_INSTALL_CLEANUP=1
+
+# Basic zsh configuration (no oh-my-zsh to keep it minimal)
+RUN touch ~/.zshrc && \
+    echo 'export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/go/bin:$HOME/go/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export GOPATH="$HOME/go"' >> ~/.zshrc && \
+    echo 'export HOMEBREW_NO_AUTO_UPDATE=1' >> ~/.zshrc && \
+    echo 'export HOMEBREW_NO_INSTALL_CLEANUP=1' >> ~/.zshrc
+
+# Create workspace directory
+RUN mkdir -p /home/developer/workspace
+
+WORKDIR /home/developer/workspace
+
+# Label for identification
+LABEL org.opencontainers.image.description="dodot base development image with Go and test tools"
+LABEL org.opencontainers.image.source="https://github.com/yourusername/dodot"
+
+CMD ["/usr/bin/zsh"]
