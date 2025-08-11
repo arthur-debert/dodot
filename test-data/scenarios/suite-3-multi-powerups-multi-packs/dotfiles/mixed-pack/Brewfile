@@ -1,0 +1,2 @@
+# Brewfile for mixed-pack
+brew "wget"

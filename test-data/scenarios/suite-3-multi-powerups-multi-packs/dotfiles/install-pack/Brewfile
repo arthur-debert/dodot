@@ -1,0 +1,2 @@
+# Brewfile for install-pack
+brew "curl"

@@ -130,5 +130,41 @@ teardown() {
 }
 
 @test "mixed deploy/install: pack A deploy, pack B install, pack C both" {
-    skip "Not implemented"
+    # First install pack B and pack C (install-type powerups)
+    dodot_run install install-pack mixed-pack
+    [ "$status" -eq 0 ]
+    
+    # Verify install-pack install script and homebrew
+    assert_install_script_executed "install-pack"
+    assert_install_artifact_exists "$HOME/.local/install-pack/marker.txt"
+    assert_brewfile_processed "install-pack"
+    
+    # Verify mixed-pack install script and homebrew
+    assert_install_script_executed "mixed-pack"
+    assert_install_artifact_exists "$HOME/.local/mixed-pack/marker.txt"
+    assert_brewfile_processed "mixed-pack"
+    
+    # Now deploy pack A and pack C (deploy-type powerups)
+    dodot_run deploy deploy-pack mixed-pack
+    [ "$status" -eq 0 ]
+    
+    # Verify deploy-pack symlinks
+    assert_symlink_deployed "deploy-pack" "deploy-config" "$HOME/deploy-config"
+    grep -q "deploy_setting=active" "$HOME/deploy-config"
+    
+    # Verify mixed-pack symlinks (it should have both install and deploy working)
+    assert_symlink_deployed "mixed-pack" "mixed-config" "$HOME/mixed-config"
+    grep -q "mixed_mode=hybrid" "$HOME/mixed-config"
+    
+    # Verify that mixed-pack has both install and deploy artifacts
+    # Install artifacts from earlier
+    [ -f "$HOME/.local/mixed-pack/marker.txt" ]
+    grep -q "mixed-pack-installed" "$HOME/.local/mixed-pack/marker.txt"
+    
+    # Deploy artifacts now
+    [ -L "$HOME/mixed-config" ]
+    
+    # Verify install-pack has no deploy artifacts (it should not be deployed)
+    [ ! -f "$HOME/install-pack" ]
+    [ ! -L "$HOME/install-pack" ]
 }
