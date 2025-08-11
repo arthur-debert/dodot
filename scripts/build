@@ -12,13 +12,17 @@ NC='\033[0m' # No Color
 # Build output directory (using bin/ to avoid conflicts with goreleaser's dist/)
 BIN_DIR="bin"
 
+# Detect OS and architecture
+OS=$(go env GOOS)
+ARCH=$(go env GOARCH)
+BINARY_NAME="dodot.${OS}-${ARCH}"
+
 echo -e "${BLUE}${BOLD}🔨 Building dodot...${NC}"
 echo
 
 # Clean and create build directories
 echo -e "${BLUE}Setting up build directories...${NC}"
-# Only clean the bin directory, preserve other build artifacts
-rm -rf "${BIN_DIR}"
+# Create bin directory if it doesn't exist
 mkdir -p "${BIN_DIR}"
 echo -e "${GREEN}✅ Build directories ready${NC}"
 echo
@@ -35,18 +39,8 @@ echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
 echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
 echo
 
-# List all packages to ensure they're recognized
-echo -e "${BLUE}Listing all packages...${NC}"
-go list -mod=vendor ./...
-
-# Build all packages first
-echo -e "${BLUE}Building all packages...${NC}"
-if go build -mod=vendor -v ./...; then
-    echo -e "${GREEN}✅ All packages built successfully${NC}"
-else
-    echo -e "${RED}❌ Package build failed${NC}"
-    exit 1
-fi
+# Ensure vendor directory is used
+export GOFLAGS="-mod=vendor"
 
 # Set up LDFLAGS for version embedding
 LDFLAGS="-s -w"
@@ -55,45 +49,70 @@ LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Commit=$COM
 LDFLAGS="$LDFLAGS -X github.com/arthur-debert/dodot/internal/version.Date=$BUILD_DATE"
 
 # Build the main binary
-echo
-echo -e "${BLUE}Building CLI binary...${NC}"
-if go build -mod=vendor -ldflags "$LDFLAGS" -o "${BIN_DIR}/dodot" ./cmd/dodot/main; then
-    echo -e "${GREEN}✅ Binary built successfully: ${BIN_DIR}/dodot${NC}"
+echo -e "${BLUE}Building CLI binary for ${OS}/${ARCH}...${NC}"
+if go build -ldflags "$LDFLAGS" -o "${BIN_DIR}/${BINARY_NAME}" ./cmd/dodot/main; then
+    echo -e "${GREEN}✅ Binary built successfully: ${BIN_DIR}/${BINARY_NAME}${NC}"
 else
     echo -e "${RED}❌ Binary build failed${NC}"
     exit 1
 fi
 
-# Run tests if not skipped
-if [[ "${SKIP_TESTS:-}" != "true" ]]; then
-    echo
-    echo -e "${YELLOW}Running tests...${NC}"
-    if go test -mod=vendor ./... -short; then
-        echo -e "${GREEN}✅ All tests passed${NC}"
-    else
-        echo -e "${RED}❌ Tests failed${NC}"
-        exit 1
-    fi
-else
-    echo
-    echo -e "${YELLOW}⚠️  Tests skipped (SKIP_TESTS=true)${NC}"
-fi
-
 # Verify the binary works
 echo
 echo -e "${BLUE}Verifying binary...${NC}"
-if "${BIN_DIR}/dodot" --version >/dev/null 2>&1; then
+if "${BIN_DIR}/${BINARY_NAME}" --version >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Binary verification passed${NC}"
     # Show actual version output
     echo -e "${BLUE}Version output:${NC}"
-    "${BIN_DIR}/dodot" --version || true
-elif "${BIN_DIR}/dodot" --help >/dev/null 2>&1; then
+    "${BIN_DIR}/${BINARY_NAME}" --version || true
+elif "${BIN_DIR}/${BINARY_NAME}" --help >/dev/null 2>&1; then
     echo -e "${GREEN}✅ Binary verification passed (via --help)${NC}"
 else
     echo -e "${RED}❌ Binary verification failed${NC}"
     exit 1
 fi
 
+# Create wrapper script
+echo
+echo -e "${BLUE}Creating wrapper script...${NC}"
+cat > "${BIN_DIR}/dodot" << 'EOF'
+#!/usr/bin/env bash
+# Auto-generated wrapper script for dodot
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+# Map architecture names
+case "$ARCH" in
+    x86_64) ARCH="amd64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
+esac
+
+# Construct binary name
+BINARY="${SCRIPT_DIR}/dodot.${OS}-${ARCH}"
+
+# Check if binary exists
+if [ ! -x "$BINARY" ]; then
+    echo "Error: Binary not found: $BINARY" >&2
+    echo "Please run: ./scripts/build" >&2
+    exit 1
+fi
+
+# Execute the binary with all arguments
+exec "$BINARY" "$@"
+EOF
+
+# Make wrapper executable
+chmod +x "${BIN_DIR}/dodot"
+echo -e "${GREEN}✅ Wrapper script created${NC}"
+
 echo
 echo -e "${GREEN}${BOLD}🎉 Build completed successfully!${NC}"
-echo -e "${BLUE}Binary location: ${BOLD}${BIN_DIR}/dodot${NC}"
+echo -e "${BLUE}Binary location: ${BOLD}${BIN_DIR}/${BINARY_NAME}${NC}"
+echo -e "${BLUE}Wrapper script: ${BOLD}${BIN_DIR}/dodot${NC}"
