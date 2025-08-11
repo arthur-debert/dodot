@@ -49,5 +49,5 @@ teardown() {
     # Verify no template outputs were created
     # Since there are no templates, there should be no processed files
     # Check that our normal non-template file was symlinked instead
-    [ -L "$HOME/vimrc" ] && [ -f "$HOME/vimrc" ]
+    assert_symlink_deployed "vim" "vimrc" "$HOME/vimrc"
 }

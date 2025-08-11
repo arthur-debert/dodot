@@ -41,5 +41,13 @@ EOF
     
     # Verify no symlinks were created
     assert_symlink_not_deployed "$HOME/gitconfig"
-    [ ! -d "$DODOT_DATA_DIR/deployed/symlink" ] || [ -z "$(ls -A "$DODOT_DATA_DIR/deployed/symlink" 2>/dev/null)" ]
+    # Also verify the deployed symlink directory is empty or doesn't exist
+    local symlink_dir="$DODOT_DATA_DIR/deployed/symlink"
+    if [ -d "$symlink_dir" ]; then
+        [ -z "$(ls -A "$symlink_dir" 2>/dev/null)" ] || {
+            echo "FAIL: Symlink directory is not empty: $symlink_dir" >&2
+            ls -la "$symlink_dir" >&2
+            return 1
+        }
+    fi
 }
