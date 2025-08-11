@@ -32,12 +32,12 @@ teardown() {
     chmod +x "$DOTFILES_ROOT/tools/install.sh"
     
     # Verify no brew sentinel exists initially
-    [ ! -f "$DODOT_DATA_DIR/run-once/homebrew/tools" ]
+    assert_brewfile_not_processed "tools"
     
     # Install the tools pack (which has no Brewfile)
     dodot_run install tools
     [ "$status" -eq 0 ]
     
     # Verify no brew sentinel was created
-    [ ! -f "$DODOT_DATA_DIR/run-once/homebrew/tools" ]
+    assert_brewfile_not_processed "tools"
 }
