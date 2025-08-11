@@ -91,9 +91,46 @@ teardown() {
 }
 
 @test "state corruption: recovery from partial deployment" {
-    skip "Not implemented"
-    # Test case where deployment is interrupted mid-process
-    # Should be able to recover/retry without issues
+    # First, do a normal deployment
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    # Verify all files are deployed correctly
+    assert_symlink_deployed "partial-deploy" "file1" "$HOME/file1"
+    assert_symlink_deployed "partial-deploy" "file2" "$HOME/file2"
+    assert_symlink_deployed "partial-deploy" "file3" "$HOME/file3"
+    
+    # Now simulate corruption by removing one symlink (as if deployment was interrupted)
+    rm "$HOME/file2"
+    
+    # Verify partial state
+    [ -L "$HOME/file1" ]
+    [ ! -L "$HOME/file2" ]  # Missing
+    [ -L "$HOME/file3" ]
+    
+    # Run deploy again - dodot should restore missing symlink
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    # All files should be deployed again
+    assert_symlink_deployed "partial-deploy" "file1" "$HOME/file1"
+    assert_symlink_deployed "partial-deploy" "file2" "$HOME/file2"
+    assert_symlink_deployed "partial-deploy" "file3" "$HOME/file3"
+    
+    # Run deploy multiple times - should be idempotent
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    # Everything should still work after multiple runs
+    assert_template_contains "$HOME/file1" "file1_content=deployed"
+    assert_template_contains "$HOME/file2" "file2_content=deployed"
+    assert_template_contains "$HOME/file3" "file3_content=deployed"
+    
+    # This test documents that dodot is idempotent and can restore
+    # missing symlinks when re-run after partial state corruption
 }
 
 @test "large scale: 10+ packs with mixed power-ups" {
