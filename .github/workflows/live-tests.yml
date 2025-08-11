@@ -37,22 +37,14 @@ jobs:
           
       - name: Run live system tests
         run: |
-          # Build dodot binary inside the container
+          # Run the tests with JUnit output
           docker run --rm \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
             -u 1001:118 \
+            -e DODOT_TEST_CONTAINER=1 \
             dodot-dev:latest \
-            /bin/bash -c "cd /workspace && ./scripts/build"
-          
-          # Run the tests
-          docker run --rm \
-            -v ${{ github.workspace }}:/workspace \
-            -w /workspace \
-            -u 1001:118 \
-            -e VERBOSE=${{ inputs.verbose }} \
-            dodot-dev:latest \
-            /bin/bash -c "/workspace/test-data/runner.sh"
+            /bin/bash -c "cd /workspace && /workspace/test-data/runner.sh --formatter junit --timing"
           
       - name: Upload test results
         if: always()
@@ -60,5 +52,14 @@ jobs:
         with:
           name: test-results
           path: |
-            tmp/dodot-test-*/
+            test-results.xml
           retention-days: 7
+          
+      - name: Publish test results
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Bats Test Results
+          path: test-results.xml
+          reporter: java-junit
+          fail-on-error: true
