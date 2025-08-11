@@ -149,15 +149,19 @@ COPY --from=go-tools /go/bin/goreleaser /usr/local/bin/
 # Copy Homebrew installation
 COPY --from=homebrew-builder /home/linuxbrew /home/linuxbrew
 
-# Create developer user
-RUN useradd -m -s /usr/bin/zsh developer && \
+# Create developer user with flexible UID
+ARG USER_UID=1000
+ARG USER_GID=1000
+RUN groupadd -g ${USER_GID} developer || true && \
+    useradd -m -s /usr/bin/zsh -u ${USER_UID} -g ${USER_GID} developer || true && \
     echo 'developer ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
-    usermod -aG sudo developer
+    usermod -aG sudo developer || true
 
 # Set up Homebrew permissions for developer user
 RUN chown -R developer:developer /home/linuxbrew/.linuxbrew && \
-    mkdir -p /home/developer/.cache && \
-    chown -R developer:developer /home/developer/.cache
+    mkdir -p /home/developer/.cache /home/developer/.cache/go-build /home/developer/go && \
+    chown -R developer:developer /home/developer/.cache /home/developer/go && \
+    chmod -R 755 /home/developer/.cache
 
 # Configure environment for developer user
 USER developer

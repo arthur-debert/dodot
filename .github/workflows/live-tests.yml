@@ -36,6 +36,9 @@ jobs:
           tags: dodot-base:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            USER_UID=1001
+            USER_GID=118
           
       - name: Run live system tests
         run: |
