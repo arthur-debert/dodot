@@ -2,11 +2,14 @@
 # Common test setup that includes all necessary libraries and debug hooks
 # All test files should source this single file instead of individual libraries
 
-# Safety check: Ensure we're running in a container
+# Safety check: Ensure we're running in a container (unless testing the test framework itself)
 if [ -z "$DODOT_TEST_CONTAINER" ] || [ "$DODOT_TEST_CONTAINER" != "1" ]; then
-    echo "ERROR: Tests must be run inside the Docker container!"
-    echo "Use: ./containers/dev/run-tests.sh"
-    exit 1
+    # Allow test-framework self-tests to bypass this check
+    if [ "$DODOT_TEST_FRAMEWORK_SELF_TEST" != "1" ]; then
+        echo "ERROR: Tests must be run inside the Docker container!"
+        echo "Use: ./containers/dev/run-tests.sh"
+        exit 1
+    fi
 fi
 
 # Source all test libraries
