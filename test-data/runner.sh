@@ -15,6 +15,9 @@ fi
 # Set test environment marker
 export DODOT_TEST_CONTAINER=1
 
+# Prevent Go from auto-downloading toolchains
+export GOTOOLCHAIN=local
+
 # Ensure dodot is built
 if [ ! -x "/workspace/bin/dodot" ]; then
     echo "Building dodot..." >&2

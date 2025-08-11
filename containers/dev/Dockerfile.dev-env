@@ -1,0 +1,72 @@
+# Full development environment - extends base with AI assistant tools
+# This image includes everything from the base plus:
+# - Node.js and npm
+# - Claude Code CLI
+# - Google Gemini CLI
+# - Oh-my-zsh for better developer experience
+
+# Build from the base image
+ARG BASE_IMAGE=dodot-base:latest
+FROM ${BASE_IMAGE}
+
+# Switch to root to install additional packages
+USER root
+
+# Install Node.js 20.x
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install additional developer tools that enhance the experience
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Developer utilities
+    vim \
+    nano \
+    htop \
+    ncdu \
+    ripgrep \
+    fd-find \
+    bat \
+    direnv \
+    # Network tools
+    net-tools \
+    iputils-ping \
+    dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Switch to developer user for user-space installations
+USER developer
+WORKDIR /home/developer
+
+# Install oh-my-zsh for better shell experience
+RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended && \
+    # Configure zsh with useful plugins
+    sed -i 's/plugins=(git)/plugins=(git golang docker docker-compose npm node)/' ~/.zshrc && \
+    # Preserve our environment variables
+    echo 'export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/usr/local/go/bin:$HOME/go/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export GOPATH="$HOME/go"' >> ~/.zshrc && \
+    echo 'export HOMEBREW_NO_AUTO_UPDATE=1' >> ~/.zshrc && \
+    echo 'export HOMEBREW_NO_INSTALL_CLEANUP=1' >> ~/.zshrc
+
+# Install AI assistant tools globally
+# Note: We need to use sudo because npm global installs go to /usr/lib
+RUN sudo npm install -g @anthropic-ai/claude-code@latest && \
+    sudo npm install -g @google/gemini-cli@latest
+
+# Create a startup script to ensure proper environment
+RUN echo '#!/usr/bin/env zsh\n\
+# Ensure Homebrew is properly initialized\n\
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"\n\
+# Start shell\n\
+exec zsh' > ~/startup.sh && \
+    chmod +x ~/startup.sh
+
+WORKDIR /home/developer/workspace
+
+# Label for identification
+LABEL org.opencontainers.image.description="dodot full development environment with AI assistants"
+LABEL org.opencontainers.image.source="https://github.com/yourusername/dodot"
+LABEL org.opencontainers.image.base="${BASE_IMAGE}"
+
+# Use zsh as the default command
+CMD ["/usr/bin/zsh"]

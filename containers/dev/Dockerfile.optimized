@@ -1,0 +1,118 @@
+# Build stage for Go tools
+FROM golang:1.23-alpine AS go-tools
+ENV CGO_ENABLED=0
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2 && \
+    go install gotest.tools/gotestsum@latest && \
+    go install github.com/goreleaser/goreleaser@v1.26.2
+
+# Build stage for Homebrew (extract only what we need)
+FROM ubuntu:24.04 AS homebrew-builder
+RUN apt-get update && apt-get install -y curl git ca-certificates && \
+    useradd -m -s /bin/bash -u 1001 linuxbrew && \
+    su - linuxbrew -c '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+
+# Main stage - use slim base
+FROM ubuntu:24.04
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+# Install only essential system dependencies in one layer
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        # Essential only
+        curl \
+        wget \
+        ca-certificates \
+        git \
+        gh \
+        zsh \
+        direnv \
+        bats \
+        bats-support \
+        bats-assert \
+        jq \
+        tree \
+        make \
+        gcc \
+        g++ \
+        libc6-dev \
+        file \
+        locales \
+        sudo \
+        # For Node.js
+        gnupg \
+        # Minimal editors
+        nano \
+    && locale-gen en_US.UTF-8 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure locale
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US:en
+ENV LC_ALL=en_US.UTF-8
+
+# Create development user
+ARG USERNAME=developer
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN groupadd --gid $USER_GID $USERNAME || true && \
+    useradd --uid $USER_UID --gid $USER_GID -m $USERNAME -s /usr/bin/zsh && \
+    echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
+# Install Node.js in a more efficient way
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Install only essential npm packages
+    npm install -g --production @anthropic-ai/claude-code
+
+# Install Go (detect architecture) - more efficient extraction
+ENV GO_VERSION=1.23.5
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz | tar -C /usr/local -xz --no-same-owner
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV CGO_ENABLED=0
+ENV GOTOOLCHAIN=local
+
+# Create Go directories
+RUN mkdir -p /opt/go/bin /opt/go/pkg /opt/go/cache && \
+    chmod -R 777 /opt/go
+ENV GOPATH="/opt/go"
+ENV GOCACHE="/opt/go/cache"
+ENV PATH="${GOPATH}/bin:${PATH}"
+
+# Copy Go tools from build stage
+COPY --from=go-tools /go/bin/* /opt/go/bin/
+
+# Copy Homebrew from builder (only essential parts)
+COPY --from=homebrew-builder --chown=1001:1001 /home/linuxbrew/.linuxbrew /home/linuxbrew/.linuxbrew
+RUN useradd -m -s /bin/bash -u 1001 linuxbrew && \
+    usermod -aG linuxbrew $USERNAME && \
+    chmod -R 755 /home/linuxbrew/.linuxbrew
+
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:${PATH}"
+ENV HOMEBREW_PREFIX="/home/linuxbrew/.linuxbrew"
+ENV HOMEBREW_CELLAR="/home/linuxbrew/.linuxbrew/Cellar"
+ENV HOMEBREW_REPOSITORY="/home/linuxbrew/.linuxbrew/Homebrew"
+
+# Copy git configuration
+COPY .gitconfig /home/$USERNAME/.gitconfig
+
+# Minimal zsh setup (skip oh-my-zsh for now)
+USER $USERNAME
+RUN touch ~/.zshrc && \
+    echo 'export PATH="/usr/local/go/bin:/opt/go/bin:$PATH"' >> ~/.zshrc && \
+    echo 'export GOPATH=/opt/go' >> ~/.zshrc && \
+    echo 'export GOCACHE=/opt/go/cache' >> ~/.zshrc && \
+    echo 'export GOTOOLCHAIN=local' >> ~/.zshrc && \
+    echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> ~/.zshrc && \
+    echo 'eval "$(direnv hook zsh)"' >> ~/.zshrc
+
+WORKDIR /workspace
+SHELL ["/usr/bin/zsh", "-c"]
+CMD ["/usr/bin/zsh"]
