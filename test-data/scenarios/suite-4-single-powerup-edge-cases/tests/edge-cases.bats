@@ -29,11 +29,8 @@ teardown() {
     # Should have helpful error message
     [[ "$output" == *"nonexistent-pack"* ]]
     
-    # No symlinks should be created
-    [ ! -L "$HOME/nonexistent-config" ]
-    
     # Verify nothing was deployed
-    assert_symlink_not_deployed "nonexistent-pack" "nonexistent-config" "$HOME/nonexistent-config"
+    assert_symlink_not_deployed "$HOME/nonexistent-config"
 }
 
 @test "symlink: target already exists" {
@@ -41,8 +38,8 @@ teardown() {
     echo "existing content" > "$HOME/existing-config"
     
     # Verify the file exists and has our content
-    [ -f "$HOME/existing-config" ]
-    grep -q "existing content" "$HOME/existing-config"
+    assert_file_exists "$HOME/existing-config"
+    assert_template_contains "$HOME/existing-config" "existing content"
     
     # Try to deploy a pack that wants to symlink to the same target
     dodot_run deploy conflict-pack
@@ -54,12 +51,9 @@ teardown() {
     [[ "$output" == *"existing-config"* ]]
     
     # Original file should still exist and be unchanged
-    [ -f "$HOME/existing-config" ]
+    assert_file_exists "$HOME/existing-config"
     [ ! -L "$HOME/existing-config" ]  # Should NOT be a symlink
-    grep -q "existing content" "$HOME/existing-config"
-    
-    # Verify no symlink was created by the assertion helper
-    assert_symlink_not_deployed "conflict-pack" "existing-config" "$HOME/existing-config"
+    assert_template_contains "$HOME/existing-config" "existing content"
 }
 
 # Shell profile edge cases
@@ -73,7 +67,7 @@ teardown() {
     
     # Check the init.sh content after first deploy
     local init_file="${DODOT_DATA_DIR}/shell/init.sh"
-    [ -f "$init_file" ]
+    assert_file_exists "$init_file"
     
     # Count how many times the profile is sourced
     local first_count=$(grep -c "profile-pack/profile.sh" "$init_file" || echo "0")
@@ -106,8 +100,8 @@ teardown() {
     
     # Verify the profile script source path still works
     local source_path="$DOTFILES_ROOT/profile-pack/profile.sh"
-    [ -f "$source_path" ]
-    grep -q "PROFILE_PACK_LOADED" "$source_path"
+    assert_file_exists "$source_path"
+    assert_template_contains "$source_path" "PROFILE_PACK_LOADED"
 }
 
 # Template edge cases
@@ -133,8 +127,8 @@ teardown() {
     assert_template_contains "$HOME/config" "working_var={{ .HOME }}"
     
     # Verify the template syntax is preserved (not expanded)
-    grep -q "{{ .USER_NAME }}" "$HOME/config"
-    grep -q "{{ .UNDEFINED_VAR }}" "$HOME/config"
+    assert_template_contains "$HOME/config" "{{ .USER_NAME }}"
+    assert_template_contains "$HOME/config" "{{ .UNDEFINED_VAR }}"
     
     # This test documents current behavior - template processing may be disabled
     # or not fully implemented for this edge case scenario
