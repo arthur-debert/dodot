@@ -138,9 +138,62 @@ assert_env_set() {
     return 0
 }
 
+# assert_file_not_exists() - Verify file does not exist
+# Args:
+#   $1 - file path
+assert_file_not_exists() {
+    local file="$1"
+    
+    if [ -f "$file" ]; then
+        echo "FAIL: File exists but should not: $file" >&2
+        return 1
+    fi
+    
+    echo "PASS: File does not exist: $file"
+    return 0
+}
+
+# assert_dir_not_exists() - Verify directory does not exist
+# Args:
+#   $1 - directory path
+assert_dir_not_exists() {
+    local dir="$1"
+    
+    if [ -d "$dir" ]; then
+        echo "FAIL: Directory exists but should not: $dir" >&2
+        return 1
+    fi
+    
+    echo "PASS: Directory does not exist: $dir"
+    return 0
+}
+
+# assert_file_executable() - Verify file exists and is executable
+# Args:
+#   $1 - file path
+assert_file_executable() {
+    local file="$1"
+    
+    if [ ! -f "$file" ]; then
+        echo "FAIL: File not found: $file" >&2
+        return 1
+    fi
+    
+    if [ ! -x "$file" ]; then
+        echo "FAIL: File exists but is not executable: $file" >&2
+        return 1
+    fi
+    
+    echo "PASS: File is executable: $file"
+    return 0
+}
+
 # Export all assertion functions
 export -f assert_symlink_deployed
 export -f assert_symlink_not_deployed
 export -f assert_file_exists
+export -f assert_file_not_exists
 export -f assert_dir_exists
+export -f assert_dir_not_exists
 export -f assert_env_set
+export -f assert_file_executable
