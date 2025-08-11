@@ -89,7 +89,44 @@ teardown() {
 }
 
 @test "multi-pack deploy: 3 packs each with symlinks" {
-    skip "Not implemented"
+    # Deploy git, vim, and shell packs - each has multiple files
+    dodot_run deploy git vim shell
+    [ "$status" -eq 0 ]
+    
+    # Verify git pack symlinks
+    assert_symlink_deployed "git" "gitconfig" "$HOME/gitconfig"
+    assert_symlink_deployed "git" "gitignore" "$HOME/gitignore"
+    
+    # Verify vim pack symlinks
+    assert_symlink_deployed "vim" "vimrc" "$HOME/vimrc"
+    assert_symlink_deployed "vim" "gvimrc" "$HOME/gvimrc"
+    
+    # Verify shell pack symlinks
+    assert_symlink_deployed "shell" "bashrc" "$HOME/bashrc"
+    assert_symlink_deployed "shell" "zshrc" "$HOME/zshrc"
+    
+    # Verify all 6 symlinks exist
+    local expected_files=("gitconfig" "gitignore" "vimrc" "gvimrc" "bashrc" "zshrc")
+    for file in "${expected_files[@]}"; do
+        [ -L "$HOME/$file" ] || {
+            echo "ERROR: Expected symlink $HOME/$file not found"
+            return 1
+        }
+    done
+    
+    # Verify content through symlinks
+    grep -q "test@example.com" "$HOME/gitconfig"
+    grep -q "set number" "$HOME/vimrc"
+    grep -q "PS1=" "$HOME/bashrc"
+    
+    # Verify pack isolation - each file points to its own pack
+    local gitconfig_target=$(readlink "$HOME/gitconfig")
+    local vimrc_target=$(readlink "$HOME/vimrc")
+    local bashrc_target=$(readlink "$HOME/bashrc")
+    
+    [[ "$gitconfig_target" == *"deployed/symlink/gitconfig"* ]]
+    [[ "$vimrc_target" == *"deployed/symlink/vimrc"* ]]
+    [[ "$bashrc_target" == *"deployed/symlink/bashrc"* ]]
 }
 
 @test "mixed deploy/install: pack A deploy, pack B install, pack C both" {
