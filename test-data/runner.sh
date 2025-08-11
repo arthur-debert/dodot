@@ -150,7 +150,12 @@ for scenario in "${SCENARIOS[@]}"; do
         # Run tests one by one for failfast behavior
         test_failed=false
         for bats_file in "${bats_files[@]}"; do
-            if ! bats "$bats_file"; then
+            set +e
+            bats "$bats_file"
+            bats_exit_code=$?
+            set -e
+            
+            if [ $bats_exit_code -ne 0 ]; then
                 test_failed=true
                 break
             fi
@@ -158,7 +163,7 @@ for scenario in "${SCENARIOS[@]}"; do
         if $test_failed; then
             echo -e "  ${RED}✗ Some tests failed${NC}"
             FAILED_SCENARIOS+=("$scenario_name")
-            ((FAILED_TESTS++))
+            FAILED_TESTS=$((FAILED_TESTS + 1))
             echo ""
             echo -e "${RED}Failing fast as requested${NC}"
             exit 1
@@ -167,16 +172,22 @@ for scenario in "${SCENARIOS[@]}"; do
         fi
     else
         # Normal mode - run all tests at once
-        if bats "${bats_files[@]}"; then
+        # Temporarily disable set -e to handle bats exit code
+        set +e
+        bats "${bats_files[@]}"
+        bats_exit_code=$?
+        set -e
+        
+        if [ $bats_exit_code -eq 0 ]; then
             echo -e "  ${GREEN}✓ All tests passed${NC}"
         else
             echo -e "  ${RED}✗ Some tests failed${NC}"
             FAILED_SCENARIOS+=("$scenario_name")
-            ((FAILED_TESTS++))
+            FAILED_TESTS=$((FAILED_TESTS + 1))
         fi
     fi
     echo ""
-    ((TOTAL_TESTS++))
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
 done
 
 # Summary

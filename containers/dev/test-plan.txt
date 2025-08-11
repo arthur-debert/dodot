@@ -39,26 +39,22 @@ Pattern: Each power-up gets YES and NO assertion tests
 - Test: template processed and variables expanded ✓ DONE
 - Test: template NOT processed (verify absence) ✓ DONE
 
-SUITE 2: MULTIPLE POWER-UPS, SINGLE PACKS
+SUITE 2: MULTIPLE POWER-UPS, SINGLE PACKS ✓ DONE
 ------------------------------------------
 Purpose: Test power-up interactions within single packs
 Pattern: Various combinations with YES/NO assertions
 
-2.1 Deploy-type Power-ups Combined
-- Test: symlink + shell_profile in one pack (both deployed)
-- Test: symlink + shell_profile NOT deployed (verify absence)
+2.1 Path + Shell Add Path ✓ DONE
+- Test: bin directory deployed and added to PATH in init.sh ✓ DONE
 
-2.2 Install-type Power-ups Combined  
-- Test: install_script + homebrew in one pack (both executed)
-- Test: install_script + homebrew NOT executed (verify absence)
+2.2 Deploy-type Power-ups Combined ✓ DONE
+- Test: symlink + shell_profile in one pack (both deployed) ✓ DONE
 
-2.3 Mixed Deploy/Install Power-ups
-- Test: symlink + install_script in one pack (correct separation)
-- Test: path + homebrew in one pack (correct execution)
+2.3 Install-type Power-ups Combined ✓ DONE
+- Test: install_script + homebrew in one pack (both executed) ✓ DONE
 
-2.4 All Power-ups in One Pack
-- Test: pack with all 6 power-up types (all work correctly)
-- Test: verify selective deployment vs installation
+2.4 All Power-ups in One Pack ✓ DONE
+- Test: pack with all 6 power-up types (all work correctly) ✓ DONE
 
 SUITE 3: MULTIPLE POWER-UPS, MULTIPLE PACKS
 --------------------------------------------
@@ -150,12 +146,12 @@ CURRENT STATUS vs TARGET
 
 Currently Implemented:
 - Suite 1: Complete (all 6 power-ups with YES and NO tests) ✓ DONE
+- Suite 2: Complete (4 multi-powerup combination tests) ✓ DONE
 - Test framework validation (test-framework scenario) ✓ DONE
 - Infrastructure complete (assertions, debug, safety checks) ✓ DONE
 - Rich debug output on test failures ✓ DONE
 
 Needed Implementation:
-- Suite 2: All tests need implementation (skeleton exists)
 - Suite 3: All tests need implementation (skeleton exists)
 - Suite 4: All tests need implementation (skeleton exists)
 - Suite 5: All tests need implementation (skeleton exists)
@@ -164,7 +160,6 @@ Open Issues:
 No open issues currently reported.
 
 Next Steps:
-1. Implement Suite 2 (single pack combinations)
-2. Implement Suite 3 (multi-pack scenarios)
-3. Implement Suite 4 (edge cases per power-up)
-4. Implement Suite 5 (complex edge cases)
+1. Implement Suite 3 (multi-pack scenarios)
+2. Implement Suite 4 (edge cases per power-up)
+3. Implement Suite 5 (complex edge cases)

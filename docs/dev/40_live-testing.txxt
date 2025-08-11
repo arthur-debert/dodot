@@ -257,8 +257,9 @@ Each step is implemented, tested, verified, and committed before moving on:
 
 8. Build test suite (Partially Complete)
    - 2 tests per power-up ✓ DONE (Suite 1: YES/NO tests for all 6 power-ups)
-   - 5 combination tests (Suite 2-3: Skeleton created, not implemented)
-   - 5 environment tests (Suite 4-5: Skeleton created, not implemented)
+   - 4 combination tests ✓ DONE (Suite 2: Multi-powerup single pack tests)
+   - Multi-pack tests (Suite 3: Skeleton created, not implemented)
+   - Edge case tests (Suite 4-5: Skeleton created, not implemented)
 
 9. Additional scenarios (Not Started)
    - Create conflicts scenario (Suite 4-5 will cover)
@@ -297,7 +298,7 @@ Infrastructure: ✓ DONE
 
 Test Coverage:
 • Suite 1 (Single Power-ups): ✓ DONE - All 6 power-ups with YES/NO tests
-• Suite 2 (Multi Power-ups/Single Pack): Skeleton created
+• Suite 2 (Multi Power-ups/Single Pack): ✓ DONE - 4 combination tests
 • Suite 3 (Multi Power-ups/Multi Packs): Skeleton created
 • Suite 4 (Edge Cases): Skeleton created
 • Suite 5 (Complex Scenarios): Skeleton created
@@ -305,16 +306,10 @@ Test Coverage:
 Open Issues
 -----------
 
-1. Template variable expansion not working
-   - Issue: https://github.com/arthur-debert/dodot/issues/517
-   - Status: Marked as closed but still failing in tests
-   - Impact: Template YES test is skipped
+1. Test runner exit behavior with set -e
+   - Fixed: Runner now handles bats non-zero exit codes properly
+   - All test suites now run even if earlier ones fail
 
-2. Install script artifacts not created consistently
-   - Issue: https://github.com/arthur-debert/dodot/issues/512
-   - Status: Open
-   - Impact: Install script YES test is skipped
-
-3. Test output truncation in some environments
+2. Test output truncation in some environments
    - Not a blocking issue - can run tests individually for debugging
    - Workaround: Use run-tests-summary.sh for concise output
