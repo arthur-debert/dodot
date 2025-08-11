@@ -13,7 +13,7 @@ For testing Debian package builds and installations.
 ## Main Development Container Features
 
 - Ubuntu 24.04 base image
-- Go 1.24.5 with all required tools
+- Go 1.23.5 with all required tools
 - All dependencies needed for development:
   - golangci-lint for linting
   - gotestsum for enhanced test output
