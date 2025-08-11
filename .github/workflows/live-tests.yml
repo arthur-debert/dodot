@@ -38,7 +38,13 @@ jobs:
       - name: Run live system tests
         run: |
           # Run the tests with JUnit output
-          ./containers/dev/run-tests.sh --formatter junit > test-results.xml
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace \
+            -u 1001:118 \
+            -e DODOT_TEST_CONTAINER=1 \
+            dodot-dev:latest \
+            /bin/bash -c "cd /workspace && /workspace/test-data/runner.sh --formatter junit" > test-results.xml
           
       - name: Upload test results
         if: always()
