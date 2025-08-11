@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Setup and teardown functions for dodot live system tests
 
+# Safety check for direct sourcing
+if [ -z "$DODOT_TEST_CONTAINER" ]; then
+    echo "ERROR: This file should not be sourced outside the test container!"
+    echo "Tests must be run using: ./containers/dev/run-tests.sh"
+    return 1 2>/dev/null || exit 1
+fi
+
 # clean_test_env() - Complete cleanup of test environment
 # Removes test directories and unsets environment variables
 clean_test_env() {
@@ -153,25 +160,37 @@ with_test_env() {
 
 # ensure_dodot_built() - Ensure dodot binary is built and in PATH
 ensure_dodot_built() {
-    if ! command -v dodot >/dev/null 2>&1; then
-        echo "Building dodot..."
-        if [ -f "/workspace/scripts/build" ]; then
-            /workspace/scripts/build >/dev/null 2>&1 || {
-                echo "ERROR: Failed to build dodot" >&2
-                return 1
-            }
-        else
-            echo "ERROR: Build script not found" >&2
+    # First check if dodot is already available
+    if command -v dodot >/dev/null 2>&1; then
+        return 0
+    fi
+    
+    # Check if it's built but not in PATH
+    if [ -x "/workspace/bin/dodot" ]; then
+        export PATH="/workspace/bin:$PATH"
+        return 0
+    fi
+    
+    # Only build if necessary
+    echo "Building dodot..."
+    if [ -f "/workspace/scripts/build" ]; then
+        /workspace/scripts/build >/dev/null 2>&1 || {
+            echo "ERROR: Failed to build dodot" >&2
             return 1
-        fi
+        }
+    else
+        echo "ERROR: Build script not found at /workspace/scripts/build" >&2
+        return 1
     fi
     
     # Add to PATH if needed
-    if [[ ":$PATH:" != *":/workspace/bin:"* ]]; then
-        export PATH="/workspace/bin:$PATH"
-    fi
+    export PATH="/workspace/bin:$PATH"
     
-    echo "dodot available: $(which dodot)"
+    # Final verification
+    if ! command -v dodot >/dev/null 2>&1; then
+        echo "ERROR: dodot still not found after build" >&2
+        return 1
+    fi
 }
 
 # Export functions

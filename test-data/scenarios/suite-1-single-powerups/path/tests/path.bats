@@ -1,25 +1,24 @@
 #!/usr/bin/env bats
 # Test path power-up functionality - minimal happy path
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
-source /workspace/test-data/lib/assertions_path.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # Setup before all tests
 setup() {
-    ensure_dodot_built
-    setup_test_env "$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
 # Cleanup after each test
+
+# Cleanup after each test
 teardown() {
-    clean_test_env
+    teardown_with_debug
 }
 
 @test "path: YES - bin directory deployed and accessible" {
     # Deploy tools pack with bin directory  
-    run dodot deploy tools
+    dodot_run deploy tools
     [ "$status" -eq 0 ]
     
     # Verify the individual executable was symlinked to home
@@ -42,7 +41,7 @@ teardown() {
     [ ! -d "$HOME/bin" ]
     
     # Deploy the config pack (which has no bin directory)
-    run dodot deploy config
+    dodot_run deploy config
     [ "$status" -eq 0 ]
     
     # Verify no executables were symlinked

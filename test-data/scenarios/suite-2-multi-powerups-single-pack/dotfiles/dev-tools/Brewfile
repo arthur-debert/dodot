@@ -1,0 +1,3 @@
+# Test Brewfile for dev-tools pack
+brew "jq"
+brew "ripgrep"

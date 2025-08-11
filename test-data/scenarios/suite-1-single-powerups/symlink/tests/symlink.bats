@@ -1,24 +1,22 @@
 #!/usr/bin/env bats
 # Minimal test for symlink power-up - happy path only
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # Setup before all tests
 setup() {
-    ensure_dodot_built
-    setup_test_env "$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
 # Cleanup after each test
 teardown() {
-    clean_test_env
+    teardown_with_debug
 }
 
 @test "symlink: YES - deployed successfully" {
     # Deploy git pack
-    run dodot deploy git
+    dodot_run deploy git
     [ "$status" -eq 0 ]
     
     # Verify symlink was created correctly
@@ -38,7 +36,7 @@ EOF
     assert_symlink_not_deployed "$HOME/gitconfig"
     
     # Deploy the tools pack (which has no files for symlink power-up)
-    run dodot deploy tools
+    dodot_run deploy tools
     [ "$status" -eq 0 ]
     
     # Verify no symlinks were created

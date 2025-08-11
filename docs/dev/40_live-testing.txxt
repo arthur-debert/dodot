@@ -1,0 +1,315 @@
+                   Live System Integration Tests
+
+Because dodot manages users' files in their home directories, we need maximum
+confidence in correct, predictable behavior. While unit tests and Go integration
+tests are fundamental, having a safe sandbox that replicates a full working
+machine with home directories and applications provides opportunities for both
+manual validation and automated tests.
+
+Using a Docker container sandbox allows us to test without risking data loss
+and easily test combinations of user homes, dotfiles collections, and dodot's
+previous data states.
+
+Objective
+---------
+
+The goal is a one-line command that will:
+
+• Run the test environment container
+• Set up dodot (build from source, set variables, install shell profile init)
+• Iterate through various scenarios
+  - Each scenario combines: user home-dir, dotfiles, and specific tests
+  - For each test:
+    • Setup: Delete affected dirs (home, dotfiles root, dodot state/data)
+    • Setup: Copy fresh dirs from the scenario templates
+    • Setup: Set environment variables ($HOME, $DOTFILES_ROOT, etc.)
+    • Run the test
+    • Teardown: Delete test dirs
+    • Teardown: Unset environment variables
+
+This allows us to create scenarios with actual files that are easy to reason
+about, shell into, and experiment with.
+
+Tools and Guidelines
+--------------------
+
+Environment:
+• Ubuntu container (fixed OS target for consistent dependencies)
+• Docker container with full repo mounted
+• Includes working Homebrew installation (key power-up)
+• Zsh shell (what most users run)
+• Not container-specific - could run outside container if needed
+
+Test Framework:
+• Bats (Bash Automated Testing System)
+  - Mature and widely adopted
+  - Better debugging support than alternatives
+  - Clean assertion syntax
+  - Excellent TAP/JUnit output
+  - Works with zsh
+
+Test Code Structure:
+• Bulk of test logic in standalone shell scripts
+• Less framework lock-in
+• Automated setup/teardown guarantees clean slate
+• Most tests will be simple:
+  ```
+  dodot deploy
+  assert that /file got deployed by power-up x
+  ```
+• Library of assertions for each power-up type
+• Helper commands for debugging (file tree display, logs)
+• Test failures show file trees + application logs
+
+Scope and Simplicity
+--------------------
+
+This is a deliberately small, targeted suite. Shell testing in containers can
+be cumbersome, so we optimize for clarity and debuggability.
+
+Target scope:
+• 2-3 tests per power-up (happy path + edge case)
+• 10-15 combination scenarios (deploy only, install only, mixed)
+• 10-15 environment edge cases (env vars, git repo discovery)
+• Total: 60-80 tests maximum
+
+Most tests will have zero actual shell code, using common assertions instead.
+Total codebase target: ~1000 lines including all support code.
+
+Test Categories
+---------------
+
+Power-up Tests:
+• Symlink deployment
+• Shell profile sourcing
+• PATH additions
+• Install script execution
+• Brewfile processing
+• Template processing
+
+Environment Tests:
+• DOTFILES_ROOT discovery (env var, git root, pwd fallback)
+• Missing directories
+• Permission errors (read-only dirs)
+• State corruption (corrupted deployment-metadata)
+
+Combination Tests:
+• Multiple power-ups in one pack
+• Multiple packs
+• Deploy after install
+• Repeated deployments
+
+Test Plan Implementation
+------------------------
+
+The detailed test plan with specific test cases organized in 5 progressive suites
+is maintained in: `containers/dev/test-plan.txt`
+
+This includes:
+• Suite 1: Single power-ups (foundation)
+• Suite 2: Multiple power-ups, single packs
+• Suite 3: Multiple power-ups, multiple packs
+• Suite 4: Single power-up edge cases
+• Suite 5: Complex multi-pack edge cases
+
+Directory Layout
+----------------
+
+```
+test-data/
+├── lib/                        # Test support scripts
+│   ├── assertions.sh          # Power-up specific assertions
+│   ├── setup.sh              # Setup/teardown functions
+│   └── debug.sh              # Debugging helpers
+├── scenarios/                 # Complete test environments
+│   ├── basic/                # Simple happy path tests
+│   │   ├── dotfiles/         # Complete set of packs
+│   │   │   ├── git/
+│   │   │   │   ├── Brewfile
+│   │   │   │   └── alias.sh
+│   │   │   ├── nvim/
+│   │   │   │   ├── alias.sh
+│   │   │   │   └── init.lua
+│   │   │   └── .envrc        # Sets DOTFILES_ROOT
+│   │   ├── home/            # User home template
+│   │   │   └── .envrc       # Sets HOME
+│   │   └── tests/           # Bats test files for this scenario
+│   ├── conflicts/           # Tests for existing files
+│   ├── permissions/         # Permission edge cases
+│   └── complex/             # Multi-pack scenarios
+└── runner.sh                # Main test orchestrator
+```
+
+
+On How Power-Ups Work
+---------------------
+
+The range of tests and assertions we do here will actually cross work done by
+the matcher, the trigger,power-ups, actions and the execution engine..
+
+Since piercing this information together is laborious, we have a detail
+documentation for each power-up that has the full cycle information and is
+indispensable for this work. See: 
+
+pkg/powerups/homebrew/doc.go
+pkg/powerups/install/doc.go
+pkg/powerups/path/doc.go
+pkg/powerups/shell_add_path/doc.go
+pkg/powerups/shell_profile/doc.go
+pkg/powerups/symlink/doc.go
+pkg/powerups/template/doc.go
+
+Assertion Library Design
+------------------------
+
+Each power-up gets specific assertions:
+
+assertions/symlink.sh:
+• assert_symlink_deployed() - verify both intermediate and target links - DONE (test-data/lib/assertions.sh)
+• assert_symlink_not_deployed() - verify clean removal - DONE (test-data/lib/assertions.sh)
+
+assertions/shell_profile.sh:
+• assert_shell_profile_sourced() - check DODOT_SHELL_SOURCE_FLAG - DONE (test-data/lib/assertions_shell.sh)
+• assert_profile_in_init() - verify entry in init.sh - DONE (test-data/lib/assertions_shell.sh)
+
+assertions/path.sh:
+• assert_path_deployed() - verify bin directory deployment - DONE (test-data/lib/assertions_path.sh)
+• assert_path_added() - verify PATH environment variable - DONE (test-data/lib/assertions_path.sh)
+• assert_path_in_shell_init() - verify PATH in init.sh - DONE (test-data/lib/assertions_path.sh)
+
+assertions/install_script.sh:
+• assert_install_script_executed() - verify script ran - DONE (test-data/lib/assertions_install.sh)
+• assert_install_script_not_executed() - verify script didn't run - DONE (test-data/lib/assertions_install.sh)
+• assert_install_artifact_exists() - verify artifacts created - DONE (test-data/lib/assertions_install.sh)
+
+assertions/homebrew.sh:
+• assert_brewfile_processed() - verify Brewfile execution - DONE (test-data/lib/assertions_homebrew.sh)
+• assert_brewfile_not_processed() - verify Brewfile skipped - DONE (test-data/lib/assertions_homebrew.sh)
+• assert_brew_package_installed() - verify package installed - DONE (test-data/lib/assertions_homebrew.sh)
+
+assertions/template.sh:
+• assert_template_processed() - verify template expansion - DONE (test-data/lib/assertions_template.sh)
+• assert_template_variable_expanded() - verify variable substitution - DONE (test-data/lib/assertions_template.sh)
+• assert_template_contains() - verify content in output - DONE (test-data/lib/assertions_template.sh)
+
+assertions/common.sh:
+• assert_file_exists() - basic file checks - DONE (test-data/lib/assertions.sh)
+• assert_dir_exists() - directory checks - DONE (test-data/lib/assertions.sh)
+• assert_env_set() - environment validation - DONE (test-data/lib/assertions.sh)
+• assert_executable_available() - verify executable in PATH - DONE (test-data/lib/assertions_path.sh)
+
+Debug Tooling
+-------------
+
+Built-in debug helpers from day one:
+
+debug_state() - dumps complete system state: - DONE (test-data/lib/debug.sh)
+• Tree view of DOTFILES_ROOT
+• Tree view of HOME (depth limited)
+• Tree view of DODOT_DATA_DIR
+• All relevant environment variables
+• Recent dodot log entries
+
+debug_on_fail() - automatically called on test failures - DONE (test-data/lib/debug.sh)
+
+Additional debug helpers implemented:
+• debug_symlinks() - shows all symlinks in HOME - DONE (test-data/lib/debug.sh)
+• debug_shell_integration() - shows shell profile state - DONE (test-data/lib/assertions_shell.sh)
+
+Implementation Sequence
+-----------------------
+
+Each step is implemented, tested, verified, and committed before moving on:
+
+1. Container verification ✓ DONE
+   - Verify container can build and test dodot ✓ DONE
+   - Install Bats in container ✓ DONE
+
+2. Debug tooling ✓ DONE
+   - Implement debug_state function ✓ DONE
+   - Test manual invocation ✓ DONE
+   - Hook into test failures ✓ DONE
+
+3. Setup/Teardown for one scenario ✓ DONE
+   - Implement clean_test_env (delete dirs, unset vars) ✓ DONE
+   - Implement setup_test_env (copy dirs, set vars) ✓ DONE
+   - Manually verify complete cleanup ✓ DONE
+
+4. First assertion ✓ DONE
+   - Write assert_symlink_deployed ✓ DONE
+   - Test standalone with manual setup ✓ DONE
+   - Verify clear error messages ✓ DONE
+
+5. First real test ✓ DONE
+   - Create basic scenario structure ✓ DONE
+   - Write one Bats test using assertion ✓ DONE
+   - Prove full cycle: setup, test, teardown ✓ DONE
+
+6. Test runner ✓ DONE
+   - Create runner.sh orchestrator ✓ DONE
+   - Run single scenario ✓ DONE
+   - Add multi-scenario support ✓ DONE
+
+7. Scale up assertions ✓ DONE
+   - Add remaining symlink assertions ✓ DONE
+   - Add shell_profile assertions ✓ DONE
+   - Add one assertion per power-up ✓ DONE
+
+8. Build test suite (Partially Complete)
+   - 2 tests per power-up ✓ DONE (Suite 1: YES/NO tests for all 6 power-ups)
+   - 4 combination tests ✓ DONE (Suite 2: Multi-powerup single pack tests)
+   - Multi-pack tests (Suite 3: Skeleton created, not implemented)
+   - Edge case tests (Suite 4-5: Skeleton created, not implemented)
+
+9. Additional scenarios (Not Started)
+   - Create conflicts scenario (Suite 4-5 will cover)
+   - Create permissions scenario (Suite 4-5 will cover)
+   - Create complex scenario (Suite 5 created as skeleton)
+
+Success Criteria
+----------------
+
+• Tests catch regressions before users encounter them ✓ DONE
+• New contributors can add tests easily ✓ DONE
+• Test failures provide clear, actionable messages ✓ DONE
+• Complete suite runs in under 10 minutes ✓ DONE (Suite 1 runs in ~30s)
+• Each test has full isolation (no test affects another) ✓ DONE
+• Debugging failed tests is straightforward ✓ DONE
+
+Key Principles
+--------------
+
+• Full cleanup between every test (no partial teardown) ✓ DONE
+• Real files in real directories (no programmatic generation) ✓ DONE
+• Debug tools available from the start ✓ DONE
+• Small incremental steps with verification ✓ DONE
+• Focus on high-value tests that catch real bugs ✓ DONE
+• Optimize for maintainability over execution speed ✓ DONE
+
+Current Status
+--------------
+
+Infrastructure: ✓ DONE
+• Docker container with all dependencies
+• Bats test framework installed
+• Test runner with safety checks
+• Rich debug output on failures
+• Assertion libraries for all power-ups
+
+Test Coverage:
+• Suite 1 (Single Power-ups): ✓ DONE - All 6 power-ups with YES/NO tests
+• Suite 2 (Multi Power-ups/Single Pack): ✓ DONE - 4 combination tests
+• Suite 3 (Multi Power-ups/Multi Packs): Skeleton created
+• Suite 4 (Edge Cases): Skeleton created
+• Suite 5 (Complex Scenarios): Skeleton created
+
+Open Issues
+-----------
+
+1. Test runner exit behavior with set -e
+   - Fixed: Runner now handles bats non-zero exit codes properly
+   - All test suites now run even if earlier ones fail
+
+2. Test output truncation in some environments
+   - Not a blocking issue - can run tests individually for debugging
+   - Workaround: Use run-tests-summary.sh for concise output

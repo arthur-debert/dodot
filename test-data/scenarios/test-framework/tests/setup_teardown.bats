@@ -1,35 +1,18 @@
 #!/usr/bin/env bats
 # Test the test framework itself - setup_test_env and clean_test_env functions
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # We'll need to manage our own setup/teardown since we're testing the framework
 setup() {
-    # Save current environment for restoration
-    export TEST_ORIG_HOME="${HOME:-}"
-    export TEST_ORIG_DOTFILES_ROOT="${DOTFILES_ROOT:-}"
-    export TEST_ORIG_DODOT_DATA_DIR="${DODOT_DATA_DIR:-}"
-    
-    # Get the scenario directory
-    export TEST_SCENARIO_DIR="$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
+
+# Cleanup after each test
 teardown() {
-    # Always clean up any test environment
-    clean_test_env
-    
-    # Restore original environment
-    if [ -n "$TEST_ORIG_HOME" ]; then
-        export HOME="$TEST_ORIG_HOME"
-    fi
-    if [ -n "$TEST_ORIG_DOTFILES_ROOT" ]; then
-        export DOTFILES_ROOT="$TEST_ORIG_DOTFILES_ROOT"
-    fi
-    if [ -n "$TEST_ORIG_DODOT_DATA_DIR" ]; then
-        export DODOT_DATA_DIR="$TEST_ORIG_DODOT_DATA_DIR"
-    fi
+    teardown_with_debug
 }
 
 @test "setup_test_env: creates temporary directories" {

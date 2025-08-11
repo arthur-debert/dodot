@@ -1,25 +1,24 @@
 #!/usr/bin/env bats
 # Minimal test for homebrew power-up - happy path only
 
-# Load test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
-source /workspace/test-data/lib/assertions_homebrew.sh
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
 
 # Setup before all tests
 setup() {
-    ensure_dodot_built
-    setup_test_env "$BATS_TEST_DIRNAME/.."
+    setup_with_debug
 }
 
 # Cleanup after each test
+
+# Cleanup after each test
 teardown() {
-    clean_test_env
+    teardown_with_debug
 }
 
 @test "homebrew: YES - Brewfile processed (sentinel exists)" {
     # Run install command on brew pack
-    run dodot install brew
+    dodot_run install brew
     [ "$status" -eq 0 ]
     
     # Verify Brewfile was processed (sentinel created)
@@ -36,7 +35,7 @@ teardown() {
     [ ! -f "$DODOT_DATA_DIR/run-once/homebrew/tools" ]
     
     # Install the tools pack (which has no Brewfile)
-    run dodot install tools
+    dodot_run install tools
     [ "$status" -eq 0 ]
     
     # Verify no brew sentinel was created

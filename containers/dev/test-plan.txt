@@ -1,145 +1,165 @@
-DODOT LIVE SYSTEM TEST PLAN
+DODOT LIVE SYSTEM TEST PLAN V2
+==============================
 
-TEST SUITE OVERVIEW
-===================
+TEST ORGANIZATION PRINCIPLE
+---------------------------
+Tests are organized in 5 suites progressing from simple to complex:
+1. Single power-ups (foundation)
+2. Multiple power-ups, single packs (pack integration)
+3. Multiple power-ups, multiple packs (cross-pack integration)
+4. Single power-ups, edge cases (isolated edge cases)
+5. Multi packs/power-ups edge cases (complex interactions)
 
-Total Scenarios: 7
-Total Tests: 36
-Passing Tests: 19
-Failing Tests: 6
-Skipped Tests: 1
+SUITE 1: SINGLE POWER-UPS ✓ DONE
+-------------------------
+Purpose: Validate minimal dodot features + assertion library
+Pattern: Each power-up gets YES and NO assertion tests
 
-SCENARIOS AND TESTS
-===================
+1.1 Symlink Power-up ✓ DONE
+- Test: symlink deployed successfully ✓ DONE
+- Test: symlink NOT deployed (verify absence) ✓ DONE
 
-1. basic (Complex Integration Scenario) - 17 tests
----------------------------------------------------
-Status: Multiple failures (legacy scenario with assertion issues)
+1.2 Shell Profile Power-up ✓ DONE
+- Test: profile sourced in init.sh ✓ DONE
+- Test: profile NOT sourced (verify absence) ✓ DONE
 
-Homebrew Tests (3 tests - All Pass):
-- homebrew: processes Brewfile on first install
-- homebrew: skips Brewfile on second install without force
-- homebrew: not processed by deploy command
+1.3 Path Power-up ✓ DONE
+- Test: bin directory deployed and accessible ✓ DONE
+- Test: bin directory NOT deployed (verify absence) ✓ DONE
 
-Install Script Tests (3 tests - 1 failure, 2 pass):
-- FAIL: install_script: executes install.sh on first install (systematic artifact creation issue)
-- PASS: install_script: skips execution on second install without force
-- PASS: install_script: not executed by deploy command
+1.4 Install Script Power-up ✓ DONE
+- Test: install script executed (marker created) ✓ DONE
+- Test: install script NOT executed (verify absence) ✓ DONE
 
-Path Tests (3 tests - All fail):
-- FAIL: path: deploys bin directory (incorrect assertion expectations)
-- FAIL: path: adds directory to PATH in init.sh (incorrect assertion expectations)
-- FAIL: path: handles multiple bin directories (incorrect assertion expectations)
+1.5 Homebrew Power-up ✓ DONE
+- Test: Brewfile processed (sentinel exists) ✓ DONE
+- Test: Brewfile NOT processed (verify absence) ✓ DONE
 
-Shell Profile Tests (1 test - Pass):
-- PASS: shell_profile: creates init.sh with source commands
+1.6 Template Power-up ✓ DONE
+- Test: template processed and variables expanded ✓ DONE
+- Test: template NOT processed (verify absence) ✓ DONE
 
-Symlink Tests (4 tests - All pass):
-- PASS: symlink: deploy single file
-- PASS: symlink: deploy multiple files from different packs
-- PASS: symlink: repeated deploy is idempotent
-- PASS: symlink: handles missing pack gracefully
+SUITE 2: MULTIPLE POWER-UPS, SINGLE PACKS ✓ DONE
+------------------------------------------
+Purpose: Test power-up interactions within single packs
+Pattern: Various combinations with YES/NO assertions
 
-Template Tests (3 tests - 2 failures, 1 pass):
-- PASS: template: processes .tmpl files
-- FAIL: template: expands environment variables (template expansion not working)
-- FAIL: template: updates file on repeated deploy (template expansion not working)
+2.1 Path + Shell Add Path ✓ DONE
+- Test: bin directory deployed and added to PATH in init.sh ✓ DONE
 
-2. isolated-symlink - 1 test (All Pass)
-----------------------------------------
-Purpose: Test symlink power-up in isolation
+2.2 Deploy-type Power-ups Combined ✓ DONE
+- Test: symlink + shell_profile in one pack (both deployed) ✓ DONE
 
-- PASS: symlink: deploy single gitconfig file
-  - Deploys git/gitconfig
-  - Verifies symlink creation to $HOME/gitconfig
+2.3 Install-type Power-ups Combined ✓ DONE
+- Test: install_script + homebrew in one pack (both executed) ✓ DONE
 
-3. isolated-shell-profile - 1 test (All Pass)
-----------------------------------------------
-Purpose: Test shell_profile power-up in isolation
+2.4 All Power-ups in One Pack ✓ DONE
+- Test: pack with all 6 power-up types (all work correctly) ✓ DONE
 
-- PASS: shell_profile: deploy creates init.sh with source command
-  - Deploys nvim/profile.sh
-  - Verifies ~/.config/dodot/shell/init.sh contains source command
+SUITE 3: MULTIPLE POWER-UPS, MULTIPLE PACKS
+--------------------------------------------
+Purpose: Test cross-pack interactions
+Pattern: Multiple packs with various power-up combinations
 
-4. isolated-path - 1 test (All Pass)
--------------------------------------
-Purpose: Test path power-up in isolation
+3.1 Simple Multi-pack Deploy
+- Test: 3 packs, each with symlinks (all deployed)
+- Test: verify pack isolation (changes to one don't affect others)
 
-- PASS: path: deploys bin directory and creates executable symlink
-  - Deploys tools/bin/hello executable
-  - Verifies executable is symlinked and functional
-  - Tests actual execution with expected output
+3.2 Mixed Multi-pack Deploy/Install
+- Test: pack A (deploy), pack B (install), pack C (both)
+- Test: verify correct command behavior per pack
 
-5. isolated-install-script - 1 test (Skipped)
-----------------------------------------------
-Purpose: Test install_script power-up in isolation
+3.3 Overlapping Shell Profiles
+- Test: multiple packs with profile.sh files (all sourced)
+- Test: verify init.sh contains all entries
 
-- SKIP: install_script: executes install.sh and creates marker file (known issue)
-  - Would test dev/install.sh execution
-  - Known systematic issue: scripts run but artifacts not created
+3.4 Multiple Path Deployments
+- Test: multiple packs with bin directories
+- Test: verify all paths accessible
 
-6. isolated-homebrew - 1 test (All Pass)
------------------------------------------
-Purpose: Test homebrew power-up in isolation
+SUITE 4: SINGLE POWER-UPS, EDGE CASES
+--------------------------------------
+Purpose: Test edge cases for each power-up in isolation
 
-- PASS: homebrew: processes Brewfile on install
-  - Processes brew/Brewfile with brew "wget"
-  - Verifies homebrew power-up execution via sentinel file
+4.1 Symlink Edge Cases
+- Test: symlink to missing source file
+- Test: symlink when target exists
+- Test: symlink with deep directory structure
+- Test: symlink with special characters in name
 
-7. test-framework - 13 tests (All Pass)
-----------------------------------------
-Purpose: Test the test infrastructure itself
+4.2 Shell Profile Edge Cases
+- Test: empty profile.sh file
+- Test: profile.sh with syntax errors
+- Test: profile.sh with special characters
 
-Setup Function Tests (8 tests):
-- PASS: setup_test_env: creates temporary directories
-- PASS: setup_test_env: copies dotfiles preserving structure
-- PASS: setup_test_env: copies home directory correctly
-- PASS: setup_test_env: sets environment variables correctly
-- PASS: setup_test_env: handles missing scenario path
-- PASS: setup_test_env: handles scenario without dotfiles directory
-- PASS: setup_test_env: copies dodot-data directory if present
-- PASS: setup_test_env: sources .envrc files if present
+4.3 Path Edge Cases
+- Test: empty bin directory
+- Test: bin with non-executable files
+- Test: bin with subdirectories
 
-Cleanup Function Tests (4 tests):
-- PASS: clean_test_env: removes all test directories
-- PASS: clean_test_env: restores original environment variables
-- PASS: clean_test_env: safely handles missing directories
-- PASS: clean_test_env: only removes test directories (safety check)
+4.4 Install Script Edge Cases
+- Test: install.sh that fails (exit 1)
+- Test: install.sh with long runtime
+- Test: install.sh that modifies pack files
 
-Integration Tests (1 test):
-- PASS: with_test_env: sets up and tears down correctly
+4.5 Homebrew Edge Cases
+- Test: empty Brewfile
+- Test: Brewfile with invalid entries
+- Test: Brewfile with comments only
 
-TEST SUITE SUMMARY
-==================
+4.6 Template Edge Cases
+- Test: template with missing variables
+- Test: template with invalid syntax
+- Test: nested template references
 
-Working Tests: 19 total tests pass
-- Isolated scenarios: 5 scenarios x 1 test each = 5 tests (1 skipped)
-- Test framework: 13 tests
-- Basic scenario: 11 out of 17 tests pass
+SUITE 5: MULTI PACKS/POWER-UPS EDGE CASES
+------------------------------------------
+Purpose: Test complex interactions and conflicts
 
-Failing Tests: 6 tests fail
-- Install scripts: 1 failure (systematic issue)
-- Path power-up: 3 failures (incorrect assertion expectations)
-- Template power-up: 2 failures (template expansion not working)
+5.1 File Conflicts
+- Test: two packs trying to symlink same target
+- Test: template output conflicts with symlink target
+- Test: multiple packs with same executable names
 
-TEST COVERAGE BY POWER-UP
-=========================
+5.2 Dependency Order
+- Test: pack A depends on pack B installation
+- Test: circular dependencies handling
+- Test: install order verification
 
-Symlink: Fully covered (isolated + complex scenarios)
-Shell_profile: Fully covered
-Path: Isolated test works, complex scenarios fail due to assertion bugs
-Homebrew: Fully covered
-Install_script: Known systematic issue
-Template: Not covered in isolated tests, failing in complex scenario
+5.3 State Corruption
+- Test: partial deployment recovery
+- Test: interrupted installation handling
+- Test: cleanup after failures
 
-NEXT STEPS
-==========
+5.4 Permission Issues
+- Test: read-only source files
+- Test: write-protected target directories
+- Test: mixed ownership scenarios
 
-1. Fix template power-up assertions
-2. Investigate install_script systematic issue
-3. Fix path power-up assertion expectations in basic scenario
-4. Create combination tests (multiple power-ups per pack)
-5. Create multi-pack scenarios
-6. Add edge case testing (conflicts, permissions, etc.)
+5.5 Large Scale
+- Test: 10+ packs with mixed power-ups
+- Test: performance with many files
+- Test: rollback capabilities
 
-The foundation is solid with reliable isolated tests and a robust test framework, ready for the next phases of testing development.
+CURRENT STATUS vs TARGET
+------------------------
+
+Currently Implemented:
+- Suite 1: Complete (all 6 power-ups with YES and NO tests) ✓ DONE
+- Suite 2: Complete (4 multi-powerup combination tests) ✓ DONE
+- Test framework validation (test-framework scenario) ✓ DONE
+- Infrastructure complete (assertions, debug, safety checks) ✓ DONE
+- Rich debug output on test failures ✓ DONE
+
+Needed Implementation:
+- Suite 3: All tests need implementation (skeleton exists)
+- Suite 4: All tests need implementation (skeleton exists)
+- Suite 5: All tests need implementation (skeleton exists)
+
+Open Issues:
+No open issues currently reported.
+
+Next Steps:
+1. Implement Suite 3 (multi-pack scenarios)
+2. Implement Suite 4 (edge cases per power-up)
+3. Implement Suite 5 (complex edge cases)

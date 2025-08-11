@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repository contains dodot, a stateless dotfiles manager written in Go.
 
-**IMPORTANT**: Follow the developer guidelines in `docs/dev/README.txt` for all development work.
+**IMPORTANT**: Follow the developer guidelines in `docs/dev/` for all development work. Start with `00_getting-started.txxt`.
 
 ## Common Development Commands
 
@@ -27,7 +27,7 @@ This repository contains dodot, a stateless dotfiles manager written in Go.
 
 ## Development Guidelines
 
-**CRITICAL**: Read `docs/dev/README.txt` for comprehensive development standards. Key points:
+**CRITICAL**: Read `docs/dev/10_conventions.txxt` for comprehensive development standards. Key points:
 
 1. **Documentation**: ALL docs must use txxt format, never Markdown
 2. **Code Quality**: Pre-commit hooks are MANDATORY (scripts/lint and scripts/test)

@@ -33,8 +33,15 @@ if [ -f "$DODOT_DATA_DIR/deployment-metadata" ]; then
     source "$DODOT_DATA_DIR/deployment-metadata"
 fi
 
-# This var holds the list of sourced shell profile scripts
-DODOT_SHELL_SOURCE_FLAG=""
+# Reset all tracking environment variables to prevent old values from sticking
+export DODOT_SYMLINKS=""
+export DODOT_SHELL_PROFILES=""
+export DODOT_PATH_DIRS=""
+export DODOT_SHELL_SOURCES=""
+export DODOT_TEMPLATES=""
+export DODOT_INSTALL_SCRIPTS=""
+export DODOT_BREWFILES=""
+
 # Define the deployed directory
 DODOT_DEPLOYED_DIR="$DODOT_DATA_DIR/deployed"
 
@@ -55,7 +62,11 @@ if [ -d "$DODOT_DEPLOYED_DIR/shell_profile" ]; then
                     relative_path="${target#$DODOT_DEPLOYMENT_ROOT/}"
                     # Only add if we successfully got a relative path
                     if [ "$relative_path" != "$target" ]; then
-                        DODOT_SHELL_SOURCE_FLAG="${DODOT_SHELL_SOURCE_FLAG}:${relative_path}"
+                        if [ -z "$DODOT_SHELL_PROFILES" ]; then
+                            DODOT_SHELL_PROFILES="$relative_path"
+                        else
+                            DODOT_SHELL_PROFILES="$DODOT_SHELL_PROFILES:$relative_path"
+                        fi
                     fi
                 fi
             fi
@@ -63,10 +74,9 @@ if [ -d "$DODOT_DEPLOYED_DIR/shell_profile" ]; then
     done
 fi
 
-# Clean up the leading colon and export if we have any sourced files
-if [ -n "$DODOT_SHELL_SOURCE_FLAG" ]; then
-    DODOT_SHELL_SOURCE_FLAG="${DODOT_SHELL_SOURCE_FLAG#:}"
-    export DODOT_SHELL_SOURCE_FLAG
+# Export shell profiles if any were sourced
+if [ -n "$DODOT_SHELL_PROFILES" ]; then
+    export DODOT_SHELL_PROFILES
 fi
 
 # 2. Add all directories to PATH
@@ -77,9 +87,30 @@ if [ -d "$DODOT_DEPLOYED_DIR/path" ]; then
             if [ -e "$dir" ]; then
                 # Prepend to PATH to give precedence to dodot-managed bins
                 export PATH="$dir:$PATH"
+                
+                # Track PATH additions for debugging
+                if [ -n "$DODOT_DEPLOYMENT_ROOT" ]; then
+                    # Get the actual target of the symlink
+                    target=$(readlink "$dir")
+                    # Strip the deployment-time dotfiles root to get relative path
+                    relative_path="${target#$DODOT_DEPLOYMENT_ROOT/}"
+                    # Only add if we successfully got a relative path
+                    if [ "$relative_path" != "$target" ]; then
+                        if [ -z "$DODOT_PATH_DIRS" ]; then
+                            DODOT_PATH_DIRS="$relative_path"
+                        else
+                            DODOT_PATH_DIRS="$DODOT_PATH_DIRS:$relative_path"
+                        fi
+                    fi
+                fi
             fi
         fi
     done
+fi
+
+# Export PATH directories if any were added
+if [ -n "$DODOT_PATH_DIRS" ]; then
+    export DODOT_PATH_DIRS
 fi
 
 # 3. Source additional shell files
@@ -90,9 +121,109 @@ if [ -d "$DODOT_DEPLOYED_DIR/shell_source" ]; then
             if [ -e "$script" ]; then
                 # shellcheck disable=SC1090
                 source "$script"
+                
+                # Track shell sources for debugging
+                if [ -n "$DODOT_DEPLOYMENT_ROOT" ]; then
+                    # Get the actual target of the symlink
+                    target=$(readlink "$script")
+                    # Strip the deployment-time dotfiles root to get relative path
+                    relative_path="${target#$DODOT_DEPLOYMENT_ROOT/}"
+                    # Only add if we successfully got a relative path
+                    if [ "$relative_path" != "$target" ]; then
+                        if [ -z "$DODOT_SHELL_SOURCES" ]; then
+                            DODOT_SHELL_SOURCES="$relative_path"
+                        else
+                            DODOT_SHELL_SOURCES="$DODOT_SHELL_SOURCES:$relative_path"
+                        fi
+                    fi
+                fi
             fi
         fi
     done
+fi
+
+# Export shell sources if any were sourced
+if [ -n "$DODOT_SHELL_SOURCES" ]; then
+    export DODOT_SHELL_SOURCES
+fi
+
+# 4. Track deployed symlinks (for debugging)
+if [ -d "$DODOT_DEPLOYED_DIR/symlink" ] && [ -n "$(ls -A "$DODOT_DEPLOYED_DIR/symlink" 2>/dev/null)" ]; then
+    # Process each file in the directory
+    for symlink_file in "$DODOT_DEPLOYED_DIR/symlink"/.* "$DODOT_DEPLOYED_DIR/symlink"/*; do
+        # Skip . and .. entries
+        case "$(basename "$symlink_file")" in
+            "." | ".." | "*" | ".*") continue ;;
+        esac
+        
+        # Skip if file doesn't exist (glob didn't match)
+        [ -e "$symlink_file" ] || continue
+        
+        
+        if [ -L "$symlink_file" ]; then
+            # Track symlinks for debugging
+            if [ -n "$DODOT_DEPLOYMENT_ROOT" ]; then
+                # Get the actual target of the symlink
+                target=$(readlink "$symlink_file")
+                # Strip the deployment-time dotfiles root to get relative path
+                relative_path="${target#$DODOT_DEPLOYMENT_ROOT/}"
+                
+                
+                # Only add if we successfully got a relative path
+                if [ "$relative_path" != "$target" ]; then
+                    if [ -z "$DODOT_SYMLINKS" ]; then
+                        DODOT_SYMLINKS="$relative_path"
+                    else
+                        DODOT_SYMLINKS="$DODOT_SYMLINKS:$relative_path"
+                    fi
+                fi
+            fi
+        fi
+    done
+fi
+
+# Export symlinks if any exist
+if [ -n "$DODOT_SYMLINKS" ]; then
+    export DODOT_SYMLINKS
+fi
+
+# 5. Track run-once powerups (install scripts and brewfiles)
+# Check install script sentinels
+if [ -d "$DODOT_DATA_DIR/install/sentinels" ]; then
+    for sentinel in "$DODOT_DATA_DIR/install/sentinels"/*; do
+        if [ -f "$sentinel" ]; then
+            pack=$(basename "$sentinel")
+            if [ -z "$DODOT_INSTALL_SCRIPTS" ]; then
+                DODOT_INSTALL_SCRIPTS="$pack"
+            else
+                DODOT_INSTALL_SCRIPTS="$DODOT_INSTALL_SCRIPTS:$pack"
+            fi
+        fi
+    done
+fi
+
+# Export install scripts if any were completed
+if [ -n "$DODOT_INSTALL_SCRIPTS" ]; then
+    export DODOT_INSTALL_SCRIPTS
+fi
+
+# Check homebrew sentinels
+if [ -d "$DODOT_DATA_DIR/homebrew" ]; then
+    for sentinel in "$DODOT_DATA_DIR/homebrew"/*; do
+        if [ -f "$sentinel" ]; then
+            pack=$(basename "$sentinel")
+            if [ -z "$DODOT_BREWFILES" ]; then
+                DODOT_BREWFILES="$pack"
+            else
+                DODOT_BREWFILES="$DODOT_BREWFILES:$pack"
+            fi
+        fi
+    done
+fi
+
+# Export brewfiles if any were completed
+if [ -n "$DODOT_BREWFILES" ]; then
+    export DODOT_BREWFILES
 fi
 
 # Export DODOT_DATA_DIR for potential use by dodot commands
@@ -130,7 +261,17 @@ dodot_should_run_once() {
 # Add a helper function for debugging
 dodot_status() {
     echo "dodot deployment status:"
-    echo "DODOT_DATA_DIR: $DODOT_DATA_DIR"
+    echo ""
+    echo "Data directory: $DODOT_DATA_DIR"
+    echo "Deployment root: ${DODOT_DEPLOYMENT_ROOT:-[not set]}"
+    echo ""
+    echo "Environment variables (relative paths from dotfiles root):"
+    echo "  DODOT_SYMLINKS: ${DODOT_SYMLINKS:-[none]}"
+    echo "  DODOT_SHELL_PROFILES: ${DODOT_SHELL_PROFILES:-[none]}"
+    echo "  DODOT_PATH_DIRS: ${DODOT_PATH_DIRS:-[none]}"
+    echo "  DODOT_SHELL_SOURCES: ${DODOT_SHELL_SOURCES:-[none]}"
+    echo "  DODOT_INSTALL_SCRIPTS: ${DODOT_INSTALL_SCRIPTS:-[none]}"
+    echo "  DODOT_BREWFILES: ${DODOT_BREWFILES:-[none]}"
     echo ""
 
     if [ -d "$DODOT_DEPLOYED_DIR" ]; then
@@ -229,5 +370,53 @@ dodot_status() {
         fi
     else
         echo "No deployments found."
+    fi
+}
+
+# Helper function to display tracked items from environment variables
+dodot_tracked() {
+    echo "dodot tracked deployments (from environment variables):"
+    echo ""
+    
+    if [ -n "$DODOT_SYMLINKS" ]; then
+        echo "Symlinks:"
+        echo "$DODOT_SYMLINKS" | tr ':' '\n' | sed 's/^/  /'
+        echo ""
+    fi
+    
+    if [ -n "$DODOT_SHELL_PROFILES" ]; then
+        echo "Shell profiles:"
+        echo "$DODOT_SHELL_PROFILES" | tr ':' '\n' | sed 's/^/  /'
+        echo ""
+    fi
+    
+    if [ -n "$DODOT_PATH_DIRS" ]; then
+        echo "PATH additions:"
+        echo "$DODOT_PATH_DIRS" | tr ':' '\n' | sed 's/^/  /'
+        echo ""
+    fi
+    
+    if [ -n "$DODOT_SHELL_SOURCES" ]; then
+        echo "Shell sources:"
+        echo "$DODOT_SHELL_SOURCES" | tr ':' '\n' | sed 's/^/  /'
+        echo ""
+    fi
+    
+    if [ -n "$DODOT_INSTALL_SCRIPTS" ]; then
+        echo "Completed install scripts (packs):"
+        echo "$DODOT_INSTALL_SCRIPTS" | tr ':' '\n' | sed 's/^/  /'
+        echo ""
+    fi
+    
+    if [ -n "$DODOT_BREWFILES" ]; then
+        echo "Completed Brewfiles (packs):"
+        echo "$DODOT_BREWFILES" | tr ':' '\n' | sed 's/^/  /'
+        echo ""
+    fi
+    
+    if [ -z "$DODOT_SYMLINKS" ] && [ -z "$DODOT_SHELL_PROFILES" ] && \
+       [ -z "$DODOT_PATH_DIRS" ] && [ -z "$DODOT_SHELL_SOURCES" ] && \
+       [ -z "$DODOT_INSTALL_SCRIPTS" ] && [ -z "$DODOT_BREWFILES" ]; then
+        echo "No tracked deployments found."
     fi
 }

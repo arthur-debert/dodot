@@ -1,7 +1,8 @@
 dodot Development Container
 ===========================
 
-This directory contains the Docker-based development environment for dodot.
+This directory contains the Docker-based development environment for dodot which also serves as the container for 
+live-systems testing.
 
 Quick Start
 -----------
@@ -11,17 +12,11 @@ Quick Start
 4. Run tests: ./run-tests.sh
    - Use -v flag to see build output (quiet by default)
 
-Scripts
--------
-- build.sh: Builds the dodot-dev Docker image
-- run.sh: Runs commands or interactive shell in container
-- run-tests.sh: Builds dodot and runs live system tests
-- validate.sh: Validates container setup
+Inside the container, all scripts/* commands are available including the goreleaser building.
 
-The container includes:
-- Go 1.24.5
-- All development tools (golangci-lint, etc)
-- Bats for integration testing
-- Homebrew for testing
+The repository is mounted at /workspace, so you can edit files on your host machine and see changes reflected in the container.
 
-For more details, see docs/dev/containers.txxt
+When the container runs, it will build a dododt binary under bin/, which will already be in your PATH. Unless the container and the host are using the same architecture, the build will not be usable on the host machine. 
+
+
+

@@ -1,0 +1,4 @@
+# Configuration from pack-a
+pack_name=pack-a
+version=1.0
+setting=value-from-pack-a

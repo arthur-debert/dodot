@@ -1,0 +1,2 @@
+# Zsh configuration
+autoload -U colors && colors

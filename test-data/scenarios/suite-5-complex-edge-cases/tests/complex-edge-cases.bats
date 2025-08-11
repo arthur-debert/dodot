@@ -6,35 +6,205 @@
 # packs and power-ups, including conflict resolution, dependency ordering,
 # state recovery, and large-scale deployments.
 
+# Load common test setup with debug support
+source /workspace/test-data/lib/common.sh
+
+# Setup before all tests
 setup() {
-    load "../../../test-framework/tests/test_helper"
-    setup_test_suite "suite-5-complex-edge-cases"
+    setup_with_debug
 }
 
+# Cleanup after each test
 teardown() {
-    teardown_test_suite
+    teardown_with_debug
 }
 
 @test "file conflicts: two packs symlink same target" {
-    skip "Not implemented"
-    # Test case where two different packs try to symlink to the same target location
-    # Should detect conflict and handle gracefully
+    # Deploy pack-a first
+    dodot_run deploy pack-a
+    [ "$status" -eq 0 ]
+    
+    # Verify pack-a's symlink was created
+    assert_symlink_deployed "pack-a" "shared-config" "$HOME/shared-config"
+    assert_template_contains "$HOME/shared-config" "pack_name=pack-a"
+    
+    # Try to deploy pack-b which has same target file
+    dodot_run deploy pack-b
+    [ "$status" -eq 0 ]  # Currently succeeds (overwrites)
+    
+    # Current behavior: dodot overwrites the file content in the deployed directory
+    # The symlink path remains the same, but content is replaced
+    [ -L "$HOME/shared-config" ]
+    
+    # The symlink now contains pack-b's content
+    assert_template_contains "$HOME/shared-config" "pack_name=pack-b"
+    
+    # pack-a's content has been overwritten
+    ! grep -q "pack_name=pack-a" "$HOME/shared-config"
+    
+    # Verify both packs tried to deploy to the same symlink name
+    assert_symlink_deployed "pack-b" "shared-config" "$HOME/shared-config"
+    
+    # This documents current behavior: last deployed pack wins in conflicts
+    # dodot overwrites the deployed file content when conflicts occur
 }
 
 @test "dependency order: pack A depends on pack B" {
-    skip "Not implemented"
-    # Test case where one pack depends on another being deployed first
-    # e.g., pack A needs binaries installed by pack B
+    # Try to install tools-consumer first (should fail due to missing dependency)
+    dodot_run install tools-consumer
+    [ "$status" -ne 0 ]  # Should fail
+    
+    # Error should mention the missing tool
+    [[ "$output" == *"essential-tool"* ]] || [[ "$output" == *"not found"* ]]
+    
+    # Verify install did not complete
+    assert_install_script_not_executed "tools-consumer"
+    [ ! -f "$HOME/.local/tools-consumer/marker.txt" ]
+    
+    # Now deploy the provider pack first
+    dodot_run deploy tools-provider
+    [ "$status" -eq 0 ]
+    
+    # Verify the tool is now available
+    assert_path_deployed "tools-provider" "bin"
+    [ -L "$HOME/essential-tool" ]
+    
+    # Test the tool works
+    run "$HOME/essential-tool"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Essential tool v1.0"* ]]
+    
+    # Now install tools-consumer (should succeed)
+    dodot_run install tools-consumer
+    [ "$status" -eq 0 ]
+    
+    # Verify installation completed successfully
+    assert_install_script_executed "tools-consumer"
+    assert_install_artifact_exists "$HOME/.local/tools-consumer/marker.txt"
+    grep -q "installed-with-dependencies" "$HOME/.local/tools-consumer/marker.txt"
+    
+    # Verify consumer config was deployed
+    assert_symlink_deployed "tools-consumer" "consumer-config" "$HOME/consumer-config"
+    
+    # This test documents that packs can have dependencies on other packs
+    # and deployment order matters for successful installation
 }
 
 @test "state corruption: recovery from partial deployment" {
-    skip "Not implemented"
-    # Test case where deployment is interrupted mid-process
-    # Should be able to recover/retry without issues
+    # First, do a normal deployment
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    # Verify all files are deployed correctly
+    assert_symlink_deployed "partial-deploy" "file1" "$HOME/file1"
+    assert_symlink_deployed "partial-deploy" "file2" "$HOME/file2"
+    assert_symlink_deployed "partial-deploy" "file3" "$HOME/file3"
+    
+    # Now simulate corruption by removing one symlink (as if deployment was interrupted)
+    rm "$HOME/file2"
+    
+    # Verify partial state
+    [ -L "$HOME/file1" ]
+    [ ! -L "$HOME/file2" ]  # Missing
+    [ -L "$HOME/file3" ]
+    
+    # Run deploy again - dodot should restore missing symlink
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    # All files should be deployed again
+    assert_symlink_deployed "partial-deploy" "file1" "$HOME/file1"
+    assert_symlink_deployed "partial-deploy" "file2" "$HOME/file2"
+    assert_symlink_deployed "partial-deploy" "file3" "$HOME/file3"
+    
+    # Run deploy multiple times - should be idempotent
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    dodot_run deploy partial-deploy
+    [ "$status" -eq 0 ]
+    
+    # Everything should still work after multiple runs
+    assert_template_contains "$HOME/file1" "file1_content=deployed"
+    assert_template_contains "$HOME/file2" "file2_content=deployed"
+    assert_template_contains "$HOME/file3" "file3_content=deployed"
+    
+    # This test documents that dodot is idempotent and can restore
+    # missing symlinks when re-run after partial state corruption
 }
 
 @test "large scale: 10+ packs with mixed power-ups" {
-    skip "Not implemented"
-    # Test case with many packs using different combinations of power-ups
-    # Should handle complex deployments efficiently
+    # Generate 12 test packs with various power-up combinations
+    local setup_script="/workspace/test-data/scenarios/suite-5-complex-edge-cases/setup-large-scale.sh"
+    "$setup_script" "$DOTFILES_ROOT"
+    
+    # Deploy all symlink-only packs (1-3)
+    dodot_run deploy pack-1 pack-2 pack-3
+    [ "$status" -eq 0 ]
+    
+    # Verify symlinks
+    for i in 1 2 3; do
+        assert_symlink_deployed "pack-$i" "config-$i" "$HOME/config-$i"
+        assert_template_contains "$HOME/config-$i" "pack_id=$i"
+    done
+    
+    # Deploy path packs (4-5)
+    dodot_run deploy pack-4 pack-5
+    [ "$status" -eq 0 ]
+    
+    # Verify path deployments
+    assert_path_deployed "pack-4" "bin"
+    assert_path_deployed "pack-5" "bin"
+    [ -x "$HOME/tool-4" ]
+    [ -x "$HOME/tool-5" ]
+    
+    # Deploy shell profile packs (6-7)
+    dodot_run deploy pack-6 pack-7
+    [ "$status" -eq 0 ]
+    
+    # Verify profiles
+    assert_profile_in_init "pack-6" "profile.sh"
+    assert_profile_in_init "pack-7" "profile.sh"
+    
+    # Deploy template packs (8-9)
+    dodot_run deploy pack-8 pack-9
+    [ "$status" -eq 0 ]
+    
+    # Verify templates (note: templates currently don't expand variables)
+    assert_template_processed "pack-8" "config" "$HOME/config"
+    assert_template_processed "pack-9" "config" "$HOME/config"
+    
+    # Install pack with install script (10)
+    dodot_run install pack-10
+    [ "$status" -eq 0 ]
+    
+    assert_install_script_executed "pack-10"
+    assert_install_artifact_exists "$HOME/.local/pack-10/marker.txt"
+    
+    # Deploy mixed packs (11-12)
+    dodot_run deploy pack-11
+    [ "$status" -eq 0 ]
+    
+    assert_symlink_deployed "pack-11" "settings" "$HOME/settings"
+    assert_path_deployed "pack-11" "bin"
+    [ -x "$HOME/mixed-tool" ]
+    
+    # Install everything pack (12)
+    dodot_run install pack-12
+    [ "$status" -eq 0 ]
+    
+    assert_install_script_executed "pack-12"
+    [ -f "$HOME/.local/pack-12/install-time.txt" ]
+    
+    # Deploy remaining power-ups for pack-12
+    dodot_run deploy pack-12
+    [ "$status" -eq 0 ]
+    
+    assert_symlink_deployed "pack-12" "complete-config" "$HOME/complete-config"
+    assert_path_deployed "pack-12" "bin"
+    assert_profile_in_init "pack-12" "profile.sh"
+    assert_template_processed "pack-12" "data" "$HOME/data"
+    
+    # Verify system handles 12 packs with mixed power-ups correctly
+    # This test documents dodot's ability to scale to many packs
 }

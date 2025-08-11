@@ -1,0 +1,41 @@
+                   Quick Start Guide
+
+Get up and running with dodot in 5 minutes.
+
+Installation
+------------
+
+Install dodot using Homebrew:
+
+    brew tap arthur-debert/dodot
+    brew install dodot
+
+Or download a binary from the releases page.
+
+Basic Usage
+-----------
+
+1. Set your dotfiles directory:
+   
+    export DOTFILES_ROOT="$HOME/dotfiles"
+
+2. Create your first pack (a directory of related configs):
+
+    mkdir -p $DOTFILES_ROOT/vim
+    cp ~/.vimrc $DOTFILES_ROOT/vim/vimrc
+
+3. Deploy your configurations:
+
+    dodot deploy vim
+
+That's it! Your vimrc is now symlinked and managed by dodot.
+
+What's Next?
+------------
+
+• Read 10_understanding-dodot.txxt to learn how dodot works
+• See docs/user/powerups.txxt for all available features
+• Check examples/ for common configuration patterns
+
+dodot deploy --all deploys all packs at once.
+dodot list shows what's available to deploy.
