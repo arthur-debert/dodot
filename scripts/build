@@ -39,8 +39,9 @@ echo -e "  Commit:  ${BOLD}$COMMIT${NC}"
 echo -e "  Date:    ${BOLD}$BUILD_DATE${NC}"
 echo
 
-# Ensure vendor directory is used
+# Ensure vendor directory is used and don't auto-download toolchains
 export GOFLAGS="-mod=vendor"
+export GOTOOLCHAIN=local
 
 # Set up LDFLAGS for version embedding
 LDFLAGS="-s -w"
