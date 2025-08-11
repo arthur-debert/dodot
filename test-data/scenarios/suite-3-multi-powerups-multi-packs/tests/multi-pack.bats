@@ -59,7 +59,33 @@ teardown() {
 }
 
 @test "symlink: deploy multiple files from different packs" {
-    skip "Migrated from basic scenario - not implemented"
+    # Deploy all three packs with config files
+    dodot_run deploy tools utils scripts
+    [ "$status" -eq 0 ]
+    
+    # Verify symlinks from each pack
+    assert_symlink_deployed "tools" "tool-config" "$HOME/tool-config"
+    assert_symlink_deployed "utils" "util-config" "$HOME/util-config"
+    assert_symlink_deployed "scripts" "script-config" "$HOME/script-config"
+    
+    # Verify content is accessible through symlinks
+    grep -q "tool_version=1.0" "$HOME/tool-config"
+    grep -q "util_enabled=true" "$HOME/util-config"
+    grep -q "script_mode=production" "$HOME/script-config"
+    
+    # Verify all files are symlinks pointing to the right sources
+    [ -L "$HOME/tool-config" ]
+    [ -L "$HOME/util-config" ]
+    [ -L "$HOME/script-config" ]
+    
+    # Verify symlinks point to correct source files
+    local tool_target=$(readlink "$HOME/tool-config")
+    local util_target=$(readlink "$HOME/util-config")
+    local script_target=$(readlink "$HOME/script-config")
+    
+    [[ "$tool_target" == *"deployed/symlink/tool-config"* ]]
+    [[ "$util_target" == *"deployed/symlink/util-config"* ]]
+    [[ "$script_target" == *"deployed/symlink/script-config"* ]]
 }
 
 @test "multi-pack deploy: 3 packs each with symlinks" {
