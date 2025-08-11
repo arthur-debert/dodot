@@ -1,11 +1,18 @@
 #!/usr/bin/env bats
 # Test the test framework itself - setup_test_env and clean_test_env functions
 
+# Set environment variable to allow test-framework self-tests
+export DODOT_TEST_FRAMEWORK_SELF_TEST=1
+
 # Load common test setup with debug support
 source /workspace/test-data/lib/common.sh
 
 # We'll need to manage our own setup/teardown since we're testing the framework
 setup() {
+    # Set the scenario directory for test-framework tests
+    TEST_SCENARIO_DIR="$BATS_TEST_DIRNAME/.."
+    export TEST_SCENARIO_DIR
+    
     setup_with_debug
 }
 
