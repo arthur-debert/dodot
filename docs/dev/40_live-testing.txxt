@@ -216,55 +216,45 @@ Additional debug helpers implemented:
 • debug_symlinks() - shows all symlinks in HOME - DONE (test-data/lib/debug.sh)
 • debug_shell_integration() - shows shell profile state - DONE (test-data/lib/assertions_shell.sh)
 
-Implementation Sequence
------------------------
+Test Runner Implementation
+--------------------------
 
-Each step is implemented, tested, verified, and committed before moving on:
+The test system uses Bats native capabilities for maximum compatibility:
 
-1. Container verification ✓ DONE
-   - Verify container can build and test dodot ✓ DONE
-   - Install Bats in container ✓ DONE
+• runner-native.sh - Simplified runner leveraging Bats formatters
+• junit-summary.py - Python formatter for human-readable suite summaries
+• Native support for JUnit, TAP, and pretty output formats
 
-2. Debug tooling ✓ DONE
-   - Implement debug_state function ✓ DONE
-   - Test manual invocation ✓ DONE
-   - Hook into test failures ✓ DONE
+Running tests:
+```
+# All tests with summary
+./containers/dev/run-tests-native.sh
 
-3. Setup/Teardown for one scenario ✓ DONE
-   - Implement clean_test_env (delete dirs, unset vars) ✓ DONE
-   - Implement setup_test_env (copy dirs, set vars) ✓ DONE
-   - Manually verify complete cleanup ✓ DONE
+# Specific suite or file
+./containers/dev/run-tests-native.sh test-data/scenarios/suite-1/**/*.bats
 
-4. First assertion ✓ DONE
-   - Write assert_symlink_deployed ✓ DONE
-   - Test standalone with manual setup ✓ DONE
-   - Verify clear error messages ✓ DONE
+# With JUnit output
+./containers/dev/run-tests-native.sh --formatter junit
+```
 
-5. First real test ✓ DONE
-   - Create basic scenario structure ✓ DONE
-   - Write one Bats test using assertion ✓ DONE
-   - Prove full cycle: setup, test, teardown ✓ DONE
+Implementation Status
+---------------------
 
-6. Test runner ✓ DONE
-   - Create runner.sh orchestrator ✓ DONE
-   - Run single scenario ✓ DONE
-   - Add multi-scenario support ✓ DONE
+Infrastructure: ✓ DONE
+• Docker container with all dependencies
+• Bats test framework with native formatters
+• Test runner with suite grouping and summaries
+• JUnit XML output for CI integration
+• Rich debug output on failures
+• Assertion libraries for all power-ups
 
-7. Scale up assertions ✓ DONE
-   - Add remaining symlink assertions ✓ DONE
-   - Add shell_profile assertions ✓ DONE
-   - Add one assertion per power-up ✓ DONE
-
-8. Build test suite (Partially Complete)
-   - 2 tests per power-up ✓ DONE (Suite 1: YES/NO tests for all 6 power-ups)
-   - 4 combination tests ✓ DONE (Suite 2: Multi-powerup single pack tests)
-   - Multi-pack tests (Suite 3: Skeleton created, not implemented)
-   - Edge case tests (Suite 4-5: Skeleton created, not implemented)
-
-9. Additional scenarios (Not Started)
-   - Create conflicts scenario (Suite 4-5 will cover)
-   - Create permissions scenario (Suite 4-5 will cover)
-   - Create complex scenario (Suite 5 created as skeleton)
+Test Coverage: ✓ DONE
+• Suite 1 (Single Power-ups): ✓ DONE - All 6 power-ups with YES/NO tests
+• Suite 2 (Multi Power-ups/Single Pack): ✓ DONE - 4 combination tests
+• Suite 3 (Multi Power-ups/Multi Packs): ✓ DONE - 4 multi-pack tests
+• Suite 4 (Edge Cases): ✓ DONE - 4 edge case tests
+• Suite 5 (Complex Scenarios): ✓ DONE - 4 complex scenarios
+• Test Framework: ✓ DONE - 13 self-tests
 
 Success Criteria
 ----------------
