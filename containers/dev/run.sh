@@ -16,9 +16,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-# Export user ID and group ID
-export USER_UID=$(id -u)
-export USER_GID=$(id -g)
+# Export user ID and group ID (use existing values if set, otherwise use current user)
+export USER_UID=${USER_UID:-$(id -u)}
+export USER_GID=${USER_GID:-$(id -g)}
 
 # Pass through git configuration if available
 if git config --global user.name > /dev/null 2>&1; then
