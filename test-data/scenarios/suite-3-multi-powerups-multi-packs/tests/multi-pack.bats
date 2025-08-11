@@ -31,18 +31,14 @@ teardown() {
     assert_path_deployed "scripts" "bin"
     
     # Verify all bin directories are added to init.sh
-    local init_file="${DODOT_DATA_DIR}/shell/init.sh"
-    [ -f "$init_file" ]
-    
-    # Check that all three paths are in init.sh
-    grep -q "deployed/path/tools-bin" "$init_file"
-    grep -q "deployed/path/utils-bin" "$init_file"
-    grep -q "deployed/path/scripts-bin" "$init_file"
+    assert_path_in_shell_init "$DODOT_DATA_DIR/deployed/path/tools-bin"
+    assert_path_in_shell_init "$DODOT_DATA_DIR/deployed/path/utils-bin"
+    assert_path_in_shell_init "$DODOT_DATA_DIR/deployed/path/scripts-bin"
     
     # Verify the executables are accessible through symlinks
-    [ -L "$HOME/tool1" ]
-    [ -L "$HOME/util1" ]
-    [ -L "$HOME/script1" ]
+    assert_symlink_deployed "tools" "bin/tool1" "$HOME/tool1"
+    assert_symlink_deployed "utils" "bin/util1" "$HOME/util1"
+    assert_symlink_deployed "scripts" "bin/script1" "$HOME/script1"
     
     # Verify running each tool works
     run "$HOME/tool1"
@@ -69,23 +65,9 @@ teardown() {
     assert_symlink_deployed "scripts" "script-config" "$HOME/script-config"
     
     # Verify content is accessible through symlinks
-    grep -q "tool_version=1.0" "$HOME/tool-config"
-    grep -q "util_enabled=true" "$HOME/util-config"
-    grep -q "script_mode=production" "$HOME/script-config"
-    
-    # Verify all files are symlinks pointing to the right sources
-    [ -L "$HOME/tool-config" ]
-    [ -L "$HOME/util-config" ]
-    [ -L "$HOME/script-config" ]
-    
-    # Verify symlinks point to correct source files
-    local tool_target=$(readlink "$HOME/tool-config")
-    local util_target=$(readlink "$HOME/util-config")
-    local script_target=$(readlink "$HOME/script-config")
-    
-    [[ "$tool_target" == *"deployed/symlink/tool-config"* ]]
-    [[ "$util_target" == *"deployed/symlink/util-config"* ]]
-    [[ "$script_target" == *"deployed/symlink/script-config"* ]]
+    assert_template_contains "$HOME/tool-config" "tool_version=1.0"
+    assert_template_contains "$HOME/util-config" "util_enabled=true"
+    assert_template_contains "$HOME/script-config" "script_mode=production"
 }
 
 @test "multi-pack deploy: 3 packs each with symlinks" {
@@ -105,28 +87,10 @@ teardown() {
     assert_symlink_deployed "shell" "bashrc" "$HOME/bashrc"
     assert_symlink_deployed "shell" "zshrc" "$HOME/zshrc"
     
-    # Verify all 6 symlinks exist
-    local expected_files=("gitconfig" "gitignore" "vimrc" "gvimrc" "bashrc" "zshrc")
-    for file in "${expected_files[@]}"; do
-        [ -L "$HOME/$file" ] || {
-            echo "ERROR: Expected symlink $HOME/$file not found"
-            return 1
-        }
-    done
-    
     # Verify content through symlinks
-    grep -q "test@example.com" "$HOME/gitconfig"
-    grep -q "set number" "$HOME/vimrc"
-    grep -q "PS1=" "$HOME/bashrc"
-    
-    # Verify pack isolation - each file points to its own pack
-    local gitconfig_target=$(readlink "$HOME/gitconfig")
-    local vimrc_target=$(readlink "$HOME/vimrc")
-    local bashrc_target=$(readlink "$HOME/bashrc")
-    
-    [[ "$gitconfig_target" == *"deployed/symlink/gitconfig"* ]]
-    [[ "$vimrc_target" == *"deployed/symlink/vimrc"* ]]
-    [[ "$bashrc_target" == *"deployed/symlink/bashrc"* ]]
+    assert_template_contains "$HOME/gitconfig" "test@example.com"
+    assert_template_contains "$HOME/vimrc" "set number"
+    assert_template_contains "$HOME/bashrc" "PS1="
 }
 
 @test "mixed deploy/install: pack A deploy, pack B install, pack C both" {
@@ -150,21 +114,18 @@ teardown() {
     
     # Verify deploy-pack symlinks
     assert_symlink_deployed "deploy-pack" "deploy-config" "$HOME/deploy-config"
-    grep -q "deploy_setting=active" "$HOME/deploy-config"
+    assert_template_contains "$HOME/deploy-config" "deploy_setting=active"
     
     # Verify mixed-pack symlinks (it should have both install and deploy working)
     assert_symlink_deployed "mixed-pack" "mixed-config" "$HOME/mixed-config"
-    grep -q "mixed_mode=hybrid" "$HOME/mixed-config"
+    assert_template_contains "$HOME/mixed-config" "mixed_mode=hybrid"
     
     # Verify that mixed-pack has both install and deploy artifacts
     # Install artifacts from earlier
-    [ -f "$HOME/.local/mixed-pack/marker.txt" ]
-    grep -q "mixed-pack-installed" "$HOME/.local/mixed-pack/marker.txt"
-    
-    # Deploy artifacts now
-    [ -L "$HOME/mixed-config" ]
+    assert_file_exists "$HOME/.local/mixed-pack/marker.txt"
+    assert_template_contains "$HOME/.local/mixed-pack/marker.txt" "mixed-pack-installed"
     
     # Verify install-pack has no deploy artifacts (it should not be deployed)
-    [ ! -f "$HOME/install-pack" ]
-    [ ! -L "$HOME/install-pack" ]
+    assert_file_not_exists "$HOME/install-pack"
+    assert_symlink_not_deployed "$HOME/install-pack"
 }
