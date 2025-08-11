@@ -18,13 +18,36 @@ export DODOT_TEST_CONTAINER=1
 # Prevent Go from auto-downloading toolchains
 export GOTOOLCHAIN=local
 
-# Ensure dodot is built
-if [ ! -x "/workspace/bin/dodot" ]; then
-    echo "Building dodot..." >&2
-    /workspace/scripts/build >&2 || {
+# Ensure Go build cache directory exists with correct permissions
+sudo mkdir -p "$HOME/.cache/go-build" 2>/dev/null || true
+sudo chown -R $(id -u):$(id -g) "$HOME/.cache" 2>/dev/null || true
+
+# Detect OS and architecture inside container
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+case "$ARCH" in
+    x86_64) ARCH="amd64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *) echo "ERROR: Unsupported architecture: $ARCH" >&2; exit 1 ;;
+esac
+BINARY_NAME="dodot.${OS}-${ARCH}"
+
+# Ensure dodot is built for this platform
+if [ ! -x "/workspace/bin/${BINARY_NAME}" ]; then
+    echo "Building dodot for ${OS}/${ARCH}..." >&2
+    # Force the correct GOOS and GOARCH for the container
+    GOOS=${OS} GOARCH=${ARCH} /workspace/scripts/build >&2 || {
         echo "ERROR: Failed to build dodot" >&2
         exit 1
     }
+fi
+
+# Verify the binary actually works
+if ! /workspace/bin/dodot --version >/dev/null 2>&1; then
+    echo "ERROR: dodot binary exists but doesn't work" >&2
+    echo "Expected binary: /workspace/bin/${BINARY_NAME}" >&2
+    ls -la /workspace/bin/ >&2
+    exit 1
 fi
 export PATH="/workspace/bin:$PATH"
 

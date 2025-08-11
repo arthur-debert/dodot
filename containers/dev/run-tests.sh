@@ -12,5 +12,5 @@ set -e
 # Get the directory of this script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Run the runner.sh in base docker container (same as CI), passing all args
-exec "$SCRIPT_DIR/run-base.sh" /workspace/test-data/runner.sh "$@"
+# Run the runner.sh in docker container, passing all args
+exec "$SCRIPT_DIR/run.sh" /workspace/test-data/runner.sh "$@"
