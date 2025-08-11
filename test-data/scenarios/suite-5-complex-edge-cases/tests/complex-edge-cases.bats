@@ -134,7 +134,77 @@ teardown() {
 }
 
 @test "large scale: 10+ packs with mixed power-ups" {
-    skip "Not implemented"
-    # Test case with many packs using different combinations of power-ups
-    # Should handle complex deployments efficiently
+    # Generate 12 test packs with various power-up combinations
+    local setup_script="/workspace/test-data/scenarios/suite-5-complex-edge-cases/setup-large-scale.sh"
+    "$setup_script" "$DOTFILES_ROOT"
+    
+    # Deploy all symlink-only packs (1-3)
+    dodot_run deploy pack-1 pack-2 pack-3
+    [ "$status" -eq 0 ]
+    
+    # Verify symlinks
+    for i in 1 2 3; do
+        assert_symlink_deployed "pack-$i" "config-$i" "$HOME/config-$i"
+        assert_template_contains "$HOME/config-$i" "pack_id=$i"
+    done
+    
+    # Deploy path packs (4-5)
+    dodot_run deploy pack-4 pack-5
+    [ "$status" -eq 0 ]
+    
+    # Verify path deployments
+    assert_path_deployed "pack-4" "bin"
+    assert_path_deployed "pack-5" "bin"
+    [ -x "$HOME/tool-4" ]
+    [ -x "$HOME/tool-5" ]
+    
+    # Deploy shell profile packs (6-7)
+    dodot_run deploy pack-6 pack-7
+    [ "$status" -eq 0 ]
+    
+    # Verify profiles
+    assert_profile_in_init "pack-6" "profile.sh"
+    assert_profile_in_init "pack-7" "profile.sh"
+    
+    # Deploy template packs (8-9)
+    dodot_run deploy pack-8 pack-9
+    [ "$status" -eq 0 ]
+    
+    # Verify templates (note: templates currently don't expand variables)
+    assert_template_processed "pack-8" "config" "$HOME/config"
+    assert_template_processed "pack-9" "config" "$HOME/config"
+    
+    # Install pack with install script (10)
+    dodot_run install pack-10
+    [ "$status" -eq 0 ]
+    
+    assert_install_script_executed "pack-10"
+    assert_install_artifact_exists "$HOME/.local/pack-10/marker.txt"
+    
+    # Deploy mixed packs (11-12)
+    dodot_run deploy pack-11
+    [ "$status" -eq 0 ]
+    
+    assert_symlink_deployed "pack-11" "settings" "$HOME/settings"
+    assert_path_deployed "pack-11" "bin"
+    [ -x "$HOME/mixed-tool" ]
+    
+    # Install everything pack (12)
+    dodot_run install pack-12
+    [ "$status" -eq 0 ]
+    
+    assert_install_script_executed "pack-12"
+    [ -f "$HOME/.local/pack-12/install-time.txt" ]
+    
+    # Deploy remaining power-ups for pack-12
+    dodot_run deploy pack-12
+    [ "$status" -eq 0 ]
+    
+    assert_symlink_deployed "pack-12" "complete-config" "$HOME/complete-config"
+    assert_path_deployed "pack-12" "bin"
+    assert_profile_in_init "pack-12" "profile.sh"
+    assert_template_processed "pack-12" "data" "$HOME/data"
+    
+    # Verify system handles 12 packs with mixed power-ups correctly
+    # This test documents dodot's ability to scale to many packs
 }
