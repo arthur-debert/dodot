@@ -25,8 +25,17 @@ if [ ! -x "/workspace/bin/dodot" ]; then
 fi
 export PATH="/workspace/bin:$PATH"
 
-# If no args provided, run all tests
-if [ $# -eq 0 ]; then
+# Check if any of the args are test files/directories
+has_test_files=false
+for arg in "$@"; do
+    if [[ "$arg" == *.bats ]] || [[ -d "$arg" ]] || [[ -f "$arg" ]]; then
+        has_test_files=true
+        break
+    fi
+done
+
+# If no test files in args, find and append all test files
+if [ "$has_test_files" = false ]; then
     # Find all test files
     test_files=()
     while IFS= read -r -d '' file; do
@@ -38,7 +47,8 @@ if [ $# -eq 0 ]; then
         exit 1
     fi
     
-    set -- "${test_files[@]}"
+    # Append test files to existing args (like --formatter junit)
+    set -- "$@" "${test_files[@]}"
 fi
 
 # Just run bats with whatever args we have

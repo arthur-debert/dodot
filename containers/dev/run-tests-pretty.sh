@@ -1,7 +1,7 @@
 #!/bin/bash
-# Run tests with human-friendly suite-grouped output
+# Run tests with human-friendly output
 #
-# This script runs tests with JUnit output and formats it for human consumption
+# This script runs tests with JUnit formatter and pipes to Python formatter
 
 set -e
 
@@ -26,7 +26,6 @@ Examples:
   $0 test-data/scenarios/suite-1/**/*.bats       # Run specific suite
   $0 test-data/scenarios/**/symlink.bats         # Run specific test
 
-The JUnit XML is saved to test-results.xml for CI use.
 EOF
     exit 0
 }
@@ -40,10 +39,11 @@ echo "Running dodot live system tests..."
 echo "================================="
 echo ""
 
-# Run tests with JUnit output, capturing to file and stdout
-JUNIT_FILE="$PROJECT_ROOT/test-results.xml"
+# Create temp file for XML output
+JUNIT_FILE=$(mktemp)
+trap "rm -f $JUNIT_FILE" EXIT
 
-# Run tests and capture exit code
+# Run tests with JUnit output, capture to temp file
 if "$SCRIPT_DIR/run-tests.sh" --formatter junit "$@" > "$JUNIT_FILE"; then
     exit_code=0
 else
