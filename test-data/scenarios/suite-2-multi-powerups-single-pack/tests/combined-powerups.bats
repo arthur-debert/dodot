@@ -30,19 +30,15 @@ teardown() {
     
     # Verify the bin directory symlink exists in dodot data
     local bin_link="${DODOT_DATA_DIR}/deployed/path/tools-bin"
-    [ -L "$bin_link" ]
     
-    # Verify shell_add_path powerup: check init.sh contains PATH addition
-    local init_file="${DODOT_DATA_DIR}/shell/init.sh"
-    [ -f "$init_file" ]
-    grep -q "export PATH=\"${bin_link}:\$PATH\"" "$init_file"
+    # Verify shell_add_path powerup: PATH addition is in init.sh
+    assert_path_in_shell_init "$bin_link"
     
-    # Note: The actual tool files are symlinked individually, not the directory
-    # So we check for the individual symlink
-    [ -L "$HOME/mytool" ]
+    # Verify the executable is available through the deployed path
+    assert_executable_available "mytool" "tools-bin"
     
-    # Verify running the tool works through the symlink
-    run "$HOME/mytool"
+    # Verify running the tool works through the deployed path
+    run "$bin_link/mytool"
     [ "$status" -eq 0 ]
     [ "$output" = "mytool from tools pack" ]
 }
@@ -63,8 +59,8 @@ teardown() {
     assert_symlink_deployed "shell-config" "gitconfig" "$HOME/gitconfig"
     
     # Verify content is accessible through symlinks
-    grep -q "PS1=" "$HOME/bashrc"
-    grep -q "test@example.com" "$HOME/gitconfig"
+    assert_template_contains "$HOME/bashrc" "PS1="
+    assert_template_contains "$HOME/gitconfig" "test@example.com"
 }
 
 # Test: install_script + homebrew combination for installation
@@ -81,9 +77,7 @@ teardown() {
     assert_install_artifact_exists "$HOME/.local/dev-tools/install-marker.txt"
     
     # Verify marker content
-    run cat "$HOME/.local/dev-tools/install-marker.txt"
-    [ "$status" -eq 0 ]
-    [ "$output" = "dev-tools-installed" ]
+    assert_template_contains "$HOME/.local/dev-tools/install-marker.txt" "dev-tools-installed"
     
     # Verify homebrew powerup: Brewfile was processed
     assert_brewfile_processed "dev-tools"
@@ -122,7 +116,7 @@ teardown() {
     assert_profile_in_init "ultimate" "profile.sh"
     
     # Verify the tool in bin is accessible
-    [ -L "$HOME/ultimate-tool" ]
+    assert_symlink_deployed "ultimate" "bin/ultimate-tool" "$HOME/ultimate-tool"
     run "$HOME/ultimate-tool"
     [ "$status" -eq 0 ]
     [ "$output" = "Ultimate tool v1.0" ]
