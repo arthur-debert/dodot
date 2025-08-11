@@ -37,9 +37,9 @@ if [ $# -gt 0 ]; then
     SCRIPT_PATH="$1"
     shift  # Remove first argument, pass the rest to the script
     
-    echo "Starting dodot development container in script mode..."
-    echo "Executing: $SCRIPT_PATH $@"
-    echo ""
+    echo "Starting dodot development container in script mode..." >&2
+    echo "Executing: $SCRIPT_PATH $@" >&2
+    echo "" >&2
     
     # Run the script and exit, ensuring direnv is loaded first
     docker compose -f "$SCRIPT_DIR/docker-compose.yml" run --rm dodot-dev /bin/bash -c "cd /workspace && direnv allow >/dev/null 2>&1 && eval \"\$(direnv export bash)\" && $SCRIPT_PATH $*"

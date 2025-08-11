@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Simplified test runner using Bats native formatters
-# This runner leverages Bats' built-in capabilities instead of custom logic
+# Minimal test runner - just safety checks and pass everything to Bats
 
 set -e
 
@@ -17,10 +16,7 @@ fi
 export DODOT_TEST_CONTAINER=1
 
 # Ensure dodot is built
-echo "Ensuring dodot is built..."
-if [ -x "/workspace/bin/dodot" ]; then
-    echo "dodot already built"
-else
+if [ ! -x "/workspace/bin/dodot" ]; then
     echo "Building dodot..."
     /workspace/scripts/build || {
         echo "ERROR: Failed to build dodot"
@@ -29,9 +25,9 @@ else
 fi
 export PATH="/workspace/bin:$PATH"
 
-# Set default test pattern if no args provided
+# If no args provided, run all tests
 if [ $# -eq 0 ]; then
-    # Find all test files - bats doesn't expand ** globs
+    # Find all test files
     test_files=()
     while IFS= read -r -d '' file; do
         test_files+=("$file")
@@ -45,30 +41,5 @@ if [ $# -eq 0 ]; then
     set -- "${test_files[@]}"
 fi
 
-# Determine output format
-JUNIT_FILE="/workspace/test-results.xml"
-HUMAN_OUTPUT=true
-
-# Check if we should generate JUnit output
-for arg in "$@"; do
-    if [[ "$arg" == "--formatter=junit" ]] || [[ "$arg" == "--formatter" ]]; then
-        HUMAN_OUTPUT=false
-    fi
-done
-
-echo "Running tests..."
-
-if $HUMAN_OUTPUT; then
-    # Run tests with JUnit output to file, then process for human display
-    bats --formatter junit "$@" > "$JUNIT_FILE"
-    exit_code=$?
-    
-    # Display human-friendly summary
-    python3 /workspace/test-data/junit-summary.py "$JUNIT_FILE"
-    
-    # Preserve the original exit code
-    exit $exit_code
-else
-    # Just run bats with specified formatter
-    bats "$@"
-fi
+# Just run bats with whatever args we have
+exec bats "$@"
