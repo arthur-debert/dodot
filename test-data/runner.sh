@@ -17,9 +17,9 @@ export DODOT_TEST_CONTAINER=1
 
 # Ensure dodot is built
 if [ ! -x "/workspace/bin/dodot" ]; then
-    echo "Building dodot..."
-    /workspace/scripts/build || {
-        echo "ERROR: Failed to build dodot"
+    echo "Building dodot..." >&2
+    /workspace/scripts/build >&2 || {
+        echo "ERROR: Failed to build dodot" >&2
         exit 1
     }
 fi
@@ -43,7 +43,7 @@ if [ "$has_test_files" = false ]; then
     done < <(find /workspace/test-data/scenarios -name "*.bats" -type f -print0 | sort -z)
     
     if [ ${#test_files[@]} -eq 0 ]; then
-        echo "ERROR: No test files found"
+        echo "ERROR: No test files found" >&2
         exit 1
     fi
     
