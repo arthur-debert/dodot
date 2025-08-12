@@ -225,6 +225,13 @@ func mapStatusStateToDisplay(state types.StatusState) string {
 	case types.StatusStateConfig:
 		return "config"
 	default:
+		// Log warning for unhandled status states
+		logger := logging.GetLogger("core.pack_status")
+		logger.Warn().
+			Str("state", string(state)).
+			Msg("Unhandled status state in mapStatusStateToDisplay")
+
+		// Default to queue (pending) for unknown states
 		return "queue"
 	}
 }
