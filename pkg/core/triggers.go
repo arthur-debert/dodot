@@ -13,6 +13,7 @@ import (
 )
 
 // GetFiringTriggers processes packs and returns all triggers that match files
+// Deprecated: Use GetFiringTriggersFS instead to support filesystem abstraction
 func GetFiringTriggers(packs []types.Pack) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("core.triggers")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting firing triggers")
@@ -61,6 +62,7 @@ func GetFiringTriggersFS(packs []types.Pack, filesystem types.FS) ([]types.Trigg
 }
 
 // ProcessPackTriggers processes triggers for a single pack
+// Deprecated: Use ProcessPackTriggersFS instead to support filesystem abstraction
 func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("core.triggers").With().
 		Str("pack", pack.Name).
@@ -428,72 +430,29 @@ func walkDirRecursiveFS(filesystem types.FS, path string, info fs.FileInfo, fn f
 		return err
 	}
 
-	// For test filesystems, we need to probe for files
-	// since they might not support ReadDir
-	type readDirFS interface {
-		ReadDir(string) ([]fs.DirEntry, error)
+	// Now that types.FS includes ReadDir, we can use it directly
+	entries, err := filesystem.ReadDir(path)
+	if err != nil {
+		return fn(path, info, err)
 	}
 
-	if rdFS, ok := filesystem.(readDirFS); ok {
-		// Filesystem supports ReadDir
-		entries, err := rdFS.ReadDir(path)
+	for _, entry := range entries {
+		name := entry.Name()
+		subPath := filepath.Join(path, name)
+
+		fileInfo, err := entry.Info()
 		if err != nil {
-			return fn(path, info, err)
-		}
-
-		for _, entry := range entries {
-			name := entry.Name()
-			subPath := filepath.Join(path, name)
-
-			fileInfo, err := entry.Info()
-			if err != nil {
-				if err := fn(subPath, nil, err); err != nil && err != filepath.SkipDir {
-					return err
-				}
-				continue
-			}
-
-			err = walkDirRecursiveFS(filesystem, subPath, fileInfo, fn)
-			if err != nil && err != filepath.SkipDir {
+			if err := fn(subPath, nil, err); err != nil && err != filepath.SkipDir {
 				return err
 			}
+			continue
 		}
-		return nil
-	}
 
-	// For test filesystems, manually probe for common files and subdirectories
-	// This is a simplified approach that works for testing
-	commonFiles := []string{
-		".vimrc", ".zshrc", ".bashrc", ".gitconfig", ".tmux.conf",
-		"vimrc", "zshrc", "bashrc", "gitconfig", "tmux.conf",
-		"init.vim", "init.lua", "config.toml", "config.yaml",
-		"install.sh", "setup.sh", "aliases", "aliases.sh", "functions.sh",
-		".dodotignore", ".dodot.toml",
-	}
-
-	commonDirs := []string{"bin", "config", ".config", "scripts", "lib", "hooks"}
-
-	// Check for common files
-	for _, fileName := range commonFiles {
-		filePath := filepath.Join(path, fileName)
-		if info, err := filesystem.Stat(filePath); err == nil {
-			if err := fn(filePath, info, nil); err != nil && err != filepath.SkipDir {
-				return err
-			}
+		err = walkDirRecursiveFS(filesystem, subPath, fileInfo, fn)
+		if err != nil && err != filepath.SkipDir {
+			return err
 		}
 	}
-
-	// Check for common subdirectories
-	for _, dirName := range commonDirs {
-		dirPath := filepath.Join(path, dirName)
-		if info, err := filesystem.Stat(dirPath); err == nil && info.IsDir() {
-			err = walkDirRecursiveFS(filesystem, dirPath, info, fn)
-			if err != nil && err != filepath.SkipDir {
-				return err
-			}
-		}
-	}
-
 	return nil
 }
 

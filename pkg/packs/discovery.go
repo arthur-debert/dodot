@@ -1,7 +1,6 @@
 package packs
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +15,7 @@ import (
 )
 
 // GetPackCandidates returns all potential pack directories in the dotfiles root
+// Deprecated: Use GetPackCandidatesFS instead to support filesystem abstraction
 func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates")
@@ -87,6 +87,7 @@ func shouldIgnore(name string) bool {
 }
 
 // GetPacks validates and creates Pack instances from candidate paths
+// Deprecated: Use GetPacksFS instead to support filesystem abstraction
 func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Int("count", len(candidates)).Msg("Validating pack candidates")
@@ -247,58 +248,34 @@ func GetPackCandidatesFS(dotfilesRoot string, filesystem types.FS) ([]string, er
 			WithDetail("path", dotfilesRoot)
 	}
 
-	// Try to use ReadDir if the filesystem interface supports it directly
-	type readDirFS interface {
-		ReadDir(string) ([]fs.DirEntry, error)
+	// Now that types.FS includes ReadDir, we can use it directly
+	entries, err := filesystem.ReadDir(dotfilesRoot)
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrFileAccess, "cannot read dotfiles root").
+			WithDetail("path", dotfilesRoot)
 	}
 
-	if rdFS, ok := filesystem.(readDirFS); ok {
-		entries, err := rdFS.ReadDir(dotfilesRoot)
-		if err != nil {
-			return nil, errors.Wrap(err, errors.ErrFileAccess, "cannot read dotfiles root").
-				WithDetail("path", dotfilesRoot)
-		}
-
-		var candidates []string
-		for _, entry := range entries {
-			name := entry.Name()
-
-			// Skip hidden directories (except .config which is common)
-			if strings.HasPrefix(name, ".") && name != ".config" {
-				logger.Trace().Str("name", name).Msg("Skipping hidden directory")
-				continue
-			}
-
-			// Skip ignored patterns
-			if shouldIgnore(name) {
-				logger.Trace().Str("name", name).Msg("Skipping ignored pattern")
-				continue
-			}
-
-			// Only consider directories
-			if entry.IsDir() {
-				fullPath := filepath.Join(dotfilesRoot, name)
-				candidates = append(candidates, fullPath)
-				logger.Trace().Str("path", fullPath).Msg("Found pack candidate")
-			}
-		}
-
-		// Sort for consistent ordering
-		sort.Strings(candidates)
-		logger.Info().Int("count", len(candidates)).Msg("Found pack candidates")
-		return candidates, nil
-	}
-
-	// Fallback for test filesystems - manually probe common pack names
 	var candidates []string
-	commonPackNames := []string{"vim", "zsh", "git", "tmux", "bash", "config", "bin",
-		"ssh", "gpg", "emacs", "nvim", "fish", "alacritty", "kitty", "wezterm",
-		"homebrew", "brew", "apt", "dnf", "pacman", "test", "temp", "ignored", "configured"}
+	for _, entry := range entries {
+		name := entry.Name()
 
-	for _, name := range commonPackNames {
-		packPath := filepath.Join(dotfilesRoot, name)
-		if info, err := filesystem.Stat(packPath); err == nil && info.IsDir() {
-			candidates = append(candidates, packPath)
+		// Skip hidden directories (except .config which is common)
+		if strings.HasPrefix(name, ".") && name != ".config" {
+			logger.Trace().Str("name", name).Msg("Skipping hidden directory")
+			continue
+		}
+
+		// Skip ignored patterns
+		if shouldIgnore(name) {
+			logger.Trace().Str("name", name).Msg("Skipping ignored pattern")
+			continue
+		}
+
+		// Only consider directories
+		if entry.IsDir() {
+			fullPath := filepath.Join(dotfilesRoot, name)
+			candidates = append(candidates, fullPath)
+			logger.Trace().Str("path", fullPath).Msg("Found pack candidate")
 		}
 	}
 

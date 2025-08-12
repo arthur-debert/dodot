@@ -13,6 +13,7 @@ type FS interface {
 
 	// Directory operations
 	MkdirAll(path string, perm fs.FileMode) error
+	ReadDir(name string) ([]fs.DirEntry, error)
 
 	// Symlink operations
 	Symlink(oldname, newname string) error
