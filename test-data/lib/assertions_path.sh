@@ -92,7 +92,30 @@ assert_executable_available() {
     return 0
 }
 
+# assert_path_in_env() - Verify directory is actually in current $PATH
+# Args:
+#   $1 - directory path to check for
+assert_path_in_env() {
+    local dir_path="$1"
+    
+    if [ -z "$dir_path" ]; then
+        echo "ERROR: assert_path_in_env requires directory path" >&2
+        return 1
+    fi
+    
+    # Check if the directory is in the current PATH
+    if echo "$PATH" | grep -q "$dir_path"; then
+        echo "PASS: Directory in \$PATH: $dir_path"
+        return 0
+    else
+        echo "FAIL: Directory not in current \$PATH: $dir_path" >&2
+        echo "  Current PATH: $PATH" >&2
+        return 1
+    fi
+}
+
 # Export functions
 export -f assert_path_deployed
 export -f assert_path_in_shell_init
 export -f assert_executable_available
+export -f assert_path_in_env
