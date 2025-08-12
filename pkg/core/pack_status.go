@@ -137,20 +137,30 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 }
 
 // getDisplayPath determines the file path to show for an action
+// The display path should match what users expect to see in the output.
+// For symlinks, we use the target's basename to match the intermediate symlink naming.
+// For source-based actions (install scripts, etc.), we use the source's basename.
+// For target-only actions (write, mkdir), we use the target's basename.
 func getDisplayPath(action types.Action) string {
-	// For most actions, use the source file path relative to pack
 	switch action.Type {
-	case types.ActionTypeLink, types.ActionTypeCopy, types.ActionTypeInstall:
-		// Extract just the filename from the source path
+	case types.ActionTypeLink:
+		// Use target basename to match how intermediate symlinks are named
+		// This ensures consistency with GetDeployedSymlinkPath
+		return filepath.Base(action.Target)
+	case types.ActionTypeCopy, types.ActionTypeInstall:
+		// Source-based actions: show the source file being processed
 		return filepath.Base(action.Source)
 	case types.ActionTypeBrew:
+		// Always "Brewfile" for consistency
 		return "Brewfile"
 	case types.ActionTypePathAdd:
-		// For PATH additions, show the directory name
+		// Show the directory name being added to PATH
 		return filepath.Base(action.Source)
 	case types.ActionTypeShellSource:
+		// Show the script being sourced
 		return filepath.Base(action.Source)
 	case types.ActionTypeWrite, types.ActionTypeMkdir:
+		// Target-based actions: show what's being created
 		return filepath.Base(action.Target)
 	default:
 		// Fallback to description if path is unclear

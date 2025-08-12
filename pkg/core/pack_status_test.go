@@ -69,6 +69,8 @@ func TestGetPackStatus(t *testing.T) {
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				assert.Equal(t, "success", result.Files[0].Status)
 				assert.Contains(t, result.Files[0].Message, "linked to")
+				// Verify display path uses target basename
+				assert.Equal(t, ".vimrc", result.Files[0].Path)
 			},
 		},
 		{
@@ -96,6 +98,8 @@ func TestGetPackStatus(t *testing.T) {
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				assert.Equal(t, "queue", result.Files[0].Status)
 				assert.Contains(t, result.Files[0].Message, "will symlink to")
+				// Verify display path uses target basename
+				assert.Equal(t, ".zshrc", result.Files[0].Path)
 			},
 		},
 		{
@@ -130,6 +134,8 @@ func TestGetPackStatus(t *testing.T) {
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				assert.Equal(t, "error", result.Files[0].Status)
 				assert.Contains(t, result.Files[0].Message, "broken")
+				// Verify display path uses target basename
+				assert.Equal(t, ".config", result.Files[0].Path)
 			},
 		},
 		{
