@@ -10,10 +10,12 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
+	toml "github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog/log"
 )
 
 // GetPackCandidates returns all potential pack directories in the dotfiles root
+// Deprecated: Use GetPackCandidatesFS instead to support filesystem abstraction
 func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates")
@@ -85,6 +87,7 @@ func shouldIgnore(name string) bool {
 }
 
 // GetPacks validates and creates Pack instances from candidate paths
+// Deprecated: Use GetPacksFS instead to support filesystem abstraction
 func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Int("count", len(candidates)).Msg("Validating pack candidates")
@@ -226,4 +229,157 @@ func ValidatePack(packPath string) error {
 
 	logger.Trace().Str("path", packPath).Msg("Pack validation successful")
 	return nil
+}
+
+// GetPackCandidatesFS returns all potential pack directories using the provided filesystem
+func GetPackCandidatesFS(dotfilesRoot string, filesystem types.FS) ([]string, error) {
+	logger := logging.GetLogger("packs.discovery")
+	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates with FS")
+
+	// Validate dotfiles root exists
+	info, err := filesystem.Stat(dotfilesRoot)
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrNotFound, "dotfiles root does not exist").
+			WithDetail("path", dotfilesRoot)
+	}
+
+	if !info.IsDir() {
+		return nil, errors.New(errors.ErrInvalidInput, "dotfiles root is not a directory").
+			WithDetail("path", dotfilesRoot)
+	}
+
+	// Now that types.FS includes ReadDir, we can use it directly
+	entries, err := filesystem.ReadDir(dotfilesRoot)
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrFileAccess, "cannot read dotfiles root").
+			WithDetail("path", dotfilesRoot)
+	}
+
+	var candidates []string
+	for _, entry := range entries {
+		name := entry.Name()
+
+		// Skip hidden directories (except .config which is common)
+		if strings.HasPrefix(name, ".") && name != ".config" {
+			logger.Trace().Str("name", name).Msg("Skipping hidden directory")
+			continue
+		}
+
+		// Skip ignored patterns
+		if shouldIgnore(name) {
+			logger.Trace().Str("name", name).Msg("Skipping ignored pattern")
+			continue
+		}
+
+		// Only consider directories
+		if entry.IsDir() {
+			fullPath := filepath.Join(dotfilesRoot, name)
+			candidates = append(candidates, fullPath)
+			logger.Trace().Str("path", fullPath).Msg("Found pack candidate")
+		}
+	}
+
+	// Sort for consistent ordering
+	sort.Strings(candidates)
+	logger.Info().Int("count", len(candidates)).Msg("Found pack candidates")
+	return candidates, nil
+}
+
+// GetPacksFS validates and creates Pack instances from candidate paths using the provided filesystem
+func GetPacksFS(candidates []string, filesystem types.FS) ([]types.Pack, error) {
+	logger := logging.GetLogger("packs.discovery")
+	logger.Trace().Int("count", len(candidates)).Msg("Validating pack candidates with FS")
+
+	var packs []types.Pack
+
+	for _, candidatePath := range candidates {
+		pack, err := loadPackFS(candidatePath, filesystem)
+		if err != nil {
+			// Log the error but continue with other packs
+			logger.Warn().
+				Err(err).
+				Str("path", candidatePath).
+				Msg("Failed to load pack, skipping")
+			continue
+		}
+
+		// Note: We include ignored packs in the list for status display
+		// The actual processing will handle them appropriately
+
+		packs = append(packs, pack)
+		logger.Trace().
+			Str("name", pack.Name).
+			Str("path", pack.Path).
+			Msg("Loaded pack")
+	}
+
+	// Sort packs by name for consistent ordering
+	sort.Slice(packs, func(i, j int) bool {
+		return packs[i].Name < packs[j].Name
+	})
+
+	logger.Info().Int("count", len(packs)).Msg("Loaded packs")
+	return packs, nil
+}
+
+// loadPackFS creates a Pack instance from a directory path using the provided filesystem
+func loadPackFS(packPath string, filesystem types.FS) (types.Pack, error) {
+	logger := log.With().Str("path", packPath).Logger()
+
+	// Verify the path exists and is accessible
+	info, err := filesystem.Stat(packPath)
+	if err != nil {
+		return types.Pack{}, errors.Wrap(err, errors.ErrPackAccess, "cannot access pack directory").
+			WithDetail("path", packPath)
+	}
+
+	if !info.IsDir() {
+		return types.Pack{}, errors.New(errors.ErrPackInvalid, "pack path is not a directory").
+			WithDetail("path", packPath)
+	}
+
+	// Extract pack name from directory
+	packName := filepath.Base(packPath)
+
+	// Create base pack
+	pack := types.Pack{
+		Name:     packName,
+		Path:     packPath,
+		Metadata: make(map[string]interface{}),
+	}
+
+	// Load pack configuration if it exists
+	configPath := filepath.Join(packPath, ".dodot.toml")
+	if _, err := filesystem.Stat(configPath); err == nil {
+		packConfig, err := loadPackConfigFS(configPath, filesystem)
+		if err != nil {
+			return types.Pack{}, errors.Wrap(err, errors.ErrConfigLoad, "failed to load pack config").
+				WithDetail("pack", packName).
+				WithDetail("configPath", configPath)
+		}
+		pack.Config = packConfig
+	}
+
+	logger.Trace().
+		Str("name", pack.Name).
+		Bool("hasConfig", err == nil).
+		Msg("Pack loaded successfully")
+
+	return pack, nil
+}
+
+// loadPackConfigFS reads and parses a pack's .dodot.toml configuration file using the provided filesystem
+func loadPackConfigFS(configPath string, filesystem types.FS) (types.PackConfig, error) {
+	data, err := filesystem.ReadFile(configPath)
+	if err != nil {
+		return types.PackConfig{}, err
+	}
+
+	// Parse the config from bytes
+	var config types.PackConfig
+	if err := toml.Unmarshal(data, &config); err != nil {
+		return types.PackConfig{}, errors.Wrap(err, errors.ErrConfigParse, "failed to parse TOML")
+	}
+
+	return config, nil
 }

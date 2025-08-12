@@ -1,11 +1,12 @@
 package install
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/arthur-debert/dodot/pkg/commands/internal"
-	"github.com/arthur-debert/dodot/pkg/errors"
+	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/shell"
@@ -46,7 +47,12 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Phase 1 (install) failed")
-		return installCtx, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute install actions")
+		// Check if this is a pack not found error and propagate it directly
+		var dodotErr *doerrors.DodotError
+		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+			return installCtx, err // Return the original error to preserve error code
+		}
+		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute install actions")
 	}
 
 	// Phase 2: Run symlinks, shell profiles, etc. (RunModeMany actions)
@@ -62,8 +68,13 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 
 	if err != nil {
 		log.Error().Err(err).Msg("Phase 2 (deploy) failed")
+		// Check if this is a pack not found error and propagate it directly
+		var dodotErr *doerrors.DodotError
+		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+			return mergeExecutionContexts(installCtx, deployCtx), err // Return the original error to preserve error code
+		}
 		// Return combined context with partial results from both phases
-		return mergeExecutionContexts(installCtx, deployCtx), errors.Wrapf(err, errors.ErrActionExecute, "failed to execute deployment actions")
+		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute deployment actions")
 	}
 
 	// Merge results from both phases

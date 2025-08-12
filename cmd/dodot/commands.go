@@ -132,6 +132,56 @@ func initPaths() (*paths.Paths, error) {
 	return p, nil
 }
 
+// handlePackNotFoundError provides detailed error information when packs are not found
+func handlePackNotFoundError(dodotErr *doerrors.DodotError, p types.Pather, operation string) error {
+	// Display detailed error information
+	fmt.Fprintf(os.Stderr, "\nError: Pack(s) not found\n\n")
+	fmt.Fprintf(os.Stderr, "Searching for your dotfiles root:\n")
+
+	// Show the search process
+	if envRoot := os.Getenv("DOTFILES_ROOT"); envRoot != "" {
+		fmt.Fprintf(os.Stderr, "  1. $DOTFILES_ROOT is set to: %s\n", envRoot)
+	} else {
+		fmt.Fprintf(os.Stderr, "  1. $DOTFILES_ROOT not set: searching for dotfiles repo\n")
+
+		if source, ok := dodotErr.Details["source"].(string); ok {
+			switch source {
+			case "git repository root":
+				fmt.Fprintf(os.Stderr, "  2. Found git repository root: %s\n", p.DotfilesRoot())
+			case "current working directory (fallback)":
+				fmt.Fprintf(os.Stderr, "  2. No git repo found: using current directory\n")
+				fmt.Fprintf(os.Stderr, "  3. Using: %s\n", p.DotfilesRoot())
+			}
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "\n")
+
+	// Show what we were looking for
+	if notFound, ok := dodotErr.Details["notFound"].([]string); ok && len(notFound) > 0 {
+		fmt.Fprintf(os.Stderr, "Looking for pack(s): %v\n", notFound)
+		fmt.Fprintf(os.Stderr, "No directory named \"%s\" in %s\n\n", notFound[0], p.DotfilesRoot())
+	}
+
+	// Show available packs if any
+	if available, ok := dodotErr.Details["available"].([]string); ok {
+		if len(available) == 0 {
+			fmt.Fprintf(os.Stderr, "No packs found in %s\n", p.DotfilesRoot())
+			fmt.Fprintf(os.Stderr, "This might mean:\n")
+			fmt.Fprintf(os.Stderr, "  - The directory has no subdirectories\n")
+			fmt.Fprintf(os.Stderr, "  - All subdirectories have .dodotignore files\n")
+			fmt.Fprintf(os.Stderr, "  - All subdirectories are empty\n")
+		} else {
+			fmt.Fprintf(os.Stderr, "Available packs in %s:\n", p.DotfilesRoot())
+			for _, pack := range available {
+				fmt.Fprintf(os.Stderr, "  - %s\n", pack)
+			}
+		}
+	}
+
+	return fmt.Errorf("%s failed", operation)
+}
+
 // packNamesCompletion provides shell completion for pack names
 func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// Initialize paths
@@ -206,52 +256,7 @@ func newDeployCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					// Display detailed error information
-					fmt.Fprintf(os.Stderr, "\nError: Pack(s) not found\n\n")
-					fmt.Fprintf(os.Stderr, "Searching for your dotfiles root:\n")
-
-					// Show the search process
-					if envRoot := os.Getenv("DOTFILES_ROOT"); envRoot != "" {
-						fmt.Fprintf(os.Stderr, "  1. $DOTFILES_ROOT is set to: %s\n", envRoot)
-					} else {
-						fmt.Fprintf(os.Stderr, "  1. $DOTFILES_ROOT not set: searching for dotfiles repo\n")
-
-						if source, ok := dodotErr.Details["source"].(string); ok {
-							switch source {
-							case "git repository root":
-								fmt.Fprintf(os.Stderr, "  2. Found git repository root: %s\n", p.DotfilesRoot())
-							case "current working directory (fallback)":
-								fmt.Fprintf(os.Stderr, "  2. No git repo found: using current directory\n")
-								fmt.Fprintf(os.Stderr, "  3. Using: %s\n", p.DotfilesRoot())
-							}
-						}
-					}
-
-					fmt.Fprintf(os.Stderr, "\n")
-
-					// Show what we were looking for
-					if notFound, ok := dodotErr.Details["notFound"].([]string); ok && len(notFound) > 0 {
-						fmt.Fprintf(os.Stderr, "Looking for pack(s): %v\n", notFound)
-						fmt.Fprintf(os.Stderr, "No directory named \"%s\" in %s\n\n", notFound[0], p.DotfilesRoot())
-					}
-
-					// Show available packs if any
-					if available, ok := dodotErr.Details["available"].([]string); ok {
-						if len(available) == 0 {
-							fmt.Fprintf(os.Stderr, "No packs found in %s\n", p.DotfilesRoot())
-							fmt.Fprintf(os.Stderr, "This might mean:\n")
-							fmt.Fprintf(os.Stderr, "  - The directory has no subdirectories\n")
-							fmt.Fprintf(os.Stderr, "  - All subdirectories have .dodotignore files\n")
-							fmt.Fprintf(os.Stderr, "  - All subdirectories are empty\n")
-						} else {
-							fmt.Fprintf(os.Stderr, "Available packs in %s:\n", p.DotfilesRoot())
-							for _, pack := range available {
-								fmt.Fprintf(os.Stderr, "  - %s\n", pack)
-							}
-						}
-					}
-
-					return fmt.Errorf("deployment failed")
+					return handlePackNotFoundError(dodotErr, p, "deployment")
 				}
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
@@ -301,6 +306,11 @@ func newInstallCmd() *cobra.Command {
 				EnableHomeSymlinks: true,
 			})
 			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "installation")
+				}
 				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
 
@@ -369,11 +379,33 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 
-			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Strs("packs", args).
+				Msg("Checking pack status")
 
-			// Status command removed as part of Operation elimination
-			// Will be re-implemented in a future release
-			return fmt.Errorf("status command temporarily unavailable (being reimplemented)")
+			// Run status command
+			result, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "status check")
+				}
+				return fmt.Errorf(MsgErrStatusPacks, err)
+			}
+
+			// Display results using text renderer
+			renderer := display.NewTextRenderer(os.Stdout)
+			if err := renderer.Render(result); err != nil {
+				return fmt.Errorf("failed to display status: %w", err)
+			}
+
+			return nil
 		},
 	}
 }

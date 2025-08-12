@@ -6,6 +6,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
 
@@ -69,4 +70,18 @@ func ShouldIgnorePack(packPath string) bool {
 func ShouldIgnoreDirectoryTraversal(dirPath string, relPath string) bool {
 	checker := NewIgnoreChecker()
 	return checker.ShouldIgnoreDirectoryDuringTraversal(dirPath, relPath)
+}
+
+// ShouldIgnorePackFS checks if a pack should be ignored using the provided filesystem
+func ShouldIgnorePackFS(packPath string, filesystem types.FS) bool {
+	cfg := config.Default()
+	ignoreFilePath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.IgnoreFile)
+	if _, err := filesystem.Stat(ignoreFilePath); err == nil {
+		logger := logging.GetLogger("packs.ignore")
+		logger.Debug().
+			Str("pack", filepath.Base(packPath)).
+			Msg("Pack ignored due to .dodotignore file")
+		return true
+	}
+	return false
 }

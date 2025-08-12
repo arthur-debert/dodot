@@ -80,3 +80,28 @@ type Action struct {
 	// Metadata contains any additional data for this action
 	Metadata map[string]interface{}
 }
+
+// CheckStatus checks the deployment status of this action
+func (a *Action) CheckStatus(fs FS, paths Pather) (Status, error) {
+	switch a.Type {
+	case ActionTypeLink:
+		return a.checkSymlinkStatus(fs, paths)
+	case ActionTypeInstall, ActionTypeRun:
+		return a.checkScriptStatus(fs, paths)
+	case ActionTypeBrew:
+		return a.checkBrewStatus(fs, paths)
+	case ActionTypePathAdd:
+		return a.checkPathStatus(fs, paths)
+	case ActionTypeShellSource:
+		return a.checkShellSourceStatus(fs, paths)
+	case ActionTypeWrite, ActionTypeAppend:
+		return a.checkWriteStatus(fs, paths)
+	case ActionTypeMkdir:
+		return a.checkMkdirStatus(fs, paths)
+	default:
+		return Status{
+			State:   StatusStatePending,
+			Message: "unknown action type",
+		}, nil
+	}
+}

@@ -23,6 +23,7 @@ const (
 	ErrConfigLoad  ErrorCode = "CONFIG_LOAD"
 	ErrConfigParse ErrorCode = "CONFIG_PARSE"
 	ErrConfigValid ErrorCode = "CONFIG_INVALID"
+	ErrConfigRead  ErrorCode = "CONFIG_READ"
 
 	// Pack errors
 	ErrPackNotFound ErrorCode = "PACK_NOT_FOUND"
@@ -37,6 +38,7 @@ const (
 	ErrTriggerNotFound ErrorCode = "TRIGGER_NOT_FOUND"
 	ErrTriggerInvalid  ErrorCode = "TRIGGER_INVALID"
 	ErrTriggerMatch    ErrorCode = "TRIGGER_MATCH"
+	ErrTriggerExecute  ErrorCode = "TRIGGER_EXECUTE"
 
 	// PowerUp errors
 	ErrPowerUpNotFound ErrorCode = "POWERUP_NOT_FOUND"
@@ -47,6 +49,7 @@ const (
 	ErrActionInvalid  ErrorCode = "ACTION_INVALID"
 	ErrActionConflict ErrorCode = "ACTION_CONFLICT"
 	ErrActionExecute  ErrorCode = "ACTION_EXECUTE"
+	ErrActionCreate   ErrorCode = "ACTION_CREATE"
 
 	// FileSystem errors
 	ErrFileNotFound  ErrorCode = "FILE_NOT_FOUND"
@@ -56,6 +59,9 @@ const (
 	ErrSymlinkCreate ErrorCode = "SYMLINK_CREATE"
 	ErrSymlinkExists ErrorCode = "SYMLINK_EXISTS"
 	ErrDirCreate     ErrorCode = "DIR_CREATE"
+
+	// Status errors
+	ErrStatusCheck ErrorCode = "STATUS_CHECK"
 )
 
 // DodotError represents a structured error with code and details
