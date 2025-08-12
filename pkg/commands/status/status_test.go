@@ -39,9 +39,6 @@ func (p *testPaths) StateDir() string {
 }
 
 func TestStatusPacks(t *testing.T) {
-	// Skip these tests for now as they require deeper filesystem mocking
-	t.Skip("Skipping tests that require filesystem mocking - need to refactor core functions to accept FS")
-
 	tests := []struct {
 		name          string
 		setupFS       func(fs types.FS, rootDir string)
@@ -216,9 +213,6 @@ func TestStatusPacks(t *testing.T) {
 }
 
 func TestStatusPacks_Integration(t *testing.T) {
-	// Skip these tests for now as they require deeper filesystem mocking
-	t.Skip("Skipping tests that require filesystem mocking - need to refactor core functions to accept FS")
-
 	// This test verifies the full status checking with deployed files
 	fs := testutil.NewTestFS()
 	rootDir := "dotfiles"

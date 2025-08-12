@@ -9,8 +9,6 @@ package status
 import (
 	"io/fs"
 	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
@@ -60,14 +58,14 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	}
 
 	// Get pack candidates using the filesystem
-	candidates, err := getPackCandidatesWithFS(opts.Paths.DotfilesRoot(), opts.FileSystem)
+	candidates, err := packs.GetPackCandidatesFS(opts.Paths.DotfilesRoot(), opts.FileSystem)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrPackNotFound,
 			"failed to get pack candidates")
 	}
 
 	// Get all packs
-	allPacks, err := getPacksWithFS(candidates, opts.FileSystem)
+	allPacks, err := packs.GetPacksFS(candidates, opts.FileSystem)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrPackNotFound,
 			"failed to get packs")
@@ -135,89 +133,6 @@ func (o *osFS) Lstat(name string) (fs.FileInfo, error) {
 	return os.Lstat(name)
 }
 
-// getPackCandidatesWithFS returns all potential pack directories using the provided filesystem
-func getPackCandidatesWithFS(dotfilesRoot string, fs types.FS) ([]string, error) {
-	logger := logging.GetLogger("commands.status")
-
-	// Validate dotfiles root exists
-	info, err := fs.Stat(dotfilesRoot)
-	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrNotFound, "dotfiles root does not exist").
-			WithDetail("path", dotfilesRoot)
-	}
-
-	if !info.IsDir() {
-		return nil, errors.New(errors.ErrInvalidInput, "dotfiles root is not a directory").
-			WithDetail("path", dotfilesRoot)
-	}
-
-	// Read directory entries
-	entries, err := os.ReadDir(dotfilesRoot)
-	if os.IsNotExist(err) {
-		// For test filesystem, we need to manually find directories
-		return findPacksInTestFS(dotfilesRoot, fs)
-	}
-	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrFileAccess, "cannot read dotfiles root").
-			WithDetail("path", dotfilesRoot)
-	}
-
-	var candidates []string
-	for _, entry := range entries {
-		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
-			candidates = append(candidates, filepath.Join(dotfilesRoot, entry.Name()))
-		}
-	}
-
-	logger.Debug().
-		Int("count", len(candidates)).
-		Msg("Found pack candidates")
-
-	return candidates, nil
-}
-
-// findPacksInTestFS is a helper for test filesystems that don't support ReadDir
-func findPacksInTestFS(dotfilesRoot string, fs types.FS) ([]string, error) {
-	// For test filesystem, we'll look for known pack patterns
-	// This is a simplified approach for testing
-	var candidates []string
-
-	// Try common pack names
-	packNames := []string{"vim", "zsh", "git", "tmux", "test", "configured", "temp"}
-
-	for _, name := range packNames {
-		packPath := filepath.Join(dotfilesRoot, name)
-		if info, err := fs.Stat(packPath); err == nil && info.IsDir() {
-			candidates = append(candidates, packPath)
-		}
-	}
-
-	return candidates, nil
-}
-
-// getPacksWithFS creates pack structs from candidates using the provided filesystem
-func getPacksWithFS(candidates []string, fs types.FS) ([]types.Pack, error) {
-	var packs []types.Pack
-
-	for _, candidate := range candidates {
-		// Check if it's a valid pack directory
-		info, err := fs.Stat(candidate)
-		if err != nil || !info.IsDir() {
-			continue
-		}
-
-		// Create a pack
-		packName := filepath.Base(candidate)
-		pack := types.Pack{
-			Name: packName,
-			Path: candidate,
-		}
-
-		// Note: IsIgnored and HasConfig are determined during status check,
-		// not stored on the Pack struct itself
-
-		packs = append(packs, pack)
-	}
-
-	return packs, nil
+func (o *osFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return os.ReadDir(name)
 }

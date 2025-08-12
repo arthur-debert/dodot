@@ -6,6 +6,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -237,10 +238,10 @@ func mapStatusStateToDisplay(state types.StatusState) string {
 }
 
 // GetMultiPackStatus processes multiple packs and returns a DisplayResult
-func GetMultiPackStatus(packs []types.Pack, command string, fs types.FS, paths types.Pather) (*types.DisplayResult, error) {
+func GetMultiPackStatus(packList []types.Pack, command string, fs types.FS, paths types.Pather) (*types.DisplayResult, error) {
 	logger := logging.GetLogger("core.pack_status").With().
 		Str("command", command).
-		Int("packCount", len(packs)).
+		Int("packCount", len(packList)).
 		Logger()
 
 	logger.Debug().Msg("Getting multi-pack status")
@@ -253,11 +254,34 @@ func GetMultiPackStatus(packs []types.Pack, command string, fs types.FS, paths t
 	}
 
 	// Process each pack
-	for _, pack := range packs {
+	for _, pack := range packList {
 		logger.Debug().Str("pack", pack.Name).Msg("Processing pack")
 
+		// Check if pack should be ignored BEFORE processing triggers
+		// This ensures we don't scan ignored packs for privacy reasons
+		if packs.ShouldIgnorePackFS(pack.Path, fs) {
+			logger.Info().Str("pack", pack.Name).Msg("Pack has .dodotignore, skipping trigger processing")
+
+			// Create display pack with just the ignore status
+			displayPack := &types.DisplayPack{
+				Name:      pack.Name,
+				Status:    "ignored",
+				IsIgnored: true,
+				Files: []types.DisplayFile{
+					{
+						PowerUp: "",
+						Path:    ".dodotignore",
+						Status:  "ignored",
+						Message: "dodot is ignoring this dir",
+					},
+				},
+			}
+			result.Packs = append(result.Packs, *displayPack)
+			continue
+		}
+
 		// Get triggers and actions for this pack
-		triggers, err := GetFiringTriggers([]types.Pack{pack})
+		triggers, err := GetFiringTriggersFS([]types.Pack{pack}, fs)
 		if err != nil {
 			logger.Error().Err(err).Str("pack", pack.Name).Msg("Failed to get triggers")
 			return nil, errors.Wrapf(err, errors.ErrTriggerExecute,
