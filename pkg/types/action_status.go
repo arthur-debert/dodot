@@ -1,15 +1,21 @@
 package types
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // checkSymlinkStatus checks if a symlink action has been deployed
 func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
-	// Check intermediate symlink in deployed/symlink/
-	intermediatePath := filepath.Join(paths.DataDir(), "deployed", "symlink", filepath.Base(a.Target))
+	// Get standardized deployed symlink path
+	intermediatePath, err := a.GetDeployedSymlinkPath(paths)
+	if err != nil {
+		return Status{}, err
+	}
 
 	if _, err := fs.Lstat(intermediatePath); err == nil {
 		// Intermediate symlink exists, check if source still exists
@@ -34,71 +40,123 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 
 // checkScriptStatus checks if a script (install/run) action has been executed
 func (a *Action) checkScriptStatus(fs FS, paths Pather) (Status, error) {
-	// Determine sentinel directory based on action type
-	var sentinelDir string
-	switch a.Type {
-	case ActionTypeInstall:
-		sentinelDir = filepath.Join(paths.DataDir(), "install")
-	case ActionTypeRun:
-		// For generic run commands, we might not track them
-		// For now, always return pending
+	// For generic run commands, we don't track them
+	if a.Type == ActionTypeRun {
 		return Status{
 			State:   StatusStatePending,
 			Message: "will execute script",
 		}, nil
 	}
 
-	// Check for sentinel file
-	// Sentinel filename is based on pack name and script name
-	sentinelName := fmt.Sprintf("%s_%s.sentinel", a.Pack, filepath.Base(a.Source))
-	sentinelPath := filepath.Join(sentinelDir, sentinelName)
+	// Get standardized sentinel info
+	sentinelInfo, err := a.GetSentinelInfo(paths)
+	if err != nil {
+		return Status{}, err
+	}
 
-	if _, err := fs.Stat(sentinelPath); err == nil {
+	// Check if sentinel exists
+	sentinelData, err := fs.ReadFile(sentinelInfo.Path)
+	if err != nil {
+		// Sentinel doesn't exist - not executed yet
 		return Status{
-			State:   StatusStateSuccess,
-			Message: "executed during installation",
+			State:   StatusStatePending,
+			Message: "will execute install script",
 		}, nil
 	}
 
+	// Sentinel exists - parse it to check for modifications
+	checksum, timestamp := parseSentinelData(string(sentinelData))
+
+	// Check if source file still exists and hasn't been modified
+	sourceData, err := fs.ReadFile(a.Source)
+	if err != nil {
+		// Source file deleted - still consider it success but note it
+		return Status{
+			State:   StatusStateSuccess,
+			Message: "executed during installation (source file removed)",
+		}, nil
+	}
+
+	// Calculate current checksum
+	currentChecksum := calculateChecksum(sourceData)
+
+	// Compare checksums
+	if checksum != "" && checksum != currentChecksum {
+		// Script has been modified since execution
+		return Status{
+			State:     StatusStateError,
+			Message:   fmt.Sprintf("executed on %s (source file modified)", timestamp),
+			Timestamp: parseTimestamp(timestamp),
+		}, nil
+	}
+
+	// Script unchanged - successful execution
 	return Status{
-		State:   StatusStatePending,
-		Message: "will execute install script",
+		State:     StatusStateSuccess,
+		Message:   "executed during installation",
+		Timestamp: parseTimestamp(timestamp),
 	}, nil
 }
 
 // checkBrewStatus checks if a Brewfile has been processed
 func (a *Action) checkBrewStatus(fs FS, paths Pather) (Status, error) {
-	// Check for Brewfile sentinel
-	sentinelDir := filepath.Join(paths.DataDir(), "homebrew")
-	sentinelName := fmt.Sprintf("%s_Brewfile.sentinel", a.Pack)
-	sentinelPath := filepath.Join(sentinelDir, sentinelName)
+	// Get standardized sentinel info
+	sentinelInfo, err := a.GetSentinelInfo(paths)
+	if err != nil {
+		return Status{}, err
+	}
 
-	if _, err := fs.Stat(sentinelPath); err == nil {
+	// Check if sentinel exists
+	sentinelData, err := fs.ReadFile(sentinelInfo.Path)
+	if err != nil {
+		// Sentinel doesn't exist - not executed yet
 		return Status{
-			State:   StatusStateSuccess,
-			Message: "homebrew packages installed",
+			State:   StatusStatePending,
+			Message: "will run homebrew install",
 		}, nil
 	}
 
+	// Sentinel exists - parse it to check for modifications
+	checksum, timestamp := parseSentinelData(string(sentinelData))
+
+	// Check if Brewfile still exists and hasn't been modified
+	sourceData, err := fs.ReadFile(a.Source)
+	if err != nil {
+		// Brewfile deleted - still consider it success but note it
+		return Status{
+			State:   StatusStateSuccess,
+			Message: "homebrew packages installed (Brewfile removed)",
+		}, nil
+	}
+
+	// Calculate current checksum
+	currentChecksum := calculateChecksum(sourceData)
+
+	// Compare checksums
+	if checksum != "" && checksum != currentChecksum {
+		// Brewfile has been modified since execution
+		return Status{
+			State:     StatusStateError,
+			Message:   fmt.Sprintf("executed on %s (Brewfile modified)", timestamp),
+			Timestamp: parseTimestamp(timestamp),
+		}, nil
+	}
+
+	// Brewfile unchanged - successful execution
 	return Status{
-		State:   StatusStatePending,
-		Message: "will run homebrew install",
+		State:     StatusStateSuccess,
+		Message:   "homebrew packages installed",
+		Timestamp: parseTimestamp(timestamp),
 	}, nil
 }
 
 // checkPathStatus checks if a directory has been added to PATH
 func (a *Action) checkPathStatus(fs FS, paths Pather) (Status, error) {
-	// Check if path symlink exists in deployed/path/
-	// The symlink name is typically the pack name or directory name
-	pathDir := filepath.Join(paths.DataDir(), "deployed", "path")
-
-	// Try to find a matching symlink in the path directory
-	// This is a simplified check - real implementation might need more logic
-	linkName := filepath.Base(a.Source)
-	if a.Pack != "" {
-		linkName = a.Pack + "_" + linkName
+	// Get standardized deployed path
+	linkPath, err := a.GetDeployedPathPath(paths)
+	if err != nil {
+		return Status{}, err
 	}
-	linkPath := filepath.Join(pathDir, linkName)
 
 	if _, err := fs.Lstat(linkPath); err == nil {
 		return Status{
@@ -115,12 +173,11 @@ func (a *Action) checkPathStatus(fs FS, paths Pather) (Status, error) {
 
 // checkShellSourceStatus checks if a shell script is being sourced
 func (a *Action) checkShellSourceStatus(fs FS, paths Pather) (Status, error) {
-	// Check if script symlink exists in deployed/shell_profile/
-	profileDir := filepath.Join(paths.DataDir(), "deployed", "shell_profile")
-
-	// The symlink name includes pack name for uniqueness
-	linkName := fmt.Sprintf("%s_%s.sh", a.Pack, strings.TrimSuffix(filepath.Base(a.Source), filepath.Ext(a.Source)))
-	linkPath := filepath.Join(profileDir, linkName)
+	// Get standardized deployed shell profile path
+	linkPath, err := a.GetDeployedShellProfilePath(paths)
+	if err != nil {
+		return Status{}, err
+	}
 
 	if _, err := fs.Lstat(linkPath); err == nil {
 		// Get shell type from metadata if available
@@ -182,4 +239,46 @@ func (a *Action) checkMkdirStatus(fs FS, paths Pather) (Status, error) {
 		State:   StatusStatePending,
 		Message: "will create directory",
 	}, nil
+}
+
+// Helper functions
+
+// parseSentinelData parses the sentinel file content
+// Expected format: "checksum:timestamp" or just "timestamp" for legacy sentinels
+func parseSentinelData(data string) (checksum, timestamp string) {
+	parts := strings.SplitN(strings.TrimSpace(data), ":", 2)
+	if len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	// Legacy format with just timestamp
+	return "", parts[0]
+}
+
+// calculateChecksum calculates SHA256 checksum of data
+func calculateChecksum(data []byte) string {
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+// parseTimestamp parses a timestamp string and returns a time pointer
+func parseTimestamp(timestamp string) *time.Time {
+	if timestamp == "" {
+		return nil
+	}
+
+	// Try parsing common formats
+	formats := []string{
+		time.RFC3339,
+		"2006-01-02T15:04:05Z07:00",
+		"2006-01-02 15:04:05",
+		"2006-01-02",
+	}
+
+	for _, format := range formats {
+		if t, err := time.Parse(format, timestamp); err == nil {
+			return &t
+		}
+	}
+
+	return nil
 }

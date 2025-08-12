@@ -129,10 +129,14 @@ func TestActionCheckStatus_Install(t *testing.T) {
 				Pack:   "tools",
 			},
 			setupFS: func(fs types.FS, dataDir string) {
-				// Create sentinel file
+				// Create source file
+				testutil.CreateFileT(t, fs, "dotfiles/tools/install.sh", "install script content")
+				// Create sentinel file with matching checksum
 				sentinelPath := filepath.Join(dataDir, "install", "tools_install.sh.sentinel")
 				testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
-				testutil.CreateFileT(t, fs, sentinelPath, "checksum:timestamp")
+				// Use actual checksum of the content
+				checksum := "8fd3ca7d6ce2b983eca4fe5cd5c33de49c05c6ce4aa2c9b13e9851a3cef006fe"
+				testutil.CreateFileT(t, fs, sentinelPath, checksum+":2025-01-15T10:00:00Z")
 			},
 			expectedState: types.StatusStateSuccess,
 			expectedMsg:   "executed during installation",
@@ -194,10 +198,14 @@ func TestActionCheckStatus_Brew(t *testing.T) {
 				Pack:   "homebrew",
 			},
 			setupFS: func(fs types.FS, dataDir string) {
-				// Create sentinel
+				// Create Brewfile
+				testutil.CreateFileT(t, fs, "dotfiles/homebrew/Brewfile", "brew 'git'\nbrew 'vim'")
+				// Create sentinel with matching checksum
 				sentinelPath := filepath.Join(dataDir, "homebrew", "homebrew_Brewfile.sentinel")
 				testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
-				testutil.CreateFileT(t, fs, sentinelPath, "timestamp")
+				// Use actual checksum of the content
+				checksum := "6800eebff486c0d9a995327105d2268377d376ff8a32c37b1afaaf5b190d7bc9"
+				testutil.CreateFileT(t, fs, sentinelPath, checksum+":2025-01-15")
 			},
 			expectedState: types.StatusStateSuccess,
 			expectedMsg:   "homebrew packages installed",
