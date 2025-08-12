@@ -15,11 +15,12 @@ import (
 
 // testPaths implements types.Pather for testing
 type testPaths struct {
-	dataDir string
+	dotfilesRoot string
+	dataDir      string
 }
 
 func (p *testPaths) DotfilesRoot() string {
-	return "dotfiles"
+	return p.dotfilesRoot
 }
 
 func (p *testPaths) DataDir() string {
@@ -185,7 +186,10 @@ func TestStatusPacks(t *testing.T) {
 			}
 
 			// Create test paths
-			testPaths := &testPaths{dataDir: dataDir}
+			testPaths := &testPaths{
+				dotfilesRoot: rootDir,
+				dataDir:      dataDir,
+			}
 
 			// Run status command
 			result, err := StatusPacks(StatusPacksOptions{
@@ -243,7 +247,10 @@ func TestStatusPacks_Integration(t *testing.T) {
 	testutil.CreateFileT(t, fs, installSentinel, checksum+":2024-01-15T10:00:00Z")
 
 	// Create test paths that return our test directories
-	testPaths := &testPaths{dataDir: dataDir}
+	testPaths := &testPaths{
+		dotfilesRoot: rootDir,
+		dataDir:      dataDir,
+	}
 
 	// Run status command
 	result, err := StatusPacks(StatusPacksOptions{
@@ -292,6 +299,10 @@ func TestStatusPacksOptions(t *testing.T) {
 	result, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: "/non/existent/path",
 		PackNames:    []string{"test"},
+		Paths: &testPaths{
+			dotfilesRoot: "/non/existent/path",
+			dataDir:      t.TempDir(),
+		},
 	})
 
 	// Should get an error about non-existent path
@@ -307,6 +318,10 @@ func TestStatusPacksEmptyDir(t *testing.T) {
 	result, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{},
+		Paths: &testPaths{
+			dotfilesRoot: tmpDir,
+			dataDir:      t.TempDir(),
+		},
 	})
 
 	// Should succeed with empty result
@@ -338,6 +353,10 @@ func TestStatusPacksRealFS(t *testing.T) {
 	result, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{},
+		Paths: &testPaths{
+			dotfilesRoot: tmpDir,
+			dataDir:      t.TempDir(),
+		},
 	})
 
 	require.NoError(t, err)
@@ -362,6 +381,10 @@ func TestStatusPacksRealFS(t *testing.T) {
 	result2, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{"vim"},
+		Paths: &testPaths{
+			dotfilesRoot: tmpDir,
+			dataDir:      t.TempDir(),
+		},
 	})
 
 	require.NoError(t, err)
