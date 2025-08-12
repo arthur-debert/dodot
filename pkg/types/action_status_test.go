@@ -205,7 +205,7 @@ func TestActionCheckStatus_Brew(t *testing.T) {
 				testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
 				// Use actual checksum of the content
 				checksum := "6800eebff486c0d9a995327105d2268377d376ff8a32c37b1afaaf5b190d7bc9"
-				testutil.CreateFileT(t, fs, sentinelPath, checksum+":2025-01-15")
+				testutil.CreateFileT(t, fs, sentinelPath, checksum+":2025-01-15T10:00:00Z")
 			},
 			expectedState: types.StatusStateSuccess,
 			expectedMsg:   "homebrew packages installed",
