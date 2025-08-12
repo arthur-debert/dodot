@@ -8,7 +8,17 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/rs/zerolog"
 )
+
+// handleUnknownEnum logs a warning for unhandled enum values and returns the fallback
+func handleUnknownEnum[T ~string](logger zerolog.Logger, enumType string, value T, context string, fallback string) string {
+	logger.Warn().
+		Str(enumType, string(value)).
+		Str("context", context).
+		Msgf("Unhandled %s in %s", enumType, context)
+	return fallback
+}
 
 // GetPackStatus generates display status for a single pack by checking all its actions
 func GetPackStatus(pack types.Pack, actions []types.Action, fs types.FS, paths types.Pather) (*types.DisplayPack, error) {
@@ -166,15 +176,8 @@ func getDisplayPath(action types.Action) string {
 		// Target-based actions: show what's being created
 		return filepath.Base(action.Target)
 	default:
-		// Log warning for unhandled action types
 		logger := logging.GetLogger("core.pack_status")
-		logger.Warn().
-			Str("actionType", string(action.Type)).
-			Str("action", action.Description).
-			Msg("Unhandled action type in getDisplayPath")
-
-		// Fallback to description if path is unclear
-		return action.Description
+		return handleUnknownEnum(logger, "actionType", action.Type, "getDisplayPath", action.Description)
 	}
 }
 
@@ -197,18 +200,13 @@ func getPowerUpDisplayName(action types.Action) string {
 	case types.ActionTypeMkdir:
 		return "mkdir"
 	default:
-		// Log warning for unhandled action types
 		logger := logging.GetLogger("core.pack_status")
-		logger.Warn().
-			Str("actionType", string(action.Type)).
-			Str("action", action.Description).
-			Msg("Unhandled action type in getPowerUpDisplayName")
-
-		// Use the PowerUpName from the action if available
-		if action.PowerUpName != "" {
-			return action.PowerUpName
+		// Use the PowerUpName from the action if available, otherwise use the action type
+		fallback := action.PowerUpName
+		if fallback == "" {
+			fallback = string(action.Type)
 		}
-		return string(action.Type)
+		return handleUnknownEnum(logger, "actionType", action.Type, "getPowerUpDisplayName", fallback)
 	}
 }
 
@@ -226,14 +224,8 @@ func mapStatusStateToDisplay(state types.StatusState) string {
 	case types.StatusStateConfig:
 		return "config"
 	default:
-		// Log warning for unhandled status states
 		logger := logging.GetLogger("core.pack_status")
-		logger.Warn().
-			Str("state", string(state)).
-			Msg("Unhandled status state in mapStatusStateToDisplay")
-
-		// Default to queue (pending) for unknown states
-		return "queue"
+		return handleUnknownEnum(logger, "state", state, "mapStatusStateToDisplay", "queue")
 	}
 }
 
