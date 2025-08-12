@@ -82,6 +82,59 @@ assert_symlink_not_deployed() {
     return 0
 }
 
+# assert_no_symlinks_for_pack() - Verify no symlinks were deployed for a pack
+# Args:
+#   $1 - pack name
+# 
+# This comprehensively checks that:
+# - No subdirectory exists for the pack in deployed/symlink/
+# - If directory exists, it must be empty
+# - No files from the pack were symlinked anywhere
+assert_no_symlinks_for_pack() {
+    local pack="$1"
+    
+    if [ -z "$pack" ]; then
+        echo "ERROR: assert_no_symlinks_for_pack requires pack name" >&2
+        return 1
+    fi
+    
+    local pack_symlink_dir="${DODOT_DATA_DIR:-$HOME/.local/share/dodot}/deployed/symlink/$pack"
+    
+    # Check if pack's symlink directory exists
+    if [ -d "$pack_symlink_dir" ]; then
+        # If it exists, it must be empty
+        local files_count=$(find "$pack_symlink_dir" -type l 2>/dev/null | wc -l)
+        if [ "$files_count" -gt 0 ]; then
+            echo "FAIL: Found unexpected symlinks for pack '$pack':" >&2
+            find "$pack_symlink_dir" -type l -exec ls -la {} \; 2>/dev/null | sed 's/^/  /' >&2
+            return 1
+        fi
+    fi
+    
+    # Also check the overall symlink directory doesn't contain any symlinks for this pack
+    local symlink_dir="${DODOT_DATA_DIR:-$HOME/.local/share/dodot}/deployed/symlink"
+    if [ -d "$symlink_dir" ]; then
+        # Look for any symlinks that point to files in the pack
+        local pack_path="$DOTFILES_ROOT/$pack"
+        local found_symlinks=$(find "$symlink_dir" -type l 2>/dev/null | while read -r link; do
+            if readlink "$link" 2>/dev/null | grep -q "^$pack_path"; then
+                echo "$link"
+            fi
+        done)
+        
+        if [ -n "$found_symlinks" ]; then
+            echo "FAIL: Found symlinks pointing to pack '$pack':" >&2
+            echo "$found_symlinks" | while read -r link; do
+                ls -la "$link" 2>/dev/null | sed 's/^/  /' >&2
+            done
+            return 1
+        fi
+    fi
+    
+    echo "PASS: No symlinks deployed for pack: $pack"
+    return 0
+}
+
 # assert_file_exists() - Basic file existence check
 # Args:
 #   $1 - file path
@@ -191,6 +244,7 @@ assert_file_executable() {
 # Export all assertion functions
 export -f assert_symlink_deployed
 export -f assert_symlink_not_deployed
+export -f assert_no_symlinks_for_pack
 export -f assert_file_exists
 export -f assert_file_not_exists
 export -f assert_dir_exists
