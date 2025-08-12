@@ -177,6 +177,109 @@ for status checking because:
 The data directory files are the authoritative source for deployment status.
 
 
+Status Checking Design
+----------------------
+
+### Where Status Logic Lives
+
+The status checking logic is implemented as methods on the Action struct. This 
+design decision is based on the principle that **the code that knows how to 
+create something should know how to verify it exists**.
+
+### Action-Based Status Checking
+
+Each Action knows:
+- What it will create or modify
+- Where it will create it  
+- How to check if it was already done
+
+This is implemented by adding a CheckStatus method to the Action struct:
+
+```go
+func (a *Action) CheckStatus(fs synthfs.FS, paths *Paths) (Status, error) {
+    switch a.Type {
+    case ActionTypeLink:
+        return a.checkSymlinkStatus(fs, paths)
+    case ActionTypeRun, ActionTypeInstall:
+        return a.checkScriptStatus(fs, paths)
+    case ActionTypePathAdd:
+        return a.checkPathStatus(fs, paths)
+    case ActionTypeShellSource:
+        return a.checkShellSourceStatus(fs, paths)
+    // ... other action types
+    }
+}
+```
+
+### Benefits of This Approach
+
+1. **Cohesion**: The knowledge of how to create and verify stays together
+2. **No Duplication**: Only the Action knows about intermediate symlinks,
+   sentinel files, etc.
+3. **Extensibility**: New action types automatically include their verification
+   logic
+4. **Testability**: Each action type's status checking can be tested 
+   independently
+
+### Example: Symlink Status Checking
+
+For a symlink action, the status check would:
+1. Check if intermediate symlink exists in `deployed/symlink/`
+2. Verify the symlink chain is intact
+3. Detect if source file was deleted (broken link)
+
+```
+Status States:
+- SUCCESS: "linked to ~/.vimrc" 
+- PENDING: "will symlink to ~/.vimrc"
+- ERROR: "linked to ~/.vimrc (broken - source missing)"
+```
+
+
+Implementation Strategy
+-----------------------
+
+### Bottom-Up Development Approach
+
+Build the status system incrementally, starting with the core building blocks:
+
+1. **Phase 1: Core Action Status Checking**
+   - Implement Action.CheckStatus for basic success/pending states
+   - Focus on simple existence checks:
+     * ActionTypeLink: Does the intermediate symlink exist?
+     * ActionTypeInstall/ActionTypeBrew: Does the sentinel file exist?
+     * ActionTypePathAdd: Does the path symlink exist in the data directory?
+     * ActionTypeShellSource: Is the source file linked in deployed/shell_profile/?
+   - This delivers core value quickly with minimal complexity
+
+2. **Phase 2: Pack-Level Status**
+   - Aggregate action statuses for a single pack
+   - Apply pack status rules (error → alert, etc.)
+   - Handle special files (.dodot.toml, .dodotignore)
+
+3. **Phase 3: Multi-Pack Status**
+   - Iterate over multiple/all packs
+   - Format for display output
+
+4. **Phase 4: Enhanced Status Detection**
+   - Add "broken" state detection in stages:
+     * Stage 1: Detect broken symlinks (source file deleted)
+     * Stage 2: Checksum verification for modified scripts (can defer)
+   - These can be added without changing the core architecture
+
+### Implementation Guidelines
+
+1. **Keep It Simple**: 
+   - No caching layer initially
+   - No complex performance optimizations
+   - Address performance only if users report issues
+
+2. **Data Directory Documentation**:
+   - Document that $DODOT_DATA_DIR contains important state
+   - Warn users not to delete it carelessly
+   - Explain it's the authoritative source for deployment status
+
+
 Implementation Notes
 --------------------
 
@@ -191,3 +294,9 @@ Implementation Notes
 
 4. **Testability**: Status checking can be tested with mock filesystems since
    it only relies on file existence in known locations.
+
+5. **Action-Centric**: Actions are responsible for both execution and 
+   verification, keeping related logic together.
+
+6. **Incremental Delivery**: Start with core status checking, add advanced 
+   features iteratively based on user needs.
