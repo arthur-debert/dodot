@@ -800,15 +800,17 @@ func (e *DirectExecutor) convertBrewAction(sfs *synthfs.SynthFS, action types.Ac
 		sentinelPath := e.paths.SentinelPath("homebrew", action.Pack)
 		sentinelID := fmt.Sprintf("brew_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
 
-		// Write checksum from metadata if available
+		// Write checksum and timestamp
 		checksumContent := "completed"
 		if action.Metadata != nil {
 			if checksum, ok := action.Metadata["checksum"].(string); ok && checksum != "" {
 				checksumContent = checksum
 			}
 		}
+		// Always append RFC3339 timestamp
+		sentinelContent := fmt.Sprintf("%s:%s", checksumContent, time.Now().Format(time.RFC3339))
 
-		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(checksumContent), 0644))
+		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(sentinelContent), 0644))
 	}
 
 	return ops, nil
@@ -881,6 +883,8 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 			checksumContent = checksum
 		}
 	}
+	// Always append RFC3339 timestamp
+	sentinelContent := fmt.Sprintf("%s:%s", checksumContent, time.Now().Format(time.RFC3339))
 
 	if e.force {
 		// If force is enabled, use custom operation to overwrite sentinel file
@@ -895,10 +899,10 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 				return err
 			}
 			// Create new sentinel
-			return fs.WriteFile(sentinelPath, []byte(checksumContent), 0644)
+			return fs.WriteFile(sentinelPath, []byte(sentinelContent), 0644)
 		}))
 	} else {
-		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(checksumContent), 0644))
+		ops = append(ops, sfs.CreateFileWithID(sentinelID, sentinelPath, []byte(sentinelContent), 0644))
 	}
 
 	return ops, nil

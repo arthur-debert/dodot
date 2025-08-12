@@ -266,19 +266,13 @@ func parseTimestamp(timestamp string) *time.Time {
 		return nil
 	}
 
-	// Try parsing common formats
-	formats := []string{
-		time.RFC3339,
-		"2006-01-02T15:04:05Z07:00",
-		"2006-01-02 15:04:05",
-		"2006-01-02",
+	// Only support RFC3339 format
+	t, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		// Return nil for invalid timestamps rather than failing
+		// This handles any legacy sentinels that might exist
+		return nil
 	}
 
-	for _, format := range formats {
-		if t, err := time.Parse(format, timestamp); err == nil {
-			return &t
-		}
-	}
-
-	return nil
+	return &t
 }
