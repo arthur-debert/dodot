@@ -369,11 +369,28 @@ func newStatusCmd() *cobra.Command {
 				return err
 			}
 
-			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Checking status from dotfiles root")
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Strs("packs", args).
+				Msg("Checking pack status")
 
-			// Status command removed as part of Operation elimination
-			// Will be re-implemented in a future release
-			return fmt.Errorf("status command temporarily unavailable (being reimplemented)")
+			// Run status command
+			result, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf(MsgErrStatusPacks, err)
+			}
+
+			// Display results using text renderer
+			renderer := display.NewTextRenderer(os.Stdout)
+			if err := renderer.Render(result); err != nil {
+				return fmt.Errorf("failed to display status: %w", err)
+			}
+
+			return nil
 		},
 	}
 }
