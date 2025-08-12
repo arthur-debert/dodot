@@ -91,7 +91,68 @@ assert_path_added() {
     return 0
 }
 
+# assert_no_profile_for_pack() - Verify no shell profiles from pack are in init.sh
+# Args:
+#   $1 - pack name
+#
+# This checks that NO profiles from the specified pack were added to init.sh
+assert_no_profile_for_pack() {
+    local pack="$1"
+    
+    if [ -z "$pack" ]; then
+        echo "ERROR: assert_no_profile_for_pack requires pack name" >&2
+        return 1
+    fi
+    
+    local init_file="${DODOT_DATA_DIR:-$HOME/.local/share/dodot}/shell/init.sh"
+    
+    # If init.sh doesn't exist, that's fine - no profiles were added
+    if [ ! -f "$init_file" ]; then
+        echo "PASS: No profiles for pack (init.sh doesn't exist): $pack"
+        return 0
+    fi
+    
+    # Check if init.sh contains any source commands for this pack
+    local pack_refs=$(grep -c "# Source.*from $pack" "$init_file" 2>/dev/null || echo "0")
+    if [ "$pack_refs" -gt 0 ]; then
+        echo "FAIL: Found $pack_refs profile references for pack '$pack' in init.sh:" >&2
+        grep "# Source.*from $pack" "$init_file" | sed 's/^/  /' >&2
+        echo "  Full init.sh content:" >&2
+        cat "$init_file" | sed 's/^/    /' >&2
+        return 1
+    fi
+    
+    # Also check for actual source commands pointing to the pack
+    if grep -q "$DOTFILES_ROOT/$pack" "$init_file" 2>/dev/null; then
+        echo "FAIL: Found source commands for pack '$pack' in init.sh:" >&2
+        grep "$DOTFILES_ROOT/$pack" "$init_file" | sed 's/^/  /' >&2
+        return 1
+    fi
+    
+    echo "PASS: No profiles for pack in init.sh: $pack"
+    return 0
+}
+
+# debug_shell_integration() - Print shell integration state
+# Useful for debugging shell profile loading issues
+debug_shell_integration() {
+    echo "=== Shell Integration Debug ===" >&2
+    echo "DODOT_SHELL_SOURCE_FLAG: ${DODOT_SHELL_SOURCE_FLAG:-<not set>}" >&2
+    
+    local init_file="${DODOT_DATA_DIR:-$HOME/.local/share/dodot}/shell/init.sh"
+    if [ -f "$init_file" ]; then
+        echo "init.sh contents:" >&2
+        cat "$init_file" | sed 's/^/  /' >&2
+    else
+        echo "init.sh not found at: $init_file" >&2
+    fi
+    
+    echo "=== End Shell Debug ===" >&2
+}
+
 # Export functions
 export -f assert_shell_profile_sourced
 export -f assert_profile_in_init
 export -f assert_path_added
+export -f assert_no_profile_for_pack
+export -f debug_shell_integration

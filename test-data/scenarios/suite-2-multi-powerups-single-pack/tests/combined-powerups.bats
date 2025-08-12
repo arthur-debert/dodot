@@ -101,3 +101,57 @@ teardown() {
     [ "$status" -eq 0 ]
     [ "$output" = "Ultimate tool v1.0" ]
 }
+
+# NEGATIVE TESTS: Verify power-ups respect command boundaries
+
+# Test: Deploy command should NOT run install-type power-ups
+@test "negative: deploy on install-only pack (should not run install powerups)" {
+    # The dev-tools pack has install.sh and Brewfile (install-only power-ups)
+    # Running deploy should succeed but NOT execute these power-ups
+    
+    dodot_run deploy dev-tools
+    [ "$status" -eq 0 ]
+    
+    # Verify install-type power-ups did NOT run
+    assert_install_script_not_executed "dev-tools"
+    assert_brewfile_not_processed "dev-tools"
+    
+    # The command should succeed (exit 0) but skip inappropriate power-ups
+    # This ensures deploy respects its boundaries
+    echo "PASS: Deploy command correctly skipped install-only power-ups"
+}
+
+# Test: Install command DOES run deploy-type power-ups (but deploy doesn't run install-type)
+@test "negative: install vs deploy command boundaries" {
+    # Based on the implementation, install runs BOTH install-type and deploy-type power-ups
+    # This test verifies the asymmetric relationship between commands
+    
+    # First, verify install runs both types on the ultimate pack
+    dodot_run install ultimate
+    [ "$status" -eq 0 ]
+    
+    # Verify BOTH install-type and deploy-type power-ups ran
+    assert_install_script_executed "ultimate"
+    assert_brewfile_processed "ultimate"
+    assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
+    assert_profile_in_init "ultimate" "profile.sh"
+    
+    # Clean up for the next test
+    rm -rf "$DODOT_DATA_DIR"/*
+    rm -f "$HOME/ultimate.conf" "$HOME/config" "$HOME/ultimate-tool"
+    rm -rf "$HOME/.local/ultimate"
+    
+    # Now verify deploy ONLY runs deploy-type power-ups
+    dodot_run deploy ultimate
+    [ "$status" -eq 0 ]
+    
+    # Deploy-type power-ups should have run
+    assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
+    assert_profile_in_init "ultimate" "profile.sh"
+    
+    # But install-type power-ups should NOT have run
+    assert_install_script_not_executed "ultimate"
+    assert_brewfile_not_processed "ultimate"
+    
+    echo "PASS: Command boundaries verified - install runs all, deploy skips install-type"
+}
