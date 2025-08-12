@@ -40,7 +40,10 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 
 // checkScriptStatus checks if a script (install/run) action has been executed
 func (a *Action) checkScriptStatus(fs FS, paths Pather) (Status, error) {
-	// For generic run commands, we don't track them
+	// ActionTypeRun represents ad-hoc commands that should run every time.
+	// Unlike install scripts (which are one-time setup), run commands are
+	// meant to be executed on every deployment, so we don't track their
+	// execution status with sentinel files.
 	if a.Type == ActionTypeRun {
 		return Status{
 			State:   StatusStatePending,
