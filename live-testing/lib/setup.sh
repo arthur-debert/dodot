@@ -4,7 +4,7 @@
 # Safety check for direct sourcing
 if [ -z "$DODOT_TEST_CONTAINER" ]; then
     echo "ERROR: This file should not be sourced outside the test container!"
-    echo "Tests must be run using: ./containers/dev/run-tests.sh"
+    echo "Tests must be run using: ./scripts/run-live-tests"
     return 1 2>/dev/null || exit 1
 fi
 
@@ -65,7 +65,7 @@ clean_test_env() {
 
 # setup_test_env() - Set up a fresh test environment
 # Args:
-#   $1 - scenario path (e.g., test-data/scenarios/basic)
+#   $1 - scenario path (e.g., live-testing/scenarios/basic)
 # 
 # Creates temporary directories and copies scenario files
 setup_test_env() {

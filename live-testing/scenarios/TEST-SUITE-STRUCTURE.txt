@@ -76,13 +76,13 @@ DEPRECATED
 RUNNING TESTS
 -------------
 # Run all tests:
-./containers/dev/run-tests.sh
+./scripts/run-live-tests
 
 # Run specific suite:
-./containers/dev/run.sh bats test-data/scenarios/suite-1-single-powerups/*/tests/*.bats
+./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-powerups/*/tests/*.bats
 
 # Run specific power-up tests:
-./containers/dev/run.sh bats test-data/scenarios/suite-1-single-powerups/symlink/tests/*.bats
+./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-powerups/symlink/tests/*.bats
 
 # Run with failfast:
-./containers/dev/run-tests.sh --failfast
+./scripts/run-live-tests --failfast

@@ -1,2 +1,0 @@
-# Bash configuration
-PS1='[\u@\h \W]\$ '

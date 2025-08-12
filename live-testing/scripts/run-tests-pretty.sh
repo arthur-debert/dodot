@@ -23,8 +23,8 @@ This script:
 
 Examples:
   $0                                              # Run all tests
-  $0 test-data/scenarios/suite-1/**/*.bats       # Run specific suite
-  $0 test-data/scenarios/**/symlink.bats         # Run specific test
+  $0 live-testing/scenarios/suite-1/**/*.bats       # Run specific suite
+  $0 live-testing/scenarios/**/symlink.bats         # Run specific test
 
 EOF
     exit 0

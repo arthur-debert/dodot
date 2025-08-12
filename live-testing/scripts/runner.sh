@@ -8,7 +8,7 @@ if [ ! -f "/.dockerenv" ] && [ ! -f "/run/.containerenv" ]; then
     echo "ERROR: TESTS MUST RUN INSIDE DOCKER CONTAINER"
     echo "Running tests outside container could damage your system!"
     echo ""
-    echo "Please use: ./containers/dev/run-tests.sh"
+    echo "Please use: ./scripts/run-live-tests"
     exit 1
 fi
 

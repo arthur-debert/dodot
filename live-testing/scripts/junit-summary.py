@@ -11,7 +11,7 @@ Usage:
     bats --formatter junit tests/**/*.bats | junit-summary.py -
 
 Example:
-    bats --formatter junit test-data/**/*.bats > results.xml
+    bats --formatter junit live-testing/**/*.bats > results.xml
     junit-summary.py results.xml
 
 The script groups tests by suite name (extracted from the test file path)
@@ -57,8 +57,8 @@ def extract_suite_name(file_path):
     Extract suite name from test file path.
     
     Examples:
-        test-data/scenarios/suite-1-single-powerups/path/tests/path.bats -> suite-1-single-powerups
-        /workspace/test-data/scenarios/suite-2/tests/test.bats -> suite-2
+        live-testing/scenarios/suite-1-single-powerups/path/tests/path.bats -> suite-1-single-powerups
+        /workspace/live-testing/scenarios/suite-2/tests/test.bats -> suite-2
     """
     parts = Path(file_path).parts
     if 'scenarios' in parts:

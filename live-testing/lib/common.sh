@@ -7,18 +7,18 @@ if [ -z "$DODOT_TEST_CONTAINER" ] || [ "$DODOT_TEST_CONTAINER" != "1" ]; then
     # Allow test-framework self-tests to bypass this check
     if [ "$DODOT_TEST_FRAMEWORK_SELF_TEST" != "1" ]; then
         echo "ERROR: Tests must be run inside the Docker container!"
-        echo "Use: ./containers/dev/run-tests.sh"
+        echo "Use: ./scripts/run-live-tests"
         exit 1
     fi
 fi
 
 # Source all test libraries
-source /workspace/test-data/lib/setup.sh
-source /workspace/test-data/lib/assertions.sh
-source /workspace/test-data/lib/debug.sh
+source /workspace/live-testing/lib/setup.sh
+source /workspace/live-testing/lib/assertions.sh
+source /workspace/live-testing/lib/debug.sh
 
 # Load power-up specific assertions
-for assertion_file in /workspace/test-data/lib/assertions_*.sh; do
+for assertion_file in /workspace/live-testing/lib/assertions_*.sh; do
     [ -f "$assertion_file" ] && source "$assertion_file"
 done
 

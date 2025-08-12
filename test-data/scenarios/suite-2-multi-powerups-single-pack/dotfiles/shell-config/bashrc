@@ -1,3 +1,0 @@
-# Test bashrc for suite 2
-# This should be symlinked to $HOME/.bashrc
-PS1='[\u@\h \W]\$ '

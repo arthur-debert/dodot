@@ -28,8 +28,8 @@ Common usage:
   $0                                        # Run all tests with default formatter
   $0 --formatter tap                        # Output TAP format
   $0 --formatter junit                      # Output JUnit XML
-  $0 test-data/scenarios/suite-1/**/*.bats # Run specific suite
-  $0 test-data/scenarios/**/symlink.bats   # Run specific test file
+  $0 live-testing/scenarios/suite-1/**/*.bats # Run specific suite
+  $0 live-testing/scenarios/**/symlink.bats   # Run specific test file
 
 For human-friendly output with suite grouping, use:
   ./run-tests-pretty.sh
