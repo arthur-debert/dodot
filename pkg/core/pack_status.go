@@ -30,6 +30,8 @@ func GetPackStatus(pack types.Pack, actions []types.Action, fs types.FS, paths t
 	}
 
 	// If pack is ignored, no need to process actions
+	// Ignored packs should not have any actions, but we return early to be explicit
+	// and avoid unnecessary processing
 	if displayPack.IsIgnored {
 		displayPack.Status = "ignored"
 		return displayPack, nil
