@@ -48,7 +48,7 @@ teardown() {
     
     # Verify key files from the pack are accessible (integration result)
     # Just check one key file to confirm symlinks and profiles coexist
-    assert_template_contains "$HOME/bashrc" "PS1="
+    grep -q "PS1=" "$HOME/bashrc" || fail "bashrc should contain PS1="
 }
 
 # Test: install_script + homebrew combination for installation
@@ -68,7 +68,7 @@ teardown() {
 }
 
 # Test: comprehensive pack with all power-up types
-@test "all powerups: pack with all 6 power-up types" {
+@test "all powerups: pack with all 5 power-up types" {
     # First install to trigger install-type powerups
     dodot_run install ultimate
     [ "$status" -eq 0 ]
@@ -90,13 +90,10 @@ teardown() {
     # 2. Symlink result
     assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
     
-    # 3. Template processing result
-    assert_template_contains "$HOME/config" "username = $USER"
-    
-    # 4. Shell profile integration
+    # 3. Shell profile integration
     assert_profile_in_init "ultimate" "profile.sh"
     
-    # 5. Path deployment result (verify the tool works)
+    # 4. Path deployment result (verify the tool works)
     run "$HOME/ultimate-tool"
     [ "$status" -eq 0 ]
     [ "$output" = "Ultimate tool v1.0" ]

@@ -26,7 +26,7 @@ teardown() {
     
     # Verify pack-a's symlink was created
     assert_symlink_deployed "pack-a" "shared-config" "$HOME/shared-config"
-    assert_template_contains "$HOME/shared-config" "pack_name=pack-a"
+    grep -q "pack_name=pack-a" "$HOME/shared-config" || fail "File $HOME/shared-config should contain: pack_name=pack-a"
     
     # Try to deploy pack-b which has same target file
     dodot_run deploy pack-b
@@ -37,7 +37,7 @@ teardown() {
     [ -L "$HOME/shared-config" ]
     
     # The symlink now contains pack-b's content
-    assert_template_contains "$HOME/shared-config" "pack_name=pack-b"
+    grep -q "pack_name=pack-b" "$HOME/shared-config" || fail "File $HOME/shared-config should contain: pack_name=pack-b"
     
     # pack-a's content has been overwritten - verify it's NOT there
     run grep -q "pack_name=pack-a" "$HOME/shared-config"
@@ -82,7 +82,7 @@ teardown() {
     # Verify installation completed successfully
     assert_install_script_executed "tools-consumer"
     assert_install_artifact_exists "$HOME/.local/tools-consumer/marker.txt"
-    assert_template_contains "$HOME/.local/tools-consumer/marker.txt" "installed-with-dependencies"
+    grep -q "installed-with-dependencies" "$HOME/.local/tools-consumer/marker.txt" || fail "File $HOME/.local/tools-consumer/marker.txt should contain: installed-with-dependencies"
     
     # Verify consumer config was deployed
     assert_symlink_deployed "tools-consumer" "consumer-config" "$HOME/consumer-config"
@@ -126,9 +126,9 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Everything should still work after multiple runs
-    assert_template_contains "$HOME/file1" "file1_content=deployed"
-    assert_template_contains "$HOME/file2" "file2_content=deployed"
-    assert_template_contains "$HOME/file3" "file3_content=deployed"
+    grep -q "file1_content=deployed" "$HOME/file1" || fail "File $HOME/file1 should contain: file1_content=deployed"
+    grep -q "file2_content=deployed" "$HOME/file2" || fail "File $HOME/file2 should contain: file2_content=deployed"
+    grep -q "file3_content=deployed" "$HOME/file3" || fail "File $HOME/file3 should contain: file3_content=deployed"
     
     # This test documents that dodot is idempotent and can restore
     # missing symlinks when re-run after partial state corruption
@@ -146,7 +146,7 @@ teardown() {
     # Verify symlinks
     for i in 1 2 3; do
         assert_symlink_deployed "pack-$i" "config-$i" "$HOME/config-$i"
-        assert_template_contains "$HOME/config-$i" "pack_id=$i"
+        grep -q "pack_id=$i" "$HOME/config-$i" || fail "File $HOME/config-$i should contain: pack_id=$i"
     done
     
     # Deploy path packs (4-5)
@@ -171,9 +171,8 @@ teardown() {
     dodot_run deploy pack-8 pack-9
     [ "$status" -eq 0 ]
     
-    # Verify templates (note: templates currently don't expand variables)
-    assert_template_processed "pack-8" "config" "$HOME/config"
-    assert_template_processed "pack-9" "config" "$HOME/config"
+    # Template packs no longer processed (template functionality removed)
+    # Previously would have created config files from templates
     
     # Install pack with install script (10)
     dodot_run install pack-10
@@ -204,7 +203,7 @@ teardown() {
     assert_symlink_deployed "pack-12" "complete-config" "$HOME/complete-config"
     assert_path_deployed "pack-12" "bin"
     assert_profile_in_init "pack-12" "profile.sh"
-    assert_template_processed "pack-12" "data" "$HOME/data"
+    # Template functionality removed - data file would not be created
     
     # Verify system handles 12 packs with mixed power-ups correctly
     # This test documents dodot's ability to scale to many packs
