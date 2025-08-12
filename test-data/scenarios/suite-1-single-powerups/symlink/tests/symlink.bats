@@ -24,30 +24,64 @@ teardown() {
 }
 
 @test "symlink: NO - not deployed (verify absence)" {
-    # Create a pack with only install-type files (no symlink candidates)
-    mkdir -p "$DOTFILES_ROOT/tools"
-    cat > "$DOTFILES_ROOT/tools/install.sh" << 'EOF'
-#!/bin/bash
-echo "Installing tools"
-EOF
-    chmod +x "$DOTFILES_ROOT/tools/install.sh"
+    # Test Case 1: Empty pack should have no symlinks
+    mkdir -p "$DOTFILES_ROOT/empty-pack"
     
-    # Verify no symlinks exist initially
-    assert_symlink_not_deployed "$HOME/gitconfig"
-    
-    # Deploy the tools pack (which has no files for symlink power-up)
-    dodot_run deploy tools
+    # Deploy the empty pack
+    dodot_run deploy empty-pack
     [ "$status" -eq 0 ]
     
-    # Verify no symlinks were created
-    assert_symlink_not_deployed "$HOME/gitconfig"
-    # Also verify the deployed symlink directory is empty or doesn't exist
-    local symlink_dir="$DODOT_DATA_DIR/deployed/symlink"
-    if [ -d "$symlink_dir" ]; then
-        [ -z "$(ls -A "$symlink_dir" 2>/dev/null)" ] || {
-            echo "FAIL: Symlink directory is not empty: $symlink_dir" >&2
-            ls -la "$symlink_dir" >&2
-            return 1
-        }
+    # Verify NO symlinks were created for the empty pack
+    assert_no_symlinks_for_pack "empty-pack"
+    
+    # Test Case 2: Pack with only higher-priority power-up files
+    mkdir -p "$DOTFILES_ROOT/priority-pack"
+    
+    # Add files that are handled by other power-ups with higher priority than symlink
+    # Install script - handled by install_script power-up
+    cat > "$DOTFILES_ROOT/priority-pack/install.sh" << 'EOF'
+#!/bin/bash
+echo "Installing"
+EOF
+    chmod +x "$DOTFILES_ROOT/priority-pack/install.sh"
+    
+    # Brewfile - handled by homebrew power-up  
+    cat > "$DOTFILES_ROOT/priority-pack/Brewfile" << 'EOF'
+brew "tree"
+EOF
+    
+    # Shell profile - handled by shell_profile power-up
+    cat > "$DOTFILES_ROOT/priority-pack/profile.sh" << 'EOF'
+export VAR=value
+EOF
+    
+    # Deploy the priority pack
+    dodot_run deploy priority-pack
+    [ "$status" -eq 0 ]
+    
+    # Verify NO symlinks were created - all files handled by other power-ups
+    assert_no_symlinks_for_pack "priority-pack"
+    
+    # Verify these specific files weren't symlinked to HOME
+    assert_symlink_not_deployed "$HOME/install.sh"
+    assert_symlink_not_deployed "$HOME/Brewfile" 
+    assert_symlink_not_deployed "$HOME/profile.sh"
+    
+    # Test Case 3: Verify our new assertion catches actual problems
+    # Create a pack that WILL have symlinks to contrast with above
+    mkdir -p "$DOTFILES_ROOT/config-pack"
+    echo "config=value" > "$DOTFILES_ROOT/config-pack/app.conf"
+    
+    dodot_run deploy config-pack
+    [ "$status" -eq 0 ]
+    
+    # This pack SHOULD have symlinks - verify our assertion would catch it
+    if assert_no_symlinks_for_pack "config-pack" 2>/dev/null; then
+        fail "assert_no_symlinks_for_pack should have failed for config-pack but didn't"
     fi
+    
+    # Verify the symlink was actually created (positive control)
+    assert_symlink_deployed "config-pack" "app.conf" "$HOME/app.conf"
+    
+    echo "PASS: NO case properly tested - empty and priority-only packs have no symlinks"
 }
