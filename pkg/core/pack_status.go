@@ -163,6 +163,13 @@ func getDisplayPath(action types.Action) string {
 		// Target-based actions: show what's being created
 		return filepath.Base(action.Target)
 	default:
+		// Log warning for unhandled action types
+		logger := logging.GetLogger("core.pack_status")
+		logger.Warn().
+			Str("actionType", string(action.Type)).
+			Str("action", action.Description).
+			Msg("Unhandled action type in getDisplayPath")
+
 		// Fallback to description if path is unclear
 		return action.Description
 	}
@@ -187,6 +194,13 @@ func getPowerUpDisplayName(action types.Action) string {
 	case types.ActionTypeMkdir:
 		return "mkdir"
 	default:
+		// Log warning for unhandled action types
+		logger := logging.GetLogger("core.pack_status")
+		logger.Warn().
+			Str("actionType", string(action.Type)).
+			Str("action", action.Description).
+			Msg("Unhandled action type in getPowerUpDisplayName")
+
 		// Use the PowerUpName from the action if available
 		if action.PowerUpName != "" {
 			return action.PowerUpName
