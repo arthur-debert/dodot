@@ -102,8 +102,8 @@ func TestDefault(t *testing.T) {
 
 	// Test Matchers configuration
 	t.Run("Matchers", func(t *testing.T) {
-		if len(cfg.Matchers) != 10 {
-			t.Errorf("expected 10 default matchers, got %d", len(cfg.Matchers))
+		if len(cfg.Matchers) != 9 {
+			t.Errorf("expected 9 default matchers, got %d", len(cfg.Matchers))
 		}
 
 		// Test specific matchers

@@ -30,7 +30,7 @@ func TestDefaultMatchers(t *testing.T) {
 	defaults := DefaultMatchers()
 
 	// Should have exactly the matchers we defined
-	assert.Equal(t, 10, len(defaults)) // 2 install + 2 shell + 4 bin + 1 template + 1 catchall
+	assert.Equal(t, 9, len(defaults)) // 2 install + 2 shell + 4 bin + 1 catchall
 
 	// Check some expected matchers exist
 	expectedNames := map[string]bool{
@@ -42,7 +42,6 @@ func TestDefaultMatchers(t *testing.T) {
 		"bin-path":         false,
 		"local-bin-dir":    false,
 		"local-bin-path":   false,
-		"template":         false,
 		"symlink-catchall": false,
 	}
 

@@ -9,7 +9,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
 	"github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
 	"github.com/arthur-debert/dodot/pkg/powerups/symlink"
-	"github.com/arthur-debert/dodot/pkg/powerups/template"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -48,7 +47,6 @@ func TestOtherPowerUps_GetTemplateContent(t *testing.T) {
 		{"InstallScriptPowerUp", install.NewInstallScriptPowerUp(), true, []string{"#!/usr/bin/env bash", "dodot install", "PACK_NAME"}},
 		{"ShellAddPathPowerUp", shell_add_path.NewShellAddPathPowerUp(), true, []string{"#!/usr/bin/env sh", "PATH modifications", "PACK_NAME"}},
 		{"ShellProfilePowerUp", shell_profile.NewShellProfilePowerUp(), true, []string{"#!/usr/bin/env sh", "Shell aliases", "PACK_NAME"}},
-		{"TemplatePowerUp", template.NewTemplatePowerUp(), false, nil},
 	}
 
 	for _, tt := range tests {

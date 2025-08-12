@@ -11,5 +11,4 @@ import (
 	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
 	_ "github.com/arthur-debert/dodot/pkg/powerups/symlink"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/template"
 )

@@ -192,8 +192,6 @@ func (e *DirectExecutor) convertActionToSynthfsOps(sfs *synthfs.SynthFS, action 
 		return e.convertBrewAction(sfs, action)
 	case types.ActionTypeInstall:
 		return e.convertInstallAction(sfs, action)
-	case types.ActionTypeTemplate:
-		return e.convertTemplateAction(sfs, action)
 	case types.ActionTypeRead:
 		return e.convertReadAction(sfs, action)
 	case types.ActionTypeChecksum:
@@ -584,12 +582,6 @@ func (e *DirectExecutor) generateActionMessage(action *types.Action, status type
 		}
 		return "prepared install script"
 
-	case types.ActionTypeTemplate:
-		if status == types.StatusReady {
-			return fmt.Sprintf("rendered template to %s", filepath.Base(action.Target))
-		}
-		return fmt.Sprintf("prepared template for %s", filepath.Base(action.Target))
-
 	default:
 		if status == types.StatusReady {
 			return "completed successfully"
@@ -622,8 +614,6 @@ func (e *DirectExecutor) generateErrorMessage(action *types.Action, err error) s
 		baseMsg = "Homebrew installation failed"
 	case types.ActionTypeInstall:
 		baseMsg = "install script failed"
-	case types.ActionTypeTemplate:
-		baseMsg = fmt.Sprintf("failed to render template to %s", filepath.Base(action.Target))
 	default:
 		baseMsg = "action failed"
 	}
@@ -914,101 +904,6 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	return ops, nil
 }
 
-func (e *DirectExecutor) convertTemplateAction(sfs *synthfs.SynthFS, action types.Action) ([]synthfs.Operation, error) {
-	if action.Source == "" || action.Target == "" {
-		return nil, errors.New(errors.ErrActionInvalid, "template action requires source and target")
-	}
-
-	source := expandHome(action.Source)
-	target := expandHome(action.Target)
-
-	// Path validation is now handled by validateAction in ExecuteActions
-
-	// Template processing: read template file, substitute variables, write result
-	id := fmt.Sprintf("template_%s_%s_%d", action.Pack, filepath.Base(target), time.Now().UnixNano())
-
-	return []synthfs.Operation{
-		sfs.CustomOperationWithID(id, func(ctx context.Context, fs filesystem.FileSystem) error {
-			// Read template content
-			file, err := fs.Open(source)
-			if err != nil {
-				return fmt.Errorf("failed to open template file %s: %w", source, err)
-			}
-			defer func() { _ = file.Close() }()
-
-			templateContent, err := io.ReadAll(file)
-			if err != nil {
-				return fmt.Errorf("failed to read template file %s: %w", source, err)
-			}
-
-			// Get variables from metadata
-			variables := make(map[string]string)
-			if action.Metadata != nil {
-				// Handle both map[string]string and map[string]interface{} types
-				if vars, ok := action.Metadata["variables"].(map[string]string); ok {
-					variables = vars
-				} else if vars, ok := action.Metadata["variables"].(map[string]interface{}); ok {
-					// Convert map[string]interface{} to map[string]string
-					for k, v := range vars {
-						if strVal, ok := v.(string); ok {
-							variables[k] = strVal
-						} else {
-							variables[k] = fmt.Sprintf("%v", v)
-						}
-					}
-				}
-			}
-
-			// Process template - simple string replacement for now
-			// A full template engine could be added later (e.g., text/template)
-			processedContent := string(templateContent)
-
-			// First, handle environment variables with {{.Env.VAR}} syntax
-			for key, value := range variables {
-				// Check if this is an environment variable (HOME, USER, SHELL, etc.)
-				if key == "HOME" || key == "USER" || key == "SHELL" {
-					placeholder := fmt.Sprintf("{{.Env.%s}}", key)
-					processedContent = strings.ReplaceAll(processedContent, placeholder, value)
-				}
-
-				// Also support direct {{.VAR}} syntax
-				placeholder := fmt.Sprintf("{{.%s}}", key)
-				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
-
-				// Also support ${VAR} syntax
-				placeholder = fmt.Sprintf("${%s}", key)
-				processedContent = strings.ReplaceAll(processedContent, placeholder, value)
-			}
-
-			// Handle special variables like {{.Hostname}}
-			if hostname, ok := variables["HOSTNAME"]; ok {
-				processedContent = strings.ReplaceAll(processedContent, "{{.Hostname}}", hostname)
-			}
-
-			// Ensure target directory exists
-			targetDir := filepath.Dir(target)
-			if targetDir != "." && targetDir != "/" {
-				if err := fs.MkdirAll(targetDir, 0755); err != nil {
-					return fmt.Errorf("failed to create target directory %s: %w", targetDir, err)
-				}
-			}
-
-			// Write processed content to target
-			mode := os.FileMode(0644)
-			if action.Mode != 0 {
-				mode = os.FileMode(action.Mode)
-			}
-
-			err = fs.WriteFile(target, []byte(processedContent), mode)
-			if err != nil {
-				return fmt.Errorf("failed to write processed template to %s: %w", target, err)
-			}
-
-			return nil
-		}),
-	}, nil
-}
-
 // validateAction performs comprehensive validation on an Action before execution
 func (e *DirectExecutor) validateAction(action types.Action) error {
 	// Check action type-specific validation
@@ -1027,8 +922,6 @@ func (e *DirectExecutor) validateAction(action types.Action) error {
 		return e.validateWriteAction(action.Target)
 	case types.ActionTypeMkdir:
 		return e.validateMkdirAction(action.Target)
-	case types.ActionTypeTemplate:
-		return e.validateTemplateAction(action.Source, action.Target)
 	case types.ActionTypeRun:
 		// Command execution doesn't need path validation
 		return nil
@@ -1114,22 +1007,6 @@ func (e *DirectExecutor) validateWriteAction(target string) error {
 // validateMkdirAction validates target path for mkdir actions
 func (e *DirectExecutor) validateMkdirAction(target string) error {
 	// Directories should only be created in safe locations
-	return e.validateSafePath(target)
-}
-
-// validateTemplateAction validates paths for template actions
-func (e *DirectExecutor) validateTemplateAction(source, target string) error {
-	// Source should be from dotfiles
-	if !strings.HasPrefix(source, e.paths.DotfilesRoot()) {
-		return errors.Newf(errors.ErrInvalidInput, "template source path %s is outside dotfiles directory", source)
-	}
-
-	// Check if target is a protected system file
-	if err := e.validateNotSystemFile(target); err != nil {
-		return err
-	}
-
-	// Target should be in a safe location
 	return e.validateSafePath(target)
 }
 
