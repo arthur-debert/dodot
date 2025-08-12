@@ -1,0 +1,78 @@
+services:
+  # Base image for tests and CI
+  dodot-base:
+    build:
+      context: .
+      dockerfile: Dockerfile.base
+    image: dodot-base:latest
+    container_name: dodot-base
+    volumes:
+      # Mount the repository root
+      - ../..:/workspace:rw
+      # Cache directories for better performance
+      - go-pkg:/go/pkg
+      - go-cache:/home/developer/.cache/go-build
+    environment:
+      # Pass through git config from host
+      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-}
+      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-}
+      - GIT_COMMITTER_NAME=${GIT_COMMITTER_NAME:-}
+      - GIT_COMMITTER_EMAIL=${GIT_COMMITTER_EMAIL:-}
+      # GitHub CLI token if available
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GH_TOKEN=${GH_TOKEN:-}
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: /usr/bin/zsh
+
+  # Full development environment with AI tools
+  dodot-dev-env:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev-env
+      args:
+        BASE_IMAGE: dodot-base:latest
+    image: dodot-dev-env:latest
+    container_name: dodot-dev-env
+    depends_on:
+      - dodot-base
+    volumes:
+      # Mount the repository root
+      - ../..:/workspace:rw
+      # Mount container scripts
+      - ./scripts:/container-scripts:ro
+      # Cache directories for better performance
+      - go-pkg:/go/pkg
+      - go-cache:/home/developer/.cache/go-build
+      # Preserve zsh history
+      - zsh-history:/home/developer/.zsh_history_dir
+      # NPM cache for AI tools
+      - npm-cache:/home/developer/.npm
+    environment:
+      # Pass through git config from host
+      - GIT_AUTHOR_NAME=${GIT_AUTHOR_NAME:-}
+      - GIT_AUTHOR_EMAIL=${GIT_AUTHOR_EMAIL:-}
+      - GIT_COMMITTER_NAME=${GIT_COMMITTER_NAME:-}
+      - GIT_COMMITTER_EMAIL=${GIT_COMMITTER_EMAIL:-}
+      # GitHub CLI token if available
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GH_TOKEN=${GH_TOKEN:-}
+      # Homebrew tap token for releases
+      - HOMEBREW_TAP_TOKEN=${HOMEBREW_TAP_TOKEN:-}
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+
+  # Legacy service name for compatibility
+  dodot-dev:
+    extends:
+      service: dodot-dev-env
+    container_name: dodot-dev
+    depends_on: []  # Override to prevent circular dependency
+    
+volumes:
+  go-pkg:
+  go-cache:
+  zsh-history:
+  npm-cache:

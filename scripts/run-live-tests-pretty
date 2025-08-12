@@ -1,0 +1,11 @@
+#!/bin/bash
+# Run live system tests with pretty output
+# This is an alias to live-testing/scripts/run-tests-pretty.sh
+set -e
+
+# Get the directory of this script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Run the actual script
+exec "$PROJECT_ROOT/live-testing/scripts/run-tests-pretty.sh" "$@"

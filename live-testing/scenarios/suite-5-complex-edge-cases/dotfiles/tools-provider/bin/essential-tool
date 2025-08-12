@@ -1,0 +1,4 @@
+#!/bin/bash
+# Essential tool provided by tools-provider pack
+echo "Essential tool v1.0 running"
+exit 0

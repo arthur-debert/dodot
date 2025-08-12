@@ -29,8 +29,8 @@ jobs:
       - name: Build base container
         uses: docker/build-push-action@v6
         with:
-          context: containers/dev
-          file: containers/dev/Dockerfile.base
+          context: live-testing/containers
+          file: live-testing/containers/Dockerfile.base
           push: false
           load: true
           tags: dodot-base:latest
@@ -46,7 +46,7 @@ jobs:
           export USER_UID=1001
           export USER_GID=118
           # Run the tests with JUnit output using the base container
-          ./containers/dev/run-tests.sh --formatter junit > test-results.xml
+          ./live-testing/scripts/run-tests.sh --formatter junit > test-results.xml
           
       - name: Upload test results
         if: always()

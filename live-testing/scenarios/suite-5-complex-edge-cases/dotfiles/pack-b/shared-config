@@ -1,0 +1,4 @@
+# Configuration from pack-b
+pack_name=pack-b
+version=2.0
+setting=value-from-pack-b
