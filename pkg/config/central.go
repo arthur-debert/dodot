@@ -272,17 +272,6 @@ func defaultMatchers() []MatcherConfig {
 			PowerUpData: map[string]interface{}{},
 		},
 		{
-			Name:        "template",
-			Type:        "matcher",
-			Priority:    70,
-			TriggerType: "extension",
-			TriggerData: map[string]interface{}{
-				"extension": ".tmpl",
-			},
-			PowerUpType: "template",
-			PowerUpData: map[string]interface{}{},
-		},
-		{
 			Name:        "symlink-catchall",
 			Type:        "matcher",
 			Priority:    0,

@@ -65,9 +65,9 @@ teardown() {
     assert_symlink_deployed "scripts" "script-config" "$HOME/script-config"
     
     # Verify content is accessible through symlinks
-    assert_template_contains "$HOME/tool-config" "tool_version=1.0"
-    assert_template_contains "$HOME/util-config" "util_enabled=true"
-    assert_template_contains "$HOME/script-config" "script_mode=production"
+    grep -q "tool_version=1.0" "$HOME/tool-config" || fail "File $HOME/tool-config should contain: tool_version=1.0"
+    grep -q "util_enabled=true" "$HOME/util-config" || fail "File $HOME/util-config should contain: util_enabled=true"
+    grep -q "script_mode=production" "$HOME/script-config" || fail "File $HOME/script-config should contain: script_mode=production"
 }
 
 @test "multi-pack deploy: 3 packs each with symlinks" {
@@ -88,9 +88,9 @@ teardown() {
     assert_symlink_deployed "shell" "zshrc" "$HOME/zshrc"
     
     # Verify content through symlinks
-    assert_template_contains "$HOME/gitconfig" "test@example.com"
-    assert_template_contains "$HOME/vimrc" "set number"
-    assert_template_contains "$HOME/bashrc" "PS1="
+    grep -q "test@example.com" "$HOME/gitconfig" || fail "File $HOME/gitconfig should contain: test@example.com"
+    grep -q "set number" "$HOME/vimrc" || fail "File $HOME/vimrc should contain: set number"
+    grep -q "PS1=" "$HOME/bashrc" || fail "File $HOME/bashrc should contain: PS1="
 }
 
 @test "mixed deploy/install: pack A deploy, pack B install, pack C both" {
@@ -114,16 +114,16 @@ teardown() {
     
     # Verify deploy-pack symlinks
     assert_symlink_deployed "deploy-pack" "deploy-config" "$HOME/deploy-config"
-    assert_template_contains "$HOME/deploy-config" "deploy_setting=active"
+    grep -q "deploy_setting=active" "$HOME/deploy-config" || fail "File $HOME/deploy-config should contain: deploy_setting=active"
     
     # Verify mixed-pack symlinks (it should have both install and deploy working)
     assert_symlink_deployed "mixed-pack" "mixed-config" "$HOME/mixed-config"
-    assert_template_contains "$HOME/mixed-config" "mixed_mode=hybrid"
+    grep -q "mixed_mode=hybrid" "$HOME/mixed-config" || fail "File $HOME/mixed-config should contain: mixed_mode=hybrid"
     
     # Verify that mixed-pack has both install and deploy artifacts
     # Install artifacts from earlier
     assert_file_exists "$HOME/.local/mixed-pack/marker.txt"
-    assert_template_contains "$HOME/.local/mixed-pack/marker.txt" "mixed-pack-installed"
+    grep -q "mixed-pack-installed" "$HOME/.local/mixed-pack/marker.txt" || fail "File $HOME/.local/mixed-pack/marker.txt should contain: mixed-pack-installed"
     
     # Verify install-pack has no deploy artifacts (it should not be deployed)
     assert_file_not_exists "$HOME/install-pack"

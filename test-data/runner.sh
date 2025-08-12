@@ -15,6 +15,11 @@ fi
 # Set test environment marker
 export DODOT_TEST_CONTAINER=1
 
+# Clean up any stale template test files
+if [ -f "/workspace/test-data/cleanup-template-tests.sh" ]; then
+    /workspace/test-data/cleanup-template-tests.sh >&2
+fi
+
 # Prevent Go from auto-downloading toolchains
 export GOTOOLCHAIN=local
 

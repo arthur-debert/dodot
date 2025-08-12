@@ -39,7 +39,7 @@ teardown() {
     
     # Verify the file exists and has our content
     assert_file_exists "$HOME/existing-config"
-    assert_template_contains "$HOME/existing-config" "existing content"
+    grep -q "existing content" "$HOME/existing-config" || fail "File $HOME/existing-config should contain: existing content"
     
     # Try to deploy a pack that wants to symlink to the same target
     dodot_run deploy conflict-pack
@@ -53,7 +53,7 @@ teardown() {
     # Original file should still exist and be unchanged
     assert_file_exists "$HOME/existing-config"
     [ ! -L "$HOME/existing-config" ]  # Should NOT be a symlink
-    assert_template_contains "$HOME/existing-config" "existing content"
+    grep -q "existing content" "$HOME/existing-config" || fail "File $HOME/existing-config should contain: existing content"
 }
 
 # Shell profile edge cases
@@ -101,35 +101,35 @@ teardown() {
     # Verify the profile script source path still works
     local source_path="$DOTFILES_ROOT/profile-pack/profile.sh"
     assert_file_exists "$source_path"
-    assert_template_contains "$source_path" "PROFILE_PACK_LOADED"
+    grep -q "PROFILE_PACK_LOADED" "$source_path" || fail "File $source_path should contain: PROFILE_PACK_LOADED"
 }
 
-# Template edge cases
-@test "template: missing variables handling" {
-    # Set some variables but not others
-    export USER_NAME="testuser"
-    export USER_EMAIL="test@example.com"
-    # Leave UNDEFINED_VAR and ALSO_UNDEFINED unset
-    
-    # Try to deploy template pack with missing variables
-    dodot_run deploy template-pack
-    [ "$status" -eq 0 ]  # Should succeed (copies template as-is)
-    
-    # Verify file was created
-    assert_template_processed "template-pack" "config" "$HOME/config"
-    
-    # Current behavior: template variables are NOT expanded at all
-    # This documents the current edge case behavior
-    assert_template_contains "$HOME/config" "user_name={{ .USER_NAME }}"
-    assert_template_contains "$HOME/config" "user_email={{ .USER_EMAIL }}"
-    assert_template_contains "$HOME/config" "missing_var={{ .UNDEFINED_VAR }}"
-    assert_template_contains "$HOME/config" "another_missing={{ .ALSO_UNDEFINED }}"
-    assert_template_contains "$HOME/config" "working_var={{ .HOME }}"
-    
-    # Verify the template syntax is preserved (not expanded)
-    assert_template_contains "$HOME/config" "{{ .USER_NAME }}"
-    assert_template_contains "$HOME/config" "{{ .UNDEFINED_VAR }}"
-    
-    # This test documents current behavior - template processing may be disabled
-    # or not fully implemented for this edge case scenario
-}
+# Template edge cases - REMOVED (template functionality was removed from dodot)
+# @test "template: missing variables handling" {
+#     # Set some variables but not others
+#     export USER_NAME="testuser"
+#     export USER_EMAIL="test@example.com"
+#     # Leave UNDEFINED_VAR and ALSO_UNDEFINED unset
+#     
+#     # Try to deploy template pack with missing variables
+#     dodot_run deploy template-pack
+#     [ "$status" -eq 0 ]  # Should succeed (copies template as-is)
+#     
+#     # Verify file was created
+#     assert_template_processed "template-pack" "config" "$HOME/config"
+#     
+#     # Current behavior: template variables are NOT expanded at all
+#     # This documents the current edge case behavior
+#     assert_template_contains "$HOME/config" "user_name={{ .USER_NAME }}"
+#     assert_template_contains "$HOME/config" "user_email={{ .USER_EMAIL }}"
+#     assert_template_contains "$HOME/config" "missing_var={{ .UNDEFINED_VAR }}"
+#     assert_template_contains "$HOME/config" "another_missing={{ .ALSO_UNDEFINED }}"
+#     assert_template_contains "$HOME/config" "working_var={{ .HOME }}"
+#     
+#     # Verify the template syntax is preserved (not expanded)
+#     assert_template_contains "$HOME/config" "{{ .USER_NAME }}"
+#     assert_template_contains "$HOME/config" "{{ .UNDEFINED_VAR }}"
+#     
+#     # This test documents current behavior - template processing may be disabled
+#     # or not fully implemented for this edge case scenario
+# }
