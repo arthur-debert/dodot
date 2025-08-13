@@ -46,7 +46,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	}
 
 	// Process triggers
-	matches, err := core.ProcessPackTriggers(pack)
+	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
 	testutil.AssertNoError(t, err)
 
 	// Build a map of matched files to their power-ups
@@ -67,7 +67,12 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	testutil.AssertEqual(t, "symlink", matchMap[".myapp"])
 	testutil.AssertEqual(t, "symlink", matchMap["data.json"])
 	testutil.AssertEqual(t, "symlink", matchMap["subdir"])
-	testutil.AssertEqual(t, "symlink", matchMap["subdir/nested.txt"])
+
+	// IMPORTANT: With flat scanning, nested.txt is NOT matched individually
+	// It's part of the subdir/ directory which is processed as a unit
+	if _, found := matchMap["subdir/nested.txt"]; found {
+		t.Error("subdir/nested.txt should not be matched - flat scanning only processes top-level entries")
+	}
 
 	// Verify excluded files were not matched
 	if _, found := matchMap[".dodot.toml"]; found {
@@ -78,7 +83,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	}
 
 	// Verify we got the expected number of matches
-	expectedMatches := 10 // All files except .dodot.toml and .dodotignore
+	expectedMatches := 9 // All top-level files/dirs except .dodot.toml and .dodotignore
 	testutil.AssertEqual(t, expectedMatches, len(matches))
 }
 
@@ -123,7 +128,7 @@ powerup = "template"
 	}
 
 	// Process triggers
-	matches, err := core.ProcessPackTriggers(pack)
+	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
 	testutil.AssertNoError(t, err)
 
 	// Build a map of matched files to their power-ups
