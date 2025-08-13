@@ -1,13 +1,36 @@
+// Package core provides the core processing pipeline for dodot.
+//
+// IMPORTANT DESIGN PRINCIPLE: Pack Scanning is FLAT
+// =================================================
+// Packs are scanned as flat directories - only top-level entries are processed.
+// This is a fundamental design decision in dodot:
+//
+// 1. When scanning a pack, we read ONLY the immediate children
+// 2. We do NOT recursively traverse subdirectories
+// 3. Directories are processed as single units (e.g., for symlinking the entire dir)
+// 4. Files inside subdirectories are NOT individually scanned or matched
+//
+// This design allows powerups to handle entire directory trees (like symlinking
+// a whole config directory) without dodot trying to process individual files
+// within those directories.
+//
+// Example:
+//
+//	pack/
+//	├── file.txt        ✓ Processed
+//	├── dir/            ✓ Processed as a unit
+//	│   └── nested.txt  ✗ NOT processed (part of dir/)
+//	└── another.sh      ✓ Processed
 package core
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
-	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -62,13 +85,27 @@ func GetFiringTriggersFS(packs []types.Pack, filesystem types.FS) ([]types.Trigg
 }
 
 // ProcessPackTriggers processes triggers for a single pack
+// IMPORTANT: This function performs FLAT scanning of pack directories.
+// Only top-level files and directories within a pack are processed.
+// Subdirectory contents are NOT recursively scanned or processed.
+// This is a core design principle of dodot - packs are treated as flat directories.
+//
+// Example:
+//
+//	nvim/                    # pack
+//	├── install.sh          # ✓ processed - triggers install powerup
+//	├── bin/                # ✓ processed - triggers path powerup
+//	│   └── alias.sh        # ✗ NOT processed - inside subdirectory
+//	└── lua/                # ✓ processed - triggers symlink powerup
+//	    └── install.sh      # ✗ NOT processed - inside subdirectory
+//
 // Deprecated: Use ProcessPackTriggersFS instead to support filesystem abstraction
 func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("core.triggers").With().
 		Str("pack", pack.Name).
 		Logger()
 
-	logger.Debug().Msg("Processing pack triggers")
+	logger.Debug().Msg("Processing pack triggers (flat scan)")
 
 	// Get matchers from pack config, merging with defaults
 	packMatchers := getPackMatchers(pack)
@@ -120,43 +157,29 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	var matches []types.TriggerMatch
 	matchedFiles := make(map[string]bool)
 
-	// Walk the pack directory
-	err := filepath.WalkDir(pack.Path, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
+	// FLAT SCAN: Read only the immediate children of the pack directory
+	// This is intentionally NOT recursive - subdirectories are not traversed
+	entries, err := fs.ReadDir(os.DirFS(pack.Path), ".")
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrFileAccess, "failed to read pack directory")
+	}
 
-		// Skip the pack root itself
-		if path == pack.Path {
-			return nil
-		}
+	// Process each top-level entry in the pack
+	for _, entry := range entries {
+		name := entry.Name()
 
 		// Skip .dodot.toml files
-		if filepath.Base(path) == ".dodot.toml" {
-			return nil
+		if name == ".dodot.toml" {
+			continue
 		}
 
-		// Get relative path within pack
-		relPath, err := filepath.Rel(pack.Path, path)
-		if err != nil {
-			logger.Warn().Err(err).Str("path", path).Msg("Failed to get relative path")
-			return nil
-		}
-
-		// Check for .dodotignore in directories
-		if d.IsDir() {
-			if packs.ShouldIgnoreDirectoryTraversal(path, relPath) {
-				return filepath.SkipDir
-			}
-		}
+		path := filepath.Join(pack.Path, name)
+		relPath := name // For top-level items, relative path is just the name
 
 		// Check if file should be ignored by pack config
 		if pack.Config.IsIgnored(relPath) {
 			logger.Trace().Str("path", relPath).Msg("File ignored by pack config")
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
+			continue
 		}
 
 		// Check for a behavior override from pack config
@@ -174,14 +197,14 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 			}
 			matches = append(matches, match)
 			matchedFiles[relPath] = true
-			return nil // Don't process default matchers
+			continue // Don't process default matchers
 		}
 
 		// Get file info for default matching
-		info, err := d.Info()
+		info, err := entry.Info()
 		if err != nil {
 			logger.Warn().Err(err).Str("path", path).Msg("Failed to get file info")
-			return nil
+			continue
 		}
 
 		// Phase 1: Test against specific matchers
@@ -223,30 +246,28 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 				}
 			}
 		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrFileAccess, "failed to walk pack directory")
 	}
 
 	logger.Debug().
 		Int("matchCount", len(matches)).
 		Int("specificMatchers", len(specificMatchers)).
 		Int("catchallMatchers", len(catchallMatchers)).
-		Msg("Completed pack trigger processing")
+		Msg("Completed pack trigger processing (flat scan)")
 
 	return matches, nil
 }
 
 // ProcessPackTriggersFS processes triggers for a single pack using the provided filesystem
+// IMPORTANT: This function performs FLAT scanning of pack directories.
+// Only top-level files and directories within a pack are processed.
+// Subdirectory contents are NOT recursively scanned or processed.
+// This is a core design principle of dodot - packs are treated as flat directories.
 func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("core.triggers").With().
 		Str("pack", pack.Name).
 		Logger()
 
-	logger.Debug().Msg("Processing pack triggers with FS")
+	logger.Debug().Msg("Processing pack triggers with FS (flat scan)")
 
 	// Get matchers from pack config, merging with defaults
 	packMatchers := getPackMatchers(pack)
@@ -255,11 +276,21 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 		return []types.TriggerMatch{}, nil
 	}
 
+	// Filter enabled matchers
+	enabledMatchers := matchers.FilterEnabledMatchers(packMatchers)
+	if len(enabledMatchers) == 0 {
+		logger.Debug().Msg("No enabled matchers for pack")
+		return []types.TriggerMatch{}, nil
+	}
+
+	// Sort matchers by priority
+	matchers.SortMatchersByPriority(enabledMatchers)
+
 	// Separate specific matchers from catchall
 	var specificMatchers []types.Matcher
 	var catchallMatchers []types.Matcher
 
-	for _, matcher := range packMatchers {
+	for _, matcher := range enabledMatchers {
 		// Get trigger factory to check the type
 		triggerFactory, err := registry.GetTriggerFactory(matcher.TriggerName)
 		if err != nil {
@@ -289,43 +320,29 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 	var matches []types.TriggerMatch
 	matchedFiles := make(map[string]bool)
 
-	// Walk the pack directory using our custom walker for filesystem abstraction
-	err := walkDirFS(filesystem, pack.Path, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	// FLAT SCAN: Read only the immediate children of the pack directory
+	// This is intentionally NOT recursive - subdirectories are not traversed
+	entries, err := filesystem.ReadDir(pack.Path)
+	if err != nil {
+		return nil, errors.Wrap(err, errors.ErrFileAccess, "failed to read pack directory")
+	}
 
-		// Skip the pack root itself
-		if path == pack.Path {
-			return nil
-		}
+	// Process each top-level entry in the pack
+	for _, entry := range entries {
+		name := entry.Name()
 
 		// Skip .dodot.toml files
-		if filepath.Base(path) == ".dodot.toml" {
-			return nil
+		if name == ".dodot.toml" {
+			continue
 		}
 
-		// Get relative path within pack
-		relPath, err := filepath.Rel(pack.Path, path)
-		if err != nil {
-			logger.Warn().Err(err).Str("path", path).Msg("Failed to get relative path")
-			return nil
-		}
-
-		// Check for .dodotignore in directories
-		if info.IsDir() {
-			if packs.ShouldIgnorePackFS(path, filesystem) {
-				return filepath.SkipDir
-			}
-		}
+		path := filepath.Join(pack.Path, name)
+		relPath := name // For top-level items, relative path is just the name
 
 		// Check if file should be ignored by pack config
 		if pack.Config.IsIgnored(relPath) {
 			logger.Trace().Str("path", relPath).Msg("File ignored by pack config")
-			if info.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
+			continue
 		}
 
 		// Check for a behavior override from pack config
@@ -343,7 +360,14 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 			}
 			matches = append(matches, match)
 			matchedFiles[relPath] = true
-			return nil
+			continue
+		}
+
+		// Get file info for default matching
+		info, err := entry.Info()
+		if err != nil {
+			logger.Warn().Err(err).Str("path", path).Msg("Failed to get file info")
+			continue
 		}
 
 		// Phase 1: Test against specific matchers first
@@ -385,75 +409,15 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 				}
 			}
 		}
-
-		return nil
-	})
-
-	if err != nil {
-		return nil, errors.Wrap(err, errors.ErrFileAccess, "failed to walk pack directory")
 	}
 
 	logger.Debug().
 		Int("matchCount", len(matches)).
 		Int("specificMatchers", len(specificMatchers)).
 		Int("catchallMatchers", len(catchallMatchers)).
-		Msg("Completed pack trigger processing")
+		Msg("Completed pack trigger processing (flat scan)")
 
 	return matches, nil
-}
-
-// walkDirFS walks a directory tree using the provided filesystem
-func walkDirFS(filesystem types.FS, root string, fn func(path string, info fs.FileInfo, err error) error) error {
-	info, err := filesystem.Stat(root)
-	if err != nil {
-		err = fn(root, nil, err)
-	} else {
-		err = walkDirRecursiveFS(filesystem, root, info, fn)
-	}
-	if err == filepath.SkipDir {
-		return nil
-	}
-	return err
-}
-
-// walkDirRecursiveFS is the recursive implementation of walkDirFS
-func walkDirRecursiveFS(filesystem types.FS, path string, info fs.FileInfo, fn func(string, fs.FileInfo, error) error) error {
-	if !info.IsDir() {
-		return fn(path, info, nil)
-	}
-
-	err := fn(path, info, nil)
-	if err != nil {
-		if err == filepath.SkipDir {
-			return nil
-		}
-		return err
-	}
-
-	// Now that types.FS includes ReadDir, we can use it directly
-	entries, err := filesystem.ReadDir(path)
-	if err != nil {
-		return fn(path, info, err)
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		subPath := filepath.Join(path, name)
-
-		fileInfo, err := entry.Info()
-		if err != nil {
-			if err := fn(subPath, nil, err); err != nil && err != filepath.SkipDir {
-				return err
-			}
-			continue
-		}
-
-		err = walkDirRecursiveFS(filesystem, subPath, fileInfo, fn)
-		if err != nil && err != filepath.SkipDir {
-			return err
-		}
-	}
-	return nil
 }
 
 // getPackMatchers returns the default matchers for a pack
