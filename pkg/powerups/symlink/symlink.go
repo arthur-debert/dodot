@@ -69,9 +69,8 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 	targetMap := make(map[string]string)
 
 	for _, match := range matches {
-		// Calculate target path
-		filename := filepath.Base(match.Path)
-		targetPath := filepath.Join(targetDir, filename)
+		// Calculate target path preserving directory structure
+		targetPath := filepath.Join(targetDir, match.Path)
 
 		// Check for conflicts
 		if existingSource, exists := targetMap[targetPath]; exists {
