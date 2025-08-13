@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Show help
 show_help() {
-    cat << EOF
+    cat <<EOF
 Usage: $0 [TEST_FILES...]
 
 Run dodot live system tests with human-friendly output.
@@ -44,7 +44,7 @@ JUNIT_FILE=$(mktemp)
 trap "rm -f $JUNIT_FILE" EXIT
 
 # Run tests with JUnit output, capture to temp file
-if "$SCRIPT_DIR/run-tests.sh" --formatter junit "$@" > "$JUNIT_FILE"; then
+if "$SCRIPT_DIR/run-tests.sh" --formatter junit "$@" >"$JUNIT_FILE"; then
     exit_code=0
 else
     exit_code=$?
@@ -52,7 +52,17 @@ fi
 
 # Process the JUnit output for human display
 echo "" >&2
-python3 "$PROJECT_ROOT/live-testing/scripts/junit-summary.py" "$JUNIT_FILE"
+if ! python3 "$PROJECT_ROOT/live-testing/scripts/junit-summary.py" "$JUNIT_FILE"; then
+    # Python script failed, likely due to invalid XML
+    echo "" >&2
+    echo "ERROR: Failed to parse JUnit XML output" >&2
+    echo "Raw Docker output that failed to parse:" >&2
+    echo "=======================================" >&2
+    cat "$JUNIT_FILE" >&2
+    echo "=======================================" >&2
+    exit 1
+fi
 
 # Exit with the test exit code
-exit $exit_code
+esages qqit $exit_code
+
