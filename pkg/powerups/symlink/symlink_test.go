@@ -265,3 +265,91 @@ func TestSymlinkPowerUp_FactoryRegistration(t *testing.T) {
 
 	assert.Equal(t, SymlinkPowerUpName, powerUp.Name())
 }
+
+func TestSymlinkPowerUp_PreservesDirectoryStructure(t *testing.T) {
+	homeDir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	require.NoError(t, os.Setenv("HOME", homeDir))
+	defer func() {
+		if oldHome != "" {
+			require.NoError(t, os.Setenv("HOME", oldHome))
+		} else {
+			require.NoError(t, os.Unsetenv("HOME"))
+		}
+	}()
+
+	powerUp := NewSymlinkPowerUp()
+
+	matches := []types.TriggerMatch{
+		{
+			TriggerName:  "filename",
+			Pack:         "nvim",
+			Path:         ".config/nvim/init.lua",
+			AbsolutePath: "/dotfiles/nvim/.config/nvim/init.lua",
+			PowerUpName:  "symlink",
+		},
+		{
+			TriggerName:  "filename",
+			Pack:         "git",
+			Path:         ".config/git/config",
+			AbsolutePath: "/dotfiles/git/.config/git/config",
+			PowerUpName:  "symlink",
+		},
+		{
+			TriggerName:  "filename",
+			Pack:         "vim",
+			Path:         ".vimrc",
+			AbsolutePath: "/dotfiles/vim/.vimrc",
+			PowerUpName:  "symlink",
+		},
+	}
+
+	actions, err := powerUp.Process(matches)
+	require.NoError(t, err)
+	require.Len(t, actions, 3)
+
+	// Check that nested paths are preserved
+	assert.Equal(t, types.ActionTypeLink, actions[0].Type)
+	assert.Equal(t, "/dotfiles/nvim/.config/nvim/init.lua", actions[0].Source)
+	assert.Equal(t, filepath.Join(homeDir, ".config/nvim/init.lua"), actions[0].Target)
+	assert.Equal(t, "Symlink .config/nvim/init.lua -> "+filepath.Join(homeDir, ".config/nvim/init.lua"), actions[0].Description)
+
+	assert.Equal(t, types.ActionTypeLink, actions[1].Type)
+	assert.Equal(t, "/dotfiles/git/.config/git/config", actions[1].Source)
+	assert.Equal(t, filepath.Join(homeDir, ".config/git/config"), actions[1].Target)
+
+	// Check that flat files still work
+	assert.Equal(t, types.ActionTypeLink, actions[2].Type)
+	assert.Equal(t, "/dotfiles/vim/.vimrc", actions[2].Source)
+	assert.Equal(t, filepath.Join(homeDir, ".vimrc"), actions[2].Target)
+}
+
+func TestSymlinkPowerUp_ConflictDetectionWithNestedPaths(t *testing.T) {
+	powerUp := NewSymlinkPowerUp()
+
+	// Two different files with same basename but different paths should NOT conflict
+	matches := []types.TriggerMatch{
+		{
+			TriggerName:  "filename",
+			Pack:         "pack1",
+			Path:         ".config/app1/config",
+			AbsolutePath: "/dotfiles/pack1/.config/app1/config",
+			PowerUpName:  "symlink",
+		},
+		{
+			TriggerName:  "filename",
+			Pack:         "pack2",
+			Path:         ".config/app2/config", // Same basename "config" but different path
+			AbsolutePath: "/dotfiles/pack2/.config/app2/config",
+			PowerUpName:  "symlink",
+		},
+	}
+
+	// With correct implementation preserving paths, this should NOT error
+	actions, err := powerUp.Process(matches)
+	require.NoError(t, err)
+	require.Len(t, actions, 2)
+
+	// They should have different targets
+	assert.NotEqual(t, actions[0].Target, actions[1].Target)
+}
