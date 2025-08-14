@@ -1,0 +1,19 @@
+<Indent>
+{{- if eq .Status "config" -}}
+<ConfigFile>config</ConfigFile>
+{{- else if eq .Status "ignored" -}}
+<ConfigFile>ignore</ConfigFile>
+{{- else -}}
+<PowerUp>{{.PowerUp}}</PowerUp>
+{{- end -}}
+<TableSeparator> : </TableSeparator>
+<FilePath>{{.Path}}</FilePath>
+{{- if .IsOverride -}}
+<TableSeparator> </TableSeparator><Override>[override]</Override>
+{{- end -}}
+<TableSeparator> : </TableSeparator>
+{{- template "status-inline.tmpl" .Status -}}
+{{- if .Message -}}
+<TableSeparator> - </TableSeparator>{{.Message}}
+{{- end -}}
+</Indent>

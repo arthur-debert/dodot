@@ -1,0 +1,13 @@
+{{- if eq . "success" -}}
+<SuccessBadge>✓ SUCCESS</SuccessBadge>
+{{- else if eq . "error" -}}
+<ErrorBadge>✗ ERROR</ErrorBadge>
+{{- else if eq . "warning" -}}
+<WarningBadge>⚠ WARNING</WarningBadge>
+{{- else if eq . "queue" -}}
+<Info>[QUEUED]</Info>
+{{- else if eq . "ignored" -}}
+<Ignored>[IGNORED]</Ignored>
+{{- else -}}
+<Info>[{{.}}]</Info>
+{{- end -}}

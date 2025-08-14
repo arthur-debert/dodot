@@ -9,9 +9,9 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
-	"github.com/arthur-debert/dodot/pkg/display"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/output"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -261,8 +261,13 @@ func newDeployCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrDeployPacks, err)
 			}
 
-			// Display results using the new display system
-			renderer := display.NewTextRenderer(os.Stdout)
+			// Display results using the new output renderer
+			// The renderer will automatically detect NO_COLOR environment variable
+			// through lipgloss/termenv
+			renderer, err := output.NewRenderer(os.Stdout, false)
+			if err != nil {
+				return fmt.Errorf("failed to create renderer: %w", err)
+			}
 			if err := renderer.RenderExecutionContext(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
@@ -314,8 +319,13 @@ func newInstallCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInstallPacks, err)
 			}
 
-			// Display results using the new display system
-			renderer := display.NewTextRenderer(os.Stdout)
+			// Display results using the new output renderer
+			// The renderer will automatically detect NO_COLOR environment variable
+			// through lipgloss/termenv
+			renderer, err := output.NewRenderer(os.Stdout, false)
+			if err != nil {
+				return fmt.Errorf("failed to create renderer: %w", err)
+			}
 			if err := renderer.RenderExecutionContext(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
@@ -399,8 +409,13 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrStatusPacks, err)
 			}
 
-			// Display results using text renderer
-			renderer := display.NewTextRenderer(os.Stdout)
+			// Display results using the new output renderer
+			// The renderer will automatically detect NO_COLOR environment variable
+			// through lipgloss/termenv
+			renderer, err := output.NewRenderer(os.Stdout, false)
+			if err != nil {
+				return fmt.Errorf("failed to create renderer: %w", err)
+			}
 			if err := renderer.Render(result); err != nil {
 				return fmt.Errorf("failed to display status: %w", err)
 			}
