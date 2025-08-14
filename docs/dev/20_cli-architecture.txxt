@@ -104,11 +104,37 @@ func Execute(packs []string, opts Options) (*Result, error) {
 Output Formatting
 -----------------
 
-The display package handles all output formatting:
-• Structured data from commands
-• Consistent formatting across commands
-• Color support detection
-• Plain text fallback
+The output rendering pipeline uses a declarative, template-based approach:
+
+Architecture:
+• **Structured Data**: Commands return typed results (DisplayResult, ExecutionContext)
+• **Template Engine**: Go templates define layout (pkg/output/templates/)
+• **Style Registry**: Centralized style definitions with adaptive colors (pkg/output/styles/)
+• **Lipbalm Renderer**: Applies lipgloss styles via XML-like tags (pkg/lipbalm/)
+
+Pipeline Flow:
+1. Command executes and returns structured data
+2. Data is transformed to DisplayResult if needed
+3. Template engine processes the data with Go templates
+4. Lipbalm expands style tags to ANSI codes (or strips for NO_COLOR)
+5. Formatted output is written to stdout
+
+Key Components:
+• **pkg/output/renderer.go**: Main renderer that orchestrates the pipeline
+• **pkg/output/styles/styles.go**: Semantic style definitions with light/dark support
+• **pkg/output/templates/**: External template files for each output type
+• **pkg/lipbalm/**: Template tag expansion and style application
+
+Benefits:
+• UI changes require only template edits, no Go code changes
+• Automatic light/dark mode via adaptive colors
+• Clean separation of data, structure, and presentation
+• Consistent theming across all commands
+
+For implementation details, see the package documentation:
+• pkg/output/doc.go - Complete rendering pipeline documentation
+• pkg/lipbalm/doc.go - Template tag processing details
+• pkg/output/styles/styles.go - Available style definitions
 
 See specs/pack-output.txxt for display specifications.
 

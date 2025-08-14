@@ -1,3 +1,15 @@
+// Package styles defines the visual styling for dodot's terminal output.
+//
+// All styles use semantic names and adaptive colors that automatically
+// adjust to light and dark terminal themes. This centralized approach
+// ensures consistent theming across all command outputs.
+//
+// Style names are used as XML-like tags in templates:
+//
+//	<Success>Operation completed</Success>
+//	<PowerUp>symlink</PowerUp>
+//
+// See pkg/output/doc.go for the complete rendering pipeline documentation.
 package styles
 
 import (

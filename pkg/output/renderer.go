@@ -18,14 +18,28 @@ import (
 //go:embed templates/*.tmpl
 var templatesFS embed.FS
 
-// Renderer handles the rendering of CLI output using lipbalm and templates
+// Renderer orchestrates the template-based output rendering pipeline.
+// It combines Go templates with lipgloss styling to produce rich terminal output.
+//
+// The renderer follows a two-phase approach:
+//  1. Template expansion: Go templates process the data structure
+//  2. Style application: Lipbalm converts XML-like tags to ANSI codes
+//
+// For detailed documentation, see pkg/output/doc.go
 type Renderer struct {
 	templates *template.Template
 	writer    io.Writer
 	noColor   bool
 }
 
-// NewRenderer creates a new Renderer instance
+// NewRenderer creates a new Renderer instance.
+//
+// Parameters:
+//   - w: The io.Writer to write output to (typically os.Stdout)
+//   - noColor: If true, all style tags will be stripped for plain text output
+//
+// The renderer will automatically detect terminal capabilities and honor
+// the NO_COLOR environment variable when noColor is false.
 func NewRenderer(w io.Writer, noColor bool) (*Renderer, error) {
 	log := logging.GetLogger("output.Renderer")
 
@@ -64,7 +78,15 @@ func NewRenderer(w io.Writer, noColor bool) (*Renderer, error) {
 	}, nil
 }
 
-// Render renders a DisplayResult using the appropriate template
+// Render processes a DisplayResult through the template pipeline and writes
+// the formatted output.
+//
+// The rendering process:
+//  1. Executes the "result.tmpl" template with the provided data
+//  2. Applies style tags using lipbalm (or strips them if noColor is true)
+//  3. Writes the final output to the configured writer
+//
+// Returns an error if template execution or style expansion fails.
 func (r *Renderer) Render(result *types.DisplayResult) error {
 	log := logging.GetLogger("output.Renderer")
 
