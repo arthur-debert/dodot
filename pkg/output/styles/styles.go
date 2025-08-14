@@ -54,9 +54,9 @@ var StyleRegistry = map[string]lipgloss.Style{
 	"MutedItalic": lipgloss.NewStyle().Foreground(ColorMuted).Italic(true),
 
 	// File and path styles
-	"PowerUp":    lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true),
-	"FilePath":   lipgloss.NewStyle().Foreground(ColorPrimary),
-	"ConfigFile": lipgloss.NewStyle().Foreground(ColorInfo).Italic(true),
+	"PowerUp":    lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Width(12).Align(lipgloss.Left),
+	"FilePath":   lipgloss.NewStyle().Foreground(ColorPrimary).Width(30).Align(lipgloss.Left),
+	"ConfigFile": lipgloss.NewStyle().Foreground(ColorInfo).Italic(true).Width(12).Align(lipgloss.Left),
 	"Override":   lipgloss.NewStyle().Foreground(ColorWarning).Bold(true),
 
 	// Layout and spacing
