@@ -1,11 +1,23 @@
 package styles
 
 import (
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	// For tests, ensure we load from the correct path relative to the test file
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(filename)
+	stylesPath := filepath.Join(dir, "styles.yaml")
+	if err := LoadStyles(stylesPath); err != nil {
+		panic("failed to load styles for tests: " + err.Error())
+	}
+}
 
 func TestStyleRegistry(t *testing.T) {
 	// Test that all expected styles are present
