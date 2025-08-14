@@ -1,0 +1,159 @@
+# Style definitions for dodot's terminal output
+# All colors use adaptive values that automatically adjust to light/dark themes
+
+colors:
+  # Base colors
+  primary:
+    light: "#005F87"
+    dark: "#87CEEB"
+  secondary:
+    light: "#875F00"
+    dark: "#FFD700"
+  muted:
+    light: "#6C6C6C"
+    dark: "#878787"
+  
+  # Status colors
+  success:
+    light: "#008700"
+    dark: "#00FF00"
+  error:
+    light: "#D70000"
+    dark: "#FF5555"
+  warning:
+    light: "#AF8700"
+    dark: "#FFFF00"
+  info:
+    light: "#0087AF"
+    dark: "#00AFFF"
+  queued:
+    light: "#5F5F87"
+    dark: "#8787AF"
+  ignored:
+    light: "#9E9E9E"
+    dark: "#626262"
+  
+  # Background colors
+  successBg:
+    light: "#D7FFD7"
+    dark: "#003300"
+  errorBg:
+    light: "#FFD7D7"
+    dark: "#330000"
+  warningBg:
+    light: "#FFFFD7"
+    dark: "#333300"
+
+styles:
+  # Headers
+  Header:
+    bold: true
+    foreground: primary
+  SubHeader:
+    foreground: secondary
+  PackHeader:
+    bold: true
+    foreground: primary
+    marginBottom: 1
+  CommandHeader:
+    bold: true
+    foreground: primary
+    marginTop: 1
+  
+  # Status indicators
+  Success:
+    foreground: success
+    bold: true
+  Error:
+    foreground: error
+    bold: true
+  Warning:
+    foreground: warning
+    bold: true
+  Info:
+    foreground: info
+  Queued:
+    foreground: queued
+  Ignored:
+    foreground: ignored
+    italic: true
+  
+  # Status with backgrounds (for emphasis)
+  SuccessBadge:
+    foreground: success
+    background: successBg
+    paddingLeft: 1
+    paddingRight: 1
+  ErrorBadge:
+    foreground: error
+    background: errorBg
+    paddingLeft: 1
+    paddingRight: 1
+  WarningBadge:
+    foreground: warning
+    background: warningBg
+    paddingLeft: 1
+    paddingRight: 1
+  
+  # Text styles
+  Bold:
+    bold: true
+  Italic:
+    italic: true
+  Underline:
+    underline: true
+  Muted:
+    foreground: muted
+  MutedItalic:
+    foreground: muted
+    italic: true
+  
+  # File and path styles
+  PowerUp:
+    foreground: secondary
+    bold: true
+    width: 12
+    align: left
+  FilePath:
+    foreground: primary
+    width: 30
+    align: left
+  ConfigFile:
+    foreground: info
+    italic: true
+    width: 12
+    align: left
+  Override:
+    foreground: warning
+    bold: true
+  
+  # Layout and spacing
+  Indent:
+    marginLeft: 2
+  DoubleIndent:
+    marginLeft: 4
+  Section:
+    marginBottom: 1
+  
+  # Special elements
+  Timestamp:
+    foreground: muted
+    italic: true
+  DryRunBanner:
+    foreground: warning
+    background: warningBg
+    bold: true
+    paddingLeft: 2
+    paddingRight: 2
+  NoContent:
+    foreground: muted
+    italic: true
+  
+  # Table elements
+  TableHeader:
+    bold: true
+    underline: true
+    foreground: primary
+  TableCell: {}
+  TableSeparator:
+    foreground: muted
