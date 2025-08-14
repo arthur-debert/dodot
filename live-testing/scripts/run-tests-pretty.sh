@@ -64,5 +64,5 @@ if ! python3 "$PROJECT_ROOT/live-testing/scripts/junit-summary.py" "$JUNIT_FILE"
 fi
 
 # Exit with the test exit code
-esages qqit $exit_code
+exit $exit_code
 
