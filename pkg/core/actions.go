@@ -20,6 +20,11 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 		return nil, nil
 	}
 
+	// First, check for cross-pack symlink conflicts
+	if err := checkCrossPackSymlinkConflicts(matches); err != nil {
+		return nil, err
+	}
+
 	// Group matches by power-up, pack, and options
 	// This allows power-ups to process related files together
 	groups := groupMatches(matches)
@@ -168,4 +173,76 @@ func hashOptions(options map[string]interface{}) string {
 	}
 
 	return strings.Join(parts, ";")
+}
+
+// checkCrossPackSymlinkConflicts checks for symlink conflicts across different packs
+func checkCrossPackSymlinkConflicts(matches []types.TriggerMatch) error {
+	logger := logging.GetLogger("core.actions")
+
+	// Filter only symlink matches
+	symlinkMatches := make([]types.TriggerMatch, 0)
+	for _, match := range matches {
+		if match.PowerUpName == "symlink" {
+			symlinkMatches = append(symlinkMatches, match)
+		}
+	}
+
+	logger.Debug().
+		Int("totalMatches", len(matches)).
+		Int("symlinkMatches", len(symlinkMatches)).
+		Msg("Checking for cross-pack symlink conflicts")
+
+	if len(symlinkMatches) < 2 {
+		// No possibility of conflict with less than 2 symlinks
+		return nil
+	}
+
+	// Track target paths and their sources
+	targetMap := make(map[string][]types.TriggerMatch)
+
+	// Build map of target paths to source matches
+	for _, match := range symlinkMatches {
+		// The target path for symlinks is based on the relative path within the pack
+		// This matches the logic in the symlink powerup
+		targetPath := match.Path
+		targetMap[targetPath] = append(targetMap[targetPath], match)
+
+		logger.Debug().
+			Str("pack", match.Pack).
+			Str("path", match.Path).
+			Str("targetPath", targetPath).
+			Msg("Symlink match mapped")
+	}
+
+	// Check for conflicts
+	for targetPath, sources := range targetMap {
+		logger.Debug().
+			Str("targetPath", targetPath).
+			Int("sourceCount", len(sources)).
+			Msg("Checking target path for conflicts")
+
+		if len(sources) > 1 {
+			// We have a conflict - multiple sources want the same target
+			packList := make([]string, 0, len(sources))
+			sourceList := make([]string, 0, len(sources))
+
+			for _, source := range sources {
+				packList = append(packList, source.Pack)
+				sourceList = append(sourceList, fmt.Sprintf("%s/%s", source.Pack, source.Path))
+			}
+
+			logger.Error().
+				Str("target", targetPath).
+				Strs("packs", packList).
+				Strs("sources", sourceList).
+				Msg("Cross-pack symlink conflict detected")
+
+			return fmt.Errorf("symlink conflict detected: multiple packs want to create symlink '%s'\n"+
+				"Conflicting files:\n  - %s\n\n"+
+				"You need to rename or remove one of these files to resolve the conflict",
+				targetPath, strings.Join(sourceList, "\n  - "))
+		}
+	}
+
+	return nil
 }
