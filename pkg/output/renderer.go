@@ -84,7 +84,7 @@ func (r *Renderer) Render(result *types.DisplayResult) error {
 	var err error
 	if r.noColor {
 		// Strip all style tags for no-color mode
-		output = stripTags(templateOutput)
+		output = lipbalm.StripTags(templateOutput)
 		log.Debug().Msg("Stripped tags for no-color mode")
 	} else {
 		// Apply lipgloss styles
@@ -121,7 +121,7 @@ func (r *Renderer) RenderError(err error) error {
 	var output string
 	var expandErr error
 	if r.noColor {
-		output = stripTags(buf.String())
+		output = lipbalm.StripTags(buf.String())
 	} else {
 		output, expandErr = lipbalm.ExpandTags(buf.String(), styles.StyleRegistry)
 		if expandErr != nil {
@@ -150,36 +150,4 @@ func (r *Renderer) RenderMessage(style, message string) error {
 
 	_, writeErr := fmt.Fprintln(r.writer, output)
 	return writeErr
-}
-
-// stripTags removes all XML-like style tags from the input string
-func stripTags(input string) string {
-	// Simple regex-based tag stripping for no-color mode
-	// This strips <tag>content</tag> and leaves only content
-	var result bytes.Buffer
-	inTag := false
-	tagStart := 0
-
-	for i, ch := range input {
-		switch ch {
-		case '<':
-			inTag = true
-			tagStart = i
-		case '>':
-			if inTag {
-				inTag = false
-				// Check if this is a closing tag
-				if tagStart+1 < i && input[tagStart+1] == '/' {
-					// Skip closing tags entirely
-					continue
-				}
-			}
-		default:
-			if !inTag {
-				result.WriteRune(ch)
-			}
-		}
-	}
-
-	return result.String()
 }

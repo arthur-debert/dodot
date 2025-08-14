@@ -111,3 +111,54 @@ func TestMain(m *testing.M) {
 	lipgloss.SetDefaultRenderer(lipgloss.NewRenderer(io.Discard))
 	m.Run()
 }
+
+func TestStripTags(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "strips simple tags",
+			input: "<Bold>Hello</Bold> <Italic>World</Italic>",
+			want:  "Hello World",
+		},
+		{
+			name:  "strips nested tags",
+			input: "<Header><Bold>Title</Bold></Header>",
+			want:  "Title",
+		},
+		{
+			name:  "handles text without tags",
+			input: "Plain text without tags",
+			want:  "Plain text without tags",
+		},
+		{
+			name:  "strips empty tags",
+			input: "<Empty></Empty>Text",
+			want:  "Text",
+		},
+		{
+			name:  "handles multiple lines",
+			input: "<Line1>First</Line1>\n<Line2>Second</Line2>",
+			want:  "First\nSecond",
+		},
+		{
+			name:  "handles no-format tags",
+			input: "<Bold>Styled</Bold> <no-format>Plain</no-format>",
+			want:  "Styled Plain",
+		},
+		{
+			name:  "handles invalid XML gracefully",
+			input: "Not <valid XML",
+			want:  "Not <valid XML",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := lipbalm.StripTags(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}

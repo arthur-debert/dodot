@@ -92,3 +92,34 @@ func processToken(token etree.Token, w io.Writer, styles StyleMap, hasColor bool
 		_, _ = w.Write([]byte(t.Data))
 	}
 }
+
+// StripTags removes all XML-like style tags from the input string, leaving only the content.
+// This is useful for generating plain text output when colors are disabled.
+func StripTags(s string) string {
+	doc := etree.NewDocument()
+	// We need a single root element for the XML parser.
+	if err := doc.ReadFromString("<root>" + s + "</root>"); err != nil {
+		// If parsing fails, return the original string
+		return s
+	}
+
+	var result bytes.Buffer
+	root := doc.SelectElement("root")
+	for _, token := range root.Child {
+		stripToken(token, &result)
+	}
+
+	return result.String()
+}
+
+func stripToken(token etree.Token, w io.Writer) {
+	switch t := token.(type) {
+	case *etree.Element:
+		// Skip tag itself, only process children
+		for _, child := range t.Child {
+			stripToken(child, w)
+		}
+	case *etree.CharData:
+		_, _ = w.Write([]byte(t.Data))
+	}
+}
