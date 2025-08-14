@@ -13,78 +13,230 @@
 package styles
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+
+	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rs/zerolog"
+	"gopkg.in/yaml.v3"
 )
 
-// Semantic colors using AdaptiveColor for automatic light/dark mode support
-var (
-	// Base colors
-	ColorPrimary   = lipgloss.AdaptiveColor{Light: "#005F87", Dark: "#87CEEB"}
-	ColorSecondary = lipgloss.AdaptiveColor{Light: "#875F00", Dark: "#FFD700"}
-	ColorMuted     = lipgloss.AdaptiveColor{Light: "#6C6C6C", Dark: "#878787"}
+// ColorDef represents an adaptive color definition in YAML
+type ColorDef struct {
+	Light string `yaml:"light"`
+	Dark  string `yaml:"dark"`
+}
 
-	// Status colors
-	ColorSuccess = lipgloss.AdaptiveColor{Light: "#008700", Dark: "#00FF00"}
-	ColorError   = lipgloss.AdaptiveColor{Light: "#D70000", Dark: "#FF5555"}
-	ColorWarning = lipgloss.AdaptiveColor{Light: "#AF8700", Dark: "#FFFF00"}
-	ColorInfo    = lipgloss.AdaptiveColor{Light: "#0087AF", Dark: "#00AFFF"}
-	ColorQueued  = lipgloss.AdaptiveColor{Light: "#5F5F87", Dark: "#8787AF"}
-	ColorIgnored = lipgloss.AdaptiveColor{Light: "#9E9E9E", Dark: "#626262"}
+// StyleDef represents a style definition in YAML
+type StyleDef struct {
+	Bold         bool   `yaml:"bold,omitempty"`
+	Italic       bool   `yaml:"italic,omitempty"`
+	Underline    bool   `yaml:"underline,omitempty"`
+	Foreground   string `yaml:"foreground,omitempty"`
+	Background   string `yaml:"background,omitempty"`
+	Width        int    `yaml:"width,omitempty"`
+	Align        string `yaml:"align,omitempty"`
+	MarginLeft   int    `yaml:"marginLeft,omitempty"`
+	MarginBottom int    `yaml:"marginBottom,omitempty"`
+	MarginTop    int    `yaml:"marginTop,omitempty"`
+	PaddingLeft  int    `yaml:"paddingLeft,omitempty"`
+	PaddingRight int    `yaml:"paddingRight,omitempty"`
+}
 
-	// Background colors
-	ColorSuccessBg = lipgloss.AdaptiveColor{Light: "#D7FFD7", Dark: "#003300"}
-	ColorErrorBg   = lipgloss.AdaptiveColor{Light: "#FFD7D7", Dark: "#330000"}
-	ColorWarningBg = lipgloss.AdaptiveColor{Light: "#FFFFD7", Dark: "#333300"}
-)
+// Config represents the complete styles configuration
+type Config struct {
+	Colors map[string]ColorDef `yaml:"colors"`
+	Styles map[string]StyleDef `yaml:"styles"`
+}
 
 // StyleRegistry maps semantic names to lipgloss styles
-var StyleRegistry = map[string]lipgloss.Style{
-	// Headers
-	"Header":        lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary),
-	"SubHeader":     lipgloss.NewStyle().Foreground(ColorSecondary),
-	"PackHeader":    lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).MarginBottom(1),
-	"CommandHeader": lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).MarginTop(1),
+var StyleRegistry map[string]lipgloss.Style
 
-	// Status indicators
-	"Success": lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true),
-	"Error":   lipgloss.NewStyle().Foreground(ColorError).Bold(true),
-	"Warning": lipgloss.NewStyle().Foreground(ColorWarning).Bold(true),
-	"Info":    lipgloss.NewStyle().Foreground(ColorInfo),
-	"Queued":  lipgloss.NewStyle().Foreground(ColorQueued),
-	"Ignored": lipgloss.NewStyle().Foreground(ColorIgnored).Italic(true),
+// Adaptive colors loaded from YAML
+var colors map[string]lipgloss.AdaptiveColor
 
-	// Status with backgrounds (for emphasis)
-	"SuccessBadge": lipgloss.NewStyle().Foreground(ColorSuccess).Background(ColorSuccessBg).Padding(0, 1),
-	"ErrorBadge":   lipgloss.NewStyle().Foreground(ColorError).Background(ColorErrorBg).Padding(0, 1),
-	"WarningBadge": lipgloss.NewStyle().Foreground(ColorWarning).Background(ColorWarningBg).Padding(0, 1),
+// defaultStylesPath is set during init based on source file location
+var defaultStylesPath string
 
-	// Text styles
-	"Bold":        lipgloss.NewStyle().Bold(true),
-	"Italic":      lipgloss.NewStyle().Italic(true),
-	"Underline":   lipgloss.NewStyle().Underline(true),
-	"Muted":       lipgloss.NewStyle().Foreground(ColorMuted),
-	"MutedItalic": lipgloss.NewStyle().Foreground(ColorMuted).Italic(true),
+// getLogger returns a logger for the styles package
+func getLogger() zerolog.Logger {
+	return logging.GetLogger("output.styles")
+}
 
-	// File and path styles
-	"PowerUp":    lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Width(12).Align(lipgloss.Left),
-	"FilePath":   lipgloss.NewStyle().Foreground(ColorPrimary).Width(30).Align(lipgloss.Left),
-	"ConfigFile": lipgloss.NewStyle().Foreground(ColorInfo).Italic(true).Width(12).Align(lipgloss.Left),
-	"Override":   lipgloss.NewStyle().Foreground(ColorWarning).Bold(true),
+func init() {
+	// Try to determine the path to styles.yaml
+	// This handles both runtime and test scenarios
 
-	// Layout and spacing
-	"Indent":       lipgloss.NewStyle().MarginLeft(2),
-	"DoubleIndent": lipgloss.NewStyle().MarginLeft(4),
-	"Section":      lipgloss.NewStyle().MarginBottom(1),
+	// Strategy 1: Use runtime.Caller to find this source file
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		// We know this file is in pkg/output/styles/
+		dir := filepath.Dir(filename)
+		stylesPath := filepath.Join(dir, "styles.yaml")
+		if _, err := os.Stat(stylesPath); err == nil {
+			defaultStylesPath = stylesPath
+		}
+	}
 
-	// Special elements
-	"Timestamp":    lipgloss.NewStyle().Foreground(ColorMuted).Italic(true),
-	"DryRunBanner": lipgloss.NewStyle().Foreground(ColorWarning).Background(ColorWarningBg).Bold(true).Padding(0, 2),
-	"NoContent":    lipgloss.NewStyle().Foreground(ColorMuted).Italic(true),
+	// Strategy 2: Check executable path
+	if defaultStylesPath == "" {
+		exePath, err := os.Executable()
+		if err == nil {
+			// Try paths relative to the binary
+			exeDir := filepath.Dir(exePath)
+			possiblePaths := []string{
+				// Same directory as binary
+				filepath.Join(exeDir, "styles.yaml"),
+				// Development: binary in bin/, styles in pkg/
+				filepath.Join(exeDir, "..", "pkg", "output", "styles", "styles.yaml"),
+				// Alternative development path
+				filepath.Join(exeDir, "..", "..", "pkg", "output", "styles", "styles.yaml"),
+			}
 
-	// Table elements
-	"TableHeader":    lipgloss.NewStyle().Bold(true).Underline(true).Foreground(ColorPrimary),
-	"TableCell":      lipgloss.NewStyle(),
-	"TableSeparator": lipgloss.NewStyle().Foreground(ColorMuted),
+			for _, path := range possiblePaths {
+				if _, err = os.Stat(path); err == nil {
+					defaultStylesPath = path
+					break
+				}
+			}
+		}
+	}
+
+	// Strategy 3: Try working directory paths
+	if defaultStylesPath == "" {
+		workingDirPaths := []string{
+			// Development/test path (when running from repo root)
+			"pkg/output/styles/styles.yaml",
+			// Test path (when running from package directory)
+			"styles.yaml",
+			// Test path when running go test from a subdirectory
+			"../styles/styles.yaml",
+			"../../styles/styles.yaml",
+			"../../../pkg/output/styles/styles.yaml",
+		}
+
+		for _, path := range workingDirPaths {
+			if _, err := os.Stat(path); err == nil {
+				defaultStylesPath = path
+				break
+			}
+		}
+	}
+
+	if defaultStylesPath == "" {
+		// Last resort - assume we're in development
+		defaultStylesPath = "pkg/output/styles/styles.yaml"
+	}
+
+	// Load styles configuration from file
+	if err := LoadStyles(defaultStylesPath); err != nil {
+		panic(fmt.Sprintf("failed to load styles: %v", err))
+	}
+}
+
+// LoadStyles loads style configuration from a YAML file
+func LoadStyles(path string) error {
+	log := getLogger()
+	log.Debug().Str("path", path).Msg("Loading styles from file")
+
+	// Read YAML file
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("failed to read styles file %s: %w", path, err)
+	}
+	log.Debug().Int("bytes", len(data)).Msg("Read styles file")
+
+	// Parse YAML configuration
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse styles.yaml: %w", err)
+	}
+	log.Debug().
+		Int("colors", len(config.Colors)).
+		Int("styles", len(config.Styles)).
+		Msg("Parsed YAML configuration")
+
+	// Initialize colors
+	colors = make(map[string]lipgloss.AdaptiveColor)
+	for name, def := range config.Colors {
+		colors[name] = lipgloss.AdaptiveColor{
+			Light: def.Light,
+			Dark:  def.Dark,
+		}
+	}
+	log.Debug().Int("count", len(colors)).Msg("Loaded adaptive colors")
+
+	// Initialize style registry
+	StyleRegistry = make(map[string]lipgloss.Style)
+	for name, def := range config.Styles {
+		style := buildStyle(def)
+		StyleRegistry[name] = style
+	}
+	log.Debug().Int("count", len(StyleRegistry)).Msg("Loaded styles")
+
+	return nil
+}
+
+// buildStyle constructs a lipgloss style from a style definition
+func buildStyle(def StyleDef) lipgloss.Style {
+	style := lipgloss.NewStyle()
+
+	// Apply text formatting
+	if def.Bold {
+		style = style.Bold(true)
+	}
+	if def.Italic {
+		style = style.Italic(true)
+	}
+	if def.Underline {
+		style = style.Underline(true)
+	}
+
+	// Apply colors
+	if def.Foreground != "" {
+		if color, ok := colors[def.Foreground]; ok {
+			style = style.Foreground(color)
+		}
+	}
+	if def.Background != "" {
+		if color, ok := colors[def.Background]; ok {
+			style = style.Background(color)
+		}
+	}
+
+	// Apply layout
+	if def.Width > 0 {
+		style = style.Width(def.Width)
+	}
+	if def.Align != "" {
+		switch def.Align {
+		case "left":
+			style = style.Align(lipgloss.Left)
+		case "center":
+			style = style.Align(lipgloss.Center)
+		case "right":
+			style = style.Align(lipgloss.Right)
+		}
+	}
+
+	// Apply spacing
+	if def.MarginLeft > 0 {
+		style = style.MarginLeft(def.MarginLeft)
+	}
+	if def.MarginBottom > 0 {
+		style = style.MarginBottom(def.MarginBottom)
+	}
+	if def.MarginTop > 0 {
+		style = style.MarginTop(def.MarginTop)
+	}
+	if def.PaddingLeft > 0 || def.PaddingRight > 0 {
+		style = style.Padding(0, def.PaddingRight, 0, def.PaddingLeft)
+	}
+
+	return style
 }
 
 // GetStyle safely retrieves a style from the registry

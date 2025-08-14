@@ -1,11 +1,23 @@
 package styles
 
 import (
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/stretchr/testify/assert"
 )
+
+func init() {
+	// For tests, ensure we load from the correct path relative to the test file
+	_, filename, _, _ := runtime.Caller(0)
+	dir := filepath.Dir(filename)
+	stylesPath := filepath.Join(dir, "styles.yaml")
+	if err := LoadStyles(stylesPath); err != nil {
+		panic("failed to load styles for tests: " + err.Error())
+	}
+}
 
 func TestStyleRegistry(t *testing.T) {
 	// Test that all expected styles are present
@@ -97,31 +109,28 @@ func TestMergeStyles(t *testing.T) {
 	}
 }
 
+func TestYAMLConfiguration(t *testing.T) {
+	// Test that YAML was loaded successfully
+	assert.NotNil(t, colors, "Colors map should be initialized")
+	assert.NotEmpty(t, colors, "Colors map should contain entries")
+	assert.NotNil(t, StyleRegistry, "StyleRegistry should be initialized")
+	assert.NotEmpty(t, StyleRegistry, "StyleRegistry should contain entries")
+}
+
 func TestAdaptiveColors(t *testing.T) {
 	// Test that all adaptive colors are properly defined
-	adaptiveColors := []struct {
-		name  string
-		color lipgloss.AdaptiveColor
-	}{
-		{"ColorPrimary", ColorPrimary},
-		{"ColorSecondary", ColorSecondary},
-		{"ColorMuted", ColorMuted},
-		{"ColorSuccess", ColorSuccess},
-		{"ColorError", ColorError},
-		{"ColorWarning", ColorWarning},
-		{"ColorInfo", ColorInfo},
-		{"ColorQueued", ColorQueued},
-		{"ColorIgnored", ColorIgnored},
-		{"ColorSuccessBg", ColorSuccessBg},
-		{"ColorErrorBg", ColorErrorBg},
-		{"ColorWarningBg", ColorWarningBg},
+	expectedColors := []string{
+		"primary", "secondary", "muted",
+		"success", "error", "warning", "info", "queued", "ignored",
+		"successBg", "errorBg", "warningBg",
 	}
 
-	for _, ac := range adaptiveColors {
-		t.Run(ac.name, func(t *testing.T) {
-			// Both Light and Dark should be non-empty
-			assert.NotEmpty(t, ac.color.Light, "%s should have Light color defined", ac.name)
-			assert.NotEmpty(t, ac.color.Dark, "%s should have Dark color defined", ac.name)
+	for _, colorName := range expectedColors {
+		t.Run(colorName, func(t *testing.T) {
+			color, exists := colors[colorName]
+			assert.True(t, exists, "Color %s should exist", colorName)
+			assert.NotEmpty(t, color.Light, "%s should have Light color defined", colorName)
+			assert.NotEmpty(t, color.Dark, "%s should have Dark color defined", colorName)
 		})
 	}
 }

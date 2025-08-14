@@ -25,9 +25,10 @@ func NewRootCmd() *cobra.Command {
 	initTemplateFormatting()
 
 	var (
-		verbosity int
-		dryRun    bool
-		force     bool
+		verbosity  int
+		dryRun     bool
+		force      bool
+		configFile string
 	)
 
 	rootCmd := &cobra.Command{
@@ -39,6 +40,16 @@ func NewRootCmd() *cobra.Command {
 			// Setup logging based on verbosity
 			logging.SetupLogger(verbosity)
 			log.Debug().Str("command", cmd.Name()).Msg("Command started")
+
+			// Load custom styles if specified
+			if configFile != "" {
+				if err := output.LoadStylesFromFile(configFile); err != nil {
+					log.Error().Err(err).Str("config", configFile).Msg("Failed to load custom styles")
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: Failed to load custom styles from %s: %v\n", configFile, err)
+				} else {
+					log.Info().Str("config", configFile).Msg("Loaded custom styles")
+				}
+			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// If we get here, no subcommand was provided
@@ -55,6 +66,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().CountVarP(&verbosity, "verbose", "v", MsgFlagVerbose)
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, MsgFlagDryRun)
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, MsgFlagForce)
+	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to custom styles configuration file")
 
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
