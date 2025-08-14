@@ -18,7 +18,9 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rs/zerolog"
 	"gopkg.in/yaml.v3"
 )
 
@@ -58,6 +60,11 @@ var colors map[string]lipgloss.AdaptiveColor
 
 // defaultStylesPath is set during init based on source file location
 var defaultStylesPath string
+
+// getLogger returns a logger for the styles package
+func getLogger() zerolog.Logger {
+	return logging.GetLogger("output.styles")
+}
 
 func init() {
 	// Try to determine the path to styles.yaml
@@ -132,17 +139,25 @@ func init() {
 
 // LoadStyles loads style configuration from a YAML file
 func LoadStyles(path string) error {
+	log := getLogger()
+	log.Debug().Str("path", path).Msg("Loading styles from file")
+
 	// Read YAML file
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("failed to read styles file %s: %w", path, err)
 	}
+	log.Debug().Int("bytes", len(data)).Msg("Read styles file")
 
 	// Parse YAML configuration
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse styles.yaml: %w", err)
 	}
+	log.Debug().
+		Int("colors", len(config.Colors)).
+		Int("styles", len(config.Styles)).
+		Msg("Parsed YAML configuration")
 
 	// Initialize colors
 	colors = make(map[string]lipgloss.AdaptiveColor)
@@ -152,6 +167,7 @@ func LoadStyles(path string) error {
 			Dark:  def.Dark,
 		}
 	}
+	log.Debug().Int("count", len(colors)).Msg("Loaded adaptive colors")
 
 	// Initialize style registry
 	StyleRegistry = make(map[string]lipgloss.Style)
@@ -159,6 +175,7 @@ func LoadStyles(path string) error {
 		style := buildStyle(def)
 		StyleRegistry[name] = style
 	}
+	log.Debug().Int("count", len(StyleRegistry)).Msg("Loaded styles")
 
 	return nil
 }
