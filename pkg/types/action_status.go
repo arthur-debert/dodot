@@ -47,13 +47,13 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 	if a.Pack != "" && a.Source != "" {
 		return Status{
 			State:   StatusStatePending,
-			Message: fmt.Sprintf("will symlink <Filename>%s/%s</Filename> to <Filename>%s</Filename>", a.Pack, filepath.Base(a.Source), targetPath),
+			Message: fmt.Sprintf("<Filename>%s/%s</Filename> → <Filename>%s</Filename>", a.Pack, filepath.Base(a.Source), targetPath),
 		}, nil
 	}
 	// Fallback to simple message for tests/legacy code
 	return Status{
 		State:   StatusStatePending,
-		Message: fmt.Sprintf("will symlink to <Filename>%s</Filename>", filepath.Base(a.Target)),
+		Message: fmt.Sprintf("→ <Filename>%s</Filename>", filepath.Base(a.Target)),
 	}, nil
 }
 
@@ -67,12 +67,12 @@ func (a *Action) checkScriptStatus(fs FS, paths Pather) (Status, error) {
 		if a.Source != "" {
 			return Status{
 				State:   StatusStatePending,
-				Message: fmt.Sprintf("will execute <Filename>%s</Filename>", filepath.Base(a.Source)),
+				Message: fmt.Sprintf("⏵ <Filename>%s</Filename>", filepath.Base(a.Source)),
 			}, nil
 		}
 		return Status{
 			State:   StatusStatePending,
-			Message: "will execute script",
+			Message: "⏵ script",
 		}, nil
 	}
 
@@ -89,12 +89,12 @@ func (a *Action) checkScriptStatus(fs FS, paths Pather) (Status, error) {
 		if a.Source != "" {
 			return Status{
 				State:   StatusStatePending,
-				Message: fmt.Sprintf("will execute <Filename>%s</Filename>", filepath.Base(a.Source)),
+				Message: fmt.Sprintf("⏵ <Filename>%s</Filename>", filepath.Base(a.Source)),
 			}, nil
 		}
 		return Status{
 			State:   StatusStatePending,
-			Message: "will execute install script",
+			Message: "⏵ install script",
 		}, nil
 	}
 
@@ -147,12 +147,12 @@ func (a *Action) checkBrewStatus(fs FS, paths Pather) (Status, error) {
 		if a.Pack != "" {
 			return Status{
 				State:   StatusStatePending,
-				Message: fmt.Sprintf("will run brew install <Filename>%s/Brewfile</Filename>", a.Pack),
+				Message: fmt.Sprintf("brew ⯈ <Filename>%s/Brewfile</Filename>", a.Pack),
 			}, nil
 		}
 		return Status{
 			State:   StatusStatePending,
-			Message: "will run homebrew install",
+			Message: "brew ⯈ Brewfile",
 		}, nil
 	}
 
@@ -208,12 +208,12 @@ func (a *Action) checkPathStatus(fs FS, paths Pather) (Status, error) {
 	if a.Pack != "" && a.Source != "" {
 		return Status{
 			State:   StatusStatePending,
-			Message: fmt.Sprintf("will add <Filename>%s/%s</Filename> to your system $PATH", a.Pack, filepath.Base(a.Source)),
+			Message: fmt.Sprintf("<Filename>%s/%s</Filename> ∊ system $PATH", a.Pack, filepath.Base(a.Source)),
 		}, nil
 	}
 	return Status{
 		State:   StatusStatePending,
-		Message: "will add to PATH",
+		Message: "∊ PATH",
 	}, nil
 }
 
@@ -245,12 +245,12 @@ func (a *Action) checkShellSourceStatus(fs FS, paths Pather) (Status, error) {
 	if a.Pack != "" && a.Source != "" {
 		return Status{
 			State:   StatusStatePending,
-			Message: fmt.Sprintf("will source <Filename>%s/%s</Filename> in %s init", a.Pack, filepath.Base(a.Source), shellType),
+			Message: fmt.Sprintf("source <Filename>%s/%s</Filename> in %s init", a.Pack, filepath.Base(a.Source), shellType),
 		}, nil
 	}
 	return Status{
 		State:   StatusStatePending,
-		Message: "will be sourced in shell init",
+		Message: "sourced in shell init",
 	}, nil
 }
 

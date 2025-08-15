@@ -30,7 +30,7 @@ func TestActionCheckStatus_Symlink(t *testing.T) {
 				// No intermediate symlink exists
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will symlink to <Filename>.vimrc</Filename>",
+			expectedMsg:   "→ <Filename>.vimrc</Filename>",
 		},
 		{
 			name: "symlink deployed successfully",
@@ -119,7 +119,7 @@ func TestActionCheckStatus_Install(t *testing.T) {
 				// No sentinel file
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will execute <Filename>install.sh</Filename>",
+			expectedMsg:   "⏵ <Filename>install.sh</Filename>",
 		},
 		{
 			name: "install script executed",
@@ -188,7 +188,7 @@ func TestActionCheckStatus_Brew(t *testing.T) {
 				// No sentinel
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will run brew install <Filename>homebrew/Brewfile</Filename>",
+			expectedMsg:   "brew ⯈ <Filename>homebrew/Brewfile</Filename>",
 		},
 		{
 			name: "brewfile processed",
@@ -257,7 +257,7 @@ func TestActionCheckStatus_Path(t *testing.T) {
 				// No path symlink
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will add <Filename>tools/bin</Filename> to your system $PATH",
+			expectedMsg:   "<Filename>tools/bin</Filename> ∊ system $PATH",
 		},
 		{
 			name: "path added",
@@ -322,7 +322,7 @@ func TestActionCheckStatus_ShellSource(t *testing.T) {
 				// No shell profile symlink
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will source <Filename>zsh/aliases.sh</Filename> in shell init",
+			expectedMsg:   "source <Filename>zsh/aliases.sh</Filename> in shell init",
 		},
 		{
 			name: "shell script sourced",
