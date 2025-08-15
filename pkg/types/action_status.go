@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,6 +33,24 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 	}
 
 	// Not deployed yet
+	// Create more informative message with pack/file and destination
+	targetPath := a.Target
+
+	// Get the home directory to make paths more readable
+	homeDir, err := os.UserHomeDir()
+	if err == nil && homeDir != "" && strings.HasPrefix(targetPath, homeDir) {
+		// Replace the home directory path with $HOME
+		targetPath = "$HOME" + strings.TrimPrefix(targetPath, homeDir)
+	}
+
+	// Build message based on available information
+	if a.Pack != "" && a.Source != "" {
+		return Status{
+			State:   StatusStatePending,
+			Message: fmt.Sprintf("will symlink %s/%s to %s", a.Pack, filepath.Base(a.Source), targetPath),
+		}, nil
+	}
+	// Fallback to simple message for tests/legacy code
 	return Status{
 		State:   StatusStatePending,
 		Message: fmt.Sprintf("will symlink to %s", filepath.Base(a.Target)),
@@ -45,6 +64,12 @@ func (a *Action) checkScriptStatus(fs FS, paths Pather) (Status, error) {
 	// meant to be executed on every deployment, so we don't track their
 	// execution status with sentinel files.
 	if a.Type == ActionTypeRun {
+		if a.Source != "" {
+			return Status{
+				State:   StatusStatePending,
+				Message: fmt.Sprintf("will execute %s", filepath.Base(a.Source)),
+			}, nil
+		}
 		return Status{
 			State:   StatusStatePending,
 			Message: "will execute script",
@@ -61,6 +86,12 @@ func (a *Action) checkScriptStatus(fs FS, paths Pather) (Status, error) {
 	sentinelData, err := fs.ReadFile(sentinelInfo.Path)
 	if err != nil {
 		// Sentinel doesn't exist - not executed yet
+		if a.Source != "" {
+			return Status{
+				State:   StatusStatePending,
+				Message: fmt.Sprintf("will execute %s", filepath.Base(a.Source)),
+			}, nil
+		}
 		return Status{
 			State:   StatusStatePending,
 			Message: "will execute install script",
@@ -113,6 +144,12 @@ func (a *Action) checkBrewStatus(fs FS, paths Pather) (Status, error) {
 	sentinelData, err := fs.ReadFile(sentinelInfo.Path)
 	if err != nil {
 		// Sentinel doesn't exist - not executed yet
+		if a.Pack != "" {
+			return Status{
+				State:   StatusStatePending,
+				Message: fmt.Sprintf("will run brew install %s/Brewfile", a.Pack),
+			}, nil
+		}
 		return Status{
 			State:   StatusStatePending,
 			Message: "will run homebrew install",
@@ -168,6 +205,12 @@ func (a *Action) checkPathStatus(fs FS, paths Pather) (Status, error) {
 		}, nil
 	}
 
+	if a.Pack != "" && a.Source != "" {
+		return Status{
+			State:   StatusStatePending,
+			Message: fmt.Sprintf("will add %s/%s to your system $PATH", a.Pack, filepath.Base(a.Source)),
+		}, nil
+	}
 	return Status{
 		State:   StatusStatePending,
 		Message: "will add to PATH",
@@ -194,6 +237,17 @@ func (a *Action) checkShellSourceStatus(fs FS, paths Pather) (Status, error) {
 		}, nil
 	}
 
+	// Get shell type from metadata if available
+	shellType := "shell"
+	if shell, ok := a.Metadata["shell"].(string); ok {
+		shellType = shell
+	}
+	if a.Pack != "" && a.Source != "" {
+		return Status{
+			State:   StatusStatePending,
+			Message: fmt.Sprintf("will source %s/%s in %s init", a.Pack, filepath.Base(a.Source), shellType),
+		}, nil
+	}
 	return Status{
 		State:   StatusStatePending,
 		Message: "will be sourced in shell init",

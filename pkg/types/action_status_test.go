@@ -119,7 +119,7 @@ func TestActionCheckStatus_Install(t *testing.T) {
 				// No sentinel file
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will execute install script",
+			expectedMsg:   "will execute install.sh",
 		},
 		{
 			name: "install script executed",
@@ -188,7 +188,7 @@ func TestActionCheckStatus_Brew(t *testing.T) {
 				// No sentinel
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will run homebrew install",
+			expectedMsg:   "will run brew install homebrew/Brewfile",
 		},
 		{
 			name: "brewfile processed",
@@ -257,7 +257,7 @@ func TestActionCheckStatus_Path(t *testing.T) {
 				// No path symlink
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will add to PATH",
+			expectedMsg:   "will add tools/bin to your system $PATH",
 		},
 		{
 			name: "path added",
@@ -322,7 +322,7 @@ func TestActionCheckStatus_ShellSource(t *testing.T) {
 				// No shell profile symlink
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will be sourced in shell init",
+			expectedMsg:   "will source zsh/aliases.sh in shell init",
 		},
 		{
 			name: "shell script sourced",

@@ -95,7 +95,7 @@ func TestGetPackStatus(t *testing.T) {
 			expectedFiles:  1,
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				assert.Equal(t, "queue", result.Files[0].Status)
-				assert.Contains(t, result.Files[0].Message, "will symlink to")
+				assert.Contains(t, result.Files[0].Message, "will symlink")
 				// Verify display path uses target basename
 				assert.Equal(t, ".zshrc", result.Files[0].Path)
 			},

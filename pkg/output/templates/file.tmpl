@@ -1,4 +1,4 @@
-<Indent>{{- if eq .Status "config" -}}
+<Indent><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator>{{- if eq .Status "config" -}}
 <ConfigFile>config</ConfigFile>
 {{- else if eq .Status "ignored" -}}
 <IgnoredBadge>{{.PowerUp}}</IgnoredBadge>
@@ -12,4 +12,4 @@
 <QueuedBadge>{{.PowerUp}}</QueuedBadge>
 {{- else -}}
 <PowerUp>{{.PowerUp}}</PowerUp>
-{{- end -}}<TableSeparator> : </TableSeparator><FilePath>{{.Path}}</FilePath>{{- if .IsOverride -}}<TableSeparator> </TableSeparator><Override>[override]</Override>{{- end -}}{{- if .Message -}}<TableSeparator> : </TableSeparator>{{.Message}}{{- end -}}</Indent>
+{{- end -}}{{- if .IsOverride -}}<TableSeparator> </TableSeparator><Override>[override]</Override>{{- end -}}{{- if .Message -}}<TableSeparator> : </TableSeparator>{{.Message}}{{- end -}}</Indent>
