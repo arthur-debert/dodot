@@ -1,15 +1,15 @@
 <Indent>{{- if eq .Status "config" -}}
 <FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><ConfigFile>config</ConfigFile>
 {{- else if eq .Status "ignored" -}}
-<IgnoredBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator>{{.PowerUp}}</IgnoredBadge>
+<IgnoredBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></IgnoredBadge>
 {{- else if eq .Status "success" -}}
-<SuccessBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator>{{.PowerUp}}</SuccessBadge>
+<SuccessBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></SuccessBadge>
 {{- else if eq .Status "error" -}}
-<ErrorBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator>{{.PowerUp}}</ErrorBadge>
+<ErrorBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></ErrorBadge>
 {{- else if eq .Status "warning" -}}
-<WarningBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator>{{.PowerUp}}</WarningBadge>
+<WarningBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></WarningBadge>
 {{- else if eq .Status "queue" -}}
-<QueuedBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator>{{.PowerUp}}</QueuedBadge>
+<QueuedBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></QueuedBadge>
 {{- else -}}
 <FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp>
 {{- end -}}{{- if .IsOverride -}}<TableSeparator> </TableSeparator><Override>[override]</Override>{{- end -}}{{- if .Message -}}<TableSeparator> : </TableSeparator>{{.Message}}{{- end -}}</Indent>
