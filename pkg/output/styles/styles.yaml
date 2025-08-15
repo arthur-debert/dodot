@@ -43,6 +43,17 @@ colors:
   warningBg:
     light: "#FFFFD7"
     dark: "#333300"
+  queuedBg:
+    light: "#E8E8FF"
+    dark: "#1A1A2E"
+  ignoredBg:
+    light: "#F0F0F0"
+    dark: "#2D2D2D"
+  
+  # White color for text on colored backgrounds
+  white:
+    light: "#FFFFFF"
+    dark: "#FFFFFF"
 
 styles:
   # Headers
@@ -54,7 +65,7 @@ styles:
   PackHeader:
     bold: true
     foreground: primary
-    marginBottom: 1
+    marginBottom: 0
   CommandHeader:
     bold: true
     foreground: primary
@@ -80,18 +91,33 @@ styles:
   
   # Status with backgrounds (for emphasis)
   SuccessBadge:
-    foreground: success
-    background: successBg
+    foreground: white
+    background: success
+    bold: true
     paddingLeft: 1
     paddingRight: 1
   ErrorBadge:
-    foreground: error
-    background: errorBg
+    foreground: white
+    background: error
+    bold: true
     paddingLeft: 1
     paddingRight: 1
   WarningBadge:
-    foreground: warning
-    background: warningBg
+    foreground: white
+    background: warning
+    bold: true
+    paddingLeft: 1
+    paddingRight: 1
+  QueuedBadge:
+    foreground: white
+    background: queued
+    bold: true
+    paddingLeft: 1
+    paddingRight: 1
+  IgnoredBadge:
+    foreground: white
+    background: ignored
+    bold: true
     paddingLeft: 1
     paddingRight: 1
   
@@ -133,7 +159,7 @@ styles:
   DoubleIndent:
     marginLeft: 4
   Section:
-    marginBottom: 1
+    marginBottom: 0
   
   # Special elements
   Timestamp:

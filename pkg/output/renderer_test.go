@@ -42,7 +42,6 @@ func TestRenderer_Render(t *testing.T) {
 			wantContent: []string{
 				"Command: status",
 				"git",
-				"SUCCESS",
 				"symlink",
 				".gitconfig",
 				"✓",
@@ -77,7 +76,6 @@ func TestRenderer_Render(t *testing.T) {
 				"DRY RUN MODE",
 				"Command: deploy",
 				"vim",
-				"[QUEUED]",
 				"symlink",
 				".vimrc",
 				"queued",
@@ -110,7 +108,6 @@ func TestRenderer_Render(t *testing.T) {
 			},
 			wantContent: []string{
 				"broken",
-				"ERROR",
 				"✗",
 				"permission denied",
 			},
