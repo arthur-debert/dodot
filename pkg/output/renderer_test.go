@@ -44,7 +44,6 @@ func TestRenderer_Render(t *testing.T) {
 				"git",
 				"symlink",
 				".gitconfig",
-				"✓",
 				"linked",
 			},
 			notWant: []string{
@@ -78,7 +77,6 @@ func TestRenderer_Render(t *testing.T) {
 				"vim",
 				"symlink",
 				".vimrc",
-				"queued",
 				"will be linked",
 			},
 			notWant: []string{
@@ -108,7 +106,6 @@ func TestRenderer_Render(t *testing.T) {
 			},
 			wantContent: []string{
 				"broken",
-				"✗",
 				"permission denied",
 			},
 		},

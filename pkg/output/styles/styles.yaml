@@ -94,30 +94,40 @@ styles:
     foreground: white
     background: success
     bold: true
+    width: 12
+    align: left
     paddingLeft: 1
     paddingRight: 1
   ErrorBadge:
     foreground: white
     background: error
     bold: true
+    width: 12
+    align: left
     paddingLeft: 1
     paddingRight: 1
   WarningBadge:
     foreground: white
     background: warning
     bold: true
+    width: 12
+    align: left
     paddingLeft: 1
     paddingRight: 1
   QueuedBadge:
     foreground: white
     background: queued
     bold: true
+    width: 12
+    align: left
     paddingLeft: 1
     paddingRight: 1
   IgnoredBadge:
     foreground: white
     background: ignored
     bold: true
+    width: 12
+    align: left
     paddingLeft: 1
     paddingRight: 1
   
@@ -142,7 +152,7 @@ styles:
     align: left
   FilePath:
     foreground: primary
-    width: 30
+    width: 18
     align: left
   ConfigFile:
     foreground: info
