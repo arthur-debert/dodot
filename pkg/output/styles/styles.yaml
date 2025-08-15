@@ -162,6 +162,8 @@ styles:
   Override:
     # foreground: warning
     bold: true
+  Filename:
+    italic: true
   
   # Layout and spacing
   Indent:
