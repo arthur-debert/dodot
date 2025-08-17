@@ -27,7 +27,7 @@ func TestCheckStatus_MissingActionTypes(t *testing.T) {
 				Description: "Run echo command",
 			},
 			expectedState: types.StatusStatePending,
-			expectedMsg:   "will execute script",
+			expectedMsg:   "⏵ script",
 		},
 		{
 			name: "ActionTypeWrite file doesn't exist",

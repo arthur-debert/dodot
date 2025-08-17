@@ -1,19 +1,15 @@
-<Indent>
-{{- if eq .Status "config" -}}
-<ConfigFile>config</ConfigFile>
+<Indent>{{- if eq .Status "config" -}}
+<FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><ConfigFile>config</ConfigFile>
 {{- else if eq .Status "ignored" -}}
-<ConfigFile>ignore</ConfigFile>
+<IgnoredBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></IgnoredBadge>
+{{- else if eq .Status "success" -}}
+<SuccessBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></SuccessBadge>
+{{- else if eq .Status "error" -}}
+<ErrorBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></ErrorBadge>
+{{- else if eq .Status "warning" -}}
+<WarningBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></WarningBadge>
+{{- else if eq .Status "queue" -}}
+<QueuedBadge><FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp></QueuedBadge>
 {{- else -}}
-<PowerUp>{{.PowerUp}}</PowerUp>
-{{- end -}}
-<TableSeparator> : </TableSeparator>
-<FilePath>{{.Path}}</FilePath>
-{{- if .IsOverride -}}
-<TableSeparator> </TableSeparator><Override>[override]</Override>
-{{- end -}}
-<TableSeparator> : </TableSeparator>
-{{- template "status-inline.tmpl" .Status -}}
-{{- if .Message -}}
-<TableSeparator> - </TableSeparator>{{.Message}}
-{{- end -}}
-</Indent>
+<FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><PowerUp>{{.PowerUp}}</PowerUp>
+{{- end -}}{{- if .IsOverride -}}<TableSeparator> </TableSeparator><Override>[override]</Override>{{- end -}}{{- if .Message -}}<TableSeparator> : </TableSeparator>{{.Message}}{{- end -}}</Indent>

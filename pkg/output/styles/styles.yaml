@@ -43,55 +43,81 @@ colors:
   warningBg:
     light: "#FFFFD7"
     dark: "#333300"
+  queuedBg:
+    light: "#E8E8FF"
+    dark: "#1A1A2E"
+  ignoredBg:
+    light: "#F0F0F0"
+    dark: "#2D2D2D"
+  
+  # White color for text on colored backgrounds
+  white:
+    light: "#FFFFFF"
+    dark: "#FFFFFF"
 
 styles:
   # Headers
   Header:
     bold: true
-    foreground: primary
+    # foreground: primary
   SubHeader:
-    foreground: secondary
+    # foreground: secondary
   PackHeader:
     bold: true
-    foreground: primary
-    marginBottom: 1
+    # foreground: primary
+    marginBottom: 0
   CommandHeader:
     bold: true
-    foreground: primary
+    # foreground: primary
     marginTop: 1
   
   # Status indicators
   Success:
-    foreground: success
+    # foreground: success
     bold: true
   Error:
-    foreground: error
+    # foreground: error
     bold: true
   Warning:
-    foreground: warning
+    # foreground: warning
     bold: true
   Info:
-    foreground: info
+    # foreground: info
   Queued:
-    foreground: queued
+    # foreground: queued
   Ignored:
-    foreground: ignored
+    # foreground: ignored
     italic: true
   
   # Status with backgrounds (for emphasis)
   SuccessBadge:
-    foreground: success
-    background: successBg
+    # foreground: white
+    background: success
+    bold: true
     paddingLeft: 1
     paddingRight: 1
   ErrorBadge:
-    foreground: error
-    background: errorBg
+    # foreground: white
+    background: error
+    bold: true
     paddingLeft: 1
     paddingRight: 1
   WarningBadge:
-    foreground: warning
-    background: warningBg
+    # foreground: white
+    background: warning
+    bold: true
+    paddingLeft: 1
+    paddingRight: 1
+  QueuedBadge:
+    # foreground: white
+    background: queued
+    bold: true
+    paddingLeft: 1
+    paddingRight: 1
+  IgnoredBadge:
+    # foreground: white
+    background: ignored
+    bold: true
     paddingLeft: 1
     paddingRight: 1
   
@@ -103,29 +129,31 @@ styles:
   Underline:
     underline: true
   Muted:
-    foreground: muted
+    # foreground: muted
   MutedItalic:
-    foreground: muted
+    # foreground: muted
     italic: true
   
   # File and path styles
   PowerUp:
-    foreground: secondary
+    # foreground: secondary
     bold: true
     width: 12
     align: left
   FilePath:
-    foreground: primary
-    width: 30
+    # foreground: primary
+    width: 18
     align: left
   ConfigFile:
-    foreground: info
+    # foreground: info
     italic: true
     width: 12
     align: left
   Override:
-    foreground: warning
+    # foreground: warning
     bold: true
+  Filename:
+    italic: true
   
   # Layout and spacing
   Indent:
@@ -133,27 +161,27 @@ styles:
   DoubleIndent:
     marginLeft: 4
   Section:
-    marginBottom: 1
+    marginBottom: 0
   
   # Special elements
   Timestamp:
-    foreground: muted
+    # foreground: muted
     italic: true
   DryRunBanner:
-    foreground: warning
+    # foreground: warning
     background: warningBg
     bold: true
     paddingLeft: 2
     paddingRight: 2
   NoContent:
-    foreground: muted
+    # foreground: muted
     italic: true
   
   # Table elements
   TableHeader:
     bold: true
     underline: true
-    foreground: primary
+    # foreground: primary
   TableCell: {}
   TableSeparator:
-    foreground: muted
+    # foreground: muted

@@ -1,4 +1,4 @@
-<Section>
-<PackHeader>{{.Name}}</PackHeader> {{template "status-badge.tmpl" .Status}}
-{{if .Files}}{{range .Files}}{{template "file.tmpl" .}}{{end}}{{else}}<Indent><NoContent>No files to process.</NoContent></Indent>
-{{end}}</Section>
+<PackHeader>{{.Name}}</PackHeader>
+{{if .Files}}{{range .Files}}{{template "file.tmpl" .}}
+{{end}}{{else}}<Indent><NoContent>No files to process.</NoContent></Indent>
+{{end}}

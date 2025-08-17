@@ -2,7 +2,8 @@
 
 {{end}}<CommandHeader>Command: {{.Command}}</CommandHeader>
 
-{{if .Packs}}{{range .Packs}}{{template "pack.tmpl" .}}
+{{if .Packs}}{{range .Packs}}
+{{template "pack.tmpl" .}}
 {{end}}{{else}}<NoContent>No packs found.</NoContent>
 {{end}}
 {{if .Timestamp}}<Timestamp>Executed at: {{.Timestamp.Format "2006-01-02 15:04:05"}}</Timestamp>{{end}}
