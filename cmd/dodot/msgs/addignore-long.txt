@@ -1,0 +1,8 @@
+Add-ignore creates a .dodotignore file in the specified pack, which tells dodot
+to skip that pack during all operations (deploy, install, status).
+
+This is useful when you want to temporarily disable a pack without deleting it
+or moving it out of your dotfiles repository. The pack remains in your dotfiles
+directory but is completely ignored by dodot.
+
+To re-enable a pack, simply delete the .dodotignore file from the pack directory.
