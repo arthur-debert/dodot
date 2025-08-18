@@ -119,7 +119,12 @@ Getting Started:
 For more information, see: https://github.com/arthur-debert/dodot
 `
 
-	readmePath := filepath.Join(packPath, "README.txt") // Pack not created yet, can't use Pack.GetFilePath
+	// Helper to construct file paths within the pack
+	getPackFilePath := func(filename string) string {
+		return filepath.Join(packPath, filename)
+	}
+
+	readmePath := getPackFilePath("README.txt")
 	readmeAction := types.Action{
 		Type:        types.ActionTypeWrite,
 		Description: "Create README.txt",
@@ -143,7 +148,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 		action := types.Action{
 			Type:        types.ActionTypeWrite,
 			Description: fmt.Sprintf("Create template file %s", template.Filename),
-			Target:      filepath.Join(packPath, template.Filename), // Pack not created yet, can't use Pack.GetFilePath
+			Target:      getPackFilePath(template.Filename),
 			Content:     template.Content,
 			Mode:        template.Mode,
 			Pack:        opts.PackName,
