@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
@@ -28,8 +29,11 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Str("dotfiles_root", opts.DotfilesRoot).
 		Msg("Adding ignore file to pack")
 
+	// Normalize pack name (remove trailing slashes from shell completion)
+	packName := strings.TrimRight(opts.PackName, "/")
+
 	// Validate pack name
-	if err := paths.ValidatePackName(opts.PackName); err != nil {
+	if err := paths.ValidatePackName(packName); err != nil {
 		return nil, errors.Wrap(err, errors.ErrPackNotFound, "invalid pack name")
 	}
 
@@ -37,7 +41,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 	cfg := config.Default()
 
 	// First check if the pack directory exists (even if it's ignored)
-	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
+	packPath := filepath.Join(opts.DotfilesRoot, packName)
 	ignoreFilePath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.IgnoreFile)
 
 	// Check if pack directory exists
@@ -46,7 +50,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		if os.IsNotExist(err) {
 			// Pack directory doesn't exist, try to find it through discovery
 			// This will fail if pack doesn't exist
-			targetPack, err := core.FindPack(opts.DotfilesRoot, opts.PackName)
+			targetPack, err := core.FindPack(opts.DotfilesRoot, packName)
 			if err != nil {
 				return nil, err
 			}
@@ -65,7 +69,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 			Str("ignore_file", ignoreFilePath).
 			Msg("Ignore file already exists")
 		result := &types.AddIgnoreResult{
-			PackName:       opts.PackName,
+			PackName:       packName,
 			IgnoreFilePath: ignoreFilePath,
 			Created:        false,
 			AlreadyExisted: true,
@@ -86,7 +90,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Msg("Created ignore file")
 
 	result := &types.AddIgnoreResult{
-		PackName:       opts.PackName,
+		PackName:       packName,
 		IgnoreFilePath: ignoreFilePath,
 		Created:        true,
 		AlreadyExisted: false,

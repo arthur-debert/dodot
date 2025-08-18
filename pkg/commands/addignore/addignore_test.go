@@ -3,6 +3,7 @@ package addignore
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
@@ -41,6 +42,16 @@ func TestAddIgnore(t *testing.T) {
 			packName:   "nonexistent",
 			wantErr:    true,
 			errCode:    errors.ErrNotFound,
+		},
+		{
+			name: "pack name with trailing slash",
+			setupFiles: map[string]string{
+				"dotfiles/vim/vimrc": "set number",
+			},
+			packName:          "vim/",
+			wantErr:           false,
+			wantCreated:       true,
+			wantAlreadyExists: false,
 		},
 		{
 			name: "empty pack name",
@@ -86,12 +97,14 @@ func TestAddIgnore(t *testing.T) {
 			require.NotNil(t, result)
 
 			// Verify result
-			assert.Equal(t, tt.packName, result.PackName)
+			// Pack name should be normalized (no trailing slash)
+			expectedPackName := strings.TrimRight(tt.packName, "/")
+			assert.Equal(t, expectedPackName, result.PackName)
 			assert.Equal(t, tt.wantCreated, result.Created)
 			assert.Equal(t, tt.wantAlreadyExists, result.AlreadyExisted)
 
 			// Verify ignore file path
-			expectedPath := filepath.Join(root, "dotfiles", tt.packName, cfg.Patterns.SpecialFiles.IgnoreFile)
+			expectedPath := filepath.Join(root, "dotfiles", expectedPackName, cfg.Patterns.SpecialFiles.IgnoreFile)
 			assert.Equal(t, expectedPath, result.IgnoreFilePath)
 
 			// Verify file exists on actual filesystem
