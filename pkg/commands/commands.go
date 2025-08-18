@@ -10,6 +10,7 @@
 //   - status/   - StatusPacks command
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
+//   - addignore/ - AddIgnore command
 //   - internal/ - Shared execution pipeline logic
 //
 // This file serves as the main entry point and re-exports all command functions
@@ -17,6 +18,7 @@
 package commands
 
 import (
+	"github.com/arthur-debert/dodot/pkg/commands/addignore"
 	"github.com/arthur-debert/dodot/pkg/commands/deploy"
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
@@ -68,4 +70,11 @@ type InitPackOptions = initialize.InitPackOptions
 
 func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	return initialize.InitPack(opts)
+}
+
+// AddIgnore creates a .dodotignore file in the specified pack.
+type AddIgnoreOptions = addignore.AddIgnoreOptions
+
+func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
+	return addignore.AddIgnore(opts)
 }

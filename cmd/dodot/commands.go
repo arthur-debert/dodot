@@ -91,6 +91,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newTopicsCmd())
 	rootCmd.AddCommand(newCompletionCmd())
@@ -528,6 +529,55 @@ func newFillCmd() *cobra.Command {
 				for _, file := range result.FilesCreated {
 					fmt.Printf(MsgOperationItem, file)
 				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func newAddIgnoreCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "add-ignore <pack-name>",
+		Short:             MsgAddIgnoreShort,
+		Long:              MsgAddIgnoreLong,
+		Args:              cobra.ExactArgs(1),
+		Example:           MsgAddIgnoreExample,
+		GroupID:           "core",
+		ValidArgsFunction: packNamesCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			packName := args[0]
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Str("pack", packName).
+				Msg("Adding ignore file to pack")
+
+			// Use the actual AddIgnore implementation
+			result, err := commands.AddIgnore(commands.AddIgnoreOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackName:     packName,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "add-ignore")
+				}
+				return fmt.Errorf(MsgErrAddIgnore, err)
+			}
+
+			// Display results
+			if result.AlreadyExisted {
+				fmt.Printf(MsgIgnoreFileExists, packName)
+			} else {
+				fmt.Printf(MsgIgnoreFileCreated, packName)
 			}
 
 			return nil

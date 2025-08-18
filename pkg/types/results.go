@@ -133,3 +133,11 @@ type InitResult struct {
 	FilesCreated []string `json:"filesCreated"`
 	// Operations field removed - part of Operation layer elimination
 }
+
+// AddIgnoreResult holds the result of the 'add-ignore' command.
+type AddIgnoreResult struct {
+	PackName       string `json:"packName"`
+	IgnoreFilePath string `json:"ignoreFilePath"`
+	Created        bool   `json:"created"`
+	AlreadyExisted bool   `json:"alreadyExisted"`
+}
