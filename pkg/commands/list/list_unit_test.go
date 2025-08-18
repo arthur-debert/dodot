@@ -97,6 +97,8 @@ func TestListPacks(t *testing.T) {
 			wantPacks: []string{"vim"},
 			wantErr:   false,
 		},
+		// These test cases validate specific error messages for the list command
+		// While pack discovery is tested in pipeline, list-specific error handling is tested here
 		{
 			name: "list with invalid dotfiles root",
 			setup: func(t *testing.T) string {

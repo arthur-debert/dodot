@@ -372,33 +372,8 @@ func TestInstallPacks_MultiplePacksAllTypes(t *testing.T) {
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "shell", "install.sh")), "shell script should be copied")
 }
 
-func TestInstallPacks_InvalidPack(t *testing.T) {
-	// Create test environment
-	tempDir := testutil.TempDir(t, "install-invalid")
-	dotfilesDir := filepath.Join(tempDir, "dotfiles")
-
-	testutil.CreateDir(t, tempDir, "dotfiles")
-
-	t.Setenv("HOME", tempDir)
-	t.Setenv("DOTFILES_ROOT", dotfilesDir)
-
-	// Try to install non-existent pack
-	ctx, err := InstallPacks(InstallPacksOptions{
-		DotfilesRoot:       dotfilesDir,
-		PackNames:          []string{"nonexistent"},
-		DryRun:             false,
-		Force:              false,
-		EnableHomeSymlinks: true,
-	})
-
-	// Should get an error from the first phase
-	testutil.AssertError(t, err)
-
-	// Context might still be returned with partial results
-	if ctx != nil {
-		testutil.AssertTrue(t, ctx.EndTime.After(ctx.StartTime), "End time should be set")
-	}
-}
+// TestInstallPacks_InvalidPack was removed
+// This scenario is already tested in pkg/commands/internal/pipeline_test.go
 
 func TestInstallPacks_ShellIntegration(t *testing.T) {
 	// Create test environment
