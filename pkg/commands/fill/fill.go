@@ -2,7 +2,6 @@ package fill
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
@@ -25,26 +24,10 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "FillPack").Str("pack", opts.PackName).Msg("Executing command")
 
-	// 1. Get all packs to verify the pack exists
-	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
+	// 1. Find the specific pack
+	targetPack, err := core.FindPack(opts.DotfilesRoot, opts.PackName)
 	if err != nil {
 		return nil, err
-	}
-	allPacks, err := core.GetPacks(candidates)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Find the specific pack
-	var targetPack *types.Pack
-	for i := range allPacks {
-		if allPacks[i].Name == opts.PackName {
-			targetPack = &allPacks[i]
-			break
-		}
-	}
-	if targetPack == nil {
-		return nil, errors.Newf(errors.ErrPackNotFound, "pack %q not found", opts.PackName)
 	}
 
 	// 3. Get missing template files
@@ -59,7 +42,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		action := types.Action{
 			Type:        types.ActionTypeWrite,
 			Description: fmt.Sprintf("Create template file %s", template.Filename),
-			Target:      filepath.Join(targetPack.Path, template.Filename),
+			Target:      targetPack.GetFilePath(template.Filename),
 			Content:     template.Content,
 			Mode:        template.Mode,
 			Pack:        opts.PackName,

@@ -9,6 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	toml "github.com/pelletier/go-toml/v2"
 	"github.com/rs/zerolog/log"
@@ -147,6 +148,14 @@ func loadPack(packPath string) (types.Pack, error) {
 
 	// Extract pack name from directory
 	packName := filepath.Base(packPath)
+
+	// Validate pack name
+	if err := paths.ValidatePackName(packName); err != nil {
+		logger.Warn().Str("pack", packName).Err(err).Msg("Skipping pack with invalid name")
+		return types.Pack{}, errors.Wrap(err, errors.ErrPackInvalid, "invalid pack name").
+			WithDetail("pack", packName).
+			WithDetail("path", packPath)
+	}
 
 	// Create base pack
 	pack := types.Pack{
@@ -340,6 +349,14 @@ func loadPackFS(packPath string, filesystem types.FS) (types.Pack, error) {
 
 	// Extract pack name from directory
 	packName := filepath.Base(packPath)
+
+	// Validate pack name
+	if err := paths.ValidatePackName(packName); err != nil {
+		logger.Warn().Str("pack", packName).Err(err).Msg("Skipping pack with invalid name")
+		return types.Pack{}, errors.Wrap(err, errors.ErrPackInvalid, "invalid pack name").
+			WithDetail("pack", packName).
+			WithDetail("path", packPath)
+	}
 
 	// Create base pack
 	pack := types.Pack{

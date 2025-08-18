@@ -1,6 +1,9 @@
 package types
 
-import "path/filepath"
+import (
+	"os"
+	"path/filepath"
+)
 
 // Pack represents a directory containing dotfiles and configuration
 type Pack struct {
@@ -69,4 +72,36 @@ func (c *PackConfig) FindOverride(filename string) *OverrideRule {
 	}
 
 	return bestMatch
+}
+
+// GetFilePath returns the full path to a file within the pack
+func (p *Pack) GetFilePath(filename string) string {
+	return filepath.Join(p.Path, filename)
+}
+
+// FileExists checks if a file exists within the pack
+func (p *Pack) FileExists(fs FS, filename string) (bool, error) {
+	path := p.GetFilePath(filename)
+	_, err := fs.Stat(path)
+	if err != nil {
+		// Check if it's a "not found" error
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		// For other errors (permission denied, etc.), return the error
+		return false, err
+	}
+	return true, nil
+}
+
+// CreateFile creates a file within the pack with the given content
+func (p *Pack) CreateFile(fs FS, filename, content string) error {
+	path := p.GetFilePath(filename)
+	return fs.WriteFile(path, []byte(content), 0644)
+}
+
+// ReadFile reads a file from within the pack
+func (p *Pack) ReadFile(fs FS, filename string) ([]byte, error) {
+	path := p.GetFilePath(filename)
+	return fs.ReadFile(path)
 }
