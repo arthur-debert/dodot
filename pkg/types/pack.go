@@ -1,6 +1,7 @@
 package types
 
 import (
+	"os"
 	"path/filepath"
 )
 
@@ -83,7 +84,12 @@ func (p *Pack) FileExists(fs FS, filename string) (bool, error) {
 	path := p.GetFilePath(filename)
 	_, err := fs.Stat(path)
 	if err != nil {
-		return false, nil
+		// Check if it's a "not found" error
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		// For other errors (permission denied, etc.), return the error
+		return false, err
 	}
 	return true, nil
 }

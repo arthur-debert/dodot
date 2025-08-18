@@ -1,6 +1,7 @@
 package types_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -104,6 +105,73 @@ func TestPackFileExists(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPackFileExists_ErrorHandling tests that FileExists properly returns filesystem errors
+func TestPackFileExists_ErrorHandling(t *testing.T) {
+	// For this test, we'll create a mock FS that returns specific errors
+	// Since testutil.TestFS doesn't support permission errors, we'll test the logic
+	// by verifying that non-IsNotExist errors are propagated
+
+	pack := &types.Pack{
+		Name: "test-pack",
+		Path: "/some/path",
+	}
+
+	// Create a minimal mock that returns a custom error
+	mockFS := &mockFSWithError{
+		err: os.ErrPermission,
+	}
+
+	exists, err := pack.FileExists(mockFS, "file.txt")
+	assert.False(t, exists)
+	assert.Error(t, err)
+	assert.Equal(t, os.ErrPermission, err)
+}
+
+// mockFSWithError is a minimal FS implementation for testing error handling
+type mockFSWithError struct {
+	err error
+}
+
+func (m *mockFSWithError) Stat(name string) (os.FileInfo, error) {
+	return nil, m.err
+}
+
+func (m *mockFSWithError) ReadFile(name string) ([]byte, error) {
+	return nil, m.err
+}
+
+func (m *mockFSWithError) WriteFile(name string, data []byte, perm os.FileMode) error {
+	return m.err
+}
+
+func (m *mockFSWithError) MkdirAll(path string, perm os.FileMode) error {
+	return m.err
+}
+
+func (m *mockFSWithError) ReadDir(name string) ([]os.DirEntry, error) {
+	return nil, m.err
+}
+
+func (m *mockFSWithError) Symlink(oldname, newname string) error {
+	return m.err
+}
+
+func (m *mockFSWithError) Readlink(name string) (string, error) {
+	return "", m.err
+}
+
+func (m *mockFSWithError) Remove(name string) error {
+	return m.err
+}
+
+func (m *mockFSWithError) RemoveAll(path string) error {
+	return m.err
+}
+
+func (m *mockFSWithError) Lstat(name string) (os.FileInfo, error) {
+	return nil, m.err
 }
 
 func TestPackCreateFile(t *testing.T) {
