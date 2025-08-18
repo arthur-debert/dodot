@@ -94,7 +94,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newTopicsCmd())
-	rootCmd.AddCommand(newCompletionCmd())
+	// Completion command removed - use dodot-completions tool instead
 
 	// Initialize topic-based help system
 	// Try to find help topics relative to the executable location
@@ -652,27 +652,5 @@ func newSnippetCmd() *cobra.Command {
 	return cmd
 }
 
-func newCompletionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:                   "completion [bash|zsh|fish|powershell]",
-		Short:                 MsgCompletionShort,
-		Long:                  MsgCompletionLong,
-		DisableFlagsInUseLine: true,
-		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
-		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		GroupID:               "misc",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			switch args[0] {
-			case "bash":
-				return cmd.Root().GenBashCompletion(os.Stdout)
-			case "zsh":
-				return cmd.Root().GenZshCompletion(os.Stdout)
-			case "fish":
-				return cmd.Root().GenFishCompletion(os.Stdout, true)
-			case "powershell":
-				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
-			}
-			return nil
-		},
-	}
-}
+// Completion command removed - use dodot-completions tool to generate shell completions
+// The dodot-completions binary is built separately and used during the release process
