@@ -38,7 +38,11 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	}
 
 	// 2. Build pack path and check if it exists
-	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
+	pathsManager, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
+	}
+	packPath := pathsManager.PackPath(opts.PackName)
 
 	// Check if pack already exists
 	if _, err := os.Stat(packPath); err == nil {
@@ -79,7 +83,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 # "my-aliases.sh" = "profile"
 `
 
-	configPath := filepath.Join(packPath, ".dodot.toml")
+	configPath := pathsManager.PackConfigPath(opts.PackName)
 	configAction := types.Action{
 		Type:        types.ActionTypeWrite,
 		Description: "Create .dodot.toml configuration",
@@ -115,7 +119,7 @@ Getting Started:
 For more information, see: https://github.com/arthur-debert/dodot
 `
 
-	readmePath := filepath.Join(packPath, "README.txt")
+	readmePath := filepath.Join(packPath, "README.txt") // Pack not created yet, can't use Pack.GetFilePath
 	readmeAction := types.Action{
 		Type:        types.ActionTypeWrite,
 		Description: "Create README.txt",
@@ -139,7 +143,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 		action := types.Action{
 			Type:        types.ActionTypeWrite,
 			Description: fmt.Sprintf("Create template file %s", template.Filename),
-			Target:      filepath.Join(packPath, template.Filename),
+			Target:      filepath.Join(packPath, template.Filename), // Pack not created yet, can't use Pack.GetFilePath
 			Content:     template.Content,
 			Mode:        template.Mode,
 			Pack:        opts.PackName,
@@ -151,15 +155,10 @@ For more information, see: https://github.com/arthur-debert/dodot
 
 	// 6. Execute actions using DirectExecutor (Operations no longer returned)
 	if len(actions) > 0 {
-		// Initialize paths
-		pathsInstance, err := paths.New(opts.DotfilesRoot)
-		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
-		}
 
 		// Create DirectExecutor
 		directExecutorOpts := &core.DirectExecutorOptions{
-			Paths:             pathsInstance,
+			Paths:             pathsManager,
 			DryRun:            false,
 			Force:             true,
 			AllowHomeSymlinks: false,

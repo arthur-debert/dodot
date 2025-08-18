@@ -2,7 +2,6 @@ package fill
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
@@ -59,7 +58,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		action := types.Action{
 			Type:        types.ActionTypeWrite,
 			Description: fmt.Sprintf("Create template file %s", template.Filename),
-			Target:      filepath.Join(targetPack.Path, template.Filename),
+			Target:      targetPack.GetFilePath(template.Filename),
 			Content:     template.Content,
 			Mode:        template.Mode,
 			Pack:        opts.PackName,
