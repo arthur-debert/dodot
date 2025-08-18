@@ -7,8 +7,9 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -27,28 +28,35 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Str("dotfiles_root", opts.DotfilesRoot).
 		Msg("Adding ignore file to pack")
 
-	// Get all packs to verify the pack exists
-	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
-	if err != nil {
-		return nil, err
-	}
-	allPacks, err := core.GetPacks(candidates)
-	if err != nil {
-		return nil, err
+	// Validate pack name
+	if err := paths.ValidatePackName(opts.PackName); err != nil {
+		return nil, errors.Wrap(err, errors.ErrPackNotFound, "invalid pack name")
 	}
 
-	// Find the specific pack
-	selectedPacks, err := packs.SelectPacks(allPacks, []string{opts.PackName})
-	if err != nil {
-		return nil, err
-	}
-
-	// SelectPacks returns a slice, but we know it has exactly one pack
-	targetPack := selectedPacks[0]
-
-	// Get ignore file path from config
+	// Get config for special files
 	cfg := config.Default()
-	ignoreFilePath := filepath.Join(targetPack.Path, cfg.Patterns.SpecialFiles.IgnoreFile)
+
+	// First check if the pack directory exists (even if it's ignored)
+	packPath := filepath.Join(opts.DotfilesRoot, opts.PackName)
+	ignoreFilePath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.IgnoreFile)
+
+	// Check if pack directory exists
+	packInfo, err := os.Stat(packPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Pack directory doesn't exist, try to find it through discovery
+			// This will fail if pack doesn't exist
+			targetPack, err := core.FindPack(opts.DotfilesRoot, opts.PackName)
+			if err != nil {
+				return nil, err
+			}
+			ignoreFilePath = filepath.Join(targetPack.Path, cfg.Patterns.SpecialFiles.IgnoreFile)
+		} else {
+			return nil, fmt.Errorf("failed to check pack directory: %w", err)
+		}
+	} else if !packInfo.IsDir() {
+		return nil, fmt.Errorf("pack path exists but is not a directory: %s", packPath)
+	}
 
 	// Check if ignore file already exists
 	if _, err := os.Stat(ignoreFilePath); err == nil {
@@ -57,7 +65,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 			Str("ignore_file", ignoreFilePath).
 			Msg("Ignore file already exists")
 		result := &types.AddIgnoreResult{
-			PackName:       targetPack.Name,
+			PackName:       opts.PackName,
 			IgnoreFilePath: ignoreFilePath,
 			Created:        false,
 			AlreadyExisted: true,
@@ -78,7 +86,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Msg("Created ignore file")
 
 	result := &types.AddIgnoreResult{
-		PackName:       targetPack.Name,
+		PackName:       opts.PackName,
 		IgnoreFilePath: ignoreFilePath,
 		Created:        true,
 		AlreadyExisted: false,

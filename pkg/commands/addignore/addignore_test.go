@@ -100,3 +100,43 @@ func TestAddIgnore(t *testing.T) {
 		})
 	}
 }
+
+func TestAddIgnoreAlreadyExists(t *testing.T) {
+	cfg := config.Default()
+
+	// Setup test filesystem
+	root := testutil.TempDir(t, "addignore-test")
+	dotfilesPath := filepath.Join(root, "dotfiles")
+
+	// Create pack
+	packPath := filepath.Join(dotfilesPath, "vim")
+	testutil.CreateFile(t, packPath, "vimrc", "set number")
+
+	// First, create the ignore file
+	result1, err := AddIgnore(AddIgnoreOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "vim",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result1)
+	assert.True(t, result1.Created)
+	assert.False(t, result1.AlreadyExisted)
+
+	// Try to create it again - now it should work even though pack is ignored
+	result2, err := AddIgnore(AddIgnoreOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "vim",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result2)
+	assert.False(t, result2.Created)
+	assert.True(t, result2.AlreadyExisted)
+
+	// Verify paths are the same
+	assert.Equal(t, result1.IgnoreFilePath, result2.IgnoreFilePath)
+
+	// Verify file exists
+	expectedPath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.IgnoreFile)
+	_, err = os.Stat(expectedPath)
+	assert.NoError(t, err)
+}

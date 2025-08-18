@@ -11,13 +11,13 @@ import (
 // If packNames is empty, all discovered packs are returned.
 func DiscoverAndSelectPacks(dotfilesRoot string, packNames []string) ([]types.Pack, error) {
 	// Get pack candidates
-	candidates, err := GetPackCandidates(dotfilesRoot)
+	candidates, err := packs.GetPackCandidates(dotfilesRoot)
 	if err != nil {
 		return nil, err
 	}
 
 	// Get packs
-	allPacks, err := GetPacks(candidates)
+	allPacks, err := packs.GetPacks(candidates)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +56,8 @@ func ValidateDotfilesRoot(dotfilesRoot string) error {
 		return errors.New(errors.ErrInvalidInput, "dotfiles root cannot be empty")
 	}
 
-	// The actual validation happens in GetPackCandidates
+	// The actual validation happens in packs.GetPackCandidates
 	// We just need to check if we can discover packs
-	_, err := GetPackCandidates(dotfilesRoot)
+	_, err := packs.GetPackCandidates(dotfilesRoot)
 	return err
 }
