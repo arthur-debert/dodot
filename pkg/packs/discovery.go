@@ -17,6 +17,10 @@ import (
 
 // GetPackCandidates returns all potential pack directories in the dotfiles root
 // Deprecated: Use GetPackCandidatesFS instead to support filesystem abstraction
+//
+// IMPORTANT: Commands should NOT call this function directly. Instead, use
+// the centralized helper core.DiscoverAndSelectPacks which properly handles
+// pack discovery, loading, and selection in a consistent way.
 func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates")
@@ -89,6 +93,10 @@ func shouldIgnore(name string) bool {
 
 // GetPacks validates and creates Pack instances from candidate paths
 // Deprecated: Use GetPacksFS instead to support filesystem abstraction
+//
+// IMPORTANT: Commands should NOT call this function directly. Instead, use
+// the centralized helper core.DiscoverAndSelectPacks which properly handles
+// pack discovery, loading, and selection in a consistent way.
 func GetPacks(candidates []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Int("count", len(candidates)).Msg("Validating pack candidates")
@@ -241,6 +249,10 @@ func ValidatePack(packPath string) error {
 }
 
 // GetPackCandidatesFS returns all potential pack directories using the provided filesystem
+//
+// IMPORTANT: Commands should NOT call this function directly. Instead, use
+// the centralized helper core.DiscoverAndSelectPacks which properly handles
+// pack discovery, loading, and selection in a consistent way.
 func GetPackCandidatesFS(dotfilesRoot string, filesystem types.FS) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates with FS")
@@ -295,6 +307,10 @@ func GetPackCandidatesFS(dotfilesRoot string, filesystem types.FS) ([]string, er
 }
 
 // GetPacksFS validates and creates Pack instances from candidate paths using the provided filesystem
+//
+// IMPORTANT: Commands should NOT call this function directly. Instead, use
+// the centralized helper core.DiscoverAndSelectPacks which properly handles
+// pack discovery, loading, and selection in a consistent way.
 func GetPacksFS(candidates []string, filesystem types.FS) ([]types.Pack, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Int("count", len(candidates)).Msg("Validating pack candidates with FS")
