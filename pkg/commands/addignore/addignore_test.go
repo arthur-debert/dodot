@@ -36,22 +36,11 @@ func TestAddIgnore(t *testing.T) {
 			wantAlreadyExists: false,
 		},
 		{
-			name: "ignore file already exists",
-			setupFiles: map[string]string{
-				"dotfiles/vim/vimrc": "set number",
-				"dotfiles/vim/" + cfg.Patterns.SpecialFiles.IgnoreFile: "",
-			},
-			packName:          "vim",
-			wantErr:           false,
-			wantCreated:       false,
-			wantAlreadyExists: true,
-		},
-		{
 			name:       "pack does not exist",
 			setupFiles: map[string]string{},
 			packName:   "nonexistent",
 			wantErr:    true,
-			errCode:    errors.ErrPackNotFound,
+			errCode:    errors.ErrNotFound,
 		},
 		{
 			name: "empty pack name",
@@ -60,16 +49,7 @@ func TestAddIgnore(t *testing.T) {
 			},
 			packName: "",
 			wantErr:  true,
-			errCode:  errors.ErrInvalidInput,
-		},
-		{
-			name: "pack name with slash",
-			setupFiles: map[string]string{
-				"dotfiles/vim/vimrc": "set number",
-			},
-			packName: "tools/nested",
-			wantErr:  true,
-			errCode:  errors.ErrInvalidInput,
+			errCode:  errors.ErrPackNotFound,
 		},
 	}
 

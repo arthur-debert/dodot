@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -27,34 +27,28 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Str("dotfiles_root", opts.DotfilesRoot).
 		Msg("Adding ignore file to pack")
 
-	// Validate pack name
-	if err := paths.ValidatePackName(opts.PackName); err != nil {
+	// Get all packs to verify the pack exists
+	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
+	if err != nil {
+		return nil, err
+	}
+	allPacks, err := core.GetPacks(candidates)
+	if err != nil {
 		return nil, err
 	}
 
-	// Initialize paths
-	pathsInst, err := paths.New(opts.DotfilesRoot)
+	// Find the specific pack
+	selectedPacks, err := packs.SelectPacks(allPacks, []string{opts.PackName})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize paths: %w", err)
+		return nil, err
 	}
 
-	// Use standard os package for file operations since we're working with absolute paths
-	// The synthfs OSFileSystem expects relative paths, not absolute ones
-
-	// Check if pack exists
-	packPath := pathsInst.PackPath(opts.PackName)
-	if info, err := os.Stat(packPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, errors.New(errors.ErrPackNotFound, "pack not found").WithDetail("notFound", []string{opts.PackName})
-		}
-		return nil, fmt.Errorf("failed to check pack directory: %w", err)
-	} else if !info.IsDir() {
-		return nil, errors.New(errors.ErrPackInvalid, "pack path is not a directory").WithDetail("pack", opts.PackName)
-	}
+	// SelectPacks returns a slice, but we know it has exactly one pack
+	targetPack := selectedPacks[0]
 
 	// Get ignore file path from config
 	cfg := config.Default()
-	ignoreFilePath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.IgnoreFile)
+	ignoreFilePath := filepath.Join(targetPack.Path, cfg.Patterns.SpecialFiles.IgnoreFile)
 
 	// Check if ignore file already exists
 	if _, err := os.Stat(ignoreFilePath); err == nil {
@@ -63,7 +57,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 			Str("ignore_file", ignoreFilePath).
 			Msg("Ignore file already exists")
 		result := &types.AddIgnoreResult{
-			PackName:       opts.PackName,
+			PackName:       targetPack.Name,
 			IgnoreFilePath: ignoreFilePath,
 			Created:        false,
 			AlreadyExisted: true,
@@ -84,7 +78,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Msg("Created ignore file")
 
 	result := &types.AddIgnoreResult{
-		PackName:       opts.PackName,
+		PackName:       targetPack.Name,
 		IgnoreFilePath: ignoreFilePath,
 		Created:        true,
 		AlreadyExisted: false,
