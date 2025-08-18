@@ -17,12 +17,8 @@ func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "ListPacks").Msg("Executing command")
 
-	candidates, err := core.GetPackCandidates(opts.DotfilesRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	packs, err := core.GetPacks(candidates)
+	// Discover all packs
+	packs, err := core.DiscoverAndSelectPacks(opts.DotfilesRoot, nil)
 	if err != nil {
 		return nil, err
 	}

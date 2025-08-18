@@ -87,14 +87,7 @@ func TestFillPack(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "non-existent pack",
-			setup: func(t *testing.T) string {
-				return testutil.TempDir(t, "fill-test")
-			},
-			packName: "fake-pack",
-			wantErr:  true,
-		},
+		// "non-existent pack" test case removed - pack discovery is tested in pipeline_test.go
 	}
 
 	for _, tt := range tests {

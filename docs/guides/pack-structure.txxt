@@ -1,0 +1,80 @@
+# Pack Structure and Naming Rules
+
+This guide explains the structure and naming requirements for dodot packs.
+
+## Pack Structure
+
+dodot uses a flat pack structure where each pack is a directory directly under your `DOTFILES_ROOT`:
+
+```
+$DOTFILES_ROOT/
+├── vim/           # vim pack
+├── zsh/           # zsh pack  
+├── git/           # git pack
+└── tmux/          # tmux pack
+```
+
+### Key Rules:
+
+1. **Packs are immediate subdirectories** - Packs must be direct children of `DOTFILES_ROOT`
+2. **No nested packs** - Packs cannot contain other packs (e.g., `vim/plugins` is NOT a separate pack)
+3. **Directories inside packs are regular directories** - They get symlinked according to powerup rules
+
+## Pack Naming Requirements
+
+Pack names must follow these rules to ensure compatibility across different operating systems:
+
+### Valid Characters:
+- Letters (a-z, A-Z)
+- Numbers (0-9)  
+- Hyphens (-)
+- Underscores (_)
+
+### Invalid Characters:
+- Forward slash (/) - Would create nested directories
+- Backslash (\\) - Path separator on Windows
+- Colon (:) - Reserved on Windows
+- Asterisk (*) - Wildcard character
+- Question mark (?) - Wildcard character
+- Double quote (") - String delimiter
+- Less than (<) - Reserved character
+- Greater than (>) - Reserved character
+- Pipe (|) - Command separator
+- Control characters (ASCII 0-31)
+
+### Reserved Names:
+- `.` (single dot) - Current directory reference
+- `..` (double dot) - Parent directory reference
+
+## Examples
+
+### Valid Pack Names:
+- `vim`
+- `vim-config`
+- `vim_config`
+- `vim2`
+- `VimConfig`
+- `my-awesome-shell-config`
+
+### Invalid Pack Names:
+- `vim/config` - Contains slash (would create nested directory)
+- `vim:config` - Contains colon
+- `vim*` - Contains asterisk
+- `.` - Reserved name
+- `..` - Reserved name
+
+## Validation
+
+dodot automatically validates pack names during:
+- Pack discovery
+- `dodot init` command
+- Any operation that processes packs
+
+Invalid pack names are skipped with a warning message in the logs.
+
+## Best Practices
+
+1. **Use descriptive names** - `vim` is better than `v`
+2. **Be consistent** - Pick a naming style (hyphens or underscores) and stick to it
+3. **Keep names short** - Long names make commands harder to type
+4. **Group related configs** - Use a single pack for related tools (e.g., `shell` for bash/zsh/fish)

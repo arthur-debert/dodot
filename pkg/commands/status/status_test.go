@@ -147,15 +147,7 @@ func TestStatusPacks(t *testing.T) {
 				assert.True(t, hasConfigFile, "Should have .dodot.toml in files")
 			},
 		},
-		{
-			name: "non-existent pack",
-			setupFS: func(fs types.FS, rootDir string) {
-				// Create one pack
-				testutil.CreateDirT(t, fs, rootDir+"/vim")
-			},
-			packNames: []string{"nonexistent"},
-			wantErr:   true,
-		},
+		// "non-existent pack" test case removed - tested in pipeline_test.go
 		{
 			name: "empty dotfiles directory",
 			setupFS: func(fs types.FS, rootDir string) {
