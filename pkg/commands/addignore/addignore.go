@@ -28,8 +28,8 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 		Msg("Adding ignore file to pack")
 
 	// Validate pack name
-	if opts.PackName == "" {
-		return nil, errors.New(errors.ErrInvalidInput, "pack name cannot be empty")
+	if err := paths.ValidatePackName(opts.PackName); err != nil {
+		return nil, err
 	}
 
 	// Initialize paths
@@ -42,7 +42,7 @@ func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 	// The synthfs OSFileSystem expects relative paths, not absolute ones
 
 	// Check if pack exists
-	packPath := filepath.Join(pathsInst.DotfilesRoot(), opts.PackName)
+	packPath := pathsInst.PackPath(opts.PackName)
 	if info, err := os.Stat(packPath); err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.New(errors.ErrPackNotFound, "pack not found").WithDetail("notFound", []string{opts.PackName})

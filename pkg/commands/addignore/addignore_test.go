@@ -62,6 +62,15 @@ func TestAddIgnore(t *testing.T) {
 			wantErr:  true,
 			errCode:  errors.ErrInvalidInput,
 		},
+		{
+			name: "pack name with slash",
+			setupFiles: map[string]string{
+				"dotfiles/vim/vimrc": "set number",
+			},
+			packName: "tools/nested",
+			wantErr:  true,
+			errCode:  errors.ErrInvalidInput,
+		},
 	}
 
 	for _, tt := range tests {
@@ -110,39 +119,4 @@ func TestAddIgnore(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-}
-
-func TestAddIgnore_WithSubdirectories(t *testing.T) {
-	cfg := config.Default()
-
-	// Setup test filesystem with nested pack
-	root := testutil.TempDir(t, "addignore-subdirs-test")
-	dotfilesPath := filepath.Join(root, "dotfiles")
-
-	packPath := filepath.Join(root, "dotfiles", "tools", "nested")
-	testutil.CreateDir(t, root, "dotfiles/tools/nested")
-
-	// Create a file in the pack
-	testutil.CreateFile(t, packPath, "config", "test")
-
-	// Run AddIgnore on nested pack
-	result, err := AddIgnore(AddIgnoreOptions{
-		DotfilesRoot: dotfilesPath,
-		PackName:     filepath.Join("tools", "nested"),
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, result)
-
-	// Verify result
-	assert.Equal(t, filepath.Join("tools", "nested"), result.PackName)
-	assert.True(t, result.Created)
-	assert.False(t, result.AlreadyExisted)
-
-	// Verify ignore file was created in the correct location
-	expectedPath := filepath.Join(packPath, cfg.Patterns.SpecialFiles.IgnoreFile)
-	assert.Equal(t, expectedPath, result.IgnoreFilePath)
-
-	_, err = os.Stat(expectedPath)
-	assert.NoError(t, err)
 }
