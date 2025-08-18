@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
@@ -196,11 +197,14 @@ func handlePackNotFoundError(dodotErr *doerrors.DodotError, p types.Pather, oper
 }
 
 // packNamesCompletion provides shell completion for pack names
+// It returns both discovered pack names and allows directory completion
+// since users often use shell completion to navigate directories
 func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// Initialize paths
 	p, err := initPaths()
 	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
+		// Even if we can't find dotfiles root, allow directory completion
+		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
 	// Get list of packs
@@ -208,7 +212,8 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 		DotfilesRoot: p.DotfilesRoot(),
 	})
 	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
+		// If listing fails, still allow directory completion
+		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
 	// Extract pack names
@@ -222,7 +227,9 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	for _, pack := range packNames {
 		found := false
 		for _, arg := range args {
-			if arg == pack {
+			// Normalize for comparison (remove trailing slashes)
+			normalizedArg := strings.TrimRight(arg, "/")
+			if normalizedArg == pack {
 				found = true
 				break
 			}
@@ -232,7 +239,9 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 		}
 	}
 
-	return availablePacks, cobra.ShellCompDirectiveNoFileComp
+	// Return pack names and allow directory completion
+	// This lets users navigate the filesystem and also see available packs
+	return availablePacks, cobra.ShellCompDirectiveFilterDirs
 }
 
 func newDeployCmd() *cobra.Command {
