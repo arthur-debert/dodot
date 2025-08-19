@@ -221,12 +221,18 @@ func TestSymlinkPowerUp_MetadataInActions(t *testing.T) {
 func TestSymlinkPowerUp_PreservesDirectoryStructure(t *testing.T) {
 	homeDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
 	require.NoError(t, os.Setenv("HOME", homeDir))
+	// Explicitly unset XDG_CONFIG_HOME to ensure it's calculated from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 	defer func() {
 		if oldHome != "" {
 			require.NoError(t, os.Setenv("HOME", oldHome))
 		} else {
 			require.NoError(t, os.Unsetenv("HOME"))
+		}
+		if oldXDG != "" {
+			require.NoError(t, os.Setenv("XDG_CONFIG_HOME", oldXDG))
 		}
 	}()
 
@@ -260,14 +266,16 @@ func TestSymlinkPowerUp_PreservesDirectoryStructure(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, actions, 3)
 
-	// Check that nested paths are preserved
+	// Check that nested paths are preserved (Layer 1: subdirs go to XDG_CONFIG_HOME)
 	assert.Equal(t, types.ActionTypeLink, actions[0].Type)
 	assert.Equal(t, "/dotfiles/nvim/.config/nvim/init.lua", actions[0].Source)
+	// Layer 1: .config/nvim/init.lua -> XDG_CONFIG_HOME/nvim/init.lua (strips .config prefix)
 	assert.Equal(t, filepath.Join(homeDir, ".config/nvim/init.lua"), actions[0].Target)
 	assert.Equal(t, "Symlink .config/nvim/init.lua -> "+filepath.Join(homeDir, ".config/nvim/init.lua"), actions[0].Description)
 
 	assert.Equal(t, types.ActionTypeLink, actions[1].Type)
 	assert.Equal(t, "/dotfiles/git/.config/git/config", actions[1].Source)
+	// Layer 1: .config/git/config -> XDG_CONFIG_HOME/git/config (strips .config prefix)
 	assert.Equal(t, filepath.Join(homeDir, ".config/git/config"), actions[1].Target)
 
 	// Check that flat files still work

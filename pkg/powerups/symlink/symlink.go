@@ -26,11 +26,15 @@ type SymlinkPowerUp struct {
 func NewSymlinkPowerUp() *SymlinkPowerUp {
 	logger := logging.GetLogger("powerups.symlink")
 
-	// Try to get home directory, but use ~ as fallback
-	homeDir, err := paths.GetHomeDirectory()
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to get home directory, using ~ placeholder")
-		homeDir = "~"
+	// Try to get home directory, preferring HOME env var for testability
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil || homeDir == "" {
+			logger.Warn().Err(err).Msg("failed to get home directory, using ~ placeholder")
+			homeDir = "~"
+		}
 	}
 
 	// Initialize paths instance

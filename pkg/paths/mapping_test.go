@@ -11,14 +11,22 @@ import (
 )
 
 func TestMapPackFileToSystem(t *testing.T) {
-	// Save original HOME
+	// Save original environment
 	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
+	// Explicitly unset XDG_CONFIG_HOME to ensure it's calculated from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -30,31 +38,40 @@ func TestMapPackFileToSystem(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "top-level file",
+			name: "top-level file gets dot prefix",
 			pack: &types.Pack{
 				Name: "configs",
 				Path: "/dotfiles/configs",
 			},
 			relPath:  "gitconfig",
-			expected: filepath.Join(testHome, "gitconfig"),
+			expected: filepath.Join(testHome, ".gitconfig"),
 		},
 		{
-			name: "file in subdirectory",
+			name: "top-level file already with dot",
+			pack: &types.Pack{
+				Name: "configs",
+				Path: "/dotfiles/configs",
+			},
+			relPath:  ".hidden",
+			expected: filepath.Join(testHome, ".hidden"),
+		},
+		{
+			name: "subdirectory file goes to XDG_CONFIG_HOME",
 			pack: &types.Pack{
 				Name: "nvim",
 				Path: "/dotfiles/nvim",
 			},
 			relPath:  "nvim/init.lua",
-			expected: filepath.Join(testHome, "nvim/init.lua"),
+			expected: filepath.Join(testHome, ".config/nvim/init.lua"),
 		},
 		{
-			name: "deeply nested file",
+			name: "deeply nested file goes to XDG_CONFIG_HOME",
 			pack: &types.Pack{
 				Name: "dev",
 				Path: "/dotfiles/dev",
 			},
 			relPath:  "config/app/settings.json",
-			expected: filepath.Join(testHome, "config/app/settings.json"),
+			expected: filepath.Join(testHome, ".config/app/settings.json"),
 		},
 	}
 
@@ -72,12 +89,17 @@ func TestMapSystemFileToPack(t *testing.T) {
 	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
-		_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
-	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	// Let the code calculate XDG_CONFIG_HOME from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -122,7 +144,7 @@ func TestMapSystemFileToPack(t *testing.T) {
 				Path: "/dotfiles/configs",
 			},
 			systemPath: filepath.Join(testHome, ".ssh/config"),
-			expected:   "/dotfiles/configs/config",
+			expected:   "/dotfiles/configs/ssh/config",
 		},
 		{
 			name: "deeply nested in XDG",
@@ -143,20 +165,24 @@ func TestMapSystemFileToPack(t *testing.T) {
 	}
 }
 
-// TestPathMappingCurrentBehavior verifies that the current mapping behavior is preserved
-// Note: In Release A, we maintain existing behavior which may not be perfectly symmetric
-func TestPathMappingCurrentBehavior(t *testing.T) {
+// TestPathMappingSymmetry verifies that the Layer 1 mapping is properly symmetric
+func TestPathMappingSymmetry(t *testing.T) {
 	// Save original environment
 	originalHome := os.Getenv("HOME")
 	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
-		_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
-	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	// Let the code calculate XDG_CONFIG_HOME from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -166,24 +192,26 @@ func TestPathMappingCurrentBehavior(t *testing.T) {
 		Path: "/dotfiles/test",
 	}
 
-	// Test current behavior
+	// Test Layer 1 symmetry
 	tests := []struct {
 		name           string
 		packFile       string
 		expectedSystem string
-		expectSymmetry bool
 	}{
 		{
-			name:           "simple config file",
+			name:           "top-level config file",
 			packFile:       "gitconfig",
-			expectedSystem: filepath.Join(testHome, "gitconfig"),
-			expectSymmetry: true, // This one happens to be symmetric
+			expectedSystem: filepath.Join(testHome, ".gitconfig"),
 		},
 		{
-			name:           "nested config",
+			name:           "subdirectory config",
 			packFile:       "nvim/init.lua",
-			expectedSystem: filepath.Join(testHome, "nvim/init.lua"),
-			expectSymmetry: false, // Current behavior loses the nvim directory when mapping back
+			expectedSystem: filepath.Join(testHome, ".config/nvim/init.lua"),
+		},
+		{
+			name:           "deeply nested config",
+			packFile:       "app/config/settings.toml",
+			expectedSystem: filepath.Join(testHome, ".config/app/config/settings.toml"),
 		},
 	}
 
@@ -196,12 +224,69 @@ func TestPathMappingCurrentBehavior(t *testing.T) {
 			// Map back from system to pack
 			packPath := p.MapSystemFileToPack(pack, systemPath)
 
-			if tc.expectSymmetry {
-				expected := filepath.Join(pack.Path, tc.packFile)
-				assert.Equal(t, expected, packPath, "Mapping should be symmetric")
-			}
-			// For non-symmetric cases, we just verify it doesn't panic
-			// The asymmetry will be fixed in future releases
+			// With Layer 1, mapping should now be symmetric
+			expected := filepath.Join(pack.Path, tc.packFile)
+			assert.Equal(t, expected, packPath, "Mapping should be symmetric")
 		})
 	}
+}
+
+// TestLayer1EdgeCases tests specific edge cases for Layer 1 mapping
+func TestLayer1EdgeCases(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	// Let the code calculate XDG_CONFIG_HOME from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+	}
+
+	t.Run("file already with dot prefix", func(t *testing.T) {
+		result := p.MapPackFileToSystem(pack, ".bashrc")
+		assert.Equal(t, filepath.Join(testHome, ".bashrc"), result)
+	})
+
+	t.Run("hidden directory mapping", func(t *testing.T) {
+		// Files already under .config should have prefix stripped
+		result := p.MapPackFileToSystem(pack, ".config/app/config")
+		assert.Equal(t, filepath.Join(testHome, ".config/app/config"), result)
+	})
+
+	t.Run("reverse mapping hidden directory", func(t *testing.T) {
+		// ~/.ssh/config should map to ssh/config in pack
+		systemPath := filepath.Join(testHome, ".ssh/config")
+		result := p.MapSystemFileToPack(pack, systemPath)
+		assert.Equal(t, filepath.Join(pack.Path, "ssh/config"), result)
+	})
+
+	t.Run("double dot prevention", func(t *testing.T) {
+		// Ensure we never create double dots
+		result := p.MapPackFileToSystem(pack, ".gitignore")
+		assert.Equal(t, filepath.Join(testHome, ".gitignore"), result)
+		assert.NotContains(t, result, "..")
+	})
+
+	t.Run("config prefix stripping", func(t *testing.T) {
+		// Ensure config/ prefix is stripped to avoid .config/config/...
+		result := p.MapPackFileToSystem(pack, "config/app/settings.json")
+		assert.Equal(t, filepath.Join(testHome, ".config/app/settings.json"), result)
+		assert.NotContains(t, result, ".config/config/")
+	})
 }
