@@ -1,0 +1,55 @@
+Design Specification: macOS Plist Support
+                   ==========================================
+
+This document outlines the design for managing macOS property list (plist)
+files in dodot. It is a concrete implementation of a **Representational
+(Two-Way) Transformation** as defined in the master
+[./transformation-pipeline.txxt] design.
+
+1. The Plist Challenge
+---------------------
+
+macOS applications read and write a binary plist format, which is unsuitable
+for version control. The `plutil` command can losslessly convert this to a
+human-readable XML format, making it a perfect candidate for a representational
+transform.
+
+    - Source (Git Representation): A human-readable XML plist file.
+    - Destination (Live File): A binary plist file used by applications.
+
+2. Recommended Solution: `git` Filters
+--------------------------------------
+
+As a representational (two-way) transform, the conversion between the XML
+representation and the live binary can be safely automated. The ideal
+mechanism for this is `git`'s native `clean`/`smudge` filter system.
+
+    - `clean` filter: On `git add`, converts the binary plist to XML before
+      staging.
+    - `smudge` filter: On `git checkout`, converts the staged XML back to a
+      binary plist in the working directory.
+    - `diff` filter: Teaches `git diff` how to show a text-based diff of the
+      binary file.
+
+This provides the optimal user experience: the user interacts with apps that
+modify the binary, and `git` transparently handles the conversion for clean
+version history.
+
+3. User Workflow and Setup
+--------------------------
+
+The user workflow is seamless and requires a simple one-time setup.
+
+    1. The user runs `dodot install-git-hook`. In addition to setting up the
+       `pre-commit` hook, this command will also detect that the user intends
+       to manage plists and will automatically configure the necessary `git`
+       filters and `.gitattributes` entries.
+    2. The user edits their application preferences via the standard macOS
+       GUI, which modifies the binary plist.
+    3. On `git add` and `git commit`, the filters work silently in the
+       background to ensure the XML representation is what gets committed.
+    4. `git diff` will show a meaningful, human-readable diff.
+
+The `pre-commit` hook's role for plists is primarily to ensure this filter
+configuration is present, guaranteeing the workflow remains safe and
+transparent.

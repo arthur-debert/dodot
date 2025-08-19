@@ -1,164 +1,71 @@
-
-                   Design Specification: Templating
+Design Specification: Templating
                    ==================================
 
-This document outlines the design for a templating feature in dodot. It
-enables dynamic generation of configuration files based on environment-
-specific variables, while preserving dodot's core principles of simplicity,
-transparency, and robustness.
+This document outlines the design for a templating feature in dodot. It is a
+concrete implementation of a **Generative (One-Way) Transformation** as
+defined in the master [./transformation-pipeline.txxt] design.
 
 1. Feature Overview
 -------------------
 
 The templating feature allows users to create template files (e.g.,
 `config.tmpl`) that are rendered into final configuration files during
-deployment. This is ideal for managing environment-specific settings (e.g.,
-macOS vs. Linux) or user-specific paths without hardcoding them.
+deployment. This is ideal for managing environment-specific settings.
 
-The core challenge is to reconcile this "build step" with dodot's principle
-of "live editing," where source-controlled files are directly symlinked.
-This design addresses the challenge by introducing a clear paradigm and helper
-tooling to manage the workflow.
+As a generative transform, the `.tmpl` file is the canonical source of truth.
+The rendered output is a build artifact and must not be edited directly
+without a manual merge step.
 
 2. Core Implementation
 ----------------------
 
-The implementation will be integrated cleanly into dodot's existing
-architecture.
+The implementation will be a new power-up within the transformation pipeline.
 
     2.1. The `template` Power-Up
 
-        A new power-up named `template` will be created in its own package
-        (`pkg/powerups/template`).
-
-            - Trigger: It will be triggered by files with `.tmpl` or
-              `.template` extensions. A default matcher will be added to the
-              core configuration to bind these patterns to the power-up.
-            - Action: It generates a `WriteFileAction`, which instructs the
-              executor to write the rendered content to a destination file.
-              The destination path is the source path with the template
-              extension stripped (e.g., `install.sh.tmpl` -> `install.sh`).
-            - Rendering Engine: It will use Go's standard `text/template`
-              package.
+        - Transformation Type: Generative (One-Way).
+        - Trigger: Files with `.tmpl` or `.template` extensions.
+        - Action: Generates a `WriteFileAction` to write the rendered content
+          to the destination file (e.g., `install.sh.tmpl` -> `install.sh`).
+        - Rendering Engine: `Sprig v3` library, a 100% compatible superset of
+          Go's standard `text/template` package.
 
     2.2. Template Context
 
-        A new `TemplateContext` struct will be populated before the pipeline
-        runs. This struct will be available within templates (e.g., `{{ .OS }}`).
+        The following automated variables will be available in templates:
 
-        Initial context variables will include:
+            - `OS`, `Arch`, `Hostname`, `Username`, `HomeDir`, `Date`,
+              `IsExecutable`.
 
-            - `OS`: The operating system (`runtime.GOOS`).
-            - `Arch`: The architecture (`runtime.GOARCH`).
-            - `User`: The current user object (`user.Current()`).
-            - `Hostname`: The machine's hostname (`os.Hostname()`).
-            - `Date`: The current date and time (`time.Now()`).
+        User-defined variables are out of scope for the initial implementation.
 
-        Future work can allow users to extend this context via configuration.
+3. User Workflow and Safety
+---------------------------
 
-    2.3. Pipeline Integration
+The user workflow is centered around the proactive `pre-commit` hook to
+prevent data loss.
 
-        The workflow integrates seamlessly into the existing pipeline:
-
-            1. A file like `pack/zshrc.tmpl` is found.
-            2. The `template` trigger matches it.
-            3. The `template` power-up receives the match, renders the file
-               using the `TemplateContext`, and generates a `WriteFileAction`
-               with the rendered content and the target path (`~/.zshrc`).
-            4. The `synthfs` executor handles the `WriteFileAction`, writing
-               the file to disk.
-
-        The `symlink` power-up will be configured by default to ignore
-        template files to prevent conflicts.
-
-3. User Workflow: The "Source vs. Rendered" Paradigm
-----------------------------------------------------
-
-This feature introduces a clear distinction between a template source file
-and its rendered output, analogous to source code and a compiled binary.
-
-    - Source File: The `.tmpl` file under version control. This is the
-      canonical source of truth that the user edits.
-    - Rendered File: The file deployed on the system. This is a build
-      artifact and should be treated as read-only by the user.
-
-The primary workflow is therefore:
-
-    1. The user edits the source `.tmpl` file.
+    1. The user edits a `.tmpl` source file.
     2. The user runs `dodot deploy` to "recompile" and deploy the changes.
+    3. (Optional) The user manually edits a rendered file (e.g., `~/.zshrc`).
+    4. On `git commit`, the `pre-commit` hook runs `dodot transform check`,
+       detects the manual edit, and blocks the commit with a warning.
+    5. The user runs `dodot transform resolve ~/.zshrc`, which opens a
+       three-way merge tool, allowing them to safely merge their changes back
+       into the `.tmpl` source file.
 
-Any manual edits to the rendered file will be overwritten on the next
-deployment. This clear, one-way data flow ensures predictability and
-avoids complex, magical synchronization logic.
+    3.1. Onboarding
 
-4. The `dodot template` Helper Command
---------------------------------------
+        The first time a template is deployed, dodot will prompt the user to
+        run `dodot install-git-hook` to set up this safety mechanism.
 
-To assist users in managing this new workflow and handling cases where they
-inadvertently edit a rendered file, a new helper command suite will be
-introduced.
+    3.2. Baseline Cache
 
-    4.1. `dodot template resolve <path-to-deployed-file>`
+        The `resolve` command relies on a baseline cache of the last rendered
+        version, stored safely in `$XDG_DATA_HOME/dodot/template_cache/`.
 
-        This is the primary tool for reconciling user changes.
+    3.3. Merge Tool Strategy
 
-        Workflow:
-            1. A user edits a deployed file (e.g., `~/.zshrc`) and realizes
-               it was generated from a template.
-            2. They run `dodot template resolve ~/.zshrc`.
-            3. The command performs a three-way comparison between:
-                a. The original template source (`pack/zshrc.tmpl`).
-                b. A cached "baseline" of the last rendered version.
-                c. The user's current, edited version.
-            4. Conflict Detection: If the command detects an "ambiguous edit"
-               (a line containing both a template variable and a user edit),
-               it will flag a conflict.
-            5. Resolution: Upon conflict, the command will launch a standard
-               three-way merge tool (like `vimdiff` or VS Code's merge
-               editor), presenting the three versions and requiring the user
-               to manually resolve the changes by editing the source
-               template (`.tmpl`) file.
-            6. Automatic Merge: If edits are unambiguous (only on lines
-               without template variables), the command could offer to
-               automatically merge the changes back into the source template.
-
-    4.2. `dodot template diff <path-to-deployed-file>`
-
-        A simpler, non-destructive command to show the user if their deployed
-        file has diverged from the last rendered version. This helps users
-        quickly check for manual edits.
-
-5. Design Rationale: Helper Command vs. `git` Filter
-----------------------------------------------------
-
-The design explicitly rejects using `git` `clean`/`smudge` filters for
-synchronizing changes for the following reasons:
-
-    - The "Un-rendering" Problem: A `git clean` filter, which runs on `git
-      add`, would need to reverse-engineer a user's edited file back into a
-      template. This is algorithmically complex and unreliable, as it's
-      impossible to distinguish a user's literal input from a value that was
-      previously rendered from a template variable.
-    - Fragility and Complexity: The filter approach requires per-user,
-      per-repository `git` configuration, making it fragile and difficult to
-      debug. It hides immense complexity behind a "magic" process that
-      violates dodot's principle of transparency.
-    - Non-Standard User Experience: Using filters to create merge conflicts
-      during a `git add` operation is an abuse of the tool's purpose and
-      would create a confusing and untrustworthy user experience.
-
-The explicit `dodot template resolve` command provides the same powerful
-conflict resolution logic in a transparent, robust, and user-controlled
-manner that aligns with dodot's core philosophy.
-
-6. Benefits of the Proposed Design
-----------------------------------
-
-    - Powerful: Delivers a much-requested templating feature.
-    - Robust: The core deployment logic remains a simple, one-way data flow.
-    - Transparent: The "source vs. rendered" paradigm is clear. There is no
-      hidden magic.
-    - User-Friendly: The helper command provides a powerful and familiar
-      (merge tool-based) workflow for resolving conflicts when they arise.
-    - Architecturally Sound: The feature is implemented as a new power-up,
-      fitting perfectly into dodot's existing extensible architecture.
+        The `resolve` command will find a merge tool by checking for dodot
+        config, `git` config, and common environment variables, with a safe
+        fallback.
