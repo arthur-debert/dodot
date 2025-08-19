@@ -93,6 +93,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
+	rootCmd.AddCommand(newAdoptCmd())
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newTopicsCmd())
 	// Completion command removed - use dodot-completions tool instead
@@ -543,6 +544,77 @@ func newFillCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newAdoptCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "adopt <pack> <source-path> [<source-path>...]",
+		Short:             MsgAdoptShort,
+		Long:              MsgAdoptLong,
+		Args:              cobra.MinimumNArgs(2),
+		Example:           MsgAdoptExample,
+		GroupID:           "core",
+		ValidArgsFunction: adoptCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Get force flag value (it's a persistent flag)
+			force, _ := cmd.Root().PersistentFlags().GetBool("force")
+
+			packName := args[0]
+			sourcePaths := args[1:]
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Str("pack", packName).
+				Strs("source_paths", sourcePaths).
+				Bool("force", force).
+				Msg("Adopting files into pack")
+
+			// Adopt files using the new implementation
+			result, err := commands.AdoptFiles(commands.AdoptFilesOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackName:     packName,
+				SourcePaths:  sourcePaths,
+				Force:        force,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "adopt")
+				}
+				return fmt.Errorf(MsgErrAdoptFiles, err)
+			}
+
+			// Display results
+			if len(result.AdoptedFiles) == 0 {
+				fmt.Print(MsgNoFilesAdopted)
+			} else {
+				for _, adopted := range result.AdoptedFiles {
+					fmt.Printf(MsgFileAdopted, adopted.OriginalPath, adopted.NewPath)
+					fmt.Printf(MsgSymlinkCreated, adopted.OriginalPath, adopted.NewPath)
+				}
+				fmt.Printf(MsgAdoptSuccess, len(result.AdoptedFiles), packName)
+			}
+
+			return nil
+		},
+	}
+}
+
+// adoptCompletion provides shell completion for the adopt command
+func adoptCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	// First argument is the pack name
+	if len(args) == 0 {
+		return packNamesCompletion(cmd, args, toComplete)
+	}
+	// Subsequent arguments are file paths
+	return nil, cobra.ShellCompDirectiveDefault
 }
 
 func newAddIgnoreCmd() *cobra.Command {

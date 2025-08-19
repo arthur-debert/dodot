@@ -141,3 +141,16 @@ type AddIgnoreResult struct {
 	Created        bool   `json:"created"`
 	AlreadyExisted bool   `json:"alreadyExisted"`
 }
+
+// AdoptResult holds the result of the 'adopt' command.
+type AdoptResult struct {
+	PackName     string        `json:"packName"`
+	AdoptedFiles []AdoptedFile `json:"adoptedFiles"`
+}
+
+// AdoptedFile represents a single file that was adopted.
+type AdoptedFile struct {
+	OriginalPath string `json:"originalPath"` // Original file path (e.g., ~/.gitconfig)
+	NewPath      string `json:"newPath"`      // New path in pack (e.g., /path/to/dotfiles/git/gitconfig)
+	SymlinkPath  string `json:"symlinkPath"`  // Symlink path (usually same as OriginalPath)
+}

@@ -17,6 +17,7 @@ const (
 	MsgInitShort       = "Create a new pack with template files"
 	MsgFillShort       = "Add placeholder files to an existing pack"
 	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
+	MsgAdoptShort      = "Adopt existing files into a pack"
 	MsgTopicsShort     = "Display available documentation topics"
 	MsgTopicsLong      = "Display a list of all available help topics that provide additional documentation beyond command help."
 	MsgCompletionShort = "Generate shell completion script"
@@ -35,6 +36,10 @@ const (
 	MsgPackHasAllFiles   = "Pack '%s' already has all standard files.\n"
 	MsgIgnoreFileCreated = "Created .dodotignore file in pack '%s'\n"
 	MsgIgnoreFileExists  = "Pack '%s' already has a .dodotignore file\n"
+	MsgFileAdopted       = "✔ Moving '%s' to '%s'\n"
+	MsgSymlinkCreated    = "✔ Creating symlink: '%s' -> '%s'\n"
+	MsgAdoptSuccess      = "✨ Success! %d file(s) are now managed by dodot in the '%s' pack.\n"
+	MsgNoFilesAdopted    = "No files were adopted.\n"
 	MsgPackStatusFormat  = "\n%s:\n"
 	MsgPowerUpStatus     = "  %s: %s"
 	MsgPowerUpDesc       = " - %s"
@@ -48,6 +53,7 @@ const (
 	MsgErrInitPack     = "failed to initialize pack: %w"
 	MsgErrFillPack     = "failed to fill pack: %w"
 	MsgErrAddIgnore    = "failed to add ignore file: %w"
+	MsgErrAdoptFiles   = "failed to adopt files: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
@@ -117,6 +123,14 @@ var (
 	//go:embed msgs/addignore-example.txt
 	msgAddIgnoreExampleRaw string
 	MsgAddIgnoreExample    = strings.TrimSpace(msgAddIgnoreExampleRaw)
+
+	//go:embed msgs/adopt-long.txt
+	msgAdoptLongRaw string
+	MsgAdoptLong    = strings.TrimSpace(msgAdoptLongRaw)
+
+	//go:embed msgs/adopt-example.txt
+	msgAdoptExampleRaw string
+	MsgAdoptExample    = strings.TrimSpace(msgAdoptExampleRaw)
 
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string

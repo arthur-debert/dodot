@@ -15,6 +15,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.10.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 replace github.com/arthur-debert/synthfs => github.com/arthur-debert/go-synthfs v0.9.5
@@ -56,5 +57,4 @@ require (
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
