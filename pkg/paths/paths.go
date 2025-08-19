@@ -496,13 +496,59 @@ func getFirstSegment(relPath string) string {
 	return relPath
 }
 
+// hasExplicitOverride checks for _home/ or _xdg/ prefix
+// Returns true if an override is found, along with the override type ("home" or "xdg")
+// Release D: Layer 3 - Explicit Overrides
+func hasExplicitOverride(relPath string) (bool, string) {
+	if strings.HasPrefix(relPath, "_home/") {
+		return true, "home"
+	}
+	if strings.HasPrefix(relPath, "_xdg/") {
+		return true, "xdg"
+	}
+	return false, ""
+}
+
+// stripOverridePrefix removes _home/ or _xdg/ from path
+// Release D: Layer 3 - Explicit Overrides
+func stripOverridePrefix(relPath string) string {
+	if strings.HasPrefix(relPath, "_home/") {
+		return strings.TrimPrefix(relPath, "_home/")
+	}
+	if strings.HasPrefix(relPath, "_xdg/") {
+		return strings.TrimPrefix(relPath, "_xdg/")
+	}
+	return relPath
+}
+
 // MapPackFileToSystem maps a file from a pack to its deployment location.
-// Release C: Implements Layer 2 - Exception List (with Layer 1 fallback)
+// Release D: Implements Layer 3 - Explicit Overrides (with Layer 2 and Layer 1 fallback)
 func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
 	homeDir, err := GetHomeDirectory()
 	if err != nil {
 		homeDir = "~" // Fallback for safety, though GetHomeDirectory is robust
+	}
+
+	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix)
+	if hasOverride, overrideType := hasExplicitOverride(relPath); hasOverride {
+		strippedPath := stripOverridePrefix(relPath)
+
+		switch overrideType {
+		case "home":
+			// _home/ files always go to $HOME with dot prefix
+			if strippedPath != "" && !strings.HasPrefix(strippedPath, ".") {
+				strippedPath = "." + strippedPath
+			}
+			return filepath.Join(homeDir, strippedPath)
+		case "xdg":
+			// _xdg/ files always go to XDG_CONFIG_HOME
+			xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+			if xdgConfigHome == "" {
+				xdgConfigHome = filepath.Join(homeDir, ".config")
+			}
+			return filepath.Join(xdgConfigHome, strippedPath)
+		}
 	}
 
 	// Layer 2: Check exception list based on first path segment
@@ -545,7 +591,9 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 }
 
 // MapSystemFileToPack determines where a system file should be placed in a pack.
-// Release C: Updated to handle Layer 2 exception list (with Layer 1 fallback)
+// Release D: Updated to handle Layer 3 explicit overrides (with Layer 2 and Layer 1 fallback)
+// Note: Layer 3 reverse mapping is not automatic - users must manually organize files
+// into _home/ or _xdg/ directories in their packs if they want explicit control.
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
 	// Get home directory
 	homeDir, err := GetHomeDirectory()
