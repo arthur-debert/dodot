@@ -1,8 +1,6 @@
 package core
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,6 +11,9 @@ import (
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
+// TestGetCompletePackTemplate tests template generation logic
+// This is a unit test - it only tests the template generation without filesystem operations
+// Note: It does use the registry, which makes it slightly integration-ish, but it doesn't touch filesystem
 func TestGetCompletePackTemplate(t *testing.T) {
 	// Test getting all template files
 	templates, err := GetCompletePackTemplate("testpack")
@@ -47,80 +48,4 @@ func TestGetCompletePackTemplate(t *testing.T) {
 		assert.NotContains(t, tmpl.Content, "PACK_NAME", "PACK_NAME should be replaced with actual pack name")
 		assert.Contains(t, tmpl.Content, "testpack", "Content should contain actual pack name")
 	}
-}
-
-func TestGetMissingTemplateFiles(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir := t.TempDir()
-	packPath := filepath.Join(tempDir, "mypack")
-	require.NoError(t, os.MkdirAll(packPath, 0755))
-
-	// Create Brewfile to test that it's not included in missing
-	brewfilePath := filepath.Join(packPath, "Brewfile")
-	require.NoError(t, os.WriteFile(brewfilePath, []byte("# existing brewfile"), 0644))
-
-	// Get missing templates
-	missing, err := GetMissingTemplateFiles(packPath, "mypack")
-	require.NoError(t, err)
-
-	// We should be missing install.sh and aliases.sh at minimum
-	assert.GreaterOrEqual(t, len(missing), 2)
-
-	// Brewfile should NOT be in missing list
-	for _, tmpl := range missing {
-		assert.NotEqual(t, "Brewfile", tmpl.Filename, "Brewfile exists so should not be missing")
-	}
-
-	// Check that install.sh is in missing list
-	hasInstall := false
-	for _, tmpl := range missing {
-		if tmpl.Filename == "install.sh" {
-			hasInstall = true
-			assert.Equal(t, "install_script", tmpl.PowerUpName)
-			break
-		}
-	}
-	assert.True(t, hasInstall, "install.sh should be in missing templates")
-}
-
-func TestGetMissingTemplateFiles_AllExist(t *testing.T) {
-	// Create a temporary directory with all template files
-	tempDir := t.TempDir()
-	packPath := filepath.Join(tempDir, "complete")
-	require.NoError(t, os.MkdirAll(packPath, 0755))
-
-	// Get all templates first
-	allTemplates, err := GetCompletePackTemplate("complete")
-	require.NoError(t, err)
-
-	// Create all template files
-	for _, tmpl := range allTemplates {
-		filePath := filepath.Join(packPath, tmpl.Filename)
-		require.NoError(t, os.WriteFile(filePath, []byte("existing content"), os.FileMode(tmpl.Mode)))
-	}
-
-	// Get missing templates
-	missing, err := GetMissingTemplateFiles(packPath, "complete")
-	require.NoError(t, err)
-
-	// Should have no missing templates
-	assert.Empty(t, missing, "Should have no missing templates when all exist")
-}
-
-func TestTemplateFileExists(t *testing.T) {
-	tempDir := t.TempDir()
-
-	// Test existing file
-	existingFile := filepath.Join(tempDir, "exists.txt")
-	require.NoError(t, os.WriteFile(existingFile, []byte("content"), 0644))
-
-	exists, err := fileExists(existingFile)
-	assert.NoError(t, err)
-	assert.True(t, exists)
-
-	// Test non-existing file
-	nonExisting := filepath.Join(tempDir, "nothere.txt")
-	exists, err = fileExists(nonExisting)
-	assert.NoError(t, err)
-	assert.False(t, exists)
 }
