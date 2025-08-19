@@ -18,6 +18,9 @@ func TestAdoptFullWorkflow(t *testing.T) {
 	dotfilesPath := filepath.Join(root, "dotfiles")
 	homePath := filepath.Join(root, "home")
 
+	// Create dotfiles directory
+	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+
 	// Set HOME to test directory
 	oldHome := os.Getenv("HOME")
 	require.NoError(t, os.Setenv("HOME", homePath))
@@ -91,6 +94,9 @@ func TestAdoptWithExistingDestination(t *testing.T) {
 	dotfilesPath := filepath.Join(root, "dotfiles")
 	homePath := filepath.Join(root, "home")
 
+	// Create dotfiles directory
+	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+
 	// Set HOME to test directory
 	oldHome := os.Getenv("HOME")
 	require.NoError(t, os.Setenv("HOME", homePath))
@@ -141,6 +147,9 @@ func TestAdoptMultipleFiles(t *testing.T) {
 	root := testutil.TempDir(t, "adopt-integration-test")
 	dotfilesPath := filepath.Join(root, "dotfiles")
 	homePath := filepath.Join(root, "home")
+
+	// Create dotfiles directory
+	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
 
 	// Set HOME to test directory
 	oldHome := os.Getenv("HOME")

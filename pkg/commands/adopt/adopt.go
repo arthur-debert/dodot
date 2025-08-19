@@ -1,15 +1,19 @@
 package adopt
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/synthfs/pkg/synthfs"
+	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
 	"github.com/rs/zerolog"
 )
 
@@ -39,21 +43,35 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 		return nil, errors.Wrap(err, errors.ErrPackNotFound, "invalid pack name")
 	}
 
-	// Find or create the pack
-	packPath := filepath.Join(opts.DotfilesRoot, packName)
-	packInfo, err := os.Stat(packPath)
+	// Initialize paths
+	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
-		if os.IsNotExist(err) {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
+	}
+
+	// Try to find the pack first
+	var targetPack *types.Pack
+	packPath := filepath.Join(pathsInstance.DotfilesRoot(), packName)
+
+	// Check if pack exists using core infrastructure
+	targetPack, err = core.FindPack(pathsInstance.DotfilesRoot(), packName)
+	if err != nil {
+		// If pack doesn't exist, create it
+		if dodotErr, ok := err.(*errors.DodotError); ok && dodotErr.Code == errors.ErrPackNotFound {
 			// Create the pack directory
 			if err := os.MkdirAll(packPath, 0755); err != nil {
 				return nil, fmt.Errorf("failed to create pack directory: %w", err)
 			}
 			logger.Info().Str("pack", packName).Msg("Created pack directory")
+
+			// Create a minimal pack instance
+			targetPack = &types.Pack{
+				Name: packName,
+				Path: packPath,
+			}
 		} else {
-			return nil, fmt.Errorf("failed to check pack directory: %w", err)
+			return nil, err
 		}
-	} else if !packInfo.IsDir() {
-		return nil, fmt.Errorf("pack path exists but is not a directory: %s", packPath)
 	}
 
 	// Prepare result
@@ -62,15 +80,34 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 		AdoptedFiles: []types.AdoptedFile{},
 	}
 
-	// Process each source path
+	// Create synthfs instance for operations
+	osfs := filesystem.NewOSFileSystem("/")
+	pathAwareFS := synthfs.NewPathAwareFileSystem(osfs, "/").WithAbsolutePaths()
+	sfs := synthfs.New()
+
+	// Process each source path and collect operations
+	var operations []synthfs.Operation
 	for _, sourcePath := range opts.SourcePaths {
-		adopted, err := adoptSingleFile(logger, packPath, sourcePath, opts.Force)
+		ops, adopted, err := createAdoptOperations(sfs, logger, targetPack, sourcePath, opts.Force)
 		if err != nil {
 			logAdopt(logger, opts, result, err)
-			return nil, fmt.Errorf("failed to adopt %s: %w", sourcePath, err)
+			return nil, fmt.Errorf("failed to prepare adoption of %s: %w", sourcePath, err)
 		}
 		if adopted != nil {
 			result.AdoptedFiles = append(result.AdoptedFiles, *adopted)
+			operations = append(operations, ops...)
+		}
+	}
+
+	// Execute all operations atomically through synthfs
+	if len(operations) > 0 {
+		ctx := context.Background()
+		synthfsOpts := synthfs.DefaultPipelineOptions()
+		synthfsOpts.RollbackOnError = true
+
+		_, err := synthfs.RunWithOptions(ctx, pathAwareFS, synthfsOpts, operations...)
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute adopt operations: %w", err)
 		}
 	}
 
@@ -78,8 +115,8 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 	return result, nil
 }
 
-// adoptSingleFile handles the adoption of a single file or directory
-func adoptSingleFile(logger zerolog.Logger, packPath, sourcePath string, force bool) (*types.AdoptedFile, error) {
+// createAdoptOperations creates synthfs operations for adopting a single file
+func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pack *types.Pack, sourcePath string, force bool) ([]synthfs.Operation, *types.AdoptedFile, error) {
 	// Expand the source path
 	expandedPath := paths.ExpandHome(sourcePath)
 
@@ -87,66 +124,78 @@ func adoptSingleFile(logger zerolog.Logger, packPath, sourcePath string, force b
 	sourceInfo, err := os.Lstat(expandedPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("source file does not exist: %s", expandedPath)
+			return nil, nil, fmt.Errorf("source file does not exist: %s", expandedPath)
 		}
-		return nil, fmt.Errorf("failed to stat source file: %w", err)
+		return nil, nil, fmt.Errorf("failed to stat source file: %w", err)
 	}
 
 	// Check if source is already a symlink managed by dodot
 	if sourceInfo.Mode()&os.ModeSymlink != 0 {
 		target, err := os.Readlink(expandedPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read symlink: %w", err)
+			return nil, nil, fmt.Errorf("failed to read symlink: %w", err)
 		}
 
 		// Check if it points to a file within dotfiles
-		if strings.Contains(target, packPath) || strings.Contains(target, filepath.Dir(packPath)) {
+		if strings.Contains(target, pack.Path) || strings.Contains(target, filepath.Dir(pack.Path)) {
 			logger.Info().
 				Str("source", expandedPath).
 				Str("target", target).
 				Msg("File is already managed by dodot")
 			// Idempotent operation - not an error, just skip
-			return nil, nil
+			return nil, nil, nil
 		}
 	}
 
 	// Determine destination path using smart path handling
-	destPath := determineDestinationPath(packPath, expandedPath)
+	destPath := determineDestinationPath(pack.Path, expandedPath)
 
 	// Check if destination already exists
 	if _, err := os.Stat(destPath); err == nil && !force {
-		return nil, fmt.Errorf("destination already exists: %s (use --force to overwrite)", destPath)
+		return nil, nil, fmt.Errorf("destination already exists: %s (use --force to overwrite)", destPath)
 	}
 
-	// Create destination directory if needed
+	// Create operations for the adoption
+	var operations []synthfs.Operation
+
+	// 1. Create destination directory if needed
 	destDir := filepath.Dir(destPath)
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create destination directory: %w", err)
+	if _, err := os.Stat(destDir); os.IsNotExist(err) {
+		mkdirOp := sfs.CreateDirWithID(fmt.Sprintf("adopt-mkdir-%s", filepath.Base(destDir)), destDir, 0755)
+		operations = append(operations, mkdirOp)
 	}
 
-	// Move the file
-	if err := os.Rename(expandedPath, destPath); err != nil {
-		// Handle cross-device moves
-		if strings.Contains(err.Error(), "cross-device") {
-			return nil, fmt.Errorf("cross-device move not supported in initial implementation: %w", err)
-		}
-		return nil, fmt.Errorf("failed to move file: %w", err)
-	}
+	// 2. Create a custom operation for the atomic move and symlink
+	// This ensures the operation is atomic - either both succeed or both fail
+	adoptOp := sfs.CustomOperationWithID(
+		fmt.Sprintf("adopt-file-%s", filepath.Base(expandedPath)),
+		func(ctx context.Context, fs filesystem.FileSystem) error {
+			// Move the file
+			if err := os.Rename(expandedPath, destPath); err != nil {
+				// Handle cross-device moves
+				if strings.Contains(err.Error(), "cross-device") {
+					return fmt.Errorf("cross-device move not supported in initial implementation: %w", err)
+				}
+				return fmt.Errorf("failed to move file: %w", err)
+			}
 
-	// Create symlink back to original location
-	err = os.Symlink(destPath, expandedPath)
-	if err != nil {
-		// Try to move the file back on failure
-		_ = os.Rename(destPath, expandedPath)
-		return nil, fmt.Errorf("failed to create symlink: %w", err)
-	}
+			// Create symlink back to original location
+			if err := fs.Symlink(destPath, expandedPath); err != nil {
+				// Try to move the file back on failure
+				_ = os.Rename(destPath, expandedPath)
+				return fmt.Errorf("failed to create symlink: %w", err)
+			}
 
-	logger.Info().
-		Str("source", expandedPath).
-		Str("destination", destPath).
-		Msg("Successfully adopted file")
+			logger.Info().
+				Str("source", expandedPath).
+				Str("destination", destPath).
+				Msg("Successfully adopted file")
+			return nil
+		},
+	)
+	operations = append(operations, adoptOp)
 
-	return &types.AdoptedFile{
+	return operations, &types.AdoptedFile{
 		OriginalPath: expandedPath,
 		NewPath:      destPath,
 		SymlinkPath:  expandedPath,
