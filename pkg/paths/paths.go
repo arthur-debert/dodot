@@ -500,13 +500,9 @@ func getFirstSegment(relPath string) string {
 // Release C: Implements Layer 2 - Exception List (with Layer 1 fallback)
 func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
-	homeDir := os.Getenv("HOME")
-	if homeDir == "" {
-		var err error
-		homeDir, err = os.UserHomeDir()
-		if err != nil {
-			homeDir = "~"
-		}
+	homeDir, err := GetHomeDirectory()
+	if err != nil {
+		homeDir = "~" // Fallback for safety, though GetHomeDirectory is robust
 	}
 
 	// Layer 2: Check exception list based on first path segment
@@ -551,14 +547,10 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 // MapSystemFileToPack determines where a system file should be placed in a pack.
 // Release C: Updated to handle Layer 2 exception list (with Layer 1 fallback)
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
-	// Prefer HOME env var for testability
-	homeDir := os.Getenv("HOME")
-	if homeDir == "" {
-		var err error
-		homeDir, err = os.UserHomeDir()
-		if err != nil || homeDir == "" {
-			homeDir = filepath.Dir(systemPath) // Fallback
-		}
+	// Get home directory
+	homeDir, err := GetHomeDirectory()
+	if err != nil {
+		homeDir = filepath.Dir(systemPath) // Fallback
 	}
 
 	// Get XDG paths
