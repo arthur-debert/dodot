@@ -491,10 +491,12 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Layer 1: Smart default mapping
 	if isTopLevel(relPath) {
 		// Top-level files go to $HOME with dot prefix
-		homeDir, err := GetHomeDirectory()
-		if err != nil {
-			homeDir = os.Getenv("HOME")
-			if homeDir == "" {
+		// Prefer HOME env var for testability
+		homeDir := os.Getenv("HOME")
+		if homeDir == "" {
+			var err error
+			homeDir, err = os.UserHomeDir()
+			if err != nil {
 				homeDir = "~"
 			}
 		}
@@ -510,9 +512,13 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Subdirectory files go to XDG_CONFIG_HOME
 	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	if xdgConfigHome == "" {
-		homeDir, _ := GetHomeDirectory()
+		// Prefer HOME env var for testability
+		homeDir := os.Getenv("HOME")
 		if homeDir == "" {
-			homeDir = os.Getenv("HOME")
+			homeDir, _ = os.UserHomeDir()
+			if homeDir == "" {
+				homeDir = "~"
+			}
 		}
 		xdgConfigHome = filepath.Join(homeDir, ".config")
 	}
@@ -528,10 +534,12 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 // MapSystemFileToPack determines where a system file should be placed in a pack.
 // Release B: Updated to handle Layer 1 reverse mapping
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
-	homeDir, err := GetHomeDirectory()
-	if err != nil {
-		homeDir = os.Getenv("HOME")
-		if homeDir == "" {
+	// Prefer HOME env var for testability
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil || homeDir == "" {
 			homeDir = filepath.Dir(systemPath) // Fallback
 		}
 	}
