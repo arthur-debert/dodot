@@ -11,6 +11,99 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestAdoptExceptionListBehavior tests that exception list files are adopted correctly
+func TestAdoptExceptionListBehavior(t *testing.T) {
+	// Setup test filesystem
+	root := testutil.TempDir(t, "adopt-exception-test")
+	dotfilesPath := filepath.Join(root, "dotfiles")
+	homePath := filepath.Join(root, "home")
+
+	// Create dotfiles directory
+	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+
+	// Set HOME to test directory
+	oldHome := os.Getenv("HOME")
+	require.NoError(t, os.Setenv("HOME", homePath))
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
+
+	// Unset XDG_CONFIG_HOME to ensure it's calculated from HOME
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+	defer func() {
+		if oldXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
+		}
+	}()
+
+	// Create exception list files (should go to HOME)
+	testutil.CreateFile(t, homePath, ".ssh/config", "Host github.com\n  User git")
+	testutil.CreateFile(t, homePath, ".gitconfig", "[user]\n  name = Test")
+	testutil.CreateFile(t, homePath, ".aws/credentials", "[default]\nregion = us-east-1")
+
+	// Create non-exception files (would normally go to XDG)
+	testutil.CreateFile(t, filepath.Join(homePath, ".config"), "nvim/init.lua", "vim.opt.number = true")
+
+	// Test adopting ssh config (exception list)
+	result1, err := AdoptFiles(AdoptFilesOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "ssh",
+		SourcePaths:  []string{filepath.Join(homePath, ".ssh/config")},
+		Force:        false,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(result1.AdoptedFiles))
+
+	// Verify ssh config was placed correctly in pack (without dot)
+	expectedPath := filepath.Join(dotfilesPath, "ssh", "ssh", "config")
+	assert.True(t, testutil.FileExists(t, expectedPath), "ssh/config should exist in pack")
+
+	// Test adopting gitconfig (exception list)
+	result2, err := AdoptFiles(AdoptFilesOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "git",
+		SourcePaths:  []string{filepath.Join(homePath, ".gitconfig")},
+		Force:        false,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(result2.AdoptedFiles))
+
+	// Verify gitconfig was placed correctly in pack (without dot)
+	expectedPath2 := filepath.Join(dotfilesPath, "git", "gitconfig")
+	assert.True(t, testutil.FileExists(t, expectedPath2), "gitconfig should exist in pack")
+
+	// Test adopting aws credentials (exception list)
+	result3, err := AdoptFiles(AdoptFilesOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "aws",
+		SourcePaths:  []string{filepath.Join(homePath, ".aws/credentials")},
+		Force:        false,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(result3.AdoptedFiles))
+
+	// Verify aws credentials was placed correctly in pack (without dot)
+	expectedPath3 := filepath.Join(dotfilesPath, "aws", "aws", "credentials")
+	assert.True(t, testutil.FileExists(t, expectedPath3), "aws/credentials should exist in pack")
+
+	// Deploy them back and verify they go to the right place
+	testutil.CreateFile(t, dotfilesPath, "ssh/.dodot.toml", `[matchers]
+[[matchers.items]]
+triggers = [{ type = "always" }]
+powerup = { type = "symlink" }`)
+
+	testutil.CreateFile(t, dotfilesPath, "git/.dodot.toml", `[matchers]
+[[matchers.items]]
+triggers = [{ type = "always" }]
+powerup = { type = "symlink" }`)
+
+	testutil.CreateFile(t, dotfilesPath, "aws/.dodot.toml", `[matchers]
+[[matchers.items]]
+triggers = [{ type = "always" }]
+powerup = { type = "symlink" }`)
+
+	// TODO: Add deploy test once we have the deploy command integrated
+}
+
 // TestAdoptFullWorkflow tests the complete adopt workflow with real file system operations
 func TestAdoptFullWorkflow(t *testing.T) {
 	// Setup test filesystem
