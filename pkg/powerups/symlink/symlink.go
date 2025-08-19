@@ -85,9 +85,11 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 			targetPath = filepath.Join(targetDir, match.Path)
 		} else if p.paths != nil && match.Pack != "" {
 			// Use centralized mapping for default target
+			// Note: We approximate the pack path from the absolute path. This works
+			// for Release A but may need refinement in future releases.
 			pack := &types.Pack{
 				Name: match.Pack,
-				Path: filepath.Dir(match.AbsolutePath), // Approximate pack path
+				Path: filepath.Dir(match.AbsolutePath),
 			}
 			targetPath = p.paths.MapPackFileToSystem(pack, match.Path)
 		} else {

@@ -211,9 +211,14 @@ func checkCrossPackSymlinkConflicts(matches []types.TriggerMatch) error {
 	// Build map of target paths to source matches
 	for _, match := range symlinkMatches {
 		// Use centralized path mapping to get the actual target path
+		// Note: We approximate the pack path from the absolute path by taking the parent directory.
+		// This works because match.AbsolutePath is the full path to the file within the pack,
+		// so its parent is the pack directory. This approximation is acceptable for Release A
+		// since we're only preserving current behavior. Future releases may need more precise
+		// pack resolution when implementing advanced mapping features.
 		pack := &types.Pack{
 			Name: match.Pack,
-			Path: filepath.Dir(match.AbsolutePath), // Approximate pack path
+			Path: filepath.Dir(match.AbsolutePath),
 		}
 		targetPath := pathsInstance.MapPackFileToSystem(pack, match.Path)
 		targetMap[targetPath] = append(targetMap[targetPath], match)
