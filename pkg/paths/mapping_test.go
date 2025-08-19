@@ -11,14 +11,22 @@ import (
 )
 
 func TestMapPackFileToSystem(t *testing.T) {
-	// Save original HOME
+	// Save original environment
 	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
+	// Explicitly unset XDG_CONFIG_HOME to ensure it's calculated from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -81,12 +89,17 @@ func TestMapSystemFileToPack(t *testing.T) {
 	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
-		_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
-	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	// Let the code calculate XDG_CONFIG_HOME from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -159,12 +172,17 @@ func TestPathMappingSymmetry(t *testing.T) {
 	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
-		_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
-	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	// Let the code calculate XDG_CONFIG_HOME from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -220,12 +238,17 @@ func TestLayer1EdgeCases(t *testing.T) {
 	originalXDG := os.Getenv("XDG_CONFIG_HOME")
 	defer func() {
 		_ = os.Setenv("HOME", originalHome)
-		_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
 	}()
 
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
-	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	// Let the code calculate XDG_CONFIG_HOME from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
 	p, err := New("")
 	require.NoError(t, err)

@@ -221,12 +221,18 @@ func TestSymlinkPowerUp_MetadataInActions(t *testing.T) {
 func TestSymlinkPowerUp_PreservesDirectoryStructure(t *testing.T) {
 	homeDir := t.TempDir()
 	oldHome := os.Getenv("HOME")
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
 	require.NoError(t, os.Setenv("HOME", homeDir))
+	// Explicitly unset XDG_CONFIG_HOME to ensure it's calculated from HOME
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 	defer func() {
 		if oldHome != "" {
 			require.NoError(t, os.Setenv("HOME", oldHome))
 		} else {
 			require.NoError(t, os.Unsetenv("HOME"))
+		}
+		if oldXDG != "" {
+			require.NoError(t, os.Setenv("XDG_CONFIG_HOME", oldXDG))
 		}
 	}()
 
