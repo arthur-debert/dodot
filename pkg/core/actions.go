@@ -2,11 +2,13 @@ package core
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -179,6 +181,12 @@ func hashOptions(options map[string]interface{}) string {
 func checkCrossPackSymlinkConflicts(matches []types.TriggerMatch) error {
 	logger := logging.GetLogger("core.actions")
 
+	// Initialize paths instance for mapping
+	pathsInstance, err := paths.New("")
+	if err != nil {
+		return fmt.Errorf("failed to initialize paths: %w", err)
+	}
+
 	// Filter only symlink matches
 	symlinkMatches := make([]types.TriggerMatch, 0)
 	for _, match := range matches {
@@ -202,9 +210,17 @@ func checkCrossPackSymlinkConflicts(matches []types.TriggerMatch) error {
 
 	// Build map of target paths to source matches
 	for _, match := range symlinkMatches {
-		// The target path for symlinks is based on the relative path within the pack
-		// This matches the logic in the symlink powerup
-		targetPath := match.Path
+		// Use centralized path mapping to get the actual target path
+		// Note: We approximate the pack path from the absolute path by taking the parent directory.
+		// This works because match.AbsolutePath is the full path to the file within the pack,
+		// so its parent is the pack directory. This approximation is acceptable for Release A
+		// since we're only preserving current behavior. Future releases may need more precise
+		// pack resolution when implementing advanced mapping features.
+		pack := &types.Pack{
+			Name: match.Pack,
+			Path: filepath.Dir(match.AbsolutePath),
+		}
+		targetPath := pathsInstance.MapPackFileToSystem(pack, match.Path)
 		targetMap[targetPath] = append(targetMap[targetPath], match)
 
 		logger.Debug().

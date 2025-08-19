@@ -19,6 +19,7 @@ const (
 // SymlinkPowerUp creates symbolic links from matched files to target locations
 type SymlinkPowerUp struct {
 	defaultTarget string
+	paths         *paths.Paths
 }
 
 // NewSymlinkPowerUp creates a new SymlinkPowerUp with default target as user home
@@ -32,8 +33,16 @@ func NewSymlinkPowerUp() *SymlinkPowerUp {
 		homeDir = "~"
 	}
 
+	// Initialize paths instance
+	pathsInstance, err := paths.New("")
+	if err != nil {
+		logger.Warn().Err(err).Msg("failed to initialize paths, using fallback")
+		// Continue without paths instance - we'll use the simple logic
+	}
+
 	return &SymlinkPowerUp{
 		defaultTarget: homeDir,
+		paths:         pathsInstance,
 	}
 }
 
@@ -69,8 +78,24 @@ func (p *SymlinkPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, 
 	targetMap := make(map[string]string)
 
 	for _, match := range matches {
-		// Calculate target path preserving directory structure
-		targetPath := filepath.Join(targetDir, match.Path)
+		// Use centralized path mapping
+		var targetPath string
+		if targetDir != p.defaultTarget {
+			// Custom target directory specified - use simple path joining
+			targetPath = filepath.Join(targetDir, match.Path)
+		} else if p.paths != nil && match.Pack != "" {
+			// Use centralized mapping for default target
+			// Note: We approximate the pack path from the absolute path. This works
+			// for Release A but may need refinement in future releases.
+			pack := &types.Pack{
+				Name: match.Pack,
+				Path: filepath.Dir(match.AbsolutePath),
+			}
+			targetPath = p.paths.MapPackFileToSystem(pack, match.Path)
+		} else {
+			// Fallback to simple logic if paths not initialized
+			targetPath = filepath.Join(targetDir, match.Path)
+		}
 
 		// Check for conflicts
 		if existingSource, exists := targetMap[targetPath]; exists {

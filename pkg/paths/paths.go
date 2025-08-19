@@ -12,6 +12,7 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // Environment variable names
@@ -469,4 +470,81 @@ func GetHomeDirectoryWithDefault(defaultDir string) string {
 // Respects XDG_STATE_HOME if set
 func (p *Paths) LogFilePath() string {
 	return filepath.Join(p.xdgState, LogFileName)
+}
+
+// MapPackFileToSystem maps a file from a pack to its deployment location.
+// In Release A, this preserves current behavior: targetDir + relPath
+func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+	// For now, just preserve the current behavior
+	// This will be the home directory for all symlinks
+	homeDir, err := GetHomeDirectory()
+	if err != nil {
+		// Fallback to environment variable
+		homeDir = os.Getenv("HOME")
+		if homeDir == "" {
+			homeDir = "~"
+		}
+	}
+
+	// Simple path joining - preserves directory structure
+	return filepath.Join(homeDir, relPath)
+}
+
+// MapSystemFileToPack determines where a system file should be placed in a pack.
+// In Release A, this extracts current logic from adopt command
+func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
+	homeDir, err := GetHomeDirectory()
+	if err != nil {
+		homeDir = os.Getenv("HOME")
+		if homeDir == "" {
+			homeDir = filepath.Dir(systemPath) // Fallback
+		}
+	}
+
+	// Get XDG paths
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfigHome == "" {
+		xdgConfigHome = filepath.Join(homeDir, ".config")
+	}
+
+	// Get the base name of the file
+	baseName := filepath.Base(systemPath)
+
+	// If file is directly in $HOME, place it at pack root
+	if filepath.Dir(systemPath) == homeDir {
+		// Remove leading dot for cleaner pack organization
+		if strings.HasPrefix(baseName, ".") && len(baseName) > 1 {
+			baseName = baseName[1:]
+		}
+		return filepath.Join(pack.Path, baseName)
+	}
+
+	// If file is in XDG config path, preserve directory structure
+	if strings.HasPrefix(systemPath, xdgConfigHome) {
+		// Get relative path from XDG_CONFIG_HOME
+		relPath, err := filepath.Rel(xdgConfigHome, systemPath)
+		if err == nil {
+			return filepath.Join(pack.Path, relPath)
+		}
+	}
+
+	// For other paths, try to preserve some structure
+	// This is a simple heuristic - could be improved
+	if strings.Contains(systemPath, "/.") {
+		// Hidden directory somewhere in the path
+		parts := strings.Split(systemPath, "/")
+		for i, part := range parts {
+			if strings.HasPrefix(part, ".") && part != "." && i < len(parts)-1 {
+				// Found a hidden directory, use everything after it
+				subPath := filepath.Join(parts[i+1:]...)
+				return filepath.Join(pack.Path, subPath)
+			}
+		}
+	}
+
+	// Default: just use the base name
+	if strings.HasPrefix(baseName, ".") && len(baseName) > 1 {
+		baseName = baseName[1:]
+	}
+	return filepath.Join(pack.Path, baseName)
 }
