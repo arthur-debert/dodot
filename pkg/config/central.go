@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+
+	"github.com/arthur-debert/dodot/pkg/constants"
 )
 
 // Security holds security-related configuration
@@ -73,6 +75,14 @@ type Paths struct {
 	LogFileName        string
 }
 
+// LinkPaths holds link path mapping configuration
+type LinkPaths struct {
+	// CoreUnixExceptions lists tools that should always deploy to $HOME
+	// These are typically security-critical or shell-expected locations
+	// Release C: Layer 2 - Exception List
+	CoreUnixExceptions map[string]bool
+}
+
 // Config is the main configuration structure
 type Config struct {
 	Security         Security
@@ -82,6 +92,7 @@ type Config struct {
 	FilePermissions  FilePermissions
 	ShellIntegration ShellIntegration
 	Paths            Paths
+	LinkPaths        LinkPaths
 }
 
 // Default returns the default configuration
@@ -173,6 +184,9 @@ end`,
 			HomebrewDir:        "homebrew",
 			InitScriptName:     "dodot-init.sh",
 			LogFileName:        "dodot.log",
+		},
+		LinkPaths: LinkPaths{
+			CoreUnixExceptions: constants.CoreUnixExceptions,
 		},
 	}
 }

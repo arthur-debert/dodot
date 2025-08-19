@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
+	"github.com/arthur-debert/dodot/pkg/constants"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -472,21 +473,6 @@ func (p *Paths) LogFilePath() string {
 	return filepath.Join(p.xdgState, LogFileName)
 }
 
-// coreUnixExceptions lists tools that should always deploy to $HOME
-// These are typically security-critical or shell-expected locations
-// Release C: Layer 2 - Exception List
-var coreUnixExceptions = map[string]bool{
-	"ssh":       true, // .ssh/ - security critical, expects $HOME
-	"gnupg":     true, // .gnupg/ - security critical, expects $HOME
-	"aws":       true, // .aws/ - credentials, expects $HOME
-	"kube":      true, // .kube/ - kubernetes config
-	"docker":    true, // .docker/ - docker config
-	"gitconfig": true, // .gitconfig - git expects in $HOME
-	"bashrc":    true, // .bashrc - shell expects in $HOME
-	"zshrc":     true, // .zshrc - shell expects in $HOME
-	"profile":   true, // .profile - shell expects in $HOME
-}
-
 // isTopLevel checks if a file is at the pack root (no directory separators)
 func isTopLevel(relPath string) bool {
 	return !strings.Contains(relPath, string(filepath.Separator))
@@ -527,7 +513,7 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	firstSegment := getFirstSegment(relPath)
 	cleanSegment := stripDotPrefix(firstSegment)
 
-	if coreUnixExceptions[cleanSegment] {
+	if constants.CoreUnixExceptions[cleanSegment] {
 		// Exception list items always go to $HOME
 		// Reconstruct the path with dot prefix on first segment
 		parts := strings.Split(relPath, string(filepath.Separator))
@@ -594,7 +580,7 @@ func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 				firstSegment := stripDotPrefix(parts[0])
 
 				// Layer 2: Check exception list
-				if coreUnixExceptions[firstSegment] {
+				if constants.CoreUnixExceptions[firstSegment] {
 					// Exception list items are stored without dot prefix
 					parts[0] = firstSegment
 					return filepath.Join(pack.Path, filepath.Join(parts...))
