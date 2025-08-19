@@ -9,6 +9,10 @@ import (
 )
 
 // SelectPacks filters a list of packs by name
+//
+// IMPORTANT: Commands should NOT call this function directly. Instead, use
+// the centralized helper core.DiscoverAndSelectPacks which properly handles
+// pack discovery, loading, and selection in a consistent way.
 func SelectPacks(allPacks []types.Pack, selectedNames []string) ([]types.Pack, error) {
 	logger := logging.GetLogger("packs.selection")
 

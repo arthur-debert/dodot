@@ -8,10 +8,8 @@ package status
 
 import (
 	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -44,22 +42,8 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 		opts.FileSystem = filesystem.NewOS()
 	}
 
-	// Get pack candidates using the filesystem
-	candidates, err := packs.GetPackCandidatesFS(opts.Paths.DotfilesRoot(), opts.FileSystem)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPackNotFound,
-			"failed to get pack candidates")
-	}
-
-	// Get all packs
-	allPacks, err := packs.GetPacksFS(candidates, opts.FileSystem)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPackNotFound,
-			"failed to get packs")
-	}
-
-	// Filter to specific packs if requested
-	selectedPacks, err := packs.SelectPacks(allPacks, opts.PackNames)
+	// Use centralized pack discovery and selection with filesystem support
+	selectedPacks, err := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
 	if err != nil {
 		return nil, err
 	}
