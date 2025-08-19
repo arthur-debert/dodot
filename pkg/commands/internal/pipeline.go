@@ -40,19 +40,8 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
 	}
 
-	// 2. Get Pack Candidates
-	candidates, err := core.GetPackCandidates(pathsInstance.DotfilesRoot())
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get pack candidates")
-	}
-
-	allPacks, err := core.GetPacks(candidates)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get packs")
-	}
-
-	// 3. Filter to specific packs if requested
-	selectedPacks, err := core.SelectPacks(allPacks, opts.PackNames)
+	// 2. Discover and select packs using centralized helper
+	selectedPacks, err := core.DiscoverAndSelectPacks(pathsInstance.DotfilesRoot(), opts.PackNames)
 	if err != nil {
 		// Add context about where we searched for packs
 		if dodotErr, ok := err.(*errors.DodotError); ok && dodotErr.Code == errors.ErrPackNotFound {
@@ -75,7 +64,6 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	}
 
 	logger.Debug().
-		Int("totalPacks", len(allPacks)).
 		Int("selectedPacks", len(selectedPacks)).
 		Msg("Packs selected")
 

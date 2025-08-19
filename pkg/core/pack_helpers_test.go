@@ -50,6 +50,18 @@ func TestDiscoverAndSelectPacks(t *testing.T) {
 			wantPacks: nil,
 			wantErr:   true,
 		},
+		{
+			name:      "pack names with trailing slashes",
+			packNames: []string{"vim/", "git/"},
+			wantPacks: []string{"git", "vim"}, // alphabetical order
+			wantErr:   false,
+		},
+		{
+			name:      "mixed trailing slashes",
+			packNames: []string{"vim/", "git", "zsh/"},
+			wantPacks: []string{"git", "vim", "zsh"}, // alphabetical order
+			wantErr:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +109,12 @@ func TestFindPack(t *testing.T) {
 			packName: "nonexistent",
 			wantName: "",
 			wantErr:  true,
+		},
+		{
+			name:     "find pack with trailing slash",
+			packName: "vim/",
+			wantName: "vim",
+			wantErr:  false,
 		},
 	}
 

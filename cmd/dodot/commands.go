@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
@@ -91,9 +92,10 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
+	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newTopicsCmd())
-	rootCmd.AddCommand(newCompletionCmd())
+	// Completion command removed - use dodot-completions tool instead
 
 	// Initialize topic-based help system
 	// Try to find help topics relative to the executable location
@@ -195,11 +197,14 @@ func handlePackNotFoundError(dodotErr *doerrors.DodotError, p types.Pather, oper
 }
 
 // packNamesCompletion provides shell completion for pack names
+// It returns both discovered pack names and allows directory completion
+// since users often use shell completion to navigate directories
 func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// Initialize paths
 	p, err := initPaths()
 	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
+		// Even if we can't find dotfiles root, allow directory completion
+		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
 	// Get list of packs
@@ -207,7 +212,8 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 		DotfilesRoot: p.DotfilesRoot(),
 	})
 	if err != nil {
-		return nil, cobra.ShellCompDirectiveError
+		// If listing fails, still allow directory completion
+		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
 	// Extract pack names
@@ -221,7 +227,9 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	for _, pack := range packNames {
 		found := false
 		for _, arg := range args {
-			if arg == pack {
+			// Normalize for comparison (remove trailing slashes)
+			normalizedArg := strings.TrimRight(arg, "/")
+			if normalizedArg == pack {
 				found = true
 				break
 			}
@@ -231,7 +239,9 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 		}
 	}
 
-	return availablePacks, cobra.ShellCompDirectiveNoFileComp
+	// Return pack names and allow directory completion
+	// This lets users navigate the filesystem and also see available packs
+	return availablePacks, cobra.ShellCompDirectiveFilterDirs
 }
 
 func newDeployCmd() *cobra.Command {
@@ -535,6 +545,55 @@ func newFillCmd() *cobra.Command {
 	}
 }
 
+func newAddIgnoreCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "add-ignore <pack-name>",
+		Short:             MsgAddIgnoreShort,
+		Long:              MsgAddIgnoreLong,
+		Args:              cobra.ExactArgs(1),
+		Example:           MsgAddIgnoreExample,
+		GroupID:           "core",
+		ValidArgsFunction: packNamesCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			packName := args[0]
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Str("pack", packName).
+				Msg("Adding ignore file to pack")
+
+			// Use the actual AddIgnore implementation
+			result, err := commands.AddIgnore(commands.AddIgnoreOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackName:     packName,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "add-ignore")
+				}
+				return fmt.Errorf(MsgErrAddIgnore, err)
+			}
+
+			// Display results
+			if result.AlreadyExisted {
+				fmt.Printf(MsgIgnoreFileExists, packName)
+			} else {
+				fmt.Printf(MsgIgnoreFileCreated, packName)
+			}
+
+			return nil
+		},
+	}
+}
+
 func newTopicsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "topics",
@@ -602,27 +661,5 @@ func newSnippetCmd() *cobra.Command {
 	return cmd
 }
 
-func newCompletionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:                   "completion [bash|zsh|fish|powershell]",
-		Short:                 MsgCompletionShort,
-		Long:                  MsgCompletionLong,
-		DisableFlagsInUseLine: true,
-		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
-		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
-		GroupID:               "misc",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			switch args[0] {
-			case "bash":
-				return cmd.Root().GenBashCompletion(os.Stdout)
-			case "zsh":
-				return cmd.Root().GenZshCompletion(os.Stdout)
-			case "fish":
-				return cmd.Root().GenFishCompletion(os.Stdout, true)
-			case "powershell":
-				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
-			}
-			return nil
-		},
-	}
-}
+// Completion command removed - use dodot-completions tool to generate shell completions
+// The dodot-completions binary is built separately and used during the release process

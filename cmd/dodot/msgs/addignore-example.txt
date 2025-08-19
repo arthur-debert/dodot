@@ -1,0 +1,8 @@
+# Add a .dodotignore file to the 'experimental' pack
+dodot add-ignore experimental
+
+# The pack will now be ignored by all dodot commands
+dodot status  # 'experimental' pack won't appear
+
+# To re-enable the pack, remove the .dodotignore file
+rm ~/dotfiles/experimental/.dodotignore
