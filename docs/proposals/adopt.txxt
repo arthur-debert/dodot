@@ -54,7 +54,9 @@ ADOPT: A COMMAND FOR MANAGING EXISTING FILES
     3.1 SMART PATH HANDLING
 
         The `adopt` command will be intelligent and respect the conventions
-        outlined in the [./link-paths.txxt] proposal.
+        outlined in the [./link-paths.txxt] proposal once that has landed. For
+        now it will use the regular behavior, and when link paths have support
+        it should work as in: 
 
             - Adopting a file from `$HOME` (e.g., `~/.gitconfig`) will place it
               at the top level of the pack (`<pack>/gitconfig`).
