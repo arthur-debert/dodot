@@ -512,3 +512,210 @@ func TestLayer1EdgeCases(t *testing.T) {
 		assert.NotContains(t, result, ".config/config/")
 	})
 }
+
+// TestLayer3ExplicitOverrides tests the _home/ and _xdg/ override behavior
+func TestLayer3ExplicitOverrides(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+	}
+
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+	}{
+		{
+			name:     "_home/ file goes to HOME with dot",
+			relPath:  "_home/myconfig",
+			expected: filepath.Join(testHome, ".myconfig"),
+		},
+		{
+			name:     "_home/ with subdirectory",
+			relPath:  "_home/special/config",
+			expected: filepath.Join(testHome, ".special/config"),
+		},
+		{
+			name:     "_home/ file already with dot",
+			relPath:  "_home/.hidden",
+			expected: filepath.Join(testHome, ".hidden"),
+		},
+		{
+			name:     "_xdg/ file goes to XDG_CONFIG_HOME",
+			relPath:  "_xdg/myapp/config.toml",
+			expected: filepath.Join(testHome, ".config/myapp/config.toml"),
+		},
+		{
+			name:     "_xdg/ with deep nesting",
+			relPath:  "_xdg/company/product/settings.json",
+			expected: filepath.Join(testHome, ".config/company/product/settings.json"),
+		},
+		{
+			name:     "_xdg/ single file",
+			relPath:  "_xdg/app.conf",
+			expected: filepath.Join(testHome, ".config/app.conf"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestLayer3Precedence tests that Layer 3 overrides take precedence over Layer 2 and Layer 1
+func TestLayer3Precedence(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+	}
+
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+		reason   string
+	}{
+		{
+			name:     "_home/ overrides exception list",
+			relPath:  "_home/ssh/config",
+			expected: filepath.Join(testHome, ".ssh/config"),
+			reason:   "Layer 3 _home/ should override Layer 2 exception list",
+		},
+		{
+			name:     "_xdg/ overrides exception list",
+			relPath:  "_xdg/ssh/config",
+			expected: filepath.Join(testHome, ".config/ssh/config"),
+			reason:   "Layer 3 _xdg/ should force ssh to XDG despite exception",
+		},
+		{
+			name:     "_home/ overrides smart defaults for subdirs",
+			relPath:  "_home/nvim/init.lua",
+			expected: filepath.Join(testHome, ".nvim/init.lua"),
+			reason:   "Layer 3 _home/ should override Layer 1 subdir->XDG rule",
+		},
+		{
+			name:     "_xdg/ overrides smart defaults for top-level",
+			relPath:  "_xdg/gitconfig",
+			expected: filepath.Join(testHome, ".config/gitconfig"),
+			reason:   "Layer 3 _xdg/ should override Layer 1 top-level->HOME rule",
+		},
+		{
+			name:     "normal ssh still follows Layer 2",
+			relPath:  "ssh/config",
+			expected: filepath.Join(testHome, ".ssh/config"),
+			reason:   "Without _home/ or _xdg/, Layer 2 exception should apply",
+		},
+		{
+			name:     "normal nvim still follows Layer 1",
+			relPath:  "nvim/init.lua",
+			expected: filepath.Join(testHome, ".config/nvim/init.lua"),
+			reason:   "Without _home/ or _xdg/, Layer 1 subdir rule should apply",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expected, result, tt.reason)
+		})
+	}
+}
+
+// TestExplicitOverrideHelpers tests the helper functions for Layer 3
+func TestExplicitOverrideHelpers(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		hasOverride  bool
+		overrideType string
+		stripped     string
+	}{
+		{
+			name:         "home override",
+			path:         "_home/config",
+			hasOverride:  true,
+			overrideType: "home",
+			stripped:     "config",
+		},
+		{
+			name:         "xdg override",
+			path:         "_xdg/app/settings",
+			hasOverride:  true,
+			overrideType: "xdg",
+			stripped:     "app/settings",
+		},
+		{
+			name:         "no override",
+			path:         "regular/path",
+			hasOverride:  false,
+			overrideType: "",
+			stripped:     "regular/path",
+		},
+		{
+			name:         "underscore but not override",
+			path:         "_other/path",
+			hasOverride:  false,
+			overrideType: "",
+			stripped:     "_other/path",
+		},
+		{
+			name:         "home in middle of path",
+			path:         "some/_home/path",
+			hasOverride:  false,
+			overrideType: "",
+			stripped:     "some/_home/path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasOverride, overrideType := hasExplicitOverride(tt.path)
+			assert.Equal(t, tt.hasOverride, hasOverride)
+			assert.Equal(t, tt.overrideType, overrideType)
+
+			stripped := stripOverridePrefix(tt.path)
+			assert.Equal(t, tt.stripped, stripped)
+		})
+	}
+}

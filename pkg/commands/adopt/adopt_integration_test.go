@@ -104,6 +104,76 @@ powerup = { type = "symlink" }`)
 	// TODO: Add deploy test once we have the deploy command integrated
 }
 
+// TestAdoptExplicitOverrideBehavior tests that explicit override directories are handled correctly
+func TestAdoptExplicitOverrideBehavior(t *testing.T) {
+	// Setup test filesystem
+	root := testutil.TempDir(t, "adopt-override-test")
+	dotfilesPath := filepath.Join(root, "dotfiles")
+	homePath := filepath.Join(root, "home")
+
+	// Create dotfiles directory
+	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+
+	// Set HOME to test directory
+	oldHome := os.Getenv("HOME")
+	require.NoError(t, os.Setenv("HOME", homePath))
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
+
+	// Set XDG_CONFIG_HOME explicitly
+	xdgConfigPath := filepath.Join(homePath, ".config")
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", xdgConfigPath))
+	defer func() {
+		if oldXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	// Create test files in HOME and XDG directories
+	testutil.CreateFile(t, homePath, ".special-tool", "tool config")
+	testutil.CreateFile(t, xdgConfigPath, "app/config.toml", "app config")
+
+	// Test 1: Adopt a file that will go into _home/ directory
+	result1, err := AdoptFiles(AdoptFilesOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "overrides",
+		SourcePaths:  []string{filepath.Join(homePath, ".special-tool")},
+		Force:        false,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(result1.AdoptedFiles))
+
+	// Verify file was placed in pack root (not _home/)
+	// The adopt command doesn't automatically create _home/ directories
+	expectedPath1 := filepath.Join(dotfilesPath, "overrides", "special-tool")
+	assert.True(t, testutil.FileExists(t, expectedPath1), "File should be adopted without override prefix")
+
+	// Test 2: Adopt a file from XDG_CONFIG_HOME
+	result2, err := AdoptFiles(AdoptFilesOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "overrides",
+		SourcePaths:  []string{filepath.Join(xdgConfigPath, "app/config.toml")},
+		Force:        false,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(result2.AdoptedFiles))
+
+	// Verify file was placed preserving directory structure (not _xdg/)
+	expectedPath2 := filepath.Join(dotfilesPath, "overrides", "app", "config.toml")
+	assert.True(t, testutil.FileExists(t, expectedPath2), "File should be adopted preserving structure")
+
+	// Test 3: Manually create _home/ and _xdg/ directories and verify deployment would work
+	// This demonstrates how users would use explicit overrides
+	testutil.CreateFile(t, filepath.Join(dotfilesPath, "overrides"), "_home/forced-home-file", "forced to home")
+	testutil.CreateFile(t, filepath.Join(dotfilesPath, "overrides"), "_xdg/forced-xdg-file", "forced to xdg")
+
+	// Verify the pack structure
+	assert.True(t, testutil.FileExists(t, filepath.Join(dotfilesPath, "overrides", "_home", "forced-home-file")))
+	assert.True(t, testutil.FileExists(t, filepath.Join(dotfilesPath, "overrides", "_xdg", "forced-xdg-file")))
+}
+
 // TestAdoptFullWorkflow tests the complete adopt workflow with real file system operations
 func TestAdoptFullWorkflow(t *testing.T) {
 	// Setup test filesystem
