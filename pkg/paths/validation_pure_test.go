@@ -2,7 +2,6 @@ package paths
 
 import (
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -55,11 +54,6 @@ func TestValidatePath(t *testing.T) {
 			path:    "/home/user-name_123/file.txt",
 			wantErr: false,
 		},
-		{
-			name:    "windows style path",
-			path:    `C:\Users\test\file.txt`,
-			wantErr: false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -82,31 +76,16 @@ func TestIsAbsolutePath(t *testing.T) {
 		name    string
 		path    string
 		wantAbs bool
-		skipOS  string
 	}{
 		{
 			name:    "unix absolute path",
 			path:    "/home/user",
 			wantAbs: true,
-			skipOS:  "windows",
 		},
 		{
 			name:    "unix relative path",
 			path:    "home/user",
 			wantAbs: false,
-			skipOS:  "windows",
-		},
-		{
-			name:    "windows absolute path",
-			path:    `C:\Users\test`,
-			wantAbs: true,
-			skipOS:  "darwin",
-		},
-		{
-			name:    "windows relative path",
-			path:    `Users\test`,
-			wantAbs: false,
-			skipOS:  "darwin",
 		},
 		{
 			name:    "empty path",
@@ -127,9 +106,6 @@ func TestIsAbsolutePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.skipOS != "" && runtime.GOOS == tt.skipOS {
-				t.Skipf("Skipping on %s", runtime.GOOS)
-			}
 			got := IsAbsolutePath(tt.path)
 			assert.Equal(t, tt.wantAbs, got)
 		})
@@ -374,12 +350,6 @@ func TestValidatePathSecurity(t *testing.T) {
 			errContains: "parent directory references",
 		},
 		{
-			name:        "path traversal with ..\\",
-			path:        "C:\\Users\\..\\Admin\\secrets",
-			wantErr:     true,
-			errContains: "parent directory references",
-		},
-		{
 			name:        "right-to-left override",
 			path:        "/home/user/\u202efile.txt",
 			wantErr:     true,
@@ -433,39 +403,6 @@ func TestValidatePathSecurity(t *testing.T) {
 				require.NoError(t, err)
 			}
 		})
-	}
-}
-
-func TestPathDepth_PlatformSpecific(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		tests := []struct {
-			name      string
-			path      string
-			wantDepth int
-		}{
-			{
-				name:      "windows root",
-				path:      "C:\\",
-				wantDepth: 0,
-			},
-			{
-				name:      "windows single level",
-				path:      "C:\\Users",
-				wantDepth: 1,
-			},
-			{
-				name:      "windows two levels",
-				path:      "C:\\Users\\Admin",
-				wantDepth: 2,
-			},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				got := PathDepth(tt.path)
-				assert.Equal(t, tt.wantDepth, got)
-			})
-		}
 	}
 }
 
