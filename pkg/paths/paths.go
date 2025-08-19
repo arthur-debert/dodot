@@ -536,11 +536,12 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 
 		switch overrideType {
 		case "home":
-			// _home/ files always go to $HOME with dot prefix
-			if strippedPath != "" && !strings.HasPrefix(strippedPath, ".") {
-				strippedPath = "." + strippedPath
+			// _home/ files always go to $HOME with dot prefix on the first segment
+			parts := strings.Split(strippedPath, string(filepath.Separator))
+			if len(parts) > 0 && parts[0] != "" && !strings.HasPrefix(parts[0], ".") {
+				parts[0] = "." + parts[0]
 			}
-			return filepath.Join(homeDir, strippedPath)
+			return filepath.Join(homeDir, filepath.Join(parts...))
 		case "xdg":
 			// _xdg/ files always go to XDG_CONFIG_HOME
 			xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
