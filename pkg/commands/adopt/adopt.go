@@ -88,7 +88,7 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 	// Process each source path and collect operations
 	var operations []synthfs.Operation
 	for _, sourcePath := range opts.SourcePaths {
-		ops, adopted, err := createAdoptOperations(sfs, logger, targetPack, sourcePath, opts.Force)
+		ops, adopted, err := createAdoptOperations(sfs, logger, pathsInstance, targetPack, sourcePath, opts.Force)
 		if err != nil {
 			logAdopt(logger, opts, result, err)
 			return nil, fmt.Errorf("failed to prepare adoption of %s: %w", sourcePath, err)
@@ -116,12 +116,7 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 }
 
 // createAdoptOperations creates synthfs operations for adopting a single file
-func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pack *types.Pack, sourcePath string, force bool) ([]synthfs.Operation, *types.AdoptedFile, error) {
-	// Initialize paths instance for mapping
-	pathsInstance, err := paths.New("")
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize paths: %w", err)
-	}
+func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pathsInstance *paths.Paths, pack *types.Pack, sourcePath string, force bool) ([]synthfs.Operation, *types.AdoptedFile, error) {
 	// Expand the source path
 	expandedPath := paths.ExpandHome(sourcePath)
 
