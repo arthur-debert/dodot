@@ -78,7 +78,7 @@ echo "Tools installed" > /tmp/install-tools-output
 	testutil.AssertTrue(t, hasSymlink, "Should have symlink power-up")
 
 	// Verify both install script power-up processed AND symlink was created
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "aliases")), "aliases symlink should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")
 
 	// Check that install script power-up was processed (should create sentinel and copy script)
 	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")
@@ -237,8 +237,8 @@ func TestInstallPacks_OnlySymlinks(t *testing.T) {
 	testutil.AssertFalse(t, hasInstallScript, "Should NOT have install_script power-up")
 	testutil.AssertTrue(t, hasSymlink, "Should have symlink power-up")
 
-	// Verify symlink was created
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "vimrc")), "vimrc symlink should exist")
+	// Verify symlink was created (Layer 1: top-level files get dot prefix)
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
 }
 
 func TestInstallPacks_OnlyInstallScript(t *testing.T) {
@@ -360,9 +360,9 @@ func TestInstallPacks_MultiplePacksAllTypes(t *testing.T) {
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, langsResult.Status)
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, shellResult.Status)
 
-	// Verify symlinks were created
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "gitconfig")), "gitconfig symlink should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "bashrc")), "bashrc symlink should exist")
+	// Verify symlinks were created (Layer 1: top-level files get dot prefix)
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gitconfig")), "gitconfig symlink should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "bashrc symlink should exist")
 
 	// Verify install scripts were processed (copied and sentinels created)
 	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")

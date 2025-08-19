@@ -56,9 +56,9 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	// Should have symlink power-up
 	testutil.AssertTrue(t, len(packResult.PowerUpResults) > 0, "Should have power-up results")
 
-	// Verify files were created
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "vimrc")), "vimrc symlink should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "gvimrc")), "gvimrc symlink should exist")
+	// Verify files were created (Layer 1: top-level files get dot prefix)
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gvimrc")), "gvimrc symlink should exist")
 }
 
 func TestRunPipeline_DryRun(t *testing.T) {

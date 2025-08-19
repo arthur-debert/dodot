@@ -65,9 +65,9 @@ func TestDeployPacks_SymlinkPowerUp(t *testing.T) {
 	testutil.AssertNotNil(t, symlinkResult, "Should have symlink power-up result")
 	testutil.AssertEqual(t, types.StatusReady, symlinkResult.Status)
 
-	// Verify actual symlinks were created
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "vimrc")), "vimrc symlink should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "gvimrc")), "gvimrc symlink should exist")
+	// Verify actual symlinks were created (Layer 1: top-level files get dot prefix)
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gvimrc")), "gvimrc symlink should exist")
 }
 
 func TestDeployPacks_DryRun(t *testing.T) {
@@ -108,7 +108,7 @@ func TestDeployPacks_DryRun(t *testing.T) {
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
 	// Verify no actual files were created (dry run)
-	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(homeDir, "bashrc")), "bashrc symlink should not exist in dry run")
+	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "bashrc symlink should not exist in dry run")
 }
 
 func TestDeployPacks_AllPacks(t *testing.T) {
@@ -153,9 +153,9 @@ func TestDeployPacks_AllPacks(t *testing.T) {
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, vimResult.Status)
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, gitResult.Status)
 
-	// Verify files from both packs were deployed
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "vimrc")), "vimrc should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "gitconfig")), "gitconfig should exist")
+	// Verify files from both packs were deployed (Layer 1: top-level files get dot prefix)
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gitconfig")), "gitconfig should exist")
 }
 
 func TestDeployPacks_SkipInstallScripts(t *testing.T) {
@@ -216,7 +216,7 @@ echo "Installing tools" > /tmp/install-was-run
 	testutil.AssertFalse(t, hasInstall, "Should NOT have install_script power-up in deploy mode")
 
 	// Verify symlink was created but install script was not run
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, "aliases")), "aliases symlink should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")
 	testutil.AssertFalse(t, testutil.FileExists(t, "/tmp/install-was-run"), "Install script should NOT have been executed")
 }
 

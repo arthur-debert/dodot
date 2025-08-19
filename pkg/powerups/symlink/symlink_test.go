@@ -260,14 +260,16 @@ func TestSymlinkPowerUp_PreservesDirectoryStructure(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, actions, 3)
 
-	// Check that nested paths are preserved
+	// Check that nested paths are preserved (Layer 1: subdirs go to XDG_CONFIG_HOME)
 	assert.Equal(t, types.ActionTypeLink, actions[0].Type)
 	assert.Equal(t, "/dotfiles/nvim/.config/nvim/init.lua", actions[0].Source)
+	// Layer 1: .config/nvim/init.lua -> XDG_CONFIG_HOME/nvim/init.lua (strips .config prefix)
 	assert.Equal(t, filepath.Join(homeDir, ".config/nvim/init.lua"), actions[0].Target)
 	assert.Equal(t, "Symlink .config/nvim/init.lua -> "+filepath.Join(homeDir, ".config/nvim/init.lua"), actions[0].Description)
 
 	assert.Equal(t, types.ActionTypeLink, actions[1].Type)
 	assert.Equal(t, "/dotfiles/git/.config/git/config", actions[1].Source)
+	// Layer 1: .config/git/config -> XDG_CONFIG_HOME/git/config (strips .config prefix)
 	assert.Equal(t, filepath.Join(homeDir, ".config/git/config"), actions[1].Target)
 
 	// Check that flat files still work

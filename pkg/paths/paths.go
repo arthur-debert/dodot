@@ -472,26 +472,60 @@ func (p *Paths) LogFilePath() string {
 	return filepath.Join(p.xdgState, LogFileName)
 }
 
+// isTopLevel checks if a file is at the pack root (no directory separators)
+func isTopLevel(relPath string) bool {
+	return !strings.Contains(relPath, string(filepath.Separator))
+}
+
+// stripDotPrefix removes a leading dot from a filename if present
+func stripDotPrefix(filename string) string {
+	if strings.HasPrefix(filename, ".") && len(filename) > 1 {
+		return filename[1:]
+	}
+	return filename
+}
+
 // MapPackFileToSystem maps a file from a pack to its deployment location.
-// In Release A, this preserves current behavior: targetDir + relPath
+// Release B: Implements Layer 1 - Smart Defaults
 func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
-	// For now, just preserve the current behavior
-	// This will be the home directory for all symlinks
-	homeDir, err := GetHomeDirectory()
-	if err != nil {
-		// Fallback to environment variable
-		homeDir = os.Getenv("HOME")
-		if homeDir == "" {
-			homeDir = "~"
+	// Layer 1: Smart default mapping
+	if isTopLevel(relPath) {
+		// Top-level files go to $HOME with dot prefix
+		homeDir, err := GetHomeDirectory()
+		if err != nil {
+			homeDir = os.Getenv("HOME")
+			if homeDir == "" {
+				homeDir = "~"
+			}
 		}
+
+		filename := filepath.Base(relPath)
+		// Add dot prefix if not already present
+		if !strings.HasPrefix(filename, ".") {
+			filename = "." + filename
+		}
+		return filepath.Join(homeDir, filename)
 	}
 
-	// Simple path joining - preserves directory structure
-	return filepath.Join(homeDir, relPath)
+	// Subdirectory files go to XDG_CONFIG_HOME
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfigHome == "" {
+		homeDir, _ := GetHomeDirectory()
+		if homeDir == "" {
+			homeDir = os.Getenv("HOME")
+		}
+		xdgConfigHome = filepath.Join(homeDir, ".config")
+	}
+
+	// Special case: if the file is already under .config in the pack,
+	// strip the .config prefix to avoid .config/.config/...
+	relPath = strings.TrimPrefix(relPath, ".config/")
+
+	return filepath.Join(xdgConfigHome, relPath)
 }
 
 // MapSystemFileToPack determines where a system file should be placed in a pack.
-// In Release A, this extracts current logic from adopt command
+// Release B: Updated to handle Layer 1 reverse mapping
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
 	homeDir, err := GetHomeDirectory()
 	if err != nil {
@@ -510,29 +544,44 @@ func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 	// Get the base name of the file
 	baseName := filepath.Base(systemPath)
 
-	// If file is directly in $HOME, place it at pack root
+	// Layer 1 reverse mapping:
+	// If file is directly in $HOME (dotfile), it goes to pack root without dot
 	if filepath.Dir(systemPath) == homeDir {
-		// Remove leading dot for cleaner pack organization
-		if strings.HasPrefix(baseName, ".") && len(baseName) > 1 {
-			baseName = baseName[1:]
-		}
-		return filepath.Join(pack.Path, baseName)
+		// Remove leading dot for pack organization
+		packName := stripDotPrefix(baseName)
+		return filepath.Join(pack.Path, packName)
 	}
 
-	// If file is in XDG config path, preserve directory structure
+	// If file is in XDG config path, preserve full directory structure
 	if strings.HasPrefix(systemPath, xdgConfigHome) {
 		// Get relative path from XDG_CONFIG_HOME
 		relPath, err := filepath.Rel(xdgConfigHome, systemPath)
 		if err == nil {
+			// If the pack already has files under .config/, maintain that structure
+			// This is a heuristic - in future releases we might handle this differently
 			return filepath.Join(pack.Path, relPath)
 		}
 	}
 
-	// For other paths, try to preserve some structure
-	// This is a simple heuristic - could be improved
+	// For files in hidden directories under HOME, extract subdirectory structure
+	// Example: ~/.ssh/config -> ssh/config (note: ssh without dot)
+	if strings.HasPrefix(systemPath, homeDir) {
+		relFromHome, err := filepath.Rel(homeDir, systemPath)
+		if err == nil && strings.HasPrefix(relFromHome, ".") {
+			// Split the path and find the hidden directory
+			parts := strings.Split(relFromHome, string(filepath.Separator))
+			if len(parts) > 0 && strings.HasPrefix(parts[0], ".") {
+				// Remove the dot from the first part
+				parts[0] = stripDotPrefix(parts[0])
+				return filepath.Join(pack.Path, filepath.Join(parts...))
+			}
+		}
+	}
+
+	// For other paths with hidden directories, preserve structure after hidden dir
+	// This maintains backward compatibility with existing behavior
 	if strings.Contains(systemPath, "/.") {
-		// Hidden directory somewhere in the path
-		parts := strings.Split(systemPath, "/")
+		parts := strings.Split(systemPath, string(filepath.Separator))
 		for i, part := range parts {
 			if strings.HasPrefix(part, ".") && part != "." && i < len(parts)-1 {
 				// Found a hidden directory, use everything after it
@@ -542,9 +591,7 @@ func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 		}
 	}
 
-	// Default: just use the base name
-	if strings.HasPrefix(baseName, ".") && len(baseName) > 1 {
-		baseName = baseName[1:]
-	}
-	return filepath.Join(pack.Path, baseName)
+	// Default: use base name without dot prefix
+	packName := stripDotPrefix(baseName)
+	return filepath.Join(pack.Path, packName)
 }
