@@ -361,6 +361,102 @@ def should_show_grade(grade: str, show_good: bool, show_average: bool, show_poor
     return False
 
 
+def display_mixed_mode(coverage_data: Dict[str, Tuple[int, int]], module_prefix: str, 
+                      show_good: bool, show_average: bool, show_poor: bool) -> Tuple[int, int, int]:
+    """Display coverage in mixed mode (functions grouped by file)."""
+    # Group functions by file
+    file_groups = defaultdict(list)
+    for func_id, (covered, total) in coverage_data.items():
+        # Extract file path from function ID (format: "file:line function_name")
+        parts = func_id.split(' ', 1)
+        file_line = parts[0]
+        func_name = parts[1] if len(parts) > 1 else ""
+        
+        file_path = file_line.rsplit(':', 1)[0]
+        file_groups[file_path].append((func_id, covered, total))
+    
+    # Calculate file-level coverage
+    file_coverage = {}
+    for file_path, functions in file_groups.items():
+        file_covered = sum(covered for _, covered, _ in functions)
+        file_total = sum(total for _, _, total in functions)
+        file_coverage[file_path] = (file_covered, file_total)
+    
+    # Sort files by coverage percentage
+    sorted_files = sorted(file_coverage.items(), key=lambda x: (x[1][0] / x[1][1] * 100) if x[1][1] > 0 else 0, reverse=True)
+    
+    # Calculate total number of items (files + functions) for line numbering
+    total_items = len(sorted_files)
+    for _, functions in file_groups.items():
+        total_items += len(functions)
+    
+    num_width = len(str(total_items))
+    
+    # Display results
+    total_covered = 0
+    total_statements = 0
+    shown_count = 0
+    line_number = 0
+    
+    for file_path, (file_covered, file_total) in sorted_files:
+        # Check if file should be shown based on grade filters
+        file_percentage = (file_covered / file_total * 100) if file_total > 0 else 0
+        file_grade, _ = get_coverage_grade(file_percentage)
+        
+        # Sort functions within file by coverage percentage
+        functions = sorted(file_groups[file_path], key=lambda x: (x[1] / x[2] * 100) if x[2] > 0 else 0, reverse=True)
+        
+        # Check if any function in this file matches the grade filter
+        file_has_matching_functions = False
+        for func_id, covered, total in functions:
+            percentage = (covered / total * 100) if total > 0 else 0
+            grade, _ = get_coverage_grade(percentage)
+            if should_show_grade(grade, show_good, show_average, show_poor):
+                file_has_matching_functions = True
+                break
+        
+        # Only show file if it or its functions match the filter
+        if not should_show_grade(file_grade, show_good, show_average, show_poor) and not file_has_matching_functions:
+            continue
+        
+        # Display file header
+        line_number += 1
+        display_name = strip_module_prefix(file_path, module_prefix)
+        file_line, _, _ = format_coverage_line(display_name, file_covered, file_total, line_number, num_width)
+        print(file_line)
+        shown_count += 1
+        
+        # Display functions within file (indented)
+        for func_id, covered, total in functions:
+            percentage = (covered / total * 100) if total > 0 else 0
+            grade, _ = get_coverage_grade(percentage)
+            
+            if should_show_grade(grade, show_good, show_average, show_poor):
+                line_number += 1
+                # Extract function name and line from func_id
+                parts = func_id.split(' ', 1)
+                file_line_part = parts[0]
+                func_name = parts[1] if len(parts) > 1 else ""
+                
+                # Extract just the line number
+                _, line_num = file_line_part.rsplit(':', 1)
+                
+                # Format function display with indentation
+                if func_name:
+                    func_display = f"  :{line_num} {func_name}"
+                else:
+                    func_display = f"  :{line_num}"
+                
+                func_line, _, _ = format_coverage_line(func_display, covered, total, line_number, num_width)
+                print(func_line)
+                shown_count += 1
+        
+        total_covered += file_covered
+        total_statements += file_total
+    
+    return shown_count, total_covered, total_statements
+
+
 def generate_coverage(paths: List[str], output_file: str = "coverage.out") -> bool:
     """Generate Go coverage data for the specified paths."""
     # Build the go test command
@@ -412,6 +508,12 @@ def main():
         "--function",
         action="store_true",
         help="Report coverage by function"
+    )
+    
+    parser.add_argument(
+        "--mixed",
+        action="store_true",
+        help="Report coverage by function grouped by file"
     )
     
     parser.add_argument(
@@ -485,9 +587,15 @@ def main():
     # Initialize colors based on the color mode
     init_colors(args.color)
     
-    # Default to file mode if neither is specified
-    if not args.file and not args.function:
+    # Default to file mode if none is specified
+    if not args.file and not args.function and not args.mixed:
         args.file = True
+    
+    # Ensure only one mode is selected
+    modes_selected = sum([args.file, args.function, args.mixed])
+    if modes_selected > 1:
+        print("Error: Only one of --file, --function, or --mixed can be specified", file=sys.stderr)
+        sys.exit(1)
     
     # Find go.mod file and parse module name
     module_prefix = ""
@@ -539,35 +647,46 @@ def main():
         entries = exclude_entries_by_patterns(entries, args.exclude)
     
     # Calculate coverage based on mode
-    if args.function:
+    if args.function or args.mixed:
         coverage_data = calculate_function_coverage(entries, use_real_names=not args.no_func_names, module_prefix=module_prefix, min_lines=args.min_lines)
     else:
         coverage_data = calculate_file_coverage(entries)
     
-    # Sort by coverage percentage (descending - highest coverage first)
-    sorted_items = sorted(coverage_data.items(), key=lambda x: (x[1][0] / x[1][1] * 100) if x[1][1] > 0 else 0, reverse=True)
-    
-    # Calculate number width based on total items
-    num_width = len(str(len(sorted_items)))
-    
-    # Display results
-    total_covered = 0
-    total_statements = 0
-    shown_count = 0
-    line_number = 0
-    
-    for name, (covered, total) in sorted_items:
-        line_number += 1
-        # Strip module prefix from display name
-        display_name = strip_module_prefix(name, module_prefix)
-        line, grade, percentage = format_coverage_line(display_name, covered, total, line_number, num_width)
+    # Display results based on mode
+    if args.mixed:
+        shown_count, total_covered, total_statements = display_mixed_mode(
+            coverage_data, module_prefix, args.good, args.average, args.poor
+        )
+        # For mixed mode, calculate total items for proper width
+        total_items = len(coverage_data)
+        for file_path in set(func_id.rsplit(':', 1)[0].split(' ', 1)[0] for func_id in coverage_data.keys()):
+            total_items += 1  # Add one for each file header
+        num_width = len(str(total_items))
+    else:
+        # Sort by coverage percentage (descending - highest coverage first)
+        sorted_items = sorted(coverage_data.items(), key=lambda x: (x[1][0] / x[1][1] * 100) if x[1][1] > 0 else 0, reverse=True)
         
-        if should_show_grade(grade, args.good, args.average, args.poor):
-            print(line)
-            shown_count += 1
+        # Calculate number width based on total items
+        num_width = len(str(len(sorted_items)))
         
-        total_covered += covered
-        total_statements += total
+        # Display results
+        total_covered = 0
+        total_statements = 0
+        shown_count = 0
+        line_number = 0
+        
+        for name, (covered, total) in sorted_items:
+            line_number += 1
+            # Strip module prefix from display name
+            display_name = strip_module_prefix(name, module_prefix)
+            line, grade, percentage = format_coverage_line(display_name, covered, total, line_number, num_width)
+            
+            if should_show_grade(grade, args.good, args.average, args.poor):
+                print(line)
+                shown_count += 1
+            
+            total_covered += covered
+            total_statements += total
     
     # Show summary
     if shown_count > 0 and total_statements > 0:
