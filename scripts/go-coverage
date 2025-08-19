@@ -200,7 +200,7 @@ def calculate_file_coverage(entries: List[CoverageEntry]) -> Dict[str, Tuple[int
     return {file: tuple(stats) for file, stats in file_stats.items()}
 
 
-def calculate_function_coverage(entries: List[CoverageEntry], use_real_names: bool = True, module_prefix: str = "") -> Dict[str, Tuple[int, int]]:
+def calculate_function_coverage(entries: List[CoverageEntry], use_real_names: bool = True, module_prefix: str = "", min_lines: int = 0) -> Dict[str, Tuple[int, int]]:
     """Calculate coverage statistics grouped by function."""
     # Group entries by file first
     file_entries = defaultdict(list)
@@ -243,6 +243,18 @@ def calculate_function_coverage(entries: List[CoverageEntry], use_real_names: bo
                 covered = sum(e.num_statements for e in current_group_entries if e.is_covered)
                 total = sum(e.num_statements for e in current_group_entries)
                 if total > 0:  # Include any non-empty group
+                    # Calculate line count for the function (excluding 2 lines for declaration)
+                    func_start = current_group_entries[0].start_line
+                    func_end = current_group_entries[-1].end_line
+                    line_count = func_end - func_start + 1 - 2  # Subtract 2 for function declaration
+                    
+                    # Skip if function doesn't meet minimum line requirement
+                    if min_lines > 0 and line_count < min_lines:
+                        # Start a new group
+                        current_group_start = entry.start_line
+                        current_group_entries = [entry]
+                        continue
+                    
                     # Look for the best matching function name
                     func_name = None
                     if function_names:
@@ -267,6 +279,15 @@ def calculate_function_coverage(entries: List[CoverageEntry], use_real_names: bo
         covered = sum(e.num_statements for e in current_group_entries if e.is_covered)
         total = sum(e.num_statements for e in current_group_entries)
         if total > 0:
+            # Calculate line count for the function (excluding 2 lines for declaration)
+            func_start = current_group_entries[0].start_line
+            func_end = current_group_entries[-1].end_line
+            line_count = func_end - func_start + 1 - 2  # Subtract 2 for function declaration
+            
+            # Skip if function doesn't meet minimum line requirement
+            if min_lines > 0 and line_count < min_lines:
+                continue
+            
             # Look for the best matching function name
             func_name = None
             if function_names:
@@ -446,6 +467,13 @@ def main():
         help="Don't generate coverage, assume coverage.out exists"
     )
     
+    parser.add_argument(
+        "--min-lines",
+        type=int,
+        default=0,
+        help="Only report functions with at least this many lines (excluding declaration)"
+    )
+    
     args = parser.parse_args()
     
     # Initialize colors based on the color mode
@@ -506,7 +534,7 @@ def main():
     
     # Calculate coverage based on mode
     if args.function:
-        coverage_data = calculate_function_coverage(entries, use_real_names=not args.no_func_names, module_prefix=module_prefix)
+        coverage_data = calculate_function_coverage(entries, use_real_names=not args.no_func_names, module_prefix=module_prefix, min_lines=args.min_lines)
     else:
         coverage_data = calculate_file_coverage(entries)
     
