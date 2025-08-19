@@ -323,7 +323,7 @@ def strip_module_prefix(file_path: str, module_prefix: str) -> str:
     return file_path
 
 
-def format_coverage_line(name: str, covered: int, total: int) -> Tuple[str, str, float]:
+def format_coverage_line(name: str, covered: int, total: int, line_num: int, num_width: int) -> Tuple[str, str, float]:
     """Format a single coverage line with appropriate coloring."""
     if total == 0:
         percentage = 0.0
@@ -332,9 +332,15 @@ def format_coverage_line(name: str, covered: int, total: int) -> Tuple[str, str,
     
     grade, bgcolor = get_coverage_grade(percentage)
     
-    # Format: name coverage% (covered/total) - white text on colored background
+    # Format line number without coloring
+    line_num_str = f"{line_num:>{num_width}d} "
+    
+    # Adjust name width to account for line number
+    name_width = 80 - num_width - 1  # -1 for the space after line number
+    
+    # Format: line_num name coverage% (covered/total) - white text on colored background
     # Pad covered and total to 3 digits for right alignment
-    line = f"{bgcolor}{name:<80} {percentage:6.2f}% ({covered:3d}/{total:3d}){COLOR_RESET}"
+    line = f"{line_num_str}{bgcolor}{name:<{name_width}} {percentage:6.2f}% ({covered:3d}/{total:3d}){COLOR_RESET}"
     return line, grade, percentage
 
 
@@ -541,15 +547,20 @@ def main():
     # Sort by coverage percentage (descending - highest coverage first)
     sorted_items = sorted(coverage_data.items(), key=lambda x: (x[1][0] / x[1][1] * 100) if x[1][1] > 0 else 0, reverse=True)
     
+    # Calculate number width based on total items
+    num_width = len(str(len(sorted_items)))
+    
     # Display results
     total_covered = 0
     total_statements = 0
     shown_count = 0
+    line_number = 0
     
     for name, (covered, total) in sorted_items:
+        line_number += 1
         # Strip module prefix from display name
         display_name = strip_module_prefix(name, module_prefix)
-        line, grade, percentage = format_coverage_line(display_name, covered, total)
+        line, grade, percentage = format_coverage_line(display_name, covered, total, line_number, num_width)
         
         if should_show_grade(grade, args.good, args.average, args.poor):
             print(line)
@@ -560,10 +571,17 @@ def main():
     
     # Show summary
     if shown_count > 0 and total_statements > 0:
-        print("-" * 100)
+        # Calculate separator width accounting for line numbers
+        separator_width = 100 + num_width + 1  # +1 for space after line number
+        print("-" * separator_width)
+        
         overall_percentage = (total_covered / total_statements) * 100
         _, bgcolor = get_coverage_grade(overall_percentage)
-        print(f"{bgcolor}{'TOTAL':<80} {overall_percentage:6.2f}% ({total_covered:3d}/{total_statements:3d}){COLOR_RESET}")
+        
+        # Format total line with empty space for line number column
+        total_padding = " " * (num_width + 1)
+        name_width = 80 - num_width - 1
+        print(f"{total_padding}{bgcolor}{'TOTAL':<{name_width}} {overall_percentage:6.2f}% ({total_covered:3d}/{total_statements:3d}){COLOR_RESET}")
 
 
 if __name__ == "__main__":
