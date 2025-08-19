@@ -517,9 +517,10 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		xdgConfigHome = filepath.Join(homeDir, ".config")
 	}
 
-	// Special case: if the file is already under .config in the pack,
-	// strip the .config prefix to avoid .config/.config/...
+	// Special case: if the file is already under .config or config in the pack,
+	// strip that prefix to avoid .config/.config/... or .config/config/...
 	relPath = strings.TrimPrefix(relPath, ".config/")
+	relPath = strings.TrimPrefix(relPath, "config/")
 
 	return filepath.Join(xdgConfigHome, relPath)
 }

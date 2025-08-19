@@ -63,7 +63,7 @@ func TestMapPackFileToSystem(t *testing.T) {
 				Path: "/dotfiles/dev",
 			},
 			relPath:  "config/app/settings.json",
-			expected: filepath.Join(testHome, ".config/config/app/settings.json"),
+			expected: filepath.Join(testHome, ".config/app/settings.json"),
 		},
 	}
 
@@ -258,5 +258,12 @@ func TestLayer1EdgeCases(t *testing.T) {
 		result := p.MapPackFileToSystem(pack, ".gitignore")
 		assert.Equal(t, filepath.Join(testHome, ".gitignore"), result)
 		assert.NotContains(t, result, "..")
+	})
+
+	t.Run("config prefix stripping", func(t *testing.T) {
+		// Ensure config/ prefix is stripped to avoid .config/config/...
+		result := p.MapPackFileToSystem(pack, "config/app/settings.json")
+		assert.Equal(t, filepath.Join(testHome, ".config/app/settings.json"), result)
+		assert.NotContains(t, result, ".config/config/")
 	})
 }
