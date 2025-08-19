@@ -82,7 +82,12 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 // shouldIgnore checks if a name matches any ignore pattern
 func shouldIgnore(name string) bool {
 	cfg := config.Default()
-	for _, pattern := range cfg.Patterns.PackIgnore {
+	return shouldIgnoreWithPatterns(name, cfg.Patterns.PackIgnore)
+}
+
+// shouldIgnoreWithPatterns is a testable version that accepts patterns as parameter
+func shouldIgnoreWithPatterns(name string, patterns []string) bool {
+	for _, pattern := range patterns {
 		// Simple pattern matching (could be enhanced with glob)
 		if matched, _ := filepath.Match(pattern, name); matched {
 			return true
