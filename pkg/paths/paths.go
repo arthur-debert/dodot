@@ -472,6 +472,21 @@ func (p *Paths) LogFilePath() string {
 	return filepath.Join(p.xdgState, LogFileName)
 }
 
+// coreUnixExceptions lists tools that should always deploy to $HOME
+// These are typically security-critical or shell-expected locations
+// Release C: Layer 2 - Exception List
+var coreUnixExceptions = map[string]bool{
+	"ssh":       true, // .ssh/ - security critical, expects $HOME
+	"gnupg":     true, // .gnupg/ - security critical, expects $HOME
+	"aws":       true, // .aws/ - credentials, expects $HOME
+	"kube":      true, // .kube/ - kubernetes config
+	"docker":    true, // .docker/ - docker config
+	"gitconfig": true, // .gitconfig - git expects in $HOME
+	"bashrc":    true, // .bashrc - shell expects in $HOME
+	"zshrc":     true, // .zshrc - shell expects in $HOME
+	"profile":   true, // .profile - shell expects in $HOME
+}
+
 // isTopLevel checks if a file is at the pack root (no directory separators)
 func isTopLevel(relPath string) bool {
 	return !strings.Contains(relPath, string(filepath.Separator))
@@ -485,22 +500,46 @@ func stripDotPrefix(filename string) string {
 	return filename
 }
 
+// getFirstSegment extracts the first path segment from a relative path
+// Examples: "ssh/config" → "ssh", "gitconfig" → "gitconfig"
+func getFirstSegment(relPath string) string {
+	parts := strings.Split(relPath, string(filepath.Separator))
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return relPath
+}
+
 // MapPackFileToSystem maps a file from a pack to its deployment location.
-// Release B: Implements Layer 1 - Smart Defaults
+// Release C: Implements Layer 2 - Exception List (with Layer 1 fallback)
 func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+	// Get home directory first (used by multiple layers)
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			homeDir = "~"
+		}
+	}
+
+	// Layer 2: Check exception list based on first path segment
+	firstSegment := getFirstSegment(relPath)
+	cleanSegment := stripDotPrefix(firstSegment)
+
+	if coreUnixExceptions[cleanSegment] {
+		// Exception list items always go to $HOME
+		// Reconstruct the path with dot prefix on first segment
+		parts := strings.Split(relPath, string(filepath.Separator))
+		if len(parts) > 0 && !strings.HasPrefix(parts[0], ".") {
+			parts[0] = "." + parts[0]
+		}
+		return filepath.Join(homeDir, filepath.Join(parts...))
+	}
+
 	// Layer 1: Smart default mapping
 	if isTopLevel(relPath) {
 		// Top-level files go to $HOME with dot prefix
-		// Prefer HOME env var for testability
-		homeDir := os.Getenv("HOME")
-		if homeDir == "" {
-			var err error
-			homeDir, err = os.UserHomeDir()
-			if err != nil {
-				homeDir = "~"
-			}
-		}
-
 		filename := filepath.Base(relPath)
 		// Add dot prefix if not already present
 		if !strings.HasPrefix(filename, ".") {
@@ -512,14 +551,6 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Subdirectory files go to XDG_CONFIG_HOME
 	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
 	if xdgConfigHome == "" {
-		// Prefer HOME env var for testability
-		homeDir := os.Getenv("HOME")
-		if homeDir == "" {
-			homeDir, _ = os.UserHomeDir()
-			if homeDir == "" {
-				homeDir = "~"
-			}
-		}
 		xdgConfigHome = filepath.Join(homeDir, ".config")
 	}
 
@@ -532,7 +563,7 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 }
 
 // MapSystemFileToPack determines where a system file should be placed in a pack.
-// Release B: Updated to handle Layer 1 reverse mapping
+// Release C: Updated to handle Layer 2 exception list (with Layer 1 fallback)
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
 	// Prefer HOME env var for testability
 	homeDir := os.Getenv("HOME")
@@ -552,6 +583,25 @@ func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 
 	// Get the base name of the file
 	baseName := filepath.Base(systemPath)
+
+	// Check if this is under HOME and potentially matches an exception
+	if strings.HasPrefix(systemPath, homeDir) {
+		relFromHome, err := filepath.Rel(homeDir, systemPath)
+		if err == nil && strings.HasPrefix(relFromHome, ".") {
+			// Get first segment to check against exceptions
+			parts := strings.Split(relFromHome, string(filepath.Separator))
+			if len(parts) > 0 {
+				firstSegment := stripDotPrefix(parts[0])
+
+				// Layer 2: Check exception list
+				if coreUnixExceptions[firstSegment] {
+					// Exception list items are stored without dot prefix
+					parts[0] = firstSegment
+					return filepath.Join(pack.Path, filepath.Join(parts...))
+				}
+			}
+		}
+	}
 
 	// Layer 1 reverse mapping:
 	// If file is directly in $HOME (dotfile), it goes to pack root without dot

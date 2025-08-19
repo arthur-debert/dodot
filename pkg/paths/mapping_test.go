@@ -231,6 +231,228 @@ func TestPathMappingSymmetry(t *testing.T) {
 	}
 }
 
+// TestLayer2ExceptionList tests the exception list behavior
+func TestLayer2ExceptionList(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+	}
+
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+	}{
+		{
+			name:     "ssh directory goes to HOME",
+			relPath:  "ssh/config",
+			expected: filepath.Join(testHome, ".ssh/config"),
+		},
+		{
+			name:     "gitconfig goes to HOME",
+			relPath:  "gitconfig",
+			expected: filepath.Join(testHome, ".gitconfig"),
+		},
+		{
+			name:     "aws directory goes to HOME",
+			relPath:  "aws/credentials",
+			expected: filepath.Join(testHome, ".aws/credentials"),
+		},
+		{
+			name:     "bashrc goes to HOME",
+			relPath:  "bashrc",
+			expected: filepath.Join(testHome, ".bashrc"),
+		},
+		{
+			name:     "zshrc goes to HOME",
+			relPath:  "zshrc",
+			expected: filepath.Join(testHome, ".zshrc"),
+		},
+		{
+			name:     "profile goes to HOME",
+			relPath:  "profile",
+			expected: filepath.Join(testHome, ".profile"),
+		},
+		{
+			name:     "docker directory goes to HOME",
+			relPath:  "docker/config.json",
+			expected: filepath.Join(testHome, ".docker/config.json"),
+		},
+		{
+			name:     "kube directory goes to HOME",
+			relPath:  "kube/config",
+			expected: filepath.Join(testHome, ".kube/config"),
+		},
+		{
+			name:     "gnupg directory goes to HOME",
+			relPath:  "gnupg/pubring.kbx",
+			expected: filepath.Join(testHome, ".gnupg/pubring.kbx"),
+		},
+		{
+			name:     "non-exception still goes to XDG",
+			relPath:  "nvim/init.lua",
+			expected: filepath.Join(testHome, ".config/nvim/init.lua"),
+		},
+		{
+			name:     "exception with dot prefix already",
+			relPath:  ".ssh/known_hosts",
+			expected: filepath.Join(testHome, ".ssh/known_hosts"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestLayer2ExceptionListReverse tests the reverse mapping for exception list
+func TestLayer2ExceptionListReverse(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+	}
+
+	tests := []struct {
+		name       string
+		systemPath string
+		expected   string
+	}{
+		{
+			name:       "ssh config from HOME",
+			systemPath: filepath.Join(testHome, ".ssh/config"),
+			expected:   "/dotfiles/test/ssh/config",
+		},
+		{
+			name:       "gitconfig from HOME",
+			systemPath: filepath.Join(testHome, ".gitconfig"),
+			expected:   "/dotfiles/test/gitconfig",
+		},
+		{
+			name:       "aws credentials from HOME",
+			systemPath: filepath.Join(testHome, ".aws/credentials"),
+			expected:   "/dotfiles/test/aws/credentials",
+		},
+		{
+			name:       "docker config from HOME",
+			systemPath: filepath.Join(testHome, ".docker/config.json"),
+			expected:   "/dotfiles/test/docker/config.json",
+		},
+		{
+			name:       "non-exception from XDG",
+			systemPath: filepath.Join(testHome, ".config/nvim/init.lua"),
+			expected:   "/dotfiles/test/nvim/init.lua",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapSystemFileToPack(pack, tt.systemPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestLayerPrecedence tests that Layer 2 (exception list) takes precedence over Layer 1
+func TestLayerPrecedence(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+	}
+
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+		reason   string
+	}{
+		{
+			name:     "ssh/ is exception even though it's a directory",
+			relPath:  "ssh/config",
+			expected: filepath.Join(testHome, ".ssh/config"),
+			reason:   "Layer 2 exception list should override Layer 1's subdirectory->XDG rule",
+		},
+		{
+			name:     "docker/ is exception even though it's a directory",
+			relPath:  "docker/config.json",
+			expected: filepath.Join(testHome, ".docker/config.json"),
+			reason:   "Layer 2 exception list should override Layer 1's subdirectory->XDG rule",
+		},
+		{
+			name:     "non-exception directory still goes to XDG",
+			relPath:  "alacritty/alacritty.yml",
+			expected: filepath.Join(testHome, ".config/alacritty/alacritty.yml"),
+			reason:   "Non-exception subdirectories should follow Layer 1 rule",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expected, result, tt.reason)
+		})
+	}
+}
+
 // TestLayer1EdgeCases tests specific edge cases for Layer 1 mapping
 func TestLayer1EdgeCases(t *testing.T) {
 	// Save original environment
