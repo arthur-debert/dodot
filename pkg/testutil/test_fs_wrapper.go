@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"testing/fstest"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
@@ -24,9 +26,17 @@ func NewTestFS() types.FS {
 }
 
 // Lstat implements types.FS
-// For testing, we treat Lstat the same as Stat since TestFileSystem
-// doesn't distinguish between regular files and symlinks
+// The underlying TestFileSystem properly supports symlinks via fstest.MapFS
 func (t *TestFS) Lstat(name string) (fs.FileInfo, error) {
+	// Check if it's a symlink by looking at the file mode
+	if file, ok := t.MapFS[name]; ok && file.Mode&fs.ModeSymlink != 0 {
+		// Return symlink info without following it
+		return &mapFileInfo{
+			name: filepath.Base(name),
+			file: file,
+		}, nil
+	}
+	// Not a symlink or doesn't exist, use regular Stat
 	return t.Stat(name)
 }
 
@@ -148,3 +158,16 @@ func joinPath(dir, name string) string {
 	}
 	return path.Join(dir, name)
 }
+
+// mapFileInfo implements fs.FileInfo for a MapFile
+type mapFileInfo struct {
+	name string
+	file *fstest.MapFile
+}
+
+func (i *mapFileInfo) Name() string       { return i.name }
+func (i *mapFileInfo) Size() int64        { return int64(len(i.file.Data)) }
+func (i *mapFileInfo) Mode() fs.FileMode  { return i.file.Mode }
+func (i *mapFileInfo) ModTime() time.Time { return i.file.ModTime }
+func (i *mapFileInfo) IsDir() bool        { return i.file.Mode.IsDir() }
+func (i *mapFileInfo) Sys() any           { return i.file.Sys }
