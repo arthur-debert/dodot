@@ -117,6 +117,11 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 
 // createAdoptOperations creates synthfs operations for adopting a single file
 func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pack *types.Pack, sourcePath string, force bool) ([]synthfs.Operation, *types.AdoptedFile, error) {
+	// Initialize paths instance for mapping
+	pathsInstance, err := paths.New("")
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize paths: %w", err)
+	}
 	// Expand the source path
 	expandedPath := paths.ExpandHome(sourcePath)
 
@@ -147,8 +152,8 @@ func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pack *ty
 		}
 	}
 
-	// Determine destination path using smart path handling
-	destPath := determineDestinationPath(pack.Path, expandedPath)
+	// Determine destination path using centralized mapping
+	destPath := pathsInstance.MapSystemFileToPack(pack, expandedPath)
 
 	// Check if destination already exists
 	if _, err := os.Stat(destPath); err == nil && !force {
@@ -200,61 +205,6 @@ func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pack *ty
 		NewPath:      destPath,
 		SymlinkPath:  expandedPath,
 	}, nil
-}
-
-// determineDestinationPath applies smart path handling rules
-func determineDestinationPath(packPath, sourcePath string) string {
-	homeDir := os.Getenv("HOME")
-	if homeDir == "" {
-		homeDir = filepath.Dir(sourcePath) // Fallback
-	}
-
-	// Get XDG paths
-	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	if xdgConfigHome == "" {
-		xdgConfigHome = filepath.Join(homeDir, ".config")
-	}
-
-	// Get the base name of the file
-	baseName := filepath.Base(sourcePath)
-
-	// If file is directly in $HOME, place it at pack root
-	if filepath.Dir(sourcePath) == homeDir {
-		// Remove leading dot for cleaner pack organization
-		if strings.HasPrefix(baseName, ".") && len(baseName) > 1 {
-			baseName = baseName[1:]
-		}
-		return filepath.Join(packPath, baseName)
-	}
-
-	// If file is in XDG config path, preserve directory structure
-	if strings.HasPrefix(sourcePath, xdgConfigHome) {
-		// Get relative path from XDG_CONFIG_HOME
-		relPath, err := filepath.Rel(xdgConfigHome, sourcePath)
-		if err == nil {
-			return filepath.Join(packPath, relPath)
-		}
-	}
-
-	// For other paths, try to preserve some structure
-	// This is a simple heuristic - could be improved
-	if strings.Contains(sourcePath, "/.") {
-		// Hidden directory somewhere in the path
-		parts := strings.Split(sourcePath, "/")
-		for i, part := range parts {
-			if strings.HasPrefix(part, ".") && part != "." && i < len(parts)-1 {
-				// Found a hidden directory, use everything after it
-				subPath := filepath.Join(parts[i+1:]...)
-				return filepath.Join(packPath, subPath)
-			}
-		}
-	}
-
-	// Default: just use the base name
-	if strings.HasPrefix(baseName, ".") && len(baseName) > 1 {
-		baseName = baseName[1:]
-	}
-	return filepath.Join(packPath, baseName)
 }
 
 // logAdopt logs the adopt command execution

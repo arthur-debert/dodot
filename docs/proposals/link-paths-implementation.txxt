@@ -1,0 +1,250 @@
+% Link Paths Implementation Plan
+% December 2024
+
+:: Summary
+This document details the implementation plan for the link paths proposal. The implementation will be done in phases, starting with a pure refactoring to centralize the current path mapping logic before introducing new behaviors.
+
+:: Release Plan Overview
+
+::: Release A: Centralize Current Logic (No Behavior Changes)
+Pure refactoring release that centralizes all path mapping logic without changing any current behavior. This provides a solid foundation for future changes.
+
+::: Release B: Layer 1 - Smart Defaults
+Implement the smart default mapping (top-level → $HOME, subdirs → $XDG_CONFIG_HOME).
+
+::: Release C: Layer 2 - Exception List
+Add hardcoded exception list for core UNIX tools.
+
+::: Release D: Layer 3 - Explicit Overrides
+Support _home/ and _xdg/ directories for explicit control.
+
+::: Release E: Layer 4 - Configuration File
+Add .dodot.toml support for custom mappings.
+
+:: Release A: Centralize Current Logic
+
+::: Goals
+- Extract all path mapping logic to pkg/paths
+- Update all consumers to use centralized functions
+- Maintain 100% backward compatibility
+- Update tests to use new API
+
+::: New API in pkg/paths/paths.go
+
+```go
+// MapPackFileToSystem maps a file from a pack to its deployment location
+// In Release A, this preserves current behavior: targetDir + relPath
+func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string
+
+// MapSystemFileToPack determines where a system file should be placed in a pack
+// In Release A, this extracts current logic from adopt command
+func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string
+
+// GetTargetDirectory returns the deployment directory for a pack file
+// In Release A, always returns HomeDir (current behavior)
+func (p *Paths) GetTargetDirectory(pack *types.Pack, relPath string) string
+```
+
+::: Components to Update
+
+:::: pkg/powerups/symlink/symlink.go
+Replace:
+```go
+targetPath := filepath.Join(targetDir, match.Path)
+```
+
+With:
+```go
+targetPath := paths.MapPackFileToSystem(pack, match.Path)
+```
+
+:::: pkg/commands/adopt/adopt.go
+Replace entire `determineDestinationPath` function with:
+```go
+destPath := paths.MapSystemFileToPack(pack, sourcePath)
+```
+
+:::: pkg/core/actions.go
+Update `checkCrossPackSymlinkConflicts` to use:
+```go
+targetPath := paths.MapPackFileToSystem(pack, relPath)
+```
+
+::: Test Updates
+- Create comprehensive unit tests for the new path mapping functions
+- Update existing integration tests to verify no behavior changes
+- Add table-driven tests covering all current mapping scenarios
+
+::: Verification Steps
+1. All existing tests must pass without modification
+2. `dodot status` output must remain identical
+3. `dodot adopt` must place files in same locations as before
+4. Symlink deployment must create identical links
+
+:: Release B: Layer 1 - Smart Defaults
+
+::: Changes to MapPackFileToSystem
+```go
+func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+    dir := p.GetTargetDirectory(pack, relPath)
+    
+    // Layer 1: Smart default
+    if isTopLevel(relPath) {
+        // Add dot prefix for top-level files
+        filename := "." + filepath.Base(relPath)
+        return filepath.Join(dir, filename)
+    }
+    // Subdirectories go to XDG_CONFIG_HOME
+    return filepath.Join(p.ConfigHomeDir(), relPath)
+}
+```
+
+::: New Helper Functions
+```go
+// isTopLevel checks if file is at pack root
+func isTopLevel(relPath string) bool
+
+// stripDotPrefix removes leading dot from filename
+func stripDotPrefix(filename string) string
+```
+
+::: Test Scenarios
+- Top-level file: `gitconfig` → `$HOME/.gitconfig`
+- Subdirectory: `nvim/init.lua` → `$XDG_CONFIG_HOME/nvim/init.lua`
+- Hidden file: `.hidden` → `$HOME/.hidden` (no double dot)
+
+:: Release C: Layer 2 - Exception List
+
+::: Exception List Definition
+The list should distinguish between files that are exceptions and directories whose contents are exceptions. The check is based on the first path segment of the file within the pack.
+
+```go
+// coreUnixExceptions defines files/dirs that always deploy to $HOME.
+// The key is the first path segment in the pack (e.g., "ssh" for "ssh/config").
+var coreUnixExceptions = map[string]bool{
+    "ssh":       true, // .ssh/
+    "gnupg":     true, // .gnupg/
+    "aws":       true, // .aws/
+    "kube":      true, // .kube/
+    "docker":    true, // .docker/
+    "gitconfig": true, // .gitconfig
+    "bashrc":    true, // .bashrc
+    "zshrc":     true, // .zshrc
+    "profile":   true, // .profile
+}
+```
+
+::: Updated `MapPackFileToSystem` and `MapSystemFileToPack`
+The logic must correctly prepend a dot to the first path segment, not the entire path.
+
+```go
+// In MapPackFileToSystem:
+func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+    firstSegment := strings.Split(relPath, "/")[0]
+
+    // Layer 2: Check exception list
+    if coreUnixExceptions[firstSegment] {
+        // Prepend dot to the relative path
+        pathWithDot := "." + relPath
+        return filepath.Join(p.HomeDir(), pathWithDot)
+    }
+    
+    // Fall back to Layer 1 logic...
+}
+
+// In MapSystemFileToPack:
+func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
+    baseName := filepath.Base(systemPath)
+    cleanBaseName := strings.TrimPrefix(baseName, ".")
+    
+    // Layer 2: Check exception list
+    if coreUnixExceptions[cleanBaseName] {
+        // Place it at the top-level of the pack, without the dot
+        return filepath.Join(p.PackPath(pack.Name), cleanBaseName)
+    }
+
+    // Fall back to Layer 1 logic...
+}
+```
+
+:: Release D: Layer 3 - Explicit Overrides
+
+::: Directory Detection
+```go
+// hasExplicitOverride checks for _home/ or _xdg/ prefix
+func hasExplicitOverride(relPath string) (bool, string)
+
+// stripOverridePrefix removes _home/ or _xdg/ from path
+func stripOverridePrefix(relPath string) string
+```
+
+::: Updated Logic
+- Files in `_home/` → Always deploy to `$HOME`
+- Files in `_xdg/` → Always deploy to `$XDG_CONFIG_HOME`
+- Takes precedence over Layer 1 and 2
+
+:: Release E: Layer 4 - Configuration File
+
+::: Configuration Structure
+```toml
+# .dodot.toml in pack root
+[mappings]
+"special/file" = "$HOME/.special_location"
+"*.conf" = "$XDG_CONFIG_HOME/app/"
+```
+
+::: Implementation Notes
+- Requires config file parser in Pack type
+- Cache parsed config for performance
+- Pattern matching support (glob patterns)
+
+:: Testing Strategy
+
+::: Unit Tests
+- Test each layer in isolation
+- Test layer precedence (4 > 3 > 2 > 1)
+- Test edge cases (empty paths, special characters)
+- Table-driven tests for comprehensive coverage
+
+::: Integration Tests
+- Full adopt → deploy → status workflow
+- Cross-pack conflict detection
+- Backwards compatibility scenarios
+
+::: Migration Tests
+- Existing dotfiles repos continue to work
+- No surprises for current users
+- Clear migration documentation
+
+:: Resolved Decisions
+
+::: API Design
+The `GetTargetDirectory` function, initially proposed as part of the public API in `pkg/paths`, should be an unexported helper function instead. The logic for determining the target directory ($HOME vs $XDG_CONFIG_HOME) is complex and context-dependent on the filename and mapping layers.
+
+Keeping `MapPackFileToSystem` and `MapSystemFileToPack` as the two primary public functions provides a simpler and clearer API surface for consumers. `GetTargetDirectory` will be an internal implementation detail used by these functions.
+
+::: Dot Prefix Handling
+- Release A: Keep current behavior (no changes)
+- Release B+: Implement as specified in proposal
+  - Pack files without dots get dots added when deployed to $HOME
+  - Files already with dots keep single dot (no double dots)
+
+::: Exception List Contents
+Suggested core UNIX tools that always deploy to $HOME:
+```go
+var coreUnixTools = map[string]bool{
+    "ssh":        true,  // .ssh/ - security critical, expects $HOME
+    "gnupg":      true,  // .gnupg/ - security critical, expects $HOME  
+    "aws":        true,  // .aws/ - credentials, expects $HOME
+    "kube":       true,  // .kube/ - kubernetes config
+    "docker":     true,  // .docker/ - docker config
+    "gitconfig":  true,  // .gitconfig - git expects in $HOME
+    "bashrc":     true,  // .bashrc - shell expects in $HOME
+    "zshrc":      true,  // .zshrc - shell expects in $HOME
+    "profile":    true,  // .profile - shell expects in $HOME
+}
+```
+
+::: Performance
+- No caching needed - path mapping is fast
+- Config file parsing can be done once per pack during operation

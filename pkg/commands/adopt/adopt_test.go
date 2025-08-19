@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/errors"
 	_ "github.com/arthur-debert/dodot/pkg/matchers" // register default matchers
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -285,7 +286,17 @@ func TestDetermineDestinationPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := determineDestinationPath(tt.packPath, tt.sourcePath)
+			// Initialize paths instance for mapping
+			pathsInstance, err := paths.New("")
+			require.NoError(t, err)
+
+			// Create pack object
+			pack := &types.Pack{
+				Name: filepath.Base(tt.packPath),
+				Path: tt.packPath,
+			}
+
+			got := pathsInstance.MapSystemFileToPack(pack, tt.sourcePath)
 			assert.Equal(t, tt.want, got)
 		})
 	}
