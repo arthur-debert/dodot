@@ -1,9 +1,13 @@
 package packs
 
 import (
+	"fmt"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/testutil"
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestShouldIgnoreWithPatterns(t *testing.T) {
@@ -180,4 +184,198 @@ func TestShouldIgnoreWithPatterns_EdgeCases(t *testing.T) {
 			assert.Equal(t, tt.wantIgnored, got, tt.description)
 		})
 	}
+}
+
+func TestLoadPackConfigFS(t *testing.T) {
+	tests := []struct {
+		name        string
+		configPath  string
+		fileContent string
+		setupFS     func(types.FS)
+		wantConfig  types.PackConfig
+		wantErr     bool
+		errContains string
+	}{
+		{
+			name:       "valid config with ignore rules",
+			configPath: "test/pack/.dodot.toml",
+			fileContent: `[[ignore]]
+path = "*.tmp"
+
+[[ignore]]
+path = ".cache"`,
+			wantConfig: types.PackConfig{
+				Ignore: []types.IgnoreRule{
+					{Path: "*.tmp"},
+					{Path: ".cache"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:       "valid config with override rules",
+			configPath: "test/pack/.dodot.toml",
+			fileContent: `[[override]]
+path = "special.sh"
+powerup = "install_script"
+
+[override.with]
+priority = "high"`,
+			wantConfig: types.PackConfig{
+				Override: []types.OverrideRule{
+					{
+						Path:    "special.sh",
+						Powerup: "install_script",
+						With: map[string]interface{}{
+							"priority": "high",
+						},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:        "empty config file",
+			configPath:  "test/pack/.dodot.toml",
+			fileContent: " ",
+			wantConfig:  types.PackConfig{},
+			wantErr:     false,
+		},
+		{
+			name:       "config with both ignore and override",
+			configPath: "test/pack/.dodot.toml",
+			fileContent: `[[ignore]]
+path = "*.log"
+
+[[override]]
+path = "install.sh"
+powerup = "shell_profile"`,
+			wantConfig: types.PackConfig{
+				Ignore: []types.IgnoreRule{
+					{Path: "*.log"},
+				},
+				Override: []types.OverrideRule{
+					{
+						Path:    "install.sh",
+						Powerup: "shell_profile",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name:       "file not found",
+			configPath: "test/pack/.dodot.toml",
+			setupFS: func(fs types.FS) {
+				// Don't add any files
+			},
+			wantErr:     true,
+			errContains: "file does not exist",
+		},
+		{
+			name:        "invalid TOML syntax",
+			configPath:  "test/pack/.dodot.toml",
+			fileContent: `[invalid toml syntax`,
+			wantErr:     true,
+			errContains: "failed to parse TOML",
+		},
+		{
+			name:        "invalid field in TOML",
+			configPath:  "test/pack/.dodot.toml",
+			fileContent: `unknown_field = "value"`,
+			wantConfig:  types.PackConfig{},
+			wantErr:     false, // TOML will ignore unknown fields
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := testutil.NewTestFS()
+
+			if tt.setupFS != nil {
+				tt.setupFS(fs)
+			} else if tt.fileContent != "" {
+				testutil.CreateFileT(t, fs, tt.configPath, tt.fileContent)
+			}
+
+			got, err := loadPackConfigFS(tt.configPath, fs)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.wantConfig, got)
+			}
+		})
+	}
+}
+
+func TestLoadPackConfigFS_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name        string
+		configPath  string
+		fileContent string
+		description string
+		wantErr     bool
+	}{
+		{
+			name:        "very large config file",
+			configPath:  "test/.dodot.toml",
+			fileContent: generateLargeConfig(100),
+			description: "should handle large configs gracefully",
+			wantErr:     false,
+		},
+		{
+			name:       "config with comments",
+			configPath: "test/.dodot.toml",
+			fileContent: `# This is a comment
+[[ignore]]
+path = "*.tmp" # Ignore temp files
+
+# Another comment
+[[override]]
+path = "test.sh"
+powerup = "symlink"`,
+			description: "should parse configs with comments correctly",
+			wantErr:     false,
+		},
+		{
+			name:       "windows-style paths",
+			configPath: `C:\test\pack\.dodot.toml`,
+			fileContent: `[[ignore]]
+path = "*.tmp"`,
+			description: "should handle windows-style paths",
+			wantErr:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := testutil.NewTestFS()
+			testutil.CreateFileT(t, fs, tt.configPath, tt.fileContent)
+
+			_, err := loadPackConfigFS(tt.configPath, fs)
+
+			if tt.wantErr {
+				assert.Error(t, err, tt.description)
+			} else {
+				assert.NoError(t, err, tt.description)
+			}
+		})
+	}
+}
+
+// Helper function to generate large config for testing
+func generateLargeConfig(numRules int) string {
+	config := ""
+	for i := 0; i < numRules; i++ {
+		config += fmt.Sprintf(`[[ignore]]
+path = "pattern%d.tmp"
+
+`, i)
+	}
+	return config
 }
