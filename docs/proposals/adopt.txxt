@@ -1,0 +1,102 @@
+ADOPT: A COMMAND FOR MANAGING EXISTING FILES
+
+
+1. PROBLEM
+
+    The current workflow for bringing an existing configuration file under
+    dodot's management is a manual, multi-step process. A user must:
+
+        1. Navigate to their dotfiles repository.
+        2. Create the appropriate pack directory if it doesn't exist.
+        3. Move (not copy) the configuration file from its original location
+           into the pack.
+        4. Run `dodot deploy` to create the symlink.
+
+    This process has significant friction, especially for new users. It is
+    error-prone, with the common mistake of copying instead of moving the file,
+    which leads to a "symlink already exists" error on deployment. This is a
+    poor first experience and an unnecessary hurdle for a primary workflow.
+
+
+2. PROPOSAL: THE `ADOPT` COMMAND
+
+    We propose a new command, `dodot adopt`, to streamline this entire
+    workflow into a single, intuitive action.
+
+    
+    2.1 COMMAND SIGNATURE
+
+        The command will be:
+        
+            dodot adopt <pack> <source-path-1> [<source-path-2>...]
+
+        This allows a user to adopt one or more files or directories into a
+        specified pack in one go.
+
+
+    2.2 CORE BEHAVIOR
+
+        When invoked, the command will perform the following actions for each
+        source path:
+
+            1. Move the source file/directory to the correct location within
+               the specified pack.
+            2. Immediately create a symlink from the original source path to
+               the file's new location in the pack.
+
+        This makes the adoption an atomic and immediate operation, providing
+        instant feedback and value to the user.
+
+
+3. DESIGN AND USER EXPERIENCE
+
+
+    3.1 SMART PATH HANDLING
+
+        The `adopt` command will be intelligent and respect the conventions
+        outlined in the [./link-paths.txxt] proposal.
+
+            - Adopting a file from `$HOME` (e.g., `~/.gitconfig`) will place it
+              at the top level of the pack (`<pack>/gitconfig`).
+            - Adopting a file from an XDG path (e.g.,
+              `~/.config/starship/starship.toml`) will replicate its directory
+              structure within the pack
+              (`<pack>/starship/starship.toml`).
+
+        This logic reverses the "smart default" for linking, making the entire
+        system feel cohesive.
+
+
+    3.2 INFORMATIVE OUTPUT
+
+        To build user trust and teach the dodot model, the command's output
+        will be clear and verbose.
+
+        -- example
+            $ dodot adopt git ~/.gitconfig
+            ✔ Moving '~/.gitconfig' to '/path/to/dotfiles/git/gitconfig'
+            ✔ Creating symlink: '~/.gitconfig' -> '/path/to/dotfiles/git/gitconfig'
+            ✨ Success! '~/.gitconfig' is now managed by dodot in the 'git' pack.
+        --
+
+
+    3.3 SAFETY AND ERROR HANDLING
+
+        The command will be designed to be safe and prevent common mistakes.
+
+            - No overwrites: If a file already exists at the destination within
+              the pack, the command will fail with an error message. It will
+              not overwrite existing files unless an explicit `--force` flag is
+              used.
+
+            - Idempotency: If the source path is already a symlink managed by
+              dodot, the command will detect this, inform the user, and exit
+              gracefully without taking any action.
+
+
+4. SCOPE
+
+    The initial implementation will focus exclusively on the `adopt` command.
+    A corresponding `release` command is considered out of scope for now due to
+    its lower utility and higher potential for accidental data loss. The edge
+    case of cross-volume moves is also considered a non-priority.

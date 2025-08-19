@@ -1,0 +1,109 @@
+LINK PATH STRATEGY
+
+
+1. PROBLEM
+
+    dodot's core purpose is to manage configuration files by creating symlinks,
+    but the location of these files is inconsistent across different
+    applications. The primary conflict is between the traditional UNIX approach
+    of dotfiles directly in `$HOME` (e.g., `~/.gitconfig`) and the modern XDG
+    Base Directory Specification, which places files in `$XDG_CONFIG_HOME`
+    (typically `~/.config/app/config.toml`).
+
+    A single-target linking strategy (either all `$HOME` or all `$XDG_CONFIG_HOME`)
+    is insufficient. It forces users to structure their dotfiles repository in
+    a way that may not match the target system's requirements, violating the
+    principle of simplicity and "just works" functionality.
+
+
+2. PROPOSAL: A LAYERED APPROACH
+
+    To address this, we propose a layered system of conventions and overrides.
+    This approach provides a smart, zero-configuration default for most use
+    cases while offering clear, discoverable escape hatches for edge cases.
+    The user only needs to learn as much as their specific needs require.
+
+
+    2.1 LAYER 1: THE SMART DEFAULT
+
+        The default behavior will be driven by a simple file structure
+        convention within a dodot pack.
+
+            - Top-level files: Any file directly inside a pack directory will be
+              symlinked to `$HOME` with a dot (`.`) prepended to its name.
+              
+              -- example
+                  pack-name/gitconfig -> $HOME/.gitconfig
+              --
+
+            - Files in subdirectories: Any file within a subdirectory of a pack
+              will be symlinked to the corresponding path inside
+              `$XDG_CONFIG_HOME`, preserving its name.
+
+              -- example
+                  pack-name/starship/starship.toml -> $XDG_CONFIG_HOME/starship/starship.toml
+              --
+
+        This convention directly maps to the common pattern of modern
+        applications and handles the 80% use case automatically.
+
+
+    2.2 LAYER 2: CURATED EXCEPTION LIST
+
+        Some core UNIX applications are deeply integrated with specific paths in
+        `$HOME` and do not respect XDG standards. For these, dodot will
+        maintain a small, internal, hardcoded list of exceptions.
+
+        Files or directories matching this list (e.g., `.ssh`, `.gnupg`) will
+        always be linked to `$HOME`, regardless of the "Smart Default" rules.
+        This ensures a seamless out-of-the-box experience for essential tools
+        without requiring any user configuration.
+
+
+    2.3 LAYER 3: EXPLICIT OVERRIDE DIRECTORIES
+
+        For cases where the default magic and the exception list are not
+        sufficient, users can take explicit control using specially named
+        directories within their pack.
+
+            - `_home/`: All contents of this directory will be linked relative
+              to `$HOME`. The dot-prefixing rule does not apply here; the user
+              must name files exactly as they should appear in the target.
+
+            - `_xdg/`: All contents of this directory will be linked relative
+              to `$XDG_CONFIG_HOME`.
+
+        This provides a clear and self-documenting way to override the default
+        behavior on a case-by-case basis without needing a configuration file.
+
+
+    2.4 LAYER 4: CONFIGURATION ESCAPE HATCH
+
+        As a final override for the most complex scenarios, the pack-specific
+        `.dodot.toml` file can be used to define explicit, arbitrary link
+        mappings. The goal of the first three layers is to ensure that 99% of
+        users will never need to use this.
+
+
+3. USER EXPERIENCE
+
+    This layered model is designed for progressive disclosure.
+
+        - Most users will only ever interact with Layer 1, where things "just
+          work" based on a natural directory structure.
+        - Layer 2 invisibly handles common frustrations.
+        - Users with specific needs can easily opt into Layer 3 by creating a
+          directory, a discoverable and intuitive action.
+        - Only power users with truly unique requirements will need to learn
+          the configuration syntax of Layer 4.
+
+
+4. COMPARISON TO OTHER TOOLS
+
+    This approach provides a middle ground between the complexity of
+    `chezmoi` (which requires learning a `dot_` prefix and templating) and the
+    manual configuration of `dotbot` (which relies on a central YAML file).
+
+    By prioritizing convention and smart defaults, dodot can handle the vast
+    majority of use cases with zero configuration, aligning with its core
+    design philosophy.
