@@ -719,3 +719,248 @@ func TestExplicitOverrideHelpers(t *testing.T) {
 		})
 	}
 }
+
+// TestLayer4CustomMappings tests the configuration file mapping behavior
+func TestLayer4CustomMappings(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+		Config: types.PackConfig{
+			Mappings: map[string]string{
+				"special/config": "$HOME/.special_location",
+				"app.conf":       "$XDG_CONFIG_HOME/myapp/app.conf",
+				"*.secret":       "$HOME/.secrets/",
+				"data/*.json":    "$HOME/.local/share/myapp/",
+			},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+	}{
+		{
+			name:     "exact mapping with $HOME",
+			relPath:  "special/config",
+			expected: filepath.Join(testHome, ".special_location"),
+		},
+		{
+			name:     "exact mapping with $XDG_CONFIG_HOME",
+			relPath:  "app.conf",
+			expected: filepath.Join(testHome, ".config/myapp/app.conf"),
+		},
+		{
+			name:     "glob pattern *.secret",
+			relPath:  "api.secret",
+			expected: testHome + "/.secrets/",
+		},
+		{
+			name:     "glob pattern with directory",
+			relPath:  "data/settings.json",
+			expected: testHome + "/.local/share/myapp/",
+		},
+		{
+			name:     "no match falls through to lower layers",
+			relPath:  "unmapped/file",
+			expected: filepath.Join(testHome, ".config/unmapped/file"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestLayer4Precedence tests that Layer 4 takes precedence over all other layers
+func TestLayer4Precedence(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	p, err := New("")
+	require.NoError(t, err)
+
+	pack := &types.Pack{
+		Name: "test",
+		Path: "/dotfiles/test",
+		Config: types.PackConfig{
+			Mappings: map[string]string{
+				"ssh/config":   "$HOME/.ssh_custom/config",
+				"_home/forced": "$XDG_CONFIG_HOME/not-home",
+				"_xdg/forced":  "$HOME/.not-xdg",
+				"gitconfig":    "$HOME/.config/git/config",
+			},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		relPath  string
+		expected string
+		reason   string
+	}{
+		{
+			name:     "Layer 4 overrides Layer 2 exception",
+			relPath:  "ssh/config",
+			expected: filepath.Join(testHome, ".ssh_custom/config"),
+			reason:   "Custom mapping should override exception list",
+		},
+		{
+			name:     "Layer 4 overrides Layer 3 _home",
+			relPath:  "_home/forced",
+			expected: filepath.Join(testHome, ".config/not-home"),
+			reason:   "Custom mapping should override explicit _home/ directory",
+		},
+		{
+			name:     "Layer 4 overrides Layer 3 _xdg",
+			relPath:  "_xdg/forced",
+			expected: filepath.Join(testHome, ".not-xdg"),
+			reason:   "Custom mapping should override explicit _xdg/ directory",
+		},
+		{
+			name:     "Layer 4 overrides Layer 1 top-level",
+			relPath:  "gitconfig",
+			expected: filepath.Join(testHome, ".config/git/config"),
+			reason:   "Custom mapping should override smart default for top-level files",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expected, result, tt.reason)
+		})
+	}
+}
+
+// TestMappingHelpers tests the helper functions for Layer 4
+func TestMappingHelpers(t *testing.T) {
+	// Save original environment
+	originalHome := os.Getenv("HOME")
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	defer func() {
+		_ = os.Setenv("HOME", originalHome)
+		if originalXDG != "" {
+			_ = os.Setenv("XDG_CONFIG_HOME", originalXDG)
+		} else {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		}
+	}()
+
+	testHome := "/home/testuser"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", "/custom/xdg"))
+
+	t.Run("expandMapping", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			mapping  string
+			expected string
+		}{
+			{
+				name:     "expand $HOME",
+				mapping:  "$HOME/.config/app",
+				expected: "/home/testuser/.config/app",
+			},
+			{
+				name:     "expand $XDG_CONFIG_HOME",
+				mapping:  "$XDG_CONFIG_HOME/app",
+				expected: "/custom/xdg/app",
+			},
+			{
+				name:     "expand both variables",
+				mapping:  "$HOME/data/$XDG_CONFIG_HOME/config",
+				expected: "/home/testuser/data//custom/xdg/config",
+			},
+			{
+				name:     "no variables",
+				mapping:  "/absolute/path",
+				expected: "/absolute/path",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := expandMapping(tt.mapping, testHome)
+				assert.Equal(t, tt.expected, result)
+			})
+		}
+	})
+
+	t.Run("findMapping", func(t *testing.T) {
+		mappings := map[string]string{
+			"exact/match": "$HOME/.exact",
+			"*.conf":      "$HOME/.config/",
+			"src/*.go":    "$HOME/go/src/",
+		}
+
+		tests := []struct {
+			name     string
+			relPath  string
+			expected string
+		}{
+			{
+				name:     "exact match",
+				relPath:  "exact/match",
+				expected: "/home/testuser/.exact",
+			},
+			{
+				name:     "glob match",
+				relPath:  "app.conf",
+				expected: "/home/testuser/.config/",
+			},
+			{
+				name:     "glob with directory",
+				relPath:  "src/main.go",
+				expected: "/home/testuser/go/src/",
+			},
+			{
+				name:     "no match",
+				relPath:  "no/match/here",
+				expected: "",
+			},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				result := findMapping(tt.relPath, mappings, testHome)
+				assert.Equal(t, tt.expected, result)
+			})
+		}
+	})
+}
