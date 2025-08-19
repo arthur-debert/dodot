@@ -521,13 +521,55 @@ func stripOverridePrefix(relPath string) string {
 	return relPath
 }
 
+// expandMapping expands variables in mapping targets ($HOME, $XDG_CONFIG_HOME)
+// Release E: Layer 4 - Configuration File
+func expandMapping(mapping string, homeDir string) string {
+	// Replace $HOME
+	result := strings.ReplaceAll(mapping, "$HOME", homeDir)
+
+	// Replace $XDG_CONFIG_HOME
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfigHome == "" {
+		xdgConfigHome = filepath.Join(homeDir, ".config")
+	}
+	result = strings.ReplaceAll(result, "$XDG_CONFIG_HOME", xdgConfigHome)
+
+	return result
+}
+
+// findMapping checks if a file matches any custom mapping patterns
+// Returns the expanded target path if a match is found, or empty string if no match
+// Release E: Layer 4 - Configuration File
+func findMapping(relPath string, mappings map[string]string, homeDir string) string {
+	// First check for exact match
+	if target, ok := mappings[relPath]; ok {
+		return expandMapping(target, homeDir)
+	}
+
+	// Then check for glob patterns
+	for pattern, target := range mappings {
+		if matched, _ := filepath.Match(pattern, relPath); matched {
+			return expandMapping(target, homeDir)
+		}
+	}
+
+	return ""
+}
+
 // MapPackFileToSystem maps a file from a pack to its deployment location.
-// Release D: Implements Layer 3 - Explicit Overrides (with Layer 2 and Layer 1 fallback)
+// Release E: Implements Layer 4 - Configuration File (with Layer 3, 2, and 1 fallback)
 func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
 	homeDir, err := GetHomeDirectory()
 	if err != nil {
 		homeDir = "~" // Fallback for safety, though GetHomeDirectory is robust
+	}
+
+	// Layer 4: Check for custom mappings in pack config
+	if len(pack.Config.Mappings) > 0 {
+		if target := findMapping(relPath, pack.Config.Mappings, homeDir); target != "" {
+			return target
+		}
 	}
 
 	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix)
@@ -592,9 +634,9 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 }
 
 // MapSystemFileToPack determines where a system file should be placed in a pack.
-// Release D: Updated to handle Layer 3 explicit overrides (with Layer 2 and Layer 1 fallback)
-// Note: Layer 3 reverse mapping is not automatic - users must manually organize files
-// into _home/ or _xdg/ directories in their packs if they want explicit control.
+// Release E: Updated to handle Layer 4 configuration file (with Layer 3, 2, and 1 fallback)
+// Note: Layer 3 and Layer 4 reverse mapping is not automatic - users must manually
+// organize files into _home/_xdg/ directories or configure mappings in .dodot.toml.
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
 	// Get home directory
 	homeDir, err := GetHomeDirectory()

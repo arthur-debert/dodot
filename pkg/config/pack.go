@@ -28,6 +28,7 @@ func LoadPackConfig(configPath string) (types.PackConfig, error) {
 	logger.Debug().
 		Int("ignore_rules", len(config.Ignore)).
 		Int("override_rules", len(config.Override)).
+		Int("mappings", len(config.Mappings)).
 		Msg("Pack config loaded")
 
 	return config, nil

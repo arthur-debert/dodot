@@ -22,8 +22,9 @@ type Pack struct {
 
 // PackConfig represents configuration options for a pack from .dodot.toml
 type PackConfig struct {
-	Ignore   []IgnoreRule   `toml:"ignore"`
-	Override []OverrideRule `toml:"override"`
+	Ignore   []IgnoreRule      `toml:"ignore"`
+	Override []OverrideRule    `toml:"override"`
+	Mappings map[string]string `toml:"mappings"`
 }
 
 // IgnoreRule defines a file or pattern to be ignored

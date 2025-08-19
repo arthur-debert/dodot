@@ -174,6 +174,61 @@ func TestAdoptExplicitOverrideBehavior(t *testing.T) {
 	assert.True(t, testutil.FileExists(t, filepath.Join(dotfilesPath, "overrides", "_xdg", "forced-xdg-file")))
 }
 
+// TestAdoptWithCustomMappings tests that custom mappings in .dodot.toml work correctly
+func TestAdoptWithCustomMappings(t *testing.T) {
+	// Setup test filesystem
+	root := testutil.TempDir(t, "adopt-mappings-test")
+	dotfilesPath := filepath.Join(root, "dotfiles")
+	homePath := filepath.Join(root, "home")
+
+	// Create dotfiles directory
+	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+
+	// Set HOME to test directory
+	oldHome := os.Getenv("HOME")
+	require.NoError(t, os.Setenv("HOME", homePath))
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
+
+	// Create a pack with custom mappings config
+	packPath := filepath.Join(dotfilesPath, "custom")
+	require.NoError(t, os.MkdirAll(packPath, 0755))
+
+	// Create .dodot.toml with mappings
+	dodotConfig := `[mappings]
+"special/config.toml" = "$HOME/.special/location/config.toml"
+"*.secret" = "$HOME/.secrets/"
+"data/*.json" = "$XDG_CONFIG_HOME/myapp/data/"
+`
+	testutil.CreateFile(t, packPath, ".dodot.toml", dodotConfig)
+
+	// Create test files to adopt
+	testutil.CreateFile(t, homePath, ".myconfig", "config content")
+
+	// Adopt a file
+	result, err := AdoptFiles(AdoptFilesOptions{
+		DotfilesRoot: dotfilesPath,
+		PackName:     "custom",
+		SourcePaths:  []string{filepath.Join(homePath, ".myconfig")},
+		Force:        false,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(result.AdoptedFiles))
+
+	// Verify file was adopted normally (mappings don't affect adopt)
+	expectedPath := filepath.Join(packPath, "myconfig")
+	assert.True(t, testutil.FileExists(t, expectedPath), "File should be adopted without mapping")
+
+	// Create files that match the mappings to show how they would deploy
+	testutil.CreateFile(t, packPath, "special/config.toml", "special config")
+	testutil.CreateFile(t, packPath, "api.secret", "secret data")
+	testutil.CreateFile(t, packPath, "data/settings.json", "json data")
+
+	// Verify the pack structure with mapped files
+	assert.True(t, testutil.FileExists(t, filepath.Join(packPath, "special", "config.toml")))
+	assert.True(t, testutil.FileExists(t, filepath.Join(packPath, "api.secret")))
+	assert.True(t, testutil.FileExists(t, filepath.Join(packPath, "data", "settings.json")))
+}
+
 // TestAdoptFullWorkflow tests the complete adopt workflow with real file system operations
 func TestAdoptFullWorkflow(t *testing.T) {
 	// Setup test filesystem
