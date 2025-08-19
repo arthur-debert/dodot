@@ -1,0 +1,588 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Set, Tuple
+
+# Coverage grading constants
+GOOD_THRESHOLD = 80
+AVERAGE_MIN_THRESHOLD = 60
+
+# Color definitions (just the color codes)
+BG_GOOD = '28'
+BG_AVERAGE = '220'
+BG_POOR = '196'
+
+# Check if terminal supports colors
+def supports_color():
+    """Check if the terminal supports ANSI color codes."""
+    # Check for common environment variables that indicate color support
+    if os.environ.get('NO_COLOR'):
+        return False
+    if os.environ.get('TERM') == 'dumb':
+        return False
+    if sys.stdout.isatty():
+        return True
+    # Check for common CI environments that support color
+    if os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
+        return True
+    return False
+
+# Initialize color variables (will be set based on args later)
+COLOR_BG_GOOD = ""
+COLOR_BG_AVERAGE = ""
+COLOR_BG_POOR = ""
+COLOR_WHITE = ""
+COLOR_RESET = ""
+
+def init_colors(color_mode):
+    """Initialize color codes based on the color mode."""
+    global COLOR_BG_GOOD, COLOR_BG_AVERAGE, COLOR_BG_POOR, COLOR_WHITE, COLOR_RESET
+    
+    use_colors = False
+    if color_mode == "always":
+        use_colors = True
+    elif color_mode == "never":
+        use_colors = False
+    elif color_mode == "auto":
+        use_colors = supports_color()
+    
+    if use_colors:
+        COLOR_BG_GOOD = f"\033[48;5;{BG_GOOD}m\033[38;5;15m"      # Good coverage background + white foreground
+        COLOR_BG_AVERAGE = f"\033[48;5;{BG_AVERAGE}m\033[38;5;15m" # Average coverage background + white foreground
+        COLOR_BG_POOR = f"\033[48;5;{BG_POOR}m\033[38;5;15m"      # Poor coverage background + white foreground
+        COLOR_WHITE = "\033[38;5;15m"                              # White foreground
+        COLOR_RESET = "\033[0m"
+    else:
+        COLOR_BG_GOOD = ""
+        COLOR_BG_AVERAGE = ""
+        COLOR_BG_POOR = ""
+        COLOR_WHITE = ""
+        COLOR_RESET = ""
+
+
+@dataclass
+class CoverageEntry:
+    """Represents a single coverage entry from the coverage.out file."""
+    file: str
+    start_line: int
+    start_col: int
+    end_line: int
+    end_col: int
+    num_statements: int
+    count: int
+    
+    @property
+    def is_covered(self) -> bool:
+        return self.count > 0
+    
+    @property
+    def function_name(self) -> str:
+        """Extract function name from file:line format."""
+        # For simplicity, we'll use the file:line as the function identifier
+        # In a more sophisticated implementation, we'd parse the actual Go code
+        return f"{self.file}:{self.start_line}"
+
+
+def parse_go_mod(go_mod_path: Path) -> str:
+    """Parse go.mod file and extract the module name."""
+    try:
+        with open(go_mod_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('module '):
+                    return line.split()[1]
+    except Exception:
+        pass
+    return ""
+
+
+def find_go_functions(file_path: str) -> Dict[int, str]:
+    """Find all Go function declarations in a file and return line_number -> function_name mapping."""
+    functions = {}
+    try:
+        with open(file_path, 'r') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if line.startswith('func '):
+                    # Extract function name using regex
+                    # Handles: func Name(), func (r Type) Name(), func Name[T any]()
+                    match = re.match(r'^func\s+(?:\([^)]*\)\s+)?([a-zA-Z_][a-zA-Z0-9_]*)', line)
+                    if match:
+                        func_name = match.group(1)
+                        functions[line_num] = func_name
+    except Exception:
+        pass
+    return functions
+
+
+def parse_coverage_file(coverage_path: Path) -> List[CoverageEntry]:
+    """Parse Go coverage.out file and return list of coverage entries."""
+    entries = []
+    
+    with open(coverage_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Skip the mode line
+    if lines and lines[0].startswith("mode:"):
+        lines = lines[1:]
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Parse format: filename:start.col,end.col num_statements count
+        match = re.match(r'^(.+?):(\d+)\.(\d+),(\d+)\.(\d+)\s+(\d+)\s+(\d+)$', line)
+        if match:
+            entries.append(CoverageEntry(
+                file=match.group(1),
+                start_line=int(match.group(2)),
+                start_col=int(match.group(3)),
+                end_line=int(match.group(4)),
+                end_col=int(match.group(5)),
+                num_statements=int(match.group(6)),
+                count=int(match.group(7))
+            ))
+    
+    return entries
+
+
+def filter_entries_by_paths(entries: List[CoverageEntry], paths: List[str]) -> List[CoverageEntry]:
+    """Filter coverage entries by specified paths."""
+    if not paths:
+        return entries
+    
+    filtered = []
+    for entry in entries:
+        for path in paths:
+            # Check if the entry's file path starts with or contains the specified path
+            if path == "." or entry.file.startswith(path) or f"/{path}/" in entry.file:
+                filtered.append(entry)
+                break
+    
+    return filtered
+
+
+def exclude_entries_by_patterns(entries: List[CoverageEntry], exclude_patterns: List[str]) -> List[CoverageEntry]:
+    """Exclude entries matching any of the given patterns."""
+    if not exclude_patterns:
+        return entries
+    
+    filtered = []
+    for entry in entries:
+        should_exclude = False
+        for pattern in exclude_patterns:
+            if pattern in entry.file:
+                should_exclude = True
+                break
+        if not should_exclude:
+            filtered.append(entry)
+    
+    return filtered
+
+
+def calculate_file_coverage(entries: List[CoverageEntry]) -> Dict[str, Tuple[int, int]]:
+    """Calculate coverage statistics grouped by file."""
+    file_stats = defaultdict(lambda: [0, 0])  # [covered_statements, total_statements]
+    
+    for entry in entries:
+        file_stats[entry.file][1] += entry.num_statements
+        if entry.is_covered:
+            file_stats[entry.file][0] += entry.num_statements
+    
+    return {file: tuple(stats) for file, stats in file_stats.items()}
+
+
+def calculate_function_coverage(entries: List[CoverageEntry], use_real_names: bool = True, module_prefix: str = "", min_lines: int = 0) -> Dict[str, Tuple[int, int]]:
+    """Calculate coverage statistics grouped by function."""
+    # Group entries by file first
+    file_entries = defaultdict(list)
+    for entry in entries:
+        file_entries[entry.file].append(entry)
+    
+    function_stats = {}
+    
+    # Process each file's entries
+    for file_path, file_entry_list in file_entries.items():
+        # Sort entries by start line
+        sorted_entries = sorted(file_entry_list, key=lambda e: e.start_line)
+        
+        if not sorted_entries:
+            continue
+        
+        # Try to get actual function names if requested
+        function_names = {}
+        if use_real_names:
+            # Try to find the actual file on disk
+            # First try stripping the module prefix
+            local_path = strip_module_prefix(file_path, module_prefix)
+            if os.path.exists(local_path):
+                function_names = find_go_functions(local_path)
+            # If not found, try the full path
+            elif os.path.exists(file_path):
+                function_names = find_go_functions(file_path)
+            
+        # Group entries that are close together (likely same function)
+        current_group_start = sorted_entries[0].start_line
+        current_group_entries = [sorted_entries[0]]
+        
+        for entry in sorted_entries[1:]:
+            # If this entry is within 2 lines of the last entry's end, 
+            # it's probably part of the same function (most functions have 2-3 empty lines between them)
+            if entry.start_line - current_group_entries[-1].end_line <= 2:
+                current_group_entries.append(entry)
+            else:
+                # Process the current group
+                covered = sum(e.num_statements for e in current_group_entries if e.is_covered)
+                total = sum(e.num_statements for e in current_group_entries)
+                if total > 0:  # Include any non-empty group
+                    # Calculate line count for the function (excluding 2 lines for declaration)
+                    func_start = current_group_entries[0].start_line
+                    func_end = current_group_entries[-1].end_line
+                    line_count = func_end - func_start + 1 - 2  # Subtract 2 for function declaration
+                    
+                    # Skip if function doesn't meet minimum line requirement
+                    if min_lines > 0 and line_count < min_lines:
+                        # Start a new group
+                        current_group_start = entry.start_line
+                        current_group_entries = [entry]
+                        continue
+                    
+                    # Look for the best matching function name
+                    func_name = None
+                    if function_names:
+                        # Find the closest function declaration at or before the group start
+                        for line_num in sorted(function_names.keys(), reverse=True):
+                            if line_num <= current_group_start:
+                                func_name = function_names[line_num]
+                                break
+                    
+                    if func_name:
+                        func_id = f"{file_path}:{current_group_start} {func_name}"
+                    else:
+                        func_id = f"{file_path}:{current_group_start}"
+                    
+                    function_stats[func_id] = (covered, total)
+                
+                # Start a new group
+                current_group_start = entry.start_line
+                current_group_entries = [entry]
+        
+        # Don't forget the last group
+        covered = sum(e.num_statements for e in current_group_entries if e.is_covered)
+        total = sum(e.num_statements for e in current_group_entries)
+        if total > 0:
+            # Calculate line count for the function (excluding 2 lines for declaration)
+            func_start = current_group_entries[0].start_line
+            func_end = current_group_entries[-1].end_line
+            line_count = func_end - func_start + 1 - 2  # Subtract 2 for function declaration
+            
+            # Skip if function doesn't meet minimum line requirement
+            if min_lines > 0 and line_count < min_lines:
+                continue
+            
+            # Look for the best matching function name
+            func_name = None
+            if function_names:
+                for line_num in sorted(function_names.keys(), reverse=True):
+                    if line_num <= current_group_start:
+                        func_name = function_names[line_num]
+                        break
+            
+            if func_name:
+                func_id = f"{file_path}:{current_group_start} {func_name}"
+            else:
+                func_id = f"{file_path}:{current_group_start}"
+            
+            function_stats[func_id] = (covered, total)
+    
+    return function_stats
+
+
+def get_coverage_grade(percentage: float) -> Tuple[str, str]:
+    """Return the grade category and corresponding color for a coverage percentage."""
+    if percentage >= GOOD_THRESHOLD:
+        return "good", COLOR_BG_GOOD
+    elif percentage >= AVERAGE_MIN_THRESHOLD:
+        return "average", COLOR_BG_AVERAGE
+    else:
+        return "poor", COLOR_BG_POOR
+
+
+def strip_module_prefix(file_path: str, module_prefix: str) -> str:
+    """Strip module prefix from file path if present."""
+    if module_prefix and file_path.startswith(module_prefix + "/"):
+        return file_path[len(module_prefix) + 1:]
+    return file_path
+
+
+def format_coverage_line(name: str, covered: int, total: int, line_num: int, num_width: int) -> Tuple[str, str, float]:
+    """Format a single coverage line with appropriate coloring."""
+    if total == 0:
+        percentage = 0.0
+    else:
+        percentage = (covered / total) * 100
+    
+    grade, bgcolor = get_coverage_grade(percentage)
+    
+    # Format line number without coloring
+    line_num_str = f"{line_num:>{num_width}d} "
+    
+    # Adjust name width to account for line number
+    name_width = 80 - num_width - 1  # -1 for the space after line number
+    
+    # Format: line_num name coverage% (covered/total) - white text on colored background
+    # Pad covered and total to 3 digits for right alignment
+    line = f"{line_num_str}{bgcolor}{name:<{name_width}} {percentage:6.2f}% ({covered:3d}/{total:3d}){COLOR_RESET}"
+    return line, grade, percentage
+
+
+def should_show_grade(grade: str, show_good: bool, show_average: bool, show_poor: bool) -> bool:
+    """Determine if a grade should be shown based on filter flags."""
+    # If no specific grade filter is set, show all
+    if not (show_good or show_average or show_poor):
+        return True
+    
+    # Otherwise, only show if the grade matches a selected filter
+    if grade == "good" and show_good:
+        return True
+    elif grade == "average" and show_average:
+        return True
+    elif grade == "poor" and show_poor:
+        return True
+    
+    return False
+
+
+def generate_coverage(paths: List[str], output_file: str = "coverage.out") -> bool:
+    """Generate Go coverage data for the specified paths."""
+    # Build the go test command
+    if not paths or paths == ["."]:
+        test_paths = ["./..."]
+    else:
+        test_paths = []
+        for path in paths:
+            if os.path.isdir(path):
+                test_paths.append(f"./{path}/...")
+            else:
+                test_paths.append(path)
+    
+    cmd = ["go", "test", "-coverprofile", output_file] + test_paths
+    
+    print(f"Generating coverage data: {' '.join(cmd)}")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"Error generating coverage: {result.stderr}", file=sys.stderr)
+            return False
+        print(f"Coverage data written to {output_file}")
+        return True
+    except Exception as e:
+        print(f"Error running go test: {e}", file=sys.stderr)
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Analyze Go coverage data and display a formatted report",
+        prog="gocoverage"
+    )
+    
+    parser.add_argument(
+        "paths",
+        nargs="*",
+        default=["."],
+        help="Paths to test and analyze (default: current directory)"
+    )
+    
+    parser.add_argument(
+        "--file",
+        action="store_true",
+        help="Report coverage by file (default)"
+    )
+    
+    parser.add_argument(
+        "--function",
+        action="store_true",
+        help="Report coverage by function"
+    )
+    
+    parser.add_argument(
+        "--good",
+        action="store_true",
+        help="Show only good coverage (>80%%)"
+    )
+    
+    parser.add_argument(
+        "--average",
+        action="store_true",
+        help="Show only average coverage (60%%-80%%)"
+    )
+    
+    parser.add_argument(
+        "--poor",
+        action="store_true",
+        help="Show only poor coverage (<60%%)"
+    )
+    
+    parser.add_argument(
+        "--exclude",
+        action="append",
+        help="Pattern to exclude from coverage (can be used multiple times)"
+    )
+    
+    parser.add_argument(
+        "--coverage-file",
+        help="Path to existing coverage file (if not provided, will generate coverage)"
+    )
+    
+    parser.add_argument(
+        "--output",
+        default="coverage.out",
+        help="Output file for generated coverage data (default: coverage.out)"
+    )
+    
+    parser.add_argument(
+        "--color",
+        choices=["always", "never", "auto"],
+        default="auto",
+        help="When to use colors (default: auto)"
+    )
+    
+    parser.add_argument(
+        "--gomod",
+        help="Path to go.mod file (default: look for go.mod in current directory)"
+    )
+    
+    parser.add_argument(
+        "--no-func-names",
+        action="store_true",
+        help="Don't look up actual function names (faster but less informative)"
+    )
+    
+    parser.add_argument(
+        "--no-generate",
+        action="store_true",
+        help="Don't generate coverage, assume coverage.out exists"
+    )
+    
+    parser.add_argument(
+        "--min-lines",
+        type=int,
+        default=0,
+        help="Only report functions with at least this many lines (excluding declaration)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Initialize colors based on the color mode
+    init_colors(args.color)
+    
+    # Default to file mode if neither is specified
+    if not args.file and not args.function:
+        args.file = True
+    
+    # Find go.mod file and parse module name
+    module_prefix = ""
+    if args.gomod:
+        go_mod_path = Path(args.gomod)
+        if go_mod_path.exists():
+            module_prefix = parse_go_mod(go_mod_path)
+    else:
+        # Look for go.mod in current directory
+        go_mod_path = Path("go.mod")
+        if go_mod_path.exists():
+            module_prefix = parse_go_mod(go_mod_path)
+    
+    # Determine coverage file
+    if args.coverage_file:
+        # Use existing coverage file
+        coverage_file = Path(args.coverage_file)
+        if not coverage_file.exists():
+            print(f"Error: Coverage file not found: {args.coverage_file}", file=sys.stderr)
+            sys.exit(1)
+    elif args.no_generate:
+        # Use default coverage file without generating
+        coverage_file = Path(args.output)
+        if not coverage_file.exists():
+            print(f"Error: Coverage file not found: {args.output}", file=sys.stderr)
+            print("Remove --no-generate to generate coverage data", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Generate coverage for the specified paths
+        coverage_file = Path(args.output)
+        if not generate_coverage(args.paths, str(coverage_file)):
+            sys.exit(1)
+    
+    # Parse coverage data
+    entries = parse_coverage_file(coverage_file)
+    
+    # If we generated coverage, paths were already handled by go test
+    # If using existing coverage file, filter by paths
+    if args.coverage_file:
+        entries = filter_entries_by_paths(entries, args.paths)
+        
+        # Check if any entries were found for the specified paths
+        if not entries and args.paths != ["."]:
+            print(f"Error: No coverage data found for path(s): {', '.join(args.paths)}", file=sys.stderr)
+            sys.exit(1)
+    
+    # Exclude patterns
+    if args.exclude:
+        entries = exclude_entries_by_patterns(entries, args.exclude)
+    
+    # Calculate coverage based on mode
+    if args.function:
+        coverage_data = calculate_function_coverage(entries, use_real_names=not args.no_func_names, module_prefix=module_prefix, min_lines=args.min_lines)
+    else:
+        coverage_data = calculate_file_coverage(entries)
+    
+    # Sort by coverage percentage (descending - highest coverage first)
+    sorted_items = sorted(coverage_data.items(), key=lambda x: (x[1][0] / x[1][1] * 100) if x[1][1] > 0 else 0, reverse=True)
+    
+    # Calculate number width based on total items
+    num_width = len(str(len(sorted_items)))
+    
+    # Display results
+    total_covered = 0
+    total_statements = 0
+    shown_count = 0
+    line_number = 0
+    
+    for name, (covered, total) in sorted_items:
+        line_number += 1
+        # Strip module prefix from display name
+        display_name = strip_module_prefix(name, module_prefix)
+        line, grade, percentage = format_coverage_line(display_name, covered, total, line_number, num_width)
+        
+        if should_show_grade(grade, args.good, args.average, args.poor):
+            print(line)
+            shown_count += 1
+        
+        total_covered += covered
+        total_statements += total
+    
+    # Show summary
+    if shown_count > 0 and total_statements > 0:
+        # Calculate separator width accounting for line numbers
+        separator_width = 100 + num_width + 1  # +1 for space after line number
+        print("-" * separator_width)
+        
+        overall_percentage = (total_covered / total_statements) * 100
+        _, bgcolor = get_coverage_grade(overall_percentage)
+        
+        # Format total line with empty space for line number column
+        total_padding = " " * (num_width + 1)
+        name_width = 80 - num_width - 1
+        print(f"{total_padding}{bgcolor}{'TOTAL':<{name_width}} {overall_percentage:6.2f}% ({total_covered:3d}/{total_statements:3d}){COLOR_RESET}")
+
+
+if __name__ == "__main__":
+    main()

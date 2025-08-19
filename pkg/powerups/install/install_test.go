@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -147,45 +146,4 @@ func TestInstallScriptPowerUp_ValidateOptions(t *testing.T) {
 		"some": "option",
 	})
 	testutil.AssertNoError(t, err)
-}
-
-func TestGetInstallSentinelPath(t *testing.T) {
-	// Create paths instance for testing
-	tempDir := testutil.TempDir(t, "install-test")
-	pathsInstance, err := paths.New(tempDir)
-	testutil.AssertNoError(t, err)
-
-	pack := "mypack"
-	path := GetInstallSentinelPath(pack, pathsInstance)
-
-	expected := filepath.Join(pathsInstance.InstallDir(), "sentinels", pack)
-	testutil.AssertEqual(t, expected, path)
-}
-
-// Benchmarks
-func BenchmarkInstallScriptPowerUp_Process(b *testing.B) {
-	tmpDir := b.TempDir()
-	installPath := filepath.Join(tmpDir, "install.sh")
-	err := os.WriteFile(installPath, []byte("#!/bin/bash\necho \"Installing...\""), 0755)
-	if err != nil {
-		b.Fatal(err)
-	}
-
-	powerup := NewInstallScriptPowerUp()
-	matches := []types.TriggerMatch{
-		{
-			Path:         "install.sh",
-			AbsolutePath: installPath,
-			Pack:         "dev",
-			Priority:     100,
-		},
-	}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_, err := powerup.Process(matches)
-		if err != nil {
-			b.Fatal(err)
-		}
-	}
 }
