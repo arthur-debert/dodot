@@ -189,6 +189,8 @@ styles:
   
   # New styles for status output
   PowerUpAdditionalInfo:
+    # No styling - plain text
+  SymlinkPath:
     italic: true
   StatusSuccess:
     foreground: white
