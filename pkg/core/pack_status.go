@@ -171,9 +171,8 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 func getDisplayPath(action types.Action) string {
 	switch action.Type {
 	case types.ActionTypeLink:
-		// Use target basename to match how intermediate symlinks are named
-		// This ensures consistency with GetDeployedSymlinkPath
-		return filepath.Base(action.Target)
+		// Use source basename to show the actual file in the pack
+		return filepath.Base(action.Source)
 	case types.ActionTypeCopy, types.ActionTypeInstall:
 		// Source-based actions: show the source file being processed
 		return filepath.Base(action.Source)

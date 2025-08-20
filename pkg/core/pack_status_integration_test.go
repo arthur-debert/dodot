@@ -132,8 +132,8 @@ func TestGetPackStatus(t *testing.T) {
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				assert.Equal(t, "error", result.Files[0].Status)
 				assert.Contains(t, result.Files[0].Message, "broken")
-				// Verify display path uses target basename
-				assert.Equal(t, ".config", result.Files[0].Path)
+				// Verify display path uses source basename
+				assert.Equal(t, "config", result.Files[0].Path)
 			},
 		},
 		{
