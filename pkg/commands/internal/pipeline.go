@@ -336,6 +336,7 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 				Files:       []string{},
 				Status:      result.Status,
 				Error:       result.Error,
+				Actions:     []types.Action{result.Action},
 			}
 			packResult.PowerUpResults = append(packResult.PowerUpResults, powerUpResult)
 			packResult.TotalPowerUps++
@@ -365,6 +366,9 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 		if result.Action.Source != "" {
 			powerUpResult.Files = append(powerUpResult.Files, result.Action.Source)
 		}
+
+		// Add action to power-up
+		powerUpResult.Actions = append(powerUpResult.Actions, result.Action)
 	}
 
 	// Complete all pack results and determine status

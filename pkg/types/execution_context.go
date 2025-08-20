@@ -113,6 +113,9 @@ type PowerUpResult struct {
 
 	// Pack is the pack this PowerUp belongs to
 	Pack string
+
+	// Actions are the original actions that were executed
+	Actions []Action
 }
 
 // NewExecutionContext creates a new execution context
@@ -304,13 +307,28 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
 				displayMessage := generatePowerUpMessage(pur.PowerUpName, filePath, displayStatus, lastExecuted)
 
+				// Get additional info based on PowerUp type and action data
+				additionalInfo := GetPowerUpAdditionalInfo(pur.PowerUpName)
+				if pur.PowerUpName == "symlink" && len(pur.Actions) > 0 {
+					// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
+					homeDir := os.Getenv("HOME")
+					for _, action := range pur.Actions {
+						if action.Source == filePath && action.Target != "" {
+							additionalInfo = FormatSymlinkForDisplay(action.Target, homeDir, 46)
+							break
+						}
+					}
+				}
+
 				displayFile := DisplayFile{
-					PowerUp:      pur.PowerUpName,
-					Path:         filePath,
-					Status:       displayStatus,
-					Message:      displayMessage,
-					IsOverride:   isOverride,
-					LastExecuted: lastExecuted,
+					PowerUp:        pur.PowerUpName,
+					Path:           filePath,
+					Status:         displayStatus,
+					Message:        displayMessage,
+					IsOverride:     isOverride,
+					LastExecuted:   lastExecuted,
+					PowerUpSymbol:  GetPowerUpSymbol(pur.PowerUpName),
+					AdditionalInfo: additionalInfo,
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
 			}
