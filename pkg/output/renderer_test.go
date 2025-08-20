@@ -42,9 +42,8 @@ func TestRenderer_Render(t *testing.T) {
 			wantContent: []string{
 				"Command: status",
 				"git",
-				"symlink",
 				".gitconfig",
-				"linked",
+				"deployed",
 			},
 			notWant: []string{
 				"<", ">", // No XML tags in output
@@ -75,9 +74,8 @@ func TestRenderer_Render(t *testing.T) {
 				"DRY RUN MODE",
 				"Command: deploy",
 				"vim",
-				"symlink",
 				".vimrc",
-				"will be linked",
+				"queued",
 			},
 			notWant: []string{
 				"<", ">", // No XML tags in output
@@ -106,7 +104,8 @@ func TestRenderer_Render(t *testing.T) {
 			},
 			wantContent: []string{
 				"broken",
-				"permission denied",
+				".broken",
+				"error",
 			},
 		},
 		{
@@ -165,10 +164,9 @@ func TestRenderer_Render(t *testing.T) {
 				},
 			},
 			wantContent: []string{
-				"profile",
 				".bashrc",
 				"[override]",
-				"custom profile",
+				"deployed",
 			},
 		},
 		{
@@ -282,8 +280,8 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 	output := buf.String()
 	assert.Contains(t, output, "Command: test")
 	assert.Contains(t, output, "test-pack")
-	assert.Contains(t, output, "symlink")
 	assert.Contains(t, output, ".testfile")
+	assert.Contains(t, output, "deployed")
 }
 
 func TestRenderer_RenderError(t *testing.T) {

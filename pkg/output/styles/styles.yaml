@@ -35,20 +35,20 @@ colors:
   
   # Background colors
   successBg:
-    light: "#D7FFD7"
-    dark: "#003300"
+    light: "22"
+    dark: "22"
   errorBg:
-    light: "#FFD7D7"
-    dark: "#330000"
+    light: "124"
+    dark: "124"
   warningBg:
-    light: "#FFFFD7"
-    dark: "#333300"
+    light: "#AF8700"
+    dark: "#AF8700"
   queuedBg:
-    light: "#E8E8FF"
-    dark: "#1A1A2E"
+    light: "238"
+    dark: "238"
   ignoredBg:
-    light: "#F0F0F0"
-    dark: "#2D2D2D"
+    light: "238"
+    dark: "238"
   
   # White color for text on colored backgrounds
   white:
@@ -153,7 +153,8 @@ styles:
     # foreground: warning
     bold: true
   Filename:
-    italic: true
+    width: 20
+    align: left
   
   # Layout and spacing
   Indent:
@@ -185,3 +186,39 @@ styles:
   TableCell: {}
   TableSeparator:
     # foreground: muted
+  
+  # New styles for status output
+  PowerUpAdditionalInfo:
+    # No styling - plain text
+  SymlinkPath:
+    italic: true
+  StatusSuccess:
+    foreground: white
+    background: successBg
+    italic: true
+    paddingLeft: 1
+    paddingRight: 1
+  StatusError:
+    foreground: white
+    background: errorBg
+    italic: true
+    paddingLeft: 1
+    paddingRight: 1
+  StatusWarning:
+    foreground: white
+    background: warningBg
+    italic: true
+    paddingLeft: 1
+    paddingRight: 1
+  StatusQueued:
+    foreground: white
+    background: queuedBg
+    italic: true
+    paddingLeft: 1
+    paddingRight: 1
+  StatusIgnored:
+    foreground: white
+    background: ignoredBg
+    italic: true
+    paddingLeft: 1
+    paddingRight: 1

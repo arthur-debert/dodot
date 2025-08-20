@@ -1,6 +1,7 @@
 package core
 
 import (
+	"os"
 	"path/filepath"
 	"time"
 
@@ -137,13 +138,26 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 		isOverride = true
 	}
 
+	// Get PowerUp display name
+	powerUpName := getPowerUpDisplayName(action)
+
+	// Get additional info based on PowerUp type and action data
+	additionalInfo := types.GetPowerUpAdditionalInfo(powerUpName)
+	if powerUpName == "symlink" && action.Target != "" {
+		// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
+		homeDir := os.Getenv("HOME")
+		additionalInfo = types.FormatSymlinkForDisplay(action.Target, homeDir, 46)
+	}
+
 	displayFile := &types.DisplayFile{
-		PowerUp:      getPowerUpDisplayName(action),
-		Path:         filePath,
-		Status:       mapStatusStateToDisplay(status.State),
-		Message:      status.Message,
-		IsOverride:   isOverride,
-		LastExecuted: status.Timestamp,
+		PowerUp:        powerUpName,
+		Path:           filePath,
+		Status:         mapStatusStateToDisplay(status.State),
+		Message:        status.Message,
+		IsOverride:     isOverride,
+		LastExecuted:   status.Timestamp,
+		PowerUpSymbol:  types.GetPowerUpSymbol(powerUpName),
+		AdditionalInfo: additionalInfo,
 	}
 
 	return displayFile, nil
@@ -157,9 +171,8 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 func getDisplayPath(action types.Action) string {
 	switch action.Type {
 	case types.ActionTypeLink:
-		// Use target basename to match how intermediate symlinks are named
-		// This ensures consistency with GetDeployedSymlinkPath
-		return filepath.Base(action.Target)
+		// Use source basename to show the actual file in the pack
+		return filepath.Base(action.Source)
 	case types.ActionTypeCopy, types.ActionTypeInstall:
 		// Source-based actions: show the source file being processed
 		return filepath.Base(action.Source)
@@ -190,7 +203,7 @@ func getPowerUpDisplayName(action types.Action) string {
 	case types.ActionTypeBrew:
 		return "homebrew"
 	case types.ActionTypeInstall:
-		return "install"
+		return "install_script"
 	case types.ActionTypePathAdd:
 		return "path"
 	case types.ActionTypeShellSource:

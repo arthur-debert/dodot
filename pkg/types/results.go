@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // OperationStatus defines the state of an operation/action execution
 type OperationStatus string
@@ -44,12 +47,14 @@ type DisplayPack struct {
 
 // DisplayFile represents a single file within a pack for display.
 type DisplayFile struct {
-	PowerUp      string     `json:"powerUp"`
-	Path         string     `json:"path"`
-	Status       string     `json:"status"` // File-level: "success", "error", "queue", "config", "ignored"
-	Message      string     `json:"message"`
-	IsOverride   bool       `json:"isOverride"`   // File power-up was overridden in .dodot.toml
-	LastExecuted *time.Time `json:"lastExecuted"` // When operation was last executed
+	PowerUp        string     `json:"powerUp"`
+	Path           string     `json:"path"`
+	Status         string     `json:"status"` // File-level: "success", "error", "queue", "config", "ignored"
+	Message        string     `json:"message"`
+	IsOverride     bool       `json:"isOverride"`     // File power-up was overridden in .dodot.toml
+	LastExecuted   *time.Time `json:"lastExecuted"`   // When operation was last executed
+	PowerUpSymbol  string     `json:"powerUpSymbol"`  // Unicode symbol for the powerup
+	AdditionalInfo string     `json:"additionalInfo"` // Additional context (e.g., symlink target, shell type)
 }
 
 // GetPackStatus determines the pack-level status based on its files.
@@ -153,4 +158,64 @@ type AdoptedFile struct {
 	OriginalPath string `json:"originalPath"` // Original file path (e.g., ~/.gitconfig)
 	NewPath      string `json:"newPath"`      // New path in pack (e.g., /path/to/dotfiles/git/gitconfig)
 	SymlinkPath  string `json:"symlinkPath"`  // Symlink path (usually same as OriginalPath)
+}
+
+// GetPowerUpSymbol returns the Unicode symbol for a given PowerUp
+func GetPowerUpSymbol(powerUpName string) string {
+	switch powerUpName {
+	case "symlink":
+		return "➞"
+	case "shell_profile", "shell_add_path":
+		return "⚙"
+	case "path":
+		return "+"
+	case "homebrew":
+		return "⚙"
+	case "install_script":
+		return "×"
+	default:
+		return ""
+	}
+}
+
+// GetPowerUpAdditionalInfo returns a short description for the PowerUp type
+func GetPowerUpAdditionalInfo(powerUpName string) string {
+	switch powerUpName {
+	case "symlink":
+		return "" // Will be filled with actual target
+	case "shell_profile", "shell_add_path":
+		return "shell source"
+	case "path":
+		return "add to $PATH"
+	case "homebrew":
+		return "brew install"
+	case "install_script":
+		return "run script"
+	default:
+		return ""
+	}
+}
+
+// TruncateLeft truncates a string from the left side to fit within maxLen characters
+// If the string is longer than maxLen, it returns "..." + the last (maxLen-3) characters
+func TruncateLeft(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 3 {
+		return "..."
+	}
+	return "..." + s[len(s)-(maxLen-3):]
+}
+
+// FormatSymlinkForDisplay formats a symlink path for display
+// It replaces $HOME with ~ and truncates from the left if needed
+func FormatSymlinkForDisplay(path string, homeDir string, maxLen int) string {
+	// Replace home directory with ~ if path starts with it
+	if homeDir != "" && strings.HasPrefix(path, homeDir) {
+		path = "~" + path[len(homeDir):]
+	}
+
+	// Truncate from left if needed
+	return TruncateLeft(path, maxLen)
 }
