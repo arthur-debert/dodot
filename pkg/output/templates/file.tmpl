@@ -1,7 +1,7 @@
 <Indent>{{- if eq .Status "config" -}}
 <FilePath>{{.Path}}</FilePath><TableSeparator> : </TableSeparator><ConfigFile>config</ConfigFile>
 {{- else -}}
-<Filename>{{printf "%-20s" .Path}}</Filename> {{if .PowerUpSymbol}}{{.PowerUpSymbol}}{{else}} {{end}} {{- if eq .PowerUp "symlink" -}} <SymlinkPath>{{printf "%-46s" .AdditionalInfo}}</SymlinkPath>{{- else -}} <PowerUpAdditionalInfo>{{printf "%-46s" .AdditionalInfo}}</PowerUpAdditionalInfo>{{- end -}} {{- if eq .Status "success" -}}<StatusSuccess>{{if or (eq .PowerUp "homebrew") (eq .PowerUp "install_script")}}{{printf "%-8s" "installed"}}{{else}}{{printf "%-8s" "deployed"}}{{end}}</StatusSuccess>
+<Filename>{{printf "%-20s" .Path}}</Filename> {{if .PowerUpSymbol}}{{.PowerUpSymbol}} {{else}}  {{end}}{{- if eq .PowerUp "symlink" -}}<SymlinkPath>{{printf "%-46s" .AdditionalInfo}}</SymlinkPath>{{- else -}}<PowerUpAdditionalInfo>{{printf "%-46s" .AdditionalInfo}}</PowerUpAdditionalInfo>{{- end -}} {{- if eq .Status "success" -}}<StatusSuccess>{{if or (eq .PowerUp "homebrew") (eq .PowerUp "install_script")}}{{printf "%-8s" "installed"}}{{else}}{{printf "%-8s" "deployed"}}{{end}}</StatusSuccess>
 {{- else if eq .Status "error" -}}<StatusError>{{printf "%-8s" "error"}}</StatusError>
 {{- else if eq .Status "warning" -}}<StatusWarning>{{printf "%-8s" "warning"}}</StatusWarning>
 {{- else if eq .Status "queue" -}}<StatusQueued>{{printf "%-8s" "queued"}}</StatusQueued>
