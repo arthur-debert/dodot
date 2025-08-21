@@ -227,7 +227,14 @@ func TestStatusPacks_Integration(t *testing.T) {
 	testutil.CreateFileT(t, fs, packDir+"/aliases.sh", "alias ll='ls -l'")
 
 	// Simulate some deployed files
-	// Deployed symlink
+	// NOTE: With the fix for issue #590, the status check now verifies the complete
+	// symlink chain. Since this test only creates the intermediate symlink without
+	// the target symlink (which would be at the real home directory), the status
+	// will correctly report as "pending" instead of "success".
+	// This is the correct behavior - if the user-visible symlink doesn't exist,
+	// the file is not truly deployed.
+
+	// Create intermediate symlink (but not the target)
 	deployedSymlink := dataDir + "/deployed/symlink/.vimrc"
 	testutil.CreateDirT(t, fs, dataDir+"/deployed/symlink")
 	require.NoError(t, fs.Symlink(packDir+"/.vimrc", deployedSymlink))
@@ -266,8 +273,9 @@ func TestStatusPacks_Integration(t *testing.T) {
 		fileStatuses[file.Path] = file.Status
 	}
 
-	// Symlink should be deployed (success)
-	assert.Equal(t, "success", fileStatuses[".vimrc"])
+	// Symlink should be pending since we only created the intermediate symlink
+	// The fix for #590 now properly checks the full deployment chain
+	assert.Equal(t, "queue", fileStatuses[".vimrc"])
 
 	// Install script should be executed (success)
 	assert.Equal(t, "success", fileStatuses["install.sh"])
