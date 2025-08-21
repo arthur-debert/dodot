@@ -34,7 +34,7 @@ What's Next?
 ------------
 
 • Read 10_understanding-dodot.txxt to learn how dodot works
-• See docs/user/powerups.txxt for all available features
+• See docs/user/handlers.txxt for all available features
 • Check examples/ for common configuration patterns
 
 dodot deploy --all deploys all packs at once.

@@ -1,73 +1,73 @@
-# PowerUps Guide
+# Handlers Guide
 
-PowerUps are the action generators in dodot that process matched files and directories
-to create deployment actions. Each powerup serves a specific purpose in managing your
+Handlers are the action generators in dodot that process matched files and directories
+to create deployment actions. Each handler serves a specific purpose in managing your
 dotfiles.
 
-## Available PowerUps
+## Available Handlers
 
-dodot includes several built-in powerups, each with comprehensive documentation in
-their respective packages. For detailed end-to-end documentation of each powerup,
+dodot includes several built-in handlers, each with comprehensive documentation in
+their respective packages. For detailed end-to-end documentation of each handler,
 including examples, configuration, and best practices, see:
 
-### Core PowerUps
+### Core Handlers
 
-1. **SymlinkPowerUp** (`symlink`)
+1. **SymlinkHandler** (`symlink`)
    - Creates symlinks from dotfiles to target locations
-   - See: `pkg/powerups/symlink/doc.go`
+   - See: `pkg/handlers/symlink/doc.go`
    - Use for: Configuration files, dotfiles
 
-2. **InstallScriptPowerUp** (`install_script`)
+2. **InstallScriptHandler** (`install_script`)
    - Executes shell scripts for one-time setup
-   - See: `pkg/powerups/install/doc.go`
+   - See: `pkg/handlers/install/doc.go`
    - Use for: Installing tools, initial setup
 
-3. **BrewPowerUp** (`brew`)
+3. **BrewHandler** (`brew`)
    - Processes Brewfiles to install Homebrew packages
-   - See: `pkg/powerups/homebrew/doc.go`
+   - See: `pkg/handlers/homebrew/doc.go`
    - Use for: System packages, GUI apps (macOS)
 
-4. **ShellProfilePowerUp** (`shell_profile`)
+4. **ShellProfileHandler** (`shell_profile`)
    - Sources shell scripts into your environment
-   - See: `pkg/powerups/shell_profile/doc.go`
+   - See: `pkg/handlers/shell_profile/doc.go`
    - Use for: Aliases, functions, shell customization
 
-5. **PathPowerUp** (`path`)
+5. **PathHandler** (`path`)
    - Adds directories to system PATH
-   - See: `pkg/powerups/path/doc.go`
+   - See: `pkg/handlers/path/doc.go`
    - Use for: Personal scripts, tools directories
 
-6. **TemplatePowerUp** (`template`)
+6. **TemplateHandler** (`template`)
    - Processes templates with variable substitution
-   - See: `pkg/powerups/template/doc.go`
+   - See: `pkg/handlers/template/doc.go`
    - Use for: Machine-specific configurations
 
-### Additional PowerUps
+### Additional Handlers
 
-7. **ShellAddPathPowerUp** (`shell_add_path`)
+7. **ShellAddPathHandler** (`shell_add_path`)
    - Alternative PATH management (use `path` instead)
-   - See: `pkg/powerups/shell_add_path/doc.go`
+   - See: `pkg/handlers/shell_add_path/doc.go`
 
-## PowerUp Execution Phases
+## Handler Execution Phases
 
-PowerUps run in different phases based on their RunMode:
+Handlers run in different phases based on their RunMode:
 
 ### Install Phase (`dodot install`)
-- **RunModeOnce** powerups execute here
-- InstallScriptPowerUp: Runs setup scripts
-- BrewPowerUp: Installs packages
+- **RunModeOnce** handlers execute here
+- InstallScriptHandler: Runs setup scripts
+- BrewHandler: Installs packages
 - These run before deployment actions
 
 ### Deploy Phase (`dodot deploy`)
-- **RunModeMany** powerups execute here
-- SymlinkPowerUp: Creates configuration symlinks
-- PathPowerUp: Updates PATH
-- ShellProfilePowerUp: Sets up shell environment
-- TemplatePowerUp: Generates files from templates
+- **RunModeMany** handlers execute here
+- SymlinkHandler: Creates configuration symlinks
+- PathHandler: Updates PATH
+- ShellProfileHandler: Sets up shell environment
+- TemplateHandler: Generates files from templates
 
 ## Quick Reference
 
-| PowerUp | Run Mode | Purpose | Creates |
+| Handler | Run Mode | Purpose | Creates |
 |---------|----------|---------|---------|
 | symlink | Deploy | Link configs | Symlinks in ~ |
 | install_script | Install | Run setup scripts | Whatever scripts create |
@@ -76,11 +76,11 @@ PowerUps run in different phases based on their RunMode:
 | path | Deploy | PATH management | PATH exports |
 | template | Deploy | File generation | Processed files |
 
-## PowerUp Documentation Structure
+## Handler Documentation Structure
 
-Each powerup's doc.go file contains:
+Each handler's doc.go file contains:
 
-1. **Overview**: What the powerup does
+1. **Overview**: What the handler does
 2. **When It Runs**: Deploy vs Install mode
 3. **Standard Configuration**: Example matcher configs
 4. **File Selection Process**: How files are matched
@@ -91,24 +91,24 @@ Each powerup's doc.go file contains:
 9. **Example End-to-End Flow**: Complete usage example
 10. **Error Handling**: Common errors and solutions
 11. **Best Practices**: Usage recommendations
-12. **Comparison**: When to use vs other powerups
+12. **Comparison**: When to use vs other handlers
 
-## Creating Custom PowerUps
+## Creating Custom Handlers
 
-While dodot includes comprehensive built-in powerups, you can create custom ones:
+While dodot includes comprehensive built-in handlers, you can create custom ones:
 
-1. Implement the `PowerUp` interface
-2. Register with the powerup registry
+1. Implement the `Handler` interface
+2. Register with the handler registry
 3. Define the action type and execution
 4. Add to your configuration
 
-See `pkg/types/powerup.go` for the interface definition.
+See `pkg/types/handler.go` for the interface definition.
 
 ## Best Practices
 
-1. **Read the doc.go files**: Each powerup has extensive documentation
-2. **Use the right tool**: Each powerup has a specific purpose
-3. **Check run modes**: Understand when powerups execute
+1. **Read the doc.go files**: Each handler has extensive documentation
+2. **Use the right tool**: Each handler has a specific purpose
+3. **Check run modes**: Understand when handlers execute
 4. **Test with --dry-run**: Preview changes before applying
 5. **Organize by pack**: Group related configurations
 6. **Use standard patterns**: Follow naming conventions
@@ -120,5 +120,5 @@ See `pkg/types/powerup.go` for the interface definition.
 - **Wrong phase?** Verify RunModeOnce vs RunModeMany
 - **Conflicts?** Use --force flag when appropriate
 
-For comprehensive details on any powerup, read its doc.go file in the
-pkg/powerups/<name>/ directory.
+For comprehensive details on any handler, read its doc.go file in the
+pkg/handlers/<name>/ directory.

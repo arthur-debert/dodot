@@ -47,16 +47,16 @@ Test Suites
 
 Tests are organized in 5 progressive suites that build in complexity:
 
-Suite 1: Single Power-ups
-• Tests each power-up in isolation (symlink, shell_profile, path, etc.)
+Suite 1: Single Handlers
+• Tests each handler in isolation (symlink, shell_profile, path, etc.)
 • Verifies basic functionality works correctly
 • Foundation for more complex tests
 
-Suite 2: Multiple Power-ups, Single Pack
-• Tests interactions between power-ups in the same pack
+Suite 2: Multiple Handlers, Single Pack
+• Tests interactions between handlers in the same pack
 • Verifies combined deployments work correctly
 
-Suite 3: Multiple Power-ups, Multiple Packs  
+Suite 3: Multiple Handlers, Multiple Packs  
 • Tests cross-pack interactions
 • Verifies pack ordering and dependencies
 
@@ -73,7 +73,7 @@ See live-testing/scenarios/test-plan.txt for detailed test specifications.
 Assertion Libraries
 -------------------
 
-The test system provides power-up specific assertion libraries that abstract
+The test system provides handler specific assertion libraries that abstract
 implementation details and make tests readable:
 
 assertions.sh:
@@ -98,7 +98,7 @@ assertions_homebrew.sh:
 • assert_brew_package_installed() - Checks package installation
 
 Using these assertions is critical for maintainable tests. They handle the
-complexity of verifying power-up behavior and provide clear error messages
+complexity of verifying handler behavior and provide clear error messages
 when tests fail.
 
 Running Tests
@@ -222,7 +222,7 @@ The live testing system requires occasional maintenance:
 
 • Update container base image for security patches
 • Upgrade Bats when new versions are available
-• Add new assertion helpers as power-ups evolve
+• Add new assertion helpers as handlers evolve
 • Prune old scenarios that no longer apply
 • Monitor test execution time and optimize slow tests
 

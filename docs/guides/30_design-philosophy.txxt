@@ -24,7 +24,7 @@ we ensure your dotfiles repository IS your deployment. Combined with live
 changes, this means files under source control are the actual deployed
 files - not copies.
 
-This is achieved primarily through symbolic links. For many power-ups
+This is achieved primarily through symbolic links. For many handlers
 (`symlink`, `shell_profile`), the file in your repository acts as the link
 source. There's nothing to "update" since changes to these config files
 are immediately live on the system.
@@ -63,7 +63,7 @@ Benefits:
 • Works with any existing git repository structure.
 
 Limitations:
-• Some power-ups (`install`, `homebrew`) require a `dodot deploy` run to apply changes.
+• Some handlers (`install`, `homebrew`) require a `dodot deploy` run to apply changes.
 • No built-in versioning beyond git.
 • Structural changes (adding new files) require redeployment.
 • `install` scripts must be idempotent.
@@ -72,7 +72,7 @@ Examples of Trade-offs:
 
 Immediate vs. Deployed Changes:
 • **Live:** Edit a file handled by the `symlink` or `shell_profile`
-  power-ups. The changes are live instantly (or on the next shell start).
+  handlers. The changes are live instantly (or on the next shell start).
 • **Requires Deployment:** Edit an `install.sh` script or a `Brewfile`.
   You must run `dodot deploy` for the changes to take effect.
 

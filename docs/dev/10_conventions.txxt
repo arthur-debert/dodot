@@ -74,7 +74,7 @@ Log Levels:
 Logger Usage:
 ```go
 // Get logger with component context
-logger := logging.GetLogger("powerups.symlink")
+logger := logging.GetLogger("handlers.symlink")
 
 // Structured logging with context
 logger.Debug().
@@ -141,7 +141,7 @@ File System Safety:
 • Only E2E tests touch real filesystem
 
 Pure Functions:
-• Power-ups must be pure functions
+• Handlers must be pure functions
 • Same input → same output
 • No side effects during processing
 • Return data structures, not perform actions
@@ -193,7 +193,7 @@ type TriggerProcessor interface {
 
 Interface Composition:
 ```go
-type PowerUp interface {
+type Handler interface {
     Name() string
     Process(matches []TriggerMatch) ([]Action, error)
 }
@@ -202,8 +202,8 @@ type Validator interface {
     Validate() error
 }
 
-type ValidatingPowerUp interface {
-    PowerUp
+type ValidatingHandler interface {
+    Handler
     Validator
 }
 ```
@@ -271,7 +271,7 @@ Package Comments:
 // for the dodot dotfiles manager.
 //
 // Triggers implement pattern-matching strategies to identify files that
-// should be processed by specific power-ups. Each trigger focuses on a
+// should be processed by specific handlers. Each trigger focuses on a
 // single matching criterion.
 package triggers
 ```
@@ -279,11 +279,11 @@ package triggers
 Type Documentation:
 ```go
 // TriggerMatch represents a file that has been matched by a trigger.
-// It contains all context needed for power-up processing.
+// It contains all context needed for handler processing.
 type TriggerMatch struct {
     Path     string                 // Relative path within pack
     Pack     string                 // Pack name
-    PowerUp  string                 // Target power-up name
+    Handler  string                 // Target handler name
     Priority int                    // Processing priority
     Metadata map[string]interface{} // Additional context
 }

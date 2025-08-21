@@ -19,9 +19,9 @@ without a manual merge step.
 2. Core Implementation
 ----------------------
 
-The implementation will be a new power-up within the transformation pipeline.
+The implementation will be a new handler within the transformation pipeline.
 
-    2.1. The `template` Power-Up
+    2.1. The `template` Handler
 
         - Transformation Type: Generative (One-Way).
         - Trigger: Files with `.tmpl` or `.template` extensions.

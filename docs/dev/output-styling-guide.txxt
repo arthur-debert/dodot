@@ -16,7 +16,7 @@ Making Changes
 1. **Modify styles** - Edit `pkg/output/styles/styles.yaml`:
    ```yaml
    styles:
-     PowerUp:
+     Handler:
        foreground: secondary
        bold: true
        width: 12        # Fixed width for alignment
@@ -62,7 +62,7 @@ Modify margin/padding in styles:
 **Fix column alignment:**
 Set consistent widths for aligned elements:
 ```yaml
-  PowerUp:
+  Handler:
     width: 12
   FilePath:  
     width: 18
@@ -101,7 +101,7 @@ Template Tags
 -------------
 
 Templates use XML-like tags that map to styles:
-- `<PowerUp>` → Uses PowerUp style from styles.yaml
+- `<Handler>` → Uses Handler style from styles.yaml
 - `<Success>` → Uses Success style  
 - Custom tags → Define matching style in styles.yaml
 
@@ -112,12 +112,12 @@ To change how files are displayed:
 
 1. Edit `pkg/output/templates/file.tmpl`:
    ```
-   <Indent><PowerUp>{{.PowerUp}}</PowerUp> : {{.Path}}</Indent>
+   <Indent><Handler>{{.Handler}}</Handler> : {{.Path}}</Indent>
    ```
 
 2. Edit `pkg/output/styles/styles.yaml`:
    ```yaml
-   PowerUp:
+   Handler:
      foreground: blue
      bold: true
      width: 15
