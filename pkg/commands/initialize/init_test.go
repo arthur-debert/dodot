@@ -7,7 +7,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 
-	// Import matchers to register all default powerups and triggers
+	// Import matchers to register all default handlers and triggers
 	_ "github.com/arthur-debert/dodot/pkg/matchers"
 )
 

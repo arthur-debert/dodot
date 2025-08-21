@@ -144,12 +144,12 @@ func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *type
 	// Merge in pack results from deploy phase
 	for packName, deployPackResult := range deployCtx.PackResults {
 		if existingPackResult, exists := merged.PackResults[packName]; exists {
-			// Merge PowerUp results from deploy into existing pack result
-			existingPackResult.PowerUpResults = append(existingPackResult.PowerUpResults, deployPackResult.PowerUpResults...)
-			existingPackResult.TotalPowerUps += deployPackResult.TotalPowerUps
-			existingPackResult.CompletedPowerUps += deployPackResult.CompletedPowerUps
-			existingPackResult.FailedPowerUps += deployPackResult.FailedPowerUps
-			existingPackResult.SkippedPowerUps += deployPackResult.SkippedPowerUps
+			// Merge Handler results from deploy into existing pack result
+			existingPackResult.HandlerResults = append(existingPackResult.HandlerResults, deployPackResult.HandlerResults...)
+			existingPackResult.TotalHandlers += deployPackResult.TotalHandlers
+			existingPackResult.CompletedHandlers += deployPackResult.CompletedHandlers
+			existingPackResult.FailedHandlers += deployPackResult.FailedHandlers
+			existingPackResult.SkippedHandlers += deployPackResult.SkippedHandlers
 
 			// Update pack status - if either phase failed, mark as failed
 			switch deployPackResult.Status {
@@ -178,10 +178,10 @@ func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *type
 	merged.SkippedActions = 0
 
 	for _, packResult := range merged.PackResults {
-		merged.TotalActions += packResult.TotalPowerUps
-		merged.CompletedActions += packResult.CompletedPowerUps
-		merged.FailedActions += packResult.FailedPowerUps
-		merged.SkippedActions += packResult.SkippedPowerUps
+		merged.TotalActions += packResult.TotalHandlers
+		merged.CompletedActions += packResult.CompletedHandlers
+		merged.FailedActions += packResult.FailedHandlers
+		merged.SkippedActions += packResult.SkippedHandlers
 	}
 
 	return merged

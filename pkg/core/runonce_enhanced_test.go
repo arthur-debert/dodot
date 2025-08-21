@@ -14,33 +14,33 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "brewfile powerup name",
+			name: "brewfile handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "brewfile",
+				HandlerName: "brewfile",
 				Path:        "someFile",
 			},
 			expected: true,
 		},
 		{
-			name: "homebrew powerup name",
+			name: "homebrew handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "homebrew",
+				HandlerName: "homebrew",
 				Path:        "someFile",
 			},
 			expected: true,
 		},
 		{
-			name: "install_script powerup name",
+			name: "install_script handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "install_script",
+				HandlerName: "install_script",
 				Path:        "someFile",
 			},
 			expected: true,
 		},
 		{
-			name: "install powerup name",
+			name: "install handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "install",
+				HandlerName: "install",
 				Path:        "someFile",
 			},
 			expected: true,
@@ -48,7 +48,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "Brewfile path",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "Brewfile",
 			},
 			expected: true,
@@ -56,23 +56,23 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "install.sh path",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "install.sh",
 			},
 			expected: true,
 		},
 		{
-			name: "symlink powerup not run-once",
+			name: "symlink handler not run-once",
 			trigger: types.TriggerMatch{
-				PowerUpName: "symlink",
+				HandlerName: "symlink",
 				Path:        ".vimrc",
 			},
 			expected: false,
 		},
 		{
-			name: "shell_profile powerup not run-once",
+			name: "shell_profile handler not run-once",
 			trigger: types.TriggerMatch{
-				PowerUpName: "shell_profile",
+				HandlerName: "shell_profile",
 				Path:        ".bashrc",
 			},
 			expected: false,
@@ -80,7 +80,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "random file not run-once",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "random.txt",
 			},
 			expected: false,
@@ -88,7 +88,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "empty trigger",
 			trigger: types.TriggerMatch{
-				PowerUpName: "",
+				HandlerName: "",
 				Path:        "",
 			},
 			expected: false,
@@ -96,7 +96,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "case sensitivity for Brewfile",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "brewfile", // lowercase
 			},
 			expected: false,
@@ -104,7 +104,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "case sensitivity for install.sh",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "Install.sh", // uppercase I
 			},
 			expected: false,
@@ -119,40 +119,40 @@ func TestIsRunOnceTrigger(t *testing.T) {
 	}
 }
 
-func TestGetPowerUpTypeFromTrigger(t *testing.T) {
+func TestGetHandlerTypeFromTrigger(t *testing.T) {
 	tests := []struct {
 		name     string
 		trigger  types.TriggerMatch
 		expected string
 	}{
 		{
-			name: "brewfile powerup name",
+			name: "brewfile handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "brewfile",
+				HandlerName: "brewfile",
 				Path:        "someFile",
 			},
 			expected: "homebrew",
 		},
 		{
-			name: "homebrew powerup name",
+			name: "homebrew handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "homebrew",
+				HandlerName: "homebrew",
 				Path:        "someFile",
 			},
 			expected: "homebrew",
 		},
 		{
-			name: "install_script powerup name",
+			name: "install_script handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "install_script",
+				HandlerName: "install_script",
 				Path:        "someFile",
 			},
 			expected: "install",
 		},
 		{
-			name: "install powerup name",
+			name: "install handler name",
 			trigger: types.TriggerMatch{
-				PowerUpName: "install",
+				HandlerName: "install",
 				Path:        "someFile",
 			},
 			expected: "install",
@@ -160,7 +160,7 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 		{
 			name: "Brewfile path fallback",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "Brewfile",
 			},
 			expected: "homebrew",
@@ -168,23 +168,23 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 		{
 			name: "install.sh path fallback",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "install.sh",
 			},
 			expected: "install",
 		},
 		{
-			name: "symlink powerup returns empty",
+			name: "symlink handler returns empty",
 			trigger: types.TriggerMatch{
-				PowerUpName: "symlink",
+				HandlerName: "symlink",
 				Path:        ".vimrc",
 			},
 			expected: "",
 		},
 		{
-			name: "unknown powerup returns empty",
+			name: "unknown handler returns empty",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "random.txt",
 			},
 			expected: "",
@@ -192,7 +192,7 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 		{
 			name: "empty trigger returns empty",
 			trigger: types.TriggerMatch{
-				PowerUpName: "",
+				HandlerName: "",
 				Path:        "",
 			},
 			expected: "",
@@ -200,7 +200,7 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 		{
 			name: "case sensitive Brewfile",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "brewfile", // lowercase
 			},
 			expected: "",
@@ -208,7 +208,7 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 		{
 			name: "case sensitive install.sh",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "Install.sh", // uppercase I
 			},
 			expected: "",
@@ -216,7 +216,7 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 		{
 			name: "Brewfile with directory path",
 			trigger: types.TriggerMatch{
-				PowerUpName: "unknown",
+				HandlerName: "unknown",
 				Path:        "subdir/Brewfile",
 			},
 			expected: "",
@@ -225,7 +225,7 @@ func TestGetPowerUpTypeFromTrigger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := getPowerUpTypeFromTrigger(tt.trigger)
+			result := getHandlerTypeFromTrigger(tt.trigger)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -354,9 +354,9 @@ func TestFilterRunOnceTriggersEarly_Logic(t *testing.T) {
 		{
 			name: "force flag returns all triggers",
 			triggers: []types.TriggerMatch{
-				{PowerUpName: "brewfile", Path: "Brewfile"},
-				{PowerUpName: "symlink", Path: ".vimrc"},
-				{PowerUpName: "install", Path: "install.sh"},
+				{HandlerName: "brewfile", Path: "Brewfile"},
+				{HandlerName: "symlink", Path: ".vimrc"},
+				{HandlerName: "install", Path: "install.sh"},
 			},
 			force: true,
 			expected: func(triggers []types.TriggerMatch) []types.TriggerMatch {
@@ -366,9 +366,9 @@ func TestFilterRunOnceTriggersEarly_Logic(t *testing.T) {
 		{
 			name: "non-runonce triggers are included",
 			triggers: []types.TriggerMatch{
-				{PowerUpName: "symlink", Path: ".vimrc"},
-				{PowerUpName: "shell_profile", Path: ".bashrc"},
-				{PowerUpName: "path", Path: "bin"},
+				{HandlerName: "symlink", Path: ".vimrc"},
+				{HandlerName: "shell_profile", Path: ".bashrc"},
+				{HandlerName: "path", Path: "bin"},
 			},
 			force: false,
 			expected: func(triggers []types.TriggerMatch) []types.TriggerMatch {
@@ -384,9 +384,9 @@ func TestFilterRunOnceTriggersEarly_Logic(t *testing.T) {
 			},
 		},
 		{
-			name: "unknown powerup type included",
+			name: "unknown handler type included",
 			triggers: []types.TriggerMatch{
-				{PowerUpName: "custom", Path: "custom.file"},
+				{HandlerName: "custom", Path: "custom.file"},
 			},
 			force: false,
 			expected: func(triggers []types.TriggerMatch) []types.TriggerMatch {

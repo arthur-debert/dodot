@@ -76,7 +76,7 @@ func (tp *TestPack) AddSymlinkRule(t *testing.T, pattern string) {
 	config := `[[rules]]
 trigger = "filename"
 pattern = "` + pattern + `"
-powerup = "symlink"
+handler = "symlink"
 `
 	tp.AddDodotConfig(t, config)
 }
@@ -133,17 +133,17 @@ var StandardPackConfig = map[string]string{
 	"symlink": `[[rules]]
 trigger = "filename"
 pattern = ".*"
-powerup = "symlink"
+handler = "symlink"
 `,
 	"homebrew": `[[rules]]
 trigger = "filename"  
 pattern = "Brewfile"
-powerup = "homebrew"
+handler = "homebrew"
 `,
 	"install": `[[rules]]
 trigger = "filename"
 pattern = "install.sh"
-powerup = "install_script"
+handler = "install_script"
 `,
 }
 

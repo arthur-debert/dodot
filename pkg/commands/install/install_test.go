@@ -60,15 +60,15 @@ echo "Tools installed" > /tmp/install-tools-output
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
 	// Should have both install_script and symlink power-up results
-	testutil.AssertTrue(t, len(packResult.PowerUpResults) >= 2, "Should have multiple power-up results")
+	testutil.AssertTrue(t, len(packResult.HandlerResults) >= 2, "Should have multiple power-up results")
 
 	var hasInstallScript, hasSymlink bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			hasInstallScript = true
 			testutil.AssertEqual(t, types.StatusReady, pur.Status)
 		}
-		if pur.PowerUpName == "symlink" {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 			testutil.AssertEqual(t, types.StatusReady, pur.Status)
 		}
@@ -225,11 +225,11 @@ func TestInstallPacks_OnlySymlinks(t *testing.T) {
 	testutil.AssertTrue(t, ok, "Should have vim pack result")
 
 	var hasInstallScript, hasSymlink bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			hasInstallScript = true
 		}
-		if pur.PowerUpName == "symlink" {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 		}
 	}
@@ -283,11 +283,11 @@ echo "Setup complete" > /tmp/setup-output
 	testutil.AssertTrue(t, ok, "Should have setup pack result")
 
 	var hasInstallScript, hasSymlink bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			hasInstallScript = true
 		}
-		if pur.PowerUpName == "symlink" {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 		}
 	}

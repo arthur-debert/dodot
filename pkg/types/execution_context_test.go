@@ -56,18 +56,18 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 	// Create pack results with different statuses
 	pack1Result := &PackExecutionResult{
 		Pack:              &Pack{Name: "vim"},
-		TotalPowerUps:     5,
-		CompletedPowerUps: 3,
-		FailedPowerUps:    1,
-		SkippedPowerUps:   1,
+		TotalHandlers:     5,
+		CompletedHandlers: 3,
+		FailedHandlers:    1,
+		SkippedHandlers:   1,
 	}
 
 	pack2Result := &PackExecutionResult{
 		Pack:              &Pack{Name: "zsh"},
-		TotalPowerUps:     3,
-		CompletedPowerUps: 2,
-		FailedPowerUps:    0,
-		SkippedPowerUps:   1,
+		TotalHandlers:     3,
+		CompletedHandlers: 2,
+		FailedHandlers:    0,
+		SkippedHandlers:   1,
 	}
 
 	// Add first pack
@@ -87,8 +87,8 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 	assert.Equal(t, 2, ec.SkippedActions)
 
 	// Update first pack (should recalculate totals)
-	pack1Result.CompletedPowerUps = 4
-	pack1Result.FailedPowerUps = 0
+	pack1Result.CompletedHandlers = 4
+	pack1Result.FailedHandlers = 0
 	ec.AddPackResult("vim", pack1Result)
 	assert.Equal(t, 2, len(ec.PackResults))
 	assert.Equal(t, 8, ec.TotalActions)
@@ -102,7 +102,7 @@ func TestExecutionContext_GetPackResult(t *testing.T) {
 
 	packResult := &PackExecutionResult{
 		Pack:          &Pack{Name: "vim"},
-		TotalPowerUps: 5,
+		TotalHandlers: 5,
 	}
 
 	// Test getting non-existent pack
@@ -146,23 +146,23 @@ func TestNewPackExecutionResult(t *testing.T) {
 	per := NewPackExecutionResult(pack)
 
 	assert.Equal(t, pack, per.Pack)
-	assert.NotNil(t, per.PowerUpResults)
-	assert.Empty(t, per.PowerUpResults)
+	assert.NotNil(t, per.HandlerResults)
+	assert.Empty(t, per.HandlerResults)
 	assert.Equal(t, ExecutionStatusPending, per.Status)
 	assert.False(t, per.StartTime.IsZero())
 	assert.True(t, per.EndTime.IsZero())
-	assert.Equal(t, 0, per.TotalPowerUps)
-	assert.Equal(t, 0, per.CompletedPowerUps)
-	assert.Equal(t, 0, per.FailedPowerUps)
-	assert.Equal(t, 0, per.SkippedPowerUps)
+	assert.Equal(t, 0, per.TotalHandlers)
+	assert.Equal(t, 0, per.CompletedHandlers)
+	assert.Equal(t, 0, per.FailedHandlers)
+	assert.Equal(t, 0, per.SkippedHandlers)
 }
 
-func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
+func TestPackExecutionResult_AddHandlerResult(t *testing.T) {
 	pack := &Pack{Name: "vim"}
 
 	tests := []struct {
 		name              string
-		results           []*PowerUpResult
+		results           []*HandlerResult
 		expectedTotal     int
 		expectedCompleted int
 		expectedFailed    int
@@ -171,8 +171,8 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 	}{
 		{
 			name: "single success",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusReady},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusReady},
 			},
 			expectedTotal:     1,
 			expectedCompleted: 1,
@@ -182,8 +182,8 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "single error",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusError},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusError},
 			},
 			expectedTotal:     1,
 			expectedCompleted: 0,
@@ -193,8 +193,8 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "single conflict",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusConflict},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusConflict},
 			},
 			expectedTotal:     1,
 			expectedCompleted: 0,
@@ -204,8 +204,8 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "single skipped",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusSkipped},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusSkipped},
 			},
 			expectedTotal:     1,
 			expectedCompleted: 0,
@@ -215,9 +215,9 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "mixed success and error",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusReady},
-				{PowerUpName: "homebrew", Status: StatusError},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusReady},
+				{HandlerName: "homebrew", Status: StatusError},
 			},
 			expectedTotal:     2,
 			expectedCompleted: 1,
@@ -227,10 +227,10 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "all success",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusReady},
-				{PowerUpName: "homebrew", Status: StatusReady},
-				{PowerUpName: "shell", Status: StatusReady},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusReady},
+				{HandlerName: "homebrew", Status: StatusReady},
+				{HandlerName: "shell", Status: StatusReady},
 			},
 			expectedTotal:     3,
 			expectedCompleted: 3,
@@ -240,9 +240,9 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "all error",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusError},
-				{PowerUpName: "homebrew", Status: StatusConflict},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusError},
+				{HandlerName: "homebrew", Status: StatusConflict},
 			},
 			expectedTotal:     2,
 			expectedCompleted: 0,
@@ -252,9 +252,9 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "all skipped",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusSkipped},
-				{PowerUpName: "homebrew", Status: StatusSkipped},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusSkipped},
+				{HandlerName: "homebrew", Status: StatusSkipped},
 			},
 			expectedTotal:     2,
 			expectedCompleted: 0,
@@ -264,12 +264,12 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "complex mix",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusReady},
-				{PowerUpName: "homebrew", Status: StatusError},
-				{PowerUpName: "shell", Status: StatusSkipped},
-				{PowerUpName: "path", Status: StatusReady},
-				{PowerUpName: "install", Status: StatusConflict},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusReady},
+				{HandlerName: "homebrew", Status: StatusError},
+				{HandlerName: "shell", Status: StatusSkipped},
+				{HandlerName: "path", Status: StatusReady},
+				{HandlerName: "install", Status: StatusConflict},
 			},
 			expectedTotal:     5,
 			expectedCompleted: 2,
@@ -279,8 +279,8 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 		},
 		{
 			name: "unknown status treated as none",
-			results: []*PowerUpResult{
-				{PowerUpName: "symlink", Status: StatusUnknown},
+			results: []*HandlerResult{
+				{HandlerName: "symlink", Status: StatusUnknown},
 			},
 			expectedTotal:     1,
 			expectedCompleted: 0,
@@ -295,21 +295,21 @@ func TestPackExecutionResult_AddPowerUpResult(t *testing.T) {
 			per := NewPackExecutionResult(pack)
 
 			for _, result := range tt.results {
-				per.AddPowerUpResult(result)
+				per.AddHandlerResult(result)
 			}
 
-			assert.Equal(t, tt.expectedTotal, per.TotalPowerUps)
-			assert.Equal(t, tt.expectedCompleted, per.CompletedPowerUps)
-			assert.Equal(t, tt.expectedFailed, per.FailedPowerUps)
-			assert.Equal(t, tt.expectedSkipped, per.SkippedPowerUps)
+			assert.Equal(t, tt.expectedTotal, per.TotalHandlers)
+			assert.Equal(t, tt.expectedCompleted, per.CompletedHandlers)
+			assert.Equal(t, tt.expectedFailed, per.FailedHandlers)
+			assert.Equal(t, tt.expectedSkipped, per.SkippedHandlers)
 			assert.Equal(t, tt.expectedStatus, per.Status)
-			assert.Equal(t, len(tt.results), len(per.PowerUpResults))
+			assert.Equal(t, len(tt.results), len(per.HandlerResults))
 		})
 	}
 }
 
 func TestPackExecutionResult_updateStatus(t *testing.T) {
-	// This is tested through AddPowerUpResult, but let's test edge cases
+	// This is tested through AddHandlerResult, but let's test edge cases
 	pack := &Pack{Name: "vim"}
 	per := NewPackExecutionResult(pack)
 
@@ -318,8 +318,8 @@ func TestPackExecutionResult_updateStatus(t *testing.T) {
 	assert.Equal(t, ExecutionStatusPending, per.Status)
 
 	// Manually set counts to test edge cases
-	per.TotalPowerUps = 3
-	per.CompletedPowerUps = 3
+	per.TotalHandlers = 3
+	per.CompletedHandlers = 3
 	per.updateStatus()
 	assert.Equal(t, ExecutionStatusSuccess, per.Status)
 }
@@ -329,8 +329,8 @@ func TestPackExecutionResult_Complete(t *testing.T) {
 	per := NewPackExecutionResult(pack)
 
 	// Add some results
-	per.AddPowerUpResult(&PowerUpResult{Status: StatusReady})
-	per.AddPowerUpResult(&PowerUpResult{Status: StatusError})
+	per.AddHandlerResult(&HandlerResult{Status: StatusReady})
+	per.AddHandlerResult(&HandlerResult{Status: StatusError})
 
 	// Complete should set EndTime and update status
 	assert.True(t, per.EndTime.IsZero())
@@ -385,7 +385,7 @@ func TestMapOperationStatusToDisplayStatus(t *testing.T) {
 	}
 }
 
-func TestGeneratePowerUpMessage(t *testing.T) {
+func TestGenerateHandlerMessage(t *testing.T) {
 	// Create a time for testing
 	testTime := time.Date(2023, 12, 25, 10, 0, 0, 0, time.UTC)
 
@@ -543,30 +543,30 @@ func TestGeneratePowerUpMessage(t *testing.T) {
 			status:       "queue",
 			wantContains: "to be executed during installation",
 		},
-		// Unknown powerup tests
+		// Unknown handler tests
 		{
-			name:         "unknown powerup success",
+			name:         "unknown handler success",
 			powerUpName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "success",
 			wantContains: "completed successfully",
 		},
 		{
-			name:         "unknown powerup error",
+			name:         "unknown handler error",
 			powerUpName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "error",
 			wantContains: "execution failed",
 		},
 		{
-			name:         "unknown powerup queue",
+			name:         "unknown handler queue",
 			powerUpName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "queue",
 			wantContains: "pending execution",
 		},
 		{
-			name:         "unknown powerup unknown status",
+			name:         "unknown handler unknown status",
 			powerUpName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "unknown",
@@ -576,7 +576,7 @@ func TestGeneratePowerUpMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := generatePowerUpMessage(tt.powerUpName, tt.filePath, tt.status, tt.lastExecuted)
+			result := generateHandlerMessage(tt.powerUpName, tt.filePath, tt.status, tt.lastExecuted)
 			assert.Contains(t, result, tt.wantContains)
 		})
 	}
@@ -604,15 +604,15 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 	// Create pack results
 	vimResult := NewPackExecutionResult(vimPack)
 	testTime := time.Now()
-	vimResult.AddPowerUpResult(&PowerUpResult{
-		PowerUpName: "symlink",
+	vimResult.AddHandlerResult(&HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{".vimrc", ".vim/colors"},
 		Status:      StatusReady,
 		EndTime:     testTime,
 		Pack:        "vim",
 	})
-	vimResult.AddPowerUpResult(&PowerUpResult{
-		PowerUpName: "homebrew",
+	vimResult.AddHandlerResult(&HandlerResult{
+		HandlerName: "homebrew",
 		Files:       []string{"Brewfile"},
 		Status:      StatusError,
 		Error:       errors.New("brew failed"),
@@ -620,8 +620,8 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 	})
 
 	zshResult := NewPackExecutionResult(zshPack)
-	zshResult.AddPowerUpResult(&PowerUpResult{
-		PowerUpName: "shell_profile",
+	zshResult.AddHandlerResult(&HandlerResult{
+		HandlerName: "shell_profile",
 		Files:       []string{".zshrc"},
 		Status:      StatusSkipped,
 		Pack:        "zsh",
@@ -661,7 +661,7 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 	}
 	require.NotNil(t, vimrcFile)
 	assert.True(t, vimrcFile.IsOverride)
-	assert.Equal(t, "symlink", vimrcFile.PowerUp)
+	assert.Equal(t, "symlink", vimrcFile.Handler)
 	assert.Equal(t, "success", vimrcFile.Status)
 	assert.NotNil(t, vimrcFile.LastExecuted)
 
@@ -738,20 +738,20 @@ func TestPackExecutionResult_EdgeCases(t *testing.T) {
 		per := NewPackExecutionResult(pack)
 
 		// Add result with empty/unknown status
-		per.AddPowerUpResult(&PowerUpResult{
-			PowerUpName: "test",
+		per.AddHandlerResult(&HandlerResult{
+			HandlerName: "test",
 			Status:      OperationStatus(""),
 		})
-		assert.Equal(t, 1, per.TotalPowerUps)
-		assert.Equal(t, 1, len(per.PowerUpResults))
+		assert.Equal(t, 1, per.TotalHandlers)
+		assert.Equal(t, 1, len(per.HandlerResults))
 		// Unknown status doesn't count as completed/failed/skipped
-		assert.Equal(t, 0, per.CompletedPowerUps)
-		assert.Equal(t, 0, per.FailedPowerUps)
-		assert.Equal(t, 0, per.SkippedPowerUps)
+		assert.Equal(t, 0, per.CompletedHandlers)
+		assert.Equal(t, 0, per.FailedHandlers)
+		assert.Equal(t, 0, per.SkippedHandlers)
 	})
 }
 
-func TestPowerUpResult_FindOverride(t *testing.T) {
+func TestHandlerResult_FindOverride(t *testing.T) {
 	// Test FindOverride method on PackConfig
 	pc := PackConfig{
 		Override: []OverrideRule{

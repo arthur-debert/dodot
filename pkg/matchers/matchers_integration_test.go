@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	// Import to register factories
-	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/handlers"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
@@ -21,7 +21,7 @@ func init() {
 	})
 
 	// Register test power-up factory
-	_ = registry.RegisterPowerUpFactory("test-powerup", func(config map[string]interface{}) (types.PowerUp, error) {
+	_ = registry.RegisterHandlerFactory("test-handler", func(config map[string]interface{}) (types.Handler, error) {
 		return nil, nil
 	})
 }
@@ -38,12 +38,12 @@ func TestCreateMatcher(t *testing.T) {
 			config: &types.MatcherConfig{
 				Name:    "test",
 				Trigger: "filename",
-				PowerUp: "symlink",
+				Handler: "symlink",
 			},
 			check: func(t *testing.T, m *types.Matcher) {
 				assert.Equal(t, "test", m.Name)
 				assert.Equal(t, "filename", m.TriggerName)
-				assert.Equal(t, "symlink", m.PowerUpName)
+				assert.Equal(t, "symlink", m.HandlerName)
 				assert.True(t, m.Enabled)
 			},
 		},
@@ -52,7 +52,7 @@ func TestCreateMatcher(t *testing.T) {
 			config: &types.MatcherConfig{
 				Name:    "pattern-test",
 				Trigger: "filename",
-				PowerUp: "symlink",
+				Handler: "symlink",
 				Pattern: "*.conf",
 			},
 			check: func(t *testing.T, m *types.Matcher) {
@@ -65,12 +65,12 @@ func TestCreateMatcher(t *testing.T) {
 			config: &types.MatcherConfig{
 				Name:    "target-test",
 				Trigger: "filename",
-				PowerUp: "symlink",
+				Handler: "symlink",
 				Target:  "/custom/path",
 			},
 			check: func(t *testing.T, m *types.Matcher) {
-				assert.NotNil(t, m.PowerUpOptions)
-				assert.Equal(t, "/custom/path", m.PowerUpOptions["target"])
+				assert.NotNil(t, m.HandlerOptions)
+				assert.Equal(t, "/custom/path", m.HandlerOptions["target"])
 			},
 		},
 		{
@@ -78,17 +78,17 @@ func TestCreateMatcher(t *testing.T) {
 			config: &types.MatcherConfig{
 				Name:    "options-test",
 				Trigger: "filename",
-				PowerUp: "symlink",
+				Handler: "symlink",
 				TriggerOptions: map[string]interface{}{
 					"pattern": "specific.file",
 				},
-				PowerUpOptions: map[string]interface{}{
+				HandlerOptions: map[string]interface{}{
 					"target": "/specific/target",
 				},
 			},
 			check: func(t *testing.T, m *types.Matcher) {
 				assert.Equal(t, "specific.file", m.TriggerOptions["pattern"])
-				assert.Equal(t, "/specific/target", m.PowerUpOptions["target"])
+				assert.Equal(t, "/specific/target", m.HandlerOptions["target"])
 			},
 		},
 		{
@@ -96,7 +96,7 @@ func TestCreateMatcher(t *testing.T) {
 			config: &types.MatcherConfig{
 				Name:    "disabled-test",
 				Trigger: "filename",
-				PowerUp: "symlink",
+				Handler: "symlink",
 				Enabled: func() *bool { b := false; return &b }(),
 			},
 			check: func(t *testing.T, m *types.Matcher) {
@@ -107,12 +107,12 @@ func TestCreateMatcher(t *testing.T) {
 			name: "missing trigger",
 			config: &types.MatcherConfig{
 				Name:    "invalid",
-				PowerUp: "symlink",
+				Handler: "symlink",
 			},
 			wantErr: true,
 		},
 		{
-			name: "missing powerup",
+			name: "missing handler",
 			config: &types.MatcherConfig{
 				Name:    "invalid",
 				Trigger: "filename",
@@ -124,16 +124,16 @@ func TestCreateMatcher(t *testing.T) {
 			config: &types.MatcherConfig{
 				Name:    "invalid",
 				Trigger: "unknown-trigger",
-				PowerUp: "symlink",
+				Handler: "symlink",
 			},
 			wantErr: true,
 		},
 		{
-			name: "unknown powerup",
+			name: "unknown handler",
 			config: &types.MatcherConfig{
 				Name:    "invalid",
 				Trigger: "filename",
-				PowerUp: "unknown-powerup",
+				Handler: "unknown-handler",
 			},
 			wantErr: true,
 		},
@@ -168,20 +168,20 @@ func TestValidateMatcher(t *testing.T) {
 			name: "valid matcher",
 			matcher: &types.Matcher{
 				TriggerName: "filename",
-				PowerUpName: "symlink",
+				HandlerName: "symlink",
 			},
 			wantErr: false,
 		},
 		{
 			name: "missing trigger name",
 			matcher: &types.Matcher{
-				PowerUpName: "symlink",
+				HandlerName: "symlink",
 			},
 			wantErr: true,
 			errMsg:  "trigger name is required",
 		},
 		{
-			name: "missing powerup name",
+			name: "missing handler name",
 			matcher: &types.Matcher{
 				TriggerName: "filename",
 			},
@@ -192,16 +192,16 @@ func TestValidateMatcher(t *testing.T) {
 			name: "unknown trigger",
 			matcher: &types.Matcher{
 				TriggerName: "non-existent",
-				PowerUpName: "symlink",
+				HandlerName: "symlink",
 			},
 			wantErr: true,
 			errMsg:  "unknown trigger: non-existent",
 		},
 		{
-			name: "unknown powerup",
+			name: "unknown handler",
 			matcher: &types.Matcher{
 				TriggerName: "filename",
-				PowerUpName: "non-existent",
+				HandlerName: "non-existent",
 			},
 			wantErr: true,
 			errMsg:  "unknown power-up: non-existent",

@@ -38,7 +38,7 @@ func TestGetMissingTemplateFiles(t *testing.T) {
 	for _, tmpl := range missing {
 		if tmpl.Filename == "install.sh" {
 			hasInstall = true
-			assert.Equal(t, "install_script", tmpl.PowerUpName)
+			assert.Equal(t, "install_script", tmpl.HandlerName)
 			break
 		}
 	}

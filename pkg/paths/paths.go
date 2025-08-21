@@ -321,7 +321,7 @@ func (p *Paths) TemplatesDir() string {
 	return p.GetDataSubdir(TemplatesDir)
 }
 
-// StatePath returns the path to a state file for a specific pack and powerup
+// StatePath returns the path to a state file for a specific pack and handler
 func (p *Paths) StatePath(packName, powerUpName string) string {
 	return filepath.Join(p.StateDir(), packName, powerUpName+".json")
 }
@@ -419,7 +419,7 @@ func (p *Paths) HomebrewDir() string {
 	return p.GetDataSubdir(HomebrewDir)
 }
 
-// SentinelPath returns the path to a sentinel file for a given powerup and pack.
+// SentinelPath returns the path to a sentinel file for a given handler and pack.
 // This provides a unified way to construct sentinel file paths across the codebase.
 // The sentinel file is used to track whether a run-once action has been executed.
 //

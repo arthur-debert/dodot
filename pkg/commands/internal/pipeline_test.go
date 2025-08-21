@@ -54,7 +54,7 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	testutil.AssertEqual(t, "vim", packResult.Pack.Name)
 
 	// Should have symlink power-up
-	testutil.AssertTrue(t, len(packResult.PowerUpResults) > 0, "Should have power-up results")
+	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have power-up results")
 
 	// Verify files were created (Layer 1: top-level files get dot prefix)
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
@@ -149,8 +149,8 @@ echo "Installing tools"
 
 	// Should have install_script power-up
 	found := false
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			found = true
 			break
 		}
@@ -194,15 +194,15 @@ func TestFilterActionsByRunMode(t *testing.T) {
 	// Create test actions with different power-ups
 	actions := []types.Action{
 		{
-			PowerUpName: "symlink", // RunModeMany
+			HandlerName: "symlink", // RunModeMany
 			Description: "Symlink action",
 		},
 		{
-			PowerUpName: "install_script", // RunModeOnce
+			HandlerName: "install_script", // RunModeOnce
 			Description: "Install action",
 		},
 		{
-			PowerUpName: "homebrew", // RunModeOnce
+			HandlerName: "homebrew", // RunModeOnce
 			Description: "Brew action",
 		},
 	}
@@ -211,7 +211,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 	filtered, err := filterActionsByRunMode(actions, types.RunModeMany)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 1, len(filtered))
-	testutil.AssertEqual(t, "symlink", filtered[0].PowerUpName)
+	testutil.AssertEqual(t, "symlink", filtered[0].HandlerName)
 
 	// Test RunModeOnce - should get install and brew
 	filtered, err = filterActionsByRunMode(actions, types.RunModeOnce)
@@ -220,7 +220,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 
 	// Test with unknown power-up - should include it
 	actionsWithUnknown := append(actions, types.Action{
-		PowerUpName: "unknown_powerup",
+		HandlerName: "unknown_handler",
 		Description: "Unknown action",
 	})
 	filtered, err = filterActionsByRunMode(actionsWithUnknown, types.RunModeMany)

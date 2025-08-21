@@ -66,25 +66,25 @@ func ProcessMatchGroup(matches []types.TriggerMatch) ([]types.Action, error) {
 	}
 
 	// All matches in a group have the same power-up
-	powerUpName := matches[0].PowerUpName
+	powerUpName := matches[0].HandlerName
 
 	logger := logging.GetLogger("core.actions").With().
-		Str("powerup", powerUpName).
+		Str("handler", powerUpName).
 		Int("matchCount", len(matches)).
 		Logger()
 
 	logger.Debug().Msg("Processing match group")
 
 	// Get the power-up factory from registry
-	powerUpFactory, err := registry.GetPowerUpFactory(powerUpName)
+	powerUpFactory, err := registry.GetHandlerFactory(powerUpName)
 	if err != nil {
 		logger.Error().Err(err).Str("powerUpName", powerUpName).Msg("Failed to get power-up factory")
-		return nil, errors.Wrapf(err, errors.ErrPowerUpNotFound,
+		return nil, errors.Wrapf(err, errors.ErrHandlerNotFound,
 			"failed to get power-up factory for %s", powerUpName)
 	}
 
 	// Get common options from the first match (all matches in group have same options)
-	options := matches[0].PowerUpOptions
+	options := matches[0].HandlerOptions
 	if options == nil {
 		options = make(map[string]interface{})
 	}
@@ -92,20 +92,20 @@ func ProcessMatchGroup(matches []types.TriggerMatch) ([]types.Action, error) {
 	// Create power-up instance with options
 	powerUp, err := powerUpFactory(options)
 	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPowerUpInvalid,
+		return nil, errors.Wrapf(err, errors.ErrHandlerInvalid,
 			"failed to create power-up instance for %s", powerUpName)
 	}
 
 	// Validate options
 	if err := powerUp.ValidateOptions(options); err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPowerUpInvalid,
+		return nil, errors.Wrapf(err, errors.ErrHandlerInvalid,
 			"invalid options for power-up %s", powerUpName)
 	}
 
 	// Process the matches
 	actions, err := powerUp.Process(matches)
 	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrPowerUpExecute,
+		return nil, errors.Wrapf(err, errors.ErrHandlerExecute,
 			"power-up %s failed to process matches", powerUpName)
 	}
 
@@ -147,9 +147,9 @@ func createGroupKey(match types.TriggerMatch) string {
 	// Group by power-up, pack, and options
 	// This ensures files with the same processing requirements are grouped together
 	parts := []string{
-		match.PowerUpName,
+		match.HandlerName,
 		match.Pack,
-		hashOptions(match.PowerUpOptions),
+		hashOptions(match.HandlerOptions),
 	}
 	return strings.Join(parts, ":")
 }
@@ -190,7 +190,7 @@ func checkCrossPackSymlinkConflicts(matches []types.TriggerMatch) error {
 	// Filter only symlink matches
 	symlinkMatches := make([]types.TriggerMatch, 0)
 	for _, match := range matches {
-		if match.PowerUpName == "symlink" {
+		if match.HandlerName == "symlink" {
 			symlinkMatches = append(symlinkMatches, match)
 		}
 	}

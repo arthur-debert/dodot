@@ -103,12 +103,12 @@ func TestCrossPlatformPaths(t *testing.T) {
 				}
 				return ""
 			},
-			input: "mypack/powerup",
+			input: "mypack/handler",
 			validate: func(t *testing.T, result string) {
 				testutil.AssertTrue(t, strings.Contains(result, "mypack"),
 					"Result should contain pack name")
-				testutil.AssertTrue(t, strings.Contains(result, "powerup.json"),
-					"Result should contain powerup name with .json")
+				testutil.AssertTrue(t, strings.Contains(result, "handler.json"),
+					"Result should contain handler name with .json")
 			},
 		},
 	}
@@ -254,7 +254,7 @@ func TestPathsConcurrentAccess(t *testing.T) {
 				_ = p.PackPath(packName)
 				_ = p.DataDir()
 				_ = p.DeployedDir()
-				_ = p.StatePath(packName, "powerup")
+				_ = p.StatePath(packName, "handler")
 				_ = p.ConfigDir()
 				_ = p.CacheDir()
 

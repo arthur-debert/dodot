@@ -74,7 +74,7 @@ func TestTestPack_AddDodotConfig(t *testing.T) {
 	config := `[[rules]]
 trigger = "filename"
 pattern = ".*"
-powerup = "symlink"
+handler = "symlink"
 `
 	pack.AddDodotConfig(t, config)
 
@@ -95,7 +95,7 @@ func TestTestPack_AddSymlinkRule(t *testing.T) {
 	content, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), `pattern = ".vimrc"`)
-	assert.Contains(t, string(content), `powerup = "symlink"`)
+	assert.Contains(t, string(content), `handler = "symlink"`)
 }
 
 func TestSetupMultiplePacks(t *testing.T) {
@@ -151,7 +151,7 @@ func TestTestPack_AddStandardConfig(t *testing.T) {
 	content, err := os.ReadFile(configPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(content), `pattern = ".*"`)
-	assert.Contains(t, string(content), `powerup = "symlink"`)
+	assert.Contains(t, string(content), `handler = "symlink"`)
 }
 
 func TestTestPack_AddStandardConfig_UnknownType(t *testing.T) {

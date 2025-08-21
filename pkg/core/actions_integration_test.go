@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	// Import power-ups to ensure they're registered
-	_ "github.com/arthur-debert/dodot/pkg/powerups/symlink"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )
 
 func TestGetActions_CrossPackSymlinkConflict(t *testing.T) {
 	// Ensure symlink power-up is registered
-	_, err := registry.GetPowerUpFactory("symlink")
+	_, err := registry.GetHandlerFactory("symlink")
 	assert.NoError(t, err, "symlink power-up should be registered")
 
 	// Create matches from two different packs that would create conflicting symlinks
@@ -24,7 +24,7 @@ func TestGetActions_CrossPackSymlinkConflict(t *testing.T) {
 			Pack:         "tool-1",
 			Path:         "config.toml",
 			AbsolutePath: "/dotfiles/tool-1/config.toml",
-			PowerUpName:  "symlink",
+			HandlerName:  "symlink",
 			Priority:     50,
 		},
 		{
@@ -32,7 +32,7 @@ func TestGetActions_CrossPackSymlinkConflict(t *testing.T) {
 			Pack:         "tool-2",
 			Path:         "config.toml", // Same filename - will conflict
 			AbsolutePath: "/dotfiles/tool-2/config.toml",
-			PowerUpName:  "symlink",
+			HandlerName:  "symlink",
 			Priority:     50,
 		},
 	}
@@ -53,7 +53,7 @@ func TestGetActions_CrossPackSymlinkConflict(t *testing.T) {
 
 func TestGetActions_CrossPackSymlinkNoConflict(t *testing.T) {
 	// Ensure symlink power-up is registered
-	_, err := registry.GetPowerUpFactory("symlink")
+	_, err := registry.GetHandlerFactory("symlink")
 	assert.NoError(t, err, "symlink power-up should be registered")
 
 	// Create matches from two different packs with different filenames - no conflict
@@ -63,7 +63,7 @@ func TestGetActions_CrossPackSymlinkNoConflict(t *testing.T) {
 			Pack:         "tool-1",
 			Path:         "config1.toml",
 			AbsolutePath: "/dotfiles/tool-1/config1.toml",
-			PowerUpName:  "symlink",
+			HandlerName:  "symlink",
 			Priority:     50,
 		},
 		{
@@ -71,7 +71,7 @@ func TestGetActions_CrossPackSymlinkNoConflict(t *testing.T) {
 			Pack:         "tool-2",
 			Path:         "config2.toml", // Different filename - no conflict
 			AbsolutePath: "/dotfiles/tool-2/config2.toml",
-			PowerUpName:  "symlink",
+			HandlerName:  "symlink",
 			Priority:     50,
 		},
 	}
@@ -85,7 +85,7 @@ func TestGetActions_CrossPackSymlinkNoConflict(t *testing.T) {
 
 func TestGetActions_CrossPackSymlinkConflictWithNestedPaths(t *testing.T) {
 	// Ensure symlink power-up is registered
-	_, err := registry.GetPowerUpFactory("symlink")
+	_, err := registry.GetHandlerFactory("symlink")
 	assert.NoError(t, err, "symlink power-up should be registered")
 
 	// Create matches that would NOT conflict due to different paths
@@ -95,7 +95,7 @@ func TestGetActions_CrossPackSymlinkConflictWithNestedPaths(t *testing.T) {
 			Pack:         "tool-1",
 			Path:         ".config/app1/config.toml",
 			AbsolutePath: "/dotfiles/tool-1/.config/app1/config.toml",
-			PowerUpName:  "symlink",
+			HandlerName:  "symlink",
 			Priority:     50,
 		},
 		{
@@ -103,7 +103,7 @@ func TestGetActions_CrossPackSymlinkConflictWithNestedPaths(t *testing.T) {
 			Pack:         "tool-2",
 			Path:         ".config/app2/config.toml", // Different path - no conflict
 			AbsolutePath: "/dotfiles/tool-2/.config/app2/config.toml",
-			PowerUpName:  "symlink",
+			HandlerName:  "symlink",
 			Priority:     50,
 		},
 	}

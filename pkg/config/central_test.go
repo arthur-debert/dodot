@@ -88,15 +88,15 @@ func TestDefault(t *testing.T) {
 			t.Errorf("expected catchall trigger priority to be 0, got %d", cfg.Priorities.Triggers["catchall"])
 		}
 
-		// Test powerup priorities
-		if cfg.Priorities.PowerUps["symlink"] != 100 {
-			t.Errorf("expected symlink powerup priority to be 100, got %d", cfg.Priorities.PowerUps["symlink"])
+		// Test handler priorities
+		if cfg.Priorities.Handlers["symlink"] != 100 {
+			t.Errorf("expected symlink handler priority to be 100, got %d", cfg.Priorities.Handlers["symlink"])
 		}
-		if cfg.Priorities.PowerUps["path"] != 90 {
-			t.Errorf("expected path powerup priority to be 90, got %d", cfg.Priorities.PowerUps["path"])
+		if cfg.Priorities.Handlers["path"] != 90 {
+			t.Errorf("expected path handler priority to be 90, got %d", cfg.Priorities.Handlers["path"])
 		}
-		if cfg.Priorities.PowerUps["template"] != 70 {
-			t.Errorf("expected template powerup priority to be 70, got %d", cfg.Priorities.PowerUps["template"])
+		if cfg.Priorities.Handlers["template"] != 70 {
+			t.Errorf("expected template handler priority to be 70, got %d", cfg.Priorities.Handlers["template"])
 		}
 	})
 

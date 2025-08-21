@@ -22,20 +22,20 @@ func (m *mockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]int
 func (m *mockTrigger) Type() types.TriggerType { return types.TriggerTypeSpecific }
 
 // Mock power-up for testing
-type mockPowerUp struct {
+type mockHandler struct {
 	name string
 }
 
-func (m *mockPowerUp) Name() string           { return m.name }
-func (m *mockPowerUp) Description() string    { return "mock power-up" }
-func (m *mockPowerUp) RunMode() types.RunMode { return types.RunModeMany }
-func (m *mockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+func (m *mockHandler) Name() string           { return m.name }
+func (m *mockHandler) Description() string    { return "mock power-up" }
+func (m *mockHandler) RunMode() types.RunMode { return types.RunModeMany }
+func (m *mockHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	return []types.Action{}, nil
 }
-func (m *mockPowerUp) ValidateOptions(options map[string]interface{}) error {
+func (m *mockHandler) ValidateOptions(options map[string]interface{}) error {
 	return nil
 }
-func (m *mockPowerUp) GetTemplateContent() string {
+func (m *mockHandler) GetTemplateContent() string {
 	return ""
 }
 
@@ -45,7 +45,7 @@ func TestGetRegistry(t *testing.T) {
 	testutil.AssertNotNil(t, triggerReg)
 
 	// Test getting power-up registry
-	powerUpReg := GetRegistry[types.PowerUp]()
+	powerUpReg := GetRegistry[types.Handler]()
 	testutil.AssertNotNil(t, powerUpReg)
 
 	// Test getting trigger factory registry
@@ -53,7 +53,7 @@ func TestGetRegistry(t *testing.T) {
 	testutil.AssertNotNil(t, triggerFactoryReg)
 
 	// Test getting power-up factory registry
-	powerUpFactoryReg := GetRegistry[types.PowerUpFactory]()
+	powerUpFactoryReg := GetRegistry[types.HandlerFactory]()
 	testutil.AssertNotNil(t, powerUpFactoryReg)
 
 	// Test getting registry for unknown type (should create new one)
@@ -92,32 +92,32 @@ func TestRegisterAndGetTriggerFactory(t *testing.T) {
 	_ = triggerFactoryReg.Remove("test-trigger")
 }
 
-func TestRegisterAndGetPowerUpFactory(t *testing.T) {
+func TestRegisterAndGetHandlerFactory(t *testing.T) {
 	// Create a factory function
-	factory := func(options map[string]interface{}) (types.PowerUp, error) {
-		return &mockPowerUp{name: "test-powerup"}, nil
+	factory := func(options map[string]interface{}) (types.Handler, error) {
+		return &mockHandler{name: "test-handler"}, nil
 	}
 
 	// Register the factory
-	err := RegisterPowerUpFactory("test-powerup", factory)
+	err := RegisterHandlerFactory("test-handler", factory)
 	testutil.AssertNoError(t, err)
 
 	// Retrieve the factory
-	retrievedFactory, err := GetPowerUpFactory("test-powerup")
+	retrievedFactory, err := GetHandlerFactory("test-handler")
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, retrievedFactory)
 
 	// Create power-up using the factory
 	powerUp, err := retrievedFactory(nil)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, "test-powerup", powerUp.Name())
+	testutil.AssertEqual(t, "test-handler", powerUp.Name())
 
 	// Test getting non-existent factory
-	_, err = GetPowerUpFactory("non-existent")
+	_, err = GetHandlerFactory("non-existent")
 	testutil.AssertError(t, err)
 	testutil.AssertContains(t, err.Error(), "power-up factory not found")
 
 	// Clean up
-	powerUpFactoryReg := GetRegistry[types.PowerUpFactory]()
-	_ = powerUpFactoryReg.Remove("test-powerup")
+	powerUpFactoryReg := GetRegistry[types.HandlerFactory]()
+	_ = powerUpFactoryReg.Remove("test-handler")
 }

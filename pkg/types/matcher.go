@@ -9,8 +9,8 @@ type Matcher struct {
 	// TriggerName specifies which trigger to use
 	TriggerName string
 
-	// PowerUpName specifies which power-up to invoke on match
-	PowerUpName string
+	// HandlerName specifies which power-up to invoke on match
+	HandlerName string
 
 	// Priority determines the order of matcher evaluation (higher = first)
 	Priority int
@@ -21,8 +21,8 @@ type Matcher struct {
 	// TriggerOptions contains trigger-specific options
 	TriggerOptions map[string]interface{}
 
-	// PowerUpOptions contains power-up-specific options
-	PowerUpOptions map[string]interface{}
+	// HandlerOptions contains power-up-specific options
+	HandlerOptions map[string]interface{}
 
 	// Enabled indicates if this matcher is active
 	Enabled bool
@@ -36,8 +36,8 @@ type MatcherConfig struct {
 	// Trigger specifies which trigger to use
 	Trigger string `toml:"trigger"`
 
-	// PowerUp specifies which power-up to invoke
-	PowerUp string `toml:"powerup"`
+	// Handler specifies which power-up to invoke
+	Handler string `toml:"handler"`
 
 	// Priority for this matcher
 	Priority int `toml:"priority"`
@@ -54,8 +54,8 @@ type MatcherConfig struct {
 	// TriggerOptions for trigger-specific configuration
 	TriggerOptions map[string]interface{} `toml:"trigger_options"`
 
-	// PowerUpOptions for power-up-specific configuration
-	PowerUpOptions map[string]interface{} `toml:"powerup_options"`
+	// HandlerOptions for power-up-specific configuration
+	HandlerOptions map[string]interface{} `toml:"handler_options"`
 
 	// Enabled indicates if this matcher is active (default: true)
 	Enabled *bool `toml:"enabled"`

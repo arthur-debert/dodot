@@ -246,7 +246,7 @@ func GetRunOnceStatus(packPath, powerUpName string, pathsInstance *paths.Paths) 
 
 	logger.Trace().
 		Str("pack", filepath.Base(packPath)).
-		Str("powerup", powerUpName).
+		Str("handler", powerUpName).
 		Bool("executed", true).
 		Bool("changed", changed).
 		Msg("Run-once status checked")

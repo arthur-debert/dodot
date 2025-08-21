@@ -46,7 +46,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 			Content:     template.Content,
 			Mode:        template.Mode,
 			Pack:        opts.PackName,
-			PowerUpName: template.PowerUpName,
+			HandlerName: template.HandlerName,
 			Priority:    50, // Lower priority for template files
 		}
 		actions = append(actions, action)
@@ -77,7 +77,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute fill actions")
 		}
 
-		// FIXME: ARCHITECTURAL PROBLEM - fill command should return Pack+PowerUp+File information
+		// FIXME: ARCHITECTURAL PROBLEM - fill command should return Pack+Handler+File information
 		// NOT operation details. See docs/design/display.txxt
 		// Operations are no longer returned (part of Operation layer elimination)
 		_ = results // Results processed but not exposed in return value
@@ -94,7 +94,7 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		result.FilesCreated = append(result.FilesCreated, template.Filename)
 		log.Info().
 			Str("file", template.Filename).
-			Str("powerup", template.PowerUpName).
+			Str("handler", template.HandlerName).
 			Msg("Template file to be created")
 	}
 

@@ -378,7 +378,7 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 				name: "shell_profile append to .bashrc",
 				action: types.Action{
 					Type:        types.ActionTypeAppend,
-					PowerUpName: "shell_profile",
+					HandlerName: "shell_profile",
 					Target:      filepath.Join(homeDir, ".bashrc"),
 				},
 				expectError: false,
@@ -387,7 +387,7 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 				name: "regular append to .bashrc",
 				action: types.Action{
 					Type:        types.ActionTypeAppend,
-					PowerUpName: "other",
+					HandlerName: "other",
 					Target:      filepath.Join(homeDir, ".bashrc"),
 				},
 				expectError: false, // With AllowHomeSymlinks: true, this is allowed
@@ -396,7 +396,7 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 				name: "shell_profile append to protected file",
 				action: types.Action{
 					Type:        types.ActionTypeAppend,
-					PowerUpName: "shell_profile",
+					HandlerName: "shell_profile",
 					Target:      filepath.Join(homeDir, ".ssh", "id_rsa"),
 				},
 				expectError: true,
@@ -438,7 +438,7 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 				name: "shell_profile append to .bashrc STILL ALLOWED",
 				action: types.Action{
 					Type:        types.ActionTypeAppend,
-					PowerUpName: "shell_profile",
+					HandlerName: "shell_profile",
 					Target:      filepath.Join(homeDir, ".bashrc"),
 				},
 				expectError: false, // Special case allows this
@@ -447,7 +447,7 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 				name: "regular append to .bashrc blocked",
 				action: types.Action{
 					Type:        types.ActionTypeAppend,
-					PowerUpName: "other",
+					HandlerName: "other",
 					Target:      filepath.Join(homeDir, ".bashrc"),
 				},
 				expectError: true,
@@ -457,7 +457,7 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 				name: "shell_profile write blocked",
 				action: types.Action{
 					Type:        types.ActionTypeWrite,
-					PowerUpName: "shell_profile",
+					HandlerName: "shell_profile",
 					Target:      filepath.Join(homeDir, ".bashrc"),
 				},
 				expectError: true,
@@ -481,9 +481,9 @@ func TestValidateActionShellProfileSpecialCase(t *testing.T) {
 	})
 }
 
-// TestValidationIntegrationWithRealPowerUps tests validation with real-world powerup scenarios
+// TestValidationIntegrationWithRealHandlers tests validation with real-world handler scenarios
 // This is an integration test because it creates files and directories
-func TestValidationIntegrationWithRealPowerUps(t *testing.T) {
+func TestValidationIntegrationWithRealHandlers(t *testing.T) {
 	// Setup test environment
 	tempDir := testutil.TempDir(t, "validate-integration")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -513,24 +513,24 @@ func TestValidationIntegrationWithRealPowerUps(t *testing.T) {
 	executor := NewDirectExecutor(opts)
 
 	validActions := []types.Action{
-		// Symlink powerup
+		// Symlink handler
 		{
 			Type:        types.ActionTypeLink,
-			PowerUpName: "symlink",
+			HandlerName: "symlink",
 			Source:      filepath.Join(dotfilesDir, "vim", "vimrc"),
 			Target:      filepath.Join(homeDir, ".vimrc"),
 		},
-		// Shell profile powerup
+		// Shell profile handler
 		{
 			Type:        types.ActionTypeAppend,
-			PowerUpName: "shell_profile",
+			HandlerName: "shell_profile",
 			Target:      filepath.Join(homeDir, ".bashrc"),
 			Content:     "source " + filepath.Join(dotfilesDir, "bash", "bashrc"),
 		},
 		// Install script
 		{
 			Type:        types.ActionTypeCopy,
-			PowerUpName: "install_script",
+			HandlerName: "install_script",
 			Source:      filepath.Join(dotfilesDir, "install.sh"),
 			Target:      filepath.Join(p.InstallDir(), "install.sh"),
 		},
@@ -540,21 +540,21 @@ func TestValidationIntegrationWithRealPowerUps(t *testing.T) {
 		// Try to symlink system file
 		{
 			Type:        types.ActionTypeLink,
-			PowerUpName: "symlink",
+			HandlerName: "symlink",
 			Source:      filepath.Join(dotfilesDir, "ssh", "config"),
 			Target:      filepath.Join(homeDir, ".ssh", "id_rsa"),
 		},
 		// Try to write outside safe directories
 		{
 			Type:        types.ActionTypeWrite,
-			PowerUpName: "config",
+			HandlerName: "config",
 			Target:      "/etc/passwd",
 			Content:     "evil",
 		},
 		// Try to link from outside dotfiles
 		{
 			Type:        types.ActionTypeLink,
-			PowerUpName: "symlink",
+			HandlerName: "symlink",
 			Source:      "/etc/passwd",
 			Target:      filepath.Join(homeDir, ".passwd"),
 		},

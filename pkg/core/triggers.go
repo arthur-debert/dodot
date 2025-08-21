@@ -10,7 +10,7 @@
 // 3. Directories are processed as single units (e.g., for symlinking the entire dir)
 // 4. Files inside subdirectories are NOT individually scanned or matched
 //
-// This design allows powerups to handle entire directory trees (like symlinking
+// This design allows handlers to handle entire directory trees (like symlinking
 // a whole config directory) without dodot trying to process individual files
 // within those directories.
 //
@@ -93,10 +93,10 @@ func GetFiringTriggersFS(packs []types.Pack, filesystem types.FS) ([]types.Trigg
 // Example:
 //
 //	nvim/                    # pack
-//	├── install.sh          # ✓ processed - triggers install powerup
-//	├── bin/                # ✓ processed - triggers path powerup
+//	├── install.sh          # ✓ processed - triggers install handler
+//	├── bin/                # ✓ processed - triggers path handler
 //	│   └── alias.sh        # ✗ NOT processed - inside subdirectory
-//	└── lua/                # ✓ processed - triggers symlink powerup
+//	└── lua/                # ✓ processed - triggers symlink handler
 //	    └── install.sh      # ✗ NOT processed - inside subdirectory
 //
 // Deprecated: Use ProcessPackTriggersFS instead to support filesystem abstraction
@@ -184,15 +184,15 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 
 		// Check for a behavior override from pack config
 		if override := pack.Config.FindOverride(relPath); override != nil {
-			logger.Trace().Str("path", relPath).Str("powerup", override.Powerup).Msg("File behavior overridden by pack config")
+			logger.Trace().Str("path", relPath).Str("handler", override.Powerup).Msg("File behavior overridden by pack config")
 			match := types.TriggerMatch{
 				TriggerName:    "override-rule",
 				Pack:           pack.Name,
 				Path:           relPath,
 				AbsolutePath:   path,
 				Metadata:       make(map[string]interface{}),
-				PowerUpName:    override.Powerup,
-				PowerUpOptions: override.With,
+				HandlerName:    override.Powerup,
+				HandlerOptions: override.With,
 				Priority:       types.OverridePriority, // High priority for overrides
 			}
 			matches = append(matches, match)
@@ -347,15 +347,15 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 
 		// Check for a behavior override from pack config
 		if override := pack.Config.FindOverride(relPath); override != nil {
-			logger.Trace().Str("path", relPath).Str("powerup", override.Powerup).Msg("File behavior overridden by pack config")
+			logger.Trace().Str("path", relPath).Str("handler", override.Powerup).Msg("File behavior overridden by pack config")
 			match := types.TriggerMatch{
 				TriggerName:    "config-override",
 				Pack:           pack.Name,
 				Path:           relPath,
 				AbsolutePath:   path,
 				Metadata:       make(map[string]interface{}),
-				PowerUpName:    override.Powerup,
-				PowerUpOptions: override.With,
+				HandlerName:    override.Powerup,
+				HandlerOptions: override.With,
 				Priority:       100, // Config overrides have high priority
 			}
 			matches = append(matches, match)
@@ -451,7 +451,7 @@ func testMatcher(pack types.Pack, absPath, relPath string, info fs.FileInfo, mat
 
 	logger.Trace().
 		Str("trigger", matcher.TriggerName).
-		Str("powerup", matcher.PowerUpName).
+		Str("handler", matcher.HandlerName).
 		Str("path", relPath).
 		Msg("Trigger matched")
 
@@ -462,19 +462,19 @@ func testMatcher(pack types.Pack, absPath, relPath string, info fs.FileInfo, mat
 		Path:           relPath,
 		AbsolutePath:   absPath,
 		Metadata:       metadata,
-		PowerUpName:    matcher.PowerUpName,
-		PowerUpOptions: matcher.PowerUpOptions,
+		HandlerName:    matcher.HandlerName,
+		HandlerOptions: matcher.HandlerOptions,
 		Priority:       matcher.Priority,
 	}
 
 	// Initialize power-up options from matcher
-	if match.PowerUpOptions == nil {
-		match.PowerUpOptions = make(map[string]interface{})
+	if match.HandlerOptions == nil {
+		match.HandlerOptions = make(map[string]interface{})
 	}
 
 	// Copy matcher-level power-up options
-	for k, v := range matcher.PowerUpOptions {
-		match.PowerUpOptions[k] = v
+	for k, v := range matcher.HandlerOptions {
+		match.HandlerOptions[k] = v
 	}
 
 	return match, nil

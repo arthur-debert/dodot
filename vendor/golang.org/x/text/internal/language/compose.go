@@ -39,7 +39,7 @@ func (b *Builder) Make() Tag {
 		p += appendTokens(buf[p:], b.extensions...)
 		t.str = string(buf[:p])
 		// We may not always need to remake the string, but when or when not
-		// to do so is rather tricky.
+		// to do so is rather handlery.
 		scan := makeScanner(buf[:p])
 		t, _ = parse(&scan, "")
 		return t

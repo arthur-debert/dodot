@@ -103,7 +103,7 @@ func checkSpecialFiles(pack types.Pack, displayPack *types.DisplayPack, fs types
 		logger.Debug().Msg("Found .dodotignore file")
 		displayPack.IsIgnored = true
 		displayPack.Files = append(displayPack.Files, types.DisplayFile{
-			PowerUp: "",
+			Handler: "",
 			Path:    ".dodotignore",
 			Status:  "ignored",
 			Message: "dodot is ignoring this dir",
@@ -117,7 +117,7 @@ func checkSpecialFiles(pack types.Pack, displayPack *types.DisplayPack, fs types
 		logger.Debug().Msg("Found .dodot.toml file")
 		displayPack.HasConfig = true
 		displayPack.Files = append(displayPack.Files, types.DisplayFile{
-			PowerUp: "config",
+			Handler: "config",
 			Path:    ".dodot.toml",
 			Status:  "config",
 			Message: "dodot config file found",
@@ -155,11 +155,11 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 		isOverride = true
 	}
 
-	// Get PowerUp display name
-	powerUpName := getPowerUpDisplayName(action)
+	// Get Handler display name
+	powerUpName := getHandlerDisplayName(action)
 
-	// Get additional info based on PowerUp type and action data
-	additionalInfo := types.GetPowerUpAdditionalInfo(powerUpName)
+	// Get additional info based on Handler type and action data
+	additionalInfo := types.GetHandlerAdditionalInfo(powerUpName)
 	if powerUpName == "symlink" && action.Target != "" {
 		// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
 		homeDir := os.Getenv("HOME")
@@ -198,13 +198,13 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 	}
 
 	displayFile := &types.DisplayFile{
-		PowerUp:        powerUpName,
+		Handler:        powerUpName,
 		Path:           filePath,
 		Status:         displayStatus,
 		Message:        displayMessage,
 		IsOverride:     isOverride,
 		LastExecuted:   status.Timestamp,
-		PowerUpSymbol:  types.GetPowerUpSymbol(powerUpName),
+		HandlerSymbol:  types.GetHandlerSymbol(powerUpName),
 		AdditionalInfo: additionalInfo,
 	}
 
@@ -242,8 +242,8 @@ func getDisplayPath(action types.Action) string {
 	}
 }
 
-// getPowerUpDisplayName returns the display name for a power-up based on action type
-func getPowerUpDisplayName(action types.Action) string {
+// getHandlerDisplayName returns the display name for a power-up based on action type
+func getHandlerDisplayName(action types.Action) string {
 	// Map action types to power-up display names
 	switch action.Type {
 	case types.ActionTypeLink:
@@ -262,12 +262,12 @@ func getPowerUpDisplayName(action types.Action) string {
 		return "mkdir"
 	default:
 		logger := logging.GetLogger("core.pack_status")
-		// Use the PowerUpName from the action if available, otherwise use the action type
-		fallback := action.PowerUpName
+		// Use the HandlerName from the action if available, otherwise use the action type
+		fallback := action.HandlerName
 		if fallback == "" {
 			fallback = string(action.Type)
 		}
-		return handleUnknownEnum(logger, "actionType", action.Type, "getPowerUpDisplayName", fallback)
+		return handleUnknownEnum(logger, "actionType", action.Type, "getHandlerDisplayName", fallback)
 	}
 }
 
@@ -322,7 +322,7 @@ func GetMultiPackStatus(packList []types.Pack, command string, fs types.FS, path
 				IsIgnored: true,
 				Files: []types.DisplayFile{
 					{
-						PowerUp: "",
+						Handler: "",
 						Path:    ".dodotignore",
 						Status:  "ignored",
 						Message: "dodot is ignoring this dir",

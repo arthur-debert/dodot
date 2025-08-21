@@ -47,13 +47,13 @@ type DisplayPack struct {
 
 // DisplayFile represents a single file within a pack for display.
 type DisplayFile struct {
-	PowerUp        string     `json:"powerUp"`
+	Handler        string     `json:"powerUp"`
 	Path           string     `json:"path"`
 	Status         string     `json:"status"` // File-level: "success", "error", "queue", "config", "ignored"
 	Message        string     `json:"message"`
 	IsOverride     bool       `json:"isOverride"`     // File power-up was overridden in .dodot.toml
 	LastExecuted   *time.Time `json:"lastExecuted"`   // When operation was last executed
-	PowerUpSymbol  string     `json:"powerUpSymbol"`  // Unicode symbol for the powerup
+	HandlerSymbol  string     `json:"powerUpSymbol"`  // Unicode symbol for the handler
 	AdditionalInfo string     `json:"additionalInfo"` // Additional context (e.g., symlink target, shell type)
 }
 
@@ -168,8 +168,8 @@ type AdoptedFile struct {
 	SymlinkPath  string `json:"symlinkPath"`  // Symlink path (usually same as OriginalPath)
 }
 
-// GetPowerUpSymbol returns the Unicode symbol for a given PowerUp
-func GetPowerUpSymbol(powerUpName string) string {
+// GetHandlerSymbol returns the Unicode symbol for a given Handler
+func GetHandlerSymbol(powerUpName string) string {
 	switch powerUpName {
 	case "symlink":
 		return "➞"
@@ -186,8 +186,8 @@ func GetPowerUpSymbol(powerUpName string) string {
 	}
 }
 
-// GetPowerUpAdditionalInfo returns a short description for the PowerUp type
-func GetPowerUpAdditionalInfo(powerUpName string) string {
+// GetHandlerAdditionalInfo returns a short description for the Handler type
+func GetHandlerAdditionalInfo(powerUpName string) string {
 	switch powerUpName {
 	case "symlink":
 		return "" // Will be filled with actual target

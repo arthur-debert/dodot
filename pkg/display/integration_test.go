@@ -22,8 +22,8 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	packResult1 := types.NewPackExecutionResult(pack1)
 
 	// Add successful symlink operations
-	powerUpResult1 := &types.PowerUpResult{
-		PowerUpName: "symlink",
+	powerUpResult1 := &types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{"vimrc", "vim/colors/monokai.vim"},
 		Status:      types.StatusReady,
 		Message:     "linked to .vimrc",
@@ -31,7 +31,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult1.AddPowerUpResult(powerUpResult1)
+	packResult1.AddHandlerResult(powerUpResult1)
 	packResult1.Complete()
 
 	// Add second pack with mixed results
@@ -42,8 +42,8 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	packResult2 := types.NewPackExecutionResult(pack2)
 
 	// Add successful operation
-	powerUpResult2 := &types.PowerUpResult{
-		PowerUpName: "symlink",
+	powerUpResult2 := &types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{"bashrc"},
 		Status:      types.StatusReady,
 		Message:     "linked to .bashrc",
@@ -51,11 +51,11 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult2.AddPowerUpResult(powerUpResult2)
+	packResult2.AddHandlerResult(powerUpResult2)
 
 	// Add failed operation
-	powerUpResult3 := &types.PowerUpResult{
-		PowerUpName: "install_script",
+	powerUpResult3 := &types.HandlerResult{
+		HandlerName: "install_script",
 		Files:       []string{"install.sh"},
 		Status:      types.StatusError,
 		Message:     "install script failed: exit status 1",
@@ -63,7 +63,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult2.AddPowerUpResult(powerUpResult3)
+	packResult2.AddHandlerResult(powerUpResult3)
 	packResult2.Complete()
 
 	// Add pack results to context
@@ -85,11 +85,11 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		"deploy",
 		"vim [status=",                    // Pack name with status
 		"shell [status=",                  // Pack name with status
-		"symlink",                         // PowerUp name
-		"linked to $HOME/vimrc [status=",  // PowerUp-aware message with status
-		"linked to $HOME/bashrc [status=", // PowerUp-aware message with status
-		"install_script",                  // PowerUp name
-		"installation failed",             // PowerUp-aware error message
+		"symlink",                         // Handler name
+		"linked to $HOME/vimrc [status=",  // Handler-aware message with status
+		"linked to $HOME/bashrc [status=", // Handler-aware message with status
+		"install_script",                  // Handler name
+		"installation failed",             // Handler-aware error message
 		"[status=error]",                  // Error status indicator
 	}
 

@@ -51,13 +51,13 @@ func TestSimpleRenderer_Render(t *testing.T) {
 						Status: "success",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "symlink",
+								Handler: "symlink",
 								Path:    "vimrc",
 								Status:  "success",
 								Message: "linked to .vimrc",
 							},
 							{
-								PowerUp: "symlink",
+								Handler: "symlink",
 								Path:    "vim/colors/monokai.vim",
 								Status:  "success",
 								Message: "linked to monokai.vim",
@@ -85,7 +85,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 						Status: "alert",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "install_script",
+								Handler: "install_script",
 								Path:    "install.sh",
 								Status:  "error",
 								Message: "install script failed: exit status 1",
@@ -112,13 +112,13 @@ func TestSimpleRenderer_Render(t *testing.T) {
 						Status: "queue",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "symlink",
+								Handler: "symlink",
 								Path:    "bashrc",
 								Status:  "success",
 								Message: "linked to .bashrc",
 							},
 							{
-								PowerUp: "shell_profile",
+								Handler: "shell_profile",
 								Path:    "aliases",
 								Status:  "queue",
 								Message: "not yet applied",
@@ -167,9 +167,9 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	}
 	packResult := types.NewPackExecutionResult(pack)
 
-	// Add a PowerUp result
-	powerUpResult := &types.PowerUpResult{
-		PowerUpName: "symlink",
+	// Add a Handler result
+	powerUpResult := &types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{"testfile"},
 		Status:      types.StatusReady,
 		Message:     "linked to .testfile",
@@ -177,7 +177,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult.AddPowerUpResult(powerUpResult)
+	packResult.AddHandlerResult(powerUpResult)
 	packResult.Complete()
 
 	ctx.AddPackResult("test-pack", packResult)
@@ -195,8 +195,8 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	// Check output contains expected elements
 	testutil.AssertTrue(t, strings.Contains(output, "deploy"), "Should contain command name")
 	testutil.AssertTrue(t, strings.Contains(output, "test-pack [status="), "Should contain pack name with status")
-	testutil.AssertTrue(t, strings.Contains(output, "symlink"), "Should contain powerup name")
-	testutil.AssertTrue(t, strings.Contains(output, "linked to $HOME/testfile"), "Should contain PowerUp-aware message")
+	testutil.AssertTrue(t, strings.Contains(output, "symlink"), "Should contain handler name")
+	testutil.AssertTrue(t, strings.Contains(output, "linked to $HOME/testfile"), "Should contain Handler-aware message")
 	testutil.AssertTrue(t, strings.Contains(output, "[status=success]"), "Should contain status indicator")
 }
 
@@ -234,7 +234,7 @@ func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
 				IsIgnored: false,
 				Files: []types.DisplayFile{
 					{
-						PowerUp:      "config",
+						Handler:      "config",
 						Path:         ".dodot.toml",
 						Status:       "config",
 						Message:      "dodot config file found",
@@ -242,7 +242,7 @@ func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
 						LastExecuted: nil,
 					},
 					{
-						PowerUp:      "symlink",
+						Handler:      "symlink",
 						Path:         ".vimrc",
 						Status:       "success",
 						Message:      "linked to $HOME/.vimrc",
@@ -250,7 +250,7 @@ func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
 						LastExecuted: &lastExec,
 					},
 					{
-						PowerUp:      "install",
+						Handler:      "install",
 						Path:         "setup.sh",
 						Status:       "queue",
 						Message:      "to be executed",
@@ -271,7 +271,7 @@ func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
 				Status: "alert",
 				Files: []types.DisplayFile{
 					{
-						PowerUp:      "symlink",
+						Handler:      "symlink",
 						Path:         "config",
 						Status:       "error",
 						Message:      "failed to symlink $HOME/.config",

@@ -9,26 +9,26 @@ import (
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 
-	// Import powerups and triggers to register them via init() functions
-	_ "github.com/arthur-debert/dodot/pkg/powerups/homebrew"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/install"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/path"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_add_path"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/shell_profile"
-	_ "github.com/arthur-debert/dodot/pkg/powerups/symlink"
+	// Import handlers and triggers to register them via init() functions
+	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_add_path"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 // defaultMatchers stores the default matchers
 var defaultMatchers = make(map[string]types.Matcher)
 
-// init registers all default powerups and triggers needed by the default matchers
+// init registers all default handlers and triggers needed by the default matchers
 // by importing the packages, which triggers their init() functions
 func init() {
-	// The import of powerups and triggers packages above will automatically
-	// register all powerups and triggers through their init() functions.
+	// The import of handlers and triggers packages above will automatically
+	// register all handlers and triggers through their init() functions.
 	// This ensures that any code importing matchers gets all the default
-	// powerups and triggers registered without needing separate imports.
+	// handlers and triggers registered without needing separate imports.
 }
 
 // RegisterDefaultMatcher registers a default matcher
@@ -45,10 +45,10 @@ func DefaultMatchers() []types.Matcher {
 		matchers[i] = types.Matcher{
 			Name:           mc.Name,
 			TriggerName:    mc.TriggerType,
-			PowerUpName:    mc.PowerUpType,
+			HandlerName:    mc.HandlerType,
 			Priority:       mc.Priority,
 			TriggerOptions: mc.TriggerData,
-			PowerUpOptions: mc.PowerUpData,
+			HandlerOptions: mc.HandlerData,
 			Enabled:        true,
 		}
 	}
@@ -66,11 +66,11 @@ func CreateMatcher(config *types.MatcherConfig) (*types.Matcher, error) {
 	matcher := &types.Matcher{
 		Name:           config.Name,
 		TriggerName:    config.Trigger,
-		PowerUpName:    config.PowerUp,
+		HandlerName:    config.Handler,
 		Priority:       config.Priority,
 		Options:        config.Options,
 		TriggerOptions: config.TriggerOptions,
-		PowerUpOptions: config.PowerUpOptions,
+		HandlerOptions: config.HandlerOptions,
 		Enabled:        true,
 	}
 
@@ -85,9 +85,9 @@ func CreateMatcher(config *types.MatcherConfig) (*types.Matcher, error) {
 		matcher.TriggerOptions["pattern"] = config.Pattern
 	}
 
-	if config.Target != "" && matcher.PowerUpOptions == nil {
-		matcher.PowerUpOptions = make(map[string]interface{})
-		matcher.PowerUpOptions["target"] = config.Target
+	if config.Target != "" && matcher.HandlerOptions == nil {
+		matcher.HandlerOptions = make(map[string]interface{})
+		matcher.HandlerOptions["target"] = config.Target
 	}
 
 	// Validate the matcher
@@ -104,7 +104,7 @@ func ValidateMatcher(matcher *types.Matcher) error {
 		return fmt.Errorf("trigger name is required")
 	}
 
-	if matcher.PowerUpName == "" {
+	if matcher.HandlerName == "" {
 		return fmt.Errorf("power-up name is required")
 	}
 
@@ -115,9 +115,9 @@ func ValidateMatcher(matcher *types.Matcher) error {
 	}
 
 	// Check if power-up factory exists
-	_, err = registry.GetPowerUpFactory(matcher.PowerUpName)
+	_, err = registry.GetHandlerFactory(matcher.HandlerName)
 	if err != nil {
-		return fmt.Errorf("unknown power-up: %s", matcher.PowerUpName)
+		return fmt.Errorf("unknown power-up: %s", matcher.HandlerName)
 	}
 
 	return nil
@@ -147,7 +147,7 @@ func FilterEnabledMatchers(matchers []types.Matcher) []types.Matcher {
 			logger.Debug().
 				Str("name", m.Name).
 				Str("trigger", m.TriggerName).
-				Str("powerup", m.PowerUpName).
+				Str("handler", m.HandlerName).
 				Msg("skipping disabled matcher")
 		}
 	}
@@ -167,15 +167,15 @@ func MergeMatchers(matcherSets ...[]types.Matcher) []types.Matcher {
 		for _, matcher := range set {
 			key := matcher.Name
 			if key == "" {
-				// For unnamed matchers, use trigger+powerup as key
-				key = fmt.Sprintf("%s:%s", matcher.TriggerName, matcher.PowerUpName)
+				// For unnamed matchers, use trigger+handler as key
+				key = fmt.Sprintf("%s:%s", matcher.TriggerName, matcher.HandlerName)
 			}
 
 			if _, exists := matcherMap[key]; exists {
 				logger.Debug().
 					Str("name", matcher.Name).
 					Str("trigger", matcher.TriggerName).
-					Str("powerup", matcher.PowerUpName).
+					Str("handler", matcher.HandlerName).
 					Msg("overriding existing matcher")
 			}
 

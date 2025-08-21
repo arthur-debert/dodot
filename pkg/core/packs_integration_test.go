@@ -162,7 +162,7 @@ func TestGetPacks(t *testing.T) {
 path = "*.bak"
 [[override]]
 path = "test.conf"
-powerup = "symlink"
+handler = "symlink"
 `
 				testutil.CreateFile(t, pack, ".dodot.toml", config)
 				return []string{pack}

@@ -55,8 +55,8 @@ func (m *MockTrigger) Type() types.TriggerType {
 	return types.TriggerTypeSpecific
 }
 
-// MockPowerUp is a mock implementation of the types.PowerUp interface for testing.
-type MockPowerUp struct {
+// MockHandler is a mock implementation of the types.Handler interface for testing.
+type MockHandler struct {
 	NameFunc               func() string
 	DescriptionFunc        func() string
 	RunModeFunc            func() types.RunMode
@@ -66,15 +66,15 @@ type MockPowerUp struct {
 }
 
 // Name returns the mock's name.
-func (m *MockPowerUp) Name() string {
+func (m *MockHandler) Name() string {
 	if m.NameFunc != nil {
 		return m.NameFunc()
 	}
-	return "mock-powerup"
+	return "mock-handler"
 }
 
 // Description returns the mock's description.
-func (m *MockPowerUp) Description() string {
+func (m *MockHandler) Description() string {
 	if m.DescriptionFunc != nil {
 		return m.DescriptionFunc()
 	}
@@ -82,7 +82,7 @@ func (m *MockPowerUp) Description() string {
 }
 
 // RunMode returns the mock's run mode.
-func (m *MockPowerUp) RunMode() types.RunMode {
+func (m *MockHandler) RunMode() types.RunMode {
 	if m.RunModeFunc != nil {
 		return m.RunModeFunc()
 	}
@@ -90,7 +90,7 @@ func (m *MockPowerUp) RunMode() types.RunMode {
 }
 
 // Process runs the mock's process function.
-func (m *MockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+func (m *MockHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	if m.ProcessFunc != nil {
 		return m.ProcessFunc(matches)
 	}
@@ -98,7 +98,7 @@ func (m *MockPowerUp) Process(matches []types.TriggerMatch) ([]types.Action, err
 }
 
 // ValidateOptions runs the mock's validate options function.
-func (m *MockPowerUp) ValidateOptions(options map[string]interface{}) error {
+func (m *MockHandler) ValidateOptions(options map[string]interface{}) error {
 	if m.ValidateOptionsFunc != nil {
 		return m.ValidateOptionsFunc(options)
 	}
@@ -106,7 +106,7 @@ func (m *MockPowerUp) ValidateOptions(options map[string]interface{}) error {
 }
 
 // GetTemplateContent returns the mock's template content.
-func (m *MockPowerUp) GetTemplateContent() string {
+func (m *MockHandler) GetTemplateContent() string {
 	if m.GetTemplateContentFunc != nil {
 		return m.GetTemplateContentFunc()
 	}

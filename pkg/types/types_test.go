@@ -24,20 +24,20 @@ func (m *mockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]int
 }
 func (m *mockTrigger) Type() TriggerType { return TriggerTypeSpecific }
 
-type mockPowerUp struct {
+type mockHandler struct {
 	name        string
 	description string
 	actions     []Action
 	err         error
 }
 
-func (m *mockPowerUp) Name() string        { return m.name }
-func (m *mockPowerUp) Description() string { return m.description }
-func (m *mockPowerUp) RunMode() RunMode    { return RunModeMany }
-func (m *mockPowerUp) Process(matches []TriggerMatch) ([]Action, error) {
+func (m *mockHandler) Name() string        { return m.name }
+func (m *mockHandler) Description() string { return m.description }
+func (m *mockHandler) RunMode() RunMode    { return RunModeMany }
+func (m *mockHandler) Process(matches []TriggerMatch) ([]Action, error) {
 	return m.actions, m.err
 }
-func (m *mockPowerUp) ValidateOptions(options map[string]interface{}) error {
+func (m *mockHandler) ValidateOptions(options map[string]interface{}) error {
 	return nil
 }
 
@@ -89,7 +89,7 @@ func TestTriggerInterface(t *testing.T) {
 	}
 }
 
-func TestPowerUpInterface(t *testing.T) {
+func TestHandlerInterface(t *testing.T) {
 	actions := []Action{
 		{
 			Type:        ActionTypeLink,
@@ -99,16 +99,16 @@ func TestPowerUpInterface(t *testing.T) {
 		},
 	}
 
-	powerUp := &mockPowerUp{
-		name:        "test-powerup",
+	powerUp := &mockHandler{
+		name:        "test-handler",
 		description: "A test power-up",
 		actions:     actions,
 		err:         nil,
 	}
 
 	// Test interface methods
-	if powerUp.Name() != "test-powerup" {
-		t.Errorf("Name() = %s, want %s", powerUp.Name(), "test-powerup")
+	if powerUp.Name() != "test-handler" {
+		t.Errorf("Name() = %s, want %s", powerUp.Name(), "test-handler")
 	}
 
 	if powerUp.Description() != "A test power-up" {
@@ -222,13 +222,13 @@ func TestMatcherStructure(t *testing.T) {
 	matcher := Matcher{
 		Name:        "test-matcher",
 		TriggerName: "filename",
-		PowerUpName: "symlink",
+		HandlerName: "symlink",
 		Priority:    10,
 		Options:     map[string]interface{}{"global": true},
 		TriggerOptions: map[string]interface{}{
 			"pattern": "*.conf",
 		},
-		PowerUpOptions: map[string]interface{}{
+		HandlerOptions: map[string]interface{}{
 			"target": "$HOME/.config",
 		},
 		Enabled: true,
@@ -239,8 +239,8 @@ func TestMatcherStructure(t *testing.T) {
 		t.Errorf("Matcher.TriggerName = %s, want filename", matcher.TriggerName)
 	}
 
-	if matcher.PowerUpName != "symlink" {
-		t.Errorf("Matcher.PowerUpName = %s, want symlink", matcher.PowerUpName)
+	if matcher.HandlerName != "symlink" {
+		t.Errorf("Matcher.HandlerName = %s, want symlink", matcher.HandlerName)
 	}
 
 	if matcher.TriggerOptions["pattern"] != "*.conf" {
@@ -259,8 +259,8 @@ func TestTriggerMatchStructure(t *testing.T) {
 		Metadata: map[string]interface{}{
 			"extension": ".conf",
 		},
-		PowerUpName: "symlink",
-		PowerUpOptions: map[string]interface{}{
+		HandlerName: "symlink",
+		HandlerOptions: map[string]interface{}{
 			"target": "$HOME/.config",
 		},
 		Priority: 1,

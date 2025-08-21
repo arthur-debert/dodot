@@ -42,8 +42,8 @@ const (
 	MsgAdoptSuccess      = "✨ Success! %d file(s) are now managed by dodot in the '%s' pack.\n"
 	MsgNoFilesAdopted    = "No files were adopted.\n"
 	MsgPackStatusFormat  = "\n%s:\n"
-	MsgPowerUpStatus     = "  %s: %s"
-	MsgPowerUpDesc       = " - %s"
+	MsgHandlerStatus     = "  %s: %s"
+	MsgHandlerDesc       = " - %s"
 
 	// Error messages
 	MsgErrInitPaths    = "failed to initialize paths: %w"

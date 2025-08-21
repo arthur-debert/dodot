@@ -214,7 +214,7 @@ func TestToDisplayResult_ConfigFilesAsDisplayItems(t *testing.T) {
 	testutil.AssertEqual(t, 1, len(configPack.Files))
 
 	configFile := configPack.Files[0]
-	testutil.AssertEqual(t, "config", configFile.PowerUp)
+	testutil.AssertEqual(t, "config", configFile.Handler)
 	testutil.AssertEqual(t, ".dodot.toml", configFile.Path)
 	testutil.AssertEqual(t, "config", configFile.Status)
 	testutil.AssertEqual(t, "dodot config file found", configFile.Message)
@@ -225,7 +225,7 @@ func TestToDisplayResult_ConfigFilesAsDisplayItems(t *testing.T) {
 	testutil.AssertEqual(t, 1, len(ignorePack.Files))
 
 	ignoreFile := ignorePack.Files[0]
-	testutil.AssertEqual(t, ".dodotignore", ignoreFile.PowerUp)
+	testutil.AssertEqual(t, ".dodotignore", ignoreFile.Handler)
 	testutil.AssertEqual(t, "", ignoreFile.Path)
 	testutil.AssertEqual(t, "ignored", ignoreFile.Status)
 	testutil.AssertEqual(t, "dodot is ignoring this dir", ignoreFile.Message)
@@ -236,8 +236,8 @@ func TestToDisplayResult_ConfigFilesAsDisplayItems(t *testing.T) {
 	testutil.AssertEqual(t, 2, len(bothPack.Files))
 
 	// Files should be in order: config first, then ignore
-	testutil.AssertEqual(t, "config", bothPack.Files[0].PowerUp)
-	testutil.AssertEqual(t, ".dodotignore", bothPack.Files[1].PowerUp)
+	testutil.AssertEqual(t, "config", bothPack.Files[0].Handler)
+	testutil.AssertEqual(t, ".dodotignore", bothPack.Files[1].Handler)
 }
 
 func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
@@ -276,23 +276,23 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 
 	packResult := types.NewPackExecutionResult(pack)
 
-	// Add PowerUpResults with different files
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "symlink",
+	// Add HandlerResults with different files
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{filepath.Join(packDir, "vimrc")},
 		Status:      types.StatusReady,
 		Message:     "linked",
 	})
 
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "shell_profile",
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "shell_profile",
 		Files:       []string{filepath.Join(packDir, "bashrc")},
 		Status:      types.StatusReady,
 		Message:     "included",
 	})
 
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "default",
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "default",
 		Files:       []string{filepath.Join(packDir, "regular-file")},
 		Status:      types.StatusReady,
 		Message:     "processed",
@@ -308,7 +308,7 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 	testutil.AssertEqual(t, 1, len(displayResult.Packs))
 	pack1 := displayResult.Packs[0]
 
-	// Should have files from PowerUpResults (no config files since no .dodot.toml exists)
+	// Should have files from HandlerResults (no config files since no .dodot.toml exists)
 	testutil.AssertEqual(t, 3, len(pack1.Files))
 
 	// Find files by path
@@ -352,30 +352,30 @@ func TestToDisplayResult_LastExecutedTimestamps(t *testing.T) {
 
 	packResult := types.NewPackExecutionResult(pack)
 
-	// Create PowerUpResults with different statuses and timestamps
+	// Create HandlerResults with different statuses and timestamps
 	successTime := time.Now().Add(-1 * time.Hour)
 
-	// Successful PowerUpResult with timestamp
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "symlink",
+	// Successful HandlerResult with timestamp
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{filepath.Join(packDir, "test-file")},
 		Status:      types.StatusReady,
 		EndTime:     successTime,
 		Message:     "linked successfully",
 	})
 
-	// Failed PowerUpResult (should not have LastExecuted)
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "install",
+	// Failed HandlerResult (should not have LastExecuted)
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "install",
 		Files:       []string{filepath.Join(packDir, "install-file")},
 		Status:      types.StatusError,
 		EndTime:     time.Now(),
 		Message:     "failed to install",
 	})
 
-	// Skipped PowerUpResult (should not have LastExecuted)
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "homebrew",
+	// Skipped HandlerResult (should not have LastExecuted)
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "homebrew",
 		Files:       []string{filepath.Join(packDir, "Brewfile")},
 		Status:      types.StatusSkipped,
 		EndTime:     time.Now(),
@@ -393,32 +393,32 @@ func TestToDisplayResult_LastExecutedTimestamps(t *testing.T) {
 	pack1 := displayResult.Packs[0]
 	testutil.AssertEqual(t, 3, len(pack1.Files))
 
-	// Find files by PowerUp
+	// Find files by Handler
 	fileMap := make(map[string]*types.DisplayFile)
 	for i := range pack1.Files {
-		fileMap[pack1.Files[i].PowerUp] = &pack1.Files[i]
+		fileMap[pack1.Files[i].Handler] = &pack1.Files[i]
 	}
 
-	// Test successful PowerUpResult has LastExecuted timestamp
+	// Test successful HandlerResult has LastExecuted timestamp
 	symlinkFile := fileMap["symlink"]
 	testutil.AssertTrue(t, symlinkFile != nil, "symlink file should exist")
 	testutil.AssertTrue(t, symlinkFile.LastExecuted != nil, "symlink should have LastExecuted timestamp")
-	testutil.AssertTrue(t, symlinkFile.LastExecuted.Equal(successTime), "timestamp should match PowerUpResult EndTime")
+	testutil.AssertTrue(t, symlinkFile.LastExecuted.Equal(successTime), "timestamp should match HandlerResult EndTime")
 
-	// Test failed PowerUpResult has no LastExecuted timestamp
+	// Test failed HandlerResult has no LastExecuted timestamp
 	installFile := fileMap["install"]
 	testutil.AssertTrue(t, installFile != nil, "install file should exist")
-	testutil.AssertTrue(t, installFile.LastExecuted == nil, "failed PowerUpResult should not have LastExecuted")
+	testutil.AssertTrue(t, installFile.LastExecuted == nil, "failed HandlerResult should not have LastExecuted")
 
-	// Test skipped PowerUpResult has no LastExecuted timestamp
+	// Test skipped HandlerResult has no LastExecuted timestamp
 	brewFile := fileMap["homebrew"]
 	testutil.AssertTrue(t, brewFile != nil, "homebrew file should exist")
-	testutil.AssertTrue(t, brewFile.LastExecuted == nil, "skipped PowerUpResult should not have LastExecuted")
+	testutil.AssertTrue(t, brewFile.LastExecuted == nil, "skipped HandlerResult should not have LastExecuted")
 }
 
-func TestToDisplayResult_PowerUpAwareMessages(t *testing.T) {
+func TestToDisplayResult_HandlerAwareMessages(t *testing.T) {
 	// Setup test environment
-	tempDir := testutil.TempDir(t, "powerup-messages-test")
+	tempDir := testutil.TempDir(t, "handler-messages-test")
 	packDir := filepath.Join(tempDir, "test-pack")
 	testutil.CreateDir(t, tempDir, "test-pack")
 
@@ -432,50 +432,50 @@ func TestToDisplayResult_PowerUpAwareMessages(t *testing.T) {
 
 	packResult := types.NewPackExecutionResult(pack)
 
-	// Test different PowerUp types with different statuses
+	// Test different Handler types with different statuses
 	testTime := time.Now().Add(-2 * time.Hour)
 
-	// Test symlink PowerUp - success
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "symlink",
+	// Test symlink Handler - success
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{filepath.Join(packDir, ".vimrc")},
 		Status:      types.StatusReady,
 		EndTime:     testTime,
 	})
 
-	// Test symlink PowerUp - pending
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "symlink",
+	// Test symlink Handler - pending
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "symlink",
 		Files:       []string{filepath.Join(packDir, ".bashrc")},
 		Status:      types.StatusSkipped, // Maps to "queue"
 	})
 
-	// Test homebrew PowerUp - success with timestamp
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "homebrew",
+	// Test homebrew Handler - success with timestamp
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "homebrew",
 		Files:       []string{filepath.Join(packDir, "Brewfile")},
 		Status:      types.StatusReady,
 		EndTime:     testTime,
 	})
 
-	// Test shell_profile PowerUp - success
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "shell_profile",
+	// Test shell_profile Handler - success
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "shell_profile",
 		Files:       []string{filepath.Join(packDir, "aliases.sh")},
 		Status:      types.StatusReady,
 		EndTime:     testTime,
 	})
 
-	// Test install PowerUp - error
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "install",
+	// Test install Handler - error
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "install",
 		Files:       []string{filepath.Join(packDir, "setup.sh")},
 		Status:      types.StatusError,
 	})
 
-	// Test path PowerUp - pending
-	packResult.AddPowerUpResult(&types.PowerUpResult{
-		PowerUpName: "path",
+	// Test path Handler - pending
+	packResult.AddHandlerResult(&types.HandlerResult{
+		HandlerName: "path",
 		Files:       []string{filepath.Join(packDir, "bin")},
 		Status:      types.StatusSkipped, // Maps to "queue"
 	})
@@ -494,7 +494,7 @@ func TestToDisplayResult_PowerUpAwareMessages(t *testing.T) {
 	// Create map for easy lookup
 	fileMap := make(map[string]*types.DisplayFile)
 	for i := range pack1.Files {
-		key := pack1.Files[i].PowerUp + "_" + filepath.Base(pack1.Files[i].Path)
+		key := pack1.Files[i].Handler + "_" + filepath.Base(pack1.Files[i].Path)
 		fileMap[key] = &pack1.Files[i]
 	}
 

@@ -15,13 +15,13 @@ import (
 // PackTemplateFile represents a template file for pack initialization
 type PackTemplateFile struct {
 	Filename    string // From matcher configuration
-	Content     string // From powerup's GetTemplateContent()
+	Content     string // From handler's GetTemplateContent()
 	Mode        uint32
-	PowerUpName string
+	HandlerName string
 }
 
 // GetCompletePackTemplate returns all template files available for a pack
-// by iterating through default matchers and getting templates from powerups
+// by iterating through default matchers and getting templates from handlers
 func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 	logger := logging.GetLogger("core.templates")
 	logger.Debug().Str("pack", packName).Msg("Getting complete pack template")
@@ -48,21 +48,21 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 
 		// Check if this is a filename trigger
 		if filenameTrigger, ok := trigger.(*triggers.FileNameTrigger); ok {
-			// Get the powerup
-			powerupFactory, err := registry.GetPowerUpFactory(matcher.PowerUpName)
+			// Get the handler
+			handlerFactory, err := registry.GetHandlerFactory(matcher.HandlerName)
 			if err != nil {
-				logger.Warn().Str("powerup", matcher.PowerUpName).Err(err).Msg("Failed to get powerup factory")
+				logger.Warn().Str("handler", matcher.HandlerName).Err(err).Msg("Failed to get handler factory")
 				continue
 			}
 
-			powerup, err := powerupFactory(matcher.PowerUpOptions)
+			handler, err := handlerFactory(matcher.HandlerOptions)
 			if err != nil {
-				logger.Warn().Str("powerup", matcher.PowerUpName).Err(err).Msg("Failed to create powerup")
+				logger.Warn().Str("handler", matcher.HandlerName).Err(err).Msg("Failed to create handler")
 				continue
 			}
 
 			// Get template content
-			content := powerup.GetTemplateContent()
+			content := handler.GetTemplateContent()
 			if content != "" {
 				// Replace PACK_NAME placeholder
 				content = strings.ReplaceAll(content, "PACK_NAME", packName)
@@ -85,12 +85,12 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 					Filename:    filename,
 					Content:     content,
 					Mode:        mode,
-					PowerUpName: powerup.Name(),
+					HandlerName: handler.Name(),
 				})
 
 				logger.Debug().
 					Str("filename", filename).
-					Str("powerup", powerup.Name()).
+					Str("handler", handler.Name()).
 					Msg("Added template file")
 			}
 		}

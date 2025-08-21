@@ -40,10 +40,10 @@ const (
 	ErrTriggerMatch    ErrorCode = "TRIGGER_MATCH"
 	ErrTriggerExecute  ErrorCode = "TRIGGER_EXECUTE"
 
-	// PowerUp errors
-	ErrPowerUpNotFound ErrorCode = "POWERUP_NOT_FOUND"
-	ErrPowerUpInvalid  ErrorCode = "POWERUP_INVALID"
-	ErrPowerUpExecute  ErrorCode = "POWERUP_EXECUTE"
+	// Handler errors
+	ErrHandlerNotFound ErrorCode = "TRICK_NOT_FOUND"
+	ErrHandlerInvalid  ErrorCode = "TRICK_INVALID"
+	ErrHandlerExecute  ErrorCode = "TRICK_EXECUTE"
 
 	// Action errors
 	ErrActionInvalid  ErrorCode = "ACTION_INVALID"

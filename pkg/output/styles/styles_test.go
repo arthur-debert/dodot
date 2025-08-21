@@ -26,7 +26,7 @@ func TestStyleRegistry(t *testing.T) {
 		"Success", "Error", "Warning", "Info", "Queued", "Ignored",
 		"SuccessBadge", "ErrorBadge", "WarningBadge",
 		"Bold", "Italic", "Underline", "Muted", "MutedItalic",
-		"PowerUp", "FilePath", "ConfigFile", "Override",
+		"Handler", "FilePath", "ConfigFile", "Override",
 		"Indent", "DoubleIndent", "Section",
 		"Timestamp", "DryRunBanner", "NoContent",
 		"TableHeader", "TableCell", "TableSeparator",

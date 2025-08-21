@@ -89,17 +89,17 @@ func TestAdoptExceptionListBehavior(t *testing.T) {
 	testutil.CreateFile(t, dotfilesPath, "ssh/.dodot.toml", `[matchers]
 [[matchers.items]]
 triggers = [{ type = "always" }]
-powerup = { type = "symlink" }`)
+handler = { type = "symlink" }`)
 
 	testutil.CreateFile(t, dotfilesPath, "git/.dodot.toml", `[matchers]
 [[matchers.items]]
 triggers = [{ type = "always" }]
-powerup = { type = "symlink" }`)
+handler = { type = "symlink" }`)
 
 	testutil.CreateFile(t, dotfilesPath, "aws/.dodot.toml", `[matchers]
 [[matchers.items]]
 triggers = [{ type = "always" }]
-powerup = { type = "symlink" }`)
+handler = { type = "symlink" }`)
 
 	// TODO: Add deploy test once we have the deploy command integrated
 }

@@ -67,7 +67,7 @@ func CommonPackFixtures() []PackFixture {
 [[matchers]]
 trigger = "filename"
 pattern = "*.conf"
-powerup = "symlink"
+handler = "symlink"
 target = "$HOME/.config"
 `,
 				"app.conf": "# Application config",
@@ -146,12 +146,12 @@ priority = 10
 [[matchers]]
 trigger = "filename"
 pattern = ".config*"
-powerup = "symlink"
+handler = "symlink"
 
 [[matchers]]
 trigger = "directory"
 pattern = "bin"
-powerup = "bin"
+handler = "bin"
 `,
 		},
 		Dirs: []string{

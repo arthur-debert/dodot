@@ -9,7 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestDeployPacks_SymlinkPowerUp(t *testing.T) {
+func TestDeployPacks_SymlinkHandler(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "deploy-symlink")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -52,12 +52,12 @@ func TestDeployPacks_SymlinkPowerUp(t *testing.T) {
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
 	// Should have symlink power-up results
-	testutil.AssertTrue(t, len(packResult.PowerUpResults) > 0, "Should have power-up results")
+	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have power-up results")
 
 	// Find symlink power-up result
-	var symlinkResult *types.PowerUpResult
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "symlink" {
+	var symlinkResult *types.HandlerResult
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "symlink" {
 			symlinkResult = pur
 			break
 		}
@@ -203,11 +203,11 @@ echo "Installing tools" > /tmp/install-was-run
 
 	// Should only have symlink power-up, NOT install_script
 	var hasSymlink, hasInstall bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "symlink" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 		}
-		if pur.PowerUpName == "install_script" {
+		if pur.HandlerName == "install_script" {
 			hasInstall = true
 		}
 	}

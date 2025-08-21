@@ -30,7 +30,7 @@ func TestRenderer_Render(t *testing.T) {
 						Status: "success",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "symlink",
+								Handler: "symlink",
 								Path:    ".gitconfig",
 								Status:  "success",
 								Message: "linked",
@@ -61,7 +61,7 @@ func TestRenderer_Render(t *testing.T) {
 						Status: "queue",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "symlink",
+								Handler: "symlink",
 								Path:    ".vimrc",
 								Status:  "queue",
 								Message: "will be linked",
@@ -93,7 +93,7 @@ func TestRenderer_Render(t *testing.T) {
 						Status: "error",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "symlink",
+								Handler: "symlink",
 								Path:    ".broken",
 								Status:  "error",
 								Message: "permission denied",
@@ -119,13 +119,13 @@ func TestRenderer_Render(t *testing.T) {
 						Status: "success",
 						Files: []types.DisplayFile{
 							{
-								PowerUp: "",
+								Handler: "",
 								Path:    ".dodot.toml",
 								Status:  "config",
 								Message: "",
 							},
 							{
-								PowerUp: "",
+								Handler: "",
 								Path:    "ignored_dir",
 								Status:  "ignored",
 								Message: "",
@@ -153,7 +153,7 @@ func TestRenderer_Render(t *testing.T) {
 						Status: "success",
 						Files: []types.DisplayFile{
 							{
-								PowerUp:    "profile",
+								Handler:    "profile",
 								Path:       ".bashrc",
 								Status:     "success",
 								Message:    "custom profile",
@@ -257,9 +257,9 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 		PackResults: map[string]*types.PackExecutionResult{
 			"test-pack": {
 				Pack: testPack,
-				PowerUpResults: []*types.PowerUpResult{
+				HandlerResults: []*types.HandlerResult{
 					{
-						PowerUpName: "symlink",
+						HandlerName: "symlink",
 						Files:       []string{".testfile"},
 						Status:      types.StatusReady,
 						Message:     "test success",

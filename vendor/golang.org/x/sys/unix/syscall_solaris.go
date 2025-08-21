@@ -716,7 +716,7 @@ type EventPort struct {
 	// There are two paths by which we can discover that it is no longer in use:
 	// 1. The user calls port_dissociate before any events fire
 	// 2. An event fires and we return it to the user
-	// The tricky situation is if the event has fired in the kernel but
+	// The handlery situation is if the event has fired in the kernel but
 	// the user hasn't requested/received it yet.
 	// If the user wants to port_dissociate before the event has been processed,
 	// we should handle things gracefully. To do so, we need to keep an extra

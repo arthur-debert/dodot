@@ -109,10 +109,10 @@ func (r *TextRenderer) renderPack(pack types.DisplayPack) error {
 // renderFile renders a single file
 func (r *TextRenderer) renderFile(file types.DisplayFile) error {
 	// Three-column format matching display.txxt spec:
-	// powerup : path : message
+	// handler : path : message
 	// Add status indicators and file override markers
 
-	powerUp := file.PowerUp
+	powerUp := file.Handler
 	filePath := file.Path
 	message := file.Message
 
