@@ -270,7 +270,7 @@ func TestDirectExecutor_MixedHandlers(t *testing.T) {
 	// Create executor
 	executor := NewDirectExecutor(opts)
 
-	// Create mixed actions from different power-ups
+	// Create mixed actions from different handlers
 	actions := []types.Action{
 		// From SymlinkHandler
 		{

@@ -22,7 +22,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	packResult1 := types.NewPackExecutionResult(pack1)
 
 	// Add successful symlink operations
-	powerUpResult1 := &types.HandlerResult{
+	handlerResult1 := &types.HandlerResult{
 		HandlerName: "symlink",
 		Files:       []string{"vimrc", "vim/colors/monokai.vim"},
 		Status:      types.StatusReady,
@@ -31,7 +31,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult1.AddHandlerResult(powerUpResult1)
+	packResult1.AddHandlerResult(handlerResult1)
 	packResult1.Complete()
 
 	// Add second pack with mixed results
@@ -42,7 +42,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	packResult2 := types.NewPackExecutionResult(pack2)
 
 	// Add successful operation
-	powerUpResult2 := &types.HandlerResult{
+	handlerResult2 := &types.HandlerResult{
 		HandlerName: "symlink",
 		Files:       []string{"bashrc"},
 		Status:      types.StatusReady,
@@ -51,10 +51,10 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult2.AddHandlerResult(powerUpResult2)
+	packResult2.AddHandlerResult(handlerResult2)
 
 	// Add failed operation
-	powerUpResult3 := &types.HandlerResult{
+	handlerResult3 := &types.HandlerResult{
 		HandlerName: "install_script",
 		Files:       []string{"install.sh"},
 		Status:      types.StatusError,
@@ -63,7 +63,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult2.AddHandlerResult(powerUpResult3)
+	packResult2.AddHandlerResult(handlerResult3)
 	packResult2.Complete()
 
 	// Add pack results to context

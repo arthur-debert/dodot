@@ -167,7 +167,7 @@ debug_symlinks() {
     echo -e "${YELLOW}=== DODOT DEPLOYED SYMLINKS ===${NC}"
     local deployed_dir="${DODOT_DATA_DIR:-$HOME/.local/share/dodot}/deployed"
     if [ -d "$deployed_dir" ]; then
-        # Show deployed symlinks organized by power-up
+        # Show deployed symlinks organized by handler
         for powerup_dir in "$deployed_dir"/*; do
             if [ -d "$powerup_dir" ]; then
                 local powerup=$(basename "$powerup_dir")

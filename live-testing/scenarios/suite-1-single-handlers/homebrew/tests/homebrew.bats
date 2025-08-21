@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Minimal test for homebrew power-up - happy path only
+# Minimal test for homebrew handler - happy path only
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh

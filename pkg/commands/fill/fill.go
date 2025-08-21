@@ -19,7 +19,7 @@ type FillPackOptions struct {
 	PackName string
 }
 
-// FillPack adds placeholder files for power-ups to an existing pack.
+// FillPack adds placeholder files for handlers to an existing pack.
 func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "FillPack").Str("pack", opts.PackName).Msg("Executing command")

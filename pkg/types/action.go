@@ -71,7 +71,7 @@ type Action struct {
 	// Pack is the name of the pack that generated this action
 	Pack string
 
-	// HandlerName is the name of the power-up that generated this action
+	// HandlerName is the name of the handler that generated this action
 	HandlerName string
 
 	// Priority determines the order of execution (higher = executed first)

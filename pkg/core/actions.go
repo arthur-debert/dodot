@@ -27,12 +27,12 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 		return nil, err
 	}
 
-	// Group matches by power-up, pack, and options
-	// This allows power-ups to process related files together
+	// Group matches by handler, pack, and options
+	// This allows handlers to process related files together
 	groups := groupMatches(matches)
 	logger.Debug().
 		Int("group_count", len(groups)).
-		Msg("Grouped matches by power-up and pack")
+		Msg("Grouped matches by handler and pack")
 
 	var allActions []types.Action
 
@@ -59,28 +59,28 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 	return allActions, nil
 }
 
-// ProcessMatchGroup processes a group of related matches with the same power-up
+// ProcessMatchGroup processes a group of related matches with the same handler
 func ProcessMatchGroup(matches []types.TriggerMatch) ([]types.Action, error) {
 	if len(matches) == 0 {
 		return nil, nil
 	}
 
-	// All matches in a group have the same power-up
-	powerUpName := matches[0].HandlerName
+	// All matches in a group have the same handler
+	handlerName := matches[0].HandlerName
 
 	logger := logging.GetLogger("core.actions").With().
-		Str("handler", powerUpName).
+		Str("handler", handlerName).
 		Int("matchCount", len(matches)).
 		Logger()
 
 	logger.Debug().Msg("Processing match group")
 
-	// Get the power-up factory from registry
-	powerUpFactory, err := registry.GetHandlerFactory(powerUpName)
+	// Get the handler factory from registry
+	handlerFactory, err := registry.GetHandlerFactory(handlerName)
 	if err != nil {
-		logger.Error().Err(err).Str("powerUpName", powerUpName).Msg("Failed to get power-up factory")
+		logger.Error().Err(err).Str("handlerName", handlerName).Msg("Failed to get handler factory")
 		return nil, errors.Wrapf(err, errors.ErrHandlerNotFound,
-			"failed to get power-up factory for %s", powerUpName)
+			"failed to get handler factory for %s", handlerName)
 	}
 
 	// Get common options from the first match (all matches in group have same options)
@@ -89,34 +89,34 @@ func ProcessMatchGroup(matches []types.TriggerMatch) ([]types.Action, error) {
 		options = make(map[string]interface{})
 	}
 
-	// Create power-up instance with options
-	powerUp, err := powerUpFactory(options)
+	// Create handler instance with options
+	handler, err := handlerFactory(options)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrHandlerInvalid,
-			"failed to create power-up instance for %s", powerUpName)
+			"failed to create handler instance for %s", handlerName)
 	}
 
 	// Validate options
-	if err := powerUp.ValidateOptions(options); err != nil {
+	if err := handler.ValidateOptions(options); err != nil {
 		return nil, errors.Wrapf(err, errors.ErrHandlerInvalid,
-			"invalid options for power-up %s", powerUpName)
+			"invalid options for handler %s", handlerName)
 	}
 
 	// Process the matches
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrHandlerExecute,
-			"power-up %s failed to process matches", powerUpName)
+			"handler %s failed to process matches", handlerName)
 	}
 
 	logger.Debug().
 		Int("actionCount", len(actions)).
-		Msg("Power-up generated actions")
+		Msg("Handler generated actions")
 
 	return actions, nil
 }
 
-// groupMatches groups trigger matches by power-up, pack, and options
+// groupMatches groups trigger matches by handler, pack, and options
 // This ensures that related files are processed together
 func groupMatches(matches []types.TriggerMatch) map[string][]types.TriggerMatch {
 	groups := make(map[string][]types.TriggerMatch)
@@ -144,7 +144,7 @@ func groupMatches(matches []types.TriggerMatch) map[string][]types.TriggerMatch 
 
 // createGroupKey creates a unique key for grouping matches
 func createGroupKey(match types.TriggerMatch) string {
-	// Group by power-up, pack, and options
+	// Group by handler, pack, and options
 	// This ensures files with the same processing requirements are grouped together
 	parts := []string{
 		match.HandlerName,

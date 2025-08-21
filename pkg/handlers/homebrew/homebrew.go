@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// HomebrewHandlerName is the unique name for the Homebrew power-up
+	// HomebrewHandlerName is the unique name for the Homebrew handler
 	HomebrewHandlerName = "homebrew"
 )
 
@@ -21,22 +21,22 @@ var homebrewTemplate string
 // HomebrewHandler processes Brewfiles to install packages via Homebrew
 type HomebrewHandler struct{}
 
-// NewHomebrewHandler creates a new instance of the Homebrew power-up
+// NewHomebrewHandler creates a new instance of the Homebrew handler
 func NewHomebrewHandler() types.Handler {
 	return &HomebrewHandler{}
 }
 
-// Name returns the unique name of this power-up
+// Name returns the unique name of this handler
 func (p *HomebrewHandler) Name() string {
 	return HomebrewHandlerName
 }
 
-// Description returns a human-readable description of what this power-up does
+// Description returns a human-readable description of what this handler does
 func (p *HomebrewHandler) Description() string {
 	return "Processes Brewfiles to install Homebrew packages"
 }
 
-// RunMode returns whether this power-up runs once or many times
+// RunMode returns whether this handler runs once or many times
 func (p *HomebrewHandler) RunMode() types.RunMode {
 	return types.RunModeOnce
 }
@@ -71,13 +71,13 @@ func (p *HomebrewHandler) Process(matches []types.TriggerMatch) ([]types.Action,
 	return actions, nil
 }
 
-// ValidateOptions checks if the provided options are valid for this power-up
+// ValidateOptions checks if the provided options are valid for this handler
 func (p *HomebrewHandler) ValidateOptions(options map[string]interface{}) error {
-	// Homebrew power-up doesn't have any options
+	// Homebrew handler doesn't have any options
 	return nil
 }
 
-// GetTemplateContent returns the template content for this power-up
+// GetTemplateContent returns the template content for this handler
 func (p *HomebrewHandler) GetTemplateContent() string {
 	return homebrewTemplate
 }
@@ -93,12 +93,12 @@ func init() {
 	RegisterHomebrewHandlerFactory()
 }
 
-// RegisterHomebrewHandlerFactory registers the Homebrew power-up factory
+// RegisterHomebrewHandlerFactory registers the Homebrew handler factory
 func RegisterHomebrewHandlerFactory() {
 	err := registry.RegisterHandlerFactory(HomebrewHandlerName, func(config map[string]interface{}) (types.Handler, error) {
 		return NewHomebrewHandler(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", HomebrewHandlerName, err))
+		panic(fmt.Sprintf("failed to register %s handler: %v", HomebrewHandlerName, err))
 	}
 }

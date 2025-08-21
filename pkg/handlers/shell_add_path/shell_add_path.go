@@ -64,7 +64,7 @@ func (p *ShellAddPathHandler) ValidateOptions(options map[string]interface{}) er
 	return nil // No options to validate yet
 }
 
-// GetTemplateContent returns the template content for this power-up
+// GetTemplateContent returns the template content for this handler
 func (p *ShellAddPathHandler) GetTemplateContent() string {
 	return pathTemplate
 }
@@ -74,6 +74,6 @@ func init() {
 		return NewShellAddPathHandler(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", ShellAddPathHandlerName, err))
+		panic(fmt.Sprintf("failed to register %s handler: %v", ShellAddPathHandlerName, err))
 	}
 }

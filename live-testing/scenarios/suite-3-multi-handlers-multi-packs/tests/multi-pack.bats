@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 
-# Suite 3: Tests multiple power-ups across multiple packs
+# Suite 3: Tests multiple handlers across multiple packs
 # This suite validates that dodot correctly handles scenarios where:
 # - Multiple packs are present in the dotfiles directory
-# - Different packs use different power-ups (symlink, path, install_script, etc.)
-# - Power-ups from different packs interact correctly (e.g., multiple PATH entries)
+# - Different packs use different handlers (symlink, path, install_script, etc.)
+# - Handlers from different packs interact correctly (e.g., multiple PATH entries)
 # - Operations are performed in the correct order across packs
 
 # Load common test setup with debug support

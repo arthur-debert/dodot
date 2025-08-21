@@ -9,7 +9,7 @@
 #
 # This snippet will loop through the shell releated directories in the dodot
 # data dir in source them.  That includes adding directories to the PATH, as
-# per the bin power-up.
+# per the bin handler.
 #
 # Determine DODOT_DATA_DIR
 if [ -z "$DODOT_DATA_DIR" ]; then
@@ -229,7 +229,7 @@ fi
 # Export DODOT_DATA_DIR for potential use by dodot commands
 export DODOT_DATA_DIR
 
-# Helper function to check if a run-once power-up needs to run
+# Helper function to check if a run-once handler needs to run
 # Usage: dodot_should_run_once <type> <pack> <checksum>
 # Returns: 0 if should run, 1 if already run with same checksum
 dodot_should_run_once() {
@@ -337,9 +337,9 @@ dodot_status() {
             done
         fi
 
-        # Run-once power-ups status
+        # Run-once handlers status
         echo ""
-        echo "Run-once power-ups:"
+        echo "Run-once handlers:"
 
         # Brewfile installations
         if [ -d "$DODOT_DATA_DIR/brewfile" ] && [ -n "$(ls -A "$DODOT_DATA_DIR/brewfile" 2>/dev/null)" ]; then

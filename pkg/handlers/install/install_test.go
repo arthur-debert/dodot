@@ -135,7 +135,7 @@ func TestInstallScriptHandler_Process_ChecksumError(t *testing.T) {
 func TestInstallScriptHandler_ValidateOptions(t *testing.T) {
 	handler := NewInstallScriptHandler()
 
-	// Install script power-up doesn't have options, so any options should be accepted
+	// Install script handler doesn't have options, so any options should be accepted
 	err := handler.ValidateOptions(nil)
 	testutil.AssertNoError(t, err)
 

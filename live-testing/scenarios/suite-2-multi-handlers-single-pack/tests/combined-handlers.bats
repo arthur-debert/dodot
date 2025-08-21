@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
 # Suite 2: Multi-Handlers Single Pack
-# This suite tests scenarios where multiple power-ups are used within single packs.
-# It verifies that different power-up types can coexist and work together correctly
+# This suite tests scenarios where multiple handlers are used within single packs.
+# It verifies that different handler types can coexist and work together correctly
 # when configured in the same pack directory.
 
 # Load common test setup with debug support
@@ -67,8 +67,8 @@ teardown() {
     assert_install_artifact_exists "$HOME/.local/dev-tools/install-marker.txt"
 }
 
-# Test: comprehensive pack with all power-up types
-@test "all handlers: pack with all 5 power-up types" {
+# Test: comprehensive pack with all handler types
+@test "all handlers: pack with all 5 handler types" {
     # First install to trigger install-type handlers
     dodot_run install ultimate
     [ "$status" -eq 0 ]
@@ -99,35 +99,35 @@ teardown() {
     [ "$output" = "Ultimate tool v1.0" ]
 }
 
-# NEGATIVE TESTS: Verify power-ups respect command boundaries
+# NEGATIVE TESTS: Verify handlers respect command boundaries
 
-# Test: Deploy command should NOT run install-type power-ups
+# Test: Deploy command should NOT run install-type handlers
 @test "negative: deploy on install-only pack (should not run install handlers)" {
-    # The dev-tools pack has install.sh and Brewfile (install-only power-ups)
-    # Running deploy should succeed but NOT execute these power-ups
+    # The dev-tools pack has install.sh and Brewfile (install-only handlers)
+    # Running deploy should succeed but NOT execute these handlers
     
     dodot_run deploy dev-tools
     [ "$status" -eq 0 ]
     
-    # Verify install-type power-ups did NOT run
+    # Verify install-type handlers did NOT run
     assert_install_script_not_executed "dev-tools"
     assert_brewfile_not_processed "dev-tools"
     
-    # The command should succeed (exit 0) but skip inappropriate power-ups
+    # The command should succeed (exit 0) but skip inappropriate handlers
     # This ensures deploy respects its boundaries
-    echo "PASS: Deploy command correctly skipped install-only power-ups"
+    echo "PASS: Deploy command correctly skipped install-only handlers"
 }
 
-# Test: Install command DOES run deploy-type power-ups (but deploy doesn't run install-type)
+# Test: Install command DOES run deploy-type handlers (but deploy doesn't run install-type)
 @test "negative: install vs deploy command boundaries" {
-    # Based on the implementation, install runs BOTH install-type and deploy-type power-ups
+    # Based on the implementation, install runs BOTH install-type and deploy-type handlers
     # This test verifies the asymmetric relationship between commands
     
     # First, verify install runs both types on the ultimate pack
     dodot_run install ultimate
     [ "$status" -eq 0 ]
     
-    # Verify BOTH install-type and deploy-type power-ups ran
+    # Verify BOTH install-type and deploy-type handlers ran
     assert_install_script_executed "ultimate"
     assert_brewfile_processed "ultimate"
     assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
@@ -138,15 +138,15 @@ teardown() {
     rm -f "$HOME/ultimate.conf" "$HOME/config" "$HOME/ultimate-tool"
     rm -rf "$HOME/.local/ultimate"
     
-    # Now verify deploy ONLY runs deploy-type power-ups
+    # Now verify deploy ONLY runs deploy-type handlers
     dodot_run deploy ultimate
     [ "$status" -eq 0 ]
     
-    # Deploy-type power-ups should have run
+    # Deploy-type handlers should have run
     assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
     assert_profile_in_init "ultimate" "profile.sh"
     
-    # But install-type power-ups should NOT have run
+    # But install-type handlers should NOT have run
     assert_install_script_not_executed "ultimate"
     assert_brewfile_not_processed "ultimate"
     

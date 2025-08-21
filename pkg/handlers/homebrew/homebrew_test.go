@@ -131,7 +131,7 @@ func TestHomebrewHandler_Process_ChecksumError(t *testing.T) {
 func TestHomebrewHandler_ValidateOptions(t *testing.T) {
 	handler := NewHomebrewHandler()
 
-	// Brewfile power-up doesn't have options, so any options should be accepted
+	// Brewfile handler doesn't have options, so any options should be accepted
 	err := handler.ValidateOptions(nil)
 	testutil.AssertNoError(t, err)
 

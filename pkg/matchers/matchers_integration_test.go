@@ -20,7 +20,7 @@ func init() {
 		return nil, nil
 	})
 
-	// Register test power-up factory
+	// Register test handler factory
 	_ = registry.RegisterHandlerFactory("test-handler", func(config map[string]interface{}) (types.Handler, error) {
 		return nil, nil
 	})
@@ -186,7 +186,7 @@ func TestValidateMatcher(t *testing.T) {
 				TriggerName: "filename",
 			},
 			wantErr: true,
-			errMsg:  "power-up name is required",
+			errMsg:  "handler name is required",
 		},
 		{
 			name: "unknown trigger",
@@ -204,7 +204,7 @@ func TestValidateMatcher(t *testing.T) {
 				HandlerName: "non-existent",
 			},
 			wantErr: true,
-			errMsg:  "unknown power-up: non-existent",
+			errMsg:  "unknown handler: non-existent",
 		},
 	}
 

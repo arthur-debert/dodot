@@ -112,7 +112,7 @@ func (r *TextRenderer) renderFile(file types.DisplayFile) error {
 	// handler : path : message
 	// Add status indicators and file override markers
 
-	powerUp := file.Handler
+	handler := file.Handler
 	filePath := file.Path
 	message := file.Message
 
@@ -131,7 +131,7 @@ func (r *TextRenderer) renderFile(file types.DisplayFile) error {
 
 	// Use consistent spacing with left-aligned columns
 	_, err := fmt.Fprintf(r.writer, "        %-12s : %-20s : %s\n",
-		powerUp,
+		handler,
 		filePath,
 		statusMessage)
 	return err

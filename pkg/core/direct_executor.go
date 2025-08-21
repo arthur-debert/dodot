@@ -928,7 +928,7 @@ func (e *DirectExecutor) validateAction(action types.Action) error {
 	case types.ActionTypeCopy:
 		return e.validateCopyAction(action.Source, action.Target)
 	case types.ActionTypeWrite, types.ActionTypeAppend:
-		// Special case: shell_profile power-ups can append to shell config files in home
+		// Special case: shell_profile handlers can append to shell config files in home
 		// even when home symlinks are not generally allowed
 		if action.Type == types.ActionTypeAppend && action.HandlerName == "shell_profile" {
 			// Only validate that it's not a protected system file

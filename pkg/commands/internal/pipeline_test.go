@@ -53,8 +53,8 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	testutil.AssertNotNil(t, packResult)
 	testutil.AssertEqual(t, "vim", packResult.Pack.Name)
 
-	// Should have symlink power-up
-	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have power-up results")
+	// Should have symlink handler
+	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 
 	// Verify files were created (Layer 1: top-level files get dot prefix)
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
@@ -147,7 +147,7 @@ echo "Installing tools"
 	packResult, ok := ctx.GetPackResult("tools")
 	testutil.AssertTrue(t, ok, "Should have tools pack result")
 
-	// Should have install_script power-up
+	// Should have install_script handler
 	found := false
 	for _, pur := range packResult.HandlerResults {
 		if pur.HandlerName == "install_script" {
@@ -155,7 +155,7 @@ echo "Installing tools"
 			break
 		}
 	}
-	testutil.AssertTrue(t, found, "Should have install_script power-up")
+	testutil.AssertTrue(t, found, "Should have install_script handler")
 }
 
 func TestRunPipeline_InvalidPack(t *testing.T) {
@@ -191,7 +191,7 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 }
 
 func TestFilterActionsByRunMode(t *testing.T) {
-	// Create test actions with different power-ups
+	// Create test actions with different handlers
 	actions := []types.Action{
 		{
 			HandlerName: "symlink", // RunModeMany
@@ -218,7 +218,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(filtered))
 
-	// Test with unknown power-up - should include it
+	// Test with unknown handler - should include it
 	actionsWithUnknown := append(actions, types.Action{
 		HandlerName: "unknown_handler",
 		Description: "Unknown action",

@@ -8,14 +8,14 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 
-	// Import power-ups to ensure they're registered
+	// Import handlers to ensure they're registered
 	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )
 
 func TestGetActions_CrossPackSymlinkConflict(t *testing.T) {
-	// Ensure symlink power-up is registered
+	// Ensure symlink handler is registered
 	_, err := registry.GetHandlerFactory("symlink")
-	assert.NoError(t, err, "symlink power-up should be registered")
+	assert.NoError(t, err, "symlink handler should be registered")
 
 	// Create matches from two different packs that would create conflicting symlinks
 	matches := []types.TriggerMatch{
@@ -52,9 +52,9 @@ func TestGetActions_CrossPackSymlinkConflict(t *testing.T) {
 }
 
 func TestGetActions_CrossPackSymlinkNoConflict(t *testing.T) {
-	// Ensure symlink power-up is registered
+	// Ensure symlink handler is registered
 	_, err := registry.GetHandlerFactory("symlink")
-	assert.NoError(t, err, "symlink power-up should be registered")
+	assert.NoError(t, err, "symlink handler should be registered")
 
 	// Create matches from two different packs with different filenames - no conflict
 	matches := []types.TriggerMatch{
@@ -84,9 +84,9 @@ func TestGetActions_CrossPackSymlinkNoConflict(t *testing.T) {
 }
 
 func TestGetActions_CrossPackSymlinkConflictWithNestedPaths(t *testing.T) {
-	// Ensure symlink power-up is registered
+	// Ensure symlink handler is registered
 	_, err := registry.GetHandlerFactory("symlink")
-	assert.NoError(t, err, "symlink power-up should be registered")
+	assert.NoError(t, err, "symlink handler should be registered")
 
 	// Create matches that would NOT conflict due to different paths
 	matches := []types.TriggerMatch{

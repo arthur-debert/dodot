@@ -21,13 +21,13 @@ func (m *mockTrigger) Match(path string, info fs.FileInfo) (bool, map[string]int
 }
 func (m *mockTrigger) Type() types.TriggerType { return types.TriggerTypeSpecific }
 
-// Mock power-up for testing
+// Mock handler for testing
 type mockHandler struct {
 	name string
 }
 
 func (m *mockHandler) Name() string           { return m.name }
-func (m *mockHandler) Description() string    { return "mock power-up" }
+func (m *mockHandler) Description() string    { return "mock handler" }
 func (m *mockHandler) RunMode() types.RunMode { return types.RunModeMany }
 func (m *mockHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	return []types.Action{}, nil
@@ -44,17 +44,17 @@ func TestGetRegistry(t *testing.T) {
 	triggerReg := GetRegistry[types.Trigger]()
 	testutil.AssertNotNil(t, triggerReg)
 
-	// Test getting power-up registry
-	powerUpReg := GetRegistry[types.Handler]()
-	testutil.AssertNotNil(t, powerUpReg)
+	// Test getting handler registry
+	handlerReg := GetRegistry[types.Handler]()
+	testutil.AssertNotNil(t, handlerReg)
 
 	// Test getting trigger factory registry
 	triggerFactoryReg := GetRegistry[types.TriggerFactory]()
 	testutil.AssertNotNil(t, triggerFactoryReg)
 
-	// Test getting power-up factory registry
-	powerUpFactoryReg := GetRegistry[types.HandlerFactory]()
-	testutil.AssertNotNil(t, powerUpFactoryReg)
+	// Test getting handler factory registry
+	handlerFactoryReg := GetRegistry[types.HandlerFactory]()
+	testutil.AssertNotNil(t, handlerFactoryReg)
 
 	// Test getting registry for unknown type (should create new one)
 	type unknownType struct{}
@@ -107,17 +107,17 @@ func TestRegisterAndGetHandlerFactory(t *testing.T) {
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, retrievedFactory)
 
-	// Create power-up using the factory
-	powerUp, err := retrievedFactory(nil)
+	// Create handler using the factory
+	handler, err := retrievedFactory(nil)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, "test-handler", powerUp.Name())
+	testutil.AssertEqual(t, "test-handler", handler.Name())
 
 	// Test getting non-existent factory
 	_, err = GetHandlerFactory("non-existent")
 	testutil.AssertError(t, err)
-	testutil.AssertContains(t, err.Error(), "power-up factory not found")
+	testutil.AssertContains(t, err.Error(), "handler factory not found")
 
 	// Clean up
-	powerUpFactoryReg := GetRegistry[types.HandlerFactory]()
-	_ = powerUpFactoryReg.Remove("test-handler")
+	handlerFactoryReg := GetRegistry[types.HandlerFactory]()
+	_ = handlerFactoryReg.Remove("test-handler")
 }

@@ -23,7 +23,7 @@ func TestSymlinkHandler_EnvironmentExpansion(t *testing.T) {
 		}
 	}()
 
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -38,7 +38,7 @@ func TestSymlinkHandler_EnvironmentExpansion(t *testing.T) {
 		},
 	}
 
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 
@@ -53,10 +53,10 @@ func TestSymlinkHandler_FactoryRegistration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, factory)
 
-	// Test factory creates power-up correctly
-	powerUp, err := factory(nil)
+	// Test factory creates handler correctly
+	handler, err := factory(nil)
 	require.NoError(t, err)
-	require.NotNil(t, powerUp)
+	require.NotNil(t, handler)
 
-	assert.Equal(t, SymlinkHandlerName, powerUp.Name())
+	assert.Equal(t, SymlinkHandlerName, handler.Name())
 }

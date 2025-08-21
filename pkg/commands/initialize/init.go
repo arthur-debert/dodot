@@ -78,7 +78,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 # "*.bak" = "ignore"
 # "*.tmp" = "ignore"
 
-# Override default power-up for specific files
+# Override default handler for specific files
 # "my-script.sh" = "install"
 # "my-aliases.sh" = "profile"
 `

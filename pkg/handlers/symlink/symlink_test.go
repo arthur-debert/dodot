@@ -12,14 +12,14 @@ import (
 )
 
 func TestSymlinkHandler_BasicFunctionality(t *testing.T) {
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	// Test basic properties
-	assert.Equal(t, SymlinkHandlerName, powerUp.Name())
-	assert.Equal(t, "Creates symbolic links from dotfiles to target locations", powerUp.Description())
+	assert.Equal(t, SymlinkHandlerName, handler.Name())
+	assert.Equal(t, "Creates symbolic links from dotfiles to target locations", handler.Description())
 
 	// Test with no matches
-	actions, err := powerUp.Process([]types.TriggerMatch{})
+	actions, err := handler.Process([]types.TriggerMatch{})
 	require.NoError(t, err)
 	assert.Empty(t, actions)
 }
@@ -36,7 +36,7 @@ func TestSymlinkHandler_ProcessMatches(t *testing.T) {
 		}
 	}()
 
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -55,7 +55,7 @@ func TestSymlinkHandler_ProcessMatches(t *testing.T) {
 		},
 	}
 
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 2)
 
@@ -76,7 +76,7 @@ func TestSymlinkHandler_ProcessMatches(t *testing.T) {
 }
 
 func TestSymlinkHandler_CustomTarget(t *testing.T) {
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 	customTarget := "/custom/target"
 
 	matches := []types.TriggerMatch{
@@ -92,7 +92,7 @@ func TestSymlinkHandler_CustomTarget(t *testing.T) {
 		},
 	}
 
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 
@@ -100,7 +100,7 @@ func TestSymlinkHandler_CustomTarget(t *testing.T) {
 }
 
 func TestSymlinkHandler_ConflictDetection(t *testing.T) {
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	// Two different files want to symlink to the same target
 	matches := []types.TriggerMatch{
@@ -120,7 +120,7 @@ func TestSymlinkHandler_ConflictDetection(t *testing.T) {
 		},
 	}
 
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	assert.Error(t, err)
 	assert.Nil(t, actions)
 	assert.Contains(t, err.Error(), "symlink conflict")
@@ -129,7 +129,7 @@ func TestSymlinkHandler_ConflictDetection(t *testing.T) {
 }
 
 func TestSymlinkHandler_ValidateOptions(t *testing.T) {
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	tests := []struct {
 		name    string
@@ -183,7 +183,7 @@ func TestSymlinkHandler_ValidateOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := powerUp.ValidateOptions(tt.options)
+			err := handler.ValidateOptions(tt.options)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)
@@ -195,7 +195,7 @@ func TestSymlinkHandler_ValidateOptions(t *testing.T) {
 }
 
 func TestSymlinkHandler_MetadataInActions(t *testing.T) {
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -210,7 +210,7 @@ func TestSymlinkHandler_MetadataInActions(t *testing.T) {
 		},
 	}
 
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 1)
 
@@ -236,7 +236,7 @@ func TestSymlinkHandler_PreservesDirectoryStructure(t *testing.T) {
 		}
 	}()
 
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -262,7 +262,7 @@ func TestSymlinkHandler_PreservesDirectoryStructure(t *testing.T) {
 		},
 	}
 
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 3)
 
@@ -285,7 +285,7 @@ func TestSymlinkHandler_PreservesDirectoryStructure(t *testing.T) {
 }
 
 func TestSymlinkHandler_ConflictDetectionWithNestedPaths(t *testing.T) {
-	powerUp := NewSymlinkHandler()
+	handler := NewSymlinkHandler()
 
 	// Two different files with same basename but different paths should NOT conflict
 	matches := []types.TriggerMatch{
@@ -306,7 +306,7 @@ func TestSymlinkHandler_ConflictDetectionWithNestedPaths(t *testing.T) {
 	}
 
 	// With correct implementation preserving paths, this should NOT error
-	actions, err := powerUp.Process(matches)
+	actions, err := handler.Process(matches)
 	require.NoError(t, err)
 	require.Len(t, actions, 2)
 

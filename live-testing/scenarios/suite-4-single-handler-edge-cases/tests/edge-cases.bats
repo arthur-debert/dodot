@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# Suite 4: Single Power-up Edge Cases
-# This suite tests edge cases for each power-up in isolation, focusing on
+# Suite 4: Single Handler Edge Cases
+# This suite tests edge cases for each handler in isolation, focusing on
 # error handling, boundary conditions, and unexpected inputs that might
-# occur when power-ups are used individually.
+# occur when handlers are used individually.
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh

@@ -8,6 +8,6 @@ import (
 )
 
 func TestSymlinkHandler_RunMode(t *testing.T) {
-	powerUp := NewSymlinkHandler()
-	testutil.AssertEqual(t, types.RunModeMany, powerUp.RunMode())
+	handler := NewSymlinkHandler()
+	testutil.AssertEqual(t, types.RunModeMany, handler.RunMode())
 }

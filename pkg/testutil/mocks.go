@@ -78,7 +78,7 @@ func (m *MockHandler) Description() string {
 	if m.DescriptionFunc != nil {
 		return m.DescriptionFunc()
 	}
-	return "A mock power-up for testing."
+	return "A mock handler for testing."
 }
 
 // RunMode returns the mock's run mode.

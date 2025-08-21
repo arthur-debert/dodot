@@ -156,11 +156,11 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 	}
 
 	// Get Handler display name
-	powerUpName := getHandlerDisplayName(action)
+	handlerName := getHandlerDisplayName(action)
 
 	// Get additional info based on Handler type and action data
-	additionalInfo := types.GetHandlerAdditionalInfo(powerUpName)
-	if powerUpName == "symlink" && action.Target != "" {
+	additionalInfo := types.GetHandlerAdditionalInfo(handlerName)
+	if handlerName == "symlink" && action.Target != "" {
 		// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
 		homeDir := os.Getenv("HOME")
 		additionalInfo = types.FormatSymlinkForDisplay(action.Target, homeDir, 46)
@@ -198,13 +198,13 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 	}
 
 	displayFile := &types.DisplayFile{
-		Handler:        powerUpName,
+		Handler:        handlerName,
 		Path:           filePath,
 		Status:         displayStatus,
 		Message:        displayMessage,
 		IsOverride:     isOverride,
 		LastExecuted:   status.Timestamp,
-		HandlerSymbol:  types.GetHandlerSymbol(powerUpName),
+		HandlerSymbol:  types.GetHandlerSymbol(handlerName),
 		AdditionalInfo: additionalInfo,
 	}
 
@@ -242,9 +242,9 @@ func getDisplayPath(action types.Action) string {
 	}
 }
 
-// getHandlerDisplayName returns the display name for a power-up based on action type
+// getHandlerDisplayName returns the display name for a handler based on action type
 func getHandlerDisplayName(action types.Action) string {
-	// Map action types to power-up display names
+	// Map action types to handler display names
 	switch action.Type {
 	case types.ActionTypeLink:
 		return "symlink"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Test path power-up functionality - minimal happy path
+# Test path handler functionality - minimal happy path
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh

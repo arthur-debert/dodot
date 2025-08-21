@@ -467,12 +467,12 @@ func testMatcher(pack types.Pack, absPath, relPath string, info fs.FileInfo, mat
 		Priority:       matcher.Priority,
 	}
 
-	// Initialize power-up options from matcher
+	// Initialize handler options from matcher
 	if match.HandlerOptions == nil {
 		match.HandlerOptions = make(map[string]interface{})
 	}
 
-	// Copy matcher-level power-up options
+	// Copy matcher-level handler options
 	for k, v := range matcher.HandlerOptions {
 		match.HandlerOptions[k] = v
 	}

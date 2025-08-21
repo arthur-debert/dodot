@@ -105,7 +105,7 @@ func ValidateMatcher(matcher *types.Matcher) error {
 	}
 
 	if matcher.HandlerName == "" {
-		return fmt.Errorf("power-up name is required")
+		return fmt.Errorf("handler name is required")
 	}
 
 	// Check if trigger factory exists
@@ -114,10 +114,10 @@ func ValidateMatcher(matcher *types.Matcher) error {
 		return fmt.Errorf("unknown trigger: %s", matcher.TriggerName)
 	}
 
-	// Check if power-up factory exists
+	// Check if handler factory exists
 	_, err = registry.GetHandlerFactory(matcher.HandlerName)
 	if err != nil {
-		return fmt.Errorf("unknown power-up: %s", matcher.HandlerName)
+		return fmt.Errorf("unknown handler: %s", matcher.HandlerName)
 	}
 
 	return nil

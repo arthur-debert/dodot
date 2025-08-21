@@ -60,7 +60,7 @@ const (
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
 	MsgFlagDryRun  = "Preview changes without executing them"
-	MsgFlagForce   = "Force execution of run-once power-ups even if already executed"
+	MsgFlagForce   = "Force execution of run-once handlers even if already executed"
 	MsgFlagType    = "Type of pack to create (basic, shell, vim, etc.)"
 
 	// Debug messages

@@ -50,17 +50,17 @@ func NewSymlinkHandler() *SymlinkHandler {
 	}
 }
 
-// Name returns the unique name of this power-up
+// Name returns the unique name of this handler
 func (p *SymlinkHandler) Name() string {
 	return SymlinkHandlerName
 }
 
-// Description returns a human-readable description of what this power-up does
+// Description returns a human-readable description of what this handler does
 func (p *SymlinkHandler) Description() string {
 	return "Creates symbolic links from dotfiles to target locations"
 }
 
-// RunMode returns whether this power-up runs once or many times
+// RunMode returns whether this handler runs once or many times
 func (p *SymlinkHandler) RunMode() types.RunMode {
 	return types.RunModeMany
 }
@@ -146,7 +146,7 @@ func (p *SymlinkHandler) Process(matches []types.TriggerMatch) ([]types.Action, 
 	return actions, nil
 }
 
-// ValidateOptions checks if the provided options are valid for this power-up
+// ValidateOptions checks if the provided options are valid for this handler
 func (p *SymlinkHandler) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {
 		return nil
@@ -169,14 +169,14 @@ func (p *SymlinkHandler) ValidateOptions(options map[string]interface{}) error {
 	return nil
 }
 
-// GetTemplateContent returns the template content for this power-up
+// GetTemplateContent returns the template content for this handler
 func (p *SymlinkHandler) GetTemplateContent() string {
 	// Symlink handler doesn't provide templates - it symlinks any file
 	return ""
 }
 
 func init() {
-	// Register a factory function that creates the symlink power-up
+	// Register a factory function that creates the symlink handler
 	err := registry.RegisterHandlerFactory(SymlinkHandlerName, func(config map[string]interface{}) (types.Handler, error) {
 		return NewSymlinkHandler(), nil
 	})

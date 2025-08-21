@@ -21,7 +21,7 @@ type InstallPacksOptions struct {
 	PackNames []string
 	// DryRun specifies whether to perform a dry run without making changes.
 	DryRun bool
-	// Force re-runs power-ups that normally only run once.
+	// Force re-runs handlers that normally only run once.
 	Force bool
 	// EnableHomeSymlinks allows symlink operations to target the user's home directory.
 	EnableHomeSymlinks bool

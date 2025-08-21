@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 
-# Suite 5: Complex Multi-Pack/Power-Up Edge Cases
+# Suite 5: Complex Multi-Pack/Handler Edge Cases
 # 
 # This suite tests complex edge cases that involve interactions between multiple
-# packs and power-ups, including conflict resolution, dependency ordering,
+# packs and handlers, including conflict resolution, dependency ordering,
 # state recovery, and large-scale deployments.
 
 # Load common test setup with debug support
@@ -134,8 +134,8 @@ teardown() {
     # missing symlinks when re-run after partial state corruption
 }
 
-@test "large scale: 10+ packs with mixed power-ups" {
-    # Generate 12 test packs with various power-up combinations
+@test "large scale: 10+ packs with mixed handlers" {
+    # Generate 12 test packs with various handler combinations
     local setup_script="/workspace/live-testing/scenarios/suite-5-complex-edge-cases/setup-large-scale.sh"
     "$setup_script" "$DOTFILES_ROOT"
     
@@ -196,7 +196,7 @@ teardown() {
     assert_install_script_executed "pack-12"
     assert_file_exists "$HOME/.local/pack-12/install-time.txt"
     
-    # Deploy remaining power-ups for pack-12
+    # Deploy remaining handlers for pack-12
     dodot_run deploy pack-12
     [ "$status" -eq 0 ]
     
@@ -205,6 +205,6 @@ teardown() {
     assert_profile_in_init "pack-12" "profile.sh"
     # Template functionality removed - data file would not be created
     
-    # Verify system handles 12 packs with mixed power-ups correctly
+    # Verify system handles 12 packs with mixed handlers correctly
     # This test documents dodot's ability to scale to many packs
 }

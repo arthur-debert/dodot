@@ -99,20 +99,20 @@ func TestHandlerInterface(t *testing.T) {
 		},
 	}
 
-	powerUp := &mockHandler{
+	handler := &mockHandler{
 		name:        "test-handler",
-		description: "A test power-up",
+		description: "A test handler",
 		actions:     actions,
 		err:         nil,
 	}
 
 	// Test interface methods
-	if powerUp.Name() != "test-handler" {
-		t.Errorf("Name() = %s, want %s", powerUp.Name(), "test-handler")
+	if handler.Name() != "test-handler" {
+		t.Errorf("Name() = %s, want %s", handler.Name(), "test-handler")
 	}
 
-	if powerUp.Description() != "A test power-up" {
-		t.Errorf("Description() = %s, want %s", powerUp.Description(), "A test power-up")
+	if handler.Description() != "A test handler" {
+		t.Errorf("Description() = %s, want %s", handler.Description(), "A test handler")
 	}
 
 	// Test Process
@@ -123,7 +123,7 @@ func TestHandlerInterface(t *testing.T) {
 		},
 	}
 
-	resultActions, err := powerUp.Process(matches)
+	resultActions, err := handler.Process(matches)
 	if err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}

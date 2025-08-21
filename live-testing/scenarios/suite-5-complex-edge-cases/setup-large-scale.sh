@@ -1,5 +1,5 @@
 #!/bin/bash
-# Setup script for large scale test - creates 10+ packs with mixed power-ups
+# Setup script for large scale test - creates 10+ packs with mixed handlers
 
 DOTFILES_DIR="$1"
 if [ -z "$DOTFILES_DIR" ]; then
@@ -7,7 +7,7 @@ if [ -z "$DOTFILES_DIR" ]; then
     exit 1
 fi
 
-# Create 12 different packs with various power-up combinations
+# Create 12 different packs with various handler combinations
 for i in {1..12}; do
     PACK_DIR="$DOTFILES_DIR/pack-$i"
     mkdir -p "$PACK_DIR"
@@ -72,7 +72,7 @@ EOF
             ;;
         
         12)
-            # Pack 12: Everything pack (all power-ups)
+            # Pack 12: Everything pack (all handlers)
             echo "# Complete pack-$i" > "$PACK_DIR/complete-config"
             mkdir -p "$PACK_DIR/bin"
             echo '#!/bin/bash' > "$PACK_DIR/bin/complete-tool"

@@ -214,7 +214,7 @@ type FileStatus struct {
 	// Path is the file or directory path
 	Path string
 
-	// Handler is the power-up that manages this file
+	// Handler is the handler that manages this file
 	Handler string
 
 	// Status is the current status of the file
@@ -226,7 +226,7 @@ type FileStatus struct {
 	// LastApplied is when the file was last successfully applied
 	LastApplied time.Time
 
-	// Metadata contains power-up specific status information
+	// Metadata contains handler specific status information
 	// For example:
 	// - Symlinks: target path, whether link is valid
 	// - Profiles: which shell files contain entries
@@ -289,7 +289,7 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 		for _, pur := range packResult.HandlerResults {
 			// Create a DisplayFile for each file in the HandlerResult
 			for _, filePath := range pur.Files {
-				// Check if this file has a power-up override in .dodot.toml
+				// Check if this file has a handler override in .dodot.toml
 				fileName := filepath.Base(filePath)
 				isOverride := false
 				if packResult.Pack != nil {
@@ -385,10 +385,10 @@ func checkPackConfiguration(pack *Pack) (hasConfig bool, isIgnored bool) {
 }
 
 // generateHandlerMessage creates Handler-specific display messages following display.txxt spec
-func generateHandlerMessage(powerUpName, filePath, status string, lastExecuted *time.Time) string {
+func generateHandlerMessage(handlerName, filePath, status string, lastExecuted *time.Time) string {
 	fileName := filepath.Base(filePath)
 
-	switch powerUpName {
+	switch handlerName {
 	case "symlink":
 		switch status {
 		case "success":

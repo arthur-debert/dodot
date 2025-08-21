@@ -168,7 +168,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	packResult := types.NewPackExecutionResult(pack)
 
 	// Add a Handler result
-	powerUpResult := &types.HandlerResult{
+	handlerResult := &types.HandlerResult{
 		HandlerName: "symlink",
 		Files:       []string{"testfile"},
 		Status:      types.StatusReady,
@@ -177,7 +177,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult.AddHandlerResult(powerUpResult)
+	packResult.AddHandlerResult(handlerResult)
 	packResult.Complete()
 
 	ctx.AddPackResult("test-pack", packResult)

@@ -64,7 +64,7 @@ func (p *ShellProfileHandler) ValidateOptions(options map[string]interface{}) er
 	return nil // No options to validate yet
 }
 
-// GetTemplateContent returns the template content for this power-up
+// GetTemplateContent returns the template content for this handler
 func (p *ShellProfileHandler) GetTemplateContent() string {
 	return aliasesTemplate
 }
@@ -74,6 +74,6 @@ func init() {
 		return NewShellProfileHandler(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", ShellProfileHandlerName, err))
+		panic(fmt.Sprintf("failed to register %s handler: %v", ShellProfileHandlerName, err))
 	}
 }

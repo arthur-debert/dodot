@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	// PathHandlerName is the unique name for the path power-up
+	// PathHandlerName is the unique name for the path handler
 	PathHandlerName = "path"
 )
 
@@ -26,7 +26,7 @@ func NewPathHandler() *PathHandler {
 	}
 }
 
-// Name returns the unique name of this power-up
+// Name returns the unique name of this handler
 func (p *PathHandler) Name() string {
 	return PathHandlerName
 }
@@ -36,7 +36,7 @@ func (p *PathHandler) Description() string {
 	return "Adds directories to PATH"
 }
 
-// RunMode returns when this power-up should run
+// RunMode returns when this handler should run
 func (p *PathHandler) RunMode() types.RunMode {
 	return types.RunModeMany
 }
@@ -121,7 +121,7 @@ func (p *PathHandler) ValidateOptions(options map[string]interface{}) error {
 	return nil
 }
 
-// GetTemplateContent returns the template content for this power-up
+// GetTemplateContent returns the template content for this handler
 func (p *PathHandler) GetTemplateContent() string {
 	return ""
 }
@@ -132,7 +132,7 @@ func init() {
 		return NewPathHandler(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", PathHandlerName, err))
+		panic(fmt.Sprintf("failed to register %s handler: %v", PathHandlerName, err))
 	}
 
 	// Default matchers will be registered separately to avoid import cycles

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Minimal test for shell_profile power-up - happy path only
+# Minimal test for shell_profile handler - happy path only
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh

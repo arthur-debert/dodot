@@ -30,7 +30,7 @@ How Packs Work
 
 3. Processing
    Files matching triggers are processed
-   Power-ups generate appropriate actions
+   Handlers generate appropriate actions
 
 Creating Packs
 --------------

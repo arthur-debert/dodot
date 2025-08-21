@@ -51,10 +51,10 @@ func TestDeployPacks_SymlinkHandler(t *testing.T) {
 	testutil.AssertEqual(t, "vim", packResult.Pack.Name)
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
-	// Should have symlink power-up results
-	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have power-up results")
+	// Should have symlink handler results
+	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 
-	// Find symlink power-up result
+	// Find symlink handler result
 	var symlinkResult *types.HandlerResult
 	for _, pur := range packResult.HandlerResults {
 		if pur.HandlerName == "symlink" {
@@ -62,7 +62,7 @@ func TestDeployPacks_SymlinkHandler(t *testing.T) {
 			break
 		}
 	}
-	testutil.AssertNotNil(t, symlinkResult, "Should have symlink power-up result")
+	testutil.AssertNotNil(t, symlinkResult, "Should have symlink handler result")
 	testutil.AssertEqual(t, types.StatusReady, symlinkResult.Status)
 
 	// Verify actual symlinks were created (Layer 1: top-level files get dot prefix)
@@ -201,7 +201,7 @@ echo "Installing tools" > /tmp/install-was-run
 	testutil.AssertTrue(t, ok, "Should have tools pack result")
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
-	// Should only have symlink power-up, NOT install_script
+	// Should only have symlink handler, NOT install_script
 	var hasSymlink, hasInstall bool
 	for _, pur := range packResult.HandlerResults {
 		if pur.HandlerName == "symlink" {
@@ -212,8 +212,8 @@ echo "Installing tools" > /tmp/install-was-run
 		}
 	}
 
-	testutil.AssertTrue(t, hasSymlink, "Should have symlink power-up")
-	testutil.AssertFalse(t, hasInstall, "Should NOT have install_script power-up in deploy mode")
+	testutil.AssertTrue(t, hasSymlink, "Should have symlink handler")
+	testutil.AssertFalse(t, hasInstall, "Should NOT have install_script handler in deploy mode")
 
 	// Verify symlink was created but install script was not run
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")

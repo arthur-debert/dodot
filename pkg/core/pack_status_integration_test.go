@@ -323,18 +323,18 @@ func TestGetPackStatus(t *testing.T) {
 			expectedFiles:  4,
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				// Verify each action type is represented correctly
-				powerUpTypes := make(map[string]bool)
+				handlerTypes := make(map[string]bool)
 				statusCounts := make(map[string]int)
 				for _, file := range result.Files {
-					powerUpTypes[file.Handler] = true
+					handlerTypes[file.Handler] = true
 					statusCounts[file.Status]++
 					t.Logf("File %s (%s): status=%s, message=%s", file.Path, file.Handler, file.Status, file.Message)
 				}
 
-				assert.True(t, powerUpTypes["homebrew"])
-				assert.True(t, powerUpTypes["install_script"])
-				assert.True(t, powerUpTypes["path"])
-				assert.True(t, powerUpTypes["shell_profile"])
+				assert.True(t, handlerTypes["homebrew"])
+				assert.True(t, handlerTypes["install_script"])
+				assert.True(t, handlerTypes["path"])
+				assert.True(t, handlerTypes["shell_profile"])
 
 				// Should have 2 success (brew, install) and 2 pending (path, shell)
 				assert.Equal(t, 2, statusCounts["success"], "Should have 2 successful actions")

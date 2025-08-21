@@ -391,7 +391,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		powerUpName  string
+		handlerName  string
 		filePath     string
 		status       string
 		lastExecuted *time.Time
@@ -400,7 +400,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Symlink tests
 		{
 			name:         "symlink success with time",
-			powerUpName:  "symlink",
+			handlerName:  "symlink",
 			filePath:     "/path/to/.vimrc",
 			status:       "success",
 			lastExecuted: &testTime,
@@ -408,7 +408,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "symlink success no time",
-			powerUpName:  "symlink",
+			handlerName:  "symlink",
 			filePath:     "/path/to/.vimrc",
 			status:       "success",
 			lastExecuted: nil,
@@ -416,14 +416,14 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "symlink error",
-			powerUpName:  "symlink",
+			handlerName:  "symlink",
 			filePath:     "/path/to/.vimrc",
 			status:       "error",
 			wantContains: "failed to link to $HOME/.vimrc",
 		},
 		{
 			name:         "symlink queue",
-			powerUpName:  "symlink",
+			handlerName:  "symlink",
 			filePath:     "/path/to/.vimrc",
 			status:       "queue",
 			wantContains: "will be linked to $HOME/.vimrc",
@@ -431,7 +431,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Shell profile tests
 		{
 			name:         "shell_profile success with time",
-			powerUpName:  "shell_profile",
+			handlerName:  "shell_profile",
 			filePath:     "/path/to/.bashrc",
 			status:       "success",
 			lastExecuted: &testTime,
@@ -439,7 +439,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "shell_profile success no time",
-			powerUpName:  "shell_profile",
+			handlerName:  "shell_profile",
 			filePath:     "/path/to/.bashrc",
 			status:       "success",
 			lastExecuted: nil,
@@ -447,14 +447,14 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "shell_profile error",
-			powerUpName:  "shell_profile",
+			handlerName:  "shell_profile",
 			filePath:     "/path/to/.bashrc",
 			status:       "error",
 			wantContains: "failed to add to shell profile",
 		},
 		{
 			name:         "shell_add_path queue",
-			powerUpName:  "shell_add_path",
+			handlerName:  "shell_add_path",
 			filePath:     "/path/to/dir",
 			status:       "queue",
 			wantContains: "to be included in shell profile",
@@ -462,7 +462,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Homebrew tests
 		{
 			name:         "homebrew success with time",
-			powerUpName:  "homebrew",
+			handlerName:  "homebrew",
 			filePath:     "/path/to/Brewfile",
 			status:       "success",
 			lastExecuted: &testTime,
@@ -470,7 +470,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "homebrew success no time",
-			powerUpName:  "homebrew",
+			handlerName:  "homebrew",
 			filePath:     "/path/to/Brewfile",
 			status:       "success",
 			lastExecuted: nil,
@@ -478,14 +478,14 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "homebrew error",
-			powerUpName:  "homebrew",
+			handlerName:  "homebrew",
 			filePath:     "/path/to/Brewfile",
 			status:       "error",
 			wantContains: "failed to install packages",
 		},
 		{
 			name:         "homebrew queue",
-			powerUpName:  "homebrew",
+			handlerName:  "homebrew",
 			filePath:     "/path/to/Brewfile",
 			status:       "queue",
 			wantContains: "packages to be installed",
@@ -493,21 +493,21 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Path tests
 		{
 			name:         "path success",
-			powerUpName:  "path",
+			handlerName:  "path",
 			filePath:     "/usr/local/bin",
 			status:       "success",
 			wantContains: "added bin to $PATH",
 		},
 		{
 			name:         "path error",
-			powerUpName:  "path",
+			handlerName:  "path",
 			filePath:     "/usr/local/bin",
 			status:       "error",
 			wantContains: "failed to add bin to $PATH",
 		},
 		{
 			name:         "path queue",
-			powerUpName:  "path",
+			handlerName:  "path",
 			filePath:     "/usr/local/bin",
 			status:       "queue",
 			wantContains: "bin to be added to $PATH",
@@ -515,7 +515,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Install tests
 		{
 			name:         "install success with time",
-			powerUpName:  "install",
+			handlerName:  "install",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
 			lastExecuted: &testTime,
@@ -523,7 +523,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "install_script success no time",
-			powerUpName:  "install_script",
+			handlerName:  "install_script",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
 			lastExecuted: nil,
@@ -531,14 +531,14 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "install error",
-			powerUpName:  "install",
+			handlerName:  "install",
 			filePath:     "/path/to/install.sh",
 			status:       "error",
 			wantContains: "installation failed",
 		},
 		{
 			name:         "install queue",
-			powerUpName:  "install",
+			handlerName:  "install",
 			filePath:     "/path/to/install.sh",
 			status:       "queue",
 			wantContains: "to be executed during installation",
@@ -546,28 +546,28 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Unknown handler tests
 		{
 			name:         "unknown handler success",
-			powerUpName:  "custom",
+			handlerName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "success",
 			wantContains: "completed successfully",
 		},
 		{
 			name:         "unknown handler error",
-			powerUpName:  "custom",
+			handlerName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "error",
 			wantContains: "execution failed",
 		},
 		{
 			name:         "unknown handler queue",
-			powerUpName:  "custom",
+			handlerName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "queue",
 			wantContains: "pending execution",
 		},
 		{
 			name:         "unknown handler unknown status",
-			powerUpName:  "custom",
+			handlerName:  "custom",
 			filePath:     "/path/to/file",
 			status:       "unknown",
 			wantContains: "pending execution",
@@ -576,7 +576,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := generateHandlerMessage(tt.powerUpName, tt.filePath, tt.status, tt.lastExecuted)
+			result := generateHandlerMessage(tt.handlerName, tt.filePath, tt.status, tt.lastExecuted)
 			assert.Contains(t, result, tt.wantContains)
 		})
 	}

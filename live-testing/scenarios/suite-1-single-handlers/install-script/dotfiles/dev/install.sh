@@ -1,5 +1,5 @@
 #!/bin/bash
-# Simple install script for testing install_script power-up
+# Simple install script for testing install_script handler
 
 echo "Install script running" >&2
 echo "HOME=$HOME" >&2

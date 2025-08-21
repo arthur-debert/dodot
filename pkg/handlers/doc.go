@@ -1,5 +1,5 @@
-// Package handlers implements various power-up types that process
-// matched files and generate actions. Power-ups are responsible for
+// Package handlers implements various handler types that process
+// matched files and generate actions. Handlers are responsible for
 // determining what operations should be performed on matched files.
 package handlers
 

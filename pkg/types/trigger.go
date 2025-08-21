@@ -50,10 +50,10 @@ type TriggerMatch struct {
 	// Metadata contains any additional data extracted by the trigger
 	Metadata map[string]interface{}
 
-	// HandlerName is the name of the power-up that should process this match
+	// HandlerName is the name of the handler that should process this match
 	HandlerName string
 
-	// HandlerOptions contains options to pass to the power-up
+	// HandlerOptions contains options to pass to the handler
 	HandlerOptions map[string]interface{}
 
 	// Priority determines the order of processing (higher = processed first)

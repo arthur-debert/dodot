@@ -47,13 +47,13 @@ type DisplayPack struct {
 
 // DisplayFile represents a single file within a pack for display.
 type DisplayFile struct {
-	Handler        string     `json:"powerUp"`
+	Handler        string     `json:"handler"`
 	Path           string     `json:"path"`
 	Status         string     `json:"status"` // File-level: "success", "error", "queue", "config", "ignored"
 	Message        string     `json:"message"`
-	IsOverride     bool       `json:"isOverride"`     // File power-up was overridden in .dodot.toml
+	IsOverride     bool       `json:"isOverride"`     // File handler was overridden in .dodot.toml
 	LastExecuted   *time.Time `json:"lastExecuted"`   // When operation was last executed
-	HandlerSymbol  string     `json:"powerUpSymbol"`  // Unicode symbol for the handler
+	HandlerSymbol  string     `json:"handlerSymbol"`  // Unicode symbol for the handler
 	AdditionalInfo string     `json:"additionalInfo"` // Additional context (e.g., symlink target, shell type)
 }
 
@@ -169,8 +169,8 @@ type AdoptedFile struct {
 }
 
 // GetHandlerSymbol returns the Unicode symbol for a given Handler
-func GetHandlerSymbol(powerUpName string) string {
-	switch powerUpName {
+func GetHandlerSymbol(handlerName string) string {
+	switch handlerName {
 	case "symlink":
 		return "➞"
 	case "shell_profile", "shell_add_path":
@@ -187,8 +187,8 @@ func GetHandlerSymbol(powerUpName string) string {
 }
 
 // GetHandlerAdditionalInfo returns a short description for the Handler type
-func GetHandlerAdditionalInfo(powerUpName string) string {
-	switch powerUpName {
+func GetHandlerAdditionalInfo(handlerName string) string {
+	switch handlerName {
 	case "symlink":
 		return "" // Will be filled with actual target
 	case "shell_profile", "shell_add_path":

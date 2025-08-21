@@ -91,15 +91,15 @@ func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, paths
 		}
 
 		// Determine handler type from trigger
-		powerUpType := getHandlerTypeFromTrigger(trigger)
-		if powerUpType == "" {
+		handlerType := getHandlerTypeFromTrigger(trigger)
+		if handlerType == "" {
 			// Unknown handler type, include it
 			filtered = append(filtered, trigger)
 			continue
 		}
 
 		// Check sentinel file
-		sentinelPath := pathsInstance.SentinelPath(powerUpType, trigger.Pack)
+		sentinelPath := pathsInstance.SentinelPath(handlerType, trigger.Pack)
 		sentinelChecksum, err := readSentinelChecksum(sentinelPath)
 		if err != nil {
 			// No sentinel or error reading, include trigger

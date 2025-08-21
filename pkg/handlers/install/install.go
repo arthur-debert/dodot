@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// InstallScriptHandlerName is the unique name for the install script power-up
+	// InstallScriptHandlerName is the unique name for the install script handler
 	InstallScriptHandlerName = "install_script"
 )
 
@@ -21,22 +21,22 @@ var installTemplate string
 // InstallScriptHandler runs install.sh scripts
 type InstallScriptHandler struct{}
 
-// NewInstallScriptHandler creates a new instance of the install script power-up
+// NewInstallScriptHandler creates a new instance of the install script handler
 func NewInstallScriptHandler() types.Handler {
 	return &InstallScriptHandler{}
 }
 
-// Name returns the unique name of this power-up
+// Name returns the unique name of this handler
 func (p *InstallScriptHandler) Name() string {
 	return InstallScriptHandlerName
 }
 
-// Description returns a human-readable description of what this power-up does
+// Description returns a human-readable description of what this handler does
 func (p *InstallScriptHandler) Description() string {
 	return "Runs install.sh scripts for initial setup"
 }
 
-// RunMode returns whether this power-up runs once or many times
+// RunMode returns whether this handler runs once or many times
 func (p *InstallScriptHandler) RunMode() types.RunMode {
 	return types.RunModeOnce
 }
@@ -73,13 +73,13 @@ func (p *InstallScriptHandler) Process(matches []types.TriggerMatch) ([]types.Ac
 	return actions, nil
 }
 
-// ValidateOptions checks if the provided options are valid for this power-up
+// ValidateOptions checks if the provided options are valid for this handler
 func (p *InstallScriptHandler) ValidateOptions(options map[string]interface{}) error {
-	// Install script power-up doesn't have any options
+	// Install script handler doesn't have any options
 	return nil
 }
 
-// GetTemplateContent returns the template content for this power-up
+// GetTemplateContent returns the template content for this handler
 func (p *InstallScriptHandler) GetTemplateContent() string {
 	return installTemplate
 }
@@ -95,12 +95,12 @@ func init() {
 	RegisterInstallScriptHandlerFactory()
 }
 
-// RegisterInstallScriptHandlerFactory registers the install script power-up factory
+// RegisterInstallScriptHandlerFactory registers the install script handler factory
 func RegisterInstallScriptHandlerFactory() {
 	err := registry.RegisterHandlerFactory(InstallScriptHandlerName, func(config map[string]interface{}) (types.Handler, error) {
 		return NewInstallScriptHandler(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s power-up: %v", InstallScriptHandlerName, err))
+		panic(fmt.Sprintf("failed to register %s handler: %v", InstallScriptHandlerName, err))
 	}
 }

@@ -49,7 +49,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
 	testutil.AssertNoError(t, err)
 
-	// Build a map of matched files to their power-ups
+	// Build a map of matched files to their handlers
 	matchMap := make(map[string]string)
 	for _, match := range matches {
 		matchMap[match.Path] = match.HandlerName
@@ -131,7 +131,7 @@ handler = "template"
 	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
 	testutil.AssertNoError(t, err)
 
-	// Build a map of matched files to their power-ups
+	// Build a map of matched files to their handlers
 	matchMap := make(map[string]string)
 	for _, match := range matches {
 		matchMap[match.Path] = match.HandlerName

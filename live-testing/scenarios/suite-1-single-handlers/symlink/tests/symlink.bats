@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Minimal test for symlink power-up - happy path only
+# Minimal test for symlink handler - happy path only
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh
@@ -34,23 +34,23 @@ teardown() {
     # Verify NO symlinks were created for the empty pack
     assert_no_symlinks_for_pack "empty-pack"
     
-    # Test Case 2: Pack with only higher-priority power-up files
+    # Test Case 2: Pack with only higher-priority handler files
     mkdir -p "$DOTFILES_ROOT/priority-pack"
     
-    # Add files that are handled by other power-ups with higher priority than symlink
-    # Install script - handled by install_script power-up
+    # Add files that are handled by other handlers with higher priority than symlink
+    # Install script - handled by install_script handler
     cat > "$DOTFILES_ROOT/priority-pack/install.sh" << 'EOF'
 #!/bin/bash
 echo "Installing"
 EOF
     chmod +x "$DOTFILES_ROOT/priority-pack/install.sh"
     
-    # Brewfile - handled by homebrew power-up  
+    # Brewfile - handled by homebrew handler  
     cat > "$DOTFILES_ROOT/priority-pack/Brewfile" << 'EOF'
 brew "tree"
 EOF
     
-    # Shell profile - handled by shell_profile power-up
+    # Shell profile - handled by shell_profile handler
     cat > "$DOTFILES_ROOT/priority-pack/profile.sh" << 'EOF'
 export VAR=value
 EOF
@@ -59,7 +59,7 @@ EOF
     dodot_run deploy priority-pack
     [ "$status" -eq 0 ]
     
-    # Verify NO symlinks were created - all files handled by other power-ups
+    # Verify NO symlinks were created - all files handled by other handlers
     assert_no_symlinks_for_pack "priority-pack"
     
     # Verify these specific files weren't symlinked to HOME
