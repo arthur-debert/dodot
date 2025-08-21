@@ -264,11 +264,11 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 			Override: []types.OverrideRule{
 				{
 					Path:    "vimrc",
-					Powerup: "symlink",
+					Handler: "symlink",
 				},
 				{
 					Path:    "bash*", // Pattern match
-					Powerup: "shell_profile",
+					Handler: "shell_profile",
 				},
 			},
 		},

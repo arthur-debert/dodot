@@ -43,12 +43,12 @@ func TestLoadPackConfig(t *testing.T) {
 				Override: []types.OverrideRule{
 					{
 						Path:    "htoprc",
-						Powerup: "symlink",
+						Handler: "symlink",
 						With:    map[string]interface{}{"target_dir": "~/.config/htop"},
 					},
 					{
 						Path:    "my-exports.sh",
-						Powerup: "shell_profile",
+						Handler: "shell_profile",
 					},
 				},
 			},
@@ -81,7 +81,7 @@ func TestLoadPackConfig(t *testing.T) {
 `,
 			expected: types.PackConfig{
 				Ignore:   nil,
-				Override: []types.OverrideRule{{Path: "bashrc", Powerup: "symlink"}},
+				Override: []types.OverrideRule{{Path: "bashrc", Handler: "symlink"}},
 			},
 		},
 		{

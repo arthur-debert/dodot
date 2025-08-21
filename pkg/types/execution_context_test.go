@@ -591,7 +591,7 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 		Path: "/home/user/.dotfiles/vim",
 		Config: PackConfig{
 			Override: []OverrideRule{
-				{Path: ".vimrc", Powerup: "symlink"},
+				{Path: ".vimrc", Handler: "symlink"},
 			},
 		},
 	}
@@ -755,8 +755,8 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 	// Test FindOverride method on PackConfig
 	pc := PackConfig{
 		Override: []OverrideRule{
-			{Path: ".vimrc", Powerup: "symlink"},
-			{Path: "*.sh", Powerup: "install"},
+			{Path: ".vimrc", Handler: "symlink"},
+			{Path: "*.sh", Handler: "install"},
 		},
 	}
 
@@ -768,12 +768,12 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 		{
 			name:     "exact match",
 			filename: ".vimrc",
-			wantRule: &OverrideRule{Path: ".vimrc", Powerup: "symlink"},
+			wantRule: &OverrideRule{Path: ".vimrc", Handler: "symlink"},
 		},
 		{
 			name:     "pattern match",
 			filename: "install.sh",
-			wantRule: &OverrideRule{Path: "*.sh", Powerup: "install"},
+			wantRule: &OverrideRule{Path: "*.sh", Handler: "install"},
 		},
 		{
 			name:     "no match",
@@ -790,7 +790,7 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 			} else {
 				require.NotNil(t, rule)
 				assert.Equal(t, tt.wantRule.Path, rule.Path)
-				assert.Equal(t, tt.wantRule.Powerup, rule.Powerup)
+				assert.Equal(t, tt.wantRule.Handler, rule.Handler)
 			}
 		})
 	}

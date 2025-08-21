@@ -94,7 +94,7 @@ teardown() {
 }
 
 @test "mixed deploy/install: pack A deploy, pack B install, pack C both" {
-    # First install pack B and pack C (install-type powerups)
+    # First install pack B and pack C (install-type handlers)
     dodot_run install install-pack mixed-pack
     [ "$status" -eq 0 ]
     
@@ -108,7 +108,7 @@ teardown() {
     assert_install_artifact_exists "$HOME/.local/mixed-pack/marker.txt"
     assert_brewfile_processed "mixed-pack"
     
-    # Now deploy pack A and pack C (deploy-type powerups)
+    # Now deploy pack A and pack C (deploy-type handlers)
     dodot_run deploy deploy-pack mixed-pack
     [ "$status" -eq 0 ]
     

@@ -225,7 +225,7 @@ priority = "high"`,
 				Override: []types.OverrideRule{
 					{
 						Path:    "special.sh",
-						Powerup: "install_script",
+						Handler: "install_script",
 						With: map[string]interface{}{
 							"priority": "high",
 						},
@@ -257,7 +257,7 @@ handler = "shell_profile"`,
 				Override: []types.OverrideRule{
 					{
 						Path:    "install.sh",
-						Powerup: "shell_profile",
+						Handler: "shell_profile",
 					},
 				},
 			},

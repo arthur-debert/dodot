@@ -50,7 +50,7 @@ func TestGetPackNames(t *testing.T) {
 					Name: "zsh",
 					Path: "/home/user/.dotfiles/zsh",
 					Config: types.PackConfig{
-						Override: []types.OverrideRule{{Path: ".zshrc", Powerup: "symlink"}},
+						Override: []types.OverrideRule{{Path: ".zshrc", Handler: "symlink"}},
 					},
 				},
 			},

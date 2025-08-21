@@ -1,12 +1,12 @@
-# PowerUp Documentation Template
+# Handler Documentation Template
 
-This template shows the structure for documenting powerups in their doc.go files.
-Based on the SymlinkPowerUp documentation, each powerup should document:
+This template shows the structure for documenting handlers in their doc.go files.
+Based on the SymlinkHandler documentation, each handler should document:
 
 ## Required Sections
 
 1. **Overview**
-   - What the powerup does (2-3 sentences)
+   - What the handler does (2-3 sentences)
    - Key benefit/use case
 
 2. **When It Runs**
@@ -21,10 +21,10 @@ Based on the SymlinkPowerUp documentation, each powerup should document:
 
 4. **File Selection Process**
    - How files get matched
-   - Which triggers typically feed this powerup
+   - Which triggers typically feed this handler
    - Example file structures
 
-5. **Execution Strategy** (varies by powerup)
+5. **Execution Strategy** (varies by handler)
    - For symlink: Two-link strategy
    - For install scripts: Sentinel files
    - For brew: Package detection
@@ -58,11 +58,11 @@ Based on the SymlinkPowerUp documentation, each powerup should document:
     - How to resolve
 
 11. **Best Practices**
-    - 3-5 tips for using this powerup effectively
+    - 3-5 tips for using this handler effectively
 
-12. **Comparison with Other PowerUps**
+12. **Comparison with Other Handlers**
     - When to use this vs others
-    - Complementary powerups
+    - Complementary handlers
 
 ## Format Guidelines
 
@@ -75,11 +75,11 @@ Based on the SymlinkPowerUp documentation, each powerup should document:
 ## Example Structure
 
 ```go
-// Package <name> provides the <Name>PowerUp implementation for dodot.
+// Package <name> provides the <Name>Handler implementation for dodot.
 //
 // # Overview
 //
-// The <Name>PowerUp ... (2-3 sentences about what it does)
+// The <Name>Handler ... (2-3 sentences about what it does)
 //
 // # When It Runs
 //

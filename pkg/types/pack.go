@@ -35,7 +35,7 @@ type IgnoreRule struct {
 // OverrideRule defines a behavior override for a specific file or pattern
 type OverrideRule struct {
 	Path    string                 `toml:"path"`
-	Powerup string                 `toml:"handler"`
+	Handler string                 `toml:"handler"`
 	With    map[string]interface{} `toml:"with"`
 }
 

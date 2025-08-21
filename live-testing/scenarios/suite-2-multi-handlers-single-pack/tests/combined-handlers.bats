@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 
-# Suite 2: Multi-PowerUps Single Pack
+# Suite 2: Multi-Handlers Single Pack
 # This suite tests scenarios where multiple power-ups are used within single packs.
 # It verifies that different power-up types can coexist and work together correctly
 # when configured in the same pack directory.
@@ -21,28 +21,28 @@ teardown() {
 # Test: path + shell_add_path combination
 @test "path + shell_add_path: adds directory to PATH in init.sh" {
     # Deploy tools pack with bin directory
-    # This should trigger both path (symlink) and shell_add_path powerups
+    # This should trigger both path (symlink) and shell_add_path handlers
     dodot_run deploy tools
     [ "$status" -eq 0 ]
     
-    # Focus on integration: verify both powerups worked together
+    # Focus on integration: verify both handlers worked together
     # The key integration point is that the deployed path is correctly added to init.sh
     local bin_link="${DODOT_DATA_DIR}/deployed/path/tools-bin"
     assert_path_in_shell_init "$bin_link"
     
     # Verify the integration result: executable is accessible via the PATH
-    # This confirms both powerups cooperated successfully
+    # This confirms both handlers cooperated successfully
     assert_executable_available "mytool" "tools-bin"
 }
 
 # Test: symlink + shell_profile combination in deployment
 @test "deploy-type combined: symlink + shell_profile in one pack" {
     # Deploy shell-config pack with both regular files and shell profile
-    # This should trigger both symlink and shell_profile powerups
+    # This should trigger both symlink and shell_profile handlers
     dodot_run deploy shell-config
     [ "$status" -eq 0 ]
     
-    # Focus on integration: verify both powerups deployed from same pack
+    # Focus on integration: verify both handlers deployed from same pack
     # Key test: profile.sh is correctly sourced in init.sh
     assert_profile_in_init "shell-config" "profile.sh"
     
@@ -54,11 +54,11 @@ teardown() {
 # Test: install_script + homebrew combination for installation
 @test "install-type combined: install_script + homebrew in one pack" {
     # Install dev-tools pack with both install.sh and Brewfile
-    # This should trigger both install_script and homebrew powerups
+    # This should trigger both install_script and homebrew handlers
     dodot_run install dev-tools
     [ "$status" -eq 0 ]
     
-    # Focus on integration: verify both install-type powerups ran
+    # Focus on integration: verify both install-type handlers ran
     # Key test: both install methods completed successfully
     assert_install_script_executed "dev-tools"
     assert_brewfile_processed "dev-tools"
@@ -68,21 +68,21 @@ teardown() {
 }
 
 # Test: comprehensive pack with all power-up types
-@test "all powerups: pack with all 5 power-up types" {
-    # First install to trigger install-type powerups
+@test "all handlers: pack with all 5 power-up types" {
+    # First install to trigger install-type handlers
     dodot_run install ultimate
     [ "$status" -eq 0 ]
     
-    # Verify install-type powerups completed
+    # Verify install-type handlers completed
     assert_install_script_executed "ultimate"
     assert_brewfile_processed "ultimate"
     
-    # Now deploy to trigger deploy-type powerups
+    # Now deploy to trigger deploy-type handlers
     dodot_run deploy ultimate
     [ "$status" -eq 0 ]
     
-    # Focus on integration: verify all powerup types can coexist in one pack
-    # Check one key result from each powerup type:
+    # Focus on integration: verify all handler types can coexist in one pack
+    # Check one key result from each handler type:
     
     # 1. Install script result
     assert_install_artifact_exists "$HOME/.local/ultimate/marker.txt"
@@ -102,7 +102,7 @@ teardown() {
 # NEGATIVE TESTS: Verify power-ups respect command boundaries
 
 # Test: Deploy command should NOT run install-type power-ups
-@test "negative: deploy on install-only pack (should not run install powerups)" {
+@test "negative: deploy on install-only pack (should not run install handlers)" {
     # The dev-tools pack has install.sh and Brewfile (install-only power-ups)
     # Running deploy should succeed but NOT execute these power-ups
     

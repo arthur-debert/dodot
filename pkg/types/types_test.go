@@ -177,7 +177,7 @@ func TestPackStructure(t *testing.T) {
 				{Path: "*.bak"},
 			},
 			Override: []OverrideRule{
-				{Path: "test.conf", Powerup: "symlink"},
+				{Path: "test.conf", Handler: "symlink"},
 			},
 		},
 		Metadata: map[string]interface{}{
@@ -209,8 +209,8 @@ func TestPackStructure(t *testing.T) {
 	// Test FindOverride
 	if override := pack.Config.FindOverride("test.conf"); override == nil {
 		t.Error("FindOverride(test.conf) should not be nil")
-	} else if override.Powerup != "symlink" {
-		t.Errorf("FindOverride(test.conf).Powerup = %s, want symlink", override.Powerup)
+	} else if override.Handler != "symlink" {
+		t.Errorf("FindOverride(test.conf).Handler = %s, want symlink", override.Handler)
 	}
 
 	if override := pack.Config.FindOverride("other.file"); override != nil {

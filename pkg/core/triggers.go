@@ -184,14 +184,14 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 
 		// Check for a behavior override from pack config
 		if override := pack.Config.FindOverride(relPath); override != nil {
-			logger.Trace().Str("path", relPath).Str("handler", override.Powerup).Msg("File behavior overridden by pack config")
+			logger.Trace().Str("path", relPath).Str("handler", override.Handler).Msg("File behavior overridden by pack config")
 			match := types.TriggerMatch{
 				TriggerName:    "override-rule",
 				Pack:           pack.Name,
 				Path:           relPath,
 				AbsolutePath:   path,
 				Metadata:       make(map[string]interface{}),
-				HandlerName:    override.Powerup,
+				HandlerName:    override.Handler,
 				HandlerOptions: override.With,
 				Priority:       types.OverridePriority, // High priority for overrides
 			}
@@ -347,14 +347,14 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 
 		// Check for a behavior override from pack config
 		if override := pack.Config.FindOverride(relPath); override != nil {
-			logger.Trace().Str("path", relPath).Str("handler", override.Powerup).Msg("File behavior overridden by pack config")
+			logger.Trace().Str("path", relPath).Str("handler", override.Handler).Msg("File behavior overridden by pack config")
 			match := types.TriggerMatch{
 				TriggerName:    "config-override",
 				Pack:           pack.Name,
 				Path:           relPath,
 				AbsolutePath:   path,
 				Metadata:       make(map[string]interface{}),
-				HandlerName:    override.Powerup,
+				HandlerName:    override.Handler,
 				HandlerOptions: override.With,
 				Priority:       100, // Config overrides have high priority
 			}

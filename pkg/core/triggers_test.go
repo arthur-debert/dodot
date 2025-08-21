@@ -34,7 +34,7 @@ func TestGetPackMatchers(t *testing.T) {
 					Ignore: []types.IgnoreRule{{Path: "*.tmp"}},
 					Override: []types.OverrideRule{{
 						Path:    "*.sh",
-						Powerup: "install_script",
+						Handler: "install_script",
 					}},
 				},
 			},
