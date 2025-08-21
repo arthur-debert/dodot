@@ -1,7 +1,115 @@
                    Data Storage and Organization
 
-This guide explains how dodot organizes and stores your configuration
-files, how symlinks work, and what happens during deployment.
+This guide explains dodot's approach to state management, how it stores
+deployment information, and the rationale behind its design decisions.
+
+The Double-Link Architecture
+----------------------------
+
+dodot could simply create direct symlinks from deployed paths (e.g., ~/.zshrc)
+to source files (e.g., $DOTFILES_ROOT/shell/zshrc). Instead, it uses a 
+double-link structure where the deployed file points to an intermediate 
+symlink in dodot's state directory, which then points to the source file.
+
+Why this design? The answer is state management. This structure ties together
+the deployment result, the thing itself, and our state representation.
+
+Alternative approaches like direct links with a JSON state file would require
+keeping the deployment and state in sync. Our design has key advantages:
+
+• No risk of being out of sync - the deployment IS the state
+• Easy debugging - if a state symlink points to a missing source file,
+  it's immediately visible
+• Robust and simple - no parsing, no corruption, just filesystem operations
+
+In essence: the filesystem structure itself is the state database.
+
+State Storage Structure
+-----------------------
+
+Here's what dodot's state storage looks like after deploying various powerups:
+
+```
+~/.local/share/dodot/
+├── deployed/
+│   ├── symlink/         # Intermediate symlinks for regular files
+│   │   ├── .vimrc → ~/dotfiles/vim/vimrc
+│   │   ├── .zshrc → ~/dotfiles/zsh/zshrc
+│   │   └── .gitconfig → ~/dotfiles/git/gitconfig
+│   │
+│   ├── shell_profile/   # Shell scripts to source
+│   │   ├── vim_aliases.sh → ~/dotfiles/vim/aliases.sh
+│   │   ├── git_functions.sh → ~/dotfiles/git/functions.sh
+│   │   └── tools_env.sh → ~/dotfiles/tools/env.sh
+│   │
+│   └── path/           # Directories to add to PATH
+│       ├── tools-bin → ~/dotfiles/tools/bin
+│       └── scripts-local → ~/dotfiles/scripts/.local/bin
+│
+├── homebrew/           # Brew execution tracking
+│   ├── tools_Brewfile.sentinel    # "sha256:2024-01-15T10:00:00Z"
+│   └── dev_Brewfile.sentinel      # "sha256:2024-01-20T14:30:00Z"
+│
+├── install/            # Install script tracking
+│   ├── vim_install.sh.sentinel    # "sha256:2024-01-10T09:00:00Z"
+│   ├── tools_setup.sh.sentinel    # "sha256:2024-01-12T11:00:00Z"
+│   └── tools/                     # Copied scripts
+│       └── setup.sh
+│
+└── shell/
+    └── dodot-init.sh   # Sources everything in shell_profile/ and adds path/ to PATH
+```
+
+How Each PowerUp Stores State
+------------------------------
+
+1. Symlink PowerUp:
+   • Creates intermediate symlink in deployed/symlink/
+   • User's file (e.g., ~/.vimrc) points to intermediate
+   • Intermediate points to source in pack
+   • State = existence of these symlinks
+
+2. Shell Profile PowerUp:
+   • Creates symlinks in deployed/shell_profile/
+   • Naming: <pack>_<filename> (e.g., vim_aliases.sh)
+   • dodot-init.sh sources all files in this directory
+   • State = existence of symlinks
+
+3. Path PowerUp:
+   • Creates symlinks in deployed/path/
+   • Naming: <pack>-<dirname> (e.g., tools-bin)
+   • Each symlink points to a directory to add to PATH
+   • dodot-init.sh iterates through these and adds to PATH
+   • State = existence of directory symlinks
+
+4. Homebrew PowerUp:
+   • Creates sentinel files in homebrew/
+   • Format: <pack>_Brewfile.sentinel
+   • Content: "checksum:timestamp"
+   • State = sentinel existence and checksum match
+
+5. Install Script PowerUp:
+   • Creates sentinel files in install/
+   • Copies scripts before execution for safety
+   • Format: <pack>_<script>.sentinel
+   • Content: "checksum:timestamp"
+   • State = sentinel existence and checksum match
+
+File Deployment Mapping
+-----------------------
+
+The relationship between source files and deployed locations follows
+intelligent mapping rules:
+
+Default Mapping:
+• Pack root files → home with dot prefix (vimrc → ~/.vimrc)
+• Pack subdirectories → XDG directories or home subdirectories
+• Special handling for known directories (ssh, vim, etc.)
+
+Mapping can be customized via:
+• Pack configuration in .dodot.toml
+• Explicit _home/ or _xdg/ prefixes in paths
+• PowerUp options like target_dir
 
 The Pack Concept
 ----------------
@@ -28,118 +136,18 @@ DOTFILES_ROOT/
     └── install.sh         # executed once
 ```
 
-File Deployment Strategies
----------------------------
+Shell Integration
+-----------------
 
-dodot uses different strategies based on file types and locations:
+dodot uses a single shell integration point: dodot-init.sh. This script:
 
-1. Symbolic Links:
-   Most configuration files are deployed via symbolic links:
-   • Source: DOTFILES_ROOT/pack/filename  
-   • Target: ~/.filename (with dot prefix)
-   • Changes to source file are immediately live
+1. Sources all files in deployed/shell_profile/
+2. Adds all directories in deployed/path/ to PATH
+3. Exports environment variables for tracking
+4. Provides helper functions for status checking
 
-2. Shell Integration:
-   Shell files are sourced rather than linked:
-   • alias.sh files are sourced in shell profiles
-   • env.sh files export environment variables
-   • Custom PATH additions are handled specially
-
-3. Run-Once Operations:
-   Some files trigger one-time operations:
-   • install.sh scripts are executed
-   • Brewfiles are processed by Homebrew
-   • Tracked via sentinel files to prevent re-execution
-
-Symlink Behavior
-----------------
-
-File Naming Rules:
-• Files in pack root: pack/vimrc → ~/.vimrc (dot prefix added)
-• Directories in pack root: pack/config → ~/config (no dot prefix)
-• Files in subdirectories: keep original path structure
-
-Target Directory Rules:
-• Default target: user home directory (~)
-• Override via power-up options: target_dir = "~/.config"
-• Nested directories created automatically if needed
-
-Link Safety:
-• Existing files backed up if backup=true option set
-• Existing symlinks replaced if overwrite=true
-• Directory creation handled automatically
-
-Data Persistence
-----------------
-
-dodot stores minimal persistent data:
-
-Sentinel Files:
-Location: DODOT_DATA_DIR (default: ~/.local/share/dodot)
-Purpose: Track run-once operations to prevent re-execution
-
-Structure:
-```
-~/.local/share/dodot/
-├── homebrew/
-│   ├── pack1           # checksum of pack1/Brewfile
-│   └── pack2           # checksum of pack2/Brewfile
-└── install/
-    ├── pack1           # checksum of pack1/install.sh
-    └── pack2           # checksum of pack2/install.sh
-```
-
-Shell Integration Method:
-dodot uses a central directory for shell integration. It creates symlinks
-from your source files (e.g., `aliases.sh`) into this directory:
-`~/.local/share/dodot/shell/profile.d/`
-
-Your shell startup script (e.g., `.zshrc`, `.bashrc`) is configured once
-to source all `.sh` files from that directory. This avoids creating
-multiple `~/.dodot_*` files in your home directory.
-
-No State Database:
-dodot deliberately avoids state databases. Deployment status is determined
-by examining the current filesystem, not by consulting stored metadata.
-
-Directory Structure Examples
------------------------------
-
-Minimal Pack:
-```
-vim/
-├── vimrc              # basic vim configuration
-└── .dodot.toml        # optional overrides
-```
-
-Complex Pack:
-```
-development/
-├── bin/               # executables added to PATH
-│   ├── git-helpers
-│   └── dev-scripts
-├── config/            # configuration directory
-│   ├── git/
-│   │   └── hooks/
-│   └── editors/
-├── aliases.sh         # shell aliases
-├── env.sh            # environment variables
-├── Brewfile          # package dependencies
-├── install.sh        # setup script
-└── .dodot.toml       # pack configuration
-```
-
-Configuration Override:
-```
-.dodot.toml:
-[[ignore]]
-  path = "*.backup"    # skip backup files
-
-[[override]]
-  path = "config"
-  powerup = "symlink"
-  with = { target_dir = "~/.config" }
-```
+Your shell profile (.zshrc, .bashrc) only needs one line to source
+dodot-init.sh, avoiding multiple integration points.
 
 Storage Benefits
 ----------------
@@ -151,8 +159,8 @@ Version Control Integration:
 
 Transparency:
 • You can see exactly what will be deployed
-• No hidden state or magic transformations
-• Easy to debug and understand
+• The state IS the deployment - no hidden metadata
+• Easy to debug by examining symlinks
 
 Portability:
 • Works on any system with git and dodot
@@ -195,6 +203,39 @@ Since everything is in git:
 
 To completely remove dodot traces:
 1. Remove symlinks: replace with actual files if desired
-2. Remove shell integration lines from profiles
+2. Remove shell integration line from profiles
 3. Clean up DODOT_DATA_DIR if desired
 4. Your dotfiles repository remains intact and usable
+
+Understanding State Through Examples
+------------------------------------
+
+To check what's deployed:
+```
+# See all intermediate symlinks
+ls -la ~/.local/share/dodot/deployed/symlink/
+
+# See what's added to PATH
+ls -la ~/.local/share/dodot/deployed/path/
+
+# Check if a Brewfile was processed
+ls ~/.local/share/dodot/homebrew/
+```
+
+To understand a deployment:
+```
+# Follow the symlink chain for .vimrc
+readlink ~/.vimrc
+# → /Users/you/.local/share/dodot/deployed/symlink/.vimrc
+
+readlink /Users/you/.local/share/dodot/deployed/symlink/.vimrc  
+# → /Users/you/dotfiles/vim/vimrc
+```
+
+The beauty is that the deployment structure tells you everything:
+• What's deployed (symlinks exist)
+• Where it came from (follow the symlinks)
+• What's broken (dangling symlinks)
+• What changed (checksum mismatches in sentinels)
+
+No database queries, no state files to parse - just ls and readlink.

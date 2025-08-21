@@ -234,13 +234,17 @@ func pathsMatch(targetDest, expectedPath, resolvedPath string) bool {
 
 // RemoveDanglingLink safely removes a dangling symlink
 // It verifies ownership before removal to avoid affecting user-created symlinks
-// TODO: This will be implemented in a separate commit for Release 1
-/*
 func (ld *LinkDetector) RemoveDanglingLink(dl *DanglingLink) error {
+	logger := logging.GetLogger("state.dangling")
+
 	// First verify the deployed symlink still points to our intermediate
 	targetDest, err := ld.fs.Readlink(dl.DeployedPath)
 	if err != nil {
 		// Can't read - maybe already removed
+		logger.Debug().
+			Str("path", dl.DeployedPath).
+			Err(err).
+			Msg("deployed symlink no longer exists or unreadable")
 		return nil
 	}
 
@@ -252,7 +256,6 @@ func (ld *LinkDetector) RemoveDanglingLink(dl *DanglingLink) error {
 
 	// Only remove if it still points to our intermediate
 	if !pathsMatch(targetDest, dl.IntermediatePath, resolvedTarget) {
-		logger := logging.GetLogger("state.dangling")
 		logger.Debug().
 			Str("deployed", dl.DeployedPath).
 			Str("expected_intermediate", dl.IntermediatePath).
@@ -261,18 +264,20 @@ func (ld *LinkDetector) RemoveDanglingLink(dl *DanglingLink) error {
 		return nil
 	}
 
-	logger := logging.GetLogger("state.dangling")
-
 	// Remove the deployed symlink first
+	logger.Debug().
+		Str("path", dl.DeployedPath).
+		Msg("attempting to remove deployed symlink")
+
 	if err := ld.fs.Remove(dl.DeployedPath); err != nil && !os.IsNotExist(err) {
-		logger.Debug().
+		logger.Error().
 			Err(err).
 			Str("path", dl.DeployedPath).
 			Msg("error removing deployed symlink")
 		return errors.Wrapf(err, errors.ErrFileAccess, "failed to remove deployed symlink %s", dl.DeployedPath)
 	}
 
-	logger.Warn().
+	logger.Info().
 		Str("path", dl.DeployedPath).
 		Str("pack", dl.Pack).
 		Str("problem", dl.Problem).
@@ -295,4 +300,3 @@ func (ld *LinkDetector) RemoveDanglingLink(dl *DanglingLink) error {
 
 	return nil
 }
-*/
