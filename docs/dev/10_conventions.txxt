@@ -91,6 +91,15 @@ Logging Best Practices:
 • Log at appropriate levels
 • Include operation durations for performance tracking
 
+CRITICAL - Logging Initialization:
+• NEVER use logging in package init() functions
+• NEVER use logging before SetupLogger() is called
+• Package initialization happens before main() and before logging is configured
+• If you need to track initialization, use a delayed logging approach:
+  - Store messages/errors during init
+  - Log them after SetupLogger() is called
+• The default zerolog level may be DEBUG, causing unwanted output
+
 Code Quality Standards
 ----------------------
 

@@ -32,6 +32,7 @@ This repository contains dodot, a stateless dotfiles manager written in Go.
 1. **Documentation**: ALL docs must use txxt format, never Markdown
 2. **Code Quality**: Pre-commit hooks are MANDATORY (scripts/lint and scripts/test)
 3. **Logging**: Required for all new code (see pkg/logging/logging.go)
+   - **CRITICAL**: Never use logging in init() functions - it runs before SetupLogger()
 4. **Error Handling**: All errors must have codes and messages
 5. **File System**: NO direct FS operations - only through synthfs
 6. **Testing**: Use common test helpers in pkg/testutil
