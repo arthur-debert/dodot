@@ -127,11 +127,11 @@ func TestGetPackStatus(t *testing.T) {
 				testutil.CreateDirT(t, fs, "home/user")
 				require.NoError(t, fs.Symlink(deployedPath, "home/user/.config"))
 			},
-			expectedStatus: "alert",
+			expectedStatus: "partial",
 			expectedFiles:  1,
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
-				assert.Equal(t, "error", result.Files[0].Status)
-				assert.Contains(t, result.Files[0].Message, "broken")
+				assert.Equal(t, "warning", result.Files[0].Status)
+				assert.Contains(t, result.Files[0].Message, "dangling")
 				// Verify display path uses source basename
 				assert.Equal(t, "config", result.Files[0].Path)
 			},

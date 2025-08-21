@@ -60,6 +60,7 @@ type DisplayFile struct {
 // GetPackStatus determines the pack-level status based on its files.
 // Following the aggregation rules from the design:
 // - If ANY file has ERROR status → Pack status is "alert"
+// - If ANY file has WARNING status (but no errors) → Pack status is "partial"
 // - If ALL files have SUCCESS status → Pack status is "success"
 // - Empty pack or mixed states → Pack status is "queue"
 func (dp *DisplayPack) GetPackStatus() string {
@@ -68,6 +69,7 @@ func (dp *DisplayPack) GetPackStatus() string {
 	}
 
 	hasError := false
+	hasWarning := false
 	allSuccess := true
 
 	for _, file := range dp.Files {
@@ -79,6 +81,9 @@ func (dp *DisplayPack) GetPackStatus() string {
 		if file.Status == "error" {
 			hasError = true
 		}
+		if file.Status == "warning" {
+			hasWarning = true
+		}
 		if file.Status != "success" {
 			allSuccess = false
 		}
@@ -86,6 +91,9 @@ func (dp *DisplayPack) GetPackStatus() string {
 
 	if hasError {
 		return "alert" // Will be displayed with ALERT styling
+	}
+	if hasWarning {
+		return "partial" // Has warnings but no errors
 	}
 	if allSuccess {
 		return "success"
