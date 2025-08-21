@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/state"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -155,8 +156,19 @@ func TestGetPackStatus_DanglingLinks(t *testing.T) {
 			// Create filesystem
 			fs := filesystem.NewOS()
 
-			// Get display status for the action
-			displayFile, err := getActionDisplayStatus(action, fs, p)
+			// Use LinkDetector to detect dangling links
+			linkDetector := state.NewLinkDetector(fs, p)
+			danglingLinks, err := linkDetector.DetectDanglingLinks([]types.Action{action})
+			require.NoError(t, err)
+
+			// Create dangling links map
+			danglingByPath := make(map[string]*state.DanglingLink)
+			for i := range danglingLinks {
+				danglingByPath[danglingLinks[i].DeployedPath] = &danglingLinks[i]
+			}
+
+			// Get display status for the action with dangling links map
+			displayFile, err := getActionDisplayStatus(action, fs, p, danglingByPath)
 			require.NoError(t, err)
 
 			// Verify status

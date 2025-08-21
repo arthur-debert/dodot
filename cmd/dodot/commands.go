@@ -90,6 +90,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newInstallCmd())
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
+	rootCmd.AddCommand(newOffCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
@@ -731,6 +732,87 @@ func newSnippetCmd() *cobra.Command {
 	cmd.Flags().Bool("install", false, "Install shell integration scripts to data directory")
 
 	return cmd
+}
+
+func newOffCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "off [packs...]",
+		Short:             MsgOffShort,
+		Long:              MsgOffLong,
+		Example:           MsgOffExample,
+		GroupID:           "core",
+		ValidArgsFunction: packNamesCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Get flags
+			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
+			force, _ := cmd.Root().PersistentFlags().GetBool("force")
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Strs("packs", args).
+				Bool("dry_run", dryRun).
+				Bool("force", force).
+				Msg("Turning off packs")
+
+			// Run off command
+			result, err := commands.OffPacks(commands.OffPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				DataDir:      p.DataDir(),
+				PackNames:    args,
+				Force:        force,
+				DryRun:       dryRun,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "off")
+				}
+				return fmt.Errorf(MsgErrOffPacks, err)
+			}
+
+			// Display results
+			if result.DryRun {
+				fmt.Println("DRY RUN - No changes made")
+			}
+
+			if result.TotalRemoved == 0 {
+				fmt.Println("No deployments found to remove")
+			} else {
+				for _, pack := range result.Packs {
+					if len(pack.RemovedItems) > 0 {
+						fmt.Printf("\nPack: %s\n", pack.Name)
+						for _, item := range pack.RemovedItems {
+							if item.Success {
+								fmt.Printf("  ✓ Removed %s: %s", item.Type, item.Path)
+								if item.Target != "" {
+									fmt.Printf(" -> %s", item.Target)
+								}
+								fmt.Println()
+							} else {
+								fmt.Printf("  ✗ Failed to remove %s: %s (%s)\n", item.Type, item.Path, item.Error)
+							}
+						}
+					}
+					if len(pack.Errors) > 0 {
+						fmt.Printf("  Errors:\n")
+						for _, err := range pack.Errors {
+							fmt.Printf("    - %s\n", err)
+						}
+					}
+				}
+				fmt.Printf("\nTotal items removed: %d\n", result.TotalRemoved)
+			}
+
+			return nil
+		},
+	}
 }
 
 // Completion command removed - use dodot-completions tool to generate shell completions

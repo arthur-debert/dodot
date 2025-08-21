@@ -9,6 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
+	"github.com/arthur-debert/dodot/pkg/state"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -50,9 +51,24 @@ func GetPackStatus(pack types.Pack, actions []types.Action, fs types.FS, paths t
 		return displayPack, nil
 	}
 
+	// Detect dangling links using LinkDetector
+	linkDetector := state.NewLinkDetector(fs, paths)
+	danglingLinks, err := linkDetector.DetectDanglingLinks(actions)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to detect dangling links")
+		// Don't fail the status command due to dangling link detection errors
+		danglingLinks = []state.DanglingLink{}
+	}
+
+	// Create a map for quick lookup of dangling links by deployed path
+	danglingByPath := make(map[string]*state.DanglingLink)
+	for i := range danglingLinks {
+		danglingByPath[danglingLinks[i].DeployedPath] = &danglingLinks[i]
+	}
+
 	// Process each action
 	for _, action := range actions {
-		displayFile, err := getActionDisplayStatus(action, fs, paths)
+		displayFile, err := getActionDisplayStatus(action, fs, paths, danglingByPath)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -112,7 +128,7 @@ func checkSpecialFiles(pack types.Pack, displayPack *types.DisplayPack, fs types
 }
 
 // getActionDisplayStatus converts an action and its status to a DisplayFile
-func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather) (*types.DisplayFile, error) {
+func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather, danglingLinks map[string]*state.DanglingLink) (*types.DisplayFile, error) {
 	logger := logging.GetLogger("core.pack_status").With().
 		Str("action", action.Description).
 		Str("type", string(action.Type)).
@@ -150,30 +166,35 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 		additionalInfo = types.FormatSymlinkForDisplay(action.Target, homeDir, 46)
 	}
 
-	// For errors, check if it's a dangling link and enhance the message
+	// Default display values from status
 	displayStatus := mapStatusStateToDisplay(status.State)
 	displayMessage := status.Message
 
-	if status.State == types.StatusStateError && status.ErrorDetails != nil {
-		// This is a dangling link - mark it as warning and enhance message
-		switch status.ErrorDetails.ErrorType {
-		case "missing_source":
+	// Check if this action has a dangling link (for symlink actions)
+	if action.Type == types.ActionTypeLink && action.Target != "" {
+		if dangling, found := danglingLinks[action.Target]; found {
+			// This is a dangling link - mark it as warning
 			displayStatus = "warning"
-			displayMessage = fmt.Sprintf("dangling: source file removed (%s)", filepath.Base(status.ErrorDetails.SourcePath))
-		case "missing_intermediate":
-			displayStatus = "warning"
-			displayMessage = "dangling: intermediate link missing"
-		case "wrong_intermediate_target":
-			displayStatus = "warning"
-			displayMessage = "dangling: intermediate points to wrong file"
-		}
 
-		// Log the dangling link detection
-		logger.Warn().
-			Str("errorType", status.ErrorDetails.ErrorType).
-			Str("deployedPath", status.ErrorDetails.DeployedPath).
-			Str("sourcePath", status.ErrorDetails.SourcePath).
-			Msg("Dangling link detected")
+			// Enhance message based on the problem
+			switch dangling.Problem {
+			case "source file missing":
+				displayMessage = fmt.Sprintf("dangling: source file removed (%s)", filepath.Base(dangling.SourcePath))
+			case "intermediate symlink missing":
+				displayMessage = "dangling: intermediate link missing"
+			case "intermediate points to wrong file":
+				displayMessage = "dangling: intermediate points to wrong file"
+			default:
+				displayMessage = fmt.Sprintf("dangling: %s", dangling.Problem)
+			}
+
+			// Log the dangling link detection
+			logger.Warn().
+				Str("problem", dangling.Problem).
+				Str("deployedPath", dangling.DeployedPath).
+				Str("sourcePath", dangling.SourcePath).
+				Msg("Dangling link reported")
+		}
 	}
 
 	displayFile := &types.DisplayFile{

@@ -1,0 +1,11 @@
+# Remove all deployments for the vim pack
+dodot off vim
+
+# Remove deployments for multiple packs
+dodot off vim git zsh
+
+# Preview what would be removed (dry run)
+dodot off vim --dry-run
+
+# Remove all deployments (all packs)
+dodot off

@@ -14,6 +14,7 @@ const (
 	MsgListShort       = "List all available packs"
 	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
 	MsgStatusShort     = "Show deployment status of packs"
+	MsgOffShort        = "Remove all deployments for specified packs"
 	MsgInitShort       = "Create a new pack with template files"
 	MsgFillShort       = "Add placeholder files to an existing pack"
 	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
@@ -54,6 +55,7 @@ const (
 	MsgErrFillPack     = "failed to fill pack: %w"
 	MsgErrAddIgnore    = "failed to add ignore file: %w"
 	MsgErrAdoptFiles   = "failed to adopt files: %w"
+	MsgErrOffPacks     = "failed to turn off packs: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
@@ -131,6 +133,14 @@ var (
 	//go:embed msgs/adopt-example.txt
 	msgAdoptExampleRaw string
 	MsgAdoptExample    = strings.TrimSpace(msgAdoptExampleRaw)
+
+	//go:embed msgs/off-long.txt
+	msgOffLongRaw string
+	MsgOffLong    = strings.TrimSpace(msgOffLongRaw)
+
+	//go:embed msgs/off-example.txt
+	msgOffExampleRaw string
+	MsgOffExample    = strings.TrimSpace(msgOffExampleRaw)
 
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string
