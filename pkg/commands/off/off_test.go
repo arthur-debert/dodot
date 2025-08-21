@@ -186,6 +186,25 @@ func TestOffPacks(t *testing.T) {
 			expectRemoved:    0, // nothing to remove
 			expectExistAfter: []string{"vim/vimrc"},
 		},
+		{
+			name: "doesn't remove user-created symlinks",
+			setupPacks: func(t *testing.T, dotfilesRoot, dataDir, homeDir string) {
+				// Create vim pack
+				testutil.CreateFile(t, dotfilesRoot, "vim/vimrc", "vim config")
+
+				// Create a user's own symlink that doesn't point to our intermediate
+				userTarget := filepath.Join(homeDir, "my-own-vimrc")
+				testutil.CreateFile(t, homeDir, "my-own-vimrc", "user's vimrc")
+				testutil.CreateSymlink(t, userTarget, filepath.Join(homeDir, ".vimrc"))
+			},
+			packNames:     []string{"vim"},
+			expectRemoved: 0, // should not remove user's symlink
+			expectExistAfter: []string{
+				"~/.vimrc",       // user's symlink should remain
+				"~/my-own-vimrc", // user's file should remain
+				"vim/vimrc",      // source file should remain
+			},
+		},
 	}
 
 	for _, tt := range tests {

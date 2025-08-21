@@ -163,18 +163,11 @@ func findAndRemoveDeployments(action types.Action, fs types.FS, opts OffPacksOpt
 
 	switch action.Type {
 	case types.ActionTypeLink:
-		// Remove deployed symlink
+		// Remove deployed symlink with ownership verification
 		if action.Target != "" {
-			target := paths.ExpandHome(action.Target)
-			if item := removeIfExists(target, "symlink", fs, opts); item != nil {
-				items = append(items, *item)
-			}
-		}
-
-		// Remove intermediate symlink
-		intermediatePath := filepath.Join(opts.DataDir, "deployed", "symlink", filepath.Base(action.Target))
-		if item := removeIfExists(intermediatePath, "intermediate", fs, opts); item != nil {
-			items = append(items, *item)
+			// Use LinkDetector for safe removal
+			linkItems := safeRemoveSymlink(action, fs, opts)
+			items = append(items, linkItems...)
 		}
 
 	case types.ActionTypePathAdd:
@@ -220,6 +213,112 @@ func cleanupPackState(pack types.Pack, fs types.FS, opts OffPacksOptions) []Remo
 	}
 
 	return items
+}
+
+// safeRemoveSymlink safely removes a symlink with ownership verification
+func safeRemoveSymlink(action types.Action, fs types.FS, opts OffPacksOptions) []RemovedItem {
+	logger := logging.GetLogger("commands.off")
+	items := []RemovedItem{}
+
+	// Create a paths instance
+	p, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Msg("Failed to create paths instance")
+		return items
+	}
+
+	// Get intermediate path
+	intermediatePath, err := action.GetDeployedSymlinkPath(p)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("target", action.Target).
+			Msg("Failed to get intermediate symlink path")
+		return items
+	}
+
+	target := paths.ExpandHome(action.Target)
+
+	// Check if deployed symlink exists and points to our intermediate
+	targetInfo, err := fs.Lstat(target)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			logger.Debug().
+				Err(err).
+				Str("target", target).
+				Msg("Error checking deployed symlink")
+		}
+		// Target doesn't exist - nothing to remove
+		return items
+	}
+
+	// Verify it's a symlink
+	if targetInfo.Mode()&os.ModeSymlink == 0 {
+		logger.Debug().
+			Str("target", target).
+			Msg("Target exists but is not a symlink - not removing")
+		return items
+	}
+
+	// Read where it points
+	targetDest, err := fs.Readlink(target)
+	if err != nil {
+		logger.Debug().
+			Err(err).
+			Str("target", target).
+			Msg("Cannot read symlink - not removing")
+		return items
+	}
+
+	// Resolve the target
+	resolvedTarget := targetDest
+	if !filepath.IsAbs(targetDest) {
+		resolvedTarget = filepath.Join(filepath.Dir(target), targetDest)
+	}
+
+	// Verify it points to our intermediate
+	if !pathsMatch(targetDest, intermediatePath, resolvedTarget) {
+		logger.Debug().
+			Str("target", target).
+			Str("points_to", targetDest).
+			Str("expected", intermediatePath).
+			Msg("Symlink doesn't point to our intermediate - not removing")
+		return items
+	}
+
+	// Safe to remove - it's our symlink
+	if item := removeIfExists(target, "symlink", fs, opts); item != nil {
+		items = append(items, *item)
+	}
+
+	// Remove intermediate symlink
+	if item := removeIfExists(intermediatePath, "intermediate", fs, opts); item != nil {
+		items = append(items, *item)
+	}
+
+	return items
+}
+
+// pathsMatch checks if symlink paths match (copied from state package)
+func pathsMatch(targetDest, expectedPath, resolvedPath string) bool {
+	// Direct match
+	if targetDest == expectedPath {
+		return true
+	}
+
+	// Clean and compare
+	if filepath.Clean(targetDest) == filepath.Clean(expectedPath) {
+		return true
+	}
+
+	// Compare resolved path
+	if filepath.Clean(resolvedPath) == filepath.Clean(expectedPath) {
+		return true
+	}
+
+	return false
 }
 
 // removeIfExists removes a file/directory if it exists
