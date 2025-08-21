@@ -62,6 +62,12 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 		return Status{
 			State:   StatusStateError,
 			Message: fmt.Sprintf("linked to %s (broken - intermediate symlink missing)", filepath.Base(a.Target)),
+			ErrorDetails: &StatusErrorDetails{
+				ErrorType:        "missing_intermediate",
+				DeployedPath:     a.Target,
+				IntermediatePath: intermediatePath,
+				SourcePath:       a.Source,
+			},
 		}, nil
 	}
 
@@ -71,6 +77,12 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 		return Status{
 			State:   StatusStateError,
 			Message: fmt.Sprintf("linked to %s (broken - intermediate is not a symlink)", filepath.Base(a.Target)),
+			ErrorDetails: &StatusErrorDetails{
+				ErrorType:        "invalid_intermediate",
+				DeployedPath:     a.Target,
+				IntermediatePath: intermediatePath,
+				SourcePath:       a.Source,
+			},
 		}, nil
 	}
 
@@ -81,6 +93,12 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 		return Status{
 			State:   StatusStateError,
 			Message: fmt.Sprintf("linked to %s (broken - cannot read intermediate symlink)", filepath.Base(a.Target)),
+			ErrorDetails: &StatusErrorDetails{
+				ErrorType:        "unreadable_intermediate",
+				DeployedPath:     a.Target,
+				IntermediatePath: intermediatePath,
+				SourcePath:       a.Source,
+			},
 		}, nil
 	}
 
@@ -99,6 +117,12 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 			return Status{
 				State:   StatusStateError,
 				Message: fmt.Sprintf("linked to %s (broken - intermediate points to wrong file)", filepath.Base(a.Target)),
+				ErrorDetails: &StatusErrorDetails{
+					ErrorType:        "wrong_intermediate_target",
+					DeployedPath:     a.Target,
+					IntermediatePath: intermediatePath,
+					SourcePath:       a.Source,
+				},
 			}, nil
 		}
 	}
@@ -109,6 +133,12 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 		return Status{
 			State:   StatusStateError,
 			Message: fmt.Sprintf("linked to %s (broken - source file missing)", filepath.Base(a.Target)),
+			ErrorDetails: &StatusErrorDetails{
+				ErrorType:        "missing_source",
+				DeployedPath:     a.Target,
+				IntermediatePath: intermediatePath,
+				SourcePath:       a.Source,
+			},
 		}, nil
 	}
 
