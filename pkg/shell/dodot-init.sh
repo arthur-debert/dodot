@@ -81,17 +81,17 @@ fi
 
 # 2. Add all directories to PATH
 if [ -d "$DODOT_DEPLOYED_DIR/path" ]; then
-    for dir in "$DODOT_DEPLOYED_DIR/path"/*; do
-        if [ -d "$dir" ] && [ -r "$dir" ]; then
-            # Check if the symlink target exists
-            if [ -e "$dir" ]; then
+    for symlink in "$DODOT_DEPLOYED_DIR/path"/*; do
+        if [ -L "$symlink" ] && [ -r "$symlink" ]; then
+            # Check if the symlink target exists and is a directory
+            if [ -e "$symlink" ] && [ -d "$symlink" ]; then
                 # Prepend to PATH to give precedence to dodot-managed bins
-                export PATH="$dir:$PATH"
+                export PATH="$symlink:$PATH"
                 
                 # Track PATH additions for debugging
                 if [ -n "$DODOT_DEPLOYMENT_ROOT" ]; then
                     # Get the actual target of the symlink
-                    target=$(readlink "$dir")
+                    target=$(readlink "$symlink")
                     # Strip the deployment-time dotfiles root to get relative path
                     relative_path="${target#$DODOT_DEPLOYMENT_ROOT/}"
                     # Only add if we successfully got a relative path
