@@ -8,10 +8,11 @@ import (
 
 // Security holds security-related configuration
 type Security struct {
-	ProtectedPaths    map[string]bool
-	AllowHomeSymlinks bool
-	BackupExisting    bool
-	EnableRollback    bool
+	ProtectedPaths       map[string]bool
+	AllowHomeSymlinks    bool
+	BackupExisting       bool
+	EnableRollback       bool
+	CleanupDanglingLinks bool // Controls whether to remove dangling links during deploy
 }
 
 // Patterns holds various ignore and exclude patterns
@@ -110,9 +111,10 @@ func Default() *Config {
 				".kube/config":         true,
 				".docker/config.json":  true,
 			},
-			AllowHomeSymlinks: false,
-			BackupExisting:    true,
-			EnableRollback:    true,
+			AllowHomeSymlinks:    false,
+			BackupExisting:       true,
+			EnableRollback:       true,
+			CleanupDanglingLinks: true, // Default to cleaning up dangling links
 		},
 		Patterns: Patterns{
 			PackIgnore: []string{

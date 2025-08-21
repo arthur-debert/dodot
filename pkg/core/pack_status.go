@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -149,11 +150,37 @@ func getActionDisplayStatus(action types.Action, fs types.FS, paths types.Pather
 		additionalInfo = types.FormatSymlinkForDisplay(action.Target, homeDir, 46)
 	}
 
+	// For errors, check if it's a dangling link and enhance the message
+	displayStatus := mapStatusStateToDisplay(status.State)
+	displayMessage := status.Message
+
+	if status.State == types.StatusStateError && status.ErrorDetails != nil {
+		// This is a dangling link - mark it as warning and enhance message
+		switch status.ErrorDetails.ErrorType {
+		case "missing_source":
+			displayStatus = "warning"
+			displayMessage = fmt.Sprintf("dangling: source file removed (%s)", filepath.Base(status.ErrorDetails.SourcePath))
+		case "missing_intermediate":
+			displayStatus = "warning"
+			displayMessage = "dangling: intermediate link missing"
+		case "wrong_intermediate_target":
+			displayStatus = "warning"
+			displayMessage = "dangling: intermediate points to wrong file"
+		}
+
+		// Log the dangling link detection
+		logger.Warn().
+			Str("errorType", status.ErrorDetails.ErrorType).
+			Str("deployedPath", status.ErrorDetails.DeployedPath).
+			Str("sourcePath", status.ErrorDetails.SourcePath).
+			Msg("Dangling link detected")
+	}
+
 	displayFile := &types.DisplayFile{
 		PowerUp:        powerUpName,
 		Path:           filePath,
-		Status:         mapStatusStateToDisplay(status.State),
-		Message:        status.Message,
+		Status:         displayStatus,
+		Message:        displayMessage,
 		IsOverride:     isOverride,
 		LastExecuted:   status.Timestamp,
 		PowerUpSymbol:  types.GetPowerUpSymbol(powerUpName),
