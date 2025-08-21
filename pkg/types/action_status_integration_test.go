@@ -46,6 +46,9 @@ func TestActionCheckStatus_Symlink(t *testing.T) {
 				deployedPath := filepath.Join(dataDir, "deployed", "symlink", ".vimrc")
 				testutil.CreateDirT(t, fs, filepath.Dir(deployedPath))
 				require.NoError(t, fs.Symlink("dotfiles/vim/vimrc", deployedPath))
+				// Create target symlink pointing to intermediate
+				testutil.CreateDirT(t, fs, "home/user")
+				require.NoError(t, fs.Symlink(deployedPath, "home/user/.vimrc"))
 			},
 			expectedState: types.StatusStateSuccess,
 			expectedMsg:   "linked to .vimrc",
@@ -62,9 +65,96 @@ func TestActionCheckStatus_Symlink(t *testing.T) {
 				deployedPath := filepath.Join(dataDir, "deployed", "symlink", ".vimrc")
 				testutil.CreateDirT(t, fs, filepath.Dir(deployedPath))
 				require.NoError(t, fs.Symlink("dotfiles/vim/vimrc", deployedPath))
+				// Create target symlink pointing to intermediate
+				testutil.CreateDirT(t, fs, "home/user")
+				require.NoError(t, fs.Symlink(deployedPath, "home/user/.vimrc"))
 			},
 			expectedState: types.StatusStateError,
 			containsMsg:   "broken - source file missing",
+		},
+		{
+			name: "target file exists but is not a symlink",
+			action: types.Action{
+				Type:   types.ActionTypeLink,
+				Source: "dotfiles/vim/vimrc",
+				Target: "home/user/.vimrc",
+			},
+			setupFS: func(fs types.FS, dataDir string) {
+				// Create source file
+				testutil.CreateFileT(t, fs, "dotfiles/vim/vimrc", "vim config")
+				// Create intermediate symlink
+				deployedPath := filepath.Join(dataDir, "deployed", "symlink", ".vimrc")
+				testutil.CreateDirT(t, fs, filepath.Dir(deployedPath))
+				require.NoError(t, fs.Symlink("dotfiles/vim/vimrc", deployedPath))
+				// Create target as regular file instead of symlink
+				testutil.CreateFileT(t, fs, "home/user/.vimrc", "regular file")
+			},
+			expectedState: types.StatusStatePending,
+			expectedMsg:   "→ <Filename>.vimrc</Filename>",
+		},
+		{
+			name: "target symlink points somewhere else",
+			action: types.Action{
+				Type:   types.ActionTypeLink,
+				Source: "dotfiles/vim/vimrc",
+				Target: "home/user/.vimrc",
+			},
+			setupFS: func(fs types.FS, dataDir string) {
+				// Create source file
+				testutil.CreateFileT(t, fs, "dotfiles/vim/vimrc", "vim config")
+				// Create intermediate symlink
+				deployedPath := filepath.Join(dataDir, "deployed", "symlink", ".vimrc")
+				testutil.CreateDirT(t, fs, filepath.Dir(deployedPath))
+				require.NoError(t, fs.Symlink("dotfiles/vim/vimrc", deployedPath))
+				// Create target symlink pointing elsewhere
+				testutil.CreateDirT(t, fs, "home/user")
+				testutil.CreateFileT(t, fs, "home/other/.vimrc", "other config")
+				require.NoError(t, fs.Symlink("home/other/.vimrc", "home/user/.vimrc"))
+			},
+			expectedState: types.StatusStatePending,
+			expectedMsg:   "→ <Filename>.vimrc</Filename>",
+		},
+		{
+			name: "target points to intermediate but intermediate is missing",
+			action: types.Action{
+				Type:   types.ActionTypeLink,
+				Source: "dotfiles/vim/vimrc",
+				Target: "home/user/.vimrc",
+			},
+			setupFS: func(fs types.FS, dataDir string) {
+				// Create source file
+				testutil.CreateFileT(t, fs, "dotfiles/vim/vimrc", "vim config")
+				// Don't create intermediate symlink
+				deployedPath := filepath.Join(dataDir, "deployed", "symlink", ".vimrc")
+				// Create target symlink pointing to (missing) intermediate
+				testutil.CreateDirT(t, fs, "home/user")
+				require.NoError(t, fs.Symlink(deployedPath, "home/user/.vimrc"))
+			},
+			expectedState: types.StatusStateError,
+			containsMsg:   "broken - intermediate symlink missing",
+		},
+		{
+			name: "intermediate points to wrong source",
+			action: types.Action{
+				Type:   types.ActionTypeLink,
+				Source: "dotfiles/vim/vimrc",
+				Target: "home/user/.vimrc",
+			},
+			setupFS: func(fs types.FS, dataDir string) {
+				// Create source file
+				testutil.CreateFileT(t, fs, "dotfiles/vim/vimrc", "vim config")
+				// Create another file
+				testutil.CreateFileT(t, fs, "dotfiles/vim/other", "other config")
+				// Create intermediate symlink pointing to wrong file
+				deployedPath := filepath.Join(dataDir, "deployed", "symlink", ".vimrc")
+				testutil.CreateDirT(t, fs, filepath.Dir(deployedPath))
+				require.NoError(t, fs.Symlink("dotfiles/vim/other", deployedPath))
+				// Create target symlink pointing to intermediate
+				testutil.CreateDirT(t, fs, "home/user")
+				require.NoError(t, fs.Symlink(deployedPath, "home/user/.vimrc"))
+			},
+			expectedState: types.StatusStateError,
+			containsMsg:   "broken - intermediate points to wrong file",
 		},
 	}
 

@@ -18,22 +18,109 @@ func (a *Action) checkSymlinkStatus(fs FS, paths Pather) (Status, error) {
 		return Status{}, err
 	}
 
-	if _, err := fs.Lstat(intermediatePath); err == nil {
-		// Intermediate symlink exists, check if source still exists
-		if _, err := fs.Stat(a.Source); err != nil {
-			return Status{
-				State:   StatusStateError,
-				Message: fmt.Sprintf("linked to %s (broken - source file missing)", filepath.Base(a.Target)),
-			}, nil
+	// Check if the target file exists
+	targetInfo, err := fs.Lstat(a.Target)
+	if err != nil {
+		// Target doesn't exist - not deployed
+		return a.symlinkPendingStatus()
+	}
+
+	// Check if target is a symlink
+	if targetInfo.Mode()&os.ModeSymlink == 0 {
+		// Target exists but is not a symlink - pending
+		return a.symlinkPendingStatus()
+	}
+
+	// Target is a symlink - check where it points
+	targetDest, err := fs.Readlink(a.Target)
+	if err != nil {
+		// Can't read symlink - treat as pending
+		return a.symlinkPendingStatus()
+	}
+
+	// Check if target points to our intermediate symlink
+	// First try direct comparison
+	if targetDest != intermediatePath {
+		// They don't match directly - try resolving relative paths
+		resolvedTarget := targetDest
+		if !filepath.IsAbs(targetDest) {
+			// Relative symlinks are relative to the directory containing the symlink
+			resolvedTarget = filepath.Join(filepath.Dir(a.Target), targetDest)
 		}
+
+		// Clean both paths and compare
+		if filepath.Clean(resolvedTarget) != filepath.Clean(intermediatePath) {
+			// Target is a symlink but points somewhere else - pending
+			return a.symlinkPendingStatus()
+		}
+	}
+
+	// Target correctly points to intermediate - now check the intermediate
+	intermediateInfo, err := fs.Lstat(intermediatePath)
+	if err != nil {
+		// Intermediate doesn't exist but target points to it - error
 		return Status{
-			State:   StatusStateSuccess,
-			Message: fmt.Sprintf("linked to %s", filepath.Base(a.Target)),
+			State:   StatusStateError,
+			Message: fmt.Sprintf("linked to %s (broken - intermediate symlink missing)", filepath.Base(a.Target)),
 		}, nil
 	}
 
-	// Not deployed yet
-	// Create more informative message with pack/file and destination
+	// Check if intermediate is a symlink
+	if intermediateInfo.Mode()&os.ModeSymlink == 0 {
+		// Intermediate exists but is not a symlink - error
+		return Status{
+			State:   StatusStateError,
+			Message: fmt.Sprintf("linked to %s (broken - intermediate is not a symlink)", filepath.Base(a.Target)),
+		}, nil
+	}
+
+	// Check where intermediate points
+	intermediateDest, err := fs.Readlink(intermediatePath)
+	if err != nil {
+		// Can't read intermediate symlink - error
+		return Status{
+			State:   StatusStateError,
+			Message: fmt.Sprintf("linked to %s (broken - cannot read intermediate symlink)", filepath.Base(a.Target)),
+		}, nil
+	}
+
+	// Check if intermediate points to the source
+	if intermediateDest != a.Source {
+		// They don't match directly - try resolving relative paths
+		resolvedIntermediate := intermediateDest
+		if !filepath.IsAbs(intermediateDest) {
+			// Relative symlinks are relative to the directory containing the symlink
+			resolvedIntermediate = filepath.Join(filepath.Dir(intermediatePath), intermediateDest)
+		}
+
+		// Clean both paths and compare
+		if filepath.Clean(resolvedIntermediate) != filepath.Clean(a.Source) {
+			// Intermediate points to wrong file - error
+			return Status{
+				State:   StatusStateError,
+				Message: fmt.Sprintf("linked to %s (broken - intermediate points to wrong file)", filepath.Base(a.Target)),
+			}, nil
+		}
+	}
+
+	// Finally, check if source file exists
+	if _, err := fs.Stat(a.Source); err != nil {
+		// Source file missing - error
+		return Status{
+			State:   StatusStateError,
+			Message: fmt.Sprintf("linked to %s (broken - source file missing)", filepath.Base(a.Target)),
+		}, nil
+	}
+
+	// Complete chain is valid
+	return Status{
+		State:   StatusStateSuccess,
+		Message: fmt.Sprintf("linked to %s", filepath.Base(a.Target)),
+	}, nil
+}
+
+// symlinkPendingStatus returns a pending status for symlink actions
+func (a *Action) symlinkPendingStatus() (Status, error) {
 	targetPath := a.Target
 
 	// Get the home directory to make paths more readable
