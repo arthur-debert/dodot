@@ -31,3 +31,28 @@ func CreateDirT(t *testing.T, fs types.FS, path string) {
 		t.Fatalf("Failed to create directory %s: %v", path, err)
 	}
 }
+
+// CreateSymlinkT creates a symlink in the given synthfs filesystem
+func CreateSymlinkT(t *testing.T, fs types.FS, target, link string) {
+	t.Helper()
+
+	// Create parent directories if needed
+	dir := filepath.Dir(link)
+	if err := fs.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("Failed to create parent directories for %s: %v", link, err)
+	}
+
+	// Create the symlink
+	if err := fs.Symlink(target, link); err != nil {
+		t.Fatalf("Failed to create symlink %s -> %s: %v", link, target, err)
+	}
+}
+
+// IsNotExist returns true if the error indicates a file does not exist
+func IsNotExist(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for the standard not exist error
+	return err.Error() == "file does not exist"
+}

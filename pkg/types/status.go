@@ -32,4 +32,22 @@ type Status struct {
 
 	// Timestamp is when the action was last executed (optional)
 	Timestamp *time.Time
+
+	// ErrorDetails provides additional information about errors (optional)
+	ErrorDetails *StatusErrorDetails
+}
+
+// StatusErrorDetails provides detailed information about status errors
+type StatusErrorDetails struct {
+	// ErrorType describes the type of error (e.g., "missing_source", "missing_intermediate")
+	ErrorType string
+
+	// DeployedPath is the user-facing path that has an issue
+	DeployedPath string
+
+	// IntermediatePath is the dodot state path involved
+	IntermediatePath string
+
+	// SourcePath is the source file path
+	SourcePath string
 }
