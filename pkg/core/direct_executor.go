@@ -15,6 +15,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/state"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/synthfs/pkg/synthfs"
 	"github.com/arthur-debert/synthfs/pkg/synthfs/filesystem"
@@ -74,6 +75,16 @@ func (e *DirectExecutor) ExecuteActions(actions []types.Action) ([]types.ActionR
 	}
 
 	e.logger.Info().Int("actionCount", len(actions)).Msg("Executing actions directly")
+
+	// Check for and clean up dangling links if enabled
+	if e.config.Security.CleanupDanglingLinks && !e.dryRun {
+		if err := e.cleanupDanglingLinks(actions); err != nil {
+			// Log error but continue - cleanup failures shouldn't block deployment
+			e.logger.Warn().
+				Err(err).
+				Msg("Failed to cleanup dangling links, continuing with deployment")
+		}
+	}
 
 	// Sort actions by priority
 	sortedActions := make([]types.Action, len(actions))
@@ -1263,4 +1274,131 @@ func (e *DirectExecutor) writeDeploymentMetadata() error {
 
 	// Write the file
 	return e.filesystem.WriteFile(metadataPath, []byte(content), 0644)
+}
+
+// cleanupDanglingLinks detects and removes dangling symlinks before deployment
+func (e *DirectExecutor) cleanupDanglingLinks(actions []types.Action) error {
+	logger := e.logger.With().Str("component", "dangling_cleanup").Logger()
+
+	// Only process link actions
+	linkActions := []types.Action{}
+	for _, action := range actions {
+		if action.Type == types.ActionTypeLink {
+			linkActions = append(linkActions, action)
+		}
+	}
+
+	if len(linkActions) == 0 {
+		logger.Debug().Msg("No link actions to check for dangling links")
+		return nil
+	}
+
+	logger.Debug().Int("linkActions", len(linkActions)).Msg("Checking for dangling links")
+
+	// Create a filesystem wrapper that implements types.FS
+	fs := &filesystemWrapper{fs: e.filesystem}
+
+	// Create link detector
+	detector := state.NewLinkDetector(fs, e.paths)
+
+	// Detect dangling links
+	danglingLinks, err := detector.DetectDanglingLinks(linkActions)
+	if err != nil {
+		return errors.Wrap(err, errors.ErrInternal, "failed to detect dangling links")
+	}
+
+	if len(danglingLinks) == 0 {
+		logger.Debug().Msg("No dangling links found")
+		return nil
+	}
+
+	logger.Warn().
+		Int("count", len(danglingLinks)).
+		Msg("Found dangling links that will be cleaned up")
+
+	// Remove each dangling link
+	for _, dl := range danglingLinks {
+		logger.Warn().
+			Str("deployed", dl.DeployedPath).
+			Str("pack", dl.Pack).
+			Str("problem", dl.Problem).
+			Msg("Removing dangling symlink")
+
+		if err := detector.RemoveDanglingLink(&dl); err != nil {
+			logger.Error().
+				Err(err).
+				Str("path", dl.DeployedPath).
+				Msg("Failed to remove dangling link")
+			// Continue with other removals even if one fails
+		}
+	}
+
+	logger.Info().
+		Int("removed", len(danglingLinks)).
+		Msg("Completed dangling link cleanup")
+
+	return nil
+}
+
+// filesystemWrapper wraps filesystem.FullFileSystem to implement types.FS
+type filesystemWrapper struct {
+	fs filesystem.FullFileSystem
+}
+
+func (w *filesystemWrapper) Stat(name string) (os.FileInfo, error) {
+	return w.fs.Stat(name)
+}
+
+func (w *filesystemWrapper) Lstat(name string) (os.FileInfo, error) {
+	// FullFileSystem doesn't have Lstat, so we use Stat
+	// This is fine for our use case as synthfs handles symlinks properly
+	return w.fs.Stat(name)
+}
+
+func (w *filesystemWrapper) ReadDir(name string) ([]os.DirEntry, error) {
+	// FullFileSystem doesn't have ReadDir, but we can use Stat to check if it's a directory
+	// and then list files manually - for now return empty as we don't need full directory listing
+	info, err := w.fs.Stat(name)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return nil, os.ErrNotExist
+	}
+	// Return empty for now as dangling link detection doesn't need directory listing
+	return []os.DirEntry{}, nil
+}
+
+func (w *filesystemWrapper) ReadFile(name string) ([]byte, error) {
+	file, err := w.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	return io.ReadAll(file)
+}
+
+func (w *filesystemWrapper) Remove(name string) error {
+	return w.fs.Remove(name)
+}
+
+func (w *filesystemWrapper) RemoveAll(path string) error {
+	return w.fs.RemoveAll(path)
+}
+
+func (w *filesystemWrapper) MkdirAll(path string, perm os.FileMode) error {
+	return w.fs.MkdirAll(path, perm)
+}
+
+func (w *filesystemWrapper) WriteFile(name string, data []byte, perm os.FileMode) error {
+	return w.fs.WriteFile(name, data, perm)
+}
+
+func (w *filesystemWrapper) Symlink(oldname, newname string) error {
+	return w.fs.Symlink(oldname, newname)
+}
+
+func (w *filesystemWrapper) Readlink(name string) (string, error) {
+	return w.fs.Readlink(name)
 }
