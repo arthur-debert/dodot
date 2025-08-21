@@ -187,7 +187,7 @@ if [ -n "$DODOT_SYMLINKS" ]; then
     export DODOT_SYMLINKS
 fi
 
-# 5. Track run-once powerups (install scripts and brewfiles)
+# 5. Track run-once handlers (install scripts and brewfiles)
 # Check install script sentinels
 if [ -d "$DODOT_DATA_DIR/install/sentinels" ]; then
     for sentinel in "$DODOT_DATA_DIR/install/sentinels"/*; do

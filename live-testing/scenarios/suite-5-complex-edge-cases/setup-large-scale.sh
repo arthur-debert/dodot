@@ -21,7 +21,7 @@ for i in {1..12}; do
             ;;
         
         4|5)
-            # Packs 4-5: Path powerup packs
+            # Packs 4-5: Path handler packs
             mkdir -p "$PACK_DIR/bin"
             cat > "$PACK_DIR/bin/tool-$i" << EOF
 #!/bin/bash

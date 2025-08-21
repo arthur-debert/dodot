@@ -7,6 +7,6 @@
 # make sure we have a new buiild
 scripts/build &&
     # set the project root
-    DOTFILES_ROOT="$PROJECT_ROOT/live-testing/scenarios/suite-3-multi-powerups-multi-packs/dotfiles"
+    DOTFILES_ROOT="$PROJECT_ROOT/live-testing/scenarios/suite-3-multi-handlers-multi-packs/dotfiles"
 # finally run the status command
 dodot status

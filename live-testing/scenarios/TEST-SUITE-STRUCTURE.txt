@@ -5,7 +5,7 @@ The test suite is organized into 5 progressive suites:
 
 SUITE 1: SINGLE POWER-UPS (Foundation)
 --------------------------------------
-Location: suite-1-single-powerups/<handler>/
+Location: suite-1-single-handlers/<handler>/
 Purpose: Test each handler in isolation with YES/NO assertions
 Status: Partially implemented
 
@@ -19,7 +19,7 @@ Implemented:
 
 SUITE 2: MULTIPLE POWER-UPS, SINGLE PACK
 -----------------------------------------
-Location: suite-2-multi-powerups-single-pack/
+Location: suite-2-multi-handlers-single-pack/
 Purpose: Test handler interactions within single packs
 Status: All tests stubbed and marked as skip
 
@@ -31,7 +31,7 @@ Planned tests:
 
 SUITE 3: MULTIPLE POWER-UPS, MULTIPLE PACKS
 --------------------------------------------
-Location: suite-3-multi-powerups-multi-packs/
+Location: suite-3-multi-handlers-multi-packs/
 Purpose: Test cross-pack interactions
 Status: All tests stubbed and marked as skip
 
@@ -43,7 +43,7 @@ Planned tests:
 
 SUITE 4: SINGLE POWER-UP EDGE CASES
 ------------------------------------
-Location: suite-4-single-powerup-edge-cases/
+Location: suite-4-single-handler-edge-cases/
 Purpose: Test edge cases for each handler in isolation
 Status: All tests stubbed and marked as skip
 
@@ -71,7 +71,7 @@ Planned tests:
 DEPRECATED
 ----------
 - basic: Mixed scenario with failing tests, scheduled for removal
-- isolated-*: Migrated to suite-1-single-powerups
+- isolated-*: Migrated to suite-1-single-handlers
 
 RUNNING TESTS
 -------------
@@ -79,10 +79,10 @@ RUNNING TESTS
 ./scripts/run-live-tests
 
 # Run specific suite:
-./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-powerups/*/tests/*.bats
+./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-handlers/*/tests/*.bats
 
 # Run specific handler tests:
-./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-powerups/symlink/tests/*.bats
+./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-handlers/symlink/tests/*.bats
 
 # Run with failfast:
 ./scripts/run-live-tests --failfast
