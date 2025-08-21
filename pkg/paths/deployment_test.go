@@ -84,7 +84,7 @@ func TestGetHomeDirectory(t *testing.T) {
 		{
 			name:     "with HOME env fallback",
 			envSetup: map[string]string{
-				// This test is tricky to set up properly
+				// This test is handlery to set up properly
 				// In practice, if os.UserHomeDir() fails, we fall back to HOME
 			},
 		},

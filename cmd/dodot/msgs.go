@@ -42,8 +42,8 @@ const (
 	MsgAdoptSuccess      = "✨ Success! %d file(s) are now managed by dodot in the '%s' pack.\n"
 	MsgNoFilesAdopted    = "No files were adopted.\n"
 	MsgPackStatusFormat  = "\n%s:\n"
-	MsgPowerUpStatus     = "  %s: %s"
-	MsgPowerUpDesc       = " - %s"
+	MsgHandlerStatus     = "  %s: %s"
+	MsgHandlerDesc       = " - %s"
 
 	// Error messages
 	MsgErrInitPaths    = "failed to initialize paths: %w"
@@ -60,7 +60,7 @@ const (
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
 	MsgFlagDryRun  = "Preview changes without executing them"
-	MsgFlagForce   = "Force execution of run-once power-ups even if already executed"
+	MsgFlagForce   = "Force execution of run-once handlers even if already executed"
 	MsgFlagType    = "Type of pack to create (basic, shell, vim, etc.)"
 
 	// Debug messages

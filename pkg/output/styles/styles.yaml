@@ -135,7 +135,7 @@ styles:
     italic: true
   
   # File and path styles
-  PowerUp:
+  Handler:
     # foreground: secondary
     bold: true
     width: 12
@@ -188,7 +188,7 @@ styles:
     # foreground: muted
   
   # New styles for status output
-  PowerUpAdditionalInfo:
+  HandlerAdditionalInfo:
     # No styling - plain text
   SymlinkPath:
     italic: true

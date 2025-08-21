@@ -60,7 +60,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		Target:      packPath,
 		Mode:        uint32(cfg.FilePermissions.Directory),
 		Pack:        opts.PackName,
-		PowerUpName: "init_pack_internal",
+		HandlerName: "init_pack_internal",
 		Priority:    200, // Higher priority to create dir first
 	}
 	actions = append(actions, mkdirAction)
@@ -78,7 +78,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 # "*.bak" = "ignore"
 # "*.tmp" = "ignore"
 
-# Override default power-up for specific files
+# Override default handler for specific files
 # "my-script.sh" = "install"
 # "my-aliases.sh" = "profile"
 `
@@ -91,7 +91,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		Content:     configContent,
 		Mode:        uint32(cfg.FilePermissions.File),
 		Pack:        opts.PackName,
-		PowerUpName: "init_pack_internal",
+		HandlerName: "init_pack_internal",
 		Priority:    100,
 	}
 	actions = append(actions, configAction)
@@ -132,7 +132,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 		Content:     readmeContent,
 		Mode:        uint32(cfg.FilePermissions.File),
 		Pack:        opts.PackName,
-		PowerUpName: "init_pack_internal",
+		HandlerName: "init_pack_internal",
 		Priority:    100,
 	}
 	actions = append(actions, readmeAction)
@@ -152,7 +152,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 			Content:     template.Content,
 			Mode:        template.Mode,
 			Pack:        opts.PackName,
-			PowerUpName: template.PowerUpName,
+			HandlerName: template.HandlerName,
 			Priority:    50, // Lower priority for template files
 		}
 		actions = append(actions, action)
@@ -178,7 +178,7 @@ For more information, see: https://github.com/arthur-debert/dodot
 			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute init actions")
 		}
 
-		// FIXME: ARCHITECTURAL PROBLEM - init command should return Pack+PowerUp+File information
+		// FIXME: ARCHITECTURAL PROBLEM - init command should return Pack+Handler+File information
 		// NOT operation details. See docs/design/display.txxt
 		// Operations are no longer returned (part of Operation layer elimination)
 		_ = results // Results processed but not exposed in return value

@@ -40,7 +40,7 @@
 // Templates use standard Go text/template syntax with custom style tags:
 //
 //	<CommandHeader>{{.Command}}</CommandHeader>
-//	<PowerUp>{{.PowerUp}}</PowerUp>
+//	<Handler>{{.Handler}}</Handler>
 //	<Success>✓</Success>
 //
 // Style tags correspond to entries in the style registry and are automatically

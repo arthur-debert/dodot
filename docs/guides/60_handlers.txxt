@@ -1,0 +1,124 @@
+# Handlers Guide
+
+Handlers are the action generators in dodot that process matched files and directories
+to create deployment actions. Each handler serves a specific purpose in managing your
+dotfiles.
+
+## Available Handlers
+
+dodot includes several built-in handlers, each with comprehensive documentation in
+their respective packages. For detailed end-to-end documentation of each handler,
+including examples, configuration, and best practices, see:
+
+### Core Handlers
+
+1. **SymlinkHandler** (`symlink`)
+   - Creates symlinks from dotfiles to target locations
+   - See: `pkg/handlers/symlink/doc.go`
+   - Use for: Configuration files, dotfiles
+
+2. **InstallScriptHandler** (`install_script`)
+   - Executes shell scripts for one-time setup
+   - See: `pkg/handlers/install/doc.go`
+   - Use for: Installing tools, initial setup
+
+3. **BrewHandler** (`brew`)
+   - Processes Brewfiles to install Homebrew packages
+   - See: `pkg/handlers/homebrew/doc.go`
+   - Use for: System packages, GUI apps (macOS)
+
+4. **ShellProfileHandler** (`shell_profile`)
+   - Sources shell scripts into your environment
+   - See: `pkg/handlers/shell_profile/doc.go`
+   - Use for: Aliases, functions, shell customization
+
+5. **PathHandler** (`path`)
+   - Adds directories to system PATH
+   - See: `pkg/handlers/path/doc.go`
+   - Use for: Personal scripts, tools directories
+
+6. **TemplateHandler** (`template`)
+   - Processes templates with variable substitution
+   - See: `pkg/handlers/template/doc.go`
+   - Use for: Machine-specific configurations
+
+### Additional Handlers
+
+7. **ShellAddPathHandler** (`shell_add_path`)
+   - Alternative PATH management (use `path` instead)
+   - See: `pkg/handlers/shell_add_path/doc.go`
+
+## Handler Execution Phases
+
+Handlers run in different phases based on their RunMode:
+
+### Install Phase (`dodot install`)
+- **RunModeOnce** handlers execute here
+- InstallScriptHandler: Runs setup scripts
+- BrewHandler: Installs packages
+- These run before deployment actions
+
+### Deploy Phase (`dodot deploy`)
+- **RunModeMany** handlers execute here
+- SymlinkHandler: Creates configuration symlinks
+- PathHandler: Updates PATH
+- ShellProfileHandler: Sets up shell environment
+- TemplateHandler: Generates files from templates
+
+## Quick Reference
+
+| Handler | Run Mode | Purpose | Creates |
+|---------|----------|---------|---------|
+| symlink | Deploy | Link configs | Symlinks in ~ |
+| install_script | Install | Run setup scripts | Whatever scripts create |
+| brew | Install | Install packages | System packages |
+| shell_profile | Deploy | Shell config | Entries in init.sh |
+| path | Deploy | PATH management | PATH exports |
+| template | Deploy | File generation | Processed files |
+
+## Handler Documentation Structure
+
+Each handler's doc.go file contains:
+
+1. **Overview**: What the handler does
+2. **When It Runs**: Deploy vs Install mode
+3. **Standard Configuration**: Example matcher configs
+4. **File Selection Process**: How files are matched
+5. **Execution Strategy**: How it works internally
+6. **Storage Locations**: Where files are stored
+7. **Effects on User Environment**: What changes are made
+8. **Options**: Configuration options
+9. **Example End-to-End Flow**: Complete usage example
+10. **Error Handling**: Common errors and solutions
+11. **Best Practices**: Usage recommendations
+12. **Comparison**: When to use vs other handlers
+
+## Creating Custom Handlers
+
+While dodot includes comprehensive built-in handlers, you can create custom ones:
+
+1. Implement the `Handler` interface
+2. Register with the handler registry
+3. Define the action type and execution
+4. Add to your configuration
+
+See `pkg/types/handler.go` for the interface definition.
+
+## Best Practices
+
+1. **Read the doc.go files**: Each handler has extensive documentation
+2. **Use the right tool**: Each handler has a specific purpose
+3. **Check run modes**: Understand when handlers execute
+4. **Test with --dry-run**: Preview changes before applying
+5. **Organize by pack**: Group related configurations
+6. **Use standard patterns**: Follow naming conventions
+
+## Troubleshooting
+
+- **Not running?** Check matcher configuration and priorities
+- **Errors?** Each doc.go lists common error codes
+- **Wrong phase?** Verify RunModeOnce vs RunModeMany
+- **Conflicts?** Use --force flag when appropriate
+
+For comprehensive details on any handler, read its doc.go file in the
+pkg/handlers/<name>/ directory.

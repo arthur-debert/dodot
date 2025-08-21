@@ -1,7 +1,7 @@
                    Extensibility
 
 This document explains how dodot's registry pattern enables extensibility
-and how new triggers and power-ups can be conceptually added to the
+and how new triggers and handlers can be conceptually added to the
 system.
 
 Registry Pattern
@@ -12,8 +12,8 @@ discovered and used dynamically:
 
 Core Registries:
 • TriggerRegistry - Available file matching strategies
-• PowerUpRegistry - Available action generators
-• MatcherRegistry - Available trigger-to-power-up bindings
+• HandlerRegistry - Available action generators
+• MatcherRegistry - Available trigger-to-handler bindings
 
 This pattern enables:
 • Plugin-like architecture without complex plugin systems
@@ -38,20 +38,20 @@ Example use cases:
 • TimeTrigger - Match files by modification time
 • PermissionTrigger - Match files by permissions
 
-Adding New Power-ups:
+Adding New Handlers:
 
-A power-up processes matched files and generates actions. To add a new
-power-up:
+A handler processes matched files and generates actions. To add a new
+handler:
 
-1. Implement the power-up interface
-2. Register it in the PowerUpRegistry
+1. Implement the handler interface
+2. Register it in the HandlerRegistry
 3. Define what actions it generates
 
 Example use cases:
-• EncryptionPowerUp - Encrypt/decrypt sensitive files
-• TemplatePowerUp - Process template files with variables
-• CompressionPowerUp - Compress large configuration files
-• SyncPowerUp - Synchronize with cloud storage
+• EncryptionHandler - Encrypt/decrypt sensitive files
+• TemplateHandler - Process template files with variables
+• CompressionHandler - Compress large configuration files
+• SyncHandler - Synchronize with cloud storage
 
 Adding New Actions:
 
@@ -71,7 +71,7 @@ Extension Points
 ----------------
 
 Configuration Extension:
-• .dodot.toml files can reference new triggers and power-ups
+• .dodot.toml files can reference new triggers and handlers
 • Global configuration can define new matchers
 • Command-line options can override registries
 
@@ -81,14 +81,14 @@ The matcher system is the primary extension point:
 ```toml
 [[override]]
   path = "*.encrypted"
-  powerup = "encryption"
+  handler = "encryption"
   with = { 
     key_file = "~/.keys/dotfiles.key",
     cipher = "AES256" 
   }
 ```
 
-This would use a hypothetical encryption power-up for encrypted files.
+This would use a hypothetical encryption handler for encrypted files.
 
 Registry Composition:
 Registries can be composed and layered:
@@ -100,7 +100,7 @@ Conceptual Extensions
 ---------------------
 
 Template System:
-A template power-up could process files with variable substitution:
+A template handler could process files with variable substitution:
 • Match files with .template extension
 • Replace variables with environment values
 • Generate final configuration files
@@ -108,25 +108,25 @@ A template power-up could process files with variable substitution:
 Example: database.conf.template → database.conf with actual passwords
 
 Secret Management:
-A secrets power-up could integrate with password managers:
+A secrets handler could integrate with password managers:
 • Match files containing secret references
 • Replace references with actual secrets
 • Support multiple secret backends (pass, 1Password, etc.)
 
 Platform Adaptation:
-A platform power-up could handle OS-specific configurations:
+A platform handler could handle OS-specific configurations:
 • Match files with platform suffixes (.macos, .linux)
 • Deploy appropriate version based on current OS
 • Handle platform-specific paths and conventions
 
 Cloud Synchronization:
-A sync power-up could manage cloud-stored configurations:
+A sync handler could manage cloud-stored configurations:
 • Match configuration files that should be synchronized
 • Upload/download from cloud storage
 • Handle conflict resolution
 
 Development Workflow:
-A development power-up could integrate with development tools:
+A development handler could integrate with development tools:
 • Generate IDE configuration from templates
 • Manage project-specific settings
 • Handle development environment setup
@@ -137,7 +137,7 @@ Extension Guidelines
 Interface Compliance:
 New components must implement the defined interfaces:
 • Triggers return TriggerMatch objects
-• Power-ups return Action slices
+• Handlers return Action slices
 • Actions contain type, description, and data
 
 Pure Functions:
@@ -167,7 +167,7 @@ Discoverability:
 • Configuration can be validated against available components
 
 Flexibility:
-• Mix and match triggers with different power-ups
+• Mix and match triggers with different handlers
 • Override defaults without modifying core code
 • Create pack-specific behaviors
 
@@ -192,19 +192,19 @@ The registry pattern provides foundation for a future plugin system:
 
 Configuration Schema:
 Future versions could provide schema validation:
-• Validate power-up options against schemas
+• Validate handler options against schemas
 • Provide better error messages for configuration
 • Enable IDE support for configuration files
 
 Performance Optimization:
 Registry pattern enables performance improvements:
 • Lazy loading of unused components
-• Parallel execution of independent power-ups
+• Parallel execution of independent handlers
 • Caching of expensive operations
 
 Integration APIs:
 The extensibility model could support external integrations:
-• REST APIs for remote power-ups
+• REST APIs for remote handlers
 • Message queue integration for async operations
 • Webhook support for deployment notifications
 

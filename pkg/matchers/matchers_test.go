@@ -97,19 +97,19 @@ func TestFilterEnabledMatchers(t *testing.T) {
 
 func TestMergeMatchers(t *testing.T) {
 	set1 := []types.Matcher{
-		{Name: "common", TriggerName: "t1", PowerUpName: "p1", Priority: 10},
-		{Name: "only-in-1", TriggerName: "t2", PowerUpName: "p2", Priority: 20},
+		{Name: "common", TriggerName: "t1", HandlerName: "p1", Priority: 10},
+		{Name: "only-in-1", TriggerName: "t2", HandlerName: "p2", Priority: 20},
 	}
 
 	set2 := []types.Matcher{
-		{Name: "common", TriggerName: "t3", PowerUpName: "p3", Priority: 30}, // Override
-		{Name: "only-in-2", TriggerName: "t4", PowerUpName: "p4", Priority: 40},
+		{Name: "common", TriggerName: "t3", HandlerName: "p3", Priority: 30}, // Override
+		{Name: "only-in-2", TriggerName: "t4", HandlerName: "p4", Priority: 40},
 	}
 
 	set3 := []types.Matcher{
-		{Name: "only-in-3", TriggerName: "t5", PowerUpName: "p5", Priority: 50},
+		{Name: "only-in-3", TriggerName: "t5", HandlerName: "p5", Priority: 50},
 		// Unnamed matcher
-		{TriggerName: "t6", PowerUpName: "p6", Priority: 60},
+		{TriggerName: "t6", HandlerName: "p6", Priority: 60},
 	}
 
 	merged := MergeMatchers(set1, set2, set3)
@@ -121,7 +121,7 @@ func TestMergeMatchers(t *testing.T) {
 	for _, m := range merged {
 		if m.Name == "common" {
 			assert.Equal(t, "t3", m.TriggerName)
-			assert.Equal(t, "p3", m.PowerUpName)
+			assert.Equal(t, "p3", m.HandlerName)
 			assert.Equal(t, 30, m.Priority)
 			break
 		}

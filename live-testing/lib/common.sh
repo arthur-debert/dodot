@@ -17,7 +17,7 @@ source /workspace/live-testing/lib/setup.sh
 source /workspace/live-testing/lib/assertions.sh
 source /workspace/live-testing/lib/debug.sh
 
-# Load power-up specific assertions
+# Load handler specific assertions
 for assertion_file in /workspace/live-testing/lib/assertions_*.sh; do
     [ -f "$assertion_file" ] && source "$assertion_file"
 done

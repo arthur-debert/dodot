@@ -226,7 +226,7 @@ function __%[1]s_prepare_completions
             # of the following characters: @=/:.,
             set -l lastChar (string sub -s -1 -- $split)
             if not string match -r -q "[@=/:.,]" -- "$lastChar"
-                # In other cases, to support the "nospace" directive we trick the shell
+                # In other cases, to support the "nospace" directive we handler the shell
                 # by outputting an extra, longer completion.
                 __%[1]s_debug "Adding second completion to perform nospace directive"
                 set --global __%[1]s_comp_results $split[1] $split[1].

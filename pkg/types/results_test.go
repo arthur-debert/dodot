@@ -220,7 +220,7 @@ func TestDisplayPack_ComplexScenarios(t *testing.T) {
 		assert.Equal(t, "alert", pack.GetPackStatus())
 	})
 
-	t.Run("pack with message and powerup details", func(t *testing.T) {
+	t.Run("pack with message and handler details", func(t *testing.T) {
 		lastExec := time.Now()
 		pack := DisplayPack{
 			Name:      "detailed-pack",
@@ -228,14 +228,14 @@ func TestDisplayPack_ComplexScenarios(t *testing.T) {
 			IsIgnored: false,
 			Files: []DisplayFile{
 				{
-					PowerUp:      "symlink",
+					Handler:      "symlink",
 					Path:         "file1",
 					Status:       "success",
 					Message:      "Linked successfully",
 					LastExecuted: &lastExec,
 				},
 				{
-					PowerUp:      "homebrew",
+					Handler:      "homebrew",
 					Path:         "Brewfile",
 					Status:       "error",
 					Message:      "Failed to install",
@@ -261,7 +261,7 @@ func TestActionResult_WithCompleteAction(t *testing.T) {
 			Target:      "/target/file",
 			Priority:    10,
 			Pack:        "test-pack",
-			PowerUpName: "symlink",
+			HandlerName: "symlink",
 			Metadata:    map[string]interface{}{"test": true},
 		},
 		Status:              StatusReady,

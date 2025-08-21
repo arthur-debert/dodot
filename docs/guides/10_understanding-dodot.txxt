@@ -11,7 +11,7 @@ Start here, then explore:
 • 00_quick-start.txxt - Get running in 5 minutes
 • 20_architecture.txxt - Technical implementation details  
 • 30_design-philosophy.txxt - Why dodot works this way
-• 40_extensibility.txxt - Adding new triggers and power-ups
+• 40_extensibility.txxt - Adding new triggers and handlers
 • 50_data-storage.txxt - Where dodot stores its data
 
 The TLDR
@@ -32,30 +32,30 @@ Ideas and Concepts
 2. Pack: A directory of related dotfiles. The user decides the grouping criteria. A directory is considered
    a pack unless it contains a .dodotignore file.
 
-3. Power-Up: A "skill" that dodot possesses. For example, the symlink power-up can link config files, the
-   path power-up can add directories to the system $PATH, and the shell_profile power-up can source scripts
+3. Handler: A "skill" that dodot possesses. For example, the symlink handler can link config files, the
+   path handler can add directories to the system $PATH, and the shell_profile handler can source scripts
    into the user's shell.
 
 4. Trigger: A function that determines if a file should be processed. It takes a file path and returns true
    or false. For example, a FileNameTrigger could fire for any file named "Brewfile," or an ExtensionTrigger
    could fire for any file ending in .sh.
 
-5. Matcher: A configuration layer that binds a Trigger to a Power-Up. For example, a matcher defines that
-   the FileNameTrigger for "Brewfile" should activate the homebrew power-up.
+5. Matcher: A configuration layer that binds a Trigger to a Handler. For example, a matcher defines that
+   the FileNameTrigger for "Brewfile" should activate the homebrew handler.
 
    > -- Intermezzo --
-   > Users think in terms of Packs and Power-Ups, which maps to their mental model: "I group these files
+   > Users think in terms of Packs and Handlers, which maps to their mental model: "I group these files
    > together, and dodot should do this specific thing to them." The internal machinery of Triggers and
    > Matchers is an implementation detail that provides immense flexibility.
    >
-   > Decoupling the "what" (Power-Up) from the "how it's found" (Trigger) simplifies development and
-   > allows users to remap these relationships in their config files. If power-up authors also had to manage
+   > Decoupling the "what" (Handler) from the "how it's found" (Trigger) simplifies development and
+   > allows users to remap these relationships in their config files. If handler authors also had to manage
    > filename matching logic, it would lead to duplicated work, more bugs, and higher friction for
    > contributors.
 
-6. Action: A high-level description of what a power-up needs to happen on the user's system (e.g., "create a
-   symlink from file X to location Y"). Power-ups are pure functions; they don't run commands or touch the
-   filesystem. They only return a list of Actions. This separation simplifies power-up development and
+6. Action: A high-level description of what a handler needs to happen on the user's system (e.g., "create a
+   symlink from file X to location Y"). Handlers are pure functions; they don't run commands or touch the
+   filesystem. They only return a list of Actions. This separation simplifies handler development and
    ensures that complex tasks like path resolution, dry runs, and safe execution are handled consistently by
    a central engine.
 
@@ -78,9 +78,9 @@ This is the sequence of events when a dodot command runs:
    flags and .dodotignore files.
 
 2. Get Firing Triggers: For each pack, dodot runs all configured Matchers against the filesystem, producing
-   a list of TriggerMatch objects where files have been successfully matched to a Power-Up.
+   a list of TriggerMatch objects where files have been successfully matched to a Handler.
 
-3. Get Actions: The TriggerMatch objects are grouped by Power-Up. Each Power-Up is then executed with its
+3. Get Actions: The TriggerMatch objects are grouped by Handler. Each Handler is then executed with its
    list of matched files, returning a list of high-level Actions.
 
 4. Convert Actions to `synthfs` Batch: The collected list of all Actions is converted into a synthfs Batch
@@ -94,8 +94,8 @@ This is the sequence of events when a dodot command runs:
 In Short:
 
 • Get packs to work on.
-• Run matchers against the packs to find files and activate power-ups.
-• Run power-ups to collect their resulting Actions.
+• Run matchers against the packs to find files and activate handlers.
+• Run handlers to collect their resulting Actions.
 • Transform Actions into a synthfs batch of operations.
 • Execute the batch.
 • Assemble and display the results.

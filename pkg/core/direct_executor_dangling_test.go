@@ -55,7 +55,7 @@ func TestDirectExecutor_CleanupDanglingLinks(t *testing.T) {
 					Source:      sourcePath,
 					Target:      targetPath,
 					Pack:        pack,
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Description: "Link vimrc",
 				}
 			},
@@ -97,7 +97,7 @@ func TestDirectExecutor_CleanupDanglingLinks(t *testing.T) {
 					Source:      filepath.Join(dotfilesRoot, pack, newSourceFile),
 					Target:      targetPath,
 					Pack:        pack,
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Description: "Link gitconfig-new",
 				}
 			},
@@ -125,7 +125,7 @@ func TestDirectExecutor_CleanupDanglingLinks(t *testing.T) {
 					Source:      sourcePath,
 					Target:      targetPath,
 					Pack:        pack,
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Description: "Link zshrc",
 				}
 			},
@@ -231,7 +231,7 @@ func TestDirectExecutor_CleanupDanglingLinks_MultipleActions(t *testing.T) {
 		Source:      sourcePath1,
 		Target:      targetPath1,
 		Pack:        "vim",
-		PowerUpName: "symlink",
+		HandlerName: "symlink",
 	})
 
 	// Second dangling link
@@ -251,7 +251,7 @@ func TestDirectExecutor_CleanupDanglingLinks_MultipleActions(t *testing.T) {
 		Source:      sourcePath2,
 		Target:      targetPath2,
 		Pack:        "git",
-		PowerUpName: "symlink",
+		HandlerName: "symlink",
 	})
 
 	// Third action - no dangling link
@@ -263,7 +263,7 @@ func TestDirectExecutor_CleanupDanglingLinks_MultipleActions(t *testing.T) {
 		Source:      sourcePath3,
 		Target:      targetPath3,
 		Pack:        "zsh",
-		PowerUpName: "symlink",
+		HandlerName: "symlink",
 	})
 
 	// Create paths
@@ -335,7 +335,7 @@ func TestDirectExecutor_CleanupDanglingLinks_DryRun(t *testing.T) {
 		Source:      sourcePath,
 		Target:      targetPath,
 		Pack:        "vim",
-		PowerUpName: "symlink",
+		HandlerName: "symlink",
 	}
 
 	// Create paths

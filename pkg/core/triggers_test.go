@@ -34,7 +34,7 @@ func TestGetPackMatchers(t *testing.T) {
 					Ignore: []types.IgnoreRule{{Path: "*.tmp"}},
 					Override: []types.OverrideRule{{
 						Path:    "*.sh",
-						Powerup: "install_script",
+						Handler: "install_script",
 					}},
 				},
 			},
@@ -75,7 +75,7 @@ func TestGetPackMatchers_DefaultMatchersContent(t *testing.T) {
 	for _, matcher := range result {
 		assert.NotEmpty(t, matcher.Name, "matcher should have a name")
 		assert.NotEmpty(t, matcher.TriggerName, "matcher should have a trigger name")
-		assert.NotEmpty(t, matcher.PowerUpName, "matcher should have a powerup name")
+		assert.NotEmpty(t, matcher.HandlerName, "matcher should have a handler name")
 	}
 }
 

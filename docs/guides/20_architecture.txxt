@@ -15,11 +15,11 @@ When you run a dodot command, this is what happens:
 
 2. Trigger Matching Phase:
    • Test each file against configured triggers (e.g., `filename`, `extension`).
-   • Create `TriggerMatch` objects for files that match, linking them to a power-up.
+   • Create `TriggerMatch` objects for files that match, linking them to a handler.
 
 3. Action Generation Phase:
-   • Each power-up (e.g., `symlink`, `shell_profile`) processes its `TriggerMatch` objects.
-   • The power-up generates high-level `Actions` that describe an intent, such as "link this file" or "source this script".
+   • Each handler (e.g., `symlink`, `shell_profile`) processes its `TriggerMatch` objects.
+   • The handler generates high-level `Actions` that describe an intent, such as "link this file" or "source this script".
 
 4. Operation Planning Phase:
    • `Actions` are converted into low-level, concrete `Operations`. An `Operation` is a specific task, like `CreateSymlink` or `WriteFile`.
@@ -41,10 +41,10 @@ Trigger Types:
 Each trigger type implements the `Trigger` interface with a single
 `Match(path string) bool` method.
 
-Power-Up Implementation:
-Power-ups implement the `PowerUp` interface:
+Handler Implementation:
+Handlers implement the `Handler` interface:
 ```
-type PowerUp interface {
+type Handler interface {
     Name() string
     Process(matches []TriggerMatch) ([]Action, error)
 }
@@ -56,14 +56,14 @@ This enables testing, caching, and predictable behavior.
 Registry System
 ---------------
 
-All components (triggers and power-ups) are registered in a type-safe
-registry system. This enables extensibility—new triggers and power-ups can
+All components (triggers and handlers) are registered in a type-safe
+registry system. This enables extensibility—new triggers and handlers can
 be added without modifying the core `dodot` code.
 
 The registry uses Go's init() functions for automatic registration:
 ```
 func init() {
-    registry.RegisterPowerUp("symlink", NewSymlinkPowerUp)
+    registry.RegisterHandler("symlink", NewSymlinkHandler)
     registry.RegisterTrigger("filename", NewFileNameTrigger)
 }
 ```
@@ -76,7 +76,7 @@ File System Safety
 dodot uses a layered approach to filesystem operations:
 
 1. Pure Functions:
-   • Power-ups are pure functions (same input → same output).
+   • Handlers are pure functions (same input → same output).
    • No side effects during action generation.
    • Easy to test and reason about.
 
@@ -94,13 +94,13 @@ Benefits of This Architecture
 
 Separation of Concerns:
 • Triggers focus only on file detection.
-• Power-ups focus only on generating high-level intents (`Actions`).
+• Handlers focus only on generating high-level intents (`Actions`).
 • The core engine handles planning (`Operations`).
 • The executor handles the safety of writing to disk.
 
 Extensibility:
-• New triggers can be used with existing power-ups.
-• New power-ups can work with existing triggers.
+• New triggers can be used with existing handlers.
+• New handlers can work with existing triggers.
 • The registry system enables a plugin-like architecture.
 
 Testability:
@@ -156,7 +156,7 @@ Error Handling
 
 Errors are handled at appropriate levels:
 • Trigger errors - Skip individual files, continue processing.
-• Power-up errors - Fail the power-up, continue with others.
+• Handler errors - Fail the handler, continue with others.
 • Execution errors - Stop processing and report the failure.
 
 This provides graceful degradation while preventing partial deployments.
@@ -171,7 +171,7 @@ errors.New(errors.ErrActionInvalid, "missing target path")
 Run-Once Mechanism
 ------------------
 
-For power-ups like `install` and `homebrew`, a sentinel file system prevents
+For handlers like `install` and `homebrew`, a sentinel file system prevents
 repeated execution:
 1. Before execution, check for sentinel file with matching checksum
 2. If found and checksum matches, skip execution

@@ -172,38 +172,38 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	return ctx, nil
 }
 
-// filterActionsByRunMode filters actions based on the RunMode of their power-ups
+// filterActionsByRunMode filters actions based on the RunMode of their handlers
 func filterActionsByRunMode(actions []types.Action, mode types.RunMode) ([]types.Action, error) {
 	logger := logging.GetLogger("commands.internal.pipeline")
 	var filtered []types.Action
 
 	for _, action := range actions {
-		// Get the power-up factory to check its run mode
-		factory, err := registry.GetPowerUpFactory(action.PowerUpName)
+		// Get the handler factory to check its run mode
+		factory, err := registry.GetHandlerFactory(action.HandlerName)
 		if err != nil {
 			logger.Warn().
-				Str("powerUp", action.PowerUpName).
+				Str("handler", action.HandlerName).
 				Err(err).
-				Msg("Failed to get power-up factory, including action anyway")
+				Msg("Failed to get handler factory, including action anyway")
 			// Include the action if we can't determine its run mode
 			filtered = append(filtered, action)
 			continue
 		}
 
 		// Create a temporary instance to check RunMode
-		powerUp, err := factory(nil)
+		handler, err := factory(nil)
 		if err != nil {
 			logger.Warn().
-				Str("powerUp", action.PowerUpName).
+				Str("handler", action.HandlerName).
 				Err(err).
-				Msg("Failed to create power-up instance, including action anyway")
+				Msg("Failed to create handler instance, including action anyway")
 			filtered = append(filtered, action)
 			continue
 		}
-		powerUpMode := powerUp.RunMode()
+		handlerMode := handler.RunMode()
 
 		// Include action if it matches the requested mode
-		if powerUpMode == mode {
+		if handlerMode == mode {
 			filtered = append(filtered, action)
 		}
 	}
@@ -239,7 +239,7 @@ func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*
 
 	packResults := make(map[string]*types.PackExecutionResult)
 
-	// Group actions by pack and power-up
+	// Group actions by pack and handler
 	for _, action := range actions {
 		packName := action.Pack
 		if packName == "" {
@@ -258,27 +258,27 @@ func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*
 			packResults[packName] = packResult
 		}
 
-		// Find or create PowerUpResult
-		var powerUpResult *types.PowerUpResult
-		for _, pur := range packResult.PowerUpResults {
-			if pur.PowerUpName == action.PowerUpName {
-				powerUpResult = pur
+		// Find or create HandlerResult
+		var handlerResult *types.HandlerResult
+		for _, pur := range packResult.HandlerResults {
+			if pur.HandlerName == action.HandlerName {
+				handlerResult = pur
 				break
 			}
 		}
-		if powerUpResult == nil {
-			powerUpResult = &types.PowerUpResult{
-				PowerUpName: action.PowerUpName,
+		if handlerResult == nil {
+			handlerResult = &types.HandlerResult{
+				HandlerName: action.HandlerName,
 				Files:       []string{},
 				Status:      types.StatusReady, // Planned status for dry run
 			}
-			packResult.PowerUpResults = append(packResult.PowerUpResults, powerUpResult)
-			packResult.TotalPowerUps++
+			packResult.HandlerResults = append(packResult.HandlerResults, handlerResult)
+			packResult.TotalHandlers++
 		}
 
-		// Add file to power-up if source is specified
+		// Add file to handler if source is specified
 		if action.Source != "" {
-			powerUpResult.Files = append(powerUpResult.Files, action.Source)
+			handlerResult.Files = append(handlerResult.Files, action.Source)
 		}
 	}
 
@@ -286,7 +286,7 @@ func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*
 	for _, packResult := range packResults {
 		packResult.Complete()
 		// For dry run, all are "ready" to execute
-		packResult.CompletedPowerUps = packResult.TotalPowerUps
+		packResult.CompletedHandlers = packResult.TotalHandlers
 		packResult.Status = types.ExecutionStatusSuccess
 	}
 
@@ -303,7 +303,7 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 
 	packResults := make(map[string]*types.PackExecutionResult)
 
-	// Group results by pack and power-up
+	// Group results by pack and handler
 	for _, result := range results {
 		packName := result.Action.Pack
 		if packName == "" {
@@ -322,67 +322,67 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 			packResults[packName] = packResult
 		}
 
-		// Find or create PowerUpResult
-		var powerUpResult *types.PowerUpResult
-		for _, pur := range packResult.PowerUpResults {
-			if pur.PowerUpName == result.Action.PowerUpName {
-				powerUpResult = pur
+		// Find or create HandlerResult
+		var handlerResult *types.HandlerResult
+		for _, pur := range packResult.HandlerResults {
+			if pur.HandlerName == result.Action.HandlerName {
+				handlerResult = pur
 				break
 			}
 		}
-		if powerUpResult == nil {
-			powerUpResult = &types.PowerUpResult{
-				PowerUpName: result.Action.PowerUpName,
+		if handlerResult == nil {
+			handlerResult = &types.HandlerResult{
+				HandlerName: result.Action.HandlerName,
 				Files:       []string{},
 				Status:      result.Status,
 				Error:       result.Error,
 				Actions:     []types.Action{result.Action},
 			}
-			packResult.PowerUpResults = append(packResult.PowerUpResults, powerUpResult)
-			packResult.TotalPowerUps++
+			packResult.HandlerResults = append(packResult.HandlerResults, handlerResult)
+			packResult.TotalHandlers++
 
 			// Update counts based on status
 			switch result.Status {
 			case types.StatusReady:
-				packResult.CompletedPowerUps++
+				packResult.CompletedHandlers++
 			case types.StatusError:
-				packResult.FailedPowerUps++
+				packResult.FailedHandlers++
 			case types.StatusSkipped:
-				packResult.SkippedPowerUps++
+				packResult.SkippedHandlers++
 			}
 		} else {
-			// Update existing power-up result if this one has error
-			if result.Status == types.StatusError && powerUpResult.Status != types.StatusError {
-				powerUpResult.Status = types.StatusError
-				powerUpResult.Error = result.Error
-				packResult.FailedPowerUps++
-				if packResult.CompletedPowerUps > 0 {
-					packResult.CompletedPowerUps--
+			// Update existing handler result if this one has error
+			if result.Status == types.StatusError && handlerResult.Status != types.StatusError {
+				handlerResult.Status = types.StatusError
+				handlerResult.Error = result.Error
+				packResult.FailedHandlers++
+				if packResult.CompletedHandlers > 0 {
+					packResult.CompletedHandlers--
 				}
 			}
 		}
 
-		// Add file to power-up if source is specified
+		// Add file to handler if source is specified
 		if result.Action.Source != "" {
-			powerUpResult.Files = append(powerUpResult.Files, result.Action.Source)
+			handlerResult.Files = append(handlerResult.Files, result.Action.Source)
 		}
 
-		// Add action to power-up
-		powerUpResult.Actions = append(powerUpResult.Actions, result.Action)
+		// Add action to handler
+		handlerResult.Actions = append(handlerResult.Actions, result.Action)
 	}
 
 	// Complete all pack results and determine status
 	for _, packResult := range packResults {
 		packResult.Complete()
 
-		// Determine pack status based on power-up results
-		if packResult.FailedPowerUps > 0 {
-			if packResult.CompletedPowerUps > 0 {
+		// Determine pack status based on handler results
+		if packResult.FailedHandlers > 0 {
+			if packResult.CompletedHandlers > 0 {
 				packResult.Status = types.ExecutionStatusPartial
 			} else {
 				packResult.Status = types.ExecutionStatusError
 			}
-		} else if packResult.SkippedPowerUps == packResult.TotalPowerUps {
+		} else if packResult.SkippedHandlers == packResult.TotalHandlers {
 			packResult.Status = types.ExecutionStatusSkipped
 		} else {
 			packResult.Status = types.ExecutionStatusSuccess

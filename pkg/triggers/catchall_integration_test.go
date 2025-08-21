@@ -49,10 +49,10 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
 	testutil.AssertNoError(t, err)
 
-	// Build a map of matched files to their power-ups
+	// Build a map of matched files to their handlers
 	matchMap := make(map[string]string)
 	for _, match := range matches {
-		matchMap[match.Path] = match.PowerUpName
+		matchMap[match.Path] = match.HandlerName
 	}
 
 	// Verify specific matchers worked
@@ -97,11 +97,11 @@ func TestProcessPackTriggers_CatchallWithOverrides(t *testing.T) {
 	packConfigContent := `
 [[override]]
 path = "custom.conf"
-powerup = "shell_profile"
+handler = "shell_profile"
 
 [[override]]
 path = "data.json"
-powerup = "template"
+handler = "template"
 `
 	testutil.CreateFile(t, packDir, ".dodot.toml", packConfigContent)
 
@@ -131,10 +131,10 @@ powerup = "template"
 	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
 	testutil.AssertNoError(t, err)
 
-	// Build a map of matched files to their power-ups
+	// Build a map of matched files to their handlers
 	matchMap := make(map[string]string)
 	for _, match := range matches {
-		matchMap[match.Path] = match.PowerUpName
+		matchMap[match.Path] = match.HandlerName
 	}
 
 	// Verify overrides took precedence over catchall

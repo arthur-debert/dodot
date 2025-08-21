@@ -59,9 +59,9 @@ func EnrichRunOnceActionsWithChecksums(actions []types.Action) []types.Action {
 	return actions
 }
 
-// FilterRunOnceTriggersEarly filters out trigger matches for run-once powerups that have
+// FilterRunOnceTriggersEarly filters out trigger matches for run-once handlers that have
 // already been executed. This is the new approach that checks sentinel files before
-// powerup processing, avoiding unnecessary work.
+// handler processing, avoiding unnecessary work.
 func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, pathsInstance *paths.Paths) []types.TriggerMatch {
 	if force {
 		// With force flag, include all triggers
@@ -72,7 +72,7 @@ func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, paths
 	filtered := make([]types.TriggerMatch, 0, len(triggers))
 
 	for _, trigger := range triggers {
-		// Check if this trigger is for a run-once powerup
+		// Check if this trigger is for a run-once handler
 		if !isRunOnceTrigger(trigger) {
 			// Not a run-once trigger, include it
 			filtered = append(filtered, trigger)
@@ -90,16 +90,16 @@ func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, paths
 			continue
 		}
 
-		// Determine powerup type from trigger
-		powerUpType := getPowerUpTypeFromTrigger(trigger)
-		if powerUpType == "" {
-			// Unknown powerup type, include it
+		// Determine handler type from trigger
+		handlerType := getHandlerTypeFromTrigger(trigger)
+		if handlerType == "" {
+			// Unknown handler type, include it
 			filtered = append(filtered, trigger)
 			continue
 		}
 
 		// Check sentinel file
-		sentinelPath := pathsInstance.SentinelPath(powerUpType, trigger.Pack)
+		sentinelPath := pathsInstance.SentinelPath(handlerType, trigger.Pack)
 		sentinelChecksum, err := readSentinelChecksum(sentinelPath)
 		if err != nil {
 			// No sentinel or error reading, include trigger
@@ -131,10 +131,10 @@ func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, paths
 	return filtered
 }
 
-// isRunOnceTrigger checks if a trigger match is for a run-once powerup
+// isRunOnceTrigger checks if a trigger match is for a run-once handler
 func isRunOnceTrigger(trigger types.TriggerMatch) bool {
 	// Check based on matcher name or file patterns
-	switch trigger.PowerUpName {
+	switch trigger.HandlerName {
 	case "brewfile", "homebrew":
 		return true
 	case "install_script", "install":
@@ -149,9 +149,9 @@ func isRunOnceTrigger(trigger types.TriggerMatch) bool {
 	return false
 }
 
-// getPowerUpTypeFromTrigger determines the powerup type from a trigger match
-func getPowerUpTypeFromTrigger(trigger types.TriggerMatch) string {
-	switch trigger.PowerUpName {
+// getHandlerTypeFromTrigger determines the handler type from a trigger match
+func getHandlerTypeFromTrigger(trigger types.TriggerMatch) string {
+	switch trigger.HandlerName {
 	case "brewfile", "homebrew":
 		return "homebrew"
 	case "install_script", "install":

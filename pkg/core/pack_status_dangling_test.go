@@ -51,7 +51,7 @@ func TestGetPackStatus_DanglingLinks(t *testing.T) {
 					Source:      sourcePath,
 					Target:      targetPath,
 					Pack:        pack,
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Description: "Link vimrc",
 				}
 			},
@@ -88,7 +88,7 @@ func TestGetPackStatus_DanglingLinks(t *testing.T) {
 					Source:      sourcePath,
 					Target:      targetPath,
 					Pack:        pack,
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Description: "Link gitconfig",
 				}
 			},
@@ -122,7 +122,7 @@ func TestGetPackStatus_DanglingLinks(t *testing.T) {
 					Source:      sourcePath,
 					Target:      targetPath,
 					Pack:        pack,
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Description: "Link zshrc",
 				}
 			},

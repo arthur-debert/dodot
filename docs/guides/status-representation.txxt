@@ -2,7 +2,7 @@ Status Representation Guide
 ===========================
 
 This guide explains how dodot represents and determines the status of packs and 
-powerups throughout the system. This status representation is used across multiple 
+handlers throughout the system. This status representation is used across multiple 
 commands (status, deploy, install) and provides a unified way to show what has 
 been deployed and what will happen.
 
@@ -126,20 +126,20 @@ are processed. The status system respects these overrides:
    ```toml
    [[files]]
    name = "foo"
-   powerup = "homebrew"
+   handler = "homebrew"
    ```
    - Status will show: "homebrew : *foo : [status message]"
    - The asterisk (*) indicates an overridden filename
-   - The powerup shown is the one from config, not the default matcher
+   - The handler shown is the one from config, not the default matcher
 
 2. **How It Works**
    - The matcher loop reads .dodot.toml during action discovery
-   - Actions are generated with the overridden powerup type
-   - Status display shows the actual powerup that will be/was used
+   - Actions are generated with the overridden handler type
+   - Status display shows the actual handler that will be/was used
    - File path shows the override marker (*)
 
 3. **Example**
-   If git/.dodot.toml maps "foo" to homebrew powerup:
+   If git/.dodot.toml maps "foo" to homebrew handler:
    ```
    git:
        config    : .dodot.toml    : dodot config file found

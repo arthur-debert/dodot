@@ -167,12 +167,12 @@ debug_symlinks() {
     echo -e "${YELLOW}=== DODOT DEPLOYED SYMLINKS ===${NC}"
     local deployed_dir="${DODOT_DATA_DIR:-$HOME/.local/share/dodot}/deployed"
     if [ -d "$deployed_dir" ]; then
-        # Show deployed symlinks organized by power-up
-        for powerup_dir in "$deployed_dir"/*; do
-            if [ -d "$powerup_dir" ]; then
-                local powerup=$(basename "$powerup_dir")
-                echo "  $powerup:"
-                find "$powerup_dir" -type l -o -type f 2>/dev/null | while read -r item; do
+        # Show deployed symlinks organized by handler
+        for handler_dir in "$deployed_dir"/*; do
+            if [ -d "$handler_dir" ]; then
+                local handler=$(basename "$handler_dir")
+                echo "  $handler:"
+                find "$handler_dir" -type l -o -type f 2>/dev/null | while read -r item; do
                     if [ -L "$item" ]; then
                         local target=$(readlink "$item")
                         echo "    $(basename "$item") -> $target"

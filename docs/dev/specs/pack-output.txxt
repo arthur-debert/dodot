@@ -12,7 +12,7 @@ General Display Format
 The standard format for displaying pack information follows this pattern:
 
     <pack-name>:
-        <power-up> : <file-path> : <status-message>
+        <handler> : <file-path> : <status-message>
 
 Each pack is displayed with its name followed by a colon, and each file within
 the pack is indented with consistent spacing. The display uses a three-column
@@ -86,10 +86,10 @@ Special Cases
            install : *runme.sh : to be executed
 
 
-Power-Up Verb Forms
+Handler Verb Forms
 -------------------
 
-Each power-up type has associated past and future tense verbs to indicate
+Each handler type has associated past and future tense verbs to indicate
 status appropriately:
 
 SYMLINK
@@ -147,7 +147,7 @@ Display Column Formatting
 
 The three-column format uses consistent spacing:
 
-- Column 1 (Power-up): 10 characters, left-aligned
+- Column 1 (Handler): 10 characters, left-aligned
 - Column 2 (File path): 15 characters, left-aligned  
 - Column 3 (Status): Variable length status message
 
@@ -159,7 +159,7 @@ Color Application
 
 Colors are applied selectively to maintain readability:
 
-1. Power-up names receive status-based background colors
+1. Handler names receive status-based background colors
 2. File paths remain in default text color unless overridden (asterisk)
 3. Status messages use appropriate text colors (muted for paths, etc.)
 4. Pack headers receive alert coloring only when containing errors

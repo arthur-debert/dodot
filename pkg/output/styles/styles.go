@@ -7,7 +7,7 @@
 // Style names are used as XML-like tags in templates:
 //
 //	<Success>Operation completed</Success>
-//	<PowerUp>symlink</PowerUp>
+//	<Handler>symlink</Handler>
 //
 // See pkg/output/doc.go for the complete rendering pipeline documentation.
 package styles

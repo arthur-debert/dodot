@@ -47,7 +47,7 @@ func (p *Paths) GetTargetDirectory(pack *types.Pack, relPath string) string
 
 ::: Components to Update
 
-:::: pkg/powerups/symlink/symlink.go
+:::: pkg/handlers/symlink/symlink.go
 Replace:
 ```go
 targetPath := filepath.Join(targetDir, match.Path)

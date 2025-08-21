@@ -9,16 +9,16 @@ import (
 // Global registries for different component types
 var (
 	triggerRegistry        Registry[types.Trigger]
-	powerUpRegistry        Registry[types.PowerUp]
+	handlerRegistry        Registry[types.Handler]
 	triggerFactoryRegistry Registry[types.TriggerFactory]
-	powerUpFactoryRegistry Registry[types.PowerUpFactory]
+	handlerFactoryRegistry Registry[types.HandlerFactory]
 )
 
 func init() {
 	triggerRegistry = New[types.Trigger]()
-	powerUpRegistry = New[types.PowerUp]()
+	handlerRegistry = New[types.Handler]()
 	triggerFactoryRegistry = New[types.TriggerFactory]()
-	powerUpFactoryRegistry = New[types.PowerUpFactory]()
+	handlerFactoryRegistry = New[types.HandlerFactory]()
 }
 
 // GetRegistry returns the global registry for the specified type.
@@ -28,12 +28,12 @@ func GetRegistry[T any]() Registry[T] {
 	switch any(zero).(type) {
 	case types.Trigger:
 		return any(triggerRegistry).(Registry[T])
-	case types.PowerUp:
-		return any(powerUpRegistry).(Registry[T])
+	case types.Handler:
+		return any(handlerRegistry).(Registry[T])
 	case types.TriggerFactory:
 		return any(triggerFactoryRegistry).(Registry[T])
-	case types.PowerUpFactory:
-		return any(powerUpFactoryRegistry).(Registry[T])
+	case types.HandlerFactory:
+		return any(handlerFactoryRegistry).(Registry[T])
 	default:
 		// This should ideally not be reached in production code,
 		// but can be useful for tests with novel types.
@@ -56,16 +56,16 @@ func GetTriggerFactory(name string) (types.TriggerFactory, error) {
 	return factory, nil
 }
 
-// RegisterPowerUpFactory registers a factory function for creating power-ups.
-func RegisterPowerUpFactory(name string, factory types.PowerUpFactory) error {
-	return powerUpFactoryRegistry.Register(name, factory)
+// RegisterHandlerFactory registers a factory function for creating handlers.
+func RegisterHandlerFactory(name string, factory types.HandlerFactory) error {
+	return handlerFactoryRegistry.Register(name, factory)
 }
 
-// GetPowerUpFactory retrieves a power-up factory by name.
-func GetPowerUpFactory(name string) (types.PowerUpFactory, error) {
-	factory, err := powerUpFactoryRegistry.Get(name)
+// GetHandlerFactory retrieves a handler factory by name.
+func GetHandlerFactory(name string) (types.HandlerFactory, error) {
+	factory, err := handlerFactoryRegistry.Get(name)
 	if err != nil {
-		return nil, fmt.Errorf("power-up factory not found: %s", name)
+		return nil, fmt.Errorf("handler factory not found: %s", name)
 	}
 	return factory, nil
 }

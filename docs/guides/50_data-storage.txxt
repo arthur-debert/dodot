@@ -27,7 +27,7 @@ In essence: the filesystem structure itself is the state database.
 State Storage Structure
 -----------------------
 
-Here's what dodot's state storage looks like after deploying various powerups:
+Here's what dodot's state storage looks like after deploying various handlers:
 
 ```
 ~/.local/share/dodot/
@@ -60,35 +60,35 @@ Here's what dodot's state storage looks like after deploying various powerups:
     └── dodot-init.sh   # Sources everything in shell_profile/ and adds path/ to PATH
 ```
 
-How Each PowerUp Stores State
+How Each Handler Stores State
 ------------------------------
 
-1. Symlink PowerUp:
+1. Symlink Handler:
    • Creates intermediate symlink in deployed/symlink/
    • User's file (e.g., ~/.vimrc) points to intermediate
    • Intermediate points to source in pack
    • State = existence of these symlinks
 
-2. Shell Profile PowerUp:
+2. Shell Profile Handler:
    • Creates symlinks in deployed/shell_profile/
    • Naming: <pack>_<filename> (e.g., vim_aliases.sh)
    • dodot-init.sh sources all files in this directory
    • State = existence of symlinks
 
-3. Path PowerUp:
+3. Path Handler:
    • Creates symlinks in deployed/path/
    • Naming: <pack>-<dirname> (e.g., tools-bin)
    • Each symlink points to a directory to add to PATH
    • dodot-init.sh iterates through these and adds to PATH
    • State = existence of directory symlinks
 
-4. Homebrew PowerUp:
+4. Homebrew Handler:
    • Creates sentinel files in homebrew/
    • Format: <pack>_Brewfile.sentinel
    • Content: "checksum:timestamp"
    • State = sentinel existence and checksum match
 
-5. Install Script PowerUp:
+5. Install Script Handler:
    • Creates sentinel files in install/
    • Copies scripts before execution for safety
    • Format: <pack>_<script>.sentinel
@@ -109,7 +109,7 @@ Default Mapping:
 Mapping can be customized via:
 • Pack configuration in .dodot.toml
 • Explicit _home/ or _xdg/ prefixes in paths
-• PowerUp options like target_dir
+• Handler options like target_dir
 
 The Pack Concept
 ----------------

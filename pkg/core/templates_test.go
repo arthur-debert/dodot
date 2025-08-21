@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	// Import to register powerups and triggers
-	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	// Import to register handlers and triggers
+	_ "github.com/arthur-debert/dodot/pkg/handlers"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
@@ -32,14 +32,14 @@ func TestGetCompletePackTemplate(t *testing.T) {
 	// Check Brewfile template
 	brewfile, exists := templateMap["Brewfile"]
 	assert.True(t, exists, "Should have Brewfile template")
-	assert.Equal(t, "homebrew", brewfile.PowerUpName)
+	assert.Equal(t, "homebrew", brewfile.HandlerName)
 	assert.Contains(t, brewfile.Content, "Homebrew dependencies for testpack pack")
 	assert.Equal(t, uint32(0644), brewfile.Mode)
 
 	// Check install.sh template
 	install, exists := templateMap["install.sh"]
 	assert.True(t, exists, "Should have install.sh template")
-	assert.Equal(t, "install_script", install.PowerUpName)
+	assert.Equal(t, "install_script", install.HandlerName)
 	assert.Contains(t, install.Content, "dodot install script for testpack pack")
 	assert.Equal(t, uint32(0755), install.Mode)
 

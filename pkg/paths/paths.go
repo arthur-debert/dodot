@@ -321,9 +321,9 @@ func (p *Paths) TemplatesDir() string {
 	return p.GetDataSubdir(TemplatesDir)
 }
 
-// StatePath returns the path to a state file for a specific pack and powerup
-func (p *Paths) StatePath(packName, powerUpName string) string {
-	return filepath.Join(p.StateDir(), packName, powerUpName+".json")
+// StatePath returns the path to a state file for a specific pack and handler
+func (p *Paths) StatePath(packName, handlerName string) string {
+	return filepath.Join(p.StateDir(), packName, handlerName+".json")
 }
 
 // NormalizePath normalizes a path by expanding home, making it absolute,
@@ -419,27 +419,27 @@ func (p *Paths) HomebrewDir() string {
 	return p.GetDataSubdir(HomebrewDir)
 }
 
-// SentinelPath returns the path to a sentinel file for a given powerup and pack.
+// SentinelPath returns the path to a sentinel file for a given handler and pack.
 // This provides a unified way to construct sentinel file paths across the codebase.
 // The sentinel file is used to track whether a run-once action has been executed.
 //
-// The path structure is: <DataDir>/<powerUpType>/<packName>
+// The path structure is: <DataDir>/<handlerType>/<packName>
 // For example: ~/.local/share/dodot/install/vim
 //
-// Currently supported powerUpTypes:
+// Currently supported handlerTypes:
 //   - "install" - for install.sh scripts
 //   - "homebrew" - for Brewfile executions
-func (p *Paths) SentinelPath(powerUpType, packName string) string {
-	switch powerUpType {
+func (p *Paths) SentinelPath(handlerType, packName string) string {
+	switch handlerType {
 	case "install":
 		return filepath.Join(p.InstallDir(), "sentinels", packName)
 	case "homebrew":
 		return filepath.Join(p.HomebrewDir(), packName)
 	default:
 		// For future extensibility, we could use a generic sentinel directory
-		// return filepath.Join(p.GetDataSubdir("sentinels"), powerUpType, packName)
+		// return filepath.Join(p.GetDataSubdir("sentinels"), handlerType, packName)
 		// For now, we'll just return the same pattern as existing code
-		return filepath.Join(p.GetDataSubdir(powerUpType), packName)
+		return filepath.Join(p.GetDataSubdir(handlerType), packName)
 	}
 }
 

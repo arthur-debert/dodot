@@ -59,28 +59,28 @@ echo "Tools installed" > /tmp/install-tools-output
 	testutil.AssertEqual(t, "tools", packResult.Pack.Name)
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
-	// Should have both install_script and symlink power-up results
-	testutil.AssertTrue(t, len(packResult.PowerUpResults) >= 2, "Should have multiple power-up results")
+	// Should have both install_script and symlink handler results
+	testutil.AssertTrue(t, len(packResult.HandlerResults) >= 2, "Should have multiple handler results")
 
 	var hasInstallScript, hasSymlink bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			hasInstallScript = true
 			testutil.AssertEqual(t, types.StatusReady, pur.Status)
 		}
-		if pur.PowerUpName == "symlink" {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 			testutil.AssertEqual(t, types.StatusReady, pur.Status)
 		}
 	}
 
-	testutil.AssertTrue(t, hasInstallScript, "Should have install_script power-up")
-	testutil.AssertTrue(t, hasSymlink, "Should have symlink power-up")
+	testutil.AssertTrue(t, hasInstallScript, "Should have install_script handler")
+	testutil.AssertTrue(t, hasSymlink, "Should have symlink handler")
 
-	// Verify both install script power-up processed AND symlink was created
+	// Verify both install script handler processed AND symlink was created
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")
 
-	// Check that install script power-up was processed (should create sentinel and copy script)
+	// Check that install script handler was processed (should create sentinel and copy script)
 	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "sentinels", "tools")), "Install sentinel file should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "tools", "install.sh")), "Install script should be copied")
@@ -122,7 +122,7 @@ func TestInstallPacks_DryRun(t *testing.T) {
 	testutil.AssertTrue(t, ctx.DryRun, "Should be dry run")
 	testutil.AssertEqual(t, "install", ctx.Command)
 
-	// Should have pack results with both power-ups planned
+	// Should have pack results with both handlers planned
 	packResult, ok := ctx.GetPackResult("dev")
 	testutil.AssertTrue(t, ok, "Should have dev pack result")
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
@@ -225,17 +225,17 @@ func TestInstallPacks_OnlySymlinks(t *testing.T) {
 	testutil.AssertTrue(t, ok, "Should have vim pack result")
 
 	var hasInstallScript, hasSymlink bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			hasInstallScript = true
 		}
-		if pur.PowerUpName == "symlink" {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 		}
 	}
 
-	testutil.AssertFalse(t, hasInstallScript, "Should NOT have install_script power-up")
-	testutil.AssertTrue(t, hasSymlink, "Should have symlink power-up")
+	testutil.AssertFalse(t, hasInstallScript, "Should NOT have install_script handler")
+	testutil.AssertTrue(t, hasSymlink, "Should have symlink handler")
 
 	// Verify symlink was created (Layer 1: top-level files get dot prefix)
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
@@ -283,17 +283,17 @@ echo "Setup complete" > /tmp/setup-output
 	testutil.AssertTrue(t, ok, "Should have setup pack result")
 
 	var hasInstallScript, hasSymlink bool
-	for _, pur := range packResult.PowerUpResults {
-		if pur.PowerUpName == "install_script" {
+	for _, pur := range packResult.HandlerResults {
+		if pur.HandlerName == "install_script" {
 			hasInstallScript = true
 		}
-		if pur.PowerUpName == "symlink" {
+		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 		}
 	}
 
-	testutil.AssertTrue(t, hasInstallScript, "Should have install_script power-up")
-	testutil.AssertFalse(t, hasSymlink, "Should NOT have symlink power-up")
+	testutil.AssertTrue(t, hasInstallScript, "Should have install_script handler")
+	testutil.AssertFalse(t, hasSymlink, "Should NOT have symlink handler")
 
 	// Verify install script was processed (copied and sentinel created)
 	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")

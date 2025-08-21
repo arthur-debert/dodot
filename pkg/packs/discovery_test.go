@@ -217,7 +217,7 @@ path = ".cache"`,
 			configPath: "test/pack/.dodot.toml",
 			fileContent: `[[override]]
 path = "special.sh"
-powerup = "install_script"
+handler = "install_script"
 
 [override.with]
 priority = "high"`,
@@ -225,7 +225,7 @@ priority = "high"`,
 				Override: []types.OverrideRule{
 					{
 						Path:    "special.sh",
-						Powerup: "install_script",
+						Handler: "install_script",
 						With: map[string]interface{}{
 							"priority": "high",
 						},
@@ -249,7 +249,7 @@ path = "*.log"
 
 [[override]]
 path = "install.sh"
-powerup = "shell_profile"`,
+handler = "shell_profile"`,
 			wantConfig: types.PackConfig{
 				Ignore: []types.IgnoreRule{
 					{Path: "*.log"},
@@ -257,7 +257,7 @@ powerup = "shell_profile"`,
 				Override: []types.OverrideRule{
 					{
 						Path:    "install.sh",
-						Powerup: "shell_profile",
+						Handler: "shell_profile",
 					},
 				},
 			},
@@ -338,7 +338,7 @@ path = "*.tmp" # Ignore temp files
 # Another comment
 [[override]]
 path = "test.sh"
-powerup = "symlink"`,
+handler = "symlink"`,
 			description: "should parse configs with comments correctly",
 			wantErr:     false,
 		},

@@ -44,8 +44,8 @@ This repository contains dodot, a stateless dotfiles manager written in Go.
 - `pkg/core/` - Core pipeline functions (GetPacks, GetFiringTriggers, GetActions, GetFsOps)
 - `pkg/types/` - Type definitions and interfaces
 - `pkg/triggers/` - Trigger implementations (FileNameTrigger, DirectoryTrigger, etc.)
-- `pkg/powerups/` - PowerUp implementations (SymlinkPowerUp, ProfilePowerUp, etc.)
-- `pkg/matchers/` - Matcher system connecting triggers to powerups
+- `pkg/handlers/` - Handler implementations (SymlinkHandler, ProfileHandler, etc.)
+- `pkg/matchers/` - Matcher system connecting triggers to handlers
 - `pkg/logging/` - Centralized zerolog-based logging with verbosity control
 - `pkg/errors/` - Error types with codes for stable testing
 - `pkg/registry/` - Generic registry for extensibility
@@ -54,8 +54,8 @@ This repository contains dodot, a stateless dotfiles manager written in Go.
 dodot is a stateless dotfiles manager built around four key components:
 
 1. **Triggers** - Pattern-matching engines that scan files and directories within packs
-2. **Matchers** - Configuration objects that bind triggers to power-ups
-3. **Power-ups** - Action generators that process matched files (symlink, brew, shell_profile, etc.)
+2. **Matchers** - Configuration objects that bind triggers to handlers
+3. **Handlers** - Action generators that process matched files (symlink, brew, shell_profile, etc.)
 4. **Actions** - High-level descriptions of operations to be performed
 
 ### Key Design Principles

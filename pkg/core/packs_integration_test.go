@@ -162,7 +162,7 @@ func TestGetPacks(t *testing.T) {
 path = "*.bak"
 [[override]]
 path = "test.conf"
-powerup = "symlink"
+handler = "symlink"
 `
 				testutil.CreateFile(t, pack, ".dodot.toml", config)
 				return []string{pack}
@@ -174,7 +174,7 @@ powerup = "symlink"
 				testutil.AssertEqual(t, "*.bak", pack.Config.Ignore[0].Path)
 				testutil.AssertEqual(t, 1, len(pack.Config.Override))
 				testutil.AssertEqual(t, "test.conf", pack.Config.Override[0].Path)
-				testutil.AssertEqual(t, "symlink", pack.Config.Override[0].Powerup)
+				testutil.AssertEqual(t, "symlink", pack.Config.Override[0].Handler)
 			},
 		},
 		{

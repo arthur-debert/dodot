@@ -62,8 +62,8 @@ type PackExecutionResult struct {
 	// Pack is the pack being executed
 	Pack *Pack
 
-	// PowerUpResults contains all PowerUp results and their status
-	PowerUpResults []*PowerUpResult
+	// HandlerResults contains all Handler results and their status
+	HandlerResults []*HandlerResult
 
 	// Status is the aggregated status for this pack
 	Status ExecutionStatus
@@ -74,26 +74,26 @@ type PackExecutionResult struct {
 	// EndTime is when this pack's execution completed
 	EndTime time.Time
 
-	// TotalPowerUps in this pack
-	TotalPowerUps int
+	// TotalHandlers in this pack
+	TotalHandlers int
 
-	// CompletedPowerUps in this pack
-	CompletedPowerUps int
+	// CompletedHandlers in this pack
+	CompletedHandlers int
 
-	// FailedPowerUps in this pack
-	FailedPowerUps int
+	// FailedHandlers in this pack
+	FailedHandlers int
 
-	// SkippedPowerUps in this pack
-	SkippedPowerUps int
+	// SkippedHandlers in this pack
+	SkippedHandlers int
 }
 
-// PowerUpResult tracks the result of a single PowerUp execution
-// This is the atomic unit - if ANY action in a PowerUp fails, the PowerUp fails
-type PowerUpResult struct {
-	// PowerUpName is the name of the PowerUp (symlink, homebrew, etc.)
-	PowerUpName string
+// HandlerResult tracks the result of a single Handler execution
+// This is the atomic unit - if ANY action in a Handler fails, the Handler fails
+type HandlerResult struct {
+	// HandlerName is the name of the Handler (symlink, homebrew, etc.)
+	HandlerName string
 
-	// Files are the files processed by this PowerUp
+	// Files are the files processed by this Handler
 	Files []string
 
 	// Status is the final status after execution
@@ -102,16 +102,16 @@ type PowerUpResult struct {
 	// Error contains any error that occurred
 	Error error
 
-	// StartTime is when the PowerUp execution began
+	// StartTime is when the Handler execution began
 	StartTime time.Time
 
-	// EndTime is when the PowerUp execution completed
+	// EndTime is when the Handler execution completed
 	EndTime time.Time
 
 	// Message provides additional context
 	Message string
 
-	// Pack is the pack this PowerUp belongs to
+	// Pack is the pack this Handler belongs to
 	Pack string
 
 	// Actions are the original actions that were executed
@@ -132,17 +132,17 @@ func NewExecutionContext(command string, dryRun bool) *ExecutionContext {
 func (ec *ExecutionContext) AddPackResult(packName string, result *PackExecutionResult) {
 	ec.PackResults[packName] = result
 
-	// Update totals based on PowerUps, not Operations
+	// Update totals based on Handlers, not Operations
 	ec.TotalActions = 0
 	ec.CompletedActions = 0
 	ec.FailedActions = 0
 	ec.SkippedActions = 0
 
 	for _, pr := range ec.PackResults {
-		ec.TotalActions += pr.TotalPowerUps
-		ec.CompletedActions += pr.CompletedPowerUps
-		ec.FailedActions += pr.FailedPowerUps
-		ec.SkippedActions += pr.SkippedPowerUps
+		ec.TotalActions += pr.TotalHandlers
+		ec.CompletedActions += pr.CompletedHandlers
+		ec.FailedActions += pr.FailedHandlers
+		ec.SkippedActions += pr.SkippedHandlers
 	}
 }
 
@@ -161,24 +161,24 @@ func (ec *ExecutionContext) Complete() {
 func NewPackExecutionResult(pack *Pack) *PackExecutionResult {
 	return &PackExecutionResult{
 		Pack:           pack,
-		PowerUpResults: make([]*PowerUpResult, 0),
+		HandlerResults: make([]*HandlerResult, 0),
 		Status:         ExecutionStatusPending,
 		StartTime:      time.Now(),
 	}
 }
 
-// AddPowerUpResult adds a PowerUp result and updates statistics
-func (per *PackExecutionResult) AddPowerUpResult(result *PowerUpResult) {
-	per.PowerUpResults = append(per.PowerUpResults, result)
-	per.TotalPowerUps++
+// AddHandlerResult adds a Handler result and updates statistics
+func (per *PackExecutionResult) AddHandlerResult(result *HandlerResult) {
+	per.HandlerResults = append(per.HandlerResults, result)
+	per.TotalHandlers++
 
 	switch result.Status {
 	case StatusReady:
-		per.CompletedPowerUps++
+		per.CompletedHandlers++
 	case StatusSkipped:
-		per.SkippedPowerUps++
+		per.SkippedHandlers++
 	case StatusError, StatusConflict:
-		per.FailedPowerUps++
+		per.FailedHandlers++
 	}
 
 	// Update pack status
@@ -187,16 +187,16 @@ func (per *PackExecutionResult) AddPowerUpResult(result *PowerUpResult) {
 
 // updateStatus recalculates the pack's aggregated status
 func (per *PackExecutionResult) updateStatus() {
-	if per.TotalPowerUps == 0 {
+	if per.TotalHandlers == 0 {
 		per.Status = ExecutionStatusPending
 		return
 	}
 
-	if per.FailedPowerUps == per.TotalPowerUps {
+	if per.FailedHandlers == per.TotalHandlers {
 		per.Status = ExecutionStatusError
-	} else if per.SkippedPowerUps == per.TotalPowerUps {
+	} else if per.SkippedHandlers == per.TotalHandlers {
 		per.Status = ExecutionStatusSkipped
-	} else if per.FailedPowerUps > 0 {
+	} else if per.FailedHandlers > 0 {
 		per.Status = ExecutionStatusPartial
 	} else {
 		per.Status = ExecutionStatusSuccess
@@ -214,8 +214,8 @@ type FileStatus struct {
 	// Path is the file or directory path
 	Path string
 
-	// PowerUp is the power-up that manages this file
-	PowerUp string
+	// Handler is the handler that manages this file
+	Handler string
 
 	// Status is the current status of the file
 	Status OperationStatus
@@ -226,7 +226,7 @@ type FileStatus struct {
 	// LastApplied is when the file was last successfully applied
 	LastApplied time.Time
 
-	// Metadata contains power-up specific status information
+	// Metadata contains handler specific status information
 	// For example:
 	// - Symlinks: target path, whether link is valid
 	// - Profiles: which shell files contain entries
@@ -270,7 +270,7 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 		// Add config files as display items (per display.txxt spec)
 		if hasConfig {
 			displayPack.Files = append(displayPack.Files, DisplayFile{
-				PowerUp: "config",
+				Handler: "config",
 				Path:    ".dodot.toml",
 				Status:  "config",
 				Message: "dodot config file found",
@@ -278,18 +278,18 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 		}
 		if isIgnored {
 			displayPack.Files = append(displayPack.Files, DisplayFile{
-				PowerUp: ".dodotignore",
+				Handler: ".dodotignore",
 				Path:    "",
 				Status:  "ignored",
 				Message: "dodot is ignoring this dir",
 			})
 		}
 
-		// Transform PowerUpResults to DisplayFiles
-		for _, pur := range packResult.PowerUpResults {
-			// Create a DisplayFile for each file in the PowerUpResult
+		// Transform HandlerResults to DisplayFiles
+		for _, pur := range packResult.HandlerResults {
+			// Create a DisplayFile for each file in the HandlerResult
 			for _, filePath := range pur.Files {
-				// Check if this file has a power-up override in .dodot.toml
+				// Check if this file has a handler override in .dodot.toml
 				fileName := filepath.Base(filePath)
 				isOverride := false
 				if packResult.Pack != nil {
@@ -297,19 +297,19 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 					isOverride = (override != nil)
 				}
 
-				// Use PowerUpResult EndTime as LastExecuted if execution completed
+				// Use HandlerResult EndTime as LastExecuted if execution completed
 				var lastExecuted *time.Time
 				if pur.Status == StatusReady && !pur.EndTime.IsZero() {
 					lastExecuted = &pur.EndTime
 				}
 
-				// Generate PowerUp-aware display message
+				// Generate Handler-aware display message
 				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
-				displayMessage := generatePowerUpMessage(pur.PowerUpName, filePath, displayStatus, lastExecuted)
+				displayMessage := generateHandlerMessage(pur.HandlerName, filePath, displayStatus, lastExecuted)
 
-				// Get additional info based on PowerUp type and action data
-				additionalInfo := GetPowerUpAdditionalInfo(pur.PowerUpName)
-				if pur.PowerUpName == "symlink" && len(pur.Actions) > 0 {
+				// Get additional info based on Handler type and action data
+				additionalInfo := GetHandlerAdditionalInfo(pur.HandlerName)
+				if pur.HandlerName == "symlink" && len(pur.Actions) > 0 {
 					// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
 					homeDir := os.Getenv("HOME")
 					for _, action := range pur.Actions {
@@ -321,13 +321,13 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 				}
 
 				displayFile := DisplayFile{
-					PowerUp:        pur.PowerUpName,
+					Handler:        pur.HandlerName,
 					Path:           filePath,
 					Status:         displayStatus,
 					Message:        displayMessage,
 					IsOverride:     isOverride,
 					LastExecuted:   lastExecuted,
-					PowerUpSymbol:  GetPowerUpSymbol(pur.PowerUpName),
+					HandlerSymbol:  GetHandlerSymbol(pur.HandlerName),
 					AdditionalInfo: additionalInfo,
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
@@ -384,11 +384,11 @@ func checkPackConfiguration(pack *Pack) (hasConfig bool, isIgnored bool) {
 	return hasConfig, isIgnored
 }
 
-// generatePowerUpMessage creates PowerUp-specific display messages following display.txxt spec
-func generatePowerUpMessage(powerUpName, filePath, status string, lastExecuted *time.Time) string {
+// generateHandlerMessage creates Handler-specific display messages following display.txxt spec
+func generateHandlerMessage(handlerName, filePath, status string, lastExecuted *time.Time) string {
 	fileName := filepath.Base(filePath)
 
-	switch powerUpName {
+	switch handlerName {
 	case "symlink":
 		switch status {
 		case "success":
@@ -452,7 +452,7 @@ func generatePowerUpMessage(powerUpName, filePath, status string, lastExecuted *
 		}
 
 	default:
-		// Fallback for unknown PowerUp types
+		// Fallback for unknown Handler types
 		switch status {
 		case "success":
 			return "completed successfully"

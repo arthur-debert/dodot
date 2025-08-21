@@ -18,7 +18,7 @@ $DOTFILES_ROOT/
 
 1. **Packs are immediate subdirectories** - Packs must be direct children of `DOTFILES_ROOT`
 2. **No nested packs** - Packs cannot contain other packs (e.g., `vim/plugins` is NOT a separate pack)
-3. **Directories inside packs are regular directories** - They get symlinked according to powerup rules
+3. **Directories inside packs are regular directories** - They get symlinked according to handler rules
 
 ## Pack Naming Requirements
 

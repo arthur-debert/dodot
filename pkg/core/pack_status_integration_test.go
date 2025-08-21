@@ -45,7 +45,7 @@ func TestGetPackStatus(t *testing.T) {
 					Source:      "dotfiles/vim/.vimrc",
 					Target:      "home/user/.vimrc",
 					Pack:        "vim",
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 				},
 			},
 			setupFS: func(fs types.FS, dataDir string) {
@@ -84,7 +84,7 @@ func TestGetPackStatus(t *testing.T) {
 					Source:      "dotfiles/zsh/.zshrc",
 					Target:      "home/user/.zshrc",
 					Pack:        "zsh",
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 				},
 			},
 			setupFS: func(fs types.FS, dataDir string) {
@@ -113,7 +113,7 @@ func TestGetPackStatus(t *testing.T) {
 					Source:      "dotfiles/broken/config",
 					Target:      "home/user/.config",
 					Pack:        "broken",
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 				},
 			},
 			setupFS: func(fs types.FS, dataDir string) {
@@ -167,7 +167,7 @@ func TestGetPackStatus(t *testing.T) {
 					Source:      "dotfiles/configured/file",
 					Target:      "home/user/file",
 					Pack:        "configured",
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 					Metadata:    map[string]interface{}{"override": true},
 				},
 			},
@@ -190,7 +190,7 @@ func TestGetPackStatus(t *testing.T) {
 				}
 				require.NotNil(t, configFile)
 				assert.Equal(t, "config", configFile.Status)
-				assert.Equal(t, "config", configFile.PowerUp)
+				assert.Equal(t, "config", configFile.Handler)
 
 				// Find overridden file
 				var overrideFile *types.DisplayFile
@@ -217,7 +217,7 @@ func TestGetPackStatus(t *testing.T) {
 					Source:      "dotfiles/mixed/deployed",
 					Target:      "home/user/deployed",
 					Pack:        "mixed",
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 				},
 				{
 					Type:        types.ActionTypeLink,
@@ -225,7 +225,7 @@ func TestGetPackStatus(t *testing.T) {
 					Source:      "dotfiles/mixed/pending",
 					Target:      "home/user/pending",
 					Pack:        "mixed",
-					PowerUpName: "symlink",
+					HandlerName: "symlink",
 				},
 			},
 			setupFS: func(fs types.FS, dataDir string) {
@@ -272,28 +272,28 @@ func TestGetPackStatus(t *testing.T) {
 					Description: "Install homebrew packages",
 					Source:      "dotfiles/multi/Brewfile",
 					Pack:        "multi",
-					PowerUpName: "homebrew",
+					HandlerName: "homebrew",
 				},
 				{
 					Type:        types.ActionTypeInstall,
 					Description: "Run install script",
 					Source:      "dotfiles/multi/install.sh",
 					Pack:        "multi",
-					PowerUpName: "install",
+					HandlerName: "install",
 				},
 				{
 					Type:        types.ActionTypePathAdd,
 					Description: "Add bin to PATH",
 					Source:      "dotfiles/multi/bin",
 					Pack:        "multi",
-					PowerUpName: "path",
+					HandlerName: "path",
 				},
 				{
 					Type:        types.ActionTypeShellSource,
 					Description: "Source aliases",
 					Source:      "dotfiles/multi/aliases.sh",
 					Pack:        "multi",
-					PowerUpName: "shell_profile",
+					HandlerName: "shell_profile",
 				},
 			},
 			setupFS: func(fs types.FS, dataDir string) {
@@ -323,18 +323,18 @@ func TestGetPackStatus(t *testing.T) {
 			expectedFiles:  4,
 			checkResult: func(t *testing.T, result *types.DisplayPack) {
 				// Verify each action type is represented correctly
-				powerUpTypes := make(map[string]bool)
+				handlerTypes := make(map[string]bool)
 				statusCounts := make(map[string]int)
 				for _, file := range result.Files {
-					powerUpTypes[file.PowerUp] = true
+					handlerTypes[file.Handler] = true
 					statusCounts[file.Status]++
-					t.Logf("File %s (%s): status=%s, message=%s", file.Path, file.PowerUp, file.Status, file.Message)
+					t.Logf("File %s (%s): status=%s, message=%s", file.Path, file.Handler, file.Status, file.Message)
 				}
 
-				assert.True(t, powerUpTypes["homebrew"])
-				assert.True(t, powerUpTypes["install_script"])
-				assert.True(t, powerUpTypes["path"])
-				assert.True(t, powerUpTypes["shell_profile"])
+				assert.True(t, handlerTypes["homebrew"])
+				assert.True(t, handlerTypes["install_script"])
+				assert.True(t, handlerTypes["path"])
+				assert.True(t, handlerTypes["shell_profile"])
 
 				// Should have 2 success (brew, install) and 2 pending (path, shell)
 				assert.Equal(t, 2, statusCounts["success"], "Should have 2 successful actions")

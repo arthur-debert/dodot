@@ -5,8 +5,8 @@ The test suite is organized into 5 progressive suites:
 
 SUITE 1: SINGLE POWER-UPS (Foundation)
 --------------------------------------
-Location: suite-1-single-powerups/<power-up>/
-Purpose: Test each power-up in isolation with YES/NO assertions
+Location: suite-1-single-handlers/<handler>/
+Purpose: Test each handler in isolation with YES/NO assertions
 Status: Partially implemented
 
 Implemented:
@@ -19,19 +19,19 @@ Implemented:
 
 SUITE 2: MULTIPLE POWER-UPS, SINGLE PACK
 -----------------------------------------
-Location: suite-2-multi-powerups-single-pack/
-Purpose: Test power-up interactions within single packs
+Location: suite-2-multi-handlers-single-pack/
+Purpose: Test handler interactions within single packs
 Status: All tests stubbed and marked as skip
 
 Planned tests:
-- Deploy-type power-ups combined
-- Install-type power-ups combined
-- Mixed deploy/install power-ups
-- All power-ups in one pack
+- Deploy-type handlers combined
+- Install-type handlers combined
+- Mixed deploy/install handlers
+- All handlers in one pack
 
 SUITE 3: MULTIPLE POWER-UPS, MULTIPLE PACKS
 --------------------------------------------
-Location: suite-3-multi-powerups-multi-packs/
+Location: suite-3-multi-handlers-multi-packs/
 Purpose: Test cross-pack interactions
 Status: All tests stubbed and marked as skip
 
@@ -43,8 +43,8 @@ Planned tests:
 
 SUITE 4: SINGLE POWER-UP EDGE CASES
 ------------------------------------
-Location: suite-4-single-powerup-edge-cases/
-Purpose: Test edge cases for each power-up in isolation
+Location: suite-4-single-handler-edge-cases/
+Purpose: Test edge cases for each handler in isolation
 Status: All tests stubbed and marked as skip
 
 Planned tests:
@@ -58,7 +58,7 @@ Planned tests:
 SUITE 5: COMPLEX EDGE CASES
 ----------------------------
 Location: suite-5-complex-edge-cases/
-Purpose: Test complex multi-pack/power-up interactions
+Purpose: Test complex multi-pack/handler interactions
 Status: All tests stubbed and marked as skip
 
 Planned tests:
@@ -71,7 +71,7 @@ Planned tests:
 DEPRECATED
 ----------
 - basic: Mixed scenario with failing tests, scheduled for removal
-- isolated-*: Migrated to suite-1-single-powerups
+- isolated-*: Migrated to suite-1-single-handlers
 
 RUNNING TESTS
 -------------
@@ -79,10 +79,10 @@ RUNNING TESTS
 ./scripts/run-live-tests
 
 # Run specific suite:
-./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-powerups/*/tests/*.bats
+./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-handlers/*/tests/*.bats
 
-# Run specific power-up tests:
-./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-powerups/symlink/tests/*.bats
+# Run specific handler tests:
+./scripts/run-dev-container bats live-testing/scenarios/suite-1-single-handlers/symlink/tests/*.bats
 
 # Run with failfast:
 ./scripts/run-live-tests --failfast

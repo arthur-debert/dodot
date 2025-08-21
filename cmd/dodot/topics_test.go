@@ -7,8 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	// Import to register triggers and powerups
-	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	// Import to register triggers and handlers
+	_ "github.com/arthur-debert/dodot/pkg/handlers"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 

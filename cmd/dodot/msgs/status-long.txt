@@ -1,5 +1,5 @@
 Status shows the current deployment state of packs, including
-which files are deployed, which power-ups have been executed, and any
+which files are deployed, which handlers have been executed, and any
 pending changes.
 
 If no packs are specified, status for all packs will be shown.

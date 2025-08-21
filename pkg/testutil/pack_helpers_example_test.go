@@ -103,8 +103,8 @@ cask "visual-studio-code"
 
 // Example of how to use in integration tests
 func TestIntegration_Example(t *testing.T) {
-	// Import triggers and powerups
-	// _ "github.com/arthur-debert/dodot/pkg/powerups"
+	// Import triggers and handlers
+	// _ "github.com/arthur-debert/dodot/pkg/handlers"
 	// _ "github.com/arthur-debert/dodot/pkg/triggers"
 
 	tests := []struct {

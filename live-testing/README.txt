@@ -32,10 +32,10 @@ Test Organization
 
 Tests are organized in 5 progressive suites:
 
-1. Suite 1: Single power-ups (foundation tests)
-2. Suite 2: Multiple power-ups in single packs
-3. Suite 3: Multiple power-ups across multiple packs
-4. Suite 4: Single power-up edge cases
+1. Suite 1: Single handlers (foundation tests)
+2. Suite 2: Multiple handlers in single packs
+3. Suite 3: Multiple handlers across multiple packs
+4. Suite 4: Single handler edge cases
 5. Suite 5: Complex multi-pack edge cases
 
 See scenarios/test-plan.txt for detailed test specifications.
@@ -43,7 +43,7 @@ See scenarios/test-plan.txt for detailed test specifications.
 Key Components
 --------------
 
-• Assertion Libraries: Located in lib/, provide power-up specific test helpers
+• Assertion Libraries: Located in lib/, provide handler specific test helpers
 • Test Runner: scripts/runner.sh orchestrates test execution with safety checks
 • Docker Environment: Ubuntu-based container with Homebrew, Zsh, and Bats
 • CI Integration: Outputs JUnit XML for GitHub Actions reporting

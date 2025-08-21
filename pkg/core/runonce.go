@@ -58,14 +58,14 @@ func ShouldRunOnceAction(action types.Action, force bool, pathsInstance *paths.P
 	}
 
 	// Determine sentinel path based on action type
-	var powerUpType string
+	var handlerType string
 	switch action.Type {
 	case types.ActionTypeBrew:
-		powerUpType = "homebrew"
+		handlerType = "homebrew"
 	case types.ActionTypeInstall:
-		powerUpType = "install"
+		handlerType = "install"
 	}
-	sentinelPath := pathsInstance.SentinelPath(powerUpType, pack)
+	sentinelPath := pathsInstance.SentinelPath(handlerType, pack)
 
 	// Check if sentinel file exists
 	info, err := os.Stat(sentinelPath)
@@ -173,7 +173,7 @@ func CalculateActionChecksum(action types.Action) (string, error) {
 	}
 }
 
-// RunOnceStatus represents the execution status of a run-once power-up
+// RunOnceStatus represents the execution status of a run-once handler
 type RunOnceStatus struct {
 	Executed   bool
 	ExecutedAt time.Time
@@ -181,25 +181,25 @@ type RunOnceStatus struct {
 	Changed    bool // True if the source file has changed since execution
 }
 
-// GetRunOnceStatus checks the status of a run-once power-up for a specific pack
-func GetRunOnceStatus(packPath, powerUpName string, pathsInstance *paths.Paths) (*RunOnceStatus, error) {
+// GetRunOnceStatus checks the status of a run-once handler for a specific pack
+func GetRunOnceStatus(packPath, handlerName string, pathsInstance *paths.Paths) (*RunOnceStatus, error) {
 	logger := logging.GetLogger("core.runonce")
 
-	// Map power-up names to their file patterns
+	// Map handler names to their file patterns
 	var filePattern string
 
-	switch powerUpName {
+	switch handlerName {
 	case "install":
 		filePattern = "install.sh"
 	case "homebrew":
 		filePattern = "Brewfile"
 	default:
-		return nil, fmt.Errorf("unknown run-once power-up: %s", powerUpName)
+		return nil, fmt.Errorf("unknown run-once handler: %s", handlerName)
 	}
 
 	// Get the sentinel path using the unified API
 	packName := filepath.Base(packPath)
-	sentinelDir := pathsInstance.SentinelPath(powerUpName, packName)
+	sentinelDir := pathsInstance.SentinelPath(handlerName, packName)
 
 	// Check if the source file exists
 	sourceFile := filepath.Join(packPath, filePattern)
@@ -246,7 +246,7 @@ func GetRunOnceStatus(packPath, powerUpName string, pathsInstance *paths.Paths) 
 
 	logger.Trace().
 		Str("pack", filepath.Base(packPath)).
-		Str("powerup", powerUpName).
+		Str("handler", handlerName).
 		Bool("executed", true).
 		Bool("changed", changed).
 		Msg("Run-once status checked")

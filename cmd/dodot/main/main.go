@@ -6,7 +6,7 @@ import (
 	"github.com/arthur-debert/dodot/cmd/dodot"
 
 	// Import packages to ensure their init() functions are called for registration
-	_ "github.com/arthur-debert/dodot/pkg/powerups"
+	_ "github.com/arthur-debert/dodot/pkg/handlers"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 

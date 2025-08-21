@@ -32,7 +32,7 @@ type SpecialFiles struct {
 // Priorities holds component priority settings
 type Priorities struct {
 	Triggers map[string]int
-	PowerUps map[string]int
+	Handlers map[string]int
 	Matchers map[string]int
 }
 
@@ -43,8 +43,8 @@ type MatcherConfig struct {
 	Priority    int
 	TriggerType string
 	TriggerData map[string]interface{}
-	PowerUpType string
-	PowerUpData map[string]interface{}
+	HandlerType string
+	HandlerData map[string]interface{}
 }
 
 // FilePermissions holds file and directory permission settings
@@ -143,7 +143,7 @@ func Default() *Config {
 				"filename": 100,
 				"catchall": 0,
 			},
-			PowerUps: map[string]int{
+			Handlers: map[string]int{
 				"symlink":  100,
 				"path":     90,
 				"template": 70,
@@ -203,8 +203,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "install.sh",
 			},
-			PowerUpType: "install_script",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "install_script",
+			HandlerData: map[string]interface{}{},
 		},
 		{
 			Name:        "brewfile",
@@ -214,8 +214,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "Brewfile",
 			},
-			PowerUpType: "homebrew",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "homebrew",
+			HandlerData: map[string]interface{}{},
 		},
 		{
 			Name:        "shell-aliases",
@@ -225,8 +225,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "*aliases.sh",
 			},
-			PowerUpType: "shell_profile",
-			PowerUpData: map[string]interface{}{
+			HandlerType: "shell_profile",
+			HandlerData: map[string]interface{}{
 				"placement": "aliases",
 			},
 		},
@@ -238,8 +238,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "profile.sh",
 			},
-			PowerUpType: "shell_profile",
-			PowerUpData: map[string]interface{}{
+			HandlerType: "shell_profile",
+			HandlerData: map[string]interface{}{
 				"placement": "environment",
 			},
 		},
@@ -251,8 +251,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "bin",
 			},
-			PowerUpType: "path",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "path",
+			HandlerData: map[string]interface{}{},
 		},
 		{
 			Name:        "bin-path",
@@ -262,8 +262,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "bin",
 			},
-			PowerUpType: "shell_add_path",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "shell_add_path",
+			HandlerData: map[string]interface{}{},
 		},
 		{
 			Name:        "local-bin-dir",
@@ -273,8 +273,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": ".local/bin",
 			},
-			PowerUpType: "path",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "path",
+			HandlerData: map[string]interface{}{},
 		},
 		{
 			Name:        "local-bin-path",
@@ -284,8 +284,8 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": ".local/bin",
 			},
-			PowerUpType: "shell_add_path",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "shell_add_path",
+			HandlerData: map[string]interface{}{},
 		},
 		{
 			Name:        "symlink-catchall",
@@ -293,8 +293,8 @@ func defaultMatchers() []MatcherConfig {
 			Priority:    0,
 			TriggerType: "catchall",
 			TriggerData: map[string]interface{}{},
-			PowerUpType: "symlink",
-			PowerUpData: map[string]interface{}{},
+			HandlerType: "symlink",
+			HandlerData: map[string]interface{}{},
 		},
 	}
 }

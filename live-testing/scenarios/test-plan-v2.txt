@@ -4,66 +4,66 @@ DODOT LIVE SYSTEM TEST PLAN V2
 TEST ORGANIZATION PRINCIPLE
 ---------------------------
 Tests are organized in 5 suites progressing from simple to complex:
-1. Single power-ups (foundation)
-2. Multiple power-ups, single packs (pack integration)
-3. Multiple power-ups, multiple packs (cross-pack integration)
-4. Single power-ups, edge cases (isolated edge cases)
-5. Multi packs/power-ups edge cases (complex interactions)
+1. Single handlers (foundation)
+2. Multiple handlers, single packs (pack integration)
+3. Multiple handlers, multiple packs (cross-pack integration)
+4. Single handlers, edge cases (isolated edge cases)
+5. Multi packs/handlers edge cases (complex interactions)
 
 SUITE 1: SINGLE POWER-UPS
 -------------------------
 Purpose: Validate minimal dodot features + assertion library
-Pattern: Each power-up gets YES and NO assertion tests
+Pattern: Each handler gets YES and NO assertion tests
 
-1.1 Symlink Power-up
+1.1 Symlink Handler
 - Test: symlink deployed successfully
 - Test: symlink NOT deployed (verify absence)
 
-1.2 Shell Profile Power-up  
+1.2 Shell Profile Handler  
 - Test: profile sourced in init.sh
 - Test: profile NOT sourced (verify absence)
 
-1.3 Path Power-up
+1.3 Path Handler
 - Test: bin directory deployed and accessible
 - Test: bin directory NOT deployed (verify absence)
 
-1.4 Install Script Power-up
+1.4 Install Script Handler
 - Test: install script executed (marker created)
 - Test: install script NOT executed (verify absence)
 
-1.5 Homebrew Power-up
+1.5 Homebrew Handler
 - Test: Brewfile processed (sentinel exists)
 - Test: Brewfile NOT processed (verify absence)
 
-1.6 Template Power-up
+1.6 Template Handler
 - Test: template processed and variables expanded
 - Test: template NOT processed (verify absence)
 
 SUITE 2: MULTIPLE POWER-UPS, SINGLE PACKS
 ------------------------------------------
-Purpose: Test power-up interactions within single packs
+Purpose: Test handler interactions within single packs
 Pattern: Various combinations with YES/NO assertions
 
-2.1 Deploy-type Power-ups Combined
+2.1 Deploy-type Handlers Combined
 - Test: symlink + shell_profile in one pack (both deployed)
 - Test: symlink + shell_profile NOT deployed (verify absence)
 
-2.2 Install-type Power-ups Combined  
+2.2 Install-type Handlers Combined  
 - Test: install_script + homebrew in one pack (both executed)
 - Test: install_script + homebrew NOT executed (verify absence)
 
-2.3 Mixed Deploy/Install Power-ups
+2.3 Mixed Deploy/Install Handlers
 - Test: symlink + install_script in one pack (correct separation)
 - Test: path + homebrew in one pack (correct execution)
 
-2.4 All Power-ups in One Pack
-- Test: pack with all 6 power-up types (all work correctly)
+2.4 All Handlers in One Pack
+- Test: pack with all 6 handler types (all work correctly)
 - Test: verify selective deployment vs installation
 
 SUITE 3: MULTIPLE POWER-UPS, MULTIPLE PACKS
 --------------------------------------------
 Purpose: Test cross-pack interactions
-Pattern: Multiple packs with various power-up combinations
+Pattern: Multiple packs with various handler combinations
 
 3.1 Simple Multi-pack Deploy
 - Test: 3 packs, each with symlinks (all deployed)
@@ -83,7 +83,7 @@ Pattern: Multiple packs with various power-up combinations
 
 SUITE 4: SINGLE POWER-UPS, EDGE CASES
 --------------------------------------
-Purpose: Test edge cases for each power-up in isolation
+Purpose: Test edge cases for each handler in isolation
 
 4.1 Symlink Edge Cases
 - Test: symlink to missing source file
@@ -141,7 +141,7 @@ Purpose: Test complex interactions and conflicts
 - Test: mixed ownership scenarios
 
 5.5 Large Scale
-- Test: 10+ packs with mixed power-ups
+- Test: 10+ packs with mixed handlers
 - Test: performance with many files
 - Test: rollback capabilities
 
@@ -149,13 +149,13 @@ CURRENT STATUS vs TARGET
 ------------------------
 
 Currently Implemented:
-- Partial Suite 1 (isolated-* scenarios) - 5 power-ups tested (YES only)
+- Partial Suite 1 (isolated-* scenarios) - 5 handlers tested (YES only)
 - Test framework validation (test-framework scenario)
 - Mixed integration tests (basic scenario) - not well organized
 
 Needed Implementation:
-- Suite 1: Add NO tests for all power-ups
-- Suite 1: Add template power-up tests
+- Suite 1: Add NO tests for all handlers
+- Suite 1: Add template handler tests
 - Suite 2: All tests need implementation
 - Suite 3: All tests need implementation  
 - Suite 4: All tests need implementation
@@ -167,5 +167,5 @@ Migration Path:
 3. Fix known issues (install_script artifacts, template expansion)
 4. Implement Suite 2 (single pack combinations)
 5. Implement Suite 3 (multi-pack scenarios)
-6. Implement Suite 4 (edge cases per power-up)
+6. Implement Suite 4 (edge cases per handler)
 7. Implement Suite 5 (complex edge cases)

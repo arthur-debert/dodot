@@ -26,7 +26,7 @@ Default (WARN)
 -vv (DEBUG)
   + Detailed file operations
   + Trigger matching details
-  + Power-up processing info
+  + Handler processing info
   + Configuration loading
 
 -vvv (TRACE)
