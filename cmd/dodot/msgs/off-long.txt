@@ -1,0 +1,15 @@
+The off command removes all deployments for specified packs, effectively "turning off"
+those configurations without removing the source files from your dotfiles repository.
+
+This is useful when you want to:
+- Temporarily disable a pack's configurations
+- Clean up deployments before removing a pack from your dotfiles
+- Reset a pack's deployment state
+
+The command will:
+- Remove all symlinks created by the pack
+- Remove PATH additions and shell profile sources
+- Clean up intermediate state files
+- Leave source files in your dotfiles repository untouched
+
+Use --dry-run to preview what would be removed without making changes.

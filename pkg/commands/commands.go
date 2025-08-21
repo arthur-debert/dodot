@@ -26,6 +26,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/commands/install"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
+	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -86,4 +87,12 @@ type AdoptFilesOptions = adopt.AdoptFilesOptions
 
 func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 	return adopt.AdoptFiles(opts)
+}
+
+// OffPacks removes deployments for specified packs.
+type OffPacksOptions = off.OffPacksOptions
+type OffResult = off.OffResult
+
+func OffPacks(opts OffPacksOptions) (*OffResult, error) {
+	return off.OffPacks(opts)
 }
