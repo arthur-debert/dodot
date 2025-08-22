@@ -14,7 +14,7 @@ func TestHomebrewHandler_Basic(t *testing.T) {
 
 	testutil.AssertEqual(t, HomebrewHandlerName, handler.Name())
 	testutil.AssertEqual(t, "Processes Brewfiles to install Homebrew packages", handler.Description())
-	testutil.AssertEqual(t, types.RunModeOnce, handler.RunMode())
+	testutil.AssertEqual(t, types.RunModeProvisioning, handler.RunMode())
 }
 
 func TestHomebrewHandler_Process(t *testing.T) {

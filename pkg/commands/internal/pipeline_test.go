@@ -29,12 +29,12 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "vim/vimrc", "\" Test vimrc")
 	testutil.CreateFile(t, dotfilesDir, "vim/gvimrc", "\" Test gvimrc")
 
-	// Run pipeline in deploy mode (RunModeMany)
+	// Run pipeline in deploy mode (RunModeLinking)
 	opts := PipelineOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"vim"},
 		DryRun:             false,
-		RunMode:            types.RunModeMany,
+		RunMode:            types.RunModeLinking,
 		Force:              false,
 		EnableHomeSymlinks: true,
 	}
@@ -82,7 +82,7 @@ func TestRunPipeline_DryRun(t *testing.T) {
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{}, // All packs
 		DryRun:             true,
-		RunMode:            types.RunModeMany,
+		RunMode:            types.RunModeLinking,
 		Force:              false,
 		EnableHomeSymlinks: true,
 	}
@@ -126,12 +126,12 @@ echo "Installing tools"
 	err := os.Chmod(filepath.Join(dotfilesDir, "tools/install.sh"), 0755)
 	testutil.AssertNoError(t, err)
 
-	// Run pipeline in install mode (RunModeOnce)
+	// Run pipeline in install mode (RunModeProvisioning)
 	opts := PipelineOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"tools"},
 		DryRun:             false,
-		RunMode:            types.RunModeOnce,
+		RunMode:            types.RunModeProvisioning,
 		Force:              false,
 		EnableHomeSymlinks: true,
 	}
@@ -173,7 +173,7 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 		DotfilesRoot: dotfilesDir,
 		PackNames:    []string{"nonexistent"},
 		DryRun:       false,
-		RunMode:      types.RunModeMany,
+		RunMode:      types.RunModeLinking,
 		Force:        false,
 	}
 
@@ -194,27 +194,27 @@ func TestFilterActionsByRunMode(t *testing.T) {
 	// Create test actions with different handlers
 	actions := []types.Action{
 		{
-			HandlerName: "symlink", // RunModeMany
+			HandlerName: "symlink", // RunModeLinking
 			Description: "Symlink action",
 		},
 		{
-			HandlerName: "install_script", // RunModeOnce
+			HandlerName: "install_script", // RunModeProvisioning
 			Description: "Install action",
 		},
 		{
-			HandlerName: "homebrew", // RunModeOnce
+			HandlerName: "homebrew", // RunModeProvisioning
 			Description: "Brew action",
 		},
 	}
 
-	// Test RunModeMany - should only get symlink
-	filtered, err := filterActionsByRunMode(actions, types.RunModeMany)
+	// Test RunModeLinking - should only get symlink
+	filtered, err := filterActionsByRunMode(actions, types.RunModeLinking)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 1, len(filtered))
 	testutil.AssertEqual(t, "symlink", filtered[0].HandlerName)
 
-	// Test RunModeOnce - should get install and brew
-	filtered, err = filterActionsByRunMode(actions, types.RunModeOnce)
+	// Test RunModeProvisioning - should get install and brew
+	filtered, err = filterActionsByRunMode(actions, types.RunModeProvisioning)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 2, len(filtered))
 
@@ -223,7 +223,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 		HandlerName: "unknown_handler",
 		Description: "Unknown action",
 	})
-	filtered, err = filterActionsByRunMode(actionsWithUnknown, types.RunModeMany)
+	filtered, err = filterActionsByRunMode(actionsWithUnknown, types.RunModeLinking)
 	testutil.AssertNoError(t, err)
 	// Should have symlink + unknown (included because we can't determine its mode)
 	testutil.AssertEqual(t, 2, len(filtered))

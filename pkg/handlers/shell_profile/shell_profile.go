@@ -33,7 +33,7 @@ func (p *ShellProfileHandler) Description() string {
 }
 
 func (p *ShellProfileHandler) RunMode() types.RunMode {
-	return types.RunModeMany
+	return types.RunModeLinking
 }
 
 func (p *ShellProfileHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {

@@ -9,7 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestShouldRunOnceAction(t *testing.T) {
+func TestShouldProvisionAction(t *testing.T) {
 	// Setup test environment
 	tmpDir := testutil.TempDir(t, "runonce-test")
 	origDataDir := os.Getenv("DODOT_DATA_DIR")
@@ -171,7 +171,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 				tt.setupFunc()
 			}
 
-			shouldRun, err := ShouldRunOnceAction(tt.action, tt.force, testPaths)
+			shouldRun, err := ShouldProvisionAction(tt.action, tt.force, testPaths)
 
 			if tt.expectError {
 				testutil.AssertError(t, err)
@@ -183,7 +183,7 @@ func TestShouldRunOnceAction(t *testing.T) {
 	}
 }
 
-func TestFilterRunOnceActions(t *testing.T) {
+func TestFilterProvisioningActions(t *testing.T) {
 	// Setup test environment
 	tmpDir := testutil.TempDir(t, "filter-test")
 	origDataDir := os.Getenv("DODOT_DATA_DIR")
@@ -273,7 +273,7 @@ func TestFilterRunOnceActions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filtered, err := FilterRunOnceActions(actions, tt.force, testPaths)
+			filtered, err := FilterProvisioningActions(actions, tt.force, testPaths)
 			testutil.AssertNoError(t, err)
 			testutil.AssertEqual(t, tt.expectedCount, len(filtered))
 
@@ -287,13 +287,13 @@ func TestFilterRunOnceActions(t *testing.T) {
 	}
 }
 
-func TestFilterRunOnceActions_Empty(t *testing.T) {
+func TestFilterProvisioningActions_Empty(t *testing.T) {
 	testPaths := createTestPaths(t)
-	filtered, err := FilterRunOnceActions([]types.Action{}, false, testPaths)
+	filtered, err := FilterProvisioningActions([]types.Action{}, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 0, len(filtered))
 
-	filtered, err = FilterRunOnceActions(nil, false, testPaths)
+	filtered, err = FilterProvisioningActions(nil, false, testPaths)
 	testutil.AssertNoError(t, err)
 	testutil.AssertNil(t, filtered)
 }
@@ -370,7 +370,7 @@ func TestCalculateActionChecksum(t *testing.T) {
 }
 
 // Benchmarks
-func BenchmarkShouldRunOnceAction(b *testing.B) {
+func BenchmarkShouldProvisionAction(b *testing.B) {
 	tmpDir := b.TempDir()
 	_ = os.Setenv("DODOT_DATA_DIR", tmpDir)
 
@@ -390,11 +390,11 @@ func BenchmarkShouldRunOnceAction(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = ShouldRunOnceAction(action, false, testPaths)
+		_, _ = ShouldProvisionAction(action, false, testPaths)
 	}
 }
 
-func BenchmarkFilterRunOnceActions(b *testing.B) {
+func BenchmarkFilterProvisioningActions(b *testing.B) {
 	tmpDir := b.TempDir()
 	_ = os.Setenv("DODOT_DATA_DIR", tmpDir)
 
@@ -428,6 +428,6 @@ func BenchmarkFilterRunOnceActions(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = FilterRunOnceActions(actions, false, testPaths)
+		_, _ = FilterProvisioningActions(actions, false, testPaths)
 	}
 }

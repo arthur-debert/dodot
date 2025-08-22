@@ -11,7 +11,7 @@ func TestShellProfileHandler(t *testing.T) {
 	handler := NewShellProfileHandler()
 
 	testutil.AssertEqual(t, ShellProfileHandlerName, handler.Name())
-	testutil.AssertEqual(t, types.RunModeMany, handler.RunMode())
+	testutil.AssertEqual(t, types.RunModeLinking, handler.RunMode())
 
 	matches := []types.TriggerMatch{
 		{

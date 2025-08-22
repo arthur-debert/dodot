@@ -14,7 +14,7 @@ func TestPathHandler_Basic(t *testing.T) {
 	// Test basic properties
 	testutil.AssertEqual(t, PathHandlerName, handler.Name())
 	testutil.AssertEqual(t, "Adds directories to PATH", handler.Description())
-	testutil.AssertEqual(t, types.RunModeMany, handler.RunMode())
+	testutil.AssertEqual(t, types.RunModeLinking, handler.RunMode())
 }
 
 func TestPathHandler_Process(t *testing.T) {

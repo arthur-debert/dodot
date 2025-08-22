@@ -9,5 +9,5 @@ import (
 
 func TestSymlinkHandler_RunMode(t *testing.T) {
 	handler := NewSymlinkHandler()
-	testutil.AssertEqual(t, types.RunModeMany, handler.RunMode())
+	testutil.AssertEqual(t, types.RunModeLinking, handler.RunMode())
 }

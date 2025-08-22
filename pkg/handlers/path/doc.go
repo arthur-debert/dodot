@@ -8,7 +8,7 @@
 //
 // # When It Runs
 //
-// - **Deploy Mode**: YES - Runs during `dodot deploy` (RunModeMany)
+// - **Deploy Mode**: YES - Runs during `dodot deploy` (RunModeLinking)
 // - **Install Mode**: NO - Does not run during `dodot install`
 // - **Idempotent**: YES - Safe to run multiple times, prevents duplicates
 //

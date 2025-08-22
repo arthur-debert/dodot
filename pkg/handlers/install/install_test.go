@@ -14,7 +14,7 @@ func TestInstallScriptHandler_Basic(t *testing.T) {
 
 	testutil.AssertEqual(t, InstallScriptHandlerName, handler.Name())
 	testutil.AssertEqual(t, "Runs install.sh scripts for initial setup", handler.Description())
-	testutil.AssertEqual(t, types.RunModeOnce, handler.RunMode())
+	testutil.AssertEqual(t, types.RunModeProvisioning, handler.RunMode())
 }
 
 func TestInstallScriptHandler_Process(t *testing.T) {

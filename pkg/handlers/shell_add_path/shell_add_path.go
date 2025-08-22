@@ -33,7 +33,7 @@ func (p *ShellAddPathHandler) Description() string {
 }
 
 func (p *ShellAddPathHandler) RunMode() types.RunMode {
-	return types.RunModeMany
+	return types.RunModeLinking
 }
 
 func (p *ShellAddPathHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {

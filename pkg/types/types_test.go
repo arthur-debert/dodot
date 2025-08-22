@@ -33,7 +33,7 @@ type mockHandler struct {
 
 func (m *mockHandler) Name() string        { return m.name }
 func (m *mockHandler) Description() string { return m.description }
-func (m *mockHandler) RunMode() RunMode    { return RunModeMany }
+func (m *mockHandler) RunMode() RunMode    { return RunModeLinking }
 func (m *mockHandler) Process(matches []TriggerMatch) ([]Action, error) {
 	return m.actions, m.err
 }

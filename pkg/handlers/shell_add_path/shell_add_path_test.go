@@ -11,7 +11,7 @@ func TestShellAddPathHandler(t *testing.T) {
 	handler := NewShellAddPathHandler()
 
 	testutil.AssertEqual(t, ShellAddPathHandlerName, handler.Name())
-	testutil.AssertEqual(t, types.RunModeMany, handler.RunMode())
+	testutil.AssertEqual(t, types.RunModeLinking, handler.RunMode())
 
 	matches := []types.TriggerMatch{
 		{

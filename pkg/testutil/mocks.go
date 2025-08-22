@@ -86,7 +86,7 @@ func (m *MockHandler) RunMode() types.RunMode {
 	if m.RunModeFunc != nil {
 		return m.RunModeFunc()
 	}
-	return types.RunModeMany
+	return types.RunModeLinking
 }
 
 // Process runs the mock's process function.

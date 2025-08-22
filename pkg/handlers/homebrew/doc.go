@@ -9,7 +9,7 @@
 // # When It Runs
 //
 // - **Deploy Mode**: NO - Does not run during `dodot deploy`
-// - **Install Mode**: YES - Runs during `dodot install` (RunModeOnce)
+// - **Install Mode**: YES - Runs during `dodot install` (RunModeProvisioning)
 // - **Idempotent**: YES - Uses checksums to track Brewfile changes
 //
 // # Standard Configuration

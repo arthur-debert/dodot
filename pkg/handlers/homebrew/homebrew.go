@@ -38,7 +38,7 @@ func (p *HomebrewHandler) Description() string {
 
 // RunMode returns whether this handler runs once or many times
 func (p *HomebrewHandler) RunMode() types.RunMode {
-	return types.RunModeOnce
+	return types.RunModeProvisioning
 }
 
 // Process takes Brewfile matches and generates brew actions
