@@ -150,7 +150,7 @@ echo "Installing tools"
 	// Should have install_script handler
 	found := false
 	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "install_script" {
+		if pur.HandlerName == "provision" {
 			found = true
 			break
 		}
@@ -198,7 +198,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 			Description: "Symlink action",
 		},
 		{
-			HandlerName: "install_script", // RunModeProvisioning
+			HandlerName: "provision", // RunModeProvisioning
 			Description: "Install action",
 		},
 		{

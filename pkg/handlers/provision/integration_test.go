@@ -1,4 +1,4 @@
-package install
+package provision
 
 import (
 	"os"
@@ -21,12 +21,12 @@ func TestGetInstallSentinelPath(t *testing.T) {
 	pack := "mypack"
 	path := pathsInstance.SentinelPath("provision", pack)
 
-	expected := filepath.Join(pathsInstance.InstallDir(), "sentinels", pack)
+	expected := filepath.Join(pathsInstance.ProvisionDir(), "sentinels", pack)
 	testutil.AssertEqual(t, expected, path)
 }
 
 // Benchmarks involve file I/O and are integration tests
-func BenchmarkInstallScriptHandler_Process(b *testing.B) {
+func BenchmarkProvisionScriptHandler_Process(b *testing.B) {
 	tmpDir := b.TempDir()
 	installPath := filepath.Join(tmpDir, "install.sh")
 	err := os.WriteFile(installPath, []byte("#!/bin/bash\necho \"Installing...\""), 0755)
@@ -34,7 +34,7 @@ func BenchmarkInstallScriptHandler_Process(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	handler := NewInstallScriptHandler()
+	handler := NewProvisionScriptHandler()
 	matches := []types.TriggerMatch{
 		{
 			Path:         "install.sh",

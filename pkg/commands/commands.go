@@ -6,7 +6,7 @@
 // Each command is implemented in its own subdirectory:
 //   - list/     - ListPacks command
 //   - link/     - LinkPacks command
-//   - install/  - ProvisionPacks command
+//   - provision/  - ProvisionPacks command
 //   - status/   - StatusPacks command
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
@@ -40,21 +40,21 @@ func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	return list.ListPacks(opts)
 }
 
-// LinkPacks runs deployment logic using the direct executor approach.
+// LinkPacks runs link logic using the direct executor approach.
 type LinkPacksOptions = link.LinkPacksOptions
 
 func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
 	return link.LinkPacks(opts)
 }
 
-// ProvisionPacks runs installation + deployment using the direct executor approach.
+// ProvisionPacks runs provisioning + linking using the direct executor approach.
 type ProvisionPacksOptions = provision.ProvisionPacksOptions
 
 func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error) {
 	return provision.ProvisionPacks(opts)
 }
 
-// StatusPacks shows the deployment status of specified packs.
+// StatusPacks shows the link status of specified packs.
 type StatusPacksOptions = status.StatusPacksOptions
 
 func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
@@ -89,7 +89,7 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 	return adopt.AdoptFiles(opts)
 }
 
-// UnlinkPacks removes deployments for specified packs.
+// UnlinkPacks removes links for specified packs.
 type UnlinkPacksOptions = unlink.UnlinkPacksOptions
 type UnlinkResult = unlink.UnlinkResult
 

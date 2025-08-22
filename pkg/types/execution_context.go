@@ -438,7 +438,7 @@ func generateHandlerMessage(handlerName, filePath, status string, lastExecuted *
 			return fmt.Sprintf("%s to be added to $PATH", fileName)
 		}
 
-	case "provision", "install_script":
+	case "provision":
 		switch status {
 		case "success":
 			if lastExecuted != nil {

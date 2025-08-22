@@ -59,7 +59,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	testutil.AssertEqual(t, "symlink", matchMap[".vimrc"])
 	testutil.AssertEqual(t, "symlink", matchMap[".bashrc"])
 	testutil.AssertEqual(t, "homebrew", matchMap["Brewfile"])
-	testutil.AssertEqual(t, "install_script", matchMap["install.sh"])
+	testutil.AssertEqual(t, "provision", matchMap["install.sh"])
 
 	// Verify catchall caught the remaining files
 	testutil.AssertEqual(t, "symlink", matchMap["custom.conf"])

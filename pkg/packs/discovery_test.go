@@ -217,7 +217,7 @@ path = ".cache"`,
 			configPath: "test/pack/.dodot.toml",
 			fileContent: `[[override]]
 path = "special.sh"
-handler = "install_script"
+handler = "provision"
 
 [override.with]
 priority = "high"`,
@@ -225,7 +225,7 @@ priority = "high"`,
 				Override: []types.OverrideRule{
 					{
 						Path:    "special.sh",
-						Handler: "install_script",
+						Handler: "provision",
 						With: map[string]interface{}{
 							"priority": "high",
 						},

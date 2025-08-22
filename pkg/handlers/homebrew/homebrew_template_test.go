@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/provision"
 	"github.com/arthur-debert/dodot/pkg/handlers/shell_add_path"
 	"github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
@@ -44,7 +44,7 @@ func TestOtherHandlers_GetTemplateContent(t *testing.T) {
 	}{
 		{"SymlinkHandler", symlink.NewSymlinkHandler(), false, nil},
 		{"PathHandler", path.NewPathHandler(), false, nil},
-		{"InstallScriptHandler", install.NewInstallScriptHandler(), true, []string{"#!/usr/bin/env bash", "dodot install", "PACK_NAME"}},
+		{"ProvisionScriptHandler", provision.NewProvisionScriptHandler(), true, []string{"#!/usr/bin/env bash", "dodot install", "PACK_NAME"}},
 		{"ShellAddPathHandler", shell_add_path.NewShellAddPathHandler(), true, []string{"#!/usr/bin/env sh", "PATH modifications", "PACK_NAME"}},
 		{"ShellProfileHandler", shell_profile.NewShellProfileHandler(), true, []string{"#!/usr/bin/env sh", "Shell aliases", "PACK_NAME"}},
 	}

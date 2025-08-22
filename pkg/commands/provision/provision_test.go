@@ -64,7 +64,7 @@ echo "Tools installed" > /tmp/install-tools-output
 
 	var hasInstallScript, hasSymlink bool
 	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "install_script" {
+		if pur.HandlerName == "provision" {
 			hasInstallScript = true
 			testutil.AssertEqual(t, types.StatusReady, pur.Status)
 		}
@@ -226,7 +226,7 @@ func TestProvisionPacks_OnlySymlinks(t *testing.T) {
 
 	var hasInstallScript, hasSymlink bool
 	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "install_script" {
+		if pur.HandlerName == "provision" {
 			hasInstallScript = true
 		}
 		if pur.HandlerName == "symlink" {
@@ -284,7 +284,7 @@ echo "Setup complete" > /tmp/setup-output
 
 	var hasInstallScript, hasSymlink bool
 	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "install_script" {
+		if pur.HandlerName == "provision" {
 			hasInstallScript = true
 		}
 		if pur.HandlerName == "symlink" {

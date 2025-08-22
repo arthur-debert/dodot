@@ -118,7 +118,7 @@ func TestDirectExecutor_WriteHandler(t *testing.T) {
 		{
 			Type:        types.ActionTypeWrite,
 			Description: "Write test script",
-			Target:      filepath.Join(p.InstallDir(), "test-script.sh"),
+			Target:      filepath.Join(p.ProvisionDir(), "test-script.sh"),
 			Content:     testContent,
 			Mode:        0755,
 			Pack:        "test",
@@ -133,7 +133,7 @@ func TestDirectExecutor_WriteHandler(t *testing.T) {
 	testutil.AssertEqual(t, 1, len(results))
 
 	// Verify file was created
-	targetFile := filepath.Join(p.InstallDir(), "test-script.sh")
+	targetFile := filepath.Join(p.ProvisionDir(), "test-script.sh")
 	testutil.AssertTrue(t, testutil.FileExists(t, targetFile), "File should exist")
 
 	content := testutil.ReadFile(t, targetFile)
@@ -287,7 +287,7 @@ func TestDirectExecutor_MixedHandlers(t *testing.T) {
 			Type:        types.ActionTypeCopy,
 			Description: "Copy install script",
 			Source:      filepath.Join(dotfilesDir, "install.sh"),
-			Target:      filepath.Join(p.InstallDir(), "install.sh"),
+			Target:      filepath.Join(p.ProvisionDir(), "install.sh"),
 			Pack:        "bash",
 			HandlerName: "provision",
 			Priority:    90,
@@ -296,7 +296,7 @@ func TestDirectExecutor_MixedHandlers(t *testing.T) {
 			Type:        types.ActionTypeRun,
 			Description: "Make install script executable",
 			Command:     "chmod",
-			Args:        []string{"+x", filepath.Join(p.InstallDir(), "install.sh")},
+			Args:        []string{"+x", filepath.Join(p.ProvisionDir(), "install.sh")},
 			Pack:        "bash",
 			HandlerName: "provision",
 			Priority:    80,
@@ -335,11 +335,11 @@ func TestDirectExecutor_MixedHandlers(t *testing.T) {
 
 	// Verify files were created
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "Bashrc symlink should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(p.InstallDir(), "install.sh")), "Install script should exist")
+	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(p.ProvisionDir(), "install.sh")), "Install script should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(p.DataDir(), "test.conf")), "Config file should exist")
 
 	// Verify install script is executable
-	installScript := filepath.Join(p.InstallDir(), "install.sh")
+	installScript := filepath.Join(p.ProvisionDir(), "install.sh")
 	info, err := os.Stat(installScript)
 	if err != nil {
 		t.Logf("Install script not found at: %s", installScript)
@@ -920,7 +920,7 @@ echo "Done!"`
 			Description: "Run install script",
 			Source:      scriptPath,
 			Pack:        "tools",
-			HandlerName: "install_script",
+			HandlerName: "provision",
 			Priority:    90,
 		},
 	}
@@ -932,7 +932,7 @@ echo "Done!"`
 	testutil.AssertEqual(t, types.StatusReady, results[0].Status)
 
 	// Verify script was copied to install directory (with pack name)
-	targetScript := filepath.Join(p.InstallDir(), "tools", "install.sh")
+	targetScript := filepath.Join(p.ProvisionDir(), "tools", "install.sh")
 	testutil.AssertTrue(t, testutil.FileExists(t, targetScript), "Install script should be copied")
 
 	// Verify sentinel file was created

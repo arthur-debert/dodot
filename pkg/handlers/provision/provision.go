@@ -1,4 +1,4 @@
-package install
+package provision
 
 import (
 	_ "embed"
@@ -10,38 +10,38 @@ import (
 )
 
 const (
-	// InstallScriptHandlerName is the unique name for the install script handler
-	InstallScriptHandlerName = "install_script"
+	// ProvisionScriptHandlerName is the unique name for the install script handler
+	ProvisionScriptHandlerName = "provision"
 )
 
-//go:embed install-template.txt
-var installTemplate string
+//go:embed provision-template.txt
+var provisionTemplate string
 
-// InstallScriptHandler runs install.sh scripts
-type InstallScriptHandler struct{}
+// ProvisionScriptHandler runs install.sh scripts
+type ProvisionScriptHandler struct{}
 
-// NewInstallScriptHandler creates a new instance of the install script handler
-func NewInstallScriptHandler() types.Handler {
-	return &InstallScriptHandler{}
+// NewProvisionScriptHandler creates a new instance of the install script handler
+func NewProvisionScriptHandler() types.Handler {
+	return &ProvisionScriptHandler{}
 }
 
 // Name returns the unique name of this handler
-func (p *InstallScriptHandler) Name() string {
-	return InstallScriptHandlerName
+func (p *ProvisionScriptHandler) Name() string {
+	return ProvisionScriptHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (p *InstallScriptHandler) Description() string {
+func (p *ProvisionScriptHandler) Description() string {
 	return "Runs install.sh scripts for initial setup"
 }
 
 // RunMode returns whether this handler runs once or many times
-func (p *InstallScriptHandler) RunMode() types.RunMode {
+func (p *ProvisionScriptHandler) RunMode() types.RunMode {
 	return types.RunModeProvisioning
 }
 
 // Process takes install script matches and generates install actions
-func (p *InstallScriptHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+func (p *ProvisionScriptHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	logger := logging.GetLogger("handlers.install")
 	actions := make([]types.Action, 0, len(matches))
 
@@ -73,27 +73,27 @@ func (p *InstallScriptHandler) Process(matches []types.TriggerMatch) ([]types.Ac
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
-func (p *InstallScriptHandler) ValidateOptions(options map[string]interface{}) error {
+func (p *ProvisionScriptHandler) ValidateOptions(options map[string]interface{}) error {
 	// Install script handler doesn't have any options
 	return nil
 }
 
 // GetTemplateContent returns the template content for this handler
-func (p *InstallScriptHandler) GetTemplateContent() string {
-	return installTemplate
+func (p *ProvisionScriptHandler) GetTemplateContent() string {
+	return provisionTemplate
 }
 
 func init() {
 	// Register factory in the global registry
-	RegisterInstallScriptHandlerFactory()
+	RegisterProvisionScriptHandlerFactory()
 }
 
-// RegisterInstallScriptHandlerFactory registers the install script handler factory
-func RegisterInstallScriptHandlerFactory() {
-	err := registry.RegisterHandlerFactory(InstallScriptHandlerName, func(config map[string]interface{}) (types.Handler, error) {
-		return NewInstallScriptHandler(), nil
+// RegisterProvisionScriptHandlerFactory registers the install script handler factory
+func RegisterProvisionScriptHandlerFactory() {
+	err := registry.RegisterHandlerFactory(ProvisionScriptHandlerName, func(config map[string]interface{}) (types.Handler, error) {
+		return NewProvisionScriptHandler(), nil
 	})
 	if err != nil {
-		panic(fmt.Sprintf("failed to register %s handler: %v", InstallScriptHandlerName, err))
+		panic(fmt.Sprintf("failed to register %s handler: %v", ProvisionScriptHandlerName, err))
 	}
 }

@@ -55,7 +55,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 
 	// Add failed operation
 	handlerResult3 := &types.HandlerResult{
-		HandlerName: "install_script",
+		HandlerName: "provision",
 		Files:       []string{"install.sh"},
 		Status:      types.StatusError,
 		Message:     "install script failed: exit status 1",
@@ -88,7 +88,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 		"symlink",                         // Handler name
 		"linked to $HOME/vimrc [status=",  // Handler-aware message with status
 		"linked to $HOME/bashrc [status=", // Handler-aware message with status
-		"install_script",                  // Handler name
+		"provision",                       // Handler name
 		"installation failed",             // Handler-aware error message
 		"[status=error]",                  // Error status indicator
 	}

@@ -85,7 +85,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 						Status: "alert",
 						Files: []types.DisplayFile{
 							{
-								Handler: "install_script",
+								Handler: "provision",
 								Path:    "install.sh",
 								Status:  "error",
 								Message: "install script failed: exit status 1",
@@ -98,7 +98,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 			expected: []string{
 				"provision",
 				"tools [status=alert]:",
-				"install_script",
+				"provision",
 				"install script failed: exit status 1 [status=error]",
 			},
 		},

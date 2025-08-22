@@ -60,8 +60,8 @@ const (
 	// ShellDir is the subdirectory for shell scripts
 	ShellDir = "shell"
 
-	// InstallDir is the subdirectory for install sentinels
-	InstallDir = "provision"
+	// ProvisionDir is the subdirectory for provision sentinels
+	ProvisionDir = "provision"
 
 	// HomebrewDir is the subdirectory for homebrew sentinels
 	HomebrewDir = "homebrew"
@@ -409,9 +409,9 @@ func (p *Paths) InitScriptPath() string {
 	return filepath.Join(p.ShellDir(), InitScriptName)
 }
 
-// InstallDir returns the install scripts sentinel directory
-func (p *Paths) InstallDir() string {
-	return p.GetDataSubdir(InstallDir)
+// ProvisionDir returns the provision scripts sentinel directory
+func (p *Paths) ProvisionDir() string {
+	return p.GetDataSubdir(ProvisionDir)
 }
 
 // HomebrewDir returns the homebrew sentinel directory
@@ -424,7 +424,7 @@ func (p *Paths) HomebrewDir() string {
 // The sentinel file is used to track whether a run-once action has been executed.
 //
 // The path structure is: <DataDir>/<handlerType>/<packName>
-// For example: ~/.local/share/dodot/install/vim
+// For example: ~/.local/share/dodot/provision/vim
 //
 // Currently supported handlerTypes:
 //   - "provision" - for install.sh scripts
@@ -432,7 +432,7 @@ func (p *Paths) HomebrewDir() string {
 func (p *Paths) SentinelPath(handlerType, packName string) string {
 	switch handlerType {
 	case "provision":
-		return filepath.Join(p.InstallDir(), "sentinels", packName)
+		return filepath.Join(p.ProvisionDir(), "sentinels", packName)
 	case "homebrew":
 		return filepath.Join(p.HomebrewDir(), packName)
 	default:

@@ -1,4 +1,4 @@
-package install
+package provision
 
 import (
 	"os"
@@ -9,15 +9,15 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestInstallScriptHandler_Basic(t *testing.T) {
-	handler := NewInstallScriptHandler()
+func TestProvisionScriptHandler_Basic(t *testing.T) {
+	handler := NewProvisionScriptHandler()
 
-	testutil.AssertEqual(t, InstallScriptHandlerName, handler.Name())
+	testutil.AssertEqual(t, ProvisionScriptHandlerName, handler.Name())
 	testutil.AssertEqual(t, "Runs install.sh scripts for initial setup", handler.Description())
 	testutil.AssertEqual(t, types.RunModeProvisioning, handler.RunMode())
 }
 
-func TestInstallScriptHandler_Process(t *testing.T) {
+func TestProvisionScriptHandler_Process(t *testing.T) {
 	// Create test files
 	tmpDir := testutil.TempDir(t, "install-test")
 
@@ -29,7 +29,7 @@ npm install -g typescript`
 	err := os.WriteFile(installPath, []byte(installContent), 0755)
 	testutil.AssertNoError(t, err)
 
-	handler := NewInstallScriptHandler()
+	handler := NewProvisionScriptHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -51,7 +51,7 @@ npm install -g typescript`
 	testutil.AssertEqual(t, installPath, installAction.Command)
 	testutil.AssertEqual(t, "", installAction.Target)
 	testutil.AssertEqual(t, "dev", installAction.Pack)
-	testutil.AssertEqual(t, InstallScriptHandlerName, installAction.HandlerName)
+	testutil.AssertEqual(t, ProvisionScriptHandlerName, installAction.HandlerName)
 	testutil.AssertEqual(t, 100, installAction.Priority)
 	testutil.AssertContains(t, installAction.Description, "Run install script")
 	testutil.AssertNotNil(t, installAction.Args)
@@ -65,7 +65,7 @@ npm install -g typescript`
 	testutil.AssertFalse(t, hasChecksum, "Checksum should not be in metadata")
 }
 
-func TestInstallScriptHandler_Process_MultipleMatches(t *testing.T) {
+func TestProvisionScriptHandler_Process_MultipleMatches(t *testing.T) {
 	tmpDir := testutil.TempDir(t, "install-test")
 
 	// Create multiple install scripts
@@ -77,7 +77,7 @@ func TestInstallScriptHandler_Process_MultipleMatches(t *testing.T) {
 	err = os.WriteFile(install2, []byte("#!/bin/bash\necho \"Install 2\""), 0755)
 	testutil.AssertNoError(t, err)
 
-	handler := NewInstallScriptHandler()
+	handler := NewProvisionScriptHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -110,8 +110,8 @@ func TestInstallScriptHandler_Process_MultipleMatches(t *testing.T) {
 	testutil.AssertEqual(t, 200, actions[1].Priority)
 }
 
-func TestInstallScriptHandler_Process_ChecksumError(t *testing.T) {
-	handler := NewInstallScriptHandler()
+func TestProvisionScriptHandler_Process_ChecksumError(t *testing.T) {
+	handler := NewProvisionScriptHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -132,8 +132,8 @@ func TestInstallScriptHandler_Process_ChecksumError(t *testing.T) {
 	testutil.AssertEqual(t, "/non/existent/file", actions[0].Source)
 }
 
-func TestInstallScriptHandler_ValidateOptions(t *testing.T) {
-	handler := NewInstallScriptHandler()
+func TestProvisionScriptHandler_ValidateOptions(t *testing.T) {
+	handler := NewProvisionScriptHandler()
 
 	// Install script handler doesn't have options, so any options should be accepted
 	err := handler.ValidateOptions(nil)

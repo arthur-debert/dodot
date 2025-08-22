@@ -251,7 +251,7 @@ func getHandlerDisplayName(action types.Action) string {
 	case types.ActionTypeBrew:
 		return "homebrew"
 	case types.ActionTypeInstall:
-		return "install_script"
+		return "provision"
 	case types.ActionTypePathAdd:
 		return "path"
 	case types.ActionTypeShellSource:

@@ -179,7 +179,7 @@ func GetHandlerSymbol(handlerName string) string {
 		return "+"
 	case "homebrew":
 		return "⚙"
-	case "install_script":
+	case "provision":
 		return "×"
 	default:
 		return ""
@@ -197,7 +197,7 @@ func GetHandlerAdditionalInfo(handlerName string) string {
 		return "add to $PATH"
 	case "homebrew":
 		return "brew install"
-	case "install_script":
+	case "provision":
 		return "run script"
 	default:
 		return ""

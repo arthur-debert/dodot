@@ -39,7 +39,7 @@ func TestGetCompletePackTemplate(t *testing.T) {
 	// Check install.sh template
 	install, exists := templateMap["install.sh"]
 	assert.True(t, exists, "Should have install.sh template")
-	assert.Equal(t, "install_script", install.HandlerName)
+	assert.Equal(t, "provision", install.HandlerName)
 	assert.Contains(t, install.Content, "dodot install script for testpack pack")
 	assert.Equal(t, uint32(0755), install.Mode)
 

@@ -1,8 +1,8 @@
-// Package install provides the InstallScriptHandler implementation for dodot.
+// Package install provides the ProvisionScriptHandler implementation for dodot.
 //
 // # Overview
 //
-// The InstallScriptHandler executes shell scripts for one-time setup tasks that should
+// The ProvisionScriptHandler executes shell scripts for one-time setup tasks that should
 // only run once per pack. This is ideal for installing dependencies, downloading resources,
 // creating directories, or performing initial configuration that doesn't need to be repeated.
 //
@@ -19,7 +19,7 @@
 //	[matchers.install-scripts]
 //	trigger = "filename"
 //	patterns = ["install.sh"]
-//	handler = "install_script"
+//	handler = "provision"
 //	priority = 90
 //
 // Or in a pack-specific .dodot.toml:
@@ -27,14 +27,14 @@
 //	[[matchers]]
 //	trigger = "filename"
 //	patterns = ["setup.sh", "init.sh"]
-//	handler = "install_script"
+//	handler = "provision"
 //
 // # File Selection Process
 //
 // 1. **Pack Discovery**: dodot finds all subdirectories in $DOTFILES_ROOT
 // 2. **File Walking**: Recursively walks each pack directory
 // 3. **Trigger Matching**: FileNameTrigger matches files (typically "install.sh")
-// 4. **Handler Invocation**: Matched files are passed to InstallScriptHandler.Process()
+// 4. **Handler Invocation**: Matched files are passed to ProvisionScriptHandler.Process()
 //
 // Example file structure:
 //
@@ -101,7 +101,7 @@
 //
 // # Options
 //
-// Currently, InstallScriptHandler accepts no configuration options.
+// Currently, ProvisionScriptHandler accepts no configuration options.
 // All behavior is controlled by the script itself.
 //
 // # Script Template
@@ -124,7 +124,7 @@
 //
 // 1. dodot finds ~/dotfiles/vim/ pack with install.sh
 // 2. FileNameTrigger matches install.sh against pattern
-// 3. InstallScriptHandler checks sentinel file
+// 3. ProvisionScriptHandler checks sentinel file
 // 4. No sentinel or checksum mismatch: proceeds with execution
 // 5. Copies install.sh to ~/.local/share/dodot/provision/vim/
 // 6. Makes script executable
@@ -166,9 +166,9 @@
 //
 // - **SymlinkHandler**: For configuration files (deploy phase)
 // - **BrewHandler**: For Homebrew packages (also provision phase)
-// - **InstallScriptHandler**: For custom setup logic (provision phase)
+// - **ProvisionScriptHandler**: For custom setup logic (provision phase)
 // - **ProfileHandler**: For shell configuration (link phase)
 //
-// Use InstallScriptHandler when you need custom logic that package managers
+// Use ProvisionScriptHandler when you need custom logic that package managers
 // can't handle, or when you need to perform complex multi-step installations.
-package install
+package provision

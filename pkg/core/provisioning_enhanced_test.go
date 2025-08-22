@@ -32,7 +32,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "install_script handler name",
 			trigger: types.TriggerMatch{
-				HandlerName: "install_script",
+				HandlerName: "provision",
 				Path:        "someFile",
 			},
 			expected: true,
@@ -144,7 +144,7 @@ func TestGetHandlerTypeFromTrigger(t *testing.T) {
 		{
 			name: "install_script handler name",
 			trigger: types.TriggerMatch{
-				HandlerName: "install_script",
+				HandlerName: "provision",
 				Path:        "someFile",
 			},
 			expected: "provision",

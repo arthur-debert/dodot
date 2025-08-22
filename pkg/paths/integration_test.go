@@ -128,7 +128,7 @@ func TestMigrationFromOldPaths(t *testing.T) {
 		testutil.AssertEqual(t, p1.DataDir(), p2.DataDir())
 		testutil.AssertEqual(t, p1.DeployedDir(), p2.DeployedDir())
 		testutil.AssertEqual(t, p1.HomebrewDir(), p2.HomebrewDir())
-		testutil.AssertEqual(t, p1.InstallDir(), p2.InstallDir())
+		testutil.AssertEqual(t, p1.ProvisionDir(), p2.ProvisionDir())
 	})
 }
 

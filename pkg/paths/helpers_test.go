@@ -47,8 +47,8 @@ func TestGetDataSubdir(t *testing.T) {
 		},
 		{
 			name:     "install directory",
-			subdir:   InstallDir,
-			expected: p.InstallDir(),
+			subdir:   ProvisionDir,
+			expected: p.ProvisionDir(),
 		},
 		{
 			name:     "brewfile directory",

@@ -207,7 +207,7 @@ echo "Installing tools" > /tmp/install-was-run
 		if pur.HandlerName == "symlink" {
 			hasSymlink = true
 		}
-		if pur.HandlerName == "install_script" {
+		if pur.HandlerName == "provision" {
 			hasInstall = true
 		}
 	}

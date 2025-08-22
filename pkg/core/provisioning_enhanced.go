@@ -137,7 +137,7 @@ func isProvisioningTrigger(trigger types.TriggerMatch) bool {
 	switch trigger.HandlerName {
 	case "brewfile", "homebrew":
 		return true
-	case "install_script", "provision":
+	case "provision":
 		return true
 	}
 
@@ -154,7 +154,7 @@ func getHandlerTypeFromTrigger(trigger types.TriggerMatch) string {
 	switch trigger.HandlerName {
 	case "brewfile", "homebrew":
 		return "homebrew"
-	case "install_script", "provision":
+	case "provision":
 		return "provision"
 	}
 

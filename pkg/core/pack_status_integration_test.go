@@ -332,7 +332,7 @@ func TestGetPackStatus(t *testing.T) {
 				}
 
 				assert.True(t, handlerTypes["homebrew"])
-				assert.True(t, handlerTypes["install_script"])
+				assert.True(t, handlerTypes["provision"])
 				assert.True(t, handlerTypes["path"])
 				assert.True(t, handlerTypes["shell_profile"])
 

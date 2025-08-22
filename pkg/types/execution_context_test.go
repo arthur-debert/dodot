@@ -523,7 +523,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "install_script success no time",
-			handlerName:  "install_script",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
 			lastExecuted: nil,

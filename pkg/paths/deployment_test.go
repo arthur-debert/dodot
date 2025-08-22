@@ -53,7 +53,7 @@ func TestDeploymentPaths(t *testing.T) {
 		},
 		{
 			name:     "install dir",
-			method:   p.InstallDir,
+			method:   p.ProvisionDir,
 			expected: filepath.Join(p.DataDir(), "provision"),
 		},
 		{
