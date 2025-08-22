@@ -1,0 +1,4 @@
+Link processes all packs in your dotfiles directory and creates
+the necessary symlinks, shell profiles, and PATH entries.
+
+If no packs are specified, all packs in the DOTFILES_ROOT will be linked.

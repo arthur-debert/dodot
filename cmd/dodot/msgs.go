@@ -9,7 +9,7 @@ import (
 const (
 	// Command descriptions
 	MsgRootShort       = "A stateless dotfiles manager"
-	MsgDeployShort     = "Deploy dotfiles to the system"
+	MsgLinkShort       = "Deploy dotfiles to the system"
 	MsgInstallShort    = "Install and deploy dotfiles to the system"
 	MsgListShort       = "List all available packs"
 	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
@@ -47,7 +47,7 @@ const (
 
 	// Error messages
 	MsgErrInitPaths    = "failed to initialize paths: %w"
-	MsgErrDeployPacks  = "failed to deploy packs: %w"
+	MsgErrLinkPacks    = "failed to deploy packs: %w"
 	MsgErrInstallPacks = "failed to install packs: %w"
 	MsgErrListPacks    = "failed to list packs: %w"
 	MsgErrStatusPacks  = "failed to get pack status: %w"
@@ -74,13 +74,13 @@ var (
 	msgRootLongRaw string
 	MsgRootLong    = strings.TrimSpace(msgRootLongRaw)
 
-	//go:embed msgs/deploy-long.txt
-	msgDeployLongRaw string
-	MsgDeployLong    = strings.TrimSpace(msgDeployLongRaw)
+	//go:embed msgs/link-long.txt
+	msgLinkLongRaw string
+	MsgLinkLong    = strings.TrimSpace(msgLinkLongRaw)
 
-	//go:embed msgs/deploy-example.txt
-	msgDeployExampleRaw string
-	MsgDeployExample    = strings.TrimSpace(msgDeployExampleRaw)
+	//go:embed msgs/link-example.txt
+	msgLinkExampleRaw string
+	MsgLinkExample    = strings.TrimSpace(msgLinkExampleRaw)
 
 	//go:embed msgs/install-long.txt
 	msgInstallLongRaw string

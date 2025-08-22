@@ -223,7 +223,7 @@ func getCommandFromRunMode(mode types.RunMode) string {
 	case types.RunModeProvisioning:
 		return "install"
 	case types.RunModeLinking:
-		return "deploy"
+		return "link"
 	default:
 		return "execute"
 	}

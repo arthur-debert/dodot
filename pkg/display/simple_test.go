@@ -19,12 +19,12 @@ func TestSimpleRenderer_Render(t *testing.T) {
 		{
 			name: "empty result",
 			result: &types.DisplayResult{
-				Command:   "deploy",
+				Command:   "link",
 				Packs:     []types.DisplayPack{},
 				Timestamp: time.Now(),
 			},
 			expected: []string{
-				"deploy",
+				"link",
 				"No packs to process",
 			},
 		},
@@ -44,7 +44,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 		{
 			name: "pack with success files",
 			result: &types.DisplayResult{
-				Command: "deploy",
+				Command: "link",
 				Packs: []types.DisplayPack{
 					{
 						Name:   "vim",
@@ -68,7 +68,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 			expected: []string{
-				"deploy",
+				"link",
 				"vim [status=success]:",
 				"symlink",
 				"linked to .vimrc [status=success]",
@@ -158,7 +158,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 
 func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	// Create a sample execution context
-	ctx := types.NewExecutionContext("deploy", false)
+	ctx := types.NewExecutionContext("link", false)
 
 	// Add a pack result
 	pack := &types.Pack{
@@ -193,7 +193,7 @@ func TestSimpleRenderer_RenderExecutionContext(t *testing.T) {
 	output := buf.String()
 
 	// Check output contains expected elements
-	testutil.AssertTrue(t, strings.Contains(output, "deploy"), "Should contain command name")
+	testutil.AssertTrue(t, strings.Contains(output, "link"), "Should contain command name")
 	testutil.AssertTrue(t, strings.Contains(output, "test-pack [status="), "Should contain pack name with status")
 	testutil.AssertTrue(t, strings.Contains(output, "symlink"), "Should contain handler name")
 	testutil.AssertTrue(t, strings.Contains(output, "linked to $HOME/testfile"), "Should contain Handler-aware message")

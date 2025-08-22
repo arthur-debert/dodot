@@ -86,7 +86,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.SetUsageTemplate(MsgUsageTemplate)
 
 	// Add all commands
-	rootCmd.AddCommand(newDeployCmd())
+	rootCmd.AddCommand(newLinkCmd())
 	rootCmd.AddCommand(newInstallCmd())
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
@@ -246,12 +246,12 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	return availablePacks, cobra.ShellCompDirectiveFilterDirs
 }
 
-func newDeployCmd() *cobra.Command {
+func newLinkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "deploy [packs...]",
-		Short:             MsgDeployShort,
-		Long:              MsgDeployLong,
-		Example:           MsgDeployExample,
+		Use:               "link [packs...]",
+		Short:             MsgLinkShort,
+		Long:              MsgLinkLong,
+		Example:           MsgLinkExample,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -267,10 +267,10 @@ func newDeployCmd() *cobra.Command {
 			log.Info().
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Bool("dry_run", dryRun).
-				Msg("Deploying from dotfiles root")
+				Msg("Linking from dotfiles root")
 
-			// Deploy packs using the new implementation
-			ctx, err := commands.DeployPacks(commands.DeployPacksOptions{
+			// Link packs using the new implementation
+			ctx, err := commands.LinkPacks(commands.LinkPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -280,9 +280,9 @@ func newDeployCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "deployment")
+					return handlePackNotFoundError(dodotErr, p, "linking")
 				}
-				return fmt.Errorf(MsgErrDeployPacks, err)
+				return fmt.Errorf(MsgErrLinkPacks, err)
 			}
 
 			// Display results using the new output renderer

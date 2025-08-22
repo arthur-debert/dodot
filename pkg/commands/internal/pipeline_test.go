@@ -44,7 +44,7 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	testutil.AssertNotNil(t, ctx)
 
 	// Verify context
-	testutil.AssertEqual(t, "deploy", ctx.Command)
+	testutil.AssertEqual(t, "link", ctx.Command)
 	testutil.AssertFalse(t, ctx.DryRun, "Should not be dry run")
 
 	// Verify pack results

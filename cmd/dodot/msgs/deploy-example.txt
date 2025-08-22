@@ -1,8 +1,0 @@
-  # Deploy all packs
-  dodot deploy
-  
-  # Deploy specific packs
-  dodot deploy vim zsh
-  
-  # Dry run to preview changes
-  dodot deploy --dry-run

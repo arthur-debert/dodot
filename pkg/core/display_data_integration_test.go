@@ -116,7 +116,7 @@ func TestToDisplayResult_PackConfiguration(t *testing.T) {
 	testutil.CreateDir(t, tempDir, "pack-no-config")
 
 	// Create ExecutionContext
-	ctx := types.NewExecutionContext("deploy", false)
+	ctx := types.NewExecutionContext("link", false)
 
 	// Add pack results
 	packWithConfig := &types.Pack{Name: "pack-with-config", Path: packWithConfigDir}
@@ -184,7 +184,7 @@ func TestToDisplayResult_ConfigFilesAsDisplayItems(t *testing.T) {
 	testutil.CreateFile(t, packWithBothDir, ".dodotignore", "*.tmp")
 
 	// Create ExecutionContext
-	ctx := types.NewExecutionContext("deploy", false)
+	ctx := types.NewExecutionContext("link", false)
 
 	// Add pack results
 	packWithConfig := &types.Pack{Name: "pack-with-config", Path: packWithConfigDir}

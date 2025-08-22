@@ -1,4 +1,4 @@
-package deploy
+package link
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestDeployPacks_SymlinkHandler(t *testing.T) {
+func TestLinkPacks_SymlinkHandler(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "deploy-symlink")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -29,7 +29,7 @@ func TestDeployPacks_SymlinkHandler(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "vim/gvimrc", "\" Test gvimrc configuration")
 
 	// Deploy the vim pack
-	ctx, err := DeployPacks(DeployPacksOptions{
+	ctx, err := LinkPacks(LinkPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"vim"},
 		DryRun:             false,
@@ -41,7 +41,7 @@ func TestDeployPacks_SymlinkHandler(t *testing.T) {
 	testutil.AssertNotNil(t, ctx)
 
 	// Verify execution context
-	testutil.AssertEqual(t, "deploy", ctx.Command)
+	testutil.AssertEqual(t, "link", ctx.Command)
 	testutil.AssertFalse(t, ctx.DryRun, "Should not be dry run")
 
 	// Verify pack results
@@ -70,7 +70,7 @@ func TestDeployPacks_SymlinkHandler(t *testing.T) {
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gvimrc")), "gvimrc symlink should exist")
 }
 
-func TestDeployPacks_DryRun(t *testing.T) {
+func TestLinkPacks_DryRun(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "deploy-dryrun")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -87,7 +87,7 @@ func TestDeployPacks_DryRun(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "bash/bashrc", "# Test bashrc")
 
 	// Deploy in dry-run mode
-	ctx, err := DeployPacks(DeployPacksOptions{
+	ctx, err := LinkPacks(LinkPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"bash"},
 		DryRun:             true,
@@ -100,7 +100,7 @@ func TestDeployPacks_DryRun(t *testing.T) {
 
 	// Verify execution context
 	testutil.AssertTrue(t, ctx.DryRun, "Should be dry run")
-	testutil.AssertEqual(t, "deploy", ctx.Command)
+	testutil.AssertEqual(t, "link", ctx.Command)
 
 	// Verify pack results exist
 	packResult, ok := ctx.GetPackResult("bash")
@@ -111,7 +111,7 @@ func TestDeployPacks_DryRun(t *testing.T) {
 	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "bashrc symlink should not exist in dry run")
 }
 
-func TestDeployPacks_AllPacks(t *testing.T) {
+func TestLinkPacks_AllPacks(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "deploy-allpacks")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -133,7 +133,7 @@ func TestDeployPacks_AllPacks(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "git/gitconfig", "[user]\n\tname = Test")
 
 	// Deploy all packs (empty PackNames means all)
-	ctx, err := DeployPacks(DeployPacksOptions{
+	ctx, err := LinkPacks(LinkPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{}, // All packs
 		DryRun:             false,
@@ -158,7 +158,7 @@ func TestDeployPacks_AllPacks(t *testing.T) {
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gitconfig")), "gitconfig should exist")
 }
 
-func TestDeployPacks_SkipInstallScripts(t *testing.T) {
+func TestLinkPacks_SkipInstallScripts(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "deploy-skip-install")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -185,7 +185,7 @@ echo "Installing tools" > /tmp/install-was-run
 	testutil.AssertNoError(t, err)
 
 	// Deploy the pack
-	ctx, err := DeployPacks(DeployPacksOptions{
+	ctx, err := LinkPacks(LinkPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"tools"},
 		DryRun:             false,
@@ -220,5 +220,5 @@ echo "Installing tools" > /tmp/install-was-run
 	testutil.AssertFalse(t, testutil.FileExists(t, "/tmp/install-was-run"), "Install script should NOT have been executed")
 }
 
-// TestDeployPacks_InvalidPack and TestDeployPacks_EmptyPack were removed
+// TestLinkPacks_InvalidPack and TestLinkPacks_EmptyPack were removed
 // These scenarios are already tested in pkg/commands/internal/pipeline_test.go

@@ -53,7 +53,7 @@ func TestRenderer_Render(t *testing.T) {
 			name:    "renders result without colors",
 			noColor: true,
 			result: &types.DisplayResult{
-				Command: "deploy",
+				Command: "link",
 				DryRun:  true,
 				Packs: []types.DisplayPack{
 					{
@@ -173,7 +173,7 @@ func TestRenderer_Render(t *testing.T) {
 			name:    "renders timestamp",
 			noColor: true,
 			result: &types.DisplayResult{
-				Command:   "deploy",
+				Command:   "link",
 				Timestamp: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
 				Packs: []types.DisplayPack{
 					{

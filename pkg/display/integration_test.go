@@ -12,7 +12,7 @@ import (
 
 func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 	// Create a complete execution context as would be created by a command
-	ctx := types.NewExecutionContext("deploy", false)
+	ctx := types.NewExecutionContext("link", false)
 
 	// Add first pack
 	pack1 := &types.Pack{
@@ -82,7 +82,7 @@ func TestDisplayIntegration_FullWorkflow(t *testing.T) {
 
 	// Verify output contains expected elements
 	expectedStrings := []string{
-		"deploy",
+		"link",
 		"vim [status=",                    // Pack name with status
 		"shell [status=",                  // Pack name with status
 		"symlink",                         // Handler name

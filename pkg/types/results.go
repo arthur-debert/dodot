@@ -30,7 +30,7 @@ type PackInfo struct {
 // DisplayResult is the top-level structure for commands that produce rich output.
 // This replaces the old PackStatusResult and is used by status, deploy, and install commands.
 type DisplayResult struct {
-	Command   string        `json:"command"` // "status", "deploy", "install"
+	Command   string        `json:"command"` // "status", "link", "install"
 	Packs     []DisplayPack `json:"packs"`
 	DryRun    bool          `json:"dryRun"` // For deploy/install commands
 	Timestamp time.Time     `json:"timestamp"`

@@ -5,7 +5,7 @@
 //
 // Each command is implemented in its own subdirectory:
 //   - list/     - ListPacks command
-//   - deploy/   - DeployPacks command
+//   - link/     - LinkPacks command
 //   - install/  - InstallPacks command
 //   - status/   - StatusPacks command
 //   - fill/     - FillPack command
@@ -21,10 +21,10 @@ package commands
 import (
 	"github.com/arthur-debert/dodot/pkg/commands/addignore"
 	"github.com/arthur-debert/dodot/pkg/commands/adopt"
-	"github.com/arthur-debert/dodot/pkg/commands/deploy"
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/commands/install"
+	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
 	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
@@ -40,11 +40,11 @@ func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	return list.ListPacks(opts)
 }
 
-// DeployPacks runs deployment logic using the direct executor approach.
-type DeployPacksOptions = deploy.DeployPacksOptions
+// LinkPacks runs deployment logic using the direct executor approach.
+type LinkPacksOptions = link.LinkPacksOptions
 
-func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
-	return deploy.DeployPacks(opts)
+func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
+	return link.LinkPacks(opts)
 }
 
 // InstallPacks runs installation + deployment using the direct executor approach.
