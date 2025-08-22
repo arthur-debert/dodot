@@ -87,9 +87,9 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("totalActions", len(actions)).
 		Msg("Actions generated")
 
-	// 5a. Enrich run-once actions with checksums
+	// 5a. Enrich provisioning actions with checksums
 	// This is needed so the executor can write checksums to sentinel files
-	actions = core.EnrichRunOnceActionsWithChecksums(actions)
+	actions = core.EnrichProvisioningActionsWithChecksums(actions)
 
 	// 6. Filter actions by run mode
 	filteredActions, err := filterActionsByRunMode(actions, opts.RunMode)
@@ -102,15 +102,15 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Str("runMode", string(opts.RunMode)).
 		Msg("Actions filtered by run mode")
 
-	// 7. Filter run-once actions based on --force flag
-	if opts.RunMode == types.RunModeOnce && !opts.Force {
-		filteredActions, err = core.FilterRunOnceActions(filteredActions, opts.Force, pathsInstance)
+	// 7. Filter provisioning actions based on --force flag
+	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
+		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, pathsInstance)
 		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter run-once actions")
+			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter provisioning actions")
 		}
 		logger.Debug().
-			Int("actionsAfterRunOnce", len(filteredActions)).
-			Msg("Run-once actions filtered")
+			Int("actionsAfterProvisioning", len(filteredActions)).
+			Msg("Provisioning actions filtered")
 	}
 
 	// 8. Create execution context
@@ -220,9 +220,9 @@ func filterActionsByRunMode(actions []types.Action, mode types.RunMode) ([]types
 // getCommandFromRunMode returns the command name based on run mode
 func getCommandFromRunMode(mode types.RunMode) string {
 	switch mode {
-	case types.RunModeOnce:
+	case types.RunModeProvisioning:
 		return "install"
-	case types.RunModeMany:
+	case types.RunModeLinking:
 		return "deploy"
 	default:
 		return "execute"

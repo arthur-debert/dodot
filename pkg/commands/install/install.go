@@ -28,20 +28,20 @@ type InstallPacksOptions struct {
 }
 
 // InstallPacks runs the installation + deployment using the direct executor approach.
-// It executes both RunModeOnce actions (install scripts, brewfiles) and RunModeMany
+// It executes both RunModeProvisioning actions (install scripts, brewfiles) and RunModeLinking
 // actions (symlinks, shell profiles, path) in sequence.
 func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("commands.install")
 	log.Debug().Str("command", "InstallPacks").Msg("Executing command")
 
-	// Phase 1: Run install scripts, brewfiles, etc. (RunModeOnce actions)
-	log.Debug().Msg("Phase 1: Executing run-once actions (install scripts, brewfiles)")
+	// Phase 1: Run install scripts, brewfiles, etc. (RunModeProvisioning actions)
+	log.Debug().Msg("Phase 1: Executing provisioning actions (install scripts, brewfiles)")
 	installCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeOnce, // Only install scripts, brewfiles
-		Force:              opts.Force,        // Force flag applies to run-once actions
+		RunMode:            types.RunModeProvisioning, // Only install scripts, brewfiles
+		Force:              opts.Force,                // Force flag applies to provisioning actions
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 
@@ -61,8 +61,8 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeMany, // Only symlinks, profiles, etc.
-		Force:              false,             // Force doesn't apply to deploy actions
+		RunMode:            types.RunModeLinking, // Only symlinks, profiles, etc.
+		Force:              false,                // Force doesn't apply to deploy actions
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 

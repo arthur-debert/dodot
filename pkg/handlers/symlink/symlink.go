@@ -62,7 +62,7 @@ func (p *SymlinkHandler) Description() string {
 
 // RunMode returns whether this handler runs once or many times
 func (p *SymlinkHandler) RunMode() types.RunMode {
-	return types.RunModeMany
+	return types.RunModeLinking
 }
 
 // Process takes a group of trigger matches and generates symlink actions

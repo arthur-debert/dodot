@@ -38,7 +38,7 @@ func (p *InstallScriptHandler) Description() string {
 
 // RunMode returns whether this handler runs once or many times
 func (p *InstallScriptHandler) RunMode() types.RunMode {
-	return types.RunModeOnce
+	return types.RunModeProvisioning
 }
 
 // Process takes install script matches and generates install actions

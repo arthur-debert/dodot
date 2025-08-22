@@ -4,11 +4,17 @@ package types
 type RunMode string
 
 const (
-	// RunModeMany indicates the handler can be run multiple times safely
-	RunModeMany RunMode = "many"
+	// RunModeLinking indicates the handler creates/updates links and can be run multiple times safely
+	RunModeLinking RunMode = "linking"
 
-	// RunModeOnce indicates the handler should only run once per pack
-	RunModeOnce RunMode = "once"
+	// RunModeProvisioning indicates the handler provisions resources and should only run once per pack
+	RunModeProvisioning RunMode = "provisioning"
+
+	// Deprecated: Use RunModeLinking instead
+	RunModeMany = RunModeLinking
+
+	// Deprecated: Use RunModeProvisioning instead
+	RunModeOnce = RunModeProvisioning
 )
 
 const (

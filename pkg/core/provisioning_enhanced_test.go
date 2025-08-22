@@ -113,7 +113,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isRunOnceTrigger(tt.trigger)
+			result := isProvisioningTrigger(tt.trigger)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -231,7 +231,7 @@ func TestGetHandlerTypeFromTrigger(t *testing.T) {
 	}
 }
 
-func TestEnrichRunOnceActionsWithChecksums_Logic(t *testing.T) {
+func TestEnrichProvisioningActionsWithChecksums_Logic(t *testing.T) {
 	tests := []struct {
 		name     string
 		actions  []types.Action
@@ -338,7 +338,7 @@ func TestEnrichRunOnceActionsWithChecksums_Logic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Note: This test focuses on the logic flow, not actual checksum calculation
 			// which requires filesystem access
-			result := EnrichRunOnceActionsWithChecksums(tt.actions)
+			result := EnrichProvisioningActionsWithChecksums(tt.actions)
 			tt.validate(t, result)
 		})
 	}

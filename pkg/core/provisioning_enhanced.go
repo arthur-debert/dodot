@@ -9,16 +9,16 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// EnrichRunOnceActionsWithChecksums adds checksums to the metadata of run-once actions.
+// EnrichProvisioningActionsWithChecksums adds checksums to the metadata of provisioning actions.
 // This is needed so the executor can write checksums to sentinel files and
-// FilterRunOnceActions can compare them on subsequent runs.
-func EnrichRunOnceActionsWithChecksums(actions []types.Action) []types.Action {
-	logger := logging.GetLogger("core.runonce")
+// FilterProvisioningActions can compare them on subsequent runs.
+func EnrichProvisioningActionsWithChecksums(actions []types.Action) []types.Action {
+	logger := logging.GetLogger("core.provisioning")
 
 	for i := range actions {
 		action := &actions[i]
 
-		// Only process run-once action types
+		// Only process provisioning action types
 		if action.Type != types.ActionTypeBrew && action.Type != types.ActionTypeInstall {
 			continue
 		}
@@ -36,7 +36,7 @@ func EnrichRunOnceActionsWithChecksums(actions []types.Action) []types.Action {
 					Err(err).
 					Str("source", action.Source).
 					Str("action", string(action.Type)).
-					Msg("Failed to calculate checksum for run-once action")
+					Msg("Failed to calculate checksum for provisioning action")
 				continue
 			}
 
@@ -52,29 +52,29 @@ func EnrichRunOnceActionsWithChecksums(actions []types.Action) []types.Action {
 				Str("source", action.Source).
 				Str("checksum", checksum).
 				Str("action", string(action.Type)).
-				Msg("Added checksum to run-once action")
+				Msg("Added checksum to provisioning action")
 		}
 	}
 
 	return actions
 }
 
-// FilterRunOnceTriggersEarly filters out trigger matches for run-once handlers that have
+// FilterProvisioningTriggersEarly filters out trigger matches for provisioning handlers that have
 // already been executed. This is the new approach that checks sentinel files before
 // handler processing, avoiding unnecessary work.
-func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, pathsInstance *paths.Paths) []types.TriggerMatch {
+func FilterProvisioningTriggersEarly(triggers []types.TriggerMatch, force bool, pathsInstance *paths.Paths) []types.TriggerMatch {
 	if force {
 		// With force flag, include all triggers
 		return triggers
 	}
 
-	logger := logging.GetLogger("core.runonce")
+	logger := logging.GetLogger("core.provisioning")
 	filtered := make([]types.TriggerMatch, 0, len(triggers))
 
 	for _, trigger := range triggers {
-		// Check if this trigger is for a run-once handler
-		if !isRunOnceTrigger(trigger) {
-			// Not a run-once trigger, include it
+		// Check if this trigger is for a provisioning handler
+		if !isProvisioningTrigger(trigger) {
+			// Not a provisioning trigger, include it
 			filtered = append(filtered, trigger)
 			continue
 		}
@@ -131,8 +131,8 @@ func FilterRunOnceTriggersEarly(triggers []types.TriggerMatch, force bool, paths
 	return filtered
 }
 
-// isRunOnceTrigger checks if a trigger match is for a run-once handler
-func isRunOnceTrigger(trigger types.TriggerMatch) bool {
+// isProvisioningTrigger checks if a trigger match is for a provisioning handler
+func isProvisioningTrigger(trigger types.TriggerMatch) bool {
 	// Check based on matcher name or file patterns
 	switch trigger.HandlerName {
 	case "brewfile", "homebrew":

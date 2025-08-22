@@ -28,7 +28,7 @@ type mockHandler struct {
 
 func (m *mockHandler) Name() string           { return m.name }
 func (m *mockHandler) Description() string    { return "mock handler" }
-func (m *mockHandler) RunMode() types.RunMode { return types.RunModeMany }
+func (m *mockHandler) RunMode() types.RunMode { return types.RunModeLinking }
 func (m *mockHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
 	return []types.Action{}, nil
 }

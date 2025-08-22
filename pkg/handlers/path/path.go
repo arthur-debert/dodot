@@ -38,7 +38,7 @@ func (p *PathHandler) Description() string {
 
 // RunMode returns when this handler should run
 func (p *PathHandler) RunMode() types.RunMode {
-	return types.RunModeMany
+	return types.RunModeLinking
 }
 
 // Process takes directories and creates path add actions

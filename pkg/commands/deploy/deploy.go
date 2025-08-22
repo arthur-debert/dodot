@@ -19,19 +19,19 @@ type DeployPacksOptions struct {
 }
 
 // DeployPacks runs the deployment logic using the direct executor approach.
-// It executes RunModeMany actions only (symlinks, shell profiles, path) while
-// skipping RunModeOnce actions (install scripts, brewfiles).
+// It executes RunModeLinking actions only (symlinks, shell profiles, path) while
+// skipping RunModeProvisioning actions (install scripts, brewfiles).
 func DeployPacks(opts DeployPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("commands.deploy")
 	log.Debug().Str("command", "DeployPacks").Msg("Executing command")
 
-	// Use the internal pipeline with RunModeMany (deploy mode)
+	// Use the internal pipeline with RunModeLinking (deploy mode)
 	ctx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeMany, // Key: only run repeatable actions
-		Force:              false,             // Deploy doesn't use force flag
+		RunMode:            types.RunModeLinking, // Key: only run repeatable actions
+		Force:              false,                // Deploy doesn't use force flag
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 

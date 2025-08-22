@@ -14,11 +14,11 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// ShouldRunOnceAction checks if a run-once action should be executed
+// ShouldProvisionAction checks if a provisioning action should be executed
 // based on its sentinel file and checksum. Returns true if the action
 // should run, false if it has already run with the same checksum.
-func ShouldRunOnceAction(action types.Action, force bool, pathsInstance *paths.Paths) (bool, error) {
-	logger := logging.GetLogger("core.runonce")
+func ShouldProvisionAction(action types.Action, force bool, pathsInstance *paths.Paths) (bool, error) {
+	logger := logging.GetLogger("core.provisioning")
 
 	// If force flag is set, always run
 	if force {
@@ -29,12 +29,12 @@ func ShouldRunOnceAction(action types.Action, force bool, pathsInstance *paths.P
 		return true, nil
 	}
 
-	// Only check sentinel files for run-once action types
+	// Only check sentinel files for provisioning action types
 	switch action.Type {
 	case types.ActionTypeBrew, types.ActionTypeInstall:
 		// Continue with sentinel check
 	default:
-		// Not a run-once action, always run
+		// Not a provisioning action, always run
 		return true, nil
 	}
 
@@ -115,15 +115,15 @@ func ShouldRunOnceAction(action types.Action, force bool, pathsInstance *paths.P
 	return true, nil
 }
 
-// FilterRunOnceActions filters a list of actions based on their run-once status.
+// FilterProvisioningActions filters a list of actions based on their provisioning status.
 // It removes actions that have already been executed with the same checksum,
 // unless the force flag is set.
-func FilterRunOnceActions(actions []types.Action, force bool, pathsInstance *paths.Paths) ([]types.Action, error) {
-	logger := logging.GetLogger("core.runonce")
+func FilterProvisioningActions(actions []types.Action, force bool, pathsInstance *paths.Paths) ([]types.Action, error) {
+	logger := logging.GetLogger("core.provisioning")
 	logger.Debug().
 		Int("action_count", len(actions)).
 		Bool("force", force).
-		Msg("Filtering run-once actions")
+		Msg("Filtering provisioning actions")
 
 	if len(actions) == 0 {
 		return actions, nil
@@ -132,7 +132,7 @@ func FilterRunOnceActions(actions []types.Action, force bool, pathsInstance *pat
 	filtered := make([]types.Action, 0, len(actions))
 
 	for _, action := range actions {
-		shouldRun, err := ShouldRunOnceAction(action, force, pathsInstance)
+		shouldRun, err := ShouldProvisionAction(action, force, pathsInstance)
 		if err != nil {
 			return nil, err
 		}
@@ -144,7 +144,7 @@ func FilterRunOnceActions(actions []types.Action, force bool, pathsInstance *pat
 				Str("action_type", string(action.Type)).
 				Str("pack", action.Pack).
 				Str("description", action.Description).
-				Msg("Skipping run-once action (already executed)")
+				Msg("Skipping provisioning action (already executed)")
 		}
 	}
 
@@ -152,13 +152,13 @@ func FilterRunOnceActions(actions []types.Action, force bool, pathsInstance *pat
 		Int("original_count", len(actions)).
 		Int("filtered_count", len(filtered)).
 		Int("skipped_count", len(actions)-len(filtered)).
-		Msg("Filtered run-once actions")
+		Msg("Filtered provisioning actions")
 
 	return filtered, nil
 }
 
 // CalculateActionChecksum calculates the checksum for an action's source file.
-// This is used to update the checksum metadata for run-once actions.
+// This is used to update the checksum metadata for provisioning actions.
 func CalculateActionChecksum(action types.Action) (string, error) {
 	if action.Source == "" {
 		return "", errors.New(errors.ErrActionInvalid, "action has no source file")
@@ -173,17 +173,17 @@ func CalculateActionChecksum(action types.Action) (string, error) {
 	}
 }
 
-// RunOnceStatus represents the execution status of a run-once handler
-type RunOnceStatus struct {
+// ProvisioningStatus represents the execution status of a provisioning handler
+type ProvisioningStatus struct {
 	Executed   bool
 	ExecutedAt time.Time
 	Checksum   string
 	Changed    bool // True if the source file has changed since execution
 }
 
-// GetRunOnceStatus checks the status of a run-once handler for a specific pack
-func GetRunOnceStatus(packPath, handlerName string, pathsInstance *paths.Paths) (*RunOnceStatus, error) {
-	logger := logging.GetLogger("core.runonce")
+// GetProvisioningStatus checks the status of a provisioning handler for a specific pack
+func GetProvisioningStatus(packPath, handlerName string, pathsInstance *paths.Paths) (*ProvisioningStatus, error) {
+	logger := logging.GetLogger("core.provisioning")
 
 	// Map handler names to their file patterns
 	var filePattern string
@@ -194,7 +194,7 @@ func GetRunOnceStatus(packPath, handlerName string, pathsInstance *paths.Paths) 
 	case "homebrew":
 		filePattern = "Brewfile"
 	default:
-		return nil, fmt.Errorf("unknown run-once handler: %s", handlerName)
+		return nil, fmt.Errorf("unknown provisioning handler: %s", handlerName)
 	}
 
 	// Get the sentinel path using the unified API
@@ -223,7 +223,7 @@ func GetRunOnceStatus(packPath, handlerName string, pathsInstance *paths.Paths) 
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Not executed yet
-			return &RunOnceStatus{
+			return &ProvisioningStatus{
 				Executed: false,
 				Checksum: currentChecksum,
 			}, nil
@@ -249,9 +249,9 @@ func GetRunOnceStatus(packPath, handlerName string, pathsInstance *paths.Paths) 
 		Str("handler", handlerName).
 		Bool("executed", true).
 		Bool("changed", changed).
-		Msg("Run-once status checked")
+		Msg("Provisioning status checked")
 
-	return &RunOnceStatus{
+	return &ProvisioningStatus{
 		Executed:   true,
 		ExecutedAt: executedAt,
 		Checksum:   currentChecksum,
