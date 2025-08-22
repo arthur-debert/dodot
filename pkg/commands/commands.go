@@ -26,8 +26,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/install"
 	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
-	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
+	"github.com/arthur-debert/dodot/pkg/commands/unlink"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -89,10 +89,10 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 	return adopt.AdoptFiles(opts)
 }
 
-// OffPacks removes deployments for specified packs.
-type OffPacksOptions = off.OffPacksOptions
-type OffResult = off.OffResult
+// UnlinkPacks removes deployments for specified packs.
+type UnlinkPacksOptions = unlink.UnlinkPacksOptions
+type UnlinkResult = unlink.UnlinkResult
 
-func OffPacks(opts OffPacksOptions) (*OffResult, error) {
-	return off.OffPacks(opts)
+func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
+	return unlink.UnlinkPacks(opts)
 }

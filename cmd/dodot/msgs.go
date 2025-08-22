@@ -9,12 +9,12 @@ import (
 const (
 	// Command descriptions
 	MsgRootShort       = "A stateless dotfiles manager"
-	MsgLinkShort       = "Deploy dotfiles to the system"
-	MsgInstallShort    = "Install and deploy dotfiles to the system"
+	MsgLinkShort       = "Link dotfiles to the system"
+	MsgInstallShort    = "Install and link dotfiles to the system"
 	MsgListShort       = "List all available packs"
 	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
 	MsgStatusShort     = "Show deployment status of packs"
-	MsgOffShort        = "Remove all deployments for specified packs"
+	MsgUnlinkShort     = "Unlink specified packs"
 	MsgInitShort       = "Create a new pack with template files"
 	MsgFillShort       = "Add placeholder files to an existing pack"
 	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
@@ -47,7 +47,7 @@ const (
 
 	// Error messages
 	MsgErrInitPaths    = "failed to initialize paths: %w"
-	MsgErrLinkPacks    = "failed to deploy packs: %w"
+	MsgErrLinkPacks    = "failed to link packs: %w"
 	MsgErrInstallPacks = "failed to install packs: %w"
 	MsgErrListPacks    = "failed to list packs: %w"
 	MsgErrStatusPacks  = "failed to get pack status: %w"
@@ -55,7 +55,7 @@ const (
 	MsgErrFillPack     = "failed to fill pack: %w"
 	MsgErrAddIgnore    = "failed to add ignore file: %w"
 	MsgErrAdoptFiles   = "failed to adopt files: %w"
-	MsgErrOffPacks     = "failed to turn off packs: %w"
+	MsgErrUnlinkPacks  = "failed to unlink packs: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
@@ -134,13 +134,13 @@ var (
 	msgAdoptExampleRaw string
 	MsgAdoptExample    = strings.TrimSpace(msgAdoptExampleRaw)
 
-	//go:embed msgs/off-long.txt
-	msgOffLongRaw string
-	MsgOffLong    = strings.TrimSpace(msgOffLongRaw)
+	//go:embed msgs/unlink-long.txt
+	msgUnlinkLongRaw string
+	MsgUnlinkLong    = strings.TrimSpace(msgUnlinkLongRaw)
 
-	//go:embed msgs/off-example.txt
-	msgOffExampleRaw string
-	MsgOffExample    = strings.TrimSpace(msgOffExampleRaw)
+	//go:embed msgs/unlink-example.txt
+	msgUnlinkExampleRaw string
+	MsgUnlinkExample    = strings.TrimSpace(msgUnlinkExampleRaw)
 
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string

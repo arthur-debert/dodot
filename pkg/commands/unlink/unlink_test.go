@@ -1,4 +1,4 @@
-package off
+package unlink
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOffPacks(t *testing.T) {
+func TestUnlinkPacks(t *testing.T) {
 	tests := []struct {
 		name             string
 		setupPacks       func(t *testing.T, dotfilesRoot, dataDir, homeDir string)
@@ -227,7 +227,7 @@ func TestOffPacks(t *testing.T) {
 			tt.setupPacks(t, dotfilesRoot, dataDir, homeDir)
 
 			// Run off command
-			result, err := OffPacks(OffPacksOptions{
+			result, err := UnlinkPacks(UnlinkPacksOptions{
 				DotfilesRoot: dotfilesRoot,
 				DataDir:      dataDir,
 				PackNames:    tt.packNames,
@@ -277,7 +277,7 @@ func TestOffPacks(t *testing.T) {
 	}
 }
 
-func TestOffPacks_Errors(t *testing.T) {
+func TestUnlinkPacks_Errors(t *testing.T) {
 	tests := []struct {
 		name        string
 		packNames   []string
@@ -301,7 +301,7 @@ func TestOffPacks_Errors(t *testing.T) {
 			testutil.CreateDir(t, tempDir, "data")
 
 			// Run off command
-			_, err := OffPacks(OffPacksOptions{
+			_, err := UnlinkPacks(UnlinkPacksOptions{
 				DotfilesRoot: dotfilesRoot,
 				DataDir:      dataDir,
 				PackNames:    tt.packNames,
@@ -373,7 +373,7 @@ func TestRemoveIfExists(t *testing.T) {
 			tt.setupFile(t, fs, testPath)
 
 			// Create options
-			opts := OffPacksOptions{
+			opts := UnlinkPacksOptions{
 				DryRun: tt.dryRun,
 			}
 

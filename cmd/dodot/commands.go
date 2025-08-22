@@ -90,7 +90,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newInstallCmd())
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
-	rootCmd.AddCommand(newOffCmd())
+	rootCmd.AddCommand(newUnlinkCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
@@ -734,12 +734,12 @@ func newSnippetCmd() *cobra.Command {
 	return cmd
 }
 
-func newOffCmd() *cobra.Command {
+func newUnlinkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "off [packs...]",
-		Short:             MsgOffShort,
-		Long:              MsgOffLong,
-		Example:           MsgOffExample,
+		Use:               "unlink [packs...]",
+		Short:             MsgUnlinkShort,
+		Long:              MsgUnlinkLong,
+		Example:           MsgUnlinkExample,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -758,10 +758,10 @@ func newOffCmd() *cobra.Command {
 				Strs("packs", args).
 				Bool("dry_run", dryRun).
 				Bool("force", force).
-				Msg("Turning off packs")
+				Msg("Unlinking packs")
 
 			// Run off command
-			result, err := commands.OffPacks(commands.OffPacksOptions{
+			result, err := commands.UnlinkPacks(commands.UnlinkPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				DataDir:      p.DataDir(),
 				PackNames:    args,
@@ -772,9 +772,9 @@ func newOffCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "off")
+					return handlePackNotFoundError(dodotErr, p, "unlink")
 				}
-				return fmt.Errorf(MsgErrOffPacks, err)
+				return fmt.Errorf(MsgErrUnlinkPacks, err)
 			}
 
 			// Display results

@@ -72,7 +72,7 @@ func TestRenderer_Render(t *testing.T) {
 			},
 			wantContent: []string{
 				"DRY RUN MODE",
-				"Command: deploy",
+				"Command: link",
 				"vim",
 				".vimrc",
 				"queued",
