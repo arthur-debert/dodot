@@ -30,7 +30,7 @@ func TestActionCheckStatus_BrokenStates(t *testing.T) {
 
 		// Create sentinel with checksum of original content
 		originalChecksum := "d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5"
-		sentinelPath := filepath.Join(dataDir, "install", "tools_install.sh.sentinel")
+		sentinelPath := filepath.Join(dataDir, "provision", "tools_install.sh.sentinel")
 		testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
 		sentinelContent := fmt.Sprintf("%s:2025-01-15T10:00:00Z", originalChecksum)
 		testutil.CreateFileT(t, fs, sentinelPath, sentinelContent)
@@ -102,7 +102,7 @@ func TestActionCheckStatus_BrokenStates(t *testing.T) {
 		}
 
 		// Create sentinel (but no source file)
-		sentinelPath := filepath.Join(dataDir, "install", "tools_install.sh.sentinel")
+		sentinelPath := filepath.Join(dataDir, "provision", "tools_install.sh.sentinel")
 		testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
 		testutil.CreateFileT(t, fs, sentinelPath, "checksum:2025-01-15T10:00:00Z")
 
@@ -134,7 +134,7 @@ func TestSentinelNaming(t *testing.T) {
 				Pack:   "tools",
 			},
 			expectedName: "tools_install.sh.sentinel",
-			expectedDir:  "data/dodot/install",
+			expectedDir:  "data/dodot/provision",
 		},
 		{
 			name: "brewfile sentinel",
@@ -154,7 +154,7 @@ func TestSentinelNaming(t *testing.T) {
 				Pack:   "tools",
 			},
 			expectedName: "tools_setup.sh.sentinel",
-			expectedDir:  "data/dodot/install",
+			expectedDir:  "data/dodot/provision",
 		},
 	}
 
@@ -252,7 +252,7 @@ func TestParseSentinelData(t *testing.T) {
 		testutil.CreateFileT(t, fs, action.Source, "script content")
 
 		// Create legacy sentinel with just timestamp
-		sentinelPath := filepath.Join(dataDir, "install", "tools_install.sh.sentinel")
+		sentinelPath := filepath.Join(dataDir, "provision", "tools_install.sh.sentinel")
 		testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
 		testutil.CreateFileT(t, fs, sentinelPath, "2025-01-15")
 

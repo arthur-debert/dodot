@@ -63,7 +63,7 @@ func ShouldProvisionAction(action types.Action, force bool, pathsInstance *paths
 	case types.ActionTypeBrew:
 		handlerType = "homebrew"
 	case types.ActionTypeInstall:
-		handlerType = "install"
+		handlerType = "provision"
 	}
 	sentinelPath := pathsInstance.SentinelPath(handlerType, pack)
 
@@ -189,7 +189,7 @@ func GetProvisioningStatus(packPath, handlerName string, pathsInstance *paths.Pa
 	var filePattern string
 
 	switch handlerName {
-	case "install":
+	case "provision":
 		filePattern = "install.sh"
 	case "homebrew":
 		filePattern = "Brewfile"

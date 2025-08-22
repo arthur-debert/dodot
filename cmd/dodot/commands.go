@@ -87,7 +87,7 @@ func NewRootCmd() *cobra.Command {
 
 	// Add all commands
 	rootCmd.AddCommand(newLinkCmd())
-	rootCmd.AddCommand(newInstallCmd())
+	rootCmd.AddCommand(newProvisionCmd())
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newUnlinkCmd())
@@ -301,12 +301,12 @@ func newLinkCmd() *cobra.Command {
 	}
 }
 
-func newInstallCmd() *cobra.Command {
+func newProvisionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "install [packs...]",
-		Short:             MsgInstallShort,
-		Long:              MsgInstallLong,
-		Example:           MsgInstallExample,
+		Use:               "provision [packs...]",
+		Short:             MsgProvisionShort,
+		Long:              MsgProvisionLong,
+		Example:           MsgProvisionExample,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -324,10 +324,10 @@ func newInstallCmd() *cobra.Command {
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Bool("dry_run", dryRun).
 				Bool("force", force).
-				Msg("Installing from dotfiles root")
+				Msg("Provisioning from dotfiles root")
 
-			// Install packs using the new implementation
-			ctx, err := commands.InstallPacks(commands.InstallPacksOptions{
+			// Provision packs using the new implementation
+			ctx, err := commands.ProvisionPacks(commands.ProvisionPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -338,9 +338,9 @@ func newInstallCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "installation")
+					return handlePackNotFoundError(dodotErr, p, "provisioning")
 				}
-				return fmt.Errorf(MsgErrInstallPacks, err)
+				return fmt.Errorf(MsgErrProvisionPacks, err)
 			}
 
 			// Display results using the new output renderer
@@ -697,7 +697,7 @@ func newSnippetCmd() *cobra.Command {
 		GroupID: "misc",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shell, _ := cmd.Flags().GetString("shell")
-			install, _ := cmd.Flags().GetBool("install")
+			provision, _ := cmd.Flags().GetBool("provision")
 
 			// Initialize paths to get custom data directory if set
 			p, err := initPaths()
@@ -709,7 +709,7 @@ func newSnippetCmd() *cobra.Command {
 			dataDir := p.DataDir()
 
 			// Install shell scripts if requested
-			if install {
+			if provision {
 				if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
 					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
@@ -729,7 +729,7 @@ func newSnippetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringP("shell", "s", "bash", "Shell type (bash, zsh, fish)")
-	cmd.Flags().Bool("install", false, "Install shell integration scripts to data directory")
+	cmd.Flags().Bool("provision", false, "Install shell integration scripts to data directory")
 
 	return cmd
 }

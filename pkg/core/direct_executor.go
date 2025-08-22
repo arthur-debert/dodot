@@ -884,7 +884,7 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 		synthfs.WithTimeout(300*time.Second))) // 5 minutes for install scripts
 
 	// Create sentinel file to mark as completed
-	sentinelPath := e.paths.SentinelPath("install", action.Pack)
+	sentinelPath := e.paths.SentinelPath("provision", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
 
 	// Get checksum from metadata if available

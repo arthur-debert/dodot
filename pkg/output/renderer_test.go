@@ -86,7 +86,7 @@ func TestRenderer_Render(t *testing.T) {
 			name:    "renders error status",
 			noColor: false,
 			result: &types.DisplayResult{
-				Command: "install",
+				Command: "provision",
 				Packs: []types.DisplayPack{
 					{
 						Name:   "broken",

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -82,12 +81,6 @@ func (p *InstallScriptHandler) ValidateOptions(options map[string]interface{}) e
 // GetTemplateContent returns the template content for this handler
 func (p *InstallScriptHandler) GetTemplateContent() string {
 	return installTemplate
-}
-
-// GetInstallSentinelPath returns the path to the sentinel file for a pack
-// Deprecated: Use pathsInstance.SentinelPath("install", pack) instead
-func GetInstallSentinelPath(pack string, pathsInstance *paths.Paths) string {
-	return pathsInstance.SentinelPath("install", pack)
 }
 
 func init() {

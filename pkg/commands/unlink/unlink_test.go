@@ -91,18 +91,18 @@ func TestUnlinkPacks(t *testing.T) {
 				// Create pack with install script
 				testutil.CreateFile(t, dotfilesRoot, "mypack/install.sh", "#!/bin/bash\necho installed")
 
-				// Create install sentinel
-				testutil.CreateDir(t, dataDir, "install/sentinels")
-				testutil.CreateFile(t, dataDir, "install/sentinels/mypack", "checksum123")
+				// Create provision sentinel
+				testutil.CreateDir(t, dataDir, "provision/sentinels")
+				testutil.CreateFile(t, dataDir, "provision/sentinels/mypack", "checksum123")
 
 				// Create homebrew sentinel
 				testutil.CreateDir(t, dataDir, "homebrew")
 				testutil.CreateFile(t, dataDir, "homebrew/mypack", "brewchecksum456")
 			},
 			packNames:     []string{"mypack"},
-			expectRemoved: 2, // install sentinel + brew sentinel
+			expectRemoved: 2, // provision sentinel + brew sentinel
 			expectNotExist: []string{
-				"install/sentinels/mypack",
+				"provision/sentinels/mypack",
 				"homebrew/mypack",
 			},
 			expectExistAfter: []string{

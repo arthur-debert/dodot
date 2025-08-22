@@ -6,7 +6,7 @@
 // Each command is implemented in its own subdirectory:
 //   - list/     - ListPacks command
 //   - link/     - LinkPacks command
-//   - install/  - InstallPacks command
+//   - install/  - ProvisionPacks command
 //   - status/   - StatusPacks command
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
@@ -23,9 +23,9 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/adopt"
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
-	"github.com/arthur-debert/dodot/pkg/commands/install"
 	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
+	"github.com/arthur-debert/dodot/pkg/commands/provision"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/commands/unlink"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -47,11 +47,11 @@ func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
 	return link.LinkPacks(opts)
 }
 
-// InstallPacks runs installation + deployment using the direct executor approach.
-type InstallPacksOptions = install.InstallPacksOptions
+// ProvisionPacks runs installation + deployment using the direct executor approach.
+type ProvisionPacksOptions = provision.ProvisionPacksOptions
 
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
-	return install.InstallPacks(opts)
+func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error) {
+	return provision.ProvisionPacks(opts)
 }
 
 // StatusPacks shows the deployment status of specified packs.

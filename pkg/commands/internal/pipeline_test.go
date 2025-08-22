@@ -141,7 +141,7 @@ echo "Installing tools"
 	testutil.AssertNotNil(t, ctx)
 
 	// Verify context
-	testutil.AssertEqual(t, "install", ctx.Command)
+	testutil.AssertEqual(t, "provision", ctx.Command)
 
 	// Verify pack results
 	packResult, ok := ctx.GetPackResult("tools")

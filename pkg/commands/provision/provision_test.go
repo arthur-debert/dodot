@@ -1,4 +1,4 @@
-package install
+package provision
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-func TestInstallPacks_BothPhases(t *testing.T) {
+func TestProvisionPacks_BothPhases(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-both")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -36,7 +36,7 @@ echo "Tools installed" > /tmp/install-tools-output
 	testutil.AssertNoError(t, err)
 
 	// Install the pack (should run both phases)
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"tools"},
 		DryRun:             false,
@@ -49,7 +49,7 @@ echo "Tools installed" > /tmp/install-tools-output
 	testutil.AssertNotNil(t, ctx)
 
 	// Verify execution context
-	testutil.AssertEqual(t, "install", ctx.Command)
+	testutil.AssertEqual(t, "provision", ctx.Command)
 	testutil.AssertFalse(t, ctx.DryRun, "Should not be dry run")
 
 	// Verify pack results
@@ -81,12 +81,12 @@ echo "Tools installed" > /tmp/install-tools-output
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")
 
 	// Check that install script handler was processed (should create sentinel and copy script)
-	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")
+	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "provision")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "sentinels", "tools")), "Install sentinel file should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "tools", "install.sh")), "Install script should be copied")
 }
 
-func TestInstallPacks_DryRun(t *testing.T) {
+func TestProvisionPacks_DryRun(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-dryrun")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -106,7 +106,7 @@ func TestInstallPacks_DryRun(t *testing.T) {
 	testutil.AssertNoError(t, err)
 
 	// Install in dry-run mode
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"dev"},
 		DryRun:             true,
@@ -120,7 +120,7 @@ func TestInstallPacks_DryRun(t *testing.T) {
 
 	// Verify execution context
 	testutil.AssertTrue(t, ctx.DryRun, "Should be dry run")
-	testutil.AssertEqual(t, "install", ctx.Command)
+	testutil.AssertEqual(t, "provision", ctx.Command)
 
 	// Should have pack results with both handlers planned
 	packResult, ok := ctx.GetPackResult("dev")
@@ -131,7 +131,7 @@ func TestInstallPacks_DryRun(t *testing.T) {
 	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(homeDir, "gitconfig")), "gitconfig symlink should not exist in dry run")
 }
 
-func TestInstallPacks_ForceFlag(t *testing.T) {
+func TestProvisionPacks_ForceFlag(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-force")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -156,7 +156,7 @@ echo "Installing..."
 	testutil.AssertNoError(t, err)
 
 	// First install (should run)
-	ctx1, err := InstallPacks(InstallPacksOptions{
+	ctx1, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"force-test"},
 		DryRun:             false,
@@ -168,12 +168,12 @@ echo "Installing..."
 	testutil.AssertNotNil(t, ctx1)
 
 	// Verify install script was processed first time
-	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")
+	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "provision")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "sentinels", "force-test")), "First run sentinel should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "force-test", "install.sh")), "First run script should be copied")
 
 	// Second install with force flag (should run and update files)
-	ctx2, err := InstallPacks(InstallPacksOptions{
+	ctx2, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"force-test"},
 		DryRun:             false,
@@ -189,7 +189,7 @@ echo "Installing..."
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "force-test", "install.sh")), "Force run script should be copied")
 }
 
-func TestInstallPacks_OnlySymlinks(t *testing.T) {
+func TestProvisionPacks_OnlySymlinks(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-symonly")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -208,7 +208,7 @@ func TestInstallPacks_OnlySymlinks(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "vim/vimrc", "\" Test vimrc")
 
 	// Install the pack
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"vim"},
 		DryRun:             false,
@@ -241,7 +241,7 @@ func TestInstallPacks_OnlySymlinks(t *testing.T) {
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
 }
 
-func TestInstallPacks_OnlyInstallScript(t *testing.T) {
+func TestProvisionPacks_OnlyInstallScript(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-scriptonly")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -266,7 +266,7 @@ echo "Setup complete" > /tmp/setup-output
 	testutil.AssertNoError(t, err)
 
 	// Install the pack
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"setup"},
 		DryRun:             false,
@@ -296,12 +296,12 @@ echo "Setup complete" > /tmp/setup-output
 	testutil.AssertFalse(t, hasSymlink, "Should NOT have symlink handler")
 
 	// Verify install script was processed (copied and sentinel created)
-	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")
+	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "provision")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "sentinels", "setup")), "Install sentinel should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "setup", "install.sh")), "Install script should be copied")
 }
 
-func TestInstallPacks_MultiplePacksAllTypes(t *testing.T) {
+func TestProvisionPacks_MultiplePacksAllTypes(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-multi")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -335,7 +335,7 @@ func TestInstallPacks_MultiplePacksAllTypes(t *testing.T) {
 	testutil.AssertNoError(t, err)
 
 	// Install all packs
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{}, // All packs
 		DryRun:             false,
@@ -365,17 +365,17 @@ func TestInstallPacks_MultiplePacksAllTypes(t *testing.T) {
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "bashrc symlink should exist")
 
 	// Verify install scripts were processed (copied and sentinels created)
-	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "install")
+	installDir := filepath.Join(homeDir, ".local", "share", "dodot", "provision")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "sentinels", "langs")), "langs install sentinel should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "sentinels", "shell")), "shell install sentinel should exist")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "langs", "install.sh")), "langs script should be copied")
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(installDir, "shell", "install.sh")), "shell script should be copied")
 }
 
-// TestInstallPacks_InvalidPack was removed
+// TestProvisionPacks_InvalidPack was removed
 // This scenario is already tested in pkg/commands/internal/pipeline_test.go
 
-func TestInstallPacks_ShellIntegration(t *testing.T) {
+func TestProvisionPacks_ShellIntegration(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-shell-integration")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -409,7 +409,7 @@ func TestInstallPacks_ShellIntegration(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "shell-test/bashrc", "# test bashrc")
 
 	// Install the pack
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"shell-test"},
 		DryRun:             false,
@@ -437,7 +437,7 @@ func TestInstallPacks_ShellIntegration(t *testing.T) {
 	}
 }
 
-func TestInstallPacks_ShellIntegration_DryRun(t *testing.T) {
+func TestProvisionPacks_ShellIntegration_DryRun(t *testing.T) {
 	// Create test environment
 	tempDir := testutil.TempDir(t, "install-shell-dryrun")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -455,7 +455,7 @@ func TestInstallPacks_ShellIntegration_DryRun(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "dryrun-test/config", "test config")
 
 	// Install in dry-run mode
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"dryrun-test"},
 		DryRun:             true, // Dry run should NOT install shell integration
@@ -475,7 +475,7 @@ func TestInstallPacks_ShellIntegration_DryRun(t *testing.T) {
 	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(shellDir, "dodot-init.fish")), "Fish script should NOT exist in dry run")
 }
 
-func TestInstallPacks_ShellIntegration_NoActions(t *testing.T) {
+func TestProvisionPacks_ShellIntegration_NoActions(t *testing.T) {
 	// Create test environment with no packs (no successful actions)
 	tempDir := testutil.TempDir(t, "install-no-actions")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")
@@ -489,7 +489,7 @@ func TestInstallPacks_ShellIntegration_NoActions(t *testing.T) {
 	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
 
 	// Install with no packs (should have no successful actions)
-	ctx, err := InstallPacks(InstallPacksOptions{
+	ctx, err := ProvisionPacks(ProvisionPacksOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{}, // Empty pack list
 		DryRun:             false,

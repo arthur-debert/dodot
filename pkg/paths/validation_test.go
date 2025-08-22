@@ -201,7 +201,7 @@ func TestDeploymentPathStructure(t *testing.T) {
 		"shell source":  p.ShellSourceDir(),
 		"symlink":       p.SymlinkDir(),
 		"shell":         p.ShellDir(),
-		"install":       p.InstallDir(),
+		"provision":     p.InstallDir(),
 		"brewfile":      p.HomebrewDir(),
 	}
 

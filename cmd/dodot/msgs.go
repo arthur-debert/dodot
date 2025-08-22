@@ -10,7 +10,7 @@ const (
 	// Command descriptions
 	MsgRootShort       = "A stateless dotfiles manager"
 	MsgLinkShort       = "Link dotfiles to the system"
-	MsgInstallShort    = "Install and link dotfiles to the system"
+	MsgProvisionShort  = "Provision and link dotfiles to the system"
 	MsgListShort       = "List all available packs"
 	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
 	MsgStatusShort     = "Show deployment status of packs"
@@ -46,16 +46,16 @@ const (
 	MsgHandlerDesc       = " - %s"
 
 	// Error messages
-	MsgErrInitPaths    = "failed to initialize paths: %w"
-	MsgErrLinkPacks    = "failed to link packs: %w"
-	MsgErrInstallPacks = "failed to install packs: %w"
-	MsgErrListPacks    = "failed to list packs: %w"
-	MsgErrStatusPacks  = "failed to get pack status: %w"
-	MsgErrInitPack     = "failed to initialize pack: %w"
-	MsgErrFillPack     = "failed to fill pack: %w"
-	MsgErrAddIgnore    = "failed to add ignore file: %w"
-	MsgErrAdoptFiles   = "failed to adopt files: %w"
-	MsgErrUnlinkPacks  = "failed to unlink packs: %w"
+	MsgErrInitPaths      = "failed to initialize paths: %w"
+	MsgErrLinkPacks      = "failed to link packs: %w"
+	MsgErrProvisionPacks = "failed to provision packs: %w"
+	MsgErrListPacks      = "failed to list packs: %w"
+	MsgErrStatusPacks    = "failed to get pack status: %w"
+	MsgErrInitPack       = "failed to initialize pack: %w"
+	MsgErrFillPack       = "failed to fill pack: %w"
+	MsgErrAddIgnore      = "failed to add ignore file: %w"
+	MsgErrAdoptFiles     = "failed to adopt files: %w"
+	MsgErrUnlinkPacks    = "failed to unlink packs: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
@@ -82,13 +82,13 @@ var (
 	msgLinkExampleRaw string
 	MsgLinkExample    = strings.TrimSpace(msgLinkExampleRaw)
 
-	//go:embed msgs/install-long.txt
-	msgInstallLongRaw string
-	MsgInstallLong    = strings.TrimSpace(msgInstallLongRaw)
+	//go:embed msgs/provision-long.txt
+	msgProvisionLongRaw string
+	MsgProvisionLong    = strings.TrimSpace(msgProvisionLongRaw)
 
-	//go:embed msgs/install-example.txt
-	msgInstallExampleRaw string
-	MsgInstallExample    = strings.TrimSpace(msgInstallExampleRaw)
+	//go:embed msgs/provision-example.txt
+	msgProvisionExampleRaw string
+	MsgProvisionExample    = strings.TrimSpace(msgProvisionExampleRaw)
 
 	//go:embed msgs/list-example.txt
 	msgListExampleRaw string

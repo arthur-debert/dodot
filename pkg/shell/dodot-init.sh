@@ -187,24 +187,24 @@ if [ -n "$DODOT_SYMLINKS" ]; then
     export DODOT_SYMLINKS
 fi
 
-# 5. Track run-once handlers (install scripts and brewfiles)
-# Check install script sentinels
-if [ -d "$DODOT_DATA_DIR/install/sentinels" ]; then
-    for sentinel in "$DODOT_DATA_DIR/install/sentinels"/*; do
+# 5. Track run-once handlers (provision scripts and brewfiles)
+# Check provision script sentinels
+if [ -d "$DODOT_DATA_DIR/provision/sentinels" ]; then
+    for sentinel in "$DODOT_DATA_DIR/provision/sentinels"/*; do
         if [ -f "$sentinel" ]; then
             pack=$(basename "$sentinel")
-            if [ -z "$DODOT_INSTALL_SCRIPTS" ]; then
-                DODOT_INSTALL_SCRIPTS="$pack"
+            if [ -z "$DODOT_PROVISION_SCRIPTS" ]; then
+                DODOT_PROVISION_SCRIPTS="$pack"
             else
-                DODOT_INSTALL_SCRIPTS="$DODOT_INSTALL_SCRIPTS:$pack"
+                DODOT_PROVISION_SCRIPTS="$DODOT_PROVISION_SCRIPTS:$pack"
             fi
         fi
     done
 fi
 
-# Export install scripts if any were completed
-if [ -n "$DODOT_INSTALL_SCRIPTS" ]; then
-    export DODOT_INSTALL_SCRIPTS
+# Export provision scripts if any were completed
+if [ -n "$DODOT_PROVISION_SCRIPTS" ]; then
+    export DODOT_PROVISION_SCRIPTS
 fi
 
 # Check homebrew sentinels

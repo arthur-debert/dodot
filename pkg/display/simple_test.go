@@ -31,13 +31,13 @@ func TestSimpleRenderer_Render(t *testing.T) {
 		{
 			name: "dry run mode",
 			result: &types.DisplayResult{
-				Command:   "install",
+				Command:   "provision",
 				DryRun:    true,
 				Packs:     []types.DisplayPack{},
 				Timestamp: time.Now(),
 			},
 			expected: []string{
-				"install (dry run)",
+				"provision (dry run)",
 				"No packs to process",
 			},
 		},
@@ -78,7 +78,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 		{
 			name: "pack with errors",
 			result: &types.DisplayResult{
-				Command: "install",
+				Command: "provision",
 				Packs: []types.DisplayPack{
 					{
 						Name:   "tools",
@@ -96,7 +96,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 				Timestamp: time.Now(),
 			},
 			expected: []string{
-				"install",
+				"provision",
 				"tools [status=alert]:",
 				"install_script",
 				"install script failed: exit status 1 [status=error]",
@@ -250,7 +250,7 @@ func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
 						LastExecuted: &lastExec,
 					},
 					{
-						Handler:      "install",
+						Handler:      "provision",
 						Path:         "setup.sh",
 						Status:       "queue",
 						Message:      "to be executed",
@@ -299,7 +299,7 @@ func TestSimpleRenderer_ComprehensiveFeatures(t *testing.T) {
 		"config       : .dodot.toml",        // Config file
 		"symlink      : .vimrc",             // Symlink entry
 		"linked to $HOME/.vimrc [status=success] [executed=2024-01-15]", // Success with timestamp
-		"install      : *setup.sh",                                      // Override (asterisk) and queue
+		"provision    : *setup.sh",                                      // Override (asterisk) and queue
 		"to be executed [status=queue]",                                 // Queue status
 		"temp [status=ignored] [ignored]:",                              // Ignored pack
 		".dodotignore : dodot is ignoring this dir",                     // Ignored directory message

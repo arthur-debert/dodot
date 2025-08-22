@@ -116,11 +116,11 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 		{
 			name: "run_once_handlers_tracked",
 			setupFixture: func(t *testing.T, dataDir, dotfilesRoot string) {
-				// Create install script sentinels
-				installSentinels := filepath.Join(dataDir, "install", "sentinels")
-				testutil.CreateDir(t, dataDir, "install/sentinels")
-				testutil.CreateFile(t, installSentinels, "vim", "abc123checksum")
-				testutil.CreateFile(t, installSentinels, "node", "def456checksum")
+				// Create provision script sentinels
+				provisionSentinels := filepath.Join(dataDir, "provision", "sentinels")
+				testutil.CreateDir(t, dataDir, "provision/sentinels")
+				testutil.CreateFile(t, provisionSentinels, "vim", "abc123checksum")
+				testutil.CreateFile(t, provisionSentinels, "node", "def456checksum")
 
 				// Create homebrew sentinels
 				homebrewDir := filepath.Join(dataDir, "homebrew")
@@ -129,8 +129,8 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 				testutil.CreateFile(t, homebrewDir, "dev", "jkl012checksum")
 			},
 			expectedVars: map[string][]string{
-				"DODOT_INSTALL_SCRIPTS": {"vim", "node"},
-				"DODOT_BREWFILES":       {"base", "dev"},
+				"DODOT_PROVISION_SCRIPTS": {"vim", "node"},
+				"DODOT_BREWFILES":         {"base", "dev"},
 			},
 		},
 		{
@@ -141,7 +141,7 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 				testutil.CreateDir(t, dataDir, "deployed/shell_profile")
 				testutil.CreateDir(t, dataDir, "deployed/path")
 				testutil.CreateDir(t, dataDir, "deployed/shell_source")
-				testutil.CreateDir(t, dataDir, "install/sentinels")
+				testutil.CreateDir(t, dataDir, "provision/sentinels")
 				testutil.CreateDir(t, dataDir, "homebrew")
 
 				// Symlinks
@@ -168,16 +168,16 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 				testutil.CreateSymlink(t, envPath, filepath.Join(dataDir, "deployed/shell_source/env.sh"))
 
 				// Run-once sentinels
-				testutil.CreateFile(t, filepath.Join(dataDir, "install/sentinels"), "vim", "checksum1")
+				testutil.CreateFile(t, filepath.Join(dataDir, "provision/sentinels"), "vim", "checksum1")
 				testutil.CreateFile(t, filepath.Join(dataDir, "homebrew"), "base", "checksum2")
 			},
 			expectedVars: map[string][]string{
-				"DODOT_SYMLINKS":        {"vim/.vimrc"},
-				"DODOT_SHELL_PROFILES":  {"base/aliases.sh"},
-				"DODOT_PATH_DIRS":       {"tools/bin"},
-				"DODOT_SHELL_SOURCES":   {"dev/env.sh"},
-				"DODOT_INSTALL_SCRIPTS": {"vim"},
-				"DODOT_BREWFILES":       {"base"},
+				"DODOT_SYMLINKS":          {"vim/.vimrc"},
+				"DODOT_SHELL_PROFILES":    {"base/aliases.sh"},
+				"DODOT_PATH_DIRS":         {"tools/bin"},
+				"DODOT_SHELL_SOURCES":     {"dev/env.sh"},
+				"DODOT_PROVISION_SCRIPTS": {"vim"},
+				"DODOT_BREWFILES":         {"base"},
 			},
 		},
 		{
@@ -188,12 +188,12 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 			},
 			expectedVars: map[string][]string{
 				// All variables should be empty but exported
-				"DODOT_SYMLINKS":        {},
-				"DODOT_SHELL_PROFILES":  {},
-				"DODOT_PATH_DIRS":       {},
-				"DODOT_SHELL_SOURCES":   {},
-				"DODOT_INSTALL_SCRIPTS": {},
-				"DODOT_BREWFILES":       {},
+				"DODOT_SYMLINKS":          {},
+				"DODOT_SHELL_PROFILES":    {},
+				"DODOT_PATH_DIRS":         {},
+				"DODOT_SHELL_SOURCES":     {},
+				"DODOT_PROVISION_SCRIPTS": {},
+				"DODOT_BREWFILES":         {},
 			},
 		},
 	}
@@ -236,7 +236,7 @@ echo "DODOT_SYMLINKS=$DODOT_SYMLINKS"
 echo "DODOT_SHELL_PROFILES=$DODOT_SHELL_PROFILES"
 echo "DODOT_PATH_DIRS=$DODOT_PATH_DIRS"
 echo "DODOT_SHELL_SOURCES=$DODOT_SHELL_SOURCES"
-echo "DODOT_INSTALL_SCRIPTS=$DODOT_INSTALL_SCRIPTS"
+echo "DODOT_PROVISION_SCRIPTS=$DODOT_PROVISION_SCRIPTS"
 echo "DODOT_BREWFILES=$DODOT_BREWFILES"
 echo "DODOT_DATA_DIR=$DODOT_DATA_DIR"
 echo "DODOT_DEPLOYMENT_ROOT=$DODOT_DEPLOYMENT_ROOT"
@@ -351,7 +351,7 @@ source "%s"
 
 # Test cases
 # Should run - no sentinel
-if dodot_should_run_once "install" "newpack" "xyz789"; then
+if dodot_should_run_once "provision" "newpack" "xyz789"; then
     echo "PASS: newpack should run"
 else
     echo "FAIL: newpack should run"

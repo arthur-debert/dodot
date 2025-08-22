@@ -1,4 +1,4 @@
-package install
+package provision
 
 import (
 	"errors"
@@ -13,8 +13,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// InstallPacksOptions defines the options for the InstallPacks command.
-type InstallPacksOptions struct {
+// ProvisionPacksOptions defines the options for the ProvisionPacks command.
+type ProvisionPacksOptions struct {
 	// DotfilesRoot is the path to the root of the dotfiles directory.
 	DotfilesRoot string
 	// PackNames is a list of specific packs to install. If empty, all packs are installed.
@@ -27,12 +27,12 @@ type InstallPacksOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// InstallPacks runs the installation + deployment using the direct executor approach.
+// ProvisionPacks runs the installation + deployment using the direct executor approach.
 // It executes both RunModeProvisioning actions (install scripts, brewfiles) and RunModeLinking
 // actions (symlinks, shell profiles, path) in sequence.
-func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
-	log := logging.GetLogger("commands.install")
-	log.Debug().Str("command", "InstallPacks").Msg("Executing command")
+func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error) {
+	log := logging.GetLogger("commands.provision")
+	log.Debug().Str("command", "ProvisionPacks").Msg("Executing command")
 
 	// Phase 1: Run install scripts, brewfiles, etc. (RunModeProvisioning actions)
 	log.Debug().Msg("Phase 1: Executing provisioning actions (install scripts, brewfiles)")
@@ -46,16 +46,16 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	})
 
 	if err != nil {
-		log.Error().Err(err).Msg("Phase 1 (install) failed")
+		log.Error().Err(err).Msg("Phase 1 (provisioning) failed")
 		// Check if this is a pack not found error and propagate it directly
 		var dodotErr *doerrors.DodotError
 		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
 			return installCtx, err // Return the original error to preserve error code
 		}
-		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute install actions")
+		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning actions")
 	}
 
-	// Phase 2: Run symlinks, shell profiles, etc. (RunModeMany actions)
+	// Phase 2: Run symlinks, shell profiles, etc. (RunModeLinking actions)
 	log.Debug().Msg("Phase 2: Executing deployment actions (symlinks, profiles)")
 	deployCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
@@ -67,20 +67,20 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 	})
 
 	if err != nil {
-		log.Error().Err(err).Msg("Phase 2 (deploy) failed")
+		log.Error().Err(err).Msg("Phase 2 (linking) failed")
 		// Check if this is a pack not found error and propagate it directly
 		var dodotErr *doerrors.DodotError
 		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
 			return mergeExecutionContexts(installCtx, deployCtx), err // Return the original error to preserve error code
 		}
 		// Return combined context with partial results from both phases
-		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute deployment actions")
+		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute linking actions")
 	}
 
 	// Merge results from both phases
 	mergedCtx := mergeExecutionContexts(installCtx, deployCtx)
 
-	// Install shell integration after successful execution (not in dry-run mode)
+	// Set up shell integration after successful execution (not in dry-run mode)
 	if !opts.DryRun && (mergedCtx.CompletedActions > 0 || mergedCtx.SkippedActions > 0) {
 		log.Debug().Msg("Installing shell integration")
 
@@ -113,7 +113,7 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 		Int("installActions", installCtx.TotalActions).
 		Int("deployActions", deployCtx.TotalActions).
 		Int("totalActions", mergedCtx.TotalActions).
-		Str("command", "InstallPacks").
+		Str("command", "ProvisionPacks").
 		Msg("Command finished")
 
 	return mergedCtx, nil
@@ -122,18 +122,18 @@ func InstallPacks(opts InstallPacksOptions) (*types.ExecutionContext, error) {
 // mergeExecutionContexts combines results from install and deploy phases into a single context
 func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *types.ExecutionContext {
 	if installCtx == nil && deployCtx == nil {
-		return types.NewExecutionContext("install", false)
+		return types.NewExecutionContext("provision", false)
 	}
 	if installCtx == nil {
-		deployCtx.Command = "install" // Update command name
+		deployCtx.Command = "provision" // Update command name
 		return deployCtx
 	}
 	if deployCtx == nil {
 		return installCtx
 	}
 
-	// Create new merged context using install context as base
-	merged := types.NewExecutionContext("install", installCtx.DryRun)
+	// Create new merged context using provisioning context as base
+	merged := types.NewExecutionContext("provision", installCtx.DryRun)
 	merged.StartTime = installCtx.StartTime
 
 	// Add all pack results from install phase
@@ -185,10 +185,4 @@ func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *type
 	}
 
 	return merged
-}
-
-// InstallPacksDirect is an alias for InstallPacks for backward compatibility.
-// Deprecated: Use InstallPacks instead.
-func InstallPacksDirect(opts InstallPacksOptions) (*types.ExecutionContext, error) {
-	return InstallPacks(opts)
 }

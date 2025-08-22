@@ -133,7 +133,7 @@ func TestTopicManager_ListTopics(t *testing.T) {
 	testutil.CreateDir(t, tmpDir, "help")
 
 	// Create some topics
-	topics := []string{"install", "link", "dry-run", "config"}
+	topics := []string{"provision", "link", "dry-run", "config"}
 	for _, topic := range topics {
 		testutil.CreateFile(t, topicsDir, topic+".txt", "Help for "+topic)
 	}

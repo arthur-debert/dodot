@@ -200,9 +200,9 @@ func findAndRemoveDeployments(action types.Action, fs types.FS, opts UnlinkPacks
 func cleanupPackState(pack types.Pack, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
 	items := []RemovedItem{}
 
-	// Remove install script sentinels
-	installSentinel := filepath.Join(opts.DataDir, "install", "sentinels", pack.Name)
-	if item := removeIfExists(installSentinel, "install_sentinel", fs, opts); item != nil {
+	// Remove provision script sentinels
+	provisionSentinel := filepath.Join(opts.DataDir, "provision", "sentinels", pack.Name)
+	if item := removeIfExists(provisionSentinel, "provision_sentinel", fs, opts); item != nil {
 		items = append(items, *item)
 	}
 

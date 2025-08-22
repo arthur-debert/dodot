@@ -122,7 +122,7 @@ func TestDirectExecutor_WriteHandler(t *testing.T) {
 			Content:     testContent,
 			Mode:        0755,
 			Pack:        "test",
-			HandlerName: "install",
+			HandlerName: "provision",
 			Priority:    100,
 		},
 	}
@@ -177,7 +177,7 @@ func TestDirectExecutor_RunAction(t *testing.T) {
 			Command:     "echo",
 			Args:        []string{"Hello", "from test"},
 			Pack:        "test",
-			HandlerName: "install",
+			HandlerName: "provision",
 			Priority:    100,
 		},
 	}
@@ -289,7 +289,7 @@ func TestDirectExecutor_MixedHandlers(t *testing.T) {
 			Source:      filepath.Join(dotfilesDir, "install.sh"),
 			Target:      filepath.Join(p.InstallDir(), "install.sh"),
 			Pack:        "bash",
-			HandlerName: "install",
+			HandlerName: "provision",
 			Priority:    90,
 		},
 		{
@@ -298,7 +298,7 @@ func TestDirectExecutor_MixedHandlers(t *testing.T) {
 			Command:     "chmod",
 			Args:        []string{"+x", filepath.Join(p.InstallDir(), "install.sh")},
 			Pack:        "bash",
-			HandlerName: "install",
+			HandlerName: "provision",
 			Priority:    80,
 		},
 		// From a hypothetical config writer
@@ -936,7 +936,7 @@ echo "Done!"`
 	testutil.AssertTrue(t, testutil.FileExists(t, targetScript), "Install script should be copied")
 
 	// Verify sentinel file was created
-	sentinelPath := p.SentinelPath("install", "tools")
+	sentinelPath := p.SentinelPath("provision", "tools")
 	testutil.AssertTrue(t, testutil.FileExists(t, sentinelPath), "Sentinel file should exist")
 
 	// Verify the install script was actually executed by checking for the marker file

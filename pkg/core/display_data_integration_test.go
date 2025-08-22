@@ -366,7 +366,7 @@ func TestToDisplayResult_LastExecutedTimestamps(t *testing.T) {
 
 	// Failed HandlerResult (should not have LastExecuted)
 	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "install",
+		HandlerName: "provision",
 		Files:       []string{filepath.Join(packDir, "install-file")},
 		Status:      types.StatusError,
 		EndTime:     time.Now(),
@@ -406,7 +406,7 @@ func TestToDisplayResult_LastExecutedTimestamps(t *testing.T) {
 	testutil.AssertTrue(t, symlinkFile.LastExecuted.Equal(successTime), "timestamp should match HandlerResult EndTime")
 
 	// Test failed HandlerResult has no LastExecuted timestamp
-	installFile := fileMap["install"]
+	installFile := fileMap["provision"]
 	testutil.AssertTrue(t, installFile != nil, "install file should exist")
 	testutil.AssertTrue(t, installFile.LastExecuted == nil, "failed HandlerResult should not have LastExecuted")
 
@@ -468,7 +468,7 @@ func TestToDisplayResult_HandlerAwareMessages(t *testing.T) {
 
 	// Test install Handler - error
 	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "install",
+		HandlerName: "provision",
 		Files:       []string{filepath.Join(packDir, "setup.sh")},
 		Status:      types.StatusError,
 	})
@@ -520,8 +520,8 @@ func TestToDisplayResult_HandlerAwareMessages(t *testing.T) {
 	testutil.AssertEqual(t, "included in shell profile", shellSuccess.Message)
 
 	// Test install error message
-	installError := fileMap["install_setup.sh"]
-	testutil.AssertTrue(t, installError != nil, "install error file should exist")
+	installError := fileMap["provision_setup.sh"]
+	testutil.AssertTrue(t, installError != nil, "provision error file should exist")
 	testutil.AssertEqual(t, "installation failed", installError.Message)
 
 	// Test path pending message

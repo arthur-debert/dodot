@@ -20,7 +20,7 @@ func TestShouldProvisionAction(t *testing.T) {
 
 	// Create sentinel directories and paths instance
 	homebrewDir := filepath.Join(tmpDir, "homebrew")
-	installDir := filepath.Join(tmpDir, "install")
+	installDir := filepath.Join(tmpDir, "provision")
 	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(installDir, 0755)
 
@@ -194,7 +194,7 @@ func TestFilterProvisioningActions(t *testing.T) {
 
 	// Create sentinel directories and files
 	homebrewDir := filepath.Join(tmpDir, "homebrew")
-	installDir := filepath.Join(tmpDir, "install")
+	installDir := filepath.Join(tmpDir, "provision")
 	_ = os.MkdirAll(homebrewDir, 0755)
 	_ = os.MkdirAll(filepath.Join(installDir, "sentinels"), 0755)
 	_ = os.WriteFile(filepath.Join(homebrewDir, "tools"), []byte("brew123"), 0644)

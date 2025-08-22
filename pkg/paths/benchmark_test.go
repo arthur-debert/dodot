@@ -31,7 +31,7 @@ func BenchmarkPathOperations(b *testing.B) {
 
 	b.Run("StatePath", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			_ = p.StatePath("vim", "install")
+			_ = p.StatePath("vim", "provision")
 		}
 	})
 
@@ -139,7 +139,7 @@ func BenchmarkConcurrentPathAccess(b *testing.B) {
 			_ = p.PackPath("vim")
 			_ = p.DataDir()
 			_ = p.DeployedDir()
-			_ = p.StatePath("vim", "install")
+			_ = p.StatePath("vim", "provision")
 		}
 	})
 }

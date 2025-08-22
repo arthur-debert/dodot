@@ -61,7 +61,7 @@ const (
 	ShellDir = "shell"
 
 	// InstallDir is the subdirectory for install sentinels
-	InstallDir = "install"
+	InstallDir = "provision"
 
 	// HomebrewDir is the subdirectory for homebrew sentinels
 	HomebrewDir = "homebrew"
@@ -427,11 +427,11 @@ func (p *Paths) HomebrewDir() string {
 // For example: ~/.local/share/dodot/install/vim
 //
 // Currently supported handlerTypes:
-//   - "install" - for install.sh scripts
+//   - "provision" - for install.sh scripts
 //   - "homebrew" - for Brewfile executions
 func (p *Paths) SentinelPath(handlerType, packName string) string {
 	switch handlerType {
-	case "install":
+	case "provision":
 		return filepath.Join(p.InstallDir(), "sentinels", packName)
 	case "homebrew":
 		return filepath.Join(p.HomebrewDir(), packName)

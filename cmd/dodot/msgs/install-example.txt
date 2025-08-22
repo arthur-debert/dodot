@@ -1,5 +1,0 @@
-  # Install all packs
-  dodot install
-  
-  # Install specific packs
-  dodot install vim zsh

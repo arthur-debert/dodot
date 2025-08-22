@@ -22,7 +22,7 @@ func TestNewExecutionContext(t *testing.T) {
 		},
 		{
 			name:    "install command real run",
-			command: "install",
+			command: "provision",
 			dryRun:  false,
 		},
 		{
@@ -269,7 +269,7 @@ func TestPackExecutionResult_AddHandlerResult(t *testing.T) {
 				{HandlerName: "homebrew", Status: StatusError},
 				{HandlerName: "shell", Status: StatusSkipped},
 				{HandlerName: "path", Status: StatusReady},
-				{HandlerName: "install", Status: StatusConflict},
+				{HandlerName: "provision", Status: StatusConflict},
 			},
 			expectedTotal:     5,
 			expectedCompleted: 2,
@@ -515,7 +515,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Install tests
 		{
 			name:         "install success with time",
-			handlerName:  "install",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
 			lastExecuted: &testTime,
@@ -531,14 +531,14 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "install error",
-			handlerName:  "install",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "error",
 			wantContains: "installation failed",
 		},
 		{
 			name:         "install queue",
-			handlerName:  "install",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "queue",
 			wantContains: "to be executed during installation",
@@ -756,7 +756,7 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 	pc := PackConfig{
 		Override: []OverrideRule{
 			{Path: ".vimrc", Handler: "symlink"},
-			{Path: "*.sh", Handler: "install"},
+			{Path: "*.sh", Handler: "provision"},
 		},
 	}
 
@@ -773,7 +773,7 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 		{
 			name:     "pattern match",
 			filename: "install.sh",
-			wantRule: &OverrideRule{Path: "*.sh", Handler: "install"},
+			wantRule: &OverrideRule{Path: "*.sh", Handler: "provision"},
 		},
 		{
 			name:     "no match",

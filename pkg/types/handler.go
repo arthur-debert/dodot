@@ -9,12 +9,6 @@ const (
 
 	// RunModeProvisioning indicates the handler provisions resources and should only run once per pack
 	RunModeProvisioning RunMode = "provisioning"
-
-	// Deprecated: Use RunModeLinking instead
-	RunModeMany = RunModeLinking
-
-	// Deprecated: Use RunModeProvisioning instead
-	RunModeOnce = RunModeProvisioning
 )
 
 const (
