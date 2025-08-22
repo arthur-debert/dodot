@@ -56,13 +56,13 @@ dodot is a stateless dotfiles manager built around four key components:
 
 1. **Triggers** - Pattern-matching engines that scan files and directories within packs
 2. **Matchers** - Configuration objects that bind triggers to handlers
-3. **Handlers** - Action generators that process matched files (symlink, homebrew, install_script, shell_profile, etc.)
+3. **Handlers** - Action generators that process matched files (symlink, homebrew, provision, shell_profile, etc.)
 4. **Actions** - High-level descriptions of operations to be performed
 
 ### Key Design Principles
-- **No state management** - deployments are idempotent
+- **No state management** - linking is idempotent
 - **Heavy use of symlinks** - for live editing of configs
-- **Files under source control ARE the deployed files** - no copying
+- **Files under source control ARE the linked files** - no copying
 - **Organized in "packs"** - directories under DOTFILES_ROOT
 - **File system safety** - all operations go through synthfs
 - **Type safety** - leverage Go's type system throughout

@@ -19,7 +19,7 @@ The TLDR
 
 • Users centralize their dotfiles/configs under source control in a single repository.
 • In this repository, users organize configurations by grouping related files into directories, called
-  "packs." This forms the unit of work that can be deployed or installed together.
+  "packs." This forms the unit of work that can be linked or provisioned together.
 • dodot performs various tasks ("skills") like creating symlinks, modifying the shell profile, etc.
 • dodot discovers what to do with each file primarily through naming conventions (e.g., a bin directory is
   added to $PATH, an aliases.sh file is sourced into the shell profile).

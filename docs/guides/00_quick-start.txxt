@@ -26,7 +26,7 @@ Basic Usage
 
 3. Deploy your configurations:
 
-    dodot deploy vim
+    dodot link vim
 
 That's it! Your vimrc is now symlinked and managed by dodot.
 
@@ -37,5 +37,5 @@ What's Next?
 • See docs/user/handlers.txxt for all available features
 • Check examples/ for common configuration patterns
 
-dodot deploy --all deploys all packs at once.
-dodot list shows what's available to deploy.
+dodot link --all links all packs at once.
+dodot list shows what's available to link.

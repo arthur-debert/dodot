@@ -1,7 +1,7 @@
 # Handlers Guide
 
 Handlers are the action generators in dodot that process matched files and directories
-to create deployment actions. Each handler serves a specific purpose in managing your
+to create link actions. Each handler serves a specific purpose in managing your
 dotfiles.
 
 ## Available Handlers
@@ -17,13 +17,13 @@ including examples, configuration, and best practices, see:
    - See: `pkg/handlers/symlink/doc.go`
    - Use for: Configuration files, dotfiles
 
-2. **InstallScriptHandler** (`install_script`)
+2. **ProvisionScriptHandler** (`provision`)
    - Executes shell scripts for one-time setup
    - See: `pkg/handlers/install/doc.go`
    - Use for: Installing tools, initial setup
 
 3. **BrewHandler** (`brew`)
-   - Processes Brewfiles to install Homebrew packages
+   - Processes Brewfiles to manage Homebrew packages
    - See: `pkg/handlers/homebrew/doc.go`
    - Use for: System packages, GUI apps (macOS)
 
@@ -52,13 +52,13 @@ including examples, configuration, and best practices, see:
 
 Handlers run in different phases based on their RunMode:
 
-### Install Phase (`dodot install`)
+### Provision Phase (`dodot provision`)
 - **RunModeOnce** handlers execute here
-- InstallScriptHandler: Runs setup scripts
+- ProvisionScriptHandler: Runs setup scripts
 - BrewHandler: Installs packages
-- These run before deployment actions
+- These run before link actions
 
-### Deploy Phase (`dodot deploy`)
+### Link Phase (`dodot link`)
 - **RunModeMany** handlers execute here
 - SymlinkHandler: Creates configuration symlinks
 - PathHandler: Updates PATH
@@ -69,19 +69,19 @@ Handlers run in different phases based on their RunMode:
 
 | Handler | Run Mode | Purpose | Creates |
 |---------|----------|---------|---------|
-| symlink | Deploy | Link configs | Symlinks in ~ |
-| install_script | Install | Run setup scripts | Whatever scripts create |
-| brew | Install | Install packages | System packages |
-| shell_profile | Deploy | Shell config | Entries in init.sh |
-| path | Deploy | PATH management | PATH exports |
-| template | Deploy | File generation | Processed files |
+| symlink | Link | Link configs | Symlinks in ~ |
+| provision | Provision | Run setup scripts | Whatever scripts create |
+| brew | Provision | Manage packages | System packages |
+| shell_profile | Link | Shell config | Entries in init.sh |
+| path | Link | PATH management | PATH exports |
+| template | Link | File generation | Processed files |
 
 ## Handler Documentation Structure
 
 Each handler's doc.go file contains:
 
 1. **Overview**: What the handler does
-2. **When It Runs**: Deploy vs Install mode
+2. **When It Runs**: Link vs Provision mode
 3. **Standard Configuration**: Example matcher configs
 4. **File Selection Process**: How files are matched
 5. **Execution Strategy**: How it works internally

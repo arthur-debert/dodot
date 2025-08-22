@@ -3,7 +3,7 @@ Pack and File Display Design
 
 This document describes the design for displaying pack and file status information
 in dodot's terminal output. This unified display format is used across multiple
-commands including status, deploy, and install.
+commands including status, link, and provision.
 
 
 General Display Format
@@ -25,15 +25,15 @@ Status Types and Color Coding
 Files and packs can have the following status types:
 
 1. SUCCESS (Green background, white text)
-   - File has been deployed/installed successfully
+   - File has been linked/provisioned successfully
    - Shows past tense verbs with completion details
 
 2. ERROR (Red background, white text)
-   - Deploy/install attempt has failed
+   - Link/provision attempt has failed
    - Shows failure messages
 
 3. QUEUE (Yellow background, black text)
-   - File is pending deployment/installation
+   - File is pending linking/provisioning
    - Shows future tense verbs
 
 4. ALERT (Red background, white text, bold) - Pack level only
@@ -115,7 +115,7 @@ PATH
 INSTALL
 - Past: "executed during installation on"
 - Future: "to be executed"
-- Example: "setup.sh : executed during installation on 2024-01-15"
+- Example: "setup.sh : executed during provisioning on 2024-01-15"
 
 CONFIG
 - Always present tense: "found"

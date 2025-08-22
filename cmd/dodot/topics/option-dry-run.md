@@ -8,9 +8,9 @@ making any changes to your system.
 Add `--dry-run` to any command to see what would happen:
 
 ```bash
-$ dodot deploy --dry-run
-$ dodot install vim --dry-run
-$ dodot deploy --all --dry-run
+$ dodot link --dry-run
+$ dodot provision vim --dry-run
+$ dodot link --all --dry-run
 ```
 
 ## What It Shows
@@ -37,7 +37,7 @@ In dry-run mode, dodot will **NOT**:
 ## Example Output
 
 ```bash
-$ dodot deploy vim --dry-run
+$ dodot link vim --dry-run
 
 DRY RUN MODE - No changes will be made
 

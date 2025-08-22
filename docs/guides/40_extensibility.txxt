@@ -62,10 +62,10 @@ Actions describe high-level operations. New actions require:
 3. Register the translation logic
 
 Example use cases:
-• EncryptAction - Encrypt file before deployment
+• EncryptAction - Encrypt file before linking
 • NetworkAction - Download remote configurations
 • DatabaseAction - Store configuration in database
-• NotificationAction - Send deployment notifications
+• NotificationAction - Send link notifications
 
 Extension Points
 ----------------
@@ -206,7 +206,7 @@ Integration APIs:
 The extensibility model could support external integrations:
 • REST APIs for remote handlers
 • Message queue integration for async operations
-• Webhook support for deployment notifications
+• Webhook support for link notifications
 
 The registry pattern ensures dodot remains simple while providing
 powerful extension capabilities for advanced users and integrations.

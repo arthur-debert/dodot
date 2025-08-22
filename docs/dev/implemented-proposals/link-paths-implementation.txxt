@@ -32,7 +32,7 @@ Add .dodot.toml support for custom mappings.
 ::: New API in pkg/paths/paths.go
 
 ```go
-// MapPackFileToSystem maps a file from a pack to its deployment location
+// MapPackFileToSystem maps a file from a pack to its link location
 // In Release A, this preserves current behavior: targetDir + relPath
 func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string
 
@@ -40,7 +40,7 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string
 // In Release A, this extracts current logic from adopt command
 func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string
 
-// GetTargetDirectory returns the deployment directory for a pack file
+// GetTargetDirectory returns the link directory for a pack file
 // In Release A, always returns HomeDir (current behavior)
 func (p *Paths) GetTargetDirectory(pack *types.Pack, relPath string) string
 ```
@@ -79,7 +79,7 @@ targetPath := paths.MapPackFileToSystem(pack, relPath)
 1. All existing tests must pass without modification
 2. `dodot status` output must remain identical
 3. `dodot adopt` must place files in same locations as before
-4. Symlink deployment must create identical links
+4. Symlink linking must create identical links
 
 :: Release B: Layer 1 - Smart Defaults
 
