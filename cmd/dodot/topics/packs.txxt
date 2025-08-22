@@ -50,7 +50,7 @@ Best Practices
 • Keep install scripts idempotent
 • Use subdirectories for organization
 • Document pack purpose in readme.txt
-• Test with --dry-run before deploying
+• Test with --dry-run before linking
 
 Common Patterns
 ---------------

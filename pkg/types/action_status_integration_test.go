@@ -222,7 +222,7 @@ func TestActionCheckStatus_Install(t *testing.T) {
 				// Create source file
 				testutil.CreateFileT(t, fs, "dotfiles/tools/install.sh", "install script content")
 				// Create sentinel file with matching checksum
-				sentinelPath := filepath.Join(dataDir, "install", "tools_install.sh.sentinel")
+				sentinelPath := filepath.Join(dataDir, "provision", "tools_install.sh.sentinel")
 				testutil.CreateDirT(t, fs, filepath.Dir(sentinelPath))
 				// Use actual checksum of the content
 				checksum := "8fd3ca7d6ce2b983eca4fe5cd5c33de49c05c6ce4aa2c9b13e9851a3cef006fe"

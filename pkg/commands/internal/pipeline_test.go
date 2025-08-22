@@ -44,7 +44,7 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	testutil.AssertNotNil(t, ctx)
 
 	// Verify context
-	testutil.AssertEqual(t, "deploy", ctx.Command)
+	testutil.AssertEqual(t, "link", ctx.Command)
 	testutil.AssertFalse(t, ctx.DryRun, "Should not be dry run")
 
 	// Verify pack results
@@ -141,7 +141,7 @@ echo "Installing tools"
 	testutil.AssertNotNil(t, ctx)
 
 	// Verify context
-	testutil.AssertEqual(t, "install", ctx.Command)
+	testutil.AssertEqual(t, "provision", ctx.Command)
 
 	// Verify pack results
 	packResult, ok := ctx.GetPackResult("tools")
@@ -150,7 +150,7 @@ echo "Installing tools"
 	// Should have install_script handler
 	found := false
 	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "install_script" {
+		if pur.HandlerName == "provision" {
 			found = true
 			break
 		}
@@ -198,7 +198,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 			Description: "Symlink action",
 		},
 		{
-			HandlerName: "install_script", // RunModeProvisioning
+			HandlerName: "provision", // RunModeProvisioning
 			Description: "Install action",
 		},
 		{

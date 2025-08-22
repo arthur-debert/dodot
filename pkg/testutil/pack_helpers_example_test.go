@@ -75,7 +75,7 @@ echo "Installing tools..."
 `)
 
 		// Add install script config
-		pack.AddStandardConfig(t, "install")
+		pack.AddStandardConfig(t, "provision")
 
 		// Test that install.sh is executable
 		assert.FileExists(t, filepath.Join(pack.Dir, "install.sh"))

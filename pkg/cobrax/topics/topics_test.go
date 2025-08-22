@@ -133,7 +133,7 @@ func TestTopicManager_ListTopics(t *testing.T) {
 	testutil.CreateDir(t, tmpDir, "help")
 
 	// Create some topics
-	topics := []string{"install", "deploy", "dry-run", "config"}
+	topics := []string{"provision", "link", "dry-run", "config"}
 	for _, topic := range topics {
 		testutil.CreateFile(t, topicsDir, topic+".txt", "Help for "+topic)
 	}
@@ -173,7 +173,7 @@ func TestInitialize(t *testing.T) {
 
 	// Add a regular command
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "deploy",
+		Use:   "link",
 		Short: "Deploy something",
 		Run:   func(cmd *cobra.Command, args []string) {},
 	})

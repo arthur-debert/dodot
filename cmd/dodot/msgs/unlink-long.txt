@@ -1,4 +1,4 @@
-The off command removes all deployments for specified packs, effectively "turning off"
+The unlink command removes all links for specified packs, effectively "unlinking"
 those configurations without removing the source files from your dotfiles repository.
 
 This is useful when you want to:

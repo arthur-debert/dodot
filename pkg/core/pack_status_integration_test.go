@@ -279,7 +279,7 @@ func TestGetPackStatus(t *testing.T) {
 					Description: "Run install script",
 					Source:      "dotfiles/multi/install.sh",
 					Pack:        "multi",
-					HandlerName: "install",
+					HandlerName: "provision",
 				},
 				{
 					Type:        types.ActionTypePathAdd,
@@ -315,7 +315,7 @@ func TestGetPackStatus(t *testing.T) {
 				testutil.CreateFileT(t, fs, brewSentinel, brewChecksum+":2024-01-15T10:00:00Z")
 
 				// Install script sentinel - uses pack_scriptname.sentinel format with checksum:timestamp
-				installSentinel := filepath.Join(dataDir, "install", "multi_install.sh.sentinel")
+				installSentinel := filepath.Join(dataDir, "provision", "multi_install.sh.sentinel")
 				timestamp := time.Now().Format(time.RFC3339)
 				testutil.CreateFileT(t, fs, installSentinel, installChecksum+":"+timestamp)
 			},
@@ -332,7 +332,7 @@ func TestGetPackStatus(t *testing.T) {
 				}
 
 				assert.True(t, handlerTypes["homebrew"])
-				assert.True(t, handlerTypes["install_script"])
+				assert.True(t, handlerTypes["provision"])
 				assert.True(t, handlerTypes["path"])
 				assert.True(t, handlerTypes["shell_profile"])
 

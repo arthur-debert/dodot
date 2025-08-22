@@ -159,7 +159,7 @@ Errors are handled at appropriate levels:
 • Handler errors - Fail the handler, continue with others.
 • Execution errors - Stop processing and report the failure.
 
-This provides graceful degradation while preventing partial deployments.
+This provides graceful degradation while preventing partial linking.
 
 Error Codes:
 All errors use structured error codes (not just messages) for stable testing:
@@ -171,7 +171,7 @@ errors.New(errors.ErrActionInvalid, "missing target path")
 Run-Once Mechanism
 ------------------
 
-For handlers like `install` and `homebrew`, a sentinel file system prevents
+For handlers like provision scripts and `homebrew`, a sentinel file system prevents
 repeated execution:
 1. Before execution, check for sentinel file with matching checksum
 2. If found and checksum matches, skip execution
@@ -179,7 +179,7 @@ repeated execution:
 4. If source file changes, checksum mismatch triggers re-execution
 
 Sentinel files are stored in:
-• ~/.local/share/dodot/install/sentinels/<pack>
+• ~/.local/share/dodot/provision/<pack>_<script>.sentinel
 • ~/.local/share/dodot/homebrew/<pack>
 
 Performance Considerations

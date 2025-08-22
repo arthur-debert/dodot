@@ -17,12 +17,12 @@ func TestNewExecutionContext(t *testing.T) {
 	}{
 		{
 			name:    "deploy command dry run",
-			command: "deploy",
+			command: "link",
 			dryRun:  true,
 		},
 		{
 			name:    "install command real run",
-			command: "install",
+			command: "provision",
 			dryRun:  false,
 		},
 		{
@@ -51,7 +51,7 @@ func TestNewExecutionContext(t *testing.T) {
 }
 
 func TestExecutionContext_AddPackResult(t *testing.T) {
-	ec := NewExecutionContext("deploy", false)
+	ec := NewExecutionContext("link", false)
 
 	// Create pack results with different statuses
 	pack1Result := &PackExecutionResult{
@@ -98,7 +98,7 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 }
 
 func TestExecutionContext_GetPackResult(t *testing.T) {
-	ec := NewExecutionContext("deploy", false)
+	ec := NewExecutionContext("link", false)
 
 	packResult := &PackExecutionResult{
 		Pack:          &Pack{Name: "vim"},
@@ -124,7 +124,7 @@ func TestExecutionContext_GetPackResult(t *testing.T) {
 }
 
 func TestExecutionContext_Complete(t *testing.T) {
-	ec := NewExecutionContext("deploy", false)
+	ec := NewExecutionContext("link", false)
 
 	// Initially EndTime should be zero
 	assert.True(t, ec.EndTime.IsZero())
@@ -269,7 +269,7 @@ func TestPackExecutionResult_AddHandlerResult(t *testing.T) {
 				{HandlerName: "homebrew", Status: StatusError},
 				{HandlerName: "shell", Status: StatusSkipped},
 				{HandlerName: "path", Status: StatusReady},
-				{HandlerName: "install", Status: StatusConflict},
+				{HandlerName: "provision", Status: StatusConflict},
 			},
 			expectedTotal:     5,
 			expectedCompleted: 2,
@@ -515,7 +515,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		// Install tests
 		{
 			name:         "install success with time",
-			handlerName:  "install",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
 			lastExecuted: &testTime,
@@ -523,7 +523,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "install_script success no time",
-			handlerName:  "install_script",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
 			lastExecuted: nil,
@@ -531,14 +531,14 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		{
 			name:         "install error",
-			handlerName:  "install",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "error",
 			wantContains: "installation failed",
 		},
 		{
 			name:         "install queue",
-			handlerName:  "install",
+			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "queue",
 			wantContains: "to be executed during installation",
@@ -583,7 +583,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 }
 
 func TestExecutionContext_ToDisplayResult(t *testing.T) {
-	ec := NewExecutionContext("deploy", true)
+	ec := NewExecutionContext("link", true)
 
 	// Create test packs
 	vimPack := &Pack{
@@ -636,7 +636,7 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 	dr := ec.ToDisplayResult()
 
 	// Verify basic properties
-	assert.Equal(t, "deploy", dr.Command)
+	assert.Equal(t, "link", dr.Command)
 	assert.True(t, dr.DryRun)
 	assert.Equal(t, ec.EndTime, dr.Timestamp)
 
@@ -756,7 +756,7 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 	pc := PackConfig{
 		Override: []OverrideRule{
 			{Path: ".vimrc", Handler: "symlink"},
-			{Path: "*.sh", Handler: "install"},
+			{Path: "*.sh", Handler: "provision"},
 		},
 	}
 
@@ -773,7 +773,7 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 		{
 			name:     "pattern match",
 			filename: "install.sh",
-			wantRule: &OverrideRule{Path: "*.sh", Handler: "install"},
+			wantRule: &OverrideRule{Path: "*.sh", Handler: "provision"},
 		},
 		{
 			name:     "no match",

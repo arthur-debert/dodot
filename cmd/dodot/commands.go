@@ -86,11 +86,11 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.SetUsageTemplate(MsgUsageTemplate)
 
 	// Add all commands
-	rootCmd.AddCommand(newDeployCmd())
-	rootCmd.AddCommand(newInstallCmd())
+	rootCmd.AddCommand(newLinkCmd())
+	rootCmd.AddCommand(newProvisionCmd())
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
-	rootCmd.AddCommand(newOffCmd())
+	rootCmd.AddCommand(newUnlinkCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
@@ -246,12 +246,12 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	return availablePacks, cobra.ShellCompDirectiveFilterDirs
 }
 
-func newDeployCmd() *cobra.Command {
+func newLinkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "deploy [packs...]",
-		Short:             MsgDeployShort,
-		Long:              MsgDeployLong,
-		Example:           MsgDeployExample,
+		Use:               "link [packs...]",
+		Short:             MsgLinkShort,
+		Long:              MsgLinkLong,
+		Example:           MsgLinkExample,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -267,10 +267,10 @@ func newDeployCmd() *cobra.Command {
 			log.Info().
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Bool("dry_run", dryRun).
-				Msg("Deploying from dotfiles root")
+				Msg("Linking from dotfiles root")
 
-			// Deploy packs using the new implementation
-			ctx, err := commands.DeployPacks(commands.DeployPacksOptions{
+			// Link packs using the new implementation
+			ctx, err := commands.LinkPacks(commands.LinkPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -280,9 +280,9 @@ func newDeployCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "deployment")
+					return handlePackNotFoundError(dodotErr, p, "linking")
 				}
-				return fmt.Errorf(MsgErrDeployPacks, err)
+				return fmt.Errorf(MsgErrLinkPacks, err)
 			}
 
 			// Display results using the new output renderer
@@ -301,12 +301,12 @@ func newDeployCmd() *cobra.Command {
 	}
 }
 
-func newInstallCmd() *cobra.Command {
+func newProvisionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "install [packs...]",
-		Short:             MsgInstallShort,
-		Long:              MsgInstallLong,
-		Example:           MsgInstallExample,
+		Use:               "provision [packs...]",
+		Short:             MsgProvisionShort,
+		Long:              MsgProvisionLong,
+		Example:           MsgProvisionExample,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -324,10 +324,10 @@ func newInstallCmd() *cobra.Command {
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Bool("dry_run", dryRun).
 				Bool("force", force).
-				Msg("Installing from dotfiles root")
+				Msg("Provisioning from dotfiles root")
 
-			// Install packs using the new implementation
-			ctx, err := commands.InstallPacks(commands.InstallPacksOptions{
+			// Provision packs using the new implementation
+			ctx, err := commands.ProvisionPacks(commands.ProvisionPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
@@ -338,9 +338,9 @@ func newInstallCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "installation")
+					return handlePackNotFoundError(dodotErr, p, "provisioning")
 				}
-				return fmt.Errorf(MsgErrInstallPacks, err)
+				return fmt.Errorf(MsgErrProvisionPacks, err)
 			}
 
 			// Display results using the new output renderer
@@ -697,7 +697,7 @@ func newSnippetCmd() *cobra.Command {
 		GroupID: "misc",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shell, _ := cmd.Flags().GetString("shell")
-			install, _ := cmd.Flags().GetBool("install")
+			provision, _ := cmd.Flags().GetBool("provision")
 
 			// Initialize paths to get custom data directory if set
 			p, err := initPaths()
@@ -709,7 +709,7 @@ func newSnippetCmd() *cobra.Command {
 			dataDir := p.DataDir()
 
 			// Install shell scripts if requested
-			if install {
+			if provision {
 				if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
 					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
@@ -729,17 +729,17 @@ func newSnippetCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringP("shell", "s", "bash", "Shell type (bash, zsh, fish)")
-	cmd.Flags().Bool("install", false, "Install shell integration scripts to data directory")
+	cmd.Flags().Bool("provision", false, "Install shell integration scripts to data directory")
 
 	return cmd
 }
 
-func newOffCmd() *cobra.Command {
+func newUnlinkCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:               "off [packs...]",
-		Short:             MsgOffShort,
-		Long:              MsgOffLong,
-		Example:           MsgOffExample,
+		Use:               "unlink [packs...]",
+		Short:             MsgUnlinkShort,
+		Long:              MsgUnlinkLong,
+		Example:           MsgUnlinkExample,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -758,10 +758,10 @@ func newOffCmd() *cobra.Command {
 				Strs("packs", args).
 				Bool("dry_run", dryRun).
 				Bool("force", force).
-				Msg("Turning off packs")
+				Msg("Unlinking packs")
 
 			// Run off command
-			result, err := commands.OffPacks(commands.OffPacksOptions{
+			result, err := commands.UnlinkPacks(commands.UnlinkPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				DataDir:      p.DataDir(),
 				PackNames:    args,
@@ -772,9 +772,9 @@ func newOffCmd() *cobra.Command {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
 				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "off")
+					return handlePackNotFoundError(dodotErr, p, "unlink")
 				}
-				return fmt.Errorf(MsgErrOffPacks, err)
+				return fmt.Errorf(MsgErrUnlinkPacks, err)
 			}
 
 			// Display results

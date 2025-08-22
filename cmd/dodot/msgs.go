@@ -9,12 +9,12 @@ import (
 const (
 	// Command descriptions
 	MsgRootShort       = "A stateless dotfiles manager"
-	MsgDeployShort     = "Deploy dotfiles to the system"
-	MsgInstallShort    = "Install and deploy dotfiles to the system"
+	MsgLinkShort       = "Link dotfiles to the system"
+	MsgProvisionShort  = "Provision and link dotfiles to the system"
 	MsgListShort       = "List all available packs"
 	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
 	MsgStatusShort     = "Show deployment status of packs"
-	MsgOffShort        = "Remove all deployments for specified packs"
+	MsgUnlinkShort     = "Unlink specified packs"
 	MsgInitShort       = "Create a new pack with template files"
 	MsgFillShort       = "Add placeholder files to an existing pack"
 	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
@@ -46,16 +46,16 @@ const (
 	MsgHandlerDesc       = " - %s"
 
 	// Error messages
-	MsgErrInitPaths    = "failed to initialize paths: %w"
-	MsgErrDeployPacks  = "failed to deploy packs: %w"
-	MsgErrInstallPacks = "failed to install packs: %w"
-	MsgErrListPacks    = "failed to list packs: %w"
-	MsgErrStatusPacks  = "failed to get pack status: %w"
-	MsgErrInitPack     = "failed to initialize pack: %w"
-	MsgErrFillPack     = "failed to fill pack: %w"
-	MsgErrAddIgnore    = "failed to add ignore file: %w"
-	MsgErrAdoptFiles   = "failed to adopt files: %w"
-	MsgErrOffPacks     = "failed to turn off packs: %w"
+	MsgErrInitPaths      = "failed to initialize paths: %w"
+	MsgErrLinkPacks      = "failed to link packs: %w"
+	MsgErrProvisionPacks = "failed to provision packs: %w"
+	MsgErrListPacks      = "failed to list packs: %w"
+	MsgErrStatusPacks    = "failed to get pack status: %w"
+	MsgErrInitPack       = "failed to initialize pack: %w"
+	MsgErrFillPack       = "failed to fill pack: %w"
+	MsgErrAddIgnore      = "failed to add ignore file: %w"
+	MsgErrAdoptFiles     = "failed to adopt files: %w"
+	MsgErrUnlinkPacks    = "failed to unlink packs: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
@@ -74,21 +74,21 @@ var (
 	msgRootLongRaw string
 	MsgRootLong    = strings.TrimSpace(msgRootLongRaw)
 
-	//go:embed msgs/deploy-long.txt
-	msgDeployLongRaw string
-	MsgDeployLong    = strings.TrimSpace(msgDeployLongRaw)
+	//go:embed msgs/link-long.txt
+	msgLinkLongRaw string
+	MsgLinkLong    = strings.TrimSpace(msgLinkLongRaw)
 
-	//go:embed msgs/deploy-example.txt
-	msgDeployExampleRaw string
-	MsgDeployExample    = strings.TrimSpace(msgDeployExampleRaw)
+	//go:embed msgs/link-example.txt
+	msgLinkExampleRaw string
+	MsgLinkExample    = strings.TrimSpace(msgLinkExampleRaw)
 
-	//go:embed msgs/install-long.txt
-	msgInstallLongRaw string
-	MsgInstallLong    = strings.TrimSpace(msgInstallLongRaw)
+	//go:embed msgs/provision-long.txt
+	msgProvisionLongRaw string
+	MsgProvisionLong    = strings.TrimSpace(msgProvisionLongRaw)
 
-	//go:embed msgs/install-example.txt
-	msgInstallExampleRaw string
-	MsgInstallExample    = strings.TrimSpace(msgInstallExampleRaw)
+	//go:embed msgs/provision-example.txt
+	msgProvisionExampleRaw string
+	MsgProvisionExample    = strings.TrimSpace(msgProvisionExampleRaw)
 
 	//go:embed msgs/list-example.txt
 	msgListExampleRaw string
@@ -134,13 +134,13 @@ var (
 	msgAdoptExampleRaw string
 	MsgAdoptExample    = strings.TrimSpace(msgAdoptExampleRaw)
 
-	//go:embed msgs/off-long.txt
-	msgOffLongRaw string
-	MsgOffLong    = strings.TrimSpace(msgOffLongRaw)
+	//go:embed msgs/unlink-long.txt
+	msgUnlinkLongRaw string
+	MsgUnlinkLong    = strings.TrimSpace(msgUnlinkLongRaw)
 
-	//go:embed msgs/off-example.txt
-	msgOffExampleRaw string
-	MsgOffExample    = strings.TrimSpace(msgOffExampleRaw)
+	//go:embed msgs/unlink-example.txt
+	msgUnlinkExampleRaw string
+	MsgUnlinkExample    = strings.TrimSpace(msgUnlinkExampleRaw)
 
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string

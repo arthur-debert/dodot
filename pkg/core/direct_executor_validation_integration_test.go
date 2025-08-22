@@ -530,9 +530,9 @@ func TestValidationIntegrationWithRealHandlers(t *testing.T) {
 		// Install script
 		{
 			Type:        types.ActionTypeCopy,
-			HandlerName: "install_script",
+			HandlerName: "provision",
 			Source:      filepath.Join(dotfilesDir, "install.sh"),
-			Target:      filepath.Join(p.InstallDir(), "install.sh"),
+			Target:      filepath.Join(p.ProvisionDir(), "install.sh"),
 		},
 	}
 

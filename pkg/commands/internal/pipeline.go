@@ -221,9 +221,9 @@ func filterActionsByRunMode(actions []types.Action, mode types.RunMode) ([]types
 func getCommandFromRunMode(mode types.RunMode) string {
 	switch mode {
 	case types.RunModeProvisioning:
-		return "install"
+		return "provision"
 	case types.RunModeLinking:
-		return "deploy"
+		return "link"
 	default:
 		return "execute"
 	}

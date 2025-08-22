@@ -137,7 +137,7 @@ func isProvisioningTrigger(trigger types.TriggerMatch) bool {
 	switch trigger.HandlerName {
 	case "brewfile", "homebrew":
 		return true
-	case "install_script", "install":
+	case "provision":
 		return true
 	}
 
@@ -154,8 +154,8 @@ func getHandlerTypeFromTrigger(trigger types.TriggerMatch) string {
 	switch trigger.HandlerName {
 	case "brewfile", "homebrew":
 		return "homebrew"
-	case "install_script", "install":
-		return "install"
+	case "provision":
+		return "provision"
 	}
 
 	// Fallback to checking filenames
@@ -163,7 +163,7 @@ func getHandlerTypeFromTrigger(trigger types.TriggerMatch) string {
 		return "homebrew"
 	}
 	if trigger.Path == "install.sh" {
-		return "install"
+		return "provision"
 	}
 
 	return ""

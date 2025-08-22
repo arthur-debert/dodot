@@ -138,8 +138,8 @@ func TestStatePaths(t *testing.T) {
 	testutil.AssertTrue(t, strings.HasPrefix(stateDir, p.DataDir()), "StateDir should be under DataDir")
 
 	// Test state file path
-	statePath := p.StatePath("mypack", "install")
-	expected := filepath.Join(p.StateDir(), "mypack", "install.json")
+	statePath := p.StatePath("mypack", "provision")
+	expected := filepath.Join(p.StateDir(), "mypack", "provision.json")
 	testutil.AssertEqual(t, expected, statePath)
 }
 

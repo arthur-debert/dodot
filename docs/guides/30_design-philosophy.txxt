@@ -11,8 +11,8 @@ Core Principles
 ---------------
 
 1. Versioning is left to git
-2. No installs, only deployments - changes are always live
-3. No state management - deployments are idempotent
+2. No installs, only linking - changes are always live
+3. No state management - linking is idempotent
 4. Complete freedom for users on file structure  
 5. Dead simple operation
 
@@ -20,8 +20,8 @@ The Big Picture
 ---------------
 
 These principles are deeply interconnected. By leaving versioning to git,
-we ensure your dotfiles repository IS your deployment. Combined with live
-changes, this means files under source control are the actual deployed
+we ensure your dotfiles repository IS your linked configuration. Combined with live
+changes, this means files under source control are the actual linked
 files - not copies.
 
 This is achieved primarily through symbolic links. For many handlers
@@ -29,7 +29,7 @@ This is achieved primarily through symbolic links. For many handlers
 source. There's nothing to "update" since changes to these config files
 are immediately live on the system.
 
-This enables stateless deployments—just linking paths from your system
+This enables stateless linking—just creating paths from your system
 to your source-controlled repository.
 
 File Organization Philosophy
@@ -56,35 +56,35 @@ Trade-offs and Consequences
 ---------------------------
 
 Benefits:
-• Simple mental model - your git repo is your deployment.
+• Simple mental model - your git repo is your linked configuration.
 • Live editing for symlinked files - changes are immediately active.
 • No complex state management or databases.
 • Easy backup and portability (just git).
 • Works with any existing git repository structure.
 
 Limitations:
-• Some handlers (`install`, `homebrew`) require a `dodot deploy` run to apply changes.
+• Some handlers (`provision`, `homebrew`) require a `dodot link` run to apply changes.
 • No built-in versioning beyond git.
-• Structural changes (adding new files) require redeployment.
-• `install` scripts must be idempotent.
+• Structural changes (adding new files) require relinking.
+• provision scripts must be idempotent.
 
 Examples of Trade-offs:
 
 Immediate vs. Deployed Changes:
 • **Live:** Edit a file handled by the `symlink` or `shell_profile`
   handlers. The changes are live instantly (or on the next shell start).
-• **Requires Deployment:** Edit an `install.sh` script or a `Brewfile`.
-  You must run `dodot deploy` for the changes to take effect.
+• **Requires Linking:** Edit a provision script or a `Brewfile`.
+  You must run `dodot link` for the changes to take effect.
 
 Structural Changes:
-If you deploy a pack without an `aliases.sh` file, then later add one, it
-won't be active until you run `dodot deploy` again, as the necessary
+If you link a pack without an `aliases.sh` file, then later add one, it
+won't be active until you run `dodot link` again, as the necessary
 symlink wasn't created initially. Use the `dodot fill` command to create
 placeholder files if needed.
 
 Run-Once Operations:
-Actions like `install.sh` scripts and `Brewfile` processing are tracked
-via sentinel files to prevent them from running on every single deployment.
+Actions like provision scripts and `Brewfile` processing are tracked
+via sentinel files to prevent them from running on every single link operation.
 They only re-run if the source file changes.
 
 
@@ -93,12 +93,12 @@ The Stateless Advantage
 
 No State Management:
 • No tracking database or metadata files
-• Each deployment is independent and complete
+• Each link operation is independent and complete
 • No complex upgrade/downgrade procedures
 • Easy to reason about and debug
 
 Idempotent Operations:
-Running the same deployment multiple times produces the same result. This
+Running the same link command multiple times produces the same result. This
 makes dodot predictable and safe for automation.
 
 File System Safety:
@@ -116,11 +116,11 @@ dodot works well when you:
 • Want simple, transparent dotfile management
 • Are comfortable with git-based versioning
 • Prefer live configuration editing
-• Don't need complex deployment workflows
+• Don't need complex link workflows
 • Value simplicity over advanced features
 
 dodot may not fit if you:
-• Need controlled deployment with approvals
+• Need controlled linking with approvals
 • Require complex rollback scenarios
 • Want built-in configuration versioning
 • Need to manage secrets or sensitive data
@@ -130,7 +130,7 @@ Design Philosophy Summary
 -------------------------
 
 dodot embraces simplicity over features. By accepting the constraints of
-git-based versioning, symlink deployment, and stateless operation, it
+git-based versioning, symlink linking, and stateless operation, it
 achieves a remarkably simple and predictable system.
 
 The design makes certain advanced features impossible while making common

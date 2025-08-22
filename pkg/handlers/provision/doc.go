@@ -1,15 +1,15 @@
-// Package install provides the InstallScriptHandler implementation for dodot.
+// Package install provides the ProvisionScriptHandler implementation for dodot.
 //
 // # Overview
 //
-// The InstallScriptHandler executes shell scripts for one-time setup tasks that should
+// The ProvisionScriptHandler executes shell scripts for one-time setup tasks that should
 // only run once per pack. This is ideal for installing dependencies, downloading resources,
 // creating directories, or performing initial configuration that doesn't need to be repeated.
 //
 // # When It Runs
 //
-// - **Deploy Mode**: NO - Does not run during `dodot deploy`
-// - **Install Mode**: YES - Runs during `dodot install` (RunModeProvisioning)
+// - **Link Mode**: NO - Does not run during `dodot link`
+// - **Provision Mode**: YES - Runs during `dodot provision` (RunModeProvisioning)
 // - **Idempotent**: YES - Uses checksums to track execution
 //
 // # Standard Configuration
@@ -19,7 +19,7 @@
 //	[matchers.install-scripts]
 //	trigger = "filename"
 //	patterns = ["install.sh"]
-//	handler = "install_script"
+//	handler = "provision"
 //	priority = 90
 //
 // Or in a pack-specific .dodot.toml:
@@ -27,14 +27,14 @@
 //	[[matchers]]
 //	trigger = "filename"
 //	patterns = ["setup.sh", "init.sh"]
-//	handler = "install_script"
+//	handler = "provision"
 //
 // # File Selection Process
 //
 // 1. **Pack Discovery**: dodot finds all subdirectories in $DOTFILES_ROOT
 // 2. **File Walking**: Recursively walks each pack directory
 // 3. **Trigger Matching**: FileNameTrigger matches files (typically "install.sh")
-// 4. **Handler Invocation**: Matched files are passed to InstallScriptHandler.Process()
+// 4. **Handler Invocation**: Matched files are passed to ProvisionScriptHandler.Process()
 //
 // Example file structure:
 //
@@ -57,27 +57,27 @@
 //
 // Execution process:
 //
-//  1. Copy script to ~/.local/share/dodot/install/<pack>/install.sh
+//  1. Copy script to ~/.local/share/dodot/provision/<pack>/install.sh
 //  2. Make script executable (chmod +x)
 //  3. Execute with environment variables set
 //  4. Store checksum in sentinel file on success
 //
 // # Storage Locations
 //
-// - **Copied scripts**: ~/.local/share/dodot/install/<pack_name>/
-// - **Sentinel files**: ~/.local/share/dodot/install/sentinels/<pack_name>
+// - **Copied scripts**: ~/.local/share/dodot/provision/<pack_name>/
+// - **Sentinel files**: ~/.local/share/dodot/provision/sentinels/<pack_name>
 // - **No cache**: Scripts are always copied fresh from source
 // - **Logs**: Script output captured in execution logs
 //
 // # Environment Variable Tracking
 //
-// Completed install scripts are tracked via the `DODOT_INSTALL_SCRIPTS` environment
+// Completed provision scripts are tracked via the `DODOT_PROVISION_SCRIPTS` environment
 // variable when dodot-init.sh is sourced:
 //
-// - **Variable**: `DODOT_INSTALL_SCRIPTS`
-// - **Format**: Colon-separated list of pack names with completed install scripts
+// - **Variable**: `DODOT_PROVISION_SCRIPTS`
+// - **Format**: Colon-separated list of pack names with completed provision scripts
 // - **Example**: `vim:node:python:tools`
-// - **Usage**: `echo $DODOT_INSTALL_SCRIPTS | tr ':' '\n'` to list completed packs
+// - **Usage**: `echo $DODOT_PROVISION_SCRIPTS | tr ':' '\n'` to list completed packs
 //
 // This helps track which packs have had their install scripts run successfully.
 //
@@ -87,7 +87,7 @@
 //
 // - **DOTFILES_ROOT**: Path to your dotfiles directory
 // - **DODOT_DATA_DIR**: Path to dodot's data directory (~/.local/share/dodot)
-// - **DODOT_PACK**: Name of the current pack being installed
+// - **DODOT_PACK**: Name of the current pack being provisioned
 // - **HOME**: User's home directory
 // - **PATH**: System PATH (scripts can modify for their session)
 //
@@ -101,32 +101,32 @@
 //
 // # Options
 //
-// Currently, InstallScriptHandler accepts no configuration options.
+// Currently, ProvisionScriptHandler accepts no configuration options.
 // All behavior is controlled by the script itself.
 //
 // # Script Template
 //
-// Use `dodot new install <pack>` to create a script from template:
+// Use `dodot new provision <pack>` to create a script from template:
 //
 //	#!/usr/bin/env bash
 //	set -euo pipefail
 //
-//	echo "Installing <pack>..."
+//	echo "Provisioning <pack>..."
 //
-//	# Your installation commands here
+//	# Your provisioning commands here
 //	# Access $DOTFILES_ROOT, $DODOT_PACK, etc.
 //
-//	echo "Installation complete!"
+//	echo "Provisioning complete!"
 //
 // # Example End-to-End Flow
 //
-// User runs: `dodot install`
+// User runs: `dodot provision`
 //
 // 1. dodot finds ~/dotfiles/vim/ pack with install.sh
 // 2. FileNameTrigger matches install.sh against pattern
-// 3. InstallScriptHandler checks sentinel file
+// 3. ProvisionScriptHandler checks sentinel file
 // 4. No sentinel or checksum mismatch: proceeds with execution
-// 5. Copies install.sh to ~/.local/share/dodot/install/vim/
+// 5. Copies install.sh to ~/.local/share/dodot/provision/vim/
 // 6. Makes script executable
 // 7. Executes with DODOT_PACK=vim, DOTFILES_ROOT=/home/user/dotfiles
 // 8. Script installs vim plugins, creates ~/.vim directories
@@ -165,10 +165,10 @@
 // # Comparison with Other Handlers
 //
 // - **SymlinkHandler**: For configuration files (deploy phase)
-// - **BrewHandler**: For Homebrew packages (also install phase)
-// - **InstallScriptHandler**: For custom setup logic (install phase)
-// - **ProfileHandler**: For shell configuration (deploy phase)
+// - **BrewHandler**: For Homebrew packages (also provision phase)
+// - **ProvisionScriptHandler**: For custom setup logic (provision phase)
+// - **ProfileHandler**: For shell configuration (link phase)
 //
-// Use InstallScriptHandler when you need custom logic that package managers
+// Use ProvisionScriptHandler when you need custom logic that package managers
 // can't handle, or when you need to perform complex multi-step installations.
-package install
+package provision

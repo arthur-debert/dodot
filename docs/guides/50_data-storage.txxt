@@ -1,23 +1,23 @@
                    Data Storage and Organization
 
 This guide explains dodot's approach to state management, how it stores
-deployment information, and the rationale behind its design decisions.
+link information, and the rationale behind its design decisions.
 
 The Double-Link Architecture
 ----------------------------
 
-dodot could simply create direct symlinks from deployed paths (e.g., ~/.zshrc)
+dodot could simply create direct symlinks from linked paths (e.g., ~/.zshrc)
 to source files (e.g., $DOTFILES_ROOT/shell/zshrc). Instead, it uses a 
-double-link structure where the deployed file points to an intermediate 
+double-link structure where the linked file points to an intermediate 
 symlink in dodot's state directory, which then points to the source file.
 
 Why this design? The answer is state management. This structure ties together
-the deployment result, the thing itself, and our state representation.
+the link result, the thing itself, and our state representation.
 
 Alternative approaches like direct links with a JSON state file would require
-keeping the deployment and state in sync. Our design has key advantages:
+keeping the link and state in sync. Our design has key advantages:
 
-• No risk of being out of sync - the deployment IS the state
+• No risk of being out of sync - the link IS the state
 • Easy debugging - if a state symlink points to a missing source file,
   it's immediately visible
 • Robust and simple - no parsing, no corruption, just filesystem operations
@@ -27,7 +27,7 @@ In essence: the filesystem structure itself is the state database.
 State Storage Structure
 -----------------------
 
-Here's what dodot's state storage looks like after deploying various handlers:
+Here's what dodot's state storage looks like after linking various handlers:
 
 ```
 ~/.local/share/dodot/
@@ -50,7 +50,7 @@ Here's what dodot's state storage looks like after deploying various handlers:
 │   ├── tools_Brewfile.sentinel    # "sha256:2024-01-15T10:00:00Z"
 │   └── dev_Brewfile.sentinel      # "sha256:2024-01-20T14:30:00Z"
 │
-├── install/            # Install script tracking
+├── install/            # Provision script tracking
 │   ├── vim_install.sh.sentinel    # "sha256:2024-01-10T09:00:00Z"
 │   ├── tools_setup.sh.sentinel    # "sha256:2024-01-12T11:00:00Z"
 │   └── tools/                     # Copied scripts
@@ -98,7 +98,7 @@ How Each Handler Stores State
 File Deployment Mapping
 -----------------------
 
-The relationship between source files and deployed locations follows
+The relationship between source files and linked locations follows
 intelligent mapping rules:
 
 Default Mapping:
@@ -115,7 +115,7 @@ The Pack Concept
 ----------------
 
 dodot organizes configurations into "packs" - directories containing
-related files that get deployed together. This provides logical grouping
+related files that get linked together. This provides logical grouping
 and makes it easy to enable/disable related configurations.
 
 Example pack structure:
@@ -158,8 +158,8 @@ Version Control Integration:
 • Easy to backup, share, and version
 
 Transparency:
-• You can see exactly what will be deployed
-• The state IS the deployment - no hidden metadata
+• You can see exactly what will be linked
+• The state IS the link - no hidden metadata
 • Easy to debug by examining symlinks
 
 Portability:
@@ -176,8 +176,8 @@ Storage Limitations
 -------------------
 
 Structural Changes:
-If you add new files to a pack after deployment, they won't be active
-until redeployment. Use 'dodot fill' to create placeholder files that
+If you add new files to a pack after linking, they won't be active
+until relinking. Use 'dodot fill' to create placeholder files that
 get linked immediately.
 
 Binary Files:
@@ -210,7 +210,7 @@ To completely remove dodot traces:
 Understanding State Through Examples
 ------------------------------------
 
-To check what's deployed:
+To check what's linked:
 ```
 # See all intermediate symlinks
 ls -la ~/.local/share/dodot/deployed/symlink/
@@ -222,7 +222,7 @@ ls -la ~/.local/share/dodot/deployed/path/
 ls ~/.local/share/dodot/homebrew/
 ```
 
-To understand a deployment:
+To understand a link:
 ```
 # Follow the symlink chain for .vimrc
 readlink ~/.vimrc
@@ -232,8 +232,8 @@ readlink /Users/you/.local/share/dodot/deployed/symlink/.vimrc
 # → /Users/you/dotfiles/vim/vimrc
 ```
 
-The beauty is that the deployment structure tells you everything:
-• What's deployed (symlinks exist)
+The beauty is that the link structure tells you everything:
+• What's linked (symlinks exist)
 • Where it came from (follow the symlinks)
 • What's broken (dangling symlinks)
 • What changed (checksum mismatches in sentinels)

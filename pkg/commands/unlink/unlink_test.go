@@ -1,4 +1,4 @@
-package off
+package unlink
 
 import (
 	"os"
@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOffPacks(t *testing.T) {
+func TestUnlinkPacks(t *testing.T) {
 	tests := []struct {
 		name             string
 		setupPacks       func(t *testing.T, dotfilesRoot, dataDir, homeDir string)
@@ -91,18 +91,18 @@ func TestOffPacks(t *testing.T) {
 				// Create pack with install script
 				testutil.CreateFile(t, dotfilesRoot, "mypack/install.sh", "#!/bin/bash\necho installed")
 
-				// Create install sentinel
-				testutil.CreateDir(t, dataDir, "install/sentinels")
-				testutil.CreateFile(t, dataDir, "install/sentinels/mypack", "checksum123")
+				// Create provision sentinel
+				testutil.CreateDir(t, dataDir, "provision/sentinels")
+				testutil.CreateFile(t, dataDir, "provision/sentinels/mypack", "checksum123")
 
 				// Create homebrew sentinel
 				testutil.CreateDir(t, dataDir, "homebrew")
 				testutil.CreateFile(t, dataDir, "homebrew/mypack", "brewchecksum456")
 			},
 			packNames:     []string{"mypack"},
-			expectRemoved: 2, // install sentinel + brew sentinel
+			expectRemoved: 2, // provision sentinel + brew sentinel
 			expectNotExist: []string{
-				"install/sentinels/mypack",
+				"provision/sentinels/mypack",
 				"homebrew/mypack",
 			},
 			expectExistAfter: []string{
@@ -227,7 +227,7 @@ func TestOffPacks(t *testing.T) {
 			tt.setupPacks(t, dotfilesRoot, dataDir, homeDir)
 
 			// Run off command
-			result, err := OffPacks(OffPacksOptions{
+			result, err := UnlinkPacks(UnlinkPacksOptions{
 				DotfilesRoot: dotfilesRoot,
 				DataDir:      dataDir,
 				PackNames:    tt.packNames,
@@ -277,7 +277,7 @@ func TestOffPacks(t *testing.T) {
 	}
 }
 
-func TestOffPacks_Errors(t *testing.T) {
+func TestUnlinkPacks_Errors(t *testing.T) {
 	tests := []struct {
 		name        string
 		packNames   []string
@@ -301,7 +301,7 @@ func TestOffPacks_Errors(t *testing.T) {
 			testutil.CreateDir(t, tempDir, "data")
 
 			// Run off command
-			_, err := OffPacks(OffPacksOptions{
+			_, err := UnlinkPacks(UnlinkPacksOptions{
 				DotfilesRoot: dotfilesRoot,
 				DataDir:      dataDir,
 				PackNames:    tt.packNames,
@@ -373,7 +373,7 @@ func TestRemoveIfExists(t *testing.T) {
 			tt.setupFile(t, fs, testPath)
 
 			// Create options
-			opts := OffPacksOptions{
+			opts := UnlinkPacksOptions{
 				DryRun: tt.dryRun,
 			}
 

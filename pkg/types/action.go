@@ -32,7 +32,7 @@ const (
 	ActionTypeBrew ActionType = "brew"
 
 	// ActionTypeInstall runs an install script
-	ActionTypeInstall ActionType = "install"
+	ActionTypeInstall ActionType = "provision"
 
 	// ActionTypeRead reads file contents
 	ActionTypeRead ActionType = "read"

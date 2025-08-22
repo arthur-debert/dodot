@@ -836,7 +836,7 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 	var ops []synthfs.Operation
 
 	// Copy the script to install directory (include pack name to avoid conflicts)
-	scriptTarget := filepath.Join(e.paths.InstallDir(), action.Pack, filepath.Base(action.Source))
+	scriptTarget := filepath.Join(e.paths.ProvisionDir(), action.Pack, filepath.Base(action.Source))
 	copyID := fmt.Sprintf("install_copy_%s_%d", action.Pack, time.Now().UnixNano())
 
 	if e.force {
@@ -884,7 +884,7 @@ func (e *DirectExecutor) convertInstallAction(sfs *synthfs.SynthFS, action types
 		synthfs.WithTimeout(300*time.Second))) // 5 minutes for install scripts
 
 	// Create sentinel file to mark as completed
-	sentinelPath := e.paths.SentinelPath("install", action.Pack)
+	sentinelPath := e.paths.SentinelPath("provision", action.Pack)
 	sentinelID := fmt.Sprintf("install_sentinel_%s_%d", action.Pack, time.Now().UnixNano())
 
 	// Get checksum from metadata if available
@@ -1042,7 +1042,7 @@ func (e *DirectExecutor) validateSafePath(path string) error {
 		e.paths.CacheDir(),
 		e.paths.StateDir(),
 		e.paths.SymlinkDir(),
-		e.paths.InstallDir(),
+		e.paths.ProvisionDir(),
 		e.paths.ShellDir(),
 		e.paths.DeployedDir(),
 		e.paths.BackupsDir(),

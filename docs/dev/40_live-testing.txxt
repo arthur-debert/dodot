@@ -54,7 +54,7 @@ Suite 1: Single Handlers
 
 Suite 2: Multiple Handlers, Single Pack
 • Tests interactions between handlers in the same pack
-• Verifies combined deployments work correctly
+• Verifies combined linking work correctly
 
 Suite 3: Multiple Handlers, Multiple Packs  
 • Tests cross-pack interactions
@@ -86,7 +86,7 @@ assertions_shell.sh:
 • assert_profile_in_init() - Verifies dodot init.sh entries
 
 assertions_path.sh:
-• assert_path_deployed() - Verifies bin directory deployment
+• assert_path_deployed() - Verifies bin directory linking
 • assert_executable_available() - Checks PATH accessibility
 
 assertions_install.sh:

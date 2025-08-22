@@ -55,8 +55,8 @@ Example:
 // msgs.go
 const msgPackNotFound = "pack not found: %s"
 
-//go:embed msgs/deploy-long.txt
-var deployLongHelp string
+//go:embed msgs/link-long.txt
+var linkLongHelp string
 ```
 
 Help System
@@ -76,17 +76,17 @@ Command Structure
 Each command follows this pattern:
 
 ```go
-// CLI layer (cmd/dodot/deploy.go)
-var deployCmd = &cobra.Command{
-    Use:   "deploy [pack...]",
-    Short: "Deploy pack configurations",
-    Long:  deployLongHelp, // From embedded file
+// CLI layer (cmd/dodot/link.go)
+var linkCmd = &cobra.Command{
+    Use:   "link [pack...]",
+    Short: "Link pack configurations",
+    Long:  linkLongHelp, // From embedded file
     RunE: func(cmd *cobra.Command, args []string) error {
         // 1. Parse flags and arguments
         dryRun, _ := cmd.Flags().GetBool("dry-run")
         
         // 2. Call business logic
-        result, err := deploy.Execute(args, deploy.Options{
+        result, err := link.Execute(args, link.Options{
             DryRun: dryRun,
         })
         
@@ -95,7 +95,7 @@ var deployCmd = &cobra.Command{
     },
 }
 
-// Business logic (pkg/commands/deploy/deploy.go)
+// Business logic (pkg/commands/link/link.go)
 func Execute(packs []string, opts Options) (*Result, error) {
     // Pure business logic, no CLI concerns
 }

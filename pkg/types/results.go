@@ -30,7 +30,7 @@ type PackInfo struct {
 // DisplayResult is the top-level structure for commands that produce rich output.
 // This replaces the old PackStatusResult and is used by status, deploy, and install commands.
 type DisplayResult struct {
-	Command   string        `json:"command"` // "status", "deploy", "install"
+	Command   string        `json:"command"` // "status", "link", "provision"
 	Packs     []DisplayPack `json:"packs"`
 	DryRun    bool          `json:"dryRun"` // For deploy/install commands
 	Timestamp time.Time     `json:"timestamp"`
@@ -179,7 +179,7 @@ func GetHandlerSymbol(handlerName string) string {
 		return "+"
 	case "homebrew":
 		return "⚙"
-	case "install_script":
+	case "provision":
 		return "×"
 	default:
 		return ""
@@ -197,7 +197,7 @@ func GetHandlerAdditionalInfo(handlerName string) string {
 		return "add to $PATH"
 	case "homebrew":
 		return "brew install"
-	case "install_script":
+	case "provision":
 		return "run script"
 	default:
 		return ""

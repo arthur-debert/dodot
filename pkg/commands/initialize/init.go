@@ -79,7 +79,7 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 # "*.tmp" = "ignore"
 
 # Override default handler for specific files
-# "my-script.sh" = "install"
+# "my-script.sh" = "provision"
 # "my-aliases.sh" = "profile"
 `
 

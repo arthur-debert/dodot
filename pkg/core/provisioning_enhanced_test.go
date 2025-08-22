@@ -32,7 +32,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "install_script handler name",
 			trigger: types.TriggerMatch{
-				HandlerName: "install_script",
+				HandlerName: "provision",
 				Path:        "someFile",
 			},
 			expected: true,
@@ -40,7 +40,7 @@ func TestIsRunOnceTrigger(t *testing.T) {
 		{
 			name: "install handler name",
 			trigger: types.TriggerMatch{
-				HandlerName: "install",
+				HandlerName: "provision",
 				Path:        "someFile",
 			},
 			expected: true,
@@ -144,18 +144,18 @@ func TestGetHandlerTypeFromTrigger(t *testing.T) {
 		{
 			name: "install_script handler name",
 			trigger: types.TriggerMatch{
-				HandlerName: "install_script",
+				HandlerName: "provision",
 				Path:        "someFile",
 			},
-			expected: "install",
+			expected: "provision",
 		},
 		{
 			name: "install handler name",
 			trigger: types.TriggerMatch{
-				HandlerName: "install",
+				HandlerName: "provision",
 				Path:        "someFile",
 			},
-			expected: "install",
+			expected: "provision",
 		},
 		{
 			name: "Brewfile path fallback",
@@ -171,7 +171,7 @@ func TestGetHandlerTypeFromTrigger(t *testing.T) {
 				HandlerName: "unknown",
 				Path:        "install.sh",
 			},
-			expected: "install",
+			expected: "provision",
 		},
 		{
 			name: "symlink handler returns empty",
@@ -356,7 +356,7 @@ func TestFilterRunOnceTriggersEarly_Logic(t *testing.T) {
 			triggers: []types.TriggerMatch{
 				{HandlerName: "brewfile", Path: "Brewfile"},
 				{HandlerName: "symlink", Path: ".vimrc"},
-				{HandlerName: "install", Path: "install.sh"},
+				{HandlerName: "provision", Path: "install.sh"},
 			},
 			force: true,
 			expected: func(triggers []types.TriggerMatch) []types.TriggerMatch {

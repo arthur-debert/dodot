@@ -70,7 +70,7 @@ type Paths struct {
 	TemplatesDir       string
 	DeployedDir        string
 	ShellDir           string
-	InstallDir         string
+	ProvisionDir       string
 	HomebrewDir        string
 	InitScriptName     string
 	LogFileName        string
@@ -182,7 +182,7 @@ end`,
 			TemplatesDir:       "templates",
 			DeployedDir:        "deployed",
 			ShellDir:           "shell",
-			InstallDir:         "install",
+			ProvisionDir:       "provision",
 			HomebrewDir:        "homebrew",
 			InitScriptName:     "dodot-init.sh",
 			LogFileName:        "dodot.log",
@@ -203,7 +203,7 @@ func defaultMatchers() []MatcherConfig {
 			TriggerData: map[string]interface{}{
 				"pattern": "install.sh",
 			},
-			HandlerType: "install_script",
+			HandlerType: "provision",
 			HandlerData: map[string]interface{}{},
 		},
 		{

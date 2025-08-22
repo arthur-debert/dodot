@@ -40,7 +40,7 @@
 //	// Get various paths
 //	root := p.DotfilesRoot()                    // /home/user/dotfiles
 //	packPath := p.PackPath("vim")               // /home/user/dotfiles/vim
-//	stateFile := p.StatePath("vim", "install")  // $XDG_DATA_HOME/dodot/state/vim/install.json
+//	stateFile := p.StatePath("vim", "provision")  // $XDG_DATA_HOME/dodot/state/vim/install.json
 //
 //	// Check if a path is within dotfiles
 //	isInside, err := p.IsInDotfiles("/home/user/dotfiles/vim/vimrc")

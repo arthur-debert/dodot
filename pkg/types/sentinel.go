@@ -30,7 +30,7 @@ func (a *Action) GetSentinelInfo(paths Pather) (*SentinelInfo, error) {
 
 // getInstallSentinel returns sentinel info for install scripts
 func (a *Action) getInstallSentinel(paths Pather) *SentinelInfo {
-	dir := filepath.Join(paths.DataDir(), "install")
+	dir := filepath.Join(paths.DataDir(), "provision")
 
 	// Standardized naming: pack_scriptname.sentinel
 	scriptName := filepath.Base(a.Source)

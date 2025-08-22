@@ -1,4 +1,4 @@
-package off
+package unlink
 
 import (
 	"fmt"
@@ -13,8 +13,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OffPacksOptions contains options for the off command
-type OffPacksOptions struct {
+// UnlinkPacksOptions contains options for the off command
+type UnlinkPacksOptions struct {
 	// DotfilesRoot is the path to the dotfiles directory
 	DotfilesRoot string
 
@@ -31,10 +31,10 @@ type OffPacksOptions struct {
 	DryRun bool
 }
 
-// OffResult contains the result of the off command
-type OffResult struct {
+// UnlinkResult contains the result of the off command
+type UnlinkResult struct {
 	// Packs that were processed
-	Packs []PackOffResult `json:"packs"`
+	Packs []PackUnlinkResult `json:"packs"`
 
 	// Total number of items removed
 	TotalRemoved int `json:"totalRemoved"`
@@ -43,8 +43,8 @@ type OffResult struct {
 	DryRun bool `json:"dryRun"`
 }
 
-// PackOffResult contains the result for a single pack
-type PackOffResult struct {
+// PackUnlinkResult contains the result for a single pack
+type PackUnlinkResult struct {
 	// Name of the pack
 	Name string `json:"name"`
 
@@ -73,8 +73,8 @@ type RemovedItem struct {
 	Error string `json:"error,omitempty"`
 }
 
-// OffPacks removes deployments for the specified packs
-func OffPacks(opts OffPacksOptions) (*OffResult, error) {
+// UnlinkPacks removes deployments for the specified packs
+func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 	logger := logging.GetLogger("commands.off")
 	logger.Info().
 		Strs("packs", opts.PackNames).
@@ -95,8 +95,8 @@ func OffPacks(opts OffPacksOptions) (*OffResult, error) {
 	}
 
 	// Process each pack
-	result := &OffResult{
-		Packs:  []PackOffResult{},
+	result := &UnlinkResult{
+		Packs:  []PackUnlinkResult{},
 		DryRun: opts.DryRun,
 	}
 
@@ -115,12 +115,12 @@ func OffPacks(opts OffPacksOptions) (*OffResult, error) {
 }
 
 // processPackOff removes all deployments for a single pack
-func processPackOff(pack types.Pack, fs types.FS, opts OffPacksOptions) PackOffResult {
+func processPackOff(pack types.Pack, fs types.FS, opts UnlinkPacksOptions) PackUnlinkResult {
 	logger := logging.GetLogger("commands.off").With().
 		Str("pack", pack.Name).
 		Logger()
 
-	result := PackOffResult{
+	result := PackUnlinkResult{
 		Name:         pack.Name,
 		RemovedItems: []RemovedItem{},
 		Errors:       []string{},
@@ -157,7 +157,7 @@ func processPackOff(pack types.Pack, fs types.FS, opts OffPacksOptions) PackOffR
 }
 
 // findAndRemoveDeployments finds and removes deployments for an action
-func findAndRemoveDeployments(action types.Action, fs types.FS, opts OffPacksOptions) []RemovedItem {
+func findAndRemoveDeployments(action types.Action, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
 	logger := logging.GetLogger("commands.off")
 	items := []RemovedItem{}
 
@@ -197,12 +197,12 @@ func findAndRemoveDeployments(action types.Action, fs types.FS, opts OffPacksOpt
 }
 
 // cleanupPackState removes pack-specific state files
-func cleanupPackState(pack types.Pack, fs types.FS, opts OffPacksOptions) []RemovedItem {
+func cleanupPackState(pack types.Pack, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
 	items := []RemovedItem{}
 
-	// Remove install script sentinels
-	installSentinel := filepath.Join(opts.DataDir, "install", "sentinels", pack.Name)
-	if item := removeIfExists(installSentinel, "install_sentinel", fs, opts); item != nil {
+	// Remove provision script sentinels
+	provisionSentinel := filepath.Join(opts.DataDir, "provision", "sentinels", pack.Name)
+	if item := removeIfExists(provisionSentinel, "provision_sentinel", fs, opts); item != nil {
 		items = append(items, *item)
 	}
 
@@ -216,7 +216,7 @@ func cleanupPackState(pack types.Pack, fs types.FS, opts OffPacksOptions) []Remo
 }
 
 // safeRemoveSymlink safely removes a symlink with ownership verification
-func safeRemoveSymlink(action types.Action, fs types.FS, opts OffPacksOptions) []RemovedItem {
+func safeRemoveSymlink(action types.Action, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
 	logger := logging.GetLogger("commands.off")
 	items := []RemovedItem{}
 
@@ -322,7 +322,7 @@ func pathsMatch(targetDest, expectedPath, resolvedPath string) bool {
 }
 
 // removeIfExists removes a file/directory if it exists
-func removeIfExists(path, itemType string, fs types.FS, opts OffPacksOptions) *RemovedItem {
+func removeIfExists(path, itemType string, fs types.FS, opts UnlinkPacksOptions) *RemovedItem {
 	logger := logging.GetLogger("commands.off")
 
 	// Check if item exists

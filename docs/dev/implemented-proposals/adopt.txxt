@@ -14,7 +14,7 @@ ADOPT: A COMMAND FOR MANAGING EXISTING FILES
 
     This process has significant friction, especially for new users. It is
     error-prone, with the common mistake of copying instead of moving the file,
-    which leads to a "symlink already exists" error on deployment. This is a
+    which leads to a "symlink already exists" error on linking. This is a
     poor first experience and an unnecessary hurdle for a primary workflow.
 
 
