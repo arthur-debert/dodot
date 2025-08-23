@@ -31,7 +31,8 @@ type Handler interface {
 
 	// Process takes a group of trigger matches and generates actions
 	// The matches are grouped by pack and options before being passed here
-	Process(matches []TriggerMatch) ([]Action, error)
+	// NOTE: This method is deprecated and will be removed. Use V2 handler interfaces instead.
+	Process(matches []TriggerMatch) ([]ActionV2, error)
 
 	// ValidateOptions checks if the provided options are valid for this handler
 	ValidateOptions(options map[string]interface{}) error

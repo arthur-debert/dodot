@@ -9,6 +9,36 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// ProvisionScriptHandlerName is the name of the provision handler
+const ProvisionScriptHandlerName = "provision"
+
+// provisionTemplate is the template content for install.sh
+const provisionTemplate = `#!/usr/bin/env bash
+# dodot install script for PACK_NAME pack
+# 
+# This script runs ONCE during 'dodot install PACK_NAME'
+# Use it for one-time setup tasks like:
+# - Installing dependencies not available via Homebrew
+# - Creating directories
+# - Downloading external resources
+# - Setting up initial configurations
+#
+# The script is idempotent - dodot tracks execution via checksums
+# and won't run it again unless the file contents change.
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# installation steps later without redeploying the pack.
+
+set -euo pipefail
+
+echo "Installing PACK_NAME pack..."
+
+# Add your installation commands below
+# Examples:
+# mkdir -p "$HOME/.config/PACK_NAME"
+# curl -fsSL https://example.com/install.sh | bash
+`
+
 // ProvisionScriptHandlerV2 runs install.sh scripts
 type ProvisionScriptHandlerV2 struct{}
 
@@ -30,38 +60,6 @@ func (h *ProvisionScriptHandlerV2) Description() string {
 // RunMode returns whether this handler runs once or many times
 func (h *ProvisionScriptHandlerV2) RunMode() types.RunMode {
 	return types.RunModeProvisioning
-}
-
-// Process implements the old Handler interface for compatibility
-func (h *ProvisionScriptHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	logger := logging.GetLogger("handlers.provision.v2")
-	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
-
-	// Get V2 actions
-	provisioningActions, err := h.ProcessProvisioning(matches)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to old actions for compatibility
-	oldActions := make([]types.Action, 0, len(provisioningActions))
-	for _, scriptAction := range provisioningActions {
-		if sa, ok := scriptAction.(*types.RunScriptAction); ok {
-			oldAction := types.Action{
-				Type:        types.ActionTypeInstall,
-				Pack:        sa.PackName,
-				Source:      sa.ScriptPath,
-				Description: sa.Description(),
-				HandlerName: ProvisionScriptHandlerName,
-				Metadata: map[string]interface{}{
-					"checksum": sa.Checksum,
-				},
-			}
-			oldActions = append(oldActions, oldAction)
-		}
-	}
-
-	return oldActions, nil
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
@@ -116,5 +114,4 @@ func (h *ProvisionScriptHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.Handler = (*ProvisionScriptHandlerV2)(nil)
 var _ types.ProvisioningHandlerV2 = (*ProvisionScriptHandlerV2)(nil)

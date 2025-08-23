@@ -7,6 +7,9 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// PathHandlerName is the name of the path handler
+const PathHandlerName = "path"
+
 // PathHandlerV2 handles directories by adding them to PATH
 type PathHandlerV2 struct {
 	targetDir string
@@ -34,34 +37,6 @@ func (h *PathHandlerV2) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
-// Process implements the old Handler interface for compatibility
-func (h *PathHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	logger := logging.GetLogger("handlers.path.v2")
-	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
-
-	// Get V2 actions
-	linkingActions, err := h.ProcessLinking(matches)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to old actions for compatibility
-	oldActions := make([]types.Action, 0, len(linkingActions))
-	for _, pathAction := range linkingActions {
-		if pa, ok := pathAction.(*types.AddToPathAction); ok {
-			oldAction := types.Action{
-				Type:        types.ActionTypePathAdd,
-				Pack:        pa.PackName,
-				Target:      pa.DirPath,
-				Description: pa.Description(),
-				HandlerName: PathHandlerName,
-			}
-			oldActions = append(oldActions, oldAction)
-		}
-	}
-
-	return oldActions, nil
-}
 
 // ProcessLinking takes directories and creates AddToPathAction instances
 func (h *PathHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
@@ -139,5 +114,4 @@ func (h *PathHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.Handler = (*PathHandlerV2)(nil)
 var _ types.LinkingHandlerV2 = (*PathHandlerV2)(nil)

@@ -6,11 +6,10 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers/provision"
 	"github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
-	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // GetV2Handler returns a V2 handler instance by name
-func GetV2Handler(name string) types.Handler {
+func GetV2Handler(name string) interface{} {
 	switch name {
 	case symlink.SymlinkHandlerName:
 		return symlink.NewSymlinkHandlerV2()

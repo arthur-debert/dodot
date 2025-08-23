@@ -9,6 +9,26 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// HomebrewHandlerName is the name of the homebrew handler
+const HomebrewHandlerName = "homebrew"
+
+// homebrewTemplate is the template content for Brewfile
+const homebrewTemplate = `# Homebrew dependencies for PACK_NAME pack
+# 
+# This file is processed by 'dodot install PACK_NAME' to install
+# packages using Homebrew. Each package is installed once during
+# initial deployment. The deployment is tracked by checksum, so
+# modifying this file will trigger a re-run.
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# homebrew packages later without redeploying the pack.
+
+# Examples:
+# brew "git"
+# brew "vim"
+# cask "visual-studio-code"
+`
+
 // HomebrewHandlerV2 processes Brewfiles to install packages via Homebrew
 type HomebrewHandlerV2 struct{}
 
@@ -30,38 +50,6 @@ func (h *HomebrewHandlerV2) Description() string {
 // RunMode returns whether this handler runs once or many times
 func (h *HomebrewHandlerV2) RunMode() types.RunMode {
 	return types.RunModeProvisioning
-}
-
-// Process implements the old Handler interface for compatibility
-func (h *HomebrewHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	logger := logging.GetLogger("handlers.homebrew.v2")
-	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
-
-	// Get V2 actions
-	provisioningActions, err := h.ProcessProvisioning(matches)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to old actions for compatibility
-	oldActions := make([]types.Action, 0, len(provisioningActions))
-	for _, brewAction := range provisioningActions {
-		if ba, ok := brewAction.(*types.BrewAction); ok {
-			oldAction := types.Action{
-				Type:        types.ActionTypeBrew,
-				Pack:        ba.PackName,
-				Source:      ba.BrewfilePath,
-				Description: ba.Description(),
-				HandlerName: HomebrewHandlerName,
-				Metadata: map[string]interface{}{
-					"checksum": ba.Checksum,
-				},
-			}
-			oldActions = append(oldActions, oldAction)
-		}
-	}
-
-	return oldActions, nil
 }
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances
@@ -115,5 +103,4 @@ func (h *HomebrewHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.Handler = (*HomebrewHandlerV2)(nil)
 var _ types.ProvisioningHandlerV2 = (*HomebrewHandlerV2)(nil)

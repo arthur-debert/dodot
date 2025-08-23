@@ -115,7 +115,7 @@ type HandlerResult struct {
 	Pack string
 
 	// Actions are the original actions that were executed
-	Actions []Action
+	Actions []ActionV2
 }
 
 // NewExecutionContext creates a new execution context
@@ -309,16 +309,17 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 
 				// Get additional info based on Handler type and action data
 				additionalInfo := GetHandlerAdditionalInfo(pur.HandlerName)
-				if pur.HandlerName == "symlink" && len(pur.Actions) > 0 {
-					// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
-					homeDir := os.Getenv("HOME")
-					for _, action := range pur.Actions {
-						if action.Source == filePath && action.Target != "" {
-							additionalInfo = FormatSymlinkForDisplay(action.Target, homeDir, 46)
-							break
-						}
-					}
-				}
+				// TODO: Fix display logic for V2 actions - symlink actions no longer have direct Source/Target fields
+				// if pur.HandlerName == "symlink" && len(pur.Actions) > 0 {
+				// 	// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
+				// 	homeDir := os.Getenv("HOME")
+				// 	for _, action := range pur.Actions {
+				// 		if action.Source == filePath && action.Target != "" {
+				// 			additionalInfo = FormatSymlinkForDisplay(action.Target, homeDir, 46)
+				// 			break
+				// 		}
+				// 	}
+				// }
 
 				displayFile := DisplayFile{
 					Handler:        pur.HandlerName,

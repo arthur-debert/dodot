@@ -2,11 +2,31 @@ package shell_profile
 
 import (
 	_ "embed"
-	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
+
+// ShellProfileHandlerName is the name of the shell profile handler
+const ShellProfileHandlerName = "shell_profile"
+
+// aliasesTemplate is the template content for aliases.sh
+const aliasesTemplate = `#!/usr/bin/env sh
+# Shell aliases for PACK_NAME pack
+#
+# This file is sourced to add shell aliases during 'dodot deploy PACK_NAME'
+# 
+# Use standard shell alias syntax (compatible with bash/zsh/fish/etc)
+# dodot handles shell compatibility automatically
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# aliases later without redeploying the pack.
+
+# Add aliases below
+# Examples:
+# alias ll='ls -la'
+# alias grep='grep --color=auto'
+`
 
 // ShellProfileHandlerV2 manages shell profile modifications
 type ShellProfileHandlerV2 struct{}
@@ -31,11 +51,6 @@ func (h *ShellProfileHandlerV2) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
-// Process implements the old Handler interface for compatibility
-func (h *ShellProfileHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	// This method is here for compatibility but should not be used
-	return nil, fmt.Errorf("Process method is deprecated, use ProcessLinking instead")
-}
 
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
 func (h *ShellProfileHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
@@ -76,5 +91,4 @@ func (h *ShellProfileHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.Handler = (*ShellProfileHandlerV2)(nil)
 var _ types.LinkingHandlerV2 = (*ShellProfileHandlerV2)(nil)

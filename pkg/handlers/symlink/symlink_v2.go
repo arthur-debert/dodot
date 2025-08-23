@@ -10,6 +10,9 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// SymlinkHandlerName is the name of the symlink handler
+const SymlinkHandlerName = "symlink"
+
 // SymlinkHandlerV2 creates symbolic links from matched files to target locations
 type SymlinkHandlerV2 struct {
 	defaultTarget string
@@ -63,36 +66,6 @@ func (h *SymlinkHandlerV2) Description() string {
 // RunMode returns whether this handler runs once or many times
 func (h *SymlinkHandlerV2) RunMode() types.RunMode {
 	return types.RunModeLinking
-}
-
-// Process implements the old Handler interface for compatibility
-func (h *SymlinkHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	logger := logging.GetLogger("handlers.symlink.v2")
-	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
-
-	// Get V2 actions
-	linkingActions, err := h.ProcessLinking(matches)
-	if err != nil {
-		return nil, err
-	}
-
-	// Convert to old actions for compatibility
-	oldActions := make([]types.Action, 0, len(linkingActions))
-	for _, linkAction := range linkingActions {
-		if la, ok := linkAction.(*types.LinkAction); ok {
-			oldAction := types.Action{
-				Type:        types.ActionTypeLink,
-				Pack:        la.PackName,
-				Source:      la.SourceFile,
-				Target:      la.TargetFile,
-				Description: la.Description(),
-				HandlerName: SymlinkHandlerName,
-			}
-			oldActions = append(oldActions, oldAction)
-		}
-	}
-
-	return oldActions, nil
 }
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
@@ -198,5 +171,4 @@ func (h *SymlinkHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.Handler = (*SymlinkHandlerV2)(nil)
 var _ types.LinkingHandlerV2 = (*SymlinkHandlerV2)(nil)
