@@ -35,4 +35,20 @@ type DataStore interface {
 	GetShellProfileStatus(pack, scriptPath string) (types.Status, error)
 	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error)
 	GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error)
+
+	// State removal methods
+
+	// DeleteProvisioningState removes all provisioning state for a handler in a pack.
+	// It only removes state for provisioning handlers (homebrew, provision).
+	// Returns nil if the directory doesn't exist.
+	DeleteProvisioningState(packName, handlerName string) error
+
+	// GetProvisioningHandlers returns list of handlers that have provisioning state
+	// for the given pack. Only returns handlers that actually have state on disk.
+	GetProvisioningHandlers(packName string) ([]string, error)
+
+	// ListProvisioningState returns details about what provisioning state exists.
+	// The returned map has handler names as keys and lists of state file names as values.
+	// Useful for dry-run operations to show what would be removed.
+	ListProvisioningState(packName string) (map[string][]string, error)
 }

@@ -164,6 +164,21 @@ func (m *MockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string
 	return args.Get(0).(types.Status), args.Error(1)
 }
 
+func (m *MockDataStore) DeleteProvisioningState(packName, handlerName string) error {
+	args := m.Called(packName, handlerName)
+	return args.Error(0)
+}
+
+func (m *MockDataStore) GetProvisioningHandlers(packName string) ([]string, error) {
+	args := m.Called(packName)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
+	args := m.Called(packName)
+	return args.Get(0).(map[string][]string), args.Error(1)
+}
+
 func TestExecutor_Execute(t *testing.T) {
 	tests := []struct {
 		name         string

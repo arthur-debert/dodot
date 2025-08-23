@@ -395,3 +395,110 @@ func (s *filesystemDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum 
 		Timestamp: timestamp,
 	}, nil
 }
+
+// DeleteProvisioningState removes all provisioning state for a handler in a pack.
+func (s *filesystemDataStore) DeleteProvisioningState(packName, handlerName string) error {
+	// Only allow deletion of provisioning handlers
+	if !isProvisioningHandler(handlerName) {
+		return fmt.Errorf("cannot delete state for non-provisioning handler: %s", handlerName)
+	}
+
+	handlerDir := s.paths.PackHandlerDir(packName, handlerName)
+
+	// Check if directory exists
+	if _, err := s.fs.Stat(handlerDir); err != nil {
+		if os.IsNotExist(err) {
+			// Directory doesn't exist, nothing to do
+			return nil
+		}
+		return fmt.Errorf("failed to check handler directory: %w", err)
+	}
+
+	// Remove the entire handler directory
+	if err := s.fs.RemoveAll(handlerDir); err != nil {
+		return fmt.Errorf("failed to remove handler state directory: %w", err)
+	}
+
+	return nil
+}
+
+// GetProvisioningHandlers returns list of handlers that have provisioning state.
+func (s *filesystemDataStore) GetProvisioningHandlers(packName string) ([]string, error) {
+	// Build the pack state directory path
+	packStateDir := filepath.Join(s.paths.DataDir(), "packs", packName)
+
+	// Check if pack directory exists
+	entries, err := s.fs.ReadDir(packStateDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to read pack directory: %w", err)
+	}
+
+	var handlers []string
+	for _, entry := range entries {
+		if entry.IsDir() && isProvisioningHandler(entry.Name()) {
+			// Check if the handler directory has any content
+			handlerDir := filepath.Join(packStateDir, entry.Name())
+			contents, err := s.fs.ReadDir(handlerDir)
+			if err != nil {
+				continue // Skip if we can't read it
+			}
+			if len(contents) > 0 {
+				handlers = append(handlers, entry.Name())
+			}
+		}
+	}
+
+	return handlers, nil
+}
+
+// ListProvisioningState returns details about what provisioning state exists.
+func (s *filesystemDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
+	result := make(map[string][]string)
+	// Build the pack state directory path
+	packStateDir := filepath.Join(s.paths.DataDir(), "packs", packName)
+
+	// Check if pack directory exists
+	entries, err := s.fs.ReadDir(packStateDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return result, nil
+		}
+		return nil, fmt.Errorf("failed to read pack directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && isProvisioningHandler(entry.Name()) {
+			handlerDir := filepath.Join(packStateDir, entry.Name())
+			contents, err := s.fs.ReadDir(handlerDir)
+			if err != nil {
+				continue // Skip if we can't read it
+			}
+
+			var stateFiles []string
+			for _, file := range contents {
+				if !file.IsDir() {
+					stateFiles = append(stateFiles, file.Name())
+				}
+			}
+
+			if len(stateFiles) > 0 {
+				result[entry.Name()] = stateFiles
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// isProvisioningHandler returns true if the handler is a provisioning handler
+func isProvisioningHandler(handlerName string) bool {
+	switch handlerName {
+	case "provision", "homebrew":
+		return true
+	default:
+		return false
+	}
+}

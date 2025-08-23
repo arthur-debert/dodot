@@ -161,3 +161,15 @@ func (m *mockDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksu
 func (m *mockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error) {
 	return types.Status{}, nil
 }
+
+func (m *mockDataStore) DeleteProvisioningState(packName, handlerName string) error {
+	return nil
+}
+
+func (m *mockDataStore) GetProvisioningHandlers(packName string) ([]string, error) {
+	return []string{}, nil
+}
+
+func (m *mockDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
+	return map[string][]string{}, nil
+}
