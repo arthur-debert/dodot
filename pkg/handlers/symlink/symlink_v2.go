@@ -171,4 +171,4 @@ func (h *SymlinkHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.LinkingHandlerV2 = (*SymlinkHandlerV2)(nil)
+var _ types.LinkingHandler = (*SymlinkHandlerV2)(nil)

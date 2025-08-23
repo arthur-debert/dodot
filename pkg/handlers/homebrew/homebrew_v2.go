@@ -102,4 +102,4 @@ func (h *HomebrewHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandlerV2 = (*HomebrewHandlerV2)(nil)
+var _ types.ProvisioningHandler = (*HomebrewHandlerV2)(nil)

@@ -37,7 +37,6 @@ func (h *PathHandlerV2) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
-
 // ProcessLinking takes directories and creates AddToPathAction instances
 func (h *PathHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
 	logger := logging.GetLogger("handlers.path.v2")
@@ -114,4 +113,4 @@ func (h *PathHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.LinkingHandlerV2 = (*PathHandlerV2)(nil)
+var _ types.LinkingHandler = (*PathHandlerV2)(nil)

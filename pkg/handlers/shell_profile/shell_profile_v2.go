@@ -51,7 +51,6 @@ func (h *ShellProfileHandlerV2) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
-
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
 func (h *ShellProfileHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
 	logger := logging.GetLogger("handlers.shell_profile.v2")
@@ -91,4 +90,4 @@ func (h *ShellProfileHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.LinkingHandlerV2 = (*ShellProfileHandlerV2)(nil)
+var _ types.LinkingHandler = (*ShellProfileHandlerV2)(nil)

@@ -34,7 +34,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 
 		// Process based on handler type
 		switch h := handler.(type) {
-		case types.LinkingHandlerV2:
+		case types.LinkingHandler:
 			linkingActions, err := h.ProcessLinking(handlerMatches)
 			if err != nil {
 				return nil, fmt.Errorf("handler %s failed to process linking: %w", handlerName, err)
@@ -44,7 +44,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 				allActions = append(allActions, action)
 			}
 
-		case types.ProvisioningHandlerV2:
+		case types.ProvisioningHandler:
 			provisioningActions, err := h.ProcessProvisioning(handlerMatches)
 			if err != nil {
 				return nil, fmt.Errorf("handler %s failed to process provisioning: %w", handlerName, err)

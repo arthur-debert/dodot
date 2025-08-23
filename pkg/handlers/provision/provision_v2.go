@@ -114,4 +114,4 @@ func (h *ProvisionScriptHandlerV2) GetTemplateContent() string {
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandlerV2 = (*ProvisionScriptHandlerV2)(nil)
+var _ types.ProvisioningHandler = (*ProvisionScriptHandlerV2)(nil)
