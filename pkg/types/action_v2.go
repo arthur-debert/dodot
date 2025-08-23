@@ -43,9 +43,10 @@ type ProvisioningAction interface {
 
 // LinkAction represents creating a symlink from a source file to a target location
 type LinkAction struct {
-	PackName   string
-	SourceFile string // Path within the pack
-	TargetFile string // Final destination (e.g., ~/.vimrc)
+	PackName         string
+	SourceFile       string // Path within the pack
+	TargetFile       string // Final destination (e.g., ~/.vimrc)
+	IntermediatePath string // Set by Execute method for use by executor
 }
 
 func (a *LinkAction) Execute(store DataStore) error {
@@ -54,10 +55,8 @@ func (a *LinkAction) Execute(store DataStore) error {
 		return fmt.Errorf("failed to create intermediate link: %w", err)
 	}
 
-	// The symlink handler is responsible for creating the final link
-	// from TargetFile -> intermediate
-	// This is handled by the executor, not the action itself
-	_ = intermediate
+	// Store the intermediate path for the executor to use
+	a.IntermediatePath = intermediate
 
 	return nil
 }
