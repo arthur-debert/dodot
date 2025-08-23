@@ -141,3 +141,23 @@ func (m *mockDataStore) NeedsProvisioning(pack, sentinelName, checksum string) (
 func (m *mockDataStore) GetStatus(pack, sourceFile string) (types.Status, error) {
 	return types.Status{}, nil
 }
+
+func (m *mockDataStore) GetSymlinkStatus(pack, sourceFile string) (types.Status, error) {
+	return types.Status{}, nil
+}
+
+func (m *mockDataStore) GetPathStatus(pack, dirPath string) (types.Status, error) {
+	return types.Status{}, nil
+}
+
+func (m *mockDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
+	return types.Status{}, nil
+}
+
+func (m *mockDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
+	return types.Status{}, nil
+}
+
+func (m *mockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error) {
+	return types.Status{}, nil
+}

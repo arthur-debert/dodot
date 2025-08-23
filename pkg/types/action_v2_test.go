@@ -48,6 +48,31 @@ func (m *MockDataStore) GetStatus(pack, sourceFile string) (types.Status, error)
 	return args.Get(0).(types.Status), args.Error(1)
 }
 
+func (m *MockDataStore) GetSymlinkStatus(pack, sourceFile string) (types.Status, error) {
+	args := m.Called(pack, sourceFile)
+	return args.Get(0).(types.Status), args.Error(1)
+}
+
+func (m *MockDataStore) GetPathStatus(pack, dirPath string) (types.Status, error) {
+	args := m.Called(pack, dirPath)
+	return args.Get(0).(types.Status), args.Error(1)
+}
+
+func (m *MockDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
+	args := m.Called(pack, scriptPath)
+	return args.Get(0).(types.Status), args.Error(1)
+}
+
+func (m *MockDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
+	args := m.Called(pack, sentinelName, currentChecksum)
+	return args.Get(0).(types.Status), args.Error(1)
+}
+
+func (m *MockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error) {
+	args := m.Called(pack, brewfilePath, currentChecksum)
+	return args.Get(0).(types.Status), args.Error(1)
+}
+
 func TestLinkAction_Execute(t *testing.T) {
 	tests := []struct {
 		name           string

@@ -28,16 +28,29 @@ func NewTestFS() types.FS {
 // Lstat implements types.FS
 // The underlying TestFileSystem properly supports symlinks via fstest.MapFS
 func (t *TestFS) Lstat(name string) (fs.FileInfo, error) {
-	// Check if it's a symlink by looking at the file mode
-	if file, ok := t.MapFS[name]; ok && file.Mode&fs.ModeSymlink != 0 {
-		// Return symlink info without following it
-		return &mapFileInfo{
-			name: filepath.Base(name),
-			file: file,
-		}, nil
+	// The underlying synthfs TestFileSystem doesn't handle Lstat directly
+	// We need to check if it's a symlink by looking at the file mode
+	info, err := t.Stat(name)
+	if err != nil {
+		return nil, err
 	}
-	// Not a symlink or doesn't exist, use regular Stat
-	return t.Stat(name)
+
+	// For symlinks, we need to return the link info, not the target info
+	// Check the underlying MapFS if available
+	if t.MapFS != nil {
+		// Try to find the file in the MapFS
+		for path, file := range t.MapFS {
+			if filepath.Clean(path) == filepath.Clean(name) && file.Mode&fs.ModeSymlink != 0 {
+				return &mapFileInfo{
+					name: filepath.Base(name),
+					file: file,
+				}, nil
+			}
+		}
+	}
+
+	// Not a symlink, return regular stat info
+	return info, nil
 }
 
 // ReadDir implements types.FS

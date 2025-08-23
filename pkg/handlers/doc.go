@@ -8,7 +8,6 @@ import (
 	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/provision"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_add_path"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )

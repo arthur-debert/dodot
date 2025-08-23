@@ -26,6 +26,9 @@ const (
 
 	// StatusStateConfig indicates this is a configuration file
 	StatusStateConfig StatusState = "config"
+
+	// StatusStateUnknown indicates the status could not be determined
+	StatusStateUnknown StatusState = "unknown"
 )
 
 // Status represents the deployment status of an action

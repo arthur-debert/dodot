@@ -14,6 +14,12 @@ type DataStore interface {
 	RecordProvisioning(pack, sentinelName, checksum string) error
 	NeedsProvisioning(pack, sentinelName, checksum string) (bool, error)
 	GetStatus(pack, sourceFile string) (Status, error)
+	// Handler-specific status methods
+	GetSymlinkStatus(pack, sourceFile string) (Status, error)
+	GetPathStatus(pack, dirPath string) (Status, error)
+	GetShellProfileStatus(pack, scriptPath string) (Status, error)
+	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (Status, error)
+	GetBrewStatus(pack, brewfilePath, currentChecksum string) (Status, error)
 }
 
 // ActionV2 is the base interface for all actions in the new architecture.

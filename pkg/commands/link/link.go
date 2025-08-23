@@ -43,9 +43,3 @@ func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
 	log.Info().Str("command", "LinkPacks").Msg("Command finished")
 	return ctx, nil
 }
-
-// LinkPacksDirect is an alias for LinkPacks for backward compatibility.
-// Deprecated: Use LinkPacks instead.
-func LinkPacksDirect(opts LinkPacksOptions) (*types.ExecutionContext, error) {
-	return LinkPacks(opts)
-}
