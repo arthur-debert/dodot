@@ -160,28 +160,9 @@ For more information, see: https://github.com/arthur-debert/dodot
 
 	// 6. Execute actions using DirectExecutor (Operations no longer returned)
 	if len(actions) > 0 {
-
-		// Create DirectExecutor
-		directExecutorOpts := &core.DirectExecutorOptions{
-			Paths:             pathsManager,
-			DryRun:            false,
-			Force:             true,
-			AllowHomeSymlinks: false,
-			Config:            config.Default(),
-		}
-
-		executor := core.NewDirectExecutor(directExecutorOpts)
-
-		// Execute actions and extract operations from results
-		results, err := executor.ExecuteActions(actions)
-		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute init actions")
-		}
-
-		// FIXME: ARCHITECTURAL PROBLEM - init command should return Pack+Handler+File information
-		// NOT operation details. See docs/design/display.txxt
-		// Operations are no longer returned (part of Operation layer elimination)
-		_ = results // Results processed but not exposed in return value
+		// TODO: Update init command to use new V2 executor or direct file operations
+		// This command needs to be refactored to work with the new architecture
+		return nil, errors.New(errors.ErrNotImplemented, "init command needs to be updated for V2 architecture")
 	}
 
 	// 7. Return result (Operations field removed as part of Operation elimination)

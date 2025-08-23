@@ -36,8 +36,31 @@ func (h *PathHandlerV2) RunMode() types.RunMode {
 
 // Process implements the old Handler interface for compatibility
 func (h *PathHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	// This method is here for compatibility but should not be used
-	return nil, fmt.Errorf("Process method is deprecated, use ProcessLinking instead")
+	logger := logging.GetLogger("handlers.path.v2")
+	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
+
+	// Get V2 actions
+	linkingActions, err := h.ProcessLinking(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to old actions for compatibility
+	oldActions := make([]types.Action, 0, len(linkingActions))
+	for _, pathAction := range linkingActions {
+		if pa, ok := pathAction.(*types.AddToPathAction); ok {
+			oldAction := types.Action{
+				Type:        types.ActionTypePathAdd,
+				Pack:        pa.PackName,
+				Target:      pa.DirPath,
+				Description: pa.Description(),
+				HandlerName: PathHandlerName,
+			}
+			oldActions = append(oldActions, oldAction)
+		}
+	}
+
+	return oldActions, nil
 }
 
 // ProcessLinking takes directories and creates AddToPathAction instances

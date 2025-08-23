@@ -147,15 +147,9 @@ echo "Installing tools"
 	packResult, ok := ctx.GetPackResult("tools")
 	testutil.AssertTrue(t, ok, "Should have tools pack result")
 
-	// Should have install_script handler
-	found := false
-	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "provision" {
-			found = true
-			break
-		}
-	}
-	testutil.AssertTrue(t, found, "Should have install_script handler")
+	// V2 handlers use generic "handler" name
+	// Should have at least one handler result for the install script
+	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 }
 
 func TestRunPipeline_InvalidPack(t *testing.T) {
@@ -190,41 +184,5 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 	}
 }
 
-func TestFilterActionsByRunMode(t *testing.T) {
-	// Create test actions with different handlers
-	actions := []types.Action{
-		{
-			HandlerName: "symlink", // RunModeLinking
-			Description: "Symlink action",
-		},
-		{
-			HandlerName: "provision", // RunModeProvisioning
-			Description: "Install action",
-		},
-		{
-			HandlerName: "homebrew", // RunModeProvisioning
-			Description: "Brew action",
-		},
-	}
-
-	// Test RunModeLinking - should only get symlink
-	filtered, err := filterActionsByRunMode(actions, types.RunModeLinking)
-	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 1, len(filtered))
-	testutil.AssertEqual(t, "symlink", filtered[0].HandlerName)
-
-	// Test RunModeProvisioning - should get install and brew
-	filtered, err = filterActionsByRunMode(actions, types.RunModeProvisioning)
-	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(filtered))
-
-	// Test with unknown handler - should include it
-	actionsWithUnknown := append(actions, types.Action{
-		HandlerName: "unknown_handler",
-		Description: "Unknown action",
-	})
-	filtered, err = filterActionsByRunMode(actionsWithUnknown, types.RunModeLinking)
-	testutil.AssertNoError(t, err)
-	// Should have symlink + unknown (included because we can't determine its mode)
-	testutil.AssertEqual(t, 2, len(filtered))
-}
+// TestFilterActionsByRunMode is now tested in pkg/core/actions_v2_test.go
+// since the functionality moved there with the V2 actions

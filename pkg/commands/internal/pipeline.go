@@ -3,12 +3,13 @@ package internal
 import (
 	"os"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/executor"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -77,34 +78,31 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("triggerMatches", len(matches)).
 		Msg("Triggers matched")
 
-	// 5. Generate actions from triggers
-	actions, err := core.GetActions(matches)
+	// 5. Generate V2 actions from triggers
+	actionsV2, err := core.GetActionsV2(matches)
 	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate actions")
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate V2 actions")
 	}
 
 	logger.Debug().
-		Int("totalActions", len(actions)).
-		Msg("Actions generated")
+		Int("totalActions", len(actionsV2)).
+		Msg("V2 Actions generated")
 
-	// 5a. Enrich provisioning actions with checksums
-	// This is needed so the executor can write checksums to sentinel files
-	actions = core.EnrichProvisioningActionsWithChecksums(actions)
+	// 6. Create datastore for the new executor
+	fs := filesystem.NewOS()
+	dataStore := datastore.New(fs, pathsInstance)
 
-	// 6. Filter actions by run mode
-	filteredActions, err := filterActionsByRunMode(actions, opts.RunMode)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter actions by run mode")
-	}
+	// 7. Filter actions by run mode
+	filteredActions := core.FilterActionsByRunMode(actionsV2, opts.RunMode)
 
 	logger.Debug().
 		Int("filteredActions", len(filteredActions)).
 		Str("runMode", string(opts.RunMode)).
 		Msg("Actions filtered by run mode")
 
-	// 7. Filter provisioning actions based on --force flag
+	// 8. Filter provisioning actions based on --force flag
 	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
-		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, pathsInstance)
+		filteredActions, err = core.FilterProvisioningActionsV2(filteredActions, opts.Force, dataStore)
 		if err != nil {
 			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter provisioning actions")
 		}
@@ -113,14 +111,14 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 			Msg("Provisioning actions filtered")
 	}
 
-	// 8. Create execution context
+	// 9. Create execution context
 	ctx := types.NewExecutionContext(getCommandFromRunMode(opts.RunMode), opts.DryRun)
 
-	// 9. If dry run, we still need to create pack results structure
+	// 10. If dry run, we still need to create pack results structure
 	if opts.DryRun {
 		logger.Info().Msg("Dry run mode - creating planned results")
 		// Group actions by pack and create pack results
-		packResultsMap := groupActionsByPack(filteredActions, selectedPacks)
+		packResultsMap := groupActionsByPackV2(filteredActions, selectedPacks)
 		for packName, packResult := range packResultsMap {
 			ctx.AddPackResult(packName, packResult)
 		}
@@ -128,39 +126,41 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		return ctx, nil
 	}
 
-	// 10. Create and configure DirectExecutor
-	executorOpts := &core.DirectExecutorOptions{
-		Paths:             pathsInstance,
-		DryRun:            opts.DryRun,
-		Force:             opts.Force,
-		AllowHomeSymlinks: opts.EnableHomeSymlinks,
-		Config:            config.Default(),
+	// 11. Create and configure new V2 Executor
+	executorOpts := executor.Options{
+		DataStore: dataStore,
+		DryRun:    opts.DryRun,
+		Logger:    logging.GetLogger("executor"),
 	}
 
-	executor := core.NewDirectExecutor(executorOpts)
+	exec := executor.New(executorOpts)
 
-	// 11. Execute actions
+	// 12. Execute V2 actions
 	logger.Info().
 		Int("actionCount", len(filteredActions)).
-		Msg("Executing actions")
+		Msg("Executing V2 actions")
 
-	results, err := executor.ExecuteActions(filteredActions)
-	if err != nil {
-		// Still return context with partial results
-		if len(results) > 0 {
-			packResultsMap := convertActionResultsToPackResults(results, selectedPacks)
-			for packName, packResult := range packResultsMap {
-				ctx.AddPackResult(packName, packResult)
-			}
+	results := exec.Execute(filteredActions)
+
+	// Check if any actions failed
+	var hasErrors bool
+	for _, result := range results {
+		if !result.Success && result.Error != nil {
+			hasErrors = true
+			break
 		}
-		ctx.Complete()
-		return ctx, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute actions")
 	}
 
-	// 12. Process results into execution context
-	packResultsMap := convertActionResultsToPackResults(results, selectedPacks)
+	// 13. Process results into execution context
+	packResultsMap := convertActionResultsToPackResultsV2(results, selectedPacks)
 	for packName, packResult := range packResultsMap {
 		ctx.AddPackResult(packName, packResult)
+	}
+
+	// Return error if any actions failed
+	if hasErrors {
+		ctx.Complete()
+		return ctx, errors.New(errors.ErrActionExecute, "some actions failed during execution")
 	}
 
 	logger.Info().
@@ -170,51 +170,6 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 
 	ctx.Complete()
 	return ctx, nil
-}
-
-// filterActionsByRunMode filters actions based on the RunMode of their handlers
-func filterActionsByRunMode(actions []types.Action, mode types.RunMode) ([]types.Action, error) {
-	logger := logging.GetLogger("commands.internal.pipeline")
-	var filtered []types.Action
-
-	for _, action := range actions {
-		// Get the handler factory to check its run mode
-		factory, err := registry.GetHandlerFactory(action.HandlerName)
-		if err != nil {
-			logger.Warn().
-				Str("handler", action.HandlerName).
-				Err(err).
-				Msg("Failed to get handler factory, including action anyway")
-			// Include the action if we can't determine its run mode
-			filtered = append(filtered, action)
-			continue
-		}
-
-		// Create a temporary instance to check RunMode
-		handler, err := factory(nil)
-		if err != nil {
-			logger.Warn().
-				Str("handler", action.HandlerName).
-				Err(err).
-				Msg("Failed to create handler instance, including action anyway")
-			filtered = append(filtered, action)
-			continue
-		}
-		handlerMode := handler.RunMode()
-
-		// Include action if it matches the requested mode
-		if handlerMode == mode {
-			filtered = append(filtered, action)
-		}
-	}
-
-	logger.Debug().
-		Int("input", len(actions)).
-		Int("output", len(filtered)).
-		Str("mode", string(mode)).
-		Msg("Filtered actions by run mode")
-
-	return filtered, nil
 }
 
 // getCommandFromRunMode returns the command name based on run mode
@@ -229,8 +184,8 @@ func getCommandFromRunMode(mode types.RunMode) string {
 	}
 }
 
-// groupActionsByPack groups actions by pack for dry run display
-func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*types.PackExecutionResult {
+// groupActionsByPackV2 groups V2 actions by pack for dry run display
+func groupActionsByPackV2(actions []types.ActionV2, packs []types.Pack) map[string]*types.PackExecutionResult {
 	// Create pack map for easy lookup
 	packMap := make(map[string]*types.Pack)
 	for i := range packs {
@@ -239,9 +194,9 @@ func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*
 
 	packResults := make(map[string]*types.PackExecutionResult)
 
-	// Group actions by pack and handler
+	// Group actions by pack
 	for _, action := range actions {
-		packName := action.Pack
+		packName := action.Pack()
 		if packName == "" {
 			packName = "unknown"
 		}
@@ -258,28 +213,27 @@ func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*
 			packResults[packName] = packResult
 		}
 
-		// Find or create HandlerResult
+		// Create a handler result for dry run
+		handlerName := "handler" // V2 actions use generic handler name
 		var handlerResult *types.HandlerResult
 		for _, pur := range packResult.HandlerResults {
-			if pur.HandlerName == action.HandlerName {
+			if pur.HandlerName == handlerName {
 				handlerResult = pur
 				break
 			}
 		}
 		if handlerResult == nil {
 			handlerResult = &types.HandlerResult{
-				HandlerName: action.HandlerName,
+				HandlerName: handlerName,
 				Files:       []string{},
-				Status:      types.StatusReady, // Planned status for dry run
+				Status:      types.StatusReady,
 			}
 			packResult.HandlerResults = append(packResult.HandlerResults, handlerResult)
 			packResult.TotalHandlers++
 		}
 
-		// Add file to handler if source is specified
-		if action.Source != "" {
-			handlerResult.Files = append(handlerResult.Files, action.Source)
-		}
+		// Add action description as a "file"
+		handlerResult.Files = append(handlerResult.Files, action.Description())
 	}
 
 	// Complete all pack results
@@ -293,8 +247,8 @@ func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*
 	return packResults
 }
 
-// convertActionResultsToPackResults converts action results to pack execution results
-func convertActionResultsToPackResults(results []types.ActionResult, packs []types.Pack) map[string]*types.PackExecutionResult {
+// convertActionResultsToPackResultsV2 converts V2 action results to pack execution results
+func convertActionResultsToPackResultsV2(results []types.ActionResultV2, packs []types.Pack) map[string]*types.PackExecutionResult {
 	// Create pack map for easy lookup
 	packMap := make(map[string]*types.Pack)
 	for i := range packs {
@@ -303,9 +257,9 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 
 	packResults := make(map[string]*types.PackExecutionResult)
 
-	// Group results by pack and handler
+	// Group results by pack
 	for _, result := range results {
-		packName := result.Action.Pack
+		packName := result.Action.Pack()
 		if packName == "" {
 			packName = "unknown"
 		}
@@ -322,27 +276,40 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 			packResults[packName] = packResult
 		}
 
-		// Find or create HandlerResult
+		// Create a minimal handler result
+		handlerName := "handler" // V2 actions don't have handler names
 		var handlerResult *types.HandlerResult
 		for _, pur := range packResult.HandlerResults {
-			if pur.HandlerName == result.Action.HandlerName {
+			if pur.HandlerName == handlerName {
 				handlerResult = pur
 				break
 			}
 		}
+
+		// Determine status from result
+		var status types.OperationStatus
+		if result.Success {
+			if result.Skipped {
+				status = types.StatusSkipped
+			} else {
+				status = types.StatusReady
+			}
+		} else {
+			status = types.StatusError
+		}
+
 		if handlerResult == nil {
 			handlerResult = &types.HandlerResult{
-				HandlerName: result.Action.HandlerName,
+				HandlerName: handlerName,
 				Files:       []string{},
-				Status:      result.Status,
+				Status:      status,
 				Error:       result.Error,
-				Actions:     []types.Action{result.Action},
 			}
 			packResult.HandlerResults = append(packResult.HandlerResults, handlerResult)
 			packResult.TotalHandlers++
 
 			// Update counts based on status
-			switch result.Status {
+			switch status {
 			case types.StatusReady:
 				packResult.CompletedHandlers++
 			case types.StatusError:
@@ -352,7 +319,7 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 			}
 		} else {
 			// Update existing handler result if this one has error
-			if result.Status == types.StatusError && handlerResult.Status != types.StatusError {
+			if status == types.StatusError && handlerResult.Status != types.StatusError {
 				handlerResult.Status = types.StatusError
 				handlerResult.Error = result.Error
 				packResult.FailedHandlers++
@@ -362,13 +329,8 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 			}
 		}
 
-		// Add file to handler if source is specified
-		if result.Action.Source != "" {
-			handlerResult.Files = append(handlerResult.Files, result.Action.Source)
-		}
-
-		// Add action to handler
-		handlerResult.Actions = append(handlerResult.Actions, result.Action)
+		// Add action description as a "file"
+		handlerResult.Files = append(handlerResult.Files, result.Action.Description())
 	}
 
 	// Complete all pack results and determine status

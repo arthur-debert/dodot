@@ -34,8 +34,34 @@ func (h *HomebrewHandlerV2) RunMode() types.RunMode {
 
 // Process implements the old Handler interface for compatibility
 func (h *HomebrewHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	// This method is here for compatibility but should not be used
-	return nil, fmt.Errorf("Process method is deprecated, use ProcessProvisioning instead")
+	logger := logging.GetLogger("handlers.homebrew.v2")
+	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
+
+	// Get V2 actions
+	provisioningActions, err := h.ProcessProvisioning(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to old actions for compatibility
+	oldActions := make([]types.Action, 0, len(provisioningActions))
+	for _, brewAction := range provisioningActions {
+		if ba, ok := brewAction.(*types.BrewAction); ok {
+			oldAction := types.Action{
+				Type:        types.ActionTypeBrew,
+				Pack:        ba.PackName,
+				Source:      ba.BrewfilePath,
+				Description: ba.Description(),
+				HandlerName: HomebrewHandlerName,
+				Metadata: map[string]interface{}{
+					"checksum": ba.Checksum,
+				},
+			}
+			oldActions = append(oldActions, oldAction)
+		}
+	}
+
+	return oldActions, nil
 }
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances

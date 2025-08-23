@@ -34,8 +34,34 @@ func (h *ProvisionScriptHandlerV2) RunMode() types.RunMode {
 
 // Process implements the old Handler interface for compatibility
 func (h *ProvisionScriptHandlerV2) Process(matches []types.TriggerMatch) ([]types.Action, error) {
-	// This method is here for compatibility but should not be used
-	return nil, fmt.Errorf("Process method is deprecated, use ProcessProvisioning instead")
+	logger := logging.GetLogger("handlers.provision.v2")
+	logger.Debug().Msg("Process called on V2 handler - converting to old actions for compatibility")
+
+	// Get V2 actions
+	provisioningActions, err := h.ProcessProvisioning(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to old actions for compatibility
+	oldActions := make([]types.Action, 0, len(provisioningActions))
+	for _, scriptAction := range provisioningActions {
+		if sa, ok := scriptAction.(*types.RunScriptAction); ok {
+			oldAction := types.Action{
+				Type:        types.ActionTypeInstall,
+				Pack:        sa.PackName,
+				Source:      sa.ScriptPath,
+				Description: sa.Description(),
+				HandlerName: ProvisionScriptHandlerName,
+				Metadata: map[string]interface{}{
+					"checksum": sa.Checksum,
+				},
+			}
+			oldActions = append(oldActions, oldAction)
+		}
+	}
+
+	return oldActions, nil
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances

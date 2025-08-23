@@ -3,11 +3,9 @@ package fill
 import (
 	"fmt"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -54,57 +52,11 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 
 	// 5. Execute actions using DirectExecutor (Operations no longer returned)
 	if len(actions) > 0 {
-		// Initialize paths
-		pathsInstance, err := paths.New(opts.DotfilesRoot)
-		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
-		}
-
-		// Create DirectExecutor
-		directExecutorOpts := &core.DirectExecutorOptions{
-			Paths:             pathsInstance,
-			DryRun:            false,
-			Force:             true,
-			AllowHomeSymlinks: false,
-			Config:            config.Default(),
-		}
-
-		executor := core.NewDirectExecutor(directExecutorOpts)
-
-		// Execute actions and extract operations from results
-		results, err := executor.ExecuteActions(actions)
-		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute fill actions")
-		}
-
-		// FIXME: ARCHITECTURAL PROBLEM - fill command should return Pack+Handler+File information
-		// NOT operation details. See docs/design/display.txxt
-		// Operations are no longer returned (part of Operation layer elimination)
-		_ = results // Results processed but not exposed in return value
+		// TODO: Update fill command to use new V2 executor
+		// This command needs to be refactored to work with the new architecture
+		return nil, errors.New(errors.ErrNotImplemented, "fill command needs to be updated for V2 architecture")
 	}
 
-	// 6. Return result (Operations field removed as part of Operation elimination)
-	result := &types.FillResult{
-		PackName:     opts.PackName,
-		FilesCreated: []string{},
-	}
-
-	// List files that will be created
-	for _, template := range missingTemplates {
-		result.FilesCreated = append(result.FilesCreated, template.Filename)
-		log.Info().
-			Str("file", template.Filename).
-			Str("handler", template.HandlerName).
-			Msg("Template file to be created")
-	}
-
-	log.Debug().
-		Int("actionCount", len(actions)).
-		Msg("Executed actions for FillPack")
-
-	log.Info().Str("command", "FillPack").
-		Str("pack", opts.PackName).
-		Int("filesCreated", len(result.FilesCreated)).
-		Msg("Command finished")
-	return result, nil
+	// The rest of this function is unreachable until fill command is updated
+	panic("unreachable")
 }
