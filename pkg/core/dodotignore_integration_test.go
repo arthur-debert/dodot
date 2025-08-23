@@ -75,7 +75,7 @@ path = "temp/*"
 	}
 
 	// 4. Convert to actions
-	actions, err := GetActions(allMatches)
+	actions, err := GetActionsV2(allMatches)
 	testutil.AssertNoError(t, err)
 
 	// 5. Convert to operations
@@ -96,15 +96,30 @@ path = "temp/*"
 
 	// Check that actions don't reference ignored files
 	for _, action := range actions {
-		// No actions should reference files in private directories
-		if action.Source != "" {
-			testutil.AssertTrue(t, !strings.Contains(action.Source, "private/credentials.txt"),
+		// Get source file path based on action type
+		var sourceFile string
+		switch a := action.(type) {
+		case *types.LinkAction:
+			sourceFile = a.SourceFile
+		case *types.RunScriptAction:
+			sourceFile = a.ScriptPath
+		case *types.BrewAction:
+			sourceFile = a.BrewfilePath
+		case *types.AddToPathAction:
+			sourceFile = a.DirPath
+		case *types.AddToShellProfileAction:
+			sourceFile = a.ScriptPath
+		}
+
+		if sourceFile != "" {
+			// No actions should reference files in private directories
+			testutil.AssertTrue(t, !strings.Contains(sourceFile, "private/credentials.txt"),
 				"Files in .dodotignore directories should not generate actions")
 
 			// No actions should reference ignored files from .dodot.toml
-			testutil.AssertTrue(t, !strings.Contains(action.Source, "backup.bak"),
+			testutil.AssertTrue(t, !strings.Contains(sourceFile, "backup.bak"),
 				"Files matching .dodot.toml ignore patterns should not generate actions")
-			testutil.AssertTrue(t, !strings.Contains(action.Source, "temp/cache.tmp"),
+			testutil.AssertTrue(t, !strings.Contains(sourceFile, "temp/cache.tmp"),
 				"Files in ignored directories should not generate actions")
 		}
 	}

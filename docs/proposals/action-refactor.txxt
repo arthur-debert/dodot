@@ -1,0 +1,209 @@
+ACTION REFACTOR PROPOSAL
+
+
+    1. Overview
+
+        This document proposes a significant refactoring of dodot's core action
+        processing pipeline. The primary goals are to simplify the architecture,
+        remove the `go-synthfs` dependency, and introduce a clear data storage
+        abstraction to make the system more robust, testable, and easier to
+        understand.
+
+
+    2. Current State Analysis
+
+        A review of the current architecture reveals several areas for improvement:
+
+            - *Tight Coupling to `synthfs`*: The `DirectExecutor` is heavily
+              tied to `synthfs`. Every `Action` is converted into low-level
+              `synthfs` operations, creating a complex layer of indirection.
+
+            - *"Fat" Action Struct*: The `types.Action` struct acts as a union of
+              all possible parameters for all action types, making it difficult
+              to reason about, as most fields are irrelevant for any given action.
+
+            - *Implicit Data Store*: Logic for managing the internal state
+              directory (`~/.local/share/dodot`) is spread across the
+              `DirectExecutor` and handlers. There is no single, authoritative
+              data store module.
+
+            - *Informational `RunMode`*: The distinction between `linking` and
+              `provisioning` handlers is not deeply embedded in the architecture
+              and is used primarily for filtering.
+
+
+    3. Proposed Design
+
+        The new design simplifies the architecture by introducing a dedicated
+        data store, refining the roles of handlers and actions, and removing
+        the `synthfs` layer entirely.
+
+
+        3.1 Introduce a DataStore Layer
+
+            A new package, `pkg/datastore`, will be created to be solely
+            responsible for managing the `~/.local/share/dodot` directory. This
+            layer will abstract all path manipulation and filesystem operations
+            related to dodot's state.
+
+            -- go
+                package datastore
+
+                import "github.com/arthur-debert/dodot/pkg/types"
+
+                // DataStore manages dodot's internal state on the filesystem.
+                type DataStore interface {
+                    // Link creates the internal double-link structure for a file.
+                    Link(pack, sourceFile string) (intermediateLinkPath string, err error)
+
+                    // Unlink removes the internal link for a file.
+                    Unlink(pack, sourceFile string) error
+
+                    // AddToPath makes a directory available to the shell's PATH.
+                    AddToPath(pack, dirPath string) error
+
+                    // AddToShellProfile makes a script available to be sourced.
+                    AddToShellProfile(pack, scriptPath string) error
+
+                    // RecordProvisioning marks a provisioning action as complete.
+                    RecordProvisioning(pack, sentinelName, checksum string) error
+
+                    // NeedsProvisioning checks if a provisioning action needs to run.
+                    NeedsProvisioning(pack, sentinelName, checksum string) (bool, error)
+
+                    // GetStatus returns the status of a specific link or resource.
+                    GetStatus(pack, sourceFile string) (types.Status, error)
+                }
+            --
+
+
+        3.2 Refine Handlers and Actions
+
+            With a `DataStore` in place, handlers and actions can be simplified.
+            Actions will map directly to `DataStore` methods.
+
+
+            3.2.1 Formalize `RunMode` with Handler Interfaces
+
+                Instead of a `RunMode()` method, we will use interfaces to make
+                the distinction between handler types explicit and type-safe.
+
+                -- go
+                    package types
+
+                    // LinkingHandler generates actions that are idempotent and fast.
+                    type LinkingHandler interface {
+                        Handler
+                        ProcessLinking(matches []TriggerMatch) ([]LinkingAction, error)
+                    }
+
+                    // ProvisioningHandler generates actions that have side effects.
+                    type ProvisioningHandler interface {
+                        Handler
+                        ProcessProvisioning(matches []TriggerMatch) ([]ProvisioningAction, error)
+                    }
+                --
+
+
+            3.2.2 Specialize Action Types
+
+                The single "fat" `Action` struct will be replaced with a set of
+                specific, self-contained action types that correspond to
+                `DataStore` operations.
+
+                -- go
+                    package types
+
+                    // Action is the base interface for all actions.
+                    type Action interface {
+                        Execute(store datastore.DataStore) error
+                        Description() string
+                        Pack() string
+                    }
+
+                    // LinkAction represents linking a file.
+                    type LinkAction struct {
+                        SourceFile string
+                        TargetFile string
+                        PackName   string
+                    }
+
+                    func (a *LinkAction) Execute(store datastore.DataStore) error {
+                        intermediate, err := store.Link(a.PackName, a.SourceFile)
+                        if err != nil {
+                            return err
+                        }
+                        // The executor will create the final symlink:
+                        // a.TargetFile -> intermediate
+                        // ...
+                    }
+                --
+
+
+        3.3 Create a Simpler Executor
+
+            The `DirectExecutor` will be replaced with a much simpler `Executor`
+            that iterates through the new action types and calls their `Execute`
+            method, passing the `DataStore` instance.
+
+            -- go
+                package core
+
+                import (
+                    "github.com/arthur-debert/dodot/pkg/datastore"
+                    "github.com/arthur-debert/dodot/pkg/types"
+                )
+
+                type Executor struct {
+                    dataStore datastore.DataStore
+                    // ... other dependencies
+                }
+
+                func (e *Executor) Execute(actions []types.Action) []types.ActionResult {
+                    results := []types.ActionResult{}
+                    for _, action := range actions {
+                        err := action.Execute(e.dataStore)
+                        // create and append result
+                    }
+                    return results
+                }
+            --
+
+
+    4. Workflow Comparison
+
+        4.1 Old Workflow
+
+            1. `Handler.Process()` -> `types.Action` (fat struct)
+            2. `DirectExecutor` translates `Action` -> `[]synthfs.Operation`
+            3. `synthfs` plans and executes operations on the filesystem.
+
+
+        4.2 New Workflow
+
+            1. `Handler.Process...()` -> `[]types.SpecificAction`
+            2. `Executor` calls `action.Execute(dataStore)`
+            3. `action.Execute()` calls methods on the `DataStore`
+            4. `DataStore` performs direct filesystem operations (`os.Symlink`, etc.)
+
+
+    5. Benefits of the New Design
+
+        - *Removes `synthfs`*: Eliminates a complex dependency and an entire
+          layer of abstraction, simplifying the codebase.
+
+        - *Clear Separation of Concerns*: Handlers manage business logic, Actions
+          are self-contained units of work, and the DataStore manages state.
+
+        - *Pack-Centric Storage*: Organizes state logically on disk, which
+          simplifies debugging, cleanup, and pack management.
+
+        - *Improved Testability*: The `DataStore` can be tested in complete
+          isolation with a mock filesystem.
+
+        - *Formalized `RunMode`*: Using interfaces makes the distinction between
+          linking and provisioning a compile-time guarantee.
+
+        - *Simplicity*: The overall flow is more direct and easier to follow.
+          The logic for creating the double-link is now in one place
+          (`dataStore.Link`).

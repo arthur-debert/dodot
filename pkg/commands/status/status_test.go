@@ -1,43 +1,19 @@
 package status
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// testPaths implements types.Pather for testing
-type testPaths struct {
-	dotfilesRoot string
-	dataDir      string
-}
-
-func (p *testPaths) DotfilesRoot() string {
-	return p.dotfilesRoot
-}
-
-func (p *testPaths) DataDir() string {
-	return p.dataDir
-}
-
-func (p *testPaths) ConfigDir() string {
-	return filepath.Join(p.dataDir, "config")
-}
-
-func (p *testPaths) CacheDir() string {
-	return filepath.Join(p.dataDir, "cache")
-}
-
-func (p *testPaths) StateDir() string {
-	return filepath.Join(p.dataDir, "state")
-}
 
 func TestStatusPacks(t *testing.T) {
 	tests := []struct {
@@ -72,6 +48,12 @@ func TestStatusPacks(t *testing.T) {
 				}
 				assert.True(t, packNames["vim"])
 				assert.True(t, packNames["zsh"])
+
+				// Each pack should have files listed
+				for _, pack := range result.Packs {
+					// Should have at least one file
+					assert.NotEmpty(t, pack.Files)
+				}
 			},
 		},
 		{
@@ -168,6 +150,11 @@ func TestStatusPacks(t *testing.T) {
 			rootDir := "dotfiles"
 			dataDir := "data/dodot"
 
+			// Set environment variables to use test paths
+			t.Setenv("DOTFILES_ROOT", rootDir)
+			t.Setenv("DODOT_DATA_DIR", dataDir)
+			t.Setenv("HOME", "test-home")
+
 			// Create directories
 			testutil.CreateDirT(t, fs, rootDir)
 			testutil.CreateDirT(t, fs, dataDir)
@@ -178,10 +165,8 @@ func TestStatusPacks(t *testing.T) {
 			}
 
 			// Create test paths
-			testPaths := &testPaths{
-				dotfilesRoot: rootDir,
-				dataDir:      dataDir,
-			}
+			testPaths, err := paths.New(rootDir)
+			require.NoError(t, err)
 
 			// Run status command
 			result, err := StatusPacks(StatusPacksOptions{
@@ -209,51 +194,43 @@ func TestStatusPacks(t *testing.T) {
 }
 
 func TestStatusPacks_Integration(t *testing.T) {
-	// This test verifies the full status checking with deployed files
-	fs := testutil.NewTestFS()
-	rootDir := "dotfiles"
-	dataDir := "data/dodot"
-
-	// Create directories
-	testutil.CreateDirT(t, fs, rootDir)
-	testutil.CreateDirT(t, fs, dataDir)
+	// This test verifies status checking after actual deployment
+	tmpDir := t.TempDir()
 
 	// Create a pack with various files
-	packDir := rootDir + "/test"
-	testutil.CreateDirT(t, fs, packDir)
-	testutil.CreateFileT(t, fs, packDir+"/.vimrc", "vim config")
-	testutil.CreateFileT(t, fs, packDir+"/install.sh", "#!/bin/sh\necho installed")
-	testutil.CreateDirT(t, fs, packDir+"/bin")
-	testutil.CreateFileT(t, fs, packDir+"/aliases.sh", "alias ll='ls -l'")
+	packDir := filepath.Join(tmpDir, "test")
+	require.NoError(t, os.MkdirAll(packDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, ".vimrc"), []byte("vim config"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "install.sh"), []byte("#!/bin/sh\necho installed"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(packDir, "bin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "aliases.sh"), []byte("alias ll='ls -l'"), 0644))
 
-	// Simulate some deployed files
-	// NOTE: With the fix for issue #590, the status check now verifies the complete
-	// symlink chain. Since this test only creates the intermediate symlink without
-	// the target symlink (which would be at the real home directory), the status
-	// will correctly report as "pending" instead of "success".
-	// This is the correct behavior - if the user-visible symlink doesn't exist,
-	// the file is not truly deployed.
+	// Create paths instance
+	testPaths, err := paths.New(tmpDir)
+	require.NoError(t, err)
 
-	// Create intermediate symlink (but not the target)
-	deployedSymlink := dataDir + "/deployed/symlink/.vimrc"
-	testutil.CreateDirT(t, fs, dataDir+"/deployed/symlink")
-	require.NoError(t, fs.Symlink(packDir+"/.vimrc", deployedSymlink))
+	// Create datastore
+	fs := filesystem.NewOS()
+	dataStore := datastore.New(fs, testPaths)
 
-	// Provision script sentinel - using new format: provision/<pack>_<scriptname>.sentinel
-	provisionSentinel := dataDir + "/provision/test_install.sh.sentinel"
-	testutil.CreateDirT(t, fs, dataDir+"/provision")
-	checksum := calculateChecksum([]byte("#!/bin/sh\necho installed"))
-	testutil.CreateFileT(t, fs, provisionSentinel, checksum)
+	// Deploy some files using the actual datastore methods
+	// 1. Create a symlink deployment
+	_, err = dataStore.Link("test", filepath.Join(packDir, ".vimrc"))
+	require.NoError(t, err)
 
-	// Create test paths that return our test directories
-	testPaths := &testPaths{
-		dotfilesRoot: rootDir,
-		dataDir:      dataDir,
-	}
+	// 2. Add a directory to PATH
+	err = dataStore.AddToPath("test", filepath.Join(packDir, "bin"))
+	require.NoError(t, err)
 
-	// Run status command
+	// 3. Record a provisioning run
+	checksum, err := hashutil.CalculateFileChecksum(filepath.Join(packDir, "install.sh"))
+	require.NoError(t, err)
+	err = dataStore.RecordProvisioning("test", "install.sh.sentinel", checksum)
+	require.NoError(t, err)
+
+	// Now run status command to check what was deployed
 	result, err := StatusPacks(StatusPacksOptions{
-		DotfilesRoot: rootDir,
+		DotfilesRoot: tmpDir,
 		PackNames:    []string{"test"},
 		Paths:        testPaths,
 		FileSystem:   fs,
@@ -263,7 +240,7 @@ func TestStatusPacks_Integration(t *testing.T) {
 	require.NotNil(t, result)
 
 	// Verify results
-	assert.Len(t, result.Packs, 1)
+	require.Len(t, result.Packs, 1)
 	pack := result.Packs[0]
 	assert.Equal(t, "test", pack.Name)
 
@@ -271,38 +248,27 @@ func TestStatusPacks_Integration(t *testing.T) {
 	fileStatuses := make(map[string]string)
 	for _, file := range pack.Files {
 		fileStatuses[file.Path] = file.Status
+		t.Logf("File: %s, Status: %s, Message: %s", file.Path, file.Status, file.Message)
 	}
 
-	// Symlink should be pending since we only created the intermediate symlink
-	// The fix for #590 now properly checks the full deployment chain
-	assert.Equal(t, "queue", fileStatuses[".vimrc"])
+	// These should show as deployed/ready
+	assert.Equal(t, "success", fileStatuses[".vimrc"], "Symlink should be deployed")
+	assert.Equal(t, "success", fileStatuses["bin"], "Directory should be in PATH")
+	assert.Equal(t, "success", fileStatuses["install.sh"], "Provision script should show as run")
 
-	// Install script should be executed (success)
-	assert.Equal(t, "success", fileStatuses["install.sh"])
-
-	// PATH and shell source should be pending
-	assert.Equal(t, "queue", fileStatuses["bin"])
-	assert.Equal(t, "queue", fileStatuses["aliases.sh"])
-
-	// Pack should have mixed status (queue)
-	assert.Equal(t, "queue", pack.Status)
-}
-
-// calculateChecksum calculates SHA256 checksum for test data
-func calculateChecksum(data []byte) string {
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:])
+	// This wasn't deployed, so should be missing/queue
+	assert.Equal(t, "queue", fileStatuses["aliases.sh"], "Shell profile not deployed")
 }
 
 func TestStatusPacksOptions(t *testing.T) {
 	// Test that StatusPacksOptions properly initializes defaults
+	testPaths, err := paths.New("/non/existent/path")
+	require.NoError(t, err)
+
 	result, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: "/non/existent/path",
 		PackNames:    []string{"test"},
-		Paths: &testPaths{
-			dotfilesRoot: "/non/existent/path",
-			dataDir:      t.TempDir(),
-		},
+		Paths:        testPaths,
 	})
 
 	// Should get an error about non-existent path
@@ -315,13 +281,13 @@ func TestStatusPacksEmptyDir(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
 
+	testPaths, err := paths.New(tmpDir)
+	require.NoError(t, err)
+
 	result, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{},
-		Paths: &testPaths{
-			dotfilesRoot: tmpDir,
-			dataDir:      t.TempDir(),
-		},
+		Paths:        testPaths,
 	})
 
 	// Should succeed with empty result
@@ -350,13 +316,13 @@ func TestStatusPacksRealFS(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(ignoredDir, ".dodotignore"), []byte(""), 0644))
 
 	// Test all packs
+	testPaths, err := paths.New(tmpDir)
+	require.NoError(t, err)
+
 	result, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{},
-		Paths: &testPaths{
-			dotfilesRoot: tmpDir,
-			dataDir:      t.TempDir(),
-		},
+		Paths:        testPaths,
 	})
 
 	require.NoError(t, err)
@@ -381,10 +347,7 @@ func TestStatusPacksRealFS(t *testing.T) {
 	result2, err := StatusPacks(StatusPacksOptions{
 		DotfilesRoot: tmpDir,
 		PackNames:    []string{"vim"},
-		Paths: &testPaths{
-			dotfilesRoot: tmpDir,
-			dataDir:      t.TempDir(),
-		},
+		Paths:        testPaths,
 	})
 
 	require.NoError(t, err)

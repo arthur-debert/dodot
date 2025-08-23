@@ -1,0 +1,74 @@
+ACTION & DATASTORE REFACTOR - IMPLEMENTATION PLAN
+
+
+    1. PHASE 1: Build the Standalone `DataStore` Layer
+
+        *Goal*: Create a new, fully tested `pkg/datastore` that manages the
+        pack-centric directory structure directly on the filesystem.
+
+        - *Directory & Interface*: Create the `pkg/datastore` directory and
+          define the `DataStore` interface in `datastore.go` as specified in
+          the proposal.
+        - *Implementation*: Create a `filesystemDataStore` struct that
+          implements the interface. All methods will perform direct filesystem
+          operations (e.g., `os.MkdirAll`, `os.Symlink`) using the `types.FS`
+          abstraction.
+        - *Unit Testing*: Write comprehensive unit tests for the
+          `filesystemDataStore`. Use a mock filesystem to validate every
+          method's behavior and edge cases.
+
+
+    2. PHASE 2: Define New `Action` and `Handler` Types
+
+        *Goal*: Create the new data structures for Actions and the new
+        interfaces for Handlers.
+
+        - *Action Types*: In `pkg/types`, define the new `Action` interface and
+          the specific structs (`LinkAction`, `AddToPathAction`,
+          `RunScriptAction`, etc.).
+        - *Handler Interfaces*: In `pkg/types`, define the `LinkingHandler` and
+          `ProvisioningHandler` interfaces.
+        - *Implement `Execute` Methods*: Implement the
+          `Execute(datastore.DataStore)` method for each new `Action` struct.
+          This logic will be simple, mostly one-line calls to the
+          corresponding `DataStore` method.
+
+
+    3. PHASE 3: Implement the New `Executor` and Integration Test
+
+        *Goal*: Create the new `Executor` and verify that the `Action` ->
+        `Executor` -> `DataStore` pipeline works correctly.
+
+        - *Create Executor*: Implement the new, simple `Executor` in
+          `pkg/core/executor.go`. Its main job is to iterate over a slice of
+          `Action` interfaces and call the `Execute` method on each.
+        - *Integration Testing*: Write integration tests for the `Executor` that
+          use a real `filesystemDataStore` on a temporary directory to verify
+          the end-to-end pipeline from action creation to filesystem mutation.
+
+
+    4. PHASE 4: Incrementally Refactor Handlers
+
+        *Goal*: Update each existing handler to use the new `Action` and
+        `Handler` types, one at a time.
+
+        - *Refactor `SymlinkHandler`*: Modify its signature to implement the
+          `LinkingHandler` interface and return `[]types.LinkAction`.
+        - *Refactor `ProvisionHandler`*: Modify its signature to implement
+          `ProvisioningHandler` and return `[]types.RunScriptAction`.
+        - *Continue for all other handlers*: Repeat the process for `Path`,
+          `ShellProfile`, `Homebrew`, etc.
+
+
+    5. PHASE 5: Final Integration and Cleanup
+
+        *Goal*: Swap the old pipeline with the new one in the main application
+        and remove all legacy code.
+
+        - *Swap Executors*: In the main command logic (`cmd/dodot/`), replace
+          the instantiation of `DirectExecutor` with the new `Executor`.
+        - *Remove Legacy Code*: Delete `pkg/core/direct_executor.go`, remove the
+          `go-synthfs` dependency, and delete the old `types.Action` struct.
+        - *Full System Verification*: Run the entire test suite, including the
+          live-testing scenarios, to ensure 100% of the functionality is
+          preserved and there are no regressions.

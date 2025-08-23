@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
 	"github.com/arthur-debert/dodot/pkg/registry"
@@ -18,6 +19,12 @@ type PackTemplateFile struct {
 	Content     string // From handler's GetTemplateContent()
 	Mode        uint32
 	HandlerName string
+}
+
+// TemplateProvider interface for handlers that can provide template content
+type TemplateProvider interface {
+	GetTemplateContent() string
+	Name() string
 }
 
 // GetCompletePackTemplate returns all template files available for a pack
@@ -48,21 +55,22 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 
 		// Check if this is a filename trigger
 		if filenameTrigger, ok := trigger.(*triggers.FileNameTrigger); ok {
-			// Get the handler
-			handlerFactory, err := registry.GetHandlerFactory(matcher.HandlerName)
-			if err != nil {
-				logger.Warn().Str("handler", matcher.HandlerName).Err(err).Msg("Failed to get handler factory")
+			// Get the V2 handler
+			handlerV2 := handlers.GetV2Handler(matcher.HandlerName)
+			if handlerV2 == nil {
+				logger.Warn().Str("handler", matcher.HandlerName).Msg("Failed to get V2 handler")
 				continue
 			}
 
-			handler, err := handlerFactory(matcher.HandlerOptions)
-			if err != nil {
-				logger.Warn().Str("handler", matcher.HandlerName).Err(err).Msg("Failed to create handler")
+			// Check if handler can provide templates
+			templateProvider, ok := handlerV2.(TemplateProvider)
+			if !ok {
+				// Handler doesn't support templates, skip
 				continue
 			}
 
 			// Get template content
-			content := handler.GetTemplateContent()
+			content := templateProvider.GetTemplateContent()
 			if content != "" {
 				// Replace PACK_NAME placeholder
 				content = strings.ReplaceAll(content, "PACK_NAME", packName)
@@ -85,12 +93,12 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 					Filename:    filename,
 					Content:     content,
 					Mode:        mode,
-					HandlerName: handler.Name(),
+					HandlerName: templateProvider.Name(),
 				})
 
 				logger.Debug().
 					Str("filename", filename).
-					Str("handler", handler.Name()).
+					Str("handler", templateProvider.Name()).
 					Msg("Added template file")
 			}
 		}

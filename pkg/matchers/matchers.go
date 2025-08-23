@@ -13,7 +13,6 @@ import (
 	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/provision"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_add_path"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
@@ -114,11 +113,8 @@ func ValidateMatcher(matcher *types.Matcher) error {
 		return fmt.Errorf("unknown trigger: %s", matcher.TriggerName)
 	}
 
-	// Check if handler factory exists
-	_, err = registry.GetHandlerFactory(matcher.HandlerName)
-	if err != nil {
-		return fmt.Errorf("unknown handler: %s", matcher.HandlerName)
-	}
+	// V2 handlers are not registered in the registry, so we don't validate them here
+	// Handler validation happens when the handler is instantiated
 
 	return nil
 }

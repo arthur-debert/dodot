@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -74,49 +74,89 @@ type RemovedItem struct {
 }
 
 // UnlinkPacks removes deployments for the specified packs
+//
+// This command undoes the effects of linking handlers (symlink, path, shell_profile)
+// but deliberately leaves provisioning handlers (provision, homebrew) untouched.
+//
+// The unlink process works as follows:
+//
+// 1. For symlink handlers:
+//   - First reads all intermediate symlinks in packs/<pack>/symlinks/
+//   - Removes the user-facing symlinks (e.g., ~/.vimrc) that point to them
+//   - Then removes the intermediate symlinks
+//
+// 2. For path and shell_profile handlers:
+//   - Simply removes their directories (packs/<pack>/path/, packs/<pack>/shell_profile/)
+//   - The shell integration will automatically stop including them
+//
+// 3. For provisioning handlers:
+//   - Leaves packs/<pack>/sentinels/ untouched
+//   - These track what has been installed and should persist
+//
+// This design allows users to "turn off" a pack's active configurations
+// without forgetting what software was installed by that pack.
 func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
-	logger := logging.GetLogger("commands.off")
-	logger.Info().
-		Strs("packs", opts.PackNames).
+	logger := logging.GetLogger("commands.unlink")
+	logger.Debug().
+		Str("dotfilesRoot", opts.DotfilesRoot).
+		Strs("packNames", opts.PackNames).
 		Bool("dryRun", opts.DryRun).
-		Msg("Starting off command")
+		Bool("force", opts.Force).
+		Msg("Starting unlink command")
 
-	// Create filesystem
+	// Initialize paths
+	pathsInstance, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize paths: %w", err)
+	}
+
+	// Initialize filesystem
 	fs := filesystem.NewOS()
 
-	// Discover and select packs
+	// Create datastore
+	dataStore := datastore.New(fs, pathsInstance)
+
+	// Discover packs
 	selectedPacks, err := core.DiscoverAndSelectPacks(opts.DotfilesRoot, opts.PackNames)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(selectedPacks) == 0 {
-		return nil, errors.New(errors.ErrPackNotFound, "no packs found to process")
+	logger.Info().
+		Int("packCount", len(selectedPacks)).
+		Msg("Found packs to unlink")
+
+	// Initialize result
+	result := &UnlinkResult{
+		DryRun:       opts.DryRun,
+		Packs:        []PackUnlinkResult{},
+		TotalRemoved: 0,
 	}
 
 	// Process each pack
-	result := &UnlinkResult{
-		Packs:  []PackUnlinkResult{},
-		DryRun: opts.DryRun,
-	}
-
 	for _, pack := range selectedPacks {
-		packResult := processPackOff(pack, fs, opts)
+		packResult, err := unlinkPack(pack, dataStore, fs, pathsInstance, opts.DryRun)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("pack", pack.Name).
+				Msg("Failed to unlink pack")
+			// Add error to result but continue with other packs
+			packResult = PackUnlinkResult{
+				Name:   pack.Name,
+				Errors: []string{err.Error()},
+			}
+		}
 		result.Packs = append(result.Packs, packResult)
 		result.TotalRemoved += len(packResult.RemovedItems)
 	}
 
-	logger.Info().
-		Int("totalRemoved", result.TotalRemoved).
-		Int("packCount", len(result.Packs)).
-		Msg("Off command completed")
-
 	return result, nil
 }
 
-// processPackOff removes all deployments for a single pack
-func processPackOff(pack types.Pack, fs types.FS, opts UnlinkPacksOptions) PackUnlinkResult {
-	logger := logging.GetLogger("commands.off").With().
+// unlinkPack removes all linking handler deployments for a single pack
+func unlinkPack(pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths, dryRun bool) (PackUnlinkResult, error) {
+	logger := logging.GetLogger("commands.unlink").With().
 		Str("pack", pack.Name).
 		Logger()
 
@@ -126,256 +166,171 @@ func processPackOff(pack types.Pack, fs types.FS, opts UnlinkPacksOptions) PackU
 		Errors:       []string{},
 	}
 
-	// Get all possible actions for this pack to know what to look for
-	triggers, err := core.GetFiringTriggersFS([]types.Pack{pack}, fs)
-	if err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("failed to get triggers: %v", err))
-		return result
+	// Step 1: Handle symlinks - need to remove user-facing symlinks first
+	symlinksDir := pathsInstance.PackHandlerDir(pack.Name, "symlinks")
+	if entries, err := fs.ReadDir(symlinksDir); err == nil {
+		logger.Debug().
+			Int("count", len(entries)).
+			Msg("Found symlinks to remove")
+
+		for _, entry := range entries {
+			if err := removeSymlink(pack, entry.Name(), fs, pathsInstance, &result, dryRun); err != nil {
+				logger.Error().
+					Err(err).
+					Str("file", entry.Name()).
+					Msg("Failed to remove symlink")
+				result.Errors = append(result.Errors, fmt.Sprintf("symlink %s: %v", entry.Name(), err))
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		logger.Debug().Err(err).Msg("Failed to read symlinks directory")
 	}
 
-	actions, err := core.GetActions(triggers)
-	if err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("failed to get actions: %v", err))
-		return result
-	}
+	// Step 2: Remove linking handler directories
+	// IMPORTANT: We do this AFTER processing symlinks so we can read their targets
+	linkingHandlers := []string{"symlinks", "path", "shell_profile"}
+	for _, handler := range linkingHandlers {
+		handlerDir := pathsInstance.PackHandlerDir(pack.Name, handler)
 
-	// Process each action to find and remove its deployments
-	for _, action := range actions {
-		items := findAndRemoveDeployments(action, fs, opts)
-		result.RemovedItems = append(result.RemovedItems, items...)
-	}
-
-	// Clean up pack-specific state files (sentinels, etc.)
-	stateItems := cleanupPackState(pack, fs, opts)
-	result.RemovedItems = append(result.RemovedItems, stateItems...)
-
-	logger.Info().
-		Int("removedCount", len(result.RemovedItems)).
-		Msg("Pack off completed")
-
-	return result
-}
-
-// findAndRemoveDeployments finds and removes deployments for an action
-func findAndRemoveDeployments(action types.Action, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
-	logger := logging.GetLogger("commands.off")
-	items := []RemovedItem{}
-
-	switch action.Type {
-	case types.ActionTypeLink:
-		// Remove deployed symlink with ownership verification
-		if action.Target != "" {
-			// Use LinkDetector for safe removal
-			linkItems := safeRemoveSymlink(action, fs, opts)
-			items = append(items, linkItems...)
+		// Check if directory exists
+		if _, err := fs.Stat(handlerDir); err != nil {
+			if os.IsNotExist(err) {
+				logger.Debug().
+					Str("handler", handler).
+					Msg("Handler directory doesn't exist, skipping")
+				continue
+			}
+			logger.Error().
+				Err(err).
+				Str("handler", handler).
+				Msg("Failed to stat handler directory")
+			continue
 		}
 
-	case types.ActionTypePathAdd:
-		// Remove from deployed/path
-		deployedPath := filepath.Join(opts.DataDir, "deployed", "path", filepath.Base(action.Source))
-		if item := removeIfExists(deployedPath, "path", fs, opts); item != nil {
-			items = append(items, *item)
-		}
-
-	case types.ActionTypeShellSource:
-		// Remove from deployed/shell_profile or shell_source
-		baseName := filepath.Base(action.Source)
-		for _, subdir := range []string{"shell_profile", "shell_source"} {
-			deployedPath := filepath.Join(opts.DataDir, "deployed", subdir, baseName)
-			if item := removeIfExists(deployedPath, subdir, fs, opts); item != nil {
-				items = append(items, *item)
+		// Remove the directory
+		if !dryRun {
+			if err := fs.RemoveAll(handlerDir); err != nil {
+				logger.Error().
+					Err(err).
+					Str("handler", handler).
+					Msg("Failed to remove handler directory")
+				result.Errors = append(result.Errors, fmt.Sprintf("remove %s dir: %v", handler, err))
+				continue
 			}
 		}
 
-	default:
-		logger.Debug().
-			Str("actionType", string(action.Type)).
-			Msg("No deployment removal needed for action type")
-	}
-
-	return items
-}
-
-// cleanupPackState removes pack-specific state files
-func cleanupPackState(pack types.Pack, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
-	items := []RemovedItem{}
-
-	// Remove provision script sentinels
-	provisionSentinel := filepath.Join(opts.DataDir, "provision", "sentinels", pack.Name)
-	if item := removeIfExists(provisionSentinel, "provision_sentinel", fs, opts); item != nil {
-		items = append(items, *item)
-	}
-
-	// Remove homebrew sentinels
-	brewSentinel := filepath.Join(opts.DataDir, "homebrew", pack.Name)
-	if item := removeIfExists(brewSentinel, "brew_sentinel", fs, opts); item != nil {
-		items = append(items, *item)
-	}
-
-	return items
-}
-
-// safeRemoveSymlink safely removes a symlink with ownership verification
-func safeRemoveSymlink(action types.Action, fs types.FS, opts UnlinkPacksOptions) []RemovedItem {
-	logger := logging.GetLogger("commands.off")
-	items := []RemovedItem{}
-
-	// Create a paths instance
-	p, err := paths.New(opts.DotfilesRoot)
-	if err != nil {
-		logger.Error().
-			Err(err).
-			Msg("Failed to create paths instance")
-		return items
-	}
-
-	// Get intermediate path
-	intermediatePath, err := action.GetDeployedSymlinkPath(p)
-	if err != nil {
-		logger.Error().
-			Err(err).
-			Str("target", action.Target).
-			Msg("Failed to get intermediate symlink path")
-		return items
-	}
-
-	target := paths.ExpandHome(action.Target)
-
-	// Check if deployed symlink exists and points to our intermediate
-	targetInfo, err := fs.Lstat(target)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			logger.Debug().
-				Err(err).
-				Str("target", target).
-				Msg("Error checking deployed symlink")
-		}
-		// Target doesn't exist - nothing to remove
-		return items
-	}
-
-	// Verify it's a symlink
-	if targetInfo.Mode()&os.ModeSymlink == 0 {
-		logger.Debug().
-			Str("target", target).
-			Msg("Target exists but is not a symlink - not removing")
-		return items
-	}
-
-	// Read where it points
-	targetDest, err := fs.Readlink(target)
-	if err != nil {
-		logger.Debug().
-			Err(err).
-			Str("target", target).
-			Msg("Cannot read symlink - not removing")
-		return items
-	}
-
-	// Resolve the target
-	resolvedTarget := targetDest
-	if !filepath.IsAbs(targetDest) {
-		resolvedTarget = filepath.Join(filepath.Dir(target), targetDest)
-	}
-
-	// Verify it points to our intermediate
-	if !pathsMatch(targetDest, intermediatePath, resolvedTarget) {
-		logger.Debug().
-			Str("target", target).
-			Str("points_to", targetDest).
-			Str("expected", intermediatePath).
-			Msg("Symlink doesn't point to our intermediate - not removing")
-		return items
-	}
-
-	// Safe to remove - it's our symlink
-	if item := removeIfExists(target, "symlink", fs, opts); item != nil {
-		items = append(items, *item)
-	}
-
-	// Remove intermediate symlink
-	if item := removeIfExists(intermediatePath, "intermediate", fs, opts); item != nil {
-		items = append(items, *item)
-	}
-
-	return items
-}
-
-// pathsMatch checks if symlink paths match (copied from state package)
-func pathsMatch(targetDest, expectedPath, resolvedPath string) bool {
-	// Direct match
-	if targetDest == expectedPath {
-		return true
-	}
-
-	// Clean and compare
-	if filepath.Clean(targetDest) == filepath.Clean(expectedPath) {
-		return true
-	}
-
-	// Compare resolved path
-	if filepath.Clean(resolvedPath) == filepath.Clean(expectedPath) {
-		return true
-	}
-
-	return false
-}
-
-// removeIfExists removes a file/directory if it exists
-func removeIfExists(path, itemType string, fs types.FS, opts UnlinkPacksOptions) *RemovedItem {
-	logger := logging.GetLogger("commands.off")
-
-	// Check if item exists
-	info, err := fs.Lstat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // Nothing to remove
-		}
-		return &RemovedItem{
-			Type:    itemType,
-			Path:    path,
-			Success: false,
-			Error:   fmt.Sprintf("failed to stat: %v", err),
-		}
-	}
-
-	// Get target for symlinks
-	var target string
-	if info.Mode()&os.ModeSymlink != 0 {
-		target, _ = fs.Readlink(path)
-	}
-
-	item := &RemovedItem{
-		Type:    itemType,
-		Path:    path,
-		Target:  target,
-		Success: true,
-	}
-
-	// Skip actual removal if dry run
-	if opts.DryRun {
 		logger.Info().
-			Str("path", path).
-			Str("type", itemType).
-			Msg("Would remove (dry run)")
-		return item
+			Str("handler", handler).
+			Bool("dryRun", dryRun).
+			Msg("Removed handler directory")
+
+		// Add to result
+		result.RemovedItems = append(result.RemovedItems, RemovedItem{
+			Type:    handler + "_directory",
+			Path:    handlerDir,
+			Success: true,
+		})
 	}
 
-	// Remove the item
-	err = fs.Remove(path)
+	return result, nil
+}
+
+// removeSymlink removes a single symlink deployment
+func removeSymlink(pack types.Pack, filename string, fs types.FS, pathsInstance paths.Paths, result *PackUnlinkResult, dryRun bool) error {
+	logger := logging.GetLogger("commands.unlink").With().
+		Str("pack", pack.Name).
+		Str("file", filename).
+		Logger()
+
+	// Get the intermediate symlink path
+	intermediatePath := filepath.Join(pathsInstance.PackHandlerDir(pack.Name, "symlinks"), filename)
+
+	// Read where it points to find the source file
+	sourceFile, err := fs.Readlink(intermediatePath)
 	if err != nil {
-		item.Success = false
-		item.Error = err.Error()
 		logger.Error().
 			Err(err).
-			Str("path", path).
-			Msg("Failed to remove item")
+			Str("intermediatePath", intermediatePath).
+			Msg("Failed to read intermediate link")
+		return fmt.Errorf("failed to read intermediate link: %w", err)
+	}
+
+	logger.Debug().
+		Str("intermediatePath", intermediatePath).
+		Str("sourceFile", sourceFile).
+		Msg("Read intermediate link")
+
+	// Find the user-facing symlink
+	// We need to reconstruct what the target would have been
+	// This matches the logic in symlink_v2.go
+	var targetPath string
+	if pathsInstance != nil {
+		// Use centralized mapping
+		targetPath = pathsInstance.MapPackFileToSystem(&pack, filename)
 	} else {
-		logger.Info().
-			Str("path", path).
-			Str("type", itemType).
-			Msg("Removed item")
+		// Fallback
+		homeDir, _ := paths.GetHomeDirectory()
+		targetPath = filepath.Join(homeDir, filename)
 	}
 
-	return item
+	// Check if the user-facing symlink exists and points to our intermediate
+	if linkTarget, err := fs.Readlink(targetPath); err == nil {
+		logger.Debug().
+			Str("targetPath", targetPath).
+			Str("linkTarget", linkTarget).
+			Str("intermediatePath", intermediatePath).
+			Msg("Checking if symlink points to our intermediate")
+
+		// Verify it points to our intermediate link
+		if linkTarget == intermediatePath {
+			// Remove the user-facing symlink
+			if !dryRun {
+				if err := fs.Remove(targetPath); err != nil {
+					logger.Error().
+						Err(err).
+						Str("target", targetPath).
+						Msg("Failed to remove user-facing symlink")
+					result.RemovedItems = append(result.RemovedItems, RemovedItem{
+						Type:    "symlink",
+						Path:    targetPath,
+						Target:  sourceFile,
+						Success: false,
+						Error:   err.Error(),
+					})
+				} else {
+					logger.Info().
+						Str("target", targetPath).
+						Bool("dryRun", dryRun).
+						Msg("Removed user-facing symlink")
+					result.RemovedItems = append(result.RemovedItems, RemovedItem{
+						Type:    "symlink",
+						Path:    targetPath,
+						Target:  sourceFile,
+						Success: true,
+					})
+				}
+			} else {
+				// Dry run - just record what would be removed
+				result.RemovedItems = append(result.RemovedItems, RemovedItem{
+					Type:    "symlink",
+					Path:    targetPath,
+					Target:  sourceFile,
+					Success: true,
+				})
+			}
+		} else {
+			logger.Warn().
+				Str("target", targetPath).
+				Str("expected", intermediatePath).
+				Str("actual", linkTarget).
+				Msg("User-facing symlink points elsewhere, not removing")
+		}
+	} else if !os.IsNotExist(err) {
+		logger.Debug().
+			Err(err).
+			Str("target", targetPath).
+			Msg("Failed to read user-facing symlink")
+	}
+
+	return nil
 }

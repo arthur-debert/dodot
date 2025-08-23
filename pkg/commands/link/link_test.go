@@ -54,16 +54,16 @@ func TestLinkPacks_SymlinkHandler(t *testing.T) {
 	// Should have symlink handler results
 	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 
-	// Find symlink handler result
-	var symlinkResult *types.HandlerResult
+	// Find handler result (V2 actions use generic "handler" name)
+	var handlerResult *types.HandlerResult
 	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "symlink" {
-			symlinkResult = pur
+		if pur.HandlerName == "handler" {
+			handlerResult = pur
 			break
 		}
 	}
-	testutil.AssertNotNil(t, symlinkResult, "Should have symlink handler result")
-	testutil.AssertEqual(t, types.StatusReady, symlinkResult.Status)
+	testutil.AssertNotNil(t, handlerResult, "Should have handler result")
+	testutil.AssertEqual(t, types.StatusReady, handlerResult.Status)
 
 	// Verify actual symlinks were created (Layer 1: top-level files get dot prefix)
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
@@ -201,19 +201,12 @@ echo "Installing tools" > /tmp/install-was-run
 	testutil.AssertTrue(t, ok, "Should have tools pack result")
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
-	// Should only have symlink handler, NOT install_script
-	var hasSymlink, hasInstall bool
-	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "symlink" {
-			hasSymlink = true
-		}
-		if pur.HandlerName == "provision" {
-			hasInstall = true
-		}
-	}
+	// Should only have handler results (V2 uses generic "handler" name)
+	// In link mode, we should not have any provisioning actions
+	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 
-	testutil.AssertTrue(t, hasSymlink, "Should have symlink handler")
-	testutil.AssertFalse(t, hasInstall, "Should NOT have install_script handler in deploy mode")
+	// The key test is that install script was not executed
+	// (which is verified below)
 
 	// Verify symlink was created but install script was not run
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")

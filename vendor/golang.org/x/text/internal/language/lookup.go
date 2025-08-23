@@ -44,7 +44,7 @@ func getLangID(s []byte) (Language, error) {
 }
 
 // TODO language normalization as well as the AliasMaps could be moved to the
-// higher level package, but it is a bit handlery to separate the generation.
+// higher level package, but it is a bit tricky to separate the generation.
 
 func (id Language) Canonicalize() (Language, AliasType) {
 	return normLang(id)

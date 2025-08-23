@@ -108,37 +108,6 @@ type FillResult struct {
 	// Operations field removed - part of Operation layer elimination
 }
 
-// ActionResult represents the execution result of a single Action
-// This replaces OperationResult and is focused on Action execution, not Operation details
-type ActionResult struct {
-	// Action contains the action that was executed
-	Action Action `json:"action"`
-
-	// Status is the execution status
-	Status OperationStatus `json:"status"`
-
-	// Error contains any error that occurred during execution
-	Error error `json:"error,omitempty"`
-
-	// StartTime is when execution began
-	StartTime time.Time `json:"startTime"`
-
-	// EndTime is when execution completed
-	EndTime time.Time `json:"endTime"`
-
-	// Message provides additional context about the execution
-	Message string `json:"message,omitempty"`
-
-	// SynthfsOperationIDs tracks the synthfs operations that were executed for this action
-	// This is useful for debugging and correlation with synthfs results
-	SynthfsOperationIDs []string `json:"synthfsOperationIds,omitempty"`
-}
-
-// Duration returns the time taken to execute the action
-func (ar *ActionResult) Duration() time.Duration {
-	return ar.EndTime.Sub(ar.StartTime)
-}
-
 // InitResult holds the result of the 'init' command.
 type InitResult struct {
 	PackName     string   `json:"packName"`

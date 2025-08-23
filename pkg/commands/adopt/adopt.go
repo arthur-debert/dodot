@@ -116,7 +116,7 @@ func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 }
 
 // createAdoptOperations creates synthfs operations for adopting a single file
-func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pathsInstance *paths.Paths, pack *types.Pack, sourcePath string, force bool) ([]synthfs.Operation, *types.AdoptedFile, error) {
+func createAdoptOperations(sfs *synthfs.SynthFS, logger zerolog.Logger, pathsInstance paths.Paths, pack *types.Pack, sourcePath string, force bool) ([]synthfs.Operation, *types.AdoptedFile, error) {
 	// Expand the source path
 	expandedPath := paths.ExpandHome(sourcePath)
 

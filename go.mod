@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/adrg/xdg v0.5.3
-	github.com/arthur-debert/synthfs v0.9.5
+	github.com/arthur-debert/synthfs v0.0.0-00010101000000-000000000000
 	github.com/beevik/etree v1.5.1
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
@@ -50,6 +50,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect

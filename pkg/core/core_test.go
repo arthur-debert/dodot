@@ -1,8 +1,6 @@
 package core
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -31,12 +29,6 @@ func (p *testPaths) CacheDir() string {
 
 func (p *testPaths) StateDir() string {
 	return filepath.Join(p.dataDir, "state")
-}
-
-// calculateTestChecksum calculates SHA256 checksum for test data
-func calculateTestChecksum(data []byte) string {
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:])
 }
 
 // NewTestPaths creates a new testPaths instance for testing

@@ -130,7 +130,7 @@ func NewRootCmd() *cobra.Command {
 }
 
 // initPaths initializes the paths instance and shows a warning if using fallback
-func initPaths() (*paths.Paths, error) {
+func initPaths() (paths.Paths, error) {
 	p, err := paths.New("")
 	if err != nil {
 		return nil, fmt.Errorf(MsgErrInitPaths, err)

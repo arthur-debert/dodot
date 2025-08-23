@@ -74,7 +74,38 @@ const (
 )
 
 // Paths provides centralized path management for dodot
-type Paths struct {
+type Paths interface {
+	DotfilesRoot() string
+	UsedFallback() bool
+	PackPath(packName string) string
+	PackConfigPath(packName string) string
+	DataDir() string
+	ConfigDir() string
+	CacheDir() string
+	StateDir() string
+	BackupsDir() string
+	TemplatesDir() string
+	StatePath(packName, handlerName string) string
+	NormalizePath(path string) (string, error)
+	IsInDotfiles(path string) (bool, error)
+	DeployedDir() string
+	ShellProfileDir() string
+	PathDir() string
+	ShellSourceDir() string
+	SymlinkDir() string
+	ShellDir() string
+	InitScriptPath() string
+	ProvisionDir() string
+	HomebrewDir() string
+	SentinelPath(handlerType, packName string) string
+	LogFilePath() string
+	MapPackFileToSystem(pack *types.Pack, relPath string) string
+	MapSystemFileToPack(pack *types.Pack, systemPath string) string
+	PackHandlerDir(packName, handlerName string) string
+}
+
+// paths provides centralized path management for dodot
+type paths struct {
 	// dotfilesRoot is the root directory for all dotfiles
 	dotfilesRoot string
 
@@ -97,8 +128,8 @@ type Paths struct {
 // New creates a new Paths instance with the given dotfiles root.
 // If dotfilesRoot is empty, it will be determined from environment variables
 // or defaults.
-func New(dotfilesRoot string) (*Paths, error) {
-	p := &Paths{}
+func New(dotfilesRoot string) (Paths, error) {
+	p := &paths{}
 
 	// Set up dotfiles root
 	if dotfilesRoot == "" {
@@ -129,7 +160,7 @@ func New(dotfilesRoot string) (*Paths, error) {
 }
 
 // setupXDGDirs initializes XDG directories, respecting environment overrides
-func (p *Paths) setupXDGDirs() error {
+func (p *paths) setupXDGDirs() error {
 	// Data directory
 	if dataDir := os.Getenv(EnvDodotDataDir); dataDir != "" {
 		p.xdgData = expandHome(dataDir)
@@ -266,69 +297,69 @@ func expandHome(path string) string {
 }
 
 // DotfilesRoot returns the root directory for dotfiles
-func (p *Paths) DotfilesRoot() string {
+func (p *paths) DotfilesRoot() string {
 	return p.dotfilesRoot
 }
 
 // UsedFallback returns true if the current working directory was used as fallback
-func (p *Paths) UsedFallback() bool {
+func (p *paths) UsedFallback() bool {
 	return p.usedFallback
 }
 
 // PackPath returns the path to a specific pack
-func (p *Paths) PackPath(packName string) string {
+func (p *paths) PackPath(packName string) string {
 	return filepath.Join(p.dotfilesRoot, packName)
 }
 
 // PackConfigPath returns the path to a pack's configuration file
-func (p *Paths) PackConfigPath(packName string) string {
+func (p *paths) PackConfigPath(packName string) string {
 	return filepath.Join(p.PackPath(packName), PackConfigFile)
 }
 
 // DataDir returns the XDG data directory for dodot
-func (p *Paths) DataDir() string {
+func (p *paths) DataDir() string {
 	return p.xdgData
 }
 
 // ConfigDir returns the XDG config directory for dodot
-func (p *Paths) ConfigDir() string {
+func (p *paths) ConfigDir() string {
 	return p.xdgConfig
 }
 
 // CacheDir returns the XDG cache directory for dodot
-func (p *Paths) CacheDir() string {
+func (p *paths) CacheDir() string {
 	return p.xdgCache
 }
 
 // GetDataSubdir returns a subdirectory path under the XDG data directory.
 // This is a helper method to reduce boilerplate for the many data subdirectories.
-func (p *Paths) GetDataSubdir(name string) string {
+func (p *paths) GetDataSubdir(name string) string {
 	return filepath.Join(p.xdgData, name)
 }
 
 // StateDir returns the directory for state files
-func (p *Paths) StateDir() string {
+func (p *paths) StateDir() string {
 	return p.GetDataSubdir(StateDir)
 }
 
 // BackupsDir returns the directory for backup files
-func (p *Paths) BackupsDir() string {
+func (p *paths) BackupsDir() string {
 	return p.GetDataSubdir(BackupsDir)
 }
 
 // TemplatesDir returns the directory for template files
-func (p *Paths) TemplatesDir() string {
+func (p *paths) TemplatesDir() string {
 	return p.GetDataSubdir(TemplatesDir)
 }
 
 // StatePath returns the path to a state file for a specific pack and handler
-func (p *Paths) StatePath(packName, handlerName string) string {
+func (p *paths) StatePath(packName, handlerName string) string {
 	return filepath.Join(p.StateDir(), packName, handlerName+".json")
 }
 
 // NormalizePath normalizes a path by expanding home, making it absolute,
 // and cleaning it
-func (p *Paths) NormalizePath(path string) (string, error) {
+func (p *paths) NormalizePath(path string) (string, error) {
 	if path == "" {
 		return "", errors.New(errors.ErrInvalidInput, "empty path")
 	}
@@ -347,7 +378,7 @@ func (p *Paths) NormalizePath(path string) (string, error) {
 }
 
 // IsInDotfiles checks if a path is within the dotfiles root
-func (p *Paths) IsInDotfiles(path string) (bool, error) {
+func (p *paths) IsInDotfiles(path string) (bool, error) {
 	normalized, err := p.NormalizePath(path)
 	if err != nil {
 		return false, err
@@ -369,53 +400,53 @@ func ExpandHome(path string) string {
 }
 
 // DeployedDir returns the deployed directory path
-func (p *Paths) DeployedDir() string {
+func (p *paths) DeployedDir() string {
 	return p.GetDataSubdir(DeployedDir)
 }
 
 // GetDeployedSubdir returns a subdirectory path under the deployed directory.
 // This is a helper method to reduce boilerplate for the deployed subdirectories.
-func (p *Paths) GetDeployedSubdir(name string) string {
+func (p *paths) GetDeployedSubdir(name string) string {
 	return filepath.Join(p.DeployedDir(), name)
 }
 
 // ShellProfileDir returns the shell profile deployment directory
-func (p *Paths) ShellProfileDir() string {
+func (p *paths) ShellProfileDir() string {
 	return p.GetDeployedSubdir("shell_profile")
 }
 
 // PathDir returns the PATH deployment directory
-func (p *Paths) PathDir() string {
+func (p *paths) PathDir() string {
 	return p.GetDeployedSubdir("path")
 }
 
 // ShellSourceDir returns the shell source deployment directory
-func (p *Paths) ShellSourceDir() string {
+func (p *paths) ShellSourceDir() string {
 	return p.GetDeployedSubdir("shell_source")
 }
 
 // SymlinkDir returns the symlink deployment directory
-func (p *Paths) SymlinkDir() string {
+func (p *paths) SymlinkDir() string {
 	return p.GetDeployedSubdir("symlink")
 }
 
 // ShellDir returns the shell scripts directory
-func (p *Paths) ShellDir() string {
+func (p *paths) ShellDir() string {
 	return p.GetDataSubdir(ShellDir)
 }
 
 // InitScriptPath returns the path to the dodot-init.sh script
-func (p *Paths) InitScriptPath() string {
+func (p *paths) InitScriptPath() string {
 	return filepath.Join(p.ShellDir(), InitScriptName)
 }
 
 // ProvisionDir returns the provision scripts sentinel directory
-func (p *Paths) ProvisionDir() string {
+func (p *paths) ProvisionDir() string {
 	return p.GetDataSubdir(ProvisionDir)
 }
 
 // HomebrewDir returns the homebrew sentinel directory
-func (p *Paths) HomebrewDir() string {
+func (p *paths) HomebrewDir() string {
 	return p.GetDataSubdir(HomebrewDir)
 }
 
@@ -429,7 +460,7 @@ func (p *Paths) HomebrewDir() string {
 // Currently supported handlerTypes:
 //   - "provision" - for install.sh scripts
 //   - "homebrew" - for Brewfile executions
-func (p *Paths) SentinelPath(handlerType, packName string) string {
+func (p *paths) SentinelPath(handlerType, packName string) string {
 	switch handlerType {
 	case "provision":
 		return filepath.Join(p.ProvisionDir(), "sentinels", packName)
@@ -469,7 +500,7 @@ func GetHomeDirectoryWithDefault(defaultDir string) string {
 
 // LogFilePath returns the path to the dodot log file
 // Respects XDG_STATE_HOME if set
-func (p *Paths) LogFilePath() string {
+func (p *paths) LogFilePath() string {
 	return filepath.Join(p.xdgState, LogFileName)
 }
 
@@ -558,7 +589,7 @@ func findMapping(relPath string, mappings map[string]string, homeDir string) str
 
 // MapPackFileToSystem maps a file from a pack to its deployment location.
 // Release E: Implements Layer 4 - Configuration File (with Layer 3, 2, and 1 fallback)
-func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
 	homeDir, err := GetHomeDirectory()
 	if err != nil {
@@ -637,7 +668,7 @@ func (p *Paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 // Release E: Updated to handle Layer 4 configuration file (with Layer 3, 2, and 1 fallback)
 // Note: Layer 3 and Layer 4 reverse mapping is not automatic - users must manually
 // organize files into _home/_xdg/ directories or configure mappings in .dodot.toml.
-func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
+func (p *paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string {
 	// Get home directory
 	homeDir, err := GetHomeDirectory()
 	if err != nil {
@@ -722,4 +753,8 @@ func (p *Paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 	// Default: use base name without dot prefix
 	packName := stripDotPrefix(baseName)
 	return filepath.Join(pack.Path, packName)
+}
+
+func (p *paths) PackHandlerDir(packName, handlerName string) string {
+	return filepath.Join(p.DataDir(), "packs", packName, handlerName)
 }
