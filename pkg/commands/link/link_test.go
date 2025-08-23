@@ -54,7 +54,7 @@ func TestLinkPacks_SymlinkHandler(t *testing.T) {
 	// Should have symlink handler results
 	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 
-	// Find handler result (V2 actions use generic "handler" name)
+	// Find handler result (actions use generic "handler" name)
 	var handlerResult *types.HandlerResult
 	for _, pur := range packResult.HandlerResults {
 		if pur.HandlerName == "handler" {
@@ -201,7 +201,7 @@ echo "Installing tools" > /tmp/install-was-run
 	testutil.AssertTrue(t, ok, "Should have tools pack result")
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
-	// Should only have handler results (V2 uses generic "handler" name)
+	// Should only have handler results (uses generic "handler" name)
 	// In link mode, we should not have any provisioning actions
 	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 

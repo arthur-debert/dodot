@@ -147,7 +147,7 @@ echo "Installing tools"
 	packResult, ok := ctx.GetPackResult("tools")
 	testutil.AssertTrue(t, ok, "Should have tools pack result")
 
-	// V2 handlers use generic "handler" name
+	// Handlers use generic "handler" name
 	// Should have at least one handler result for the install script
 	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
 }
@@ -185,4 +185,4 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 }
 
 // TestFilterActionsByRunMode is now tested in pkg/core/actions_test.go
-// since the functionality moved there with the V2 actions
+// since the functionality moved there with the actions

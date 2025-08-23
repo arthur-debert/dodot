@@ -59,7 +59,7 @@ echo "Tools installed" > /tmp/install-run-marker
 	testutil.AssertEqual(t, "tools", packResult.Pack.Name)
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
-	// V2 handlers use generic "handler" name, but we should have multiple handler results
+	// Handlers use generic "handler" name, but we should have multiple handler results
 	// (both install_script and symlink handlers)
 	testutil.AssertTrue(t, len(packResult.HandlerResults) >= 2, "Should have multiple handler results")
 
@@ -71,7 +71,7 @@ echo "Tools installed" > /tmp/install-run-marker
 	// Verify both install script handler processed AND symlink was created
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")
 
-	// V2 architecture doesn't create sentinel files or copy scripts in the same way
+	// Architecture doesn't create sentinel files or copy scripts in the same way
 	// The DataStore manages provisioning state internally
 	// The key test is that the script was executed (verified by marker file)
 	testutil.AssertTrue(t, testutil.FileExists(t, "/tmp/install-run-marker"), "Install script should have been executed")
@@ -158,7 +158,7 @@ echo "Installing..."
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, ctx1)
 
-	// V2 architecture doesn't create sentinel files
+	// Architecture doesn't create sentinel files
 	// The DataStore manages provisioning state internally
 	// (First run would have executed the script)
 
@@ -174,7 +174,7 @@ echo "Installing..."
 	testutil.AssertNoError(t, err)
 	testutil.AssertNotNil(t, ctx2)
 
-	// V2 architecture doesn't create sentinel files
+	// Architecture doesn't create sentinel files
 	// The DataStore manages provisioning state internally
 	// (Force run would have executed the script again)
 }
@@ -214,7 +214,7 @@ func TestProvisionPacks_OnlySymlinks(t *testing.T) {
 	packResult, ok := ctx.GetPackResult("vim")
 	testutil.AssertTrue(t, ok, "Should have vim pack result")
 
-	// V2 handlers use generic "handler" name
+	// Handlers use generic "handler" name
 	// In provisioning mode with symlinks only, we should only have 1 handler result
 	testutil.AssertEqual(t, 1, len(packResult.HandlerResults), "Should have exactly one handler result for symlink")
 
@@ -263,11 +263,11 @@ echo "Setup complete" > /tmp/setup-tools-marker
 	packResult, ok := ctx.GetPackResult("setup")
 	testutil.AssertTrue(t, ok, "Should have setup pack result")
 
-	// V2 handlers use generic "handler" name
+	// Handlers use generic "handler" name
 	// For install-only pack, should have exactly one handler result
 	testutil.AssertEqual(t, 1, len(packResult.HandlerResults), "Should have exactly one handler result for provision")
 
-	// V2 architecture doesn't create sentinel files or copy scripts in the same way
+	// Architecture doesn't create sentinel files or copy scripts in the same way
 	// The DataStore manages provisioning state internally
 	// The key test is that the script was executed (verified by marker file)
 	testutil.AssertTrue(t, testutil.FileExists(t, "/tmp/setup-tools-marker"), "Install script should have been executed")
@@ -337,7 +337,7 @@ func TestProvisionPacks_MultiplePacksAllTypes(t *testing.T) {
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "bashrc symlink should exist")
 
 	// Verify install scripts were processed (copied and sentinels created)
-	// V2 architecture doesn't create sentinel files or copy scripts
+	// Architecture doesn't create sentinel files or copy scripts
 	// The DataStore manages provisioning state internally
 	// The key test is that install scripts were executed (verified by marker files)
 	testutil.AssertTrue(t, testutil.FileExists(t, "/tmp/langs-install"), "langs install script should have been executed")

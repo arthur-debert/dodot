@@ -113,7 +113,7 @@ func ValidateMatcher(matcher *types.Matcher) error {
 		return fmt.Errorf("unknown trigger: %s", matcher.TriggerName)
 	}
 
-	// V2 handlers are not registered in the registry, so we don't validate them here
+	// Handlers are not registered in the registry, so we don't validate them here
 	// Handler validation happens when the handler is instantiated
 
 	return nil

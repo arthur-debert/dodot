@@ -117,7 +117,7 @@ func getPackDisplayStatus(pack types.Pack, dataStore types.DataStore, fs types.F
 		return nil, fmt.Errorf("failed to process triggers: %w", err)
 	}
 
-	// Convert matches to V2 actions
+	// Convert matches to actions
 	actions, err := core.GetActions(matches)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get actions: %w", err)

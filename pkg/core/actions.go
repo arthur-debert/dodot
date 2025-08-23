@@ -23,7 +23,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 			Int("matches", len(handlerMatches)).
 			Msg("Processing matches for handler")
 
-		// Get V2 handler directly
+		// Get handler directly
 		handler := handlers.GetHandler(handlerName)
 		if handler == nil {
 			logger.Warn().
@@ -81,7 +81,7 @@ func groupMatchesByHandler(matches []types.TriggerMatch) map[string][]types.Trig
 	return groups
 }
 
-// FilterActionsByRunMode filters V2 actions based on their type
+// FilterActionsByRunMode filters actions based on their type
 func FilterActionsByRunMode(actions []types.Action, mode types.RunMode) []types.Action {
 	var filtered []types.Action
 
