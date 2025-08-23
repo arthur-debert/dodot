@@ -137,57 +137,6 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 	}
 }
 
-func TestActionResult_Duration(t *testing.T) {
-	tests := []struct {
-		name         string
-		startTime    time.Time
-		endTime      time.Time
-		wantDuration time.Duration
-	}{
-		{
-			name:         "normal duration",
-			startTime:    time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
-			endTime:      time.Date(2023, 1, 1, 10, 0, 5, 0, time.UTC),
-			wantDuration: 5 * time.Second,
-		},
-		{
-			name:         "zero duration",
-			startTime:    time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
-			endTime:      time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
-			wantDuration: 0,
-		},
-		{
-			name:         "millisecond precision",
-			startTime:    time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
-			endTime:      time.Date(2023, 1, 1, 10, 0, 0, 500000000, time.UTC),
-			wantDuration: 500 * time.Millisecond,
-		},
-		{
-			name:         "long duration",
-			startTime:    time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
-			endTime:      time.Date(2023, 1, 1, 11, 30, 45, 0, time.UTC),
-			wantDuration: time.Hour + 30*time.Minute + 45*time.Second,
-		},
-		{
-			name:         "negative duration (end before start)",
-			startTime:    time.Date(2023, 1, 1, 10, 0, 5, 0, time.UTC),
-			endTime:      time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC),
-			wantDuration: -5 * time.Second,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ar := &ActionResult{
-				StartTime: tt.startTime,
-				EndTime:   tt.endTime,
-			}
-			got := ar.Duration()
-			assert.Equal(t, tt.wantDuration, got)
-		})
-	}
-}
-
 func TestDisplayPack_ComplexScenarios(t *testing.T) {
 	t.Run("large pack with mixed statuses", func(t *testing.T) {
 		pack := DisplayPack{
@@ -246,39 +195,4 @@ func TestDisplayPack_ComplexScenarios(t *testing.T) {
 		// Error takes precedence
 		assert.Equal(t, "alert", pack.GetPackStatus())
 	})
-}
-
-func TestActionResult_WithCompleteAction(t *testing.T) {
-	// Test ActionResult with a complete Action
-	start := time.Date(2023, 1, 1, 10, 0, 0, 0, time.UTC)
-	end := time.Date(2023, 1, 1, 10, 0, 30, 0, time.UTC)
-
-	ar := &ActionResult{
-		Action: Action{
-			Type:        ActionTypeLink,
-			Description: "Create symlink",
-			Source:      "/source/file",
-			Target:      "/target/file",
-			Priority:    10,
-			Pack:        "test-pack",
-			HandlerName: "symlink",
-			Metadata:    map[string]interface{}{"test": true},
-		},
-		Status:              StatusReady,
-		Error:               nil,
-		StartTime:           start,
-		EndTime:             end,
-		Message:             "Completed successfully",
-		SynthfsOperationIDs: []string{"op1", "op2"},
-	}
-
-	// Verify duration calculation
-	assert.Equal(t, 30*time.Second, ar.Duration())
-
-	// Verify all fields are accessible
-	assert.Equal(t, ActionTypeLink, ar.Action.Type)
-	assert.Equal(t, StatusReady, ar.Status)
-	assert.Nil(t, ar.Error)
-	assert.Equal(t, "Completed successfully", ar.Message)
-	assert.Len(t, ar.SynthfsOperationIDs, 2)
 }

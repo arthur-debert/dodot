@@ -26,5 +26,13 @@ type DataStore interface {
 	NeedsProvisioning(pack, sentinelName, checksum string) (bool, error)
 
 	// GetStatus returns the status of a specific link or resource.
+	// This is a generic method that defaults to symlink handler behavior.
 	GetStatus(pack, sourceFile string) (types.Status, error)
+
+	// Handler-specific status methods
+	GetSymlinkStatus(pack, sourceFile string) (types.Status, error)
+	GetPathStatus(pack, dirPath string) (types.Status, error)
+	GetShellProfileStatus(pack, scriptPath string) (types.Status, error)
+	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error)
+	GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error)
 }

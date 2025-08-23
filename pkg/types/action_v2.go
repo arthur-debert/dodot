@@ -14,6 +14,12 @@ type DataStore interface {
 	RecordProvisioning(pack, sentinelName, checksum string) error
 	NeedsProvisioning(pack, sentinelName, checksum string) (bool, error)
 	GetStatus(pack, sourceFile string) (Status, error)
+	// Handler-specific status methods
+	GetSymlinkStatus(pack, sourceFile string) (Status, error)
+	GetPathStatus(pack, dirPath string) (Status, error)
+	GetShellProfileStatus(pack, scriptPath string) (Status, error)
+	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (Status, error)
+	GetBrewStatus(pack, brewfilePath, currentChecksum string) (Status, error)
 }
 
 // ActionV2 is the base interface for all actions in the new architecture.
@@ -184,3 +190,38 @@ func (a *RecordProvisioningAction) Pack() string {
 }
 
 func (a *RecordProvisioningAction) isProvisioningAction() {}
+
+// BrewAction represents running a Brewfile through Homebrew
+type BrewAction struct {
+	PackName     string
+	BrewfilePath string
+	Checksum     string
+}
+
+func (a *BrewAction) Execute(store DataStore) error {
+	// Check if we need to run this Brewfile
+	sentinelName := fmt.Sprintf("homebrew-%s.sentinel", a.PackName)
+	needs, err := store.NeedsProvisioning(a.PackName, sentinelName, a.Checksum)
+	if err != nil {
+		return fmt.Errorf("failed to check provisioning status: %w", err)
+	}
+
+	if !needs {
+		// Already provisioned with same checksum
+		return nil
+	}
+
+	// The actual brew bundle execution is handled by the executor
+	// The action just manages the sentinel file through the datastore
+	return nil
+}
+
+func (a *BrewAction) Description() string {
+	return fmt.Sprintf("Install Homebrew packages from %s", a.BrewfilePath)
+}
+
+func (a *BrewAction) Pack() string {
+	return a.PackName
+}
+
+func (a *BrewAction) isProvisioningAction() {}

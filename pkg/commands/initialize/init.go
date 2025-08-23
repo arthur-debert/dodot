@@ -1,7 +1,6 @@
 package initialize
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -49,23 +49,19 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		return nil, errors.Newf(errors.ErrPackExists, "pack %q already exists", opts.PackName)
 	}
 
-	// 3. Generate actions for creating pack
+	// 3. Create filesystem instance for file operations
+	fs := filesystem.NewOS()
 	cfg := config.Default()
-	var actions []types.Action
 
-	// Create directory action
-	mkdirAction := types.Action{
-		Type:        types.ActionTypeMkdir,
-		Description: fmt.Sprintf("Create pack directory %s", opts.PackName),
-		Target:      packPath,
-		Mode:        uint32(cfg.FilePermissions.Directory),
-		Pack:        opts.PackName,
-		HandlerName: "init_pack_internal",
-		Priority:    200, // Higher priority to create dir first
+	// 4. Create the pack directory
+	log.Info().Str("directory", packPath).Msg("Creating pack directory")
+	if err := fs.MkdirAll(packPath, os.FileMode(cfg.FilePermissions.Directory)); err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create pack directory")
 	}
-	actions = append(actions, mkdirAction)
 
-	// Create .dodot.toml configuration file
+	var filesCreated []string
+
+	// 5. Create .dodot.toml configuration file
 	configContent := `# dodot configuration for ` + opts.PackName + ` pack
 # See https://github.com/arthur-debert/dodot for documentation
 
@@ -84,19 +80,13 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 `
 
 	configPath := pathsManager.PackConfigPath(opts.PackName)
-	configAction := types.Action{
-		Type:        types.ActionTypeWrite,
-		Description: "Create .dodot.toml configuration",
-		Target:      configPath,
-		Content:     configContent,
-		Mode:        uint32(cfg.FilePermissions.File),
-		Pack:        opts.PackName,
-		HandlerName: "init_pack_internal",
-		Priority:    100,
+	log.Info().Str("file", ".dodot.toml").Msg("Creating configuration file")
+	if err := fs.WriteFile(configPath, []byte(configContent), os.FileMode(cfg.FilePermissions.File)); err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create configuration file")
 	}
-	actions = append(actions, configAction)
+	filesCreated = append(filesCreated, ".dodot.toml")
 
-	// 4. Create README.txt
+	// 6. Create README.txt
 	readmeContent := `dodot Pack: ` + opts.PackName + `
 ====================
 
@@ -119,99 +109,39 @@ Getting Started:
 For more information, see: https://github.com/arthur-debert/dodot
 `
 
-	// Helper to construct file paths within the pack
-	getPackFilePath := func(filename string) string {
-		return filepath.Join(packPath, filename)
+	readmePath := filepath.Join(packPath, "README.txt")
+	log.Info().Str("file", "README.txt").Msg("Creating README file")
+	if err := fs.WriteFile(readmePath, []byte(readmeContent), os.FileMode(cfg.FilePermissions.File)); err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create README file")
 	}
+	filesCreated = append(filesCreated, "README.txt")
 
-	readmePath := getPackFilePath("README.txt")
-	readmeAction := types.Action{
-		Type:        types.ActionTypeWrite,
-		Description: "Create README.txt",
-		Target:      readmePath,
-		Content:     readmeContent,
-		Mode:        uint32(cfg.FilePermissions.File),
-		Pack:        opts.PackName,
-		HandlerName: "init_pack_internal",
-		Priority:    100,
-	}
-	actions = append(actions, readmeAction)
-
-	// 5. Get all template files for the pack
+	// 7. Get all template files for the pack using the existing template system
 	templates, err := core.GetCompletePackTemplate(opts.PackName)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get pack templates")
 	}
 
-	// Add template file actions
+	// 8. Create each template file
 	for _, template := range templates {
-		action := types.Action{
-			Type:        types.ActionTypeWrite,
-			Description: fmt.Sprintf("Create template file %s", template.Filename),
-			Target:      getPackFilePath(template.Filename),
-			Content:     template.Content,
-			Mode:        template.Mode,
-			Pack:        opts.PackName,
-			HandlerName: template.HandlerName,
-			Priority:    50, // Lower priority for template files
+		templatePath := filepath.Join(packPath, template.Filename)
+		log.Info().Str("file", template.Filename).Str("handler", template.HandlerName).Msg("Creating template file")
+		if err := fs.WriteFile(templatePath, []byte(template.Content), os.FileMode(template.Mode)); err != nil {
+			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create template file %s", template.Filename)
 		}
-		actions = append(actions, action)
+		filesCreated = append(filesCreated, template.Filename)
 	}
 
-	// 6. Execute actions using DirectExecutor (Operations no longer returned)
-	if len(actions) > 0 {
-
-		// Create DirectExecutor
-		directExecutorOpts := &core.DirectExecutorOptions{
-			Paths:             pathsManager,
-			DryRun:            false,
-			Force:             true,
-			AllowHomeSymlinks: false,
-			Config:            config.Default(),
-		}
-
-		executor := core.NewDirectExecutor(directExecutorOpts)
-
-		// Execute actions and extract operations from results
-		results, err := executor.ExecuteActions(actions)
-		if err != nil {
-			return nil, errors.Wrapf(err, errors.ErrActionExecute, "failed to execute init actions")
-		}
-
-		// FIXME: ARCHITECTURAL PROBLEM - init command should return Pack+Handler+File information
-		// NOT operation details. See docs/design/display.txxt
-		// Operations are no longer returned (part of Operation layer elimination)
-		_ = results // Results processed but not exposed in return value
-	}
-
-	// 7. Return result (Operations field removed as part of Operation elimination)
+	// 9. Return result
 	result := &types.InitResult{
 		PackName:     opts.PackName,
 		Path:         packPath,
-		FilesCreated: []string{},
-	}
-
-	// Report all files that would be created
-	for _, action := range actions {
-		switch action.Type {
-		case types.ActionTypeMkdir:
-			log.Info().
-				Str("directory", action.Target).
-				Str("operation", "would create").
-				Msg("Pack directory to be created")
-		case types.ActionTypeWrite:
-			filename := filepath.Base(action.Target)
-			result.FilesCreated = append(result.FilesCreated, filename)
-			log.Info().
-				Str("file", filename).
-				Str("operation", "would create").
-				Msg("File to be created")
-		}
+		FilesCreated: filesCreated,
 	}
 
 	log.Debug().
-		Int("actionCount", len(actions)).
-		Msg("Executed actions for InitPack")
+		Int("filesCreated", len(filesCreated)).
+		Msg("Created pack files")
 
 	log.Info().Str("command", "InitPack").
 		Str("pack", opts.PackName).

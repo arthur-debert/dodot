@@ -3,6 +3,7 @@ package testutil
 import (
 	"io/fs"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing/fstest"
 	"time"
@@ -21,14 +22,37 @@ func NewMockFS() *MockFS {
 	}
 }
 
+// normalizePath converts absolute paths to relative paths for MapFS storage
+func (m *MockFS) normalizePath(path string) string {
+	// Clean the path to handle both absolute and relative paths
+	cleanPath := filepath.Clean(path)
+
+	// Remove leading slash for absolute paths since MapFS uses relative paths
+	if filepath.IsAbs(cleanPath) {
+		// On Windows, we need to handle drive letters
+		if runtime.GOOS == "windows" {
+			// Remove drive letter and colon (e.g., "C:")
+			if len(cleanPath) >= 2 && cleanPath[1] == ':' {
+				cleanPath = cleanPath[2:]
+			}
+		}
+		// Remove leading path separator
+		cleanPath = strings.TrimPrefix(cleanPath, string(filepath.Separator))
+	}
+
+	return cleanPath
+}
+
 // Stat implements types.FS
 func (m *MockFS) Stat(name string) (fs.FileInfo, error) {
-	return m.MapFS.Stat(name)
+	cleanPath := m.normalizePath(name)
+	return m.MapFS.Stat(cleanPath)
 }
 
 // ReadFile implements types.FS
 func (m *MockFS) ReadFile(name string) ([]byte, error) {
-	file, ok := m.MapFS[name]
+	cleanPath := m.normalizePath(name)
+	file, ok := m.MapFS[cleanPath]
 	if !ok {
 		return nil, fs.ErrNotExist
 	}
@@ -40,7 +64,8 @@ func (m *MockFS) ReadFile(name string) ([]byte, error) {
 
 // WriteFile implements types.FS
 func (m *MockFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
-	m.MapFS[name] = &fstest.MapFile{
+	cleanPath := m.normalizePath(name)
+	m.MapFS[cleanPath] = &fstest.MapFile{
 		Data:    data,
 		Mode:    perm,
 		ModTime: time.Now(),
@@ -50,14 +75,15 @@ func (m *MockFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 
 // MkdirAll implements types.FS
 func (m *MockFS) MkdirAll(path string, perm fs.FileMode) error {
-	dir := path
+	cleanPath := m.normalizePath(path)
+	dir := cleanPath
 	for {
 		m.MapFS[dir] = &fstest.MapFile{
 			Mode:    fs.ModeDir | perm,
 			ModTime: time.Now(),
 		}
 		parent := filepath.Dir(dir)
-		if parent == dir {
+		if parent == dir || parent == "." {
 			break
 		}
 		dir = parent
@@ -67,7 +93,8 @@ func (m *MockFS) MkdirAll(path string, perm fs.FileMode) error {
 
 // Symlink implements types.FS
 func (m *MockFS) Symlink(oldname, newname string) error {
-	m.MapFS[newname] = &fstest.MapFile{
+	cleanPath := m.normalizePath(newname)
+	m.MapFS[cleanPath] = &fstest.MapFile{
 		Data:    []byte(oldname),
 		Mode:    fs.ModeSymlink,
 		ModTime: time.Now(),
@@ -77,7 +104,8 @@ func (m *MockFS) Symlink(oldname, newname string) error {
 
 // Readlink implements types.FS
 func (m *MockFS) Readlink(name string) (string, error) {
-	file, ok := m.MapFS[name]
+	cleanPath := m.normalizePath(name)
+	file, ok := m.MapFS[cleanPath]
 	if !ok {
 		return "", fs.ErrNotExist
 	}
@@ -89,13 +117,15 @@ func (m *MockFS) Readlink(name string) (string, error) {
 
 // Remove implements types.FS
 func (m *MockFS) Remove(name string) error {
-	delete(m.MapFS, name)
+	cleanPath := m.normalizePath(name)
+	delete(m.MapFS, cleanPath)
 	return nil
 }
 
 // RemoveAll implements types.FS
 func (m *MockFS) RemoveAll(path string) error {
-	prefix := path
+	cleanPath := m.normalizePath(path)
+	prefix := cleanPath
 	for p := range m.MapFS {
 		if strings.HasPrefix(p, prefix) {
 			delete(m.MapFS, p)
@@ -106,7 +136,8 @@ func (m *MockFS) RemoveAll(path string) error {
 
 // Lstat implements types.FS
 func (m *MockFS) Lstat(name string) (fs.FileInfo, error) {
-	file, ok := m.MapFS[name]
+	cleanPath := m.normalizePath(name)
+	file, ok := m.MapFS[cleanPath]
 	if !ok {
 		return nil, fs.ErrNotExist
 	}
@@ -118,8 +149,9 @@ func (m *MockFS) Lstat(name string) (fs.FileInfo, error) {
 
 // ReadDir implements types.FS
 func (m *MockFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	cleanPath := m.normalizePath(name)
 	var entries []fs.DirEntry
-	dir := name
+	dir := cleanPath
 	for p, file := range m.MapFS {
 		if filepath.Dir(p) == dir {
 			entries = append(entries, &testDirEntry{
