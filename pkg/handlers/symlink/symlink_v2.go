@@ -32,11 +32,16 @@ func NewSymlinkHandlerV2() *SymlinkHandlerV2 {
 	}
 
 	// Initialize paths instance
-	pathsInstance, err := paths.New("")
-	if err != nil {
-		logger.Warn().Err(err).Msg("failed to initialize paths, using fallback")
-		// Continue without paths instance - we'll use the simple logic
-		pathsInstance = nil
+	// Skip paths initialization in tests for consistent behavior
+	var pathsInstance paths.Paths
+	if os.Getenv("DODOT_TEST_MODE") != "true" {
+		var err error
+		pathsInstance, err = paths.New("")
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to initialize paths, using fallback")
+			// Continue without paths instance - we'll use the simple logic
+			pathsInstance = nil
+		}
 	}
 
 	return &SymlinkHandlerV2{

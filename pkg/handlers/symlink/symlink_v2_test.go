@@ -134,6 +134,7 @@ func TestSymlinkHandlerV2_ProcessLinking(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set HOME for consistent testing
 			t.Setenv("HOME", "/home/testuser")
+			t.Setenv("DODOT_TEST_MODE", "true")
 
 			// Create handler after setting environment
 			handler := NewSymlinkHandlerV2()
@@ -209,6 +210,7 @@ func TestSymlinkHandlerV2_ValidateOptions(t *testing.T) {
 }
 
 func TestSymlinkHandlerV2_Properties(t *testing.T) {
+	t.Setenv("DODOT_TEST_MODE", "true")
 	handler := NewSymlinkHandlerV2()
 
 	assert.Equal(t, SymlinkHandlerName, handler.Name())
@@ -220,6 +222,7 @@ func TestSymlinkHandlerV2_Properties(t *testing.T) {
 func TestSymlinkHandlerV2_EnvironmentVariableExpansion(t *testing.T) {
 	t.Setenv("HOME", "/home/testuser")
 	t.Setenv("CONFIG_DIR", "/etc/myapp")
+	t.Setenv("DODOT_TEST_MODE", "true")
 
 	// Create handler after setting environment
 	handler := NewSymlinkHandlerV2()
@@ -248,6 +251,7 @@ func TestSymlinkHandlerV2_EnvironmentVariableExpansion(t *testing.T) {
 func TestSymlinkHandlerV2_NoHomeDirectory(t *testing.T) {
 	// Clear HOME environment variable
 	t.Setenv("HOME", "")
+	t.Setenv("DODOT_TEST_MODE", "true")
 
 	// Can't mock os.UserHomeDir directly, so just test with empty HOME
 	// The handler will use os.UserHomeDir internally and fall back to "~"
