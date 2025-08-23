@@ -79,7 +79,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Msg("Triggers matched")
 
 	// 5. Generate V2 actions from triggers
-	actionsV2, err := core.GetActionsV2(matches)
+	actionsV2, err := core.GetActions(matches)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate V2 actions")
 	}
@@ -102,7 +102,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 
 	// 8. Filter provisioning actions based on --force flag
 	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
-		filteredActions, err = core.FilterProvisioningActionsV2(filteredActions, opts.Force, dataStore)
+		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, dataStore)
 		if err != nil {
 			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter provisioning actions")
 		}

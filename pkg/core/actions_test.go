@@ -63,7 +63,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 	}
 }
 
-func TestFilterProvisioningActionsV2(t *testing.T) {
+func TestFilterProvisioningActions(t *testing.T) {
 	// Mock data store
 	store := &mockDataStore{
 		needsProvisioning: map[string]bool{
@@ -88,13 +88,13 @@ func TestFilterProvisioningActionsV2(t *testing.T) {
 	}
 
 	t.Run("force mode includes all actions", func(t *testing.T) {
-		filtered, err := FilterProvisioningActionsV2(actions, true, store)
+		filtered, err := FilterProvisioningActions(actions, true, store)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(filtered))
 	})
 
 	t.Run("non-force mode filters based on provisioning status", func(t *testing.T) {
-		filtered, err := FilterProvisioningActionsV2(actions, false, store)
+		filtered, err := FilterProvisioningActions(actions, false, store)
 		assert.NoError(t, err)
 		assert.Equal(t, 2, len(filtered)) // LinkAction and RunScriptAction (needs provisioning)
 	})

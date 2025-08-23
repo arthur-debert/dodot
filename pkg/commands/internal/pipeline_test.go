@@ -184,5 +184,5 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 	}
 }
 
-// TestFilterActionsByRunMode is now tested in pkg/core/actions_v2_test.go
+// TestFilterActionsByRunMode is now tested in pkg/core/actions_test.go
 // since the functionality moved there with the V2 actions

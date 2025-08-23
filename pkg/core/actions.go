@@ -8,9 +8,9 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// GetActionsV2 takes trigger matches grouped by handler and calls the appropriate V2 handler methods
-func GetActionsV2(matches []types.TriggerMatch) ([]types.ActionV2, error) {
-	logger := logging.GetLogger("core.actions_v2")
+// GetActions takes trigger matches grouped by handler and calls the appropriate handler methods
+func GetActions(matches []types.TriggerMatch) ([]types.ActionV2, error) {
+	logger := logging.GetLogger("core.actions")
 
 	// Group matches by handler
 	handlerGroups := groupMatchesByHandler(matches)
@@ -105,14 +105,14 @@ func FilterActionsByRunMode(actions []types.ActionV2, mode types.RunMode) []type
 	return filtered
 }
 
-// FilterProvisioningActionsV2 filters provisioning actions based on whether they need to run
-func FilterProvisioningActionsV2(actions []types.ActionV2, force bool, dataStore types.DataStore) ([]types.ActionV2, error) {
+// FilterProvisioningActions filters provisioning actions based on whether they need to run
+func FilterProvisioningActions(actions []types.ActionV2, force bool, dataStore types.DataStore) ([]types.ActionV2, error) {
 	if force {
 		// If force is true, run all actions
 		return actions, nil
 	}
 
-	logger := logging.GetLogger("core.actions_v2")
+	logger := logging.GetLogger("core.actions")
 	var filtered []types.ActionV2
 
 	for _, action := range actions {
