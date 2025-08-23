@@ -37,16 +37,8 @@ including examples, configuration, and best practices, see:
    - See: `pkg/handlers/path/doc.go`
    - Use for: Personal scripts, tools directories
 
-6. **TemplateHandler** (`template`)
-   - Processes templates with variable substitution
-   - See: `pkg/handlers/template/doc.go`
-   - Use for: Machine-specific configurations
 
-### Additional Handlers
 
-7. **ShellAddPathHandler** (`shell_add_path`)
-   - Alternative PATH management (use `path` instead)
-   - See: `pkg/handlers/shell_add_path/doc.go`
 
 ## Handler Execution Phases
 
@@ -63,7 +55,6 @@ Handlers run in different phases based on their RunMode:
 - SymlinkHandler: Creates configuration symlinks
 - PathHandler: Updates PATH
 - ShellProfileHandler: Sets up shell environment
-- TemplateHandler: Generates files from templates
 
 ## Quick Reference
 
@@ -74,7 +65,6 @@ Handlers run in different phases based on their RunMode:
 | brew | Provision | Manage packages | System packages |
 | shell_profile | Link | Shell config | Entries in init.sh |
 | path | Link | PATH management | PATH exports |
-| template | Link | File generation | Processed files |
 
 ## Handler Documentation Structure
 
