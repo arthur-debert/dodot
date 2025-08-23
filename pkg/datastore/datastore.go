@@ -3,6 +3,7 @@ package datastore
 import "github.com/arthur-debert/dodot/pkg/types"
 
 // DataStore manages dodot's internal state on the filesystem.
+// This interface is also duplicated in pkg/types to avoid circular dependencies.
 type DataStore interface {
 	// Link creates the internal double-link structure for a file.
 	// It returns the path to the intermediate link, which should be the
