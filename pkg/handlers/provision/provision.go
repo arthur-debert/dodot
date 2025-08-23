@@ -39,31 +39,31 @@ echo "Installing PACK_NAME pack..."
 # curl -fsSL https://example.com/install.sh | bash
 `
 
-// ProvisionScriptHandlerV2 runs install.sh scripts
-type ProvisionScriptHandlerV2 struct{}
+// ProvisionScriptHandler runs install.sh scripts
+type ProvisionScriptHandler struct{}
 
-// NewProvisionScriptHandlerV2 creates a new instance of the install script handler
-func NewProvisionScriptHandlerV2() *ProvisionScriptHandlerV2 {
-	return &ProvisionScriptHandlerV2{}
+// NewProvisionScriptHandler creates a new instance of the install script handler
+func NewProvisionScriptHandler() *ProvisionScriptHandler {
+	return &ProvisionScriptHandler{}
 }
 
 // Name returns the unique name of this handler
-func (h *ProvisionScriptHandlerV2) Name() string {
+func (h *ProvisionScriptHandler) Name() string {
 	return ProvisionScriptHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (h *ProvisionScriptHandlerV2) Description() string {
+func (h *ProvisionScriptHandler) Description() string {
 	return "Runs install.sh scripts for initial setup"
 }
 
 // RunMode returns whether this handler runs once or many times
-func (h *ProvisionScriptHandlerV2) RunMode() types.RunMode {
+func (h *ProvisionScriptHandler) RunMode() types.RunMode {
 	return types.RunModeProvisioning
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
-func (h *ProvisionScriptHandlerV2) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
 	logger := logging.GetLogger("handlers.provision.v2")
 	actions := make([]types.ProvisioningAction, 0, len(matches))
 
@@ -103,15 +103,15 @@ func (h *ProvisionScriptHandlerV2) ProcessProvisioning(matches []types.TriggerMa
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
-func (h *ProvisionScriptHandlerV2) ValidateOptions(options map[string]interface{}) error {
+func (h *ProvisionScriptHandler) ValidateOptions(options map[string]interface{}) error {
 	// Install script handler doesn't have any options
 	return nil
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *ProvisionScriptHandlerV2) GetTemplateContent() string {
+func (h *ProvisionScriptHandler) GetTemplateContent() string {
 	return provisionTemplate
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandler = (*ProvisionScriptHandlerV2)(nil)
+var _ types.ProvisioningHandler = (*ProvisionScriptHandler)(nil)

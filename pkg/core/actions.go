@@ -24,7 +24,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 			Msg("Processing matches for handler")
 
 		// Get V2 handler directly
-		handler := handlers.GetV2Handler(handlerName)
+		handler := handlers.GetHandler(handlerName)
 		if handler == nil {
 			logger.Warn().
 				Str("handler", handlerName).

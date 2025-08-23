@@ -56,7 +56,7 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 		// Check if this is a filename trigger
 		if filenameTrigger, ok := trigger.(*triggers.FileNameTrigger); ok {
 			// Get the V2 handler
-			handlerV2 := handlers.GetV2Handler(matcher.HandlerName)
+			handlerV2 := handlers.GetHandler(matcher.HandlerName)
 			if handlerV2 == nil {
 				logger.Warn().Str("handler", matcher.HandlerName).Msg("Failed to get V2 handler")
 				continue
