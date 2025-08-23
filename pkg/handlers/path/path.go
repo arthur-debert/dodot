@@ -39,7 +39,7 @@ func (h *PathHandler) RunMode() types.RunMode {
 
 // ProcessLinking takes directories and creates AddToPathAction instances
 func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
-	logger := logging.GetLogger("handlers.path.v2")
+	logger := logging.GetLogger("handlers.path")
 	actions := make([]types.LinkingAction, 0, len(matches))
 
 	// Track directories to avoid duplicates

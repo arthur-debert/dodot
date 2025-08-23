@@ -64,7 +64,7 @@ func (h *ProvisionScriptHandler) RunMode() types.RunMode {
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
 func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
-	logger := logging.GetLogger("handlers.provision.v2")
+	logger := logging.GetLogger("handlers.provision")
 	actions := make([]types.ProvisioningAction, 0, len(matches))
 
 	for _, match := range matches {

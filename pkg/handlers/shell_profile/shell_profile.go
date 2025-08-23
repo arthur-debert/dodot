@@ -53,7 +53,7 @@ func (h *ShellProfileHandler) RunMode() types.RunMode {
 
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
 func (h *ShellProfileHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
-	logger := logging.GetLogger("handlers.shell_profile.v2")
+	logger := logging.GetLogger("handlers.shell_profile")
 	actions := make([]types.LinkingAction, 0, len(matches))
 
 	for _, match := range matches {

@@ -53,7 +53,7 @@ func (h *HomebrewHandler) RunMode() types.RunMode {
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances
 func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
-	logger := logging.GetLogger("handlers.homebrew.v2")
+	logger := logging.GetLogger("handlers.homebrew")
 	actions := make([]types.ProvisioningAction, 0, len(matches))
 
 	for _, match := range matches {

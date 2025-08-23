@@ -21,7 +21,7 @@ type SymlinkHandler struct {
 
 // NewSymlinkHandler creates a new SymlinkHandler with default target as user home
 func NewSymlinkHandler() *SymlinkHandler {
-	logger := logging.GetLogger("handlers.symlink.v2")
+	logger := logging.GetLogger("handlers.symlink")
 
 	// Try to get home directory, preferring HOME env var for testability
 	homeDir := os.Getenv("HOME")
@@ -70,7 +70,7 @@ func (h *SymlinkHandler) RunMode() types.RunMode {
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
 func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
-	logger := logging.GetLogger("handlers.symlink.v2")
+	logger := logging.GetLogger("handlers.symlink")
 	actions := make([]types.LinkingAction, 0, len(matches))
 
 	// Get target directory from options or use default
