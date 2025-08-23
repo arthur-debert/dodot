@@ -137,6 +137,8 @@ func (e *Executor) handlePostExecution(action types.ActionV2) error {
 		return e.handleLinkActionPost(a)
 	case *types.RunScriptAction:
 		return e.handleRunScriptActionPost(a)
+	case *types.BrewAction:
+		return e.handleBrewActionPost(a)
 	default:
 		// No special handling needed for other action types
 		return nil
@@ -225,6 +227,54 @@ func (e *Executor) handleRunScriptActionPost(action *types.RunScriptAction) erro
 		Str("script", action.ScriptPath).
 		Str("pack", action.PackName).
 		Msg("Provisioning script executed successfully")
+
+	return nil
+}
+
+// handleBrewActionPost executes brew bundle for a Brewfile
+func (e *Executor) handleBrewActionPost(action *types.BrewAction) error {
+	// The action has already checked if provisioning is needed
+	// If we're here and no error occurred, we need to run brew bundle
+
+	// Check again if we need to run (action might have returned early)
+	sentinelName := fmt.Sprintf("homebrew-%s.sentinel", action.PackName)
+	needs, err := e.dataStore.NeedsProvisioning(action.PackName, sentinelName, action.Checksum)
+	if err != nil {
+		return fmt.Errorf("failed to check provisioning status: %w", err)
+	}
+
+	if !needs {
+		e.logger.Debug().
+			Str("brewfile", action.BrewfilePath).
+			Str("pack", action.PackName).
+			Msg("Brewfile already provisioned, skipping execution")
+		return nil
+	}
+
+	// Execute brew bundle
+	e.logger.Info().
+		Str("brewfile", action.BrewfilePath).
+		Str("pack", action.PackName).
+		Msg("Executing brew bundle")
+
+	cmd := exec.Command("brew", "bundle", "--file="+action.BrewfilePath)
+	cmd.Dir = filepath.Dir(action.BrewfilePath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to execute brew bundle for %s: %w", action.BrewfilePath, err)
+	}
+
+	// Record successful provisioning
+	if err := e.dataStore.RecordProvisioning(action.PackName, sentinelName, action.Checksum); err != nil {
+		return fmt.Errorf("failed to record provisioning: %w", err)
+	}
+
+	e.logger.Info().
+		Str("brewfile", action.BrewfilePath).
+		Str("pack", action.PackName).
+		Msg("Brew bundle executed successfully")
 
 	return nil
 }

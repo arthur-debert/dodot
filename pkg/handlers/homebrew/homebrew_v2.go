@@ -1,12 +1,10 @@
 package homebrew
 
 import (
-	"crypto/sha256"
 	_ "embed"
 	"fmt"
-	"io"
-	"os"
 
+	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -52,7 +50,7 @@ func (h *HomebrewHandlerV2) ProcessProvisioning(matches []types.TriggerMatch) ([
 			Msg("Processing Brewfile")
 
 		// Calculate checksum of the Brewfile
-		checksum, err := calculateBrewfileChecksum(match.AbsolutePath)
+		checksum, err := hashutil.CalculateFileChecksum(match.AbsolutePath)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -61,15 +59,11 @@ func (h *HomebrewHandlerV2) ProcessProvisioning(matches []types.TriggerMatch) ([
 			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
 		}
 
-		// Create a RunScriptAction for the Brewfile
-		// Note: The executor will need to recognize Brewfiles and run them
-		// with "brew bundle --file=<path>" instead of executing directly
-		// This is identified by the sentinel name pattern "homebrew-*.sentinel"
-		action := &types.RunScriptAction{
+		// Create a BrewAction for the Brewfile
+		action := &types.BrewAction{
 			PackName:     match.Pack,
-			ScriptPath:   match.AbsolutePath, // Path to the Brewfile
+			BrewfilePath: match.AbsolutePath,
 			Checksum:     checksum,
-			SentinelName: fmt.Sprintf("homebrew-%s.sentinel", match.Pack),
 		}
 
 		actions = append(actions, action)
@@ -92,24 +86,6 @@ func (h *HomebrewHandlerV2) ValidateOptions(options map[string]interface{}) erro
 // GetTemplateContent returns the template content for this handler
 func (h *HomebrewHandlerV2) GetTemplateContent() string {
 	return homebrewTemplate
-}
-
-// calculateBrewfileChecksum calculates SHA256 checksum of a Brewfile
-func calculateBrewfileChecksum(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("sha256:%x", hash.Sum(nil)), nil
 }
 
 // Verify interface compliance

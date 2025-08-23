@@ -203,28 +203,3 @@ func TestProvisionScriptHandlerV2_Properties(t *testing.T) {
 	assert.NotEmpty(t, template)
 	assert.Contains(t, template, "dodot install script")
 }
-
-func TestCalculateFileChecksum(t *testing.T) {
-	// Create a temporary file with known content
-	tempFile, err := os.CreateTemp("", "checksum-test-*.txt")
-	require.NoError(t, err)
-	defer func() {
-		_ = os.Remove(tempFile.Name())
-	}()
-
-	testContent := "Hello, World!"
-	_, err = tempFile.WriteString(testContent)
-	require.NoError(t, err)
-	require.NoError(t, tempFile.Close())
-
-	checksum, err := calculateFileChecksum(tempFile.Name())
-	require.NoError(t, err)
-
-	// The SHA256 of "Hello, World!" is known
-	expectedChecksum := "sha256:dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
-	assert.Equal(t, expectedChecksum, checksum)
-
-	// Test with non-existent file
-	_, err = calculateFileChecksum("/non/existent/file")
-	assert.Error(t, err)
-}

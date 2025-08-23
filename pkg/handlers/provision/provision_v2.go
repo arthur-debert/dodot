@@ -1,12 +1,10 @@
 package provision
 
 import (
-	"crypto/sha256"
 	_ "embed"
 	"fmt"
-	"io"
-	"os"
 
+	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -52,7 +50,7 @@ func (h *ProvisionScriptHandlerV2) ProcessProvisioning(matches []types.TriggerMa
 			Msg("Processing install script")
 
 		// Calculate checksum of the script
-		checksum, err := calculateFileChecksum(match.AbsolutePath)
+		checksum, err := hashutil.CalculateFileChecksum(match.AbsolutePath)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -89,24 +87,6 @@ func (h *ProvisionScriptHandlerV2) ValidateOptions(options map[string]interface{
 // GetTemplateContent returns the template content for this handler
 func (h *ProvisionScriptHandlerV2) GetTemplateContent() string {
 	return provisionTemplate
-}
-
-// calculateFileChecksum calculates SHA256 checksum of a file
-func calculateFileChecksum(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
-		return "", err
-	}
-
-	return fmt.Sprintf("sha256:%x", hash.Sum(nil)), nil
 }
 
 // Verify interface compliance

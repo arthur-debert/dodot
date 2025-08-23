@@ -54,13 +54,12 @@ brew 'ripgrep'
 			expectedCount: 1,
 			expectedError: false,
 			checkActions: func(t *testing.T, actions []types.ProvisioningAction) {
-				action, ok := actions[0].(*types.RunScriptAction)
-				require.True(t, ok, "action should be RunScriptAction")
+				action, ok := actions[0].(*types.BrewAction)
+				require.True(t, ok, "action should be BrewAction")
 				assert.Equal(t, "pack1", action.PackName)
-				assert.Equal(t, brewfile1Path, action.ScriptPath)
+				assert.Equal(t, brewfile1Path, action.BrewfilePath)
 				assert.NotEmpty(t, action.Checksum)
 				assert.Contains(t, action.Checksum, "sha256:")
-				assert.Equal(t, "homebrew-pack1.sentinel", action.SentinelName)
 			},
 		},
 		{
@@ -83,18 +82,16 @@ brew 'ripgrep'
 			expectedError: false,
 			checkActions: func(t *testing.T, actions []types.ProvisioningAction) {
 				// Check first action
-				action1, ok := actions[0].(*types.RunScriptAction)
+				action1, ok := actions[0].(*types.BrewAction)
 				require.True(t, ok)
 				assert.Equal(t, "pack1", action1.PackName)
-				assert.Equal(t, brewfile1Path, action1.ScriptPath)
-				assert.Equal(t, "homebrew-pack1.sentinel", action1.SentinelName)
+				assert.Equal(t, brewfile1Path, action1.BrewfilePath)
 
 				// Check second action
-				action2, ok := actions[1].(*types.RunScriptAction)
+				action2, ok := actions[1].(*types.BrewAction)
 				require.True(t, ok)
 				assert.Equal(t, "pack2", action2.PackName)
-				assert.Equal(t, brewfile2Path, action2.ScriptPath)
-				assert.Equal(t, "homebrew-pack2.sentinel", action2.SentinelName)
+				assert.Equal(t, brewfile2Path, action2.BrewfilePath)
 
 				// Verify different checksums (different content)
 				assert.NotEqual(t, action1.Checksum, action2.Checksum)
@@ -132,10 +129,9 @@ brew 'ripgrep'
 			expectedCount: 1,
 			expectedError: false,
 			checkActions: func(t *testing.T, actions []types.ProvisioningAction) {
-				action, ok := actions[0].(*types.RunScriptAction)
+				action, ok := actions[0].(*types.BrewAction)
 				require.True(t, ok)
 				assert.Equal(t, "custom", action.PackName)
-				assert.Equal(t, "homebrew-custom.sentinel", action.SentinelName)
 			},
 		},
 	}
@@ -211,27 +207,14 @@ func TestHomebrewHandlerV2_Properties(t *testing.T) {
 	assert.Contains(t, template, "Homebrew dependencies")
 }
 
-func TestCalculateBrewfileChecksum(t *testing.T) {
-	// Create a temporary Brewfile with known content
-	tempFile, err := os.CreateTemp("", "Brewfile-test-*")
-	require.NoError(t, err)
-	defer func() {
-		_ = os.Remove(tempFile.Name())
-	}()
+func TestBrewActionDescription(t *testing.T) {
+	action := &types.BrewAction{
+		PackName:     "test",
+		BrewfilePath: "/path/to/Brewfile",
+		Checksum:     "sha256:abcd1234",
+	}
 
-	testContent := "brew 'git'\nbrew 'tmux'\n"
-	_, err = tempFile.WriteString(testContent)
-	require.NoError(t, err)
-	require.NoError(t, tempFile.Close())
-
-	checksum, err := calculateBrewfileChecksum(tempFile.Name())
-	require.NoError(t, err)
-
-	// Verify it's a valid SHA256 checksum
-	assert.Contains(t, checksum, "sha256:")
-	assert.Len(t, checksum, 71) // "sha256:" + 64 hex chars
-
-	// Test with non-existent file
-	_, err = calculateBrewfileChecksum("/non/existent/Brewfile")
-	assert.Error(t, err)
+	desc := action.Description()
+	assert.Contains(t, desc, "Install Homebrew packages")
+	assert.Contains(t, desc, "/path/to/Brewfile")
 }
