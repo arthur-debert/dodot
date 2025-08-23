@@ -49,16 +49,10 @@ type LinkAction struct {
 }
 
 func (a *LinkAction) Execute(store DataStore) error {
-	intermediate, err := store.Link(a.PackName, a.SourceFile)
+	_, err := store.Link(a.PackName, a.SourceFile)
 	if err != nil {
 		return fmt.Errorf("failed to create intermediate link: %w", err)
 	}
-
-	// The symlink handler is responsible for creating the final link
-	// from TargetFile -> intermediate
-	// This is handled by the executor, not the action itself
-	_ = intermediate
-
 	return nil
 }
 
