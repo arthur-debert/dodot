@@ -2042,7 +2042,7 @@ const (
 	MTD_OTP_FACTORY                             = 0x1
 	MTD_OTP_OFF                                 = 0x0
 	MTD_OTP_USER                                = 0x2
-	MTD_TRICK_LOCK                              = 0x2000
+	MTD_POWERUP_LOCK                            = 0x2000
 	MTD_RAM                                     = 0x1
 	MTD_ROM                                     = 0x2
 	MTD_SLC_ON_MLC_EMULATION                    = 0x4000

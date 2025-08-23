@@ -17,7 +17,7 @@ import (
 // ShouldProvisionAction checks if a provisioning action should be executed
 // based on its sentinel file and checksum. Returns true if the action
 // should run, false if it has already run with the same checksum.
-func ShouldProvisionAction(action types.Action, force bool, pathsInstance *paths.Paths) (bool, error) {
+func ShouldProvisionAction(action types.Action, force bool, pathsInstance paths.Paths) (bool, error) {
 	logger := logging.GetLogger("core.provisioning")
 
 	// If force flag is set, always run
@@ -118,7 +118,7 @@ func ShouldProvisionAction(action types.Action, force bool, pathsInstance *paths
 // FilterProvisioningActions filters a list of actions based on their provisioning status.
 // It removes actions that have already been executed with the same checksum,
 // unless the force flag is set.
-func FilterProvisioningActions(actions []types.Action, force bool, pathsInstance *paths.Paths) ([]types.Action, error) {
+func FilterProvisioningActions(actions []types.Action, force bool, pathsInstance paths.Paths) ([]types.Action, error) {
 	logger := logging.GetLogger("core.provisioning")
 	logger.Debug().
 		Int("action_count", len(actions)).
@@ -182,7 +182,7 @@ type ProvisioningStatus struct {
 }
 
 // GetProvisioningStatus checks the status of a provisioning handler for a specific pack
-func GetProvisioningStatus(packPath, handlerName string, pathsInstance *paths.Paths) (*ProvisioningStatus, error) {
+func GetProvisioningStatus(packPath, handlerName string, pathsInstance paths.Paths) (*ProvisioningStatus, error) {
 	logger := logging.GetLogger("core.provisioning")
 
 	// Map handler names to their file patterns

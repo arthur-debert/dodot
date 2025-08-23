@@ -8,7 +8,7 @@ import (
 )
 
 // createTestPaths creates a Paths instance for testing
-func createTestPaths(t testing.TB) *paths.Paths {
+func createTestPaths(t testing.TB) paths.Paths {
 	t.Helper()
 	var tempDir string
 	if tt, ok := t.(*testing.T); ok {

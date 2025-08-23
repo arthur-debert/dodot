@@ -9,6 +9,12 @@ const (
 	// StatusStatePending indicates the action has not been executed yet
 	StatusStatePending StatusState = "pending"
 
+	// StatusStateReady indicates the item is correctly deployed
+	StatusStateReady StatusState = "ready"
+
+	// StatusStateMissing indicates the item is not deployed
+	StatusStateMissing StatusState = "missing"
+
 	// StatusStateSuccess indicates the action was executed successfully
 	StatusStateSuccess StatusState = "success"
 

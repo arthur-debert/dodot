@@ -267,7 +267,7 @@ func compInfo(v uint16, sz int) Properties {
 		if v >= firstLeadingCCC {
 			p.nLead = c & 0x3
 			if v >= firstStarterWithNLead {
-				// We were handlered. Remove the decomposition.
+				// We were tricked. Remove the decomposition.
 				p.flags &= 0x03
 				p.index = 0
 				return p

@@ -88,14 +88,14 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 	tests := []struct {
 		name     string
 		envSetup map[string]string
-		validate func(t *testing.T, p *Paths)
+		validate func(t *testing.T, p Paths)
 	}{
 		{
 			name: "DOTFILES_ROOT with spaces",
 			envSetup: map[string]string{
 				EnvDotfilesRoot: "/path with spaces/dotfiles",
 			},
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				testutil.AssertEqual(t, "/path with spaces/dotfiles", p.DotfilesRoot())
 			},
 		},
@@ -104,7 +104,7 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 			envSetup: map[string]string{
 				EnvDotfilesRoot: "~/my-dotfiles",
 			},
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				homeDir, _ := os.UserHomeDir()
 				expected := filepath.Join(homeDir, "my-dotfiles")
 				testutil.AssertEqual(t, expected, p.DotfilesRoot())
@@ -115,7 +115,7 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 			envSetup: map[string]string{
 				"XDG_STATE_HOME": "/custom/state",
 			},
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				expected := filepath.Join("/custom/state", "dodot", "dodot.log")
 				testutil.AssertEqual(t, expected, p.LogFilePath())
 			},
@@ -127,7 +127,7 @@ func TestEnvironmentVariableHandling(t *testing.T) {
 				EnvDodotConfigDir: "/custom/config/dodot",
 				EnvDodotCacheDir:  "/custom/cache/dodot",
 			},
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				testutil.AssertEqual(t, "/custom/data/dodot", p.DataDir())
 				testutil.AssertEqual(t, "/custom/config/dodot", p.ConfigDir())
 				testutil.AssertEqual(t, "/custom/cache/dodot", p.CacheDir())

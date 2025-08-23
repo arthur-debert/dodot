@@ -92,7 +92,7 @@ const runeErrorString = string(utf8.RuneError)
 // Illegal input bytes are replaced by RuneError before being passed to f.
 func Remove(s Set) Transformer {
 	if f, ok := s.(setFunc); ok {
-		// This little handler cuts the running time of BenchmarkRemove for sets
+		// This little trick cuts the running time of BenchmarkRemove for sets
 		// created by Predicate roughly in half.
 		// TODO: special-case RangeTables as well.
 		return Transformer{remove(f)}
