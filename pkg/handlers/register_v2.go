@@ -12,7 +12,7 @@ import (
 func GetV2Handler(name string) interface{} {
 	switch name {
 	case symlink.SymlinkHandlerName:
-		return symlink.NewSymlinkHandlerV2()
+		return symlink.NewSymlinkHandler()
 	case homebrew.HomebrewHandlerName:
 		return homebrew.NewHomebrewHandlerV2()
 	case provision.ProvisionScriptHandlerName:

@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSymlinkHandlerV2_ProcessLinking(t *testing.T) {
+func TestSymlinkHandler_ProcessLinking(t *testing.T) {
 	tests := []struct {
 		name          string
 		matches       []types.TriggerMatch
@@ -137,7 +137,7 @@ func TestSymlinkHandlerV2_ProcessLinking(t *testing.T) {
 			t.Setenv("DODOT_TEST_MODE", "true")
 
 			// Create handler after setting environment
-			handler := NewSymlinkHandlerV2()
+			handler := NewSymlinkHandler()
 
 			actions, err := handler.ProcessLinking(tt.matches)
 
@@ -156,8 +156,8 @@ func TestSymlinkHandlerV2_ProcessLinking(t *testing.T) {
 	}
 }
 
-func TestSymlinkHandlerV2_ValidateOptions(t *testing.T) {
-	handler := NewSymlinkHandlerV2()
+func TestSymlinkHandler_ValidateOptions(t *testing.T) {
+	handler := NewSymlinkHandler()
 
 	tests := []struct {
 		name          string
@@ -209,9 +209,9 @@ func TestSymlinkHandlerV2_ValidateOptions(t *testing.T) {
 	}
 }
 
-func TestSymlinkHandlerV2_Properties(t *testing.T) {
+func TestSymlinkHandler_Properties(t *testing.T) {
 	t.Setenv("DODOT_TEST_MODE", "true")
-	handler := NewSymlinkHandlerV2()
+	handler := NewSymlinkHandler()
 
 	assert.Equal(t, SymlinkHandlerName, handler.Name())
 	assert.Equal(t, "Creates symbolic links from dotfiles to target locations", handler.Description())
@@ -219,13 +219,13 @@ func TestSymlinkHandlerV2_Properties(t *testing.T) {
 	assert.Empty(t, handler.GetTemplateContent())
 }
 
-func TestSymlinkHandlerV2_EnvironmentVariableExpansion(t *testing.T) {
+func TestSymlinkHandler_EnvironmentVariableExpansion(t *testing.T) {
 	t.Setenv("HOME", "/home/testuser")
 	t.Setenv("CONFIG_DIR", "/etc/myapp")
 	t.Setenv("DODOT_TEST_MODE", "true")
 
 	// Create handler after setting environment
-	handler := NewSymlinkHandlerV2()
+	handler := NewSymlinkHandler()
 
 	matches := []types.TriggerMatch{
 		{
@@ -248,14 +248,14 @@ func TestSymlinkHandlerV2_EnvironmentVariableExpansion(t *testing.T) {
 	assert.Equal(t, "/etc/myapp/config.yaml", linkAction.TargetFile)
 }
 
-func TestSymlinkHandlerV2_NoHomeDirectory(t *testing.T) {
+func TestSymlinkHandler_NoHomeDirectory(t *testing.T) {
 	// Clear HOME environment variable
 	t.Setenv("HOME", "")
 	t.Setenv("DODOT_TEST_MODE", "true")
 
 	// Can't mock os.UserHomeDir directly, so just test with empty HOME
 	// The handler will use os.UserHomeDir internally and fall back to "~"
-	handler := NewSymlinkHandlerV2()
+	handler := NewSymlinkHandler()
 	// We can't guarantee the default target will be "~" because os.UserHomeDir
 	// might still return a valid home directory on some systems
 	assert.NotEmpty(t, handler.defaultTarget)
