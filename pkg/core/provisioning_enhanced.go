@@ -62,7 +62,7 @@ func EnrichProvisioningActionsWithChecksums(actions []types.Action) []types.Acti
 // FilterProvisioningTriggersEarly filters out trigger matches for provisioning handlers that have
 // already been executed. This is the new approach that checks sentinel files before
 // handler processing, avoiding unnecessary work.
-func FilterProvisioningTriggersEarly(triggers []types.TriggerMatch, force bool, pathsInstance *paths.Paths) []types.TriggerMatch {
+func FilterProvisioningTriggersEarly(triggers []types.TriggerMatch, force bool, pathsInstance paths.Paths) []types.TriggerMatch {
 	if force {
 		// With force flag, include all triggers
 		return triggers

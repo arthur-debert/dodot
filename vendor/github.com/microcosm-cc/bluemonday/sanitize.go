@@ -1073,7 +1073,7 @@ func (p *Policy) matchRegex(elementName string) (map[string][]attrPolicy, bool) 
 
 // normaliseElementName takes a HTML element like <script> which is user input
 // and returns a lower case version of it that is immune to UTF-8 to ASCII
-// conversion handlers (like the use of upper case cyrillic i scrİpt which a
+// conversion tricks (like the use of upper case cyrillic i scrİpt which a
 // strings.ToLower would convert to script). Instead this func will preserve
 // all non-ASCII as their escaped equivalent, i.e. \u0130 which reveals the
 // characters when lower cased

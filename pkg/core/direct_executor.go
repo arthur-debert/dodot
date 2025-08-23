@@ -24,7 +24,7 @@ import (
 
 // DirectExecutorOptions contains options for the direct executor
 type DirectExecutorOptions struct {
-	Paths             *paths.Paths
+	Paths             paths.Paths
 	DryRun            bool
 	Force             bool
 	AllowHomeSymlinks bool
@@ -37,7 +37,7 @@ type DirectExecutor struct {
 	dryRun            bool
 	force             bool
 	filesystem        filesystem.FullFileSystem
-	paths             *paths.Paths
+	paths             paths.Paths
 	config            *config.Config
 	allowHomeSymlinks bool
 	enableRollback    bool

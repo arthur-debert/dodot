@@ -14,13 +14,13 @@ func TestNew(t *testing.T) {
 		name         string
 		dotfilesRoot string
 		envSetup     map[string]string
-		validate     func(t *testing.T, p *Paths)
+		validate     func(t *testing.T, p Paths)
 		wantErr      bool
 	}{
 		{
 			name:         "explicit dotfiles root",
 			dotfilesRoot: "/tmp/dotfiles",
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				testutil.AssertEqual(t, "/tmp/dotfiles", p.DotfilesRoot())
 			},
 		},
@@ -29,13 +29,13 @@ func TestNew(t *testing.T) {
 			envSetup: map[string]string{
 				EnvDotfilesRoot: "/env/dotfiles",
 			},
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				testutil.AssertEqual(t, "/env/dotfiles", p.DotfilesRoot())
 			},
 		},
 		{
 			name: "git repository or fallback",
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				// This test will either find the git root if we're in a git repo,
 				// or fall back to the current directory
 				testutil.AssertNotEmpty(t, p.DotfilesRoot())
@@ -46,7 +46,7 @@ func TestNew(t *testing.T) {
 		{
 			name:         "expand tilde in explicit path",
 			dotfilesRoot: "~/my-dotfiles",
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				homeDir, _ := os.UserHomeDir()
 				expected := filepath.Join(homeDir, "my-dotfiles")
 				testutil.AssertEqual(t, expected, p.DotfilesRoot())
@@ -59,7 +59,7 @@ func TestNew(t *testing.T) {
 				EnvDodotConfigDir: "/custom/config",
 				EnvDodotCacheDir:  "/custom/cache",
 			},
-			validate: func(t *testing.T, p *Paths) {
+			validate: func(t *testing.T, p Paths) {
 				testutil.AssertEqual(t, "/custom/data", p.DataDir())
 				testutil.AssertEqual(t, "/custom/config", p.ConfigDir())
 				testutil.AssertEqual(t, "/custom/cache", p.CacheDir())

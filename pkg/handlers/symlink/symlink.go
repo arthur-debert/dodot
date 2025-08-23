@@ -19,7 +19,7 @@ const (
 // SymlinkHandler creates symbolic links from matched files to target locations
 type SymlinkHandler struct {
 	defaultTarget string
-	paths         *paths.Paths
+	paths         paths.Paths
 }
 
 // NewSymlinkHandler creates a new SymlinkHandler with default target as user home
@@ -42,6 +42,7 @@ func NewSymlinkHandler() *SymlinkHandler {
 	if err != nil {
 		logger.Warn().Err(err).Msg("failed to initialize paths, using fallback")
 		// Continue without paths instance - we'll use the simple logic
+		pathsInstance = nil
 	}
 
 	return &SymlinkHandler{

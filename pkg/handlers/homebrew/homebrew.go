@@ -84,7 +84,7 @@ func (p *HomebrewHandler) GetTemplateContent() string {
 
 // GetHomebrewSentinelPath returns the path to the sentinel file for a pack
 // Deprecated: Use pathsInstance.SentinelPath("homebrew", pack) instead
-func GetHomebrewSentinelPath(pack string, pathsInstance *paths.Paths) string {
+func GetHomebrewSentinelPath(pack string, pathsInstance paths.Paths) string {
 	return pathsInstance.SentinelPath("homebrew", pack)
 }
 

@@ -687,7 +687,7 @@ func (d *decoder) scalar(n *Node, out reflect.Value) bool {
 			case "y", "Y", "yes", "Yes", "YES", "on", "On", "ON":
 				out.SetBool(true)
 				return true
-			case "n", "N", "no", "No", "NO", "unlink", "Off", "OFF":
+			case "n", "N", "no", "No", "NO", "off", "Off", "OFF":
 				out.SetBool(false)
 				return true
 			}

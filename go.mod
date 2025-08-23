@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/adrg/xdg v0.5.3
-	github.com/arthur-debert/synthfs v0.9.5
+	github.com/arthur-debert/synthfs v0.0.0-00010101000000-000000000000
 	github.com/beevik/etree v1.5.1
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
