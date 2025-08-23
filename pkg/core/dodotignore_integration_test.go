@@ -75,7 +75,7 @@ path = "temp/*"
 	}
 
 	// 4. Convert to actions
-	actions, err := GetActionsV2(allMatches)
+	actions, err := GetActions(allMatches)
 	testutil.AssertNoError(t, err)
 
 	// 5. Convert to operations

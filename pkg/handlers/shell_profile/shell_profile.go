@@ -28,33 +28,32 @@ const aliasesTemplate = `#!/usr/bin/env sh
 # alias grep='grep --color=auto'
 `
 
-// ShellProfileHandlerV2 manages shell profile modifications
-type ShellProfileHandlerV2 struct{}
+// ShellProfileHandler manages shell profile modifications
+type ShellProfileHandler struct{}
 
-// NewShellProfileHandlerV2 creates a new instance of the ShellProfileHandlerV2
-func NewShellProfileHandlerV2() *ShellProfileHandlerV2 {
-	return &ShellProfileHandlerV2{}
+// NewShellProfileHandler creates a new instance of the ShellProfileHandler
+func NewShellProfileHandler() *ShellProfileHandler {
+	return &ShellProfileHandler{}
 }
 
 // Name returns the unique name of this handler
-func (h *ShellProfileHandlerV2) Name() string {
+func (h *ShellProfileHandler) Name() string {
 	return ShellProfileHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (h *ShellProfileHandlerV2) Description() string {
+func (h *ShellProfileHandler) Description() string {
 	return "Manages shell profile modifications (e.g., sourcing aliases)"
 }
 
 // RunMode returns when this handler should run
-func (h *ShellProfileHandlerV2) RunMode() types.RunMode {
+func (h *ShellProfileHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
-
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
-func (h *ShellProfileHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
-	logger := logging.GetLogger("handlers.shell_profile.v2")
+func (h *ShellProfileHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+	logger := logging.GetLogger("handlers.shell_profile")
 	actions := make([]types.LinkingAction, 0, len(matches))
 
 	for _, match := range matches {
@@ -81,14 +80,14 @@ func (h *ShellProfileHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]
 }
 
 // ValidateOptions checks if the provided options are valid
-func (h *ShellProfileHandlerV2) ValidateOptions(options map[string]interface{}) error {
+func (h *ShellProfileHandler) ValidateOptions(options map[string]interface{}) error {
 	return nil // No options to validate yet
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *ShellProfileHandlerV2) GetTemplateContent() string {
+func (h *ShellProfileHandler) GetTemplateContent() string {
 	return aliasesTemplate
 }
 
 // Verify interface compliance
-var _ types.LinkingHandlerV2 = (*ShellProfileHandlerV2)(nil)
+var _ types.LinkingHandler = (*ShellProfileHandler)(nil)

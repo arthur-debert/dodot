@@ -22,9 +22,9 @@ type DataStore interface {
 	GetBrewStatus(pack, brewfilePath, currentChecksum string) (Status, error)
 }
 
-// ActionV2 is the base interface for all actions in the new architecture.
+// Action is the base interface for all actions.
 // Each action is self-contained and knows how to execute itself.
-type ActionV2 interface {
+type Action interface {
 	// Execute performs the action using the provided datastore
 	Execute(store DataStore) error
 
@@ -37,13 +37,13 @@ type ActionV2 interface {
 
 // LinkingAction marker interface for actions that are idempotent and fast
 type LinkingAction interface {
-	ActionV2
+	Action
 	isLinkingAction()
 }
 
 // ProvisioningAction marker interface for actions that have side effects
 type ProvisioningAction interface {
-	ActionV2
+	Action
 	isProvisioningAction()
 }
 

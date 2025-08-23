@@ -13,15 +13,15 @@ import (
 // SymlinkHandlerName is the name of the symlink handler
 const SymlinkHandlerName = "symlink"
 
-// SymlinkHandlerV2 creates symbolic links from matched files to target locations
-type SymlinkHandlerV2 struct {
+// SymlinkHandler creates symbolic links from matched files to target locations
+type SymlinkHandler struct {
 	defaultTarget string
 	paths         paths.Paths
 }
 
-// NewSymlinkHandlerV2 creates a new SymlinkHandlerV2 with default target as user home
-func NewSymlinkHandlerV2() *SymlinkHandlerV2 {
-	logger := logging.GetLogger("handlers.symlink.v2")
+// NewSymlinkHandler creates a new SymlinkHandler with default target as user home
+func NewSymlinkHandler() *SymlinkHandler {
+	logger := logging.GetLogger("handlers.symlink")
 
 	// Try to get home directory, preferring HOME env var for testability
 	homeDir := os.Getenv("HOME")
@@ -47,30 +47,30 @@ func NewSymlinkHandlerV2() *SymlinkHandlerV2 {
 		}
 	}
 
-	return &SymlinkHandlerV2{
+	return &SymlinkHandler{
 		defaultTarget: homeDir,
 		paths:         pathsInstance,
 	}
 }
 
 // Name returns the unique name of this handler
-func (h *SymlinkHandlerV2) Name() string {
+func (h *SymlinkHandler) Name() string {
 	return SymlinkHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (h *SymlinkHandlerV2) Description() string {
+func (h *SymlinkHandler) Description() string {
 	return "Creates symbolic links from dotfiles to target locations"
 }
 
 // RunMode returns whether this handler runs once or many times
-func (h *SymlinkHandlerV2) RunMode() types.RunMode {
+func (h *SymlinkHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
-func (h *SymlinkHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
-	logger := logging.GetLogger("handlers.symlink.v2")
+func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+	logger := logging.GetLogger("handlers.symlink")
 	actions := make([]types.LinkingAction, 0, len(matches))
 
 	// Get target directory from options or use default
@@ -142,7 +142,7 @@ func (h *SymlinkHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
-func (h *SymlinkHandlerV2) ValidateOptions(options map[string]interface{}) error {
+func (h *SymlinkHandler) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {
 		return nil
 	}
@@ -165,10 +165,10 @@ func (h *SymlinkHandlerV2) ValidateOptions(options map[string]interface{}) error
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *SymlinkHandlerV2) GetTemplateContent() string {
+func (h *SymlinkHandler) GetTemplateContent() string {
 	// Symlink handler doesn't provide templates - it symlinks any file
 	return ""
 }
 
 // Verify interface compliance
-var _ types.LinkingHandlerV2 = (*SymlinkHandlerV2)(nil)
+var _ types.LinkingHandler = (*SymlinkHandler)(nil)

@@ -5,34 +5,34 @@ PHASE 4 HANDLER REFACTORING SUMMARY
 
         This document summarizes the Phase 4 implementation of the action
         refactor project (#604). Phase 4 focused on incrementally refactoring
-        all existing handlers to use the new ActionV2 and Handler interfaces.
+        all existing handlers to use the new Action and Handler interfaces.
 
 
     2. Handlers Refactored
 
         2.1 Linking Handlers
 
-            The following handlers implement LinkingHandlerV2:
+            The following handlers implement LinkingHandler:
 
-            - *SymlinkHandlerV2*: Creates symbolic links from matched files to
+            - *SymlinkHandler*: Creates symbolic links from matched files to
               target locations. Returns LinkAction instances.
 
-            - *PathHandlerV2*: Adds directories to PATH. Returns
+            - *PathHandler*: Adds directories to PATH. Returns
               AddToPathAction instances.
 
-            - *ShellProfileHandlerV2*: Manages shell profile modifications by
+            - *ShellProfileHandler*: Manages shell profile modifications by
               sourcing scripts. Returns AddToShellProfileAction instances.
 
 
         2.2 Provisioning Handlers
 
-            The following handlers implement ProvisioningHandlerV2:
+            The following handlers implement ProvisioningHandler:
 
-            - *ProvisionScriptHandlerV2*: Runs install.sh scripts for initial
+            - *ProvisionScriptHandler*: Runs install.sh scripts for initial
               setup. Returns RunScriptAction instances with calculated
               checksums.
 
-            - *HomebrewHandlerV2*: Processes Brewfiles to install Homebrew
+            - *HomebrewHandler*: Processes Brewfiles to install Homebrew
               packages. Returns RunScriptAction instances with a special
               sentinel naming pattern for identification.
 
@@ -48,8 +48,8 @@ PHASE 4 HANDLER REFACTORING SUMMARY
         - Checksums are calculated for provisioning scripts to enable
           idempotent execution
 
-        - The V2 suffix is used to maintain compatibility during the transition
-          period
+        - The refactoring has been completed and all handlers use the new
+          interfaces
 
         - Comprehensive unit tests were added for each handler
 
@@ -61,7 +61,7 @@ PHASE 4 HANDLER REFACTORING SUMMARY
           of executing the Brewfile directly
 
         - All handlers implement both the base Handler interface and their
-          specific LinkingHandlerV2 or ProvisioningHandlerV2 interface
+          specific LinkingHandler or ProvisioningHandler interface
 
 
     5. Next Steps

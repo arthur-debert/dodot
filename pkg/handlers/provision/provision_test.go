@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProvisionScriptHandlerV2_ProcessProvisioning(t *testing.T) {
+func TestProvisionScriptHandler_ProcessProvisioning(t *testing.T) {
 	// Create a temporary directory for test scripts
 	tempDir := t.TempDir()
 
@@ -25,7 +25,7 @@ func TestProvisionScriptHandlerV2_ProcessProvisioning(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(script2Path), 0755))
 	require.NoError(t, os.WriteFile(script2Path, []byte(script2Content), 0755))
 
-	handler := NewProvisionScriptHandlerV2()
+	handler := NewProvisionScriptHandler()
 
 	tests := []struct {
 		name          string
@@ -152,8 +152,8 @@ func TestProvisionScriptHandlerV2_ProcessProvisioning(t *testing.T) {
 	}
 }
 
-func TestProvisionScriptHandlerV2_ValidateOptions(t *testing.T) {
-	handler := NewProvisionScriptHandlerV2()
+func TestProvisionScriptHandler_ValidateOptions(t *testing.T) {
+	handler := NewProvisionScriptHandler()
 
 	tests := []struct {
 		name          string
@@ -191,8 +191,8 @@ func TestProvisionScriptHandlerV2_ValidateOptions(t *testing.T) {
 	}
 }
 
-func TestProvisionScriptHandlerV2_Properties(t *testing.T) {
-	handler := NewProvisionScriptHandlerV2()
+func TestProvisionScriptHandler_Properties(t *testing.T) {
+	handler := NewProvisionScriptHandler()
 
 	assert.Equal(t, ProvisionScriptHandlerName, handler.Name())
 	assert.Equal(t, "Runs install.sh scripts for initial setup", handler.Description())

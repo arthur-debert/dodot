@@ -29,8 +29,9 @@ This is achieved primarily through symbolic links. For many handlers
 source. There's nothing to "update" since changes to these config files
 are immediately live on the system.
 
-This enables stateless linking—just creating paths from your system
-to your source-controlled repository.
+This is managed through dodot's intermediate link layer—creating a 
+double-link structure that provides both live editing and robust state
+management through the filesystem itself.
 
 File Organization Philosophy
 ----------------------------
@@ -130,8 +131,8 @@ Design Philosophy Summary
 -------------------------
 
 dodot embraces simplicity over features. By accepting the constraints of
-git-based versioning, symlink linking, and stateless operation, it
-achieves a remarkably simple and predictable system.
+git-based versioning, symlink-based linking, and filesystem-as-database
+design, it achieves a remarkably simple and predictable system.
 
 The design makes certain advanced features impossible while making common
 operations trivial. This is an intentional trade-off - dodot chooses to

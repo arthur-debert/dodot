@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockAction implements types.ActionV2 for testing
+// MockAction implements types.Action for testing
 type MockAction struct {
 	mock.Mock
 	PackName string
@@ -167,24 +167,24 @@ func (m *MockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string
 func TestExecutor_Execute(t *testing.T) {
 	tests := []struct {
 		name         string
-		actions      []types.ActionV2
+		actions      []types.Action
 		dryRun       bool
-		setupMocks   func(*MockDataStore, *MockFS, []types.ActionV2)
+		setupMocks   func(*MockDataStore, *MockFS, []types.Action)
 		expectedLen  int
-		checkResults func(*testing.T, []types.ActionResultV2)
+		checkResults func(*testing.T, []types.ActionResult)
 	}{
 		{
 			name: "successful execution",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&MockAction{PackName: "test", Desc: "Test action"},
 			},
 			dryRun: false,
-			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.ActionV2) {
+			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.Action) {
 				mockAction := actions[0].(*MockAction)
 				mockAction.On("Execute", ds).Return(nil)
 			},
 			expectedLen: 1,
-			checkResults: func(t *testing.T, results []types.ActionResultV2) {
+			checkResults: func(t *testing.T, results []types.ActionResult) {
 				assert.True(t, results[0].Success)
 				assert.Nil(t, results[0].Error)
 				assert.False(t, results[0].Skipped)
@@ -192,15 +192,15 @@ func TestExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "dry run execution",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&MockAction{PackName: "test", Desc: "Test action"},
 			},
 			dryRun: true,
-			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.ActionV2) {
+			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.Action) {
 				// No execution should happen in dry run
 			},
 			expectedLen: 1,
-			checkResults: func(t *testing.T, results []types.ActionResultV2) {
+			checkResults: func(t *testing.T, results []types.ActionResult) {
 				assert.True(t, results[0].Success)
 				assert.True(t, results[0].Skipped)
 				assert.Equal(t, "Dry run - no changes made", results[0].Message)
@@ -208,16 +208,16 @@ func TestExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "failed execution",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&MockAction{PackName: "test", Desc: "Test action"},
 			},
 			dryRun: false,
-			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.ActionV2) {
+			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.Action) {
 				mockAction := actions[0].(*MockAction)
 				mockAction.On("Execute", ds).Return(errors.New("execution failed"))
 			},
 			expectedLen: 1,
-			checkResults: func(t *testing.T, results []types.ActionResultV2) {
+			checkResults: func(t *testing.T, results []types.ActionResult) {
 				assert.False(t, results[0].Success)
 				assert.NotNil(t, results[0].Error)
 				assert.Contains(t, results[0].Error.Error(), "execution failed")
@@ -225,19 +225,19 @@ func TestExecutor_Execute(t *testing.T) {
 		},
 		{
 			name: "multiple actions",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&MockAction{PackName: "test1", Desc: "Test action 1"},
 				&MockAction{PackName: "test2", Desc: "Test action 2"},
 			},
 			dryRun: false,
-			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.ActionV2) {
+			setupMocks: func(ds *MockDataStore, fs *MockFS, actions []types.Action) {
 				for _, action := range actions {
 					mockAction := action.(*MockAction)
 					mockAction.On("Execute", ds).Return(nil)
 				}
 			},
 			expectedLen: 2,
-			checkResults: func(t *testing.T, results []types.ActionResultV2) {
+			checkResults: func(t *testing.T, results []types.ActionResult) {
 				assert.True(t, results[0].Success)
 				assert.True(t, results[1].Success)
 			},
@@ -298,7 +298,7 @@ func TestExecutor_LinkAction(t *testing.T) {
 		FS:        mockFS,
 	})
 
-	results := exec.Execute([]types.ActionV2{action})
+	results := exec.Execute([]types.Action{action})
 
 	assert.Len(t, results, 1)
 	assert.True(t, results[0].Success)
@@ -334,7 +334,7 @@ func TestExecutor_RunScriptAction(t *testing.T) {
 			FS:        mockFS,
 		})
 
-		results := exec.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.Action{action})
 
 		assert.Len(t, results, 1)
 		assert.False(t, results[0].Success) // Expected to fail due to missing script
@@ -367,7 +367,7 @@ func TestExecutor_RunScriptAction(t *testing.T) {
 			FS:        mockFS,
 		})
 
-		results := exec.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.Action{action})
 
 		assert.Len(t, results, 1)
 		assert.True(t, results[0].Success)

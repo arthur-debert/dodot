@@ -53,21 +53,20 @@ Ideas and Concepts
    > filename matching logic, it would lead to duplicated work, more bugs, and higher friction for
    > contributors.
 
-6. Action: A high-level description of what a handler needs to happen on the user's system (e.g., "create a
-   symlink from file X to location Y"). Handlers are pure functions; they don't run commands or touch the
-   filesystem. They only return a list of Actions. This separation simplifies handler development and
-   ensures that complex tasks like path resolution, dry runs, and safe execution are handled consistently by
-   a central engine.
+6. Action: A self-contained object that knows how to execute itself (e.g., LinkAction knows how to create
+   symlinks, RunScriptAction knows how to run scripts). Handlers are pure functions; they don't run commands
+   or touch the filesystem. They only return a list of Actions. This separation simplifies handler development
+   and ensures that complex tasks like path resolution, dry runs, and safe execution are handled consistently.
 
-7. Operations & Execution: An Action is just an intent. To execute it, it must be translated into low-level,
-   concrete tasks. We leverage the go-synthfs library for this.
-   • `synthfs` Operation: A single, atomic filesystem task, like CreateDir or WriteFile.
-   • `synthfs` Batch: A collection of synthfs operations. go-synthfs can execute a batch, automatically
-     handling dependencies (e.g., creating a directory before the file inside it).
+7. DataStore & Execution: Actions execute through the DataStore interface, which manages all filesystem
+   operations and state. The DataStore:
+   • Creates and manages the intermediate link layer in the XDG data directory
+   • Handles path mapping between source files and system locations
+   • Tracks execution history for provisioning actions
+   • Provides safe, tested implementations for all operations
 
-   The final step of dodot's planning phase is to convert each Action into one or more synthfs Operations,
-   which are then added to a batch for execution. This means, outside of a few integration tests, the entire
-   dodot program can be treated as a pure function that produces a synthfs batch as its final output.
+   Each Action type implements an Execute method that uses the DataStore to perform its work. This design
+   enables dry-run mode, comprehensive testing, and clear separation of concerns.
 
 The High-Level Execution Flow
 ------------------------------
@@ -83,10 +82,11 @@ This is the sequence of events when a dodot command runs:
 3. Get Actions: The TriggerMatch objects are grouped by Handler. Each Handler is then executed with its
    list of matched files, returning a list of high-level Actions.
 
-4. Convert Actions to `synthfs` Batch: The collected list of all Actions is converted into a synthfs Batch
-   containing low-level synthfs Operations.
+4. Execute Actions: Each Action is executed through its Execute method, which uses the DataStore interface
+   to perform filesystem operations safely and track state.
 
-5. Execute Batch: The synthfs library executes the batch, making the required changes to the filesystem.
+5. Track Results: The executor collects results from each Action execution, including success/failure status
+   and any error messages.
 
 6. Assemble Result: A structured result object is created from the outcome of the execution. The cmd/ layer
    is then responsible for formatting this result for display to the user.
@@ -96,6 +96,6 @@ In Short:
 • Get packs to work on.
 • Run matchers against the packs to find files and activate handlers.
 • Run handlers to collect their resulting Actions.
-• Transform Actions into a synthfs batch of operations.
-• Execute the batch.
+• Execute Actions through the DataStore interface.
+• Track execution results.
 • Assemble and display the results.

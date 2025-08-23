@@ -8,19 +8,19 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )
 
-// GetV2Handler returns a V2 handler instance by name
-func GetV2Handler(name string) interface{} {
+// GetHandler returns a handler instance by name
+func GetHandler(name string) interface{} {
 	switch name {
 	case symlink.SymlinkHandlerName:
-		return symlink.NewSymlinkHandlerV2()
+		return symlink.NewSymlinkHandler()
 	case homebrew.HomebrewHandlerName:
-		return homebrew.NewHomebrewHandlerV2()
+		return homebrew.NewHomebrewHandler()
 	case provision.ProvisionScriptHandlerName:
-		return provision.NewProvisionScriptHandlerV2()
+		return provision.NewProvisionScriptHandler()
 	case path.PathHandlerName:
-		return path.NewPathHandlerV2()
+		return path.NewPathHandler()
 	case shell_profile.ShellProfileHandlerName:
-		return shell_profile.NewShellProfileHandlerV2()
+		return shell_profile.NewShellProfileHandler()
 	default:
 		return nil
 	}

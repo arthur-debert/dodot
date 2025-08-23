@@ -24,7 +24,11 @@ Basic Usage
     mkdir -p $DOTFILES_ROOT/vim
     cp ~/.vimrc $DOTFILES_ROOT/vim/vimrc
 
-3. Deploy your configurations:
+3. Check what dodot will do:
+
+    dodot status vim
+
+4. Deploy your configurations:
 
     dodot link vim
 
@@ -34,8 +38,14 @@ What's Next?
 ------------
 
 • Read 10_understanding-dodot.txxt to learn how dodot works
-• See docs/user/handlers.txxt for all available features
+• See 60_handlers.txxt for all available features
 • Check examples/ for common configuration patterns
 
-dodot link --all links all packs at once.
-dodot list shows what's available to link.
+Common Commands:
+• dodot status - Show current state and what would be done
+• dodot link - Create symlinks for configurations  
+• dodot provision - Run install scripts and Brewfiles
+• dodot list - Show available packs
+• dodot unlink - Remove symlinks
+
+Use --all flag to operate on all packs at once.

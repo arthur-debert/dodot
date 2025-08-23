@@ -11,14 +11,14 @@ import (
 func TestFilterActionsByRunMode(t *testing.T) {
 	tests := []struct {
 		name          string
-		actions       []types.ActionV2
+		actions       []types.Action
 		mode          types.RunMode
 		expectedCount int
 		expectedTypes []string
 	}{
 		{
 			name: "filter linking actions",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 				&types.AddToPathAction{PackName: "test", DirPath: "/path"},
 				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
@@ -29,7 +29,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 		},
 		{
 			name: "filter provisioning actions",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
 				&types.BrewAction{PackName: "test", BrewfilePath: "Brewfile"},
@@ -40,7 +40,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 		},
 		{
 			name:          "empty actions",
-			actions:       []types.ActionV2{},
+			actions:       []types.Action{},
 			mode:          types.RunModeLinking,
 			expectedCount: 0,
 			expectedTypes: []string{},
@@ -63,7 +63,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 	}
 }
 
-func TestFilterProvisioningActionsV2(t *testing.T) {
+func TestFilterProvisioningActions(t *testing.T) {
 	// Mock data store
 	store := &mockDataStore{
 		needsProvisioning: map[string]bool{
@@ -72,7 +72,7 @@ func TestFilterProvisioningActionsV2(t *testing.T) {
 		},
 	}
 
-	actions := []types.ActionV2{
+	actions := []types.Action{
 		&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 		&types.RunScriptAction{
 			PackName:     "test",
@@ -88,13 +88,13 @@ func TestFilterProvisioningActionsV2(t *testing.T) {
 	}
 
 	t.Run("force mode includes all actions", func(t *testing.T) {
-		filtered, err := FilterProvisioningActionsV2(actions, true, store)
+		filtered, err := FilterProvisioningActions(actions, true, store)
 		assert.NoError(t, err)
 		assert.Equal(t, 3, len(filtered))
 	})
 
 	t.Run("non-force mode filters based on provisioning status", func(t *testing.T) {
-		filtered, err := FilterProvisioningActionsV2(actions, false, store)
+		filtered, err := FilterProvisioningActions(actions, false, store)
 		assert.NoError(t, err)
 		assert.Equal(t, 2, len(filtered)) // LinkAction and RunScriptAction (needs provisioning)
 	})

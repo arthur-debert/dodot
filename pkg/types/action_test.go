@@ -343,11 +343,11 @@ func TestActionInterfaces(t *testing.T) {
 	var _ types.ProvisioningAction = &types.RunScriptAction{}
 	var _ types.ProvisioningAction = &types.RecordProvisioningAction{}
 
-	// All implement base ActionV2 interface
-	var _ types.ActionV2 = &types.LinkAction{}
-	var _ types.ActionV2 = &types.UnlinkAction{}
-	var _ types.ActionV2 = &types.AddToPathAction{}
-	var _ types.ActionV2 = &types.AddToShellProfileAction{}
-	var _ types.ActionV2 = &types.RunScriptAction{}
-	var _ types.ActionV2 = &types.RecordProvisioningAction{}
+	// All implement base Action interface
+	var _ types.Action = &types.LinkAction{}
+	var _ types.Action = &types.UnlinkAction{}
+	var _ types.Action = &types.AddToPathAction{}
+	var _ types.Action = &types.AddToShellProfileAction{}
+	var _ types.Action = &types.RunScriptAction{}
+	var _ types.Action = &types.RecordProvisioningAction{}
 }

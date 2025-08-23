@@ -35,7 +35,7 @@ func TestExecutionContext_ToDisplayResult_WithActionDetails(t *testing.T) {
 			StartTime:   time.Now(),
 			EndTime:     time.Now(),
 			Pack:        "test",
-			Actions: []types.ActionV2{
+			Actions: []types.Action{
 				&types.LinkAction{
 					PackName:   "test",
 					SourceFile: ".vimrc",
@@ -71,7 +71,7 @@ func TestExecutionContext_ToDisplayResult_WithActionDetails(t *testing.T) {
 			StartTime:   time.Now(),
 			EndTime:     time.Now(),
 			Pack:        "test",
-			Actions: []types.ActionV2{
+			Actions: []types.Action{
 				&types.AddToPathAction{
 					PackName: "test",
 					DirPath:  "/test/bin",
@@ -118,7 +118,7 @@ func TestExecutionContext_ToDisplayResult_WithActionDetails(t *testing.T) {
 					StartTime:   time.Now(),
 					EndTime:     time.Now(),
 					Pack:        "test",
-					Actions: []types.ActionV2{
+					Actions: []types.Action{
 						&types.AddToShellProfileAction{
 							PackName:   "test",
 							ScriptPath: tc.scriptName,

@@ -78,22 +78,22 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("triggerMatches", len(matches)).
 		Msg("Triggers matched")
 
-	// 5. Generate V2 actions from triggers
-	actionsV2, err := core.GetActionsV2(matches)
+	// 5. Generate actions from triggers
+	actions, err := core.GetActions(matches)
 	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate V2 actions")
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate actions")
 	}
 
 	logger.Debug().
-		Int("totalActions", len(actionsV2)).
-		Msg("V2 Actions generated")
+		Int("totalActions", len(actions)).
+		Msg("Actions generated")
 
 	// 6. Create datastore for the new executor
 	fs := filesystem.NewOS()
 	dataStore := datastore.New(fs, pathsInstance)
 
 	// 7. Filter actions by run mode
-	filteredActions := core.FilterActionsByRunMode(actionsV2, opts.RunMode)
+	filteredActions := core.FilterActionsByRunMode(actions, opts.RunMode)
 
 	logger.Debug().
 		Int("filteredActions", len(filteredActions)).
@@ -102,7 +102,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 
 	// 8. Filter provisioning actions based on --force flag
 	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
-		filteredActions, err = core.FilterProvisioningActionsV2(filteredActions, opts.Force, dataStore)
+		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, dataStore)
 		if err != nil {
 			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter provisioning actions")
 		}
@@ -118,7 +118,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	if opts.DryRun {
 		logger.Info().Msg("Dry run mode - creating planned results")
 		// Group actions by pack and create pack results
-		packResultsMap := groupActionsByPackV2(filteredActions, selectedPacks)
+		packResultsMap := groupActionsByPack(filteredActions, selectedPacks)
 		for packName, packResult := range packResultsMap {
 			ctx.AddPackResult(packName, packResult)
 		}
@@ -126,7 +126,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		return ctx, nil
 	}
 
-	// 11. Create and configure new V2 Executor
+	// 11. Create and configure new Executor
 	executorOpts := executor.Options{
 		DataStore: dataStore,
 		DryRun:    opts.DryRun,
@@ -135,10 +135,10 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 
 	exec := executor.New(executorOpts)
 
-	// 12. Execute V2 actions
+	// 12. Execute actions
 	logger.Info().
 		Int("actionCount", len(filteredActions)).
-		Msg("Executing V2 actions")
+		Msg("Executing actions")
 
 	results := exec.Execute(filteredActions)
 
@@ -152,7 +152,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	}
 
 	// 13. Process results into execution context
-	packResultsMap := convertActionResultsToPackResultsV2(results, selectedPacks)
+	packResultsMap := convertActionResultsToPackResults(results, selectedPacks)
 	for packName, packResult := range packResultsMap {
 		ctx.AddPackResult(packName, packResult)
 	}
@@ -184,8 +184,8 @@ func getCommandFromRunMode(mode types.RunMode) string {
 	}
 }
 
-// groupActionsByPackV2 groups V2 actions by pack for dry run display
-func groupActionsByPackV2(actions []types.ActionV2, packs []types.Pack) map[string]*types.PackExecutionResult {
+// groupActionsByPack groups actions by pack for dry run display
+func groupActionsByPack(actions []types.Action, packs []types.Pack) map[string]*types.PackExecutionResult {
 	// Create pack map for easy lookup
 	packMap := make(map[string]*types.Pack)
 	for i := range packs {
@@ -214,7 +214,7 @@ func groupActionsByPackV2(actions []types.ActionV2, packs []types.Pack) map[stri
 		}
 
 		// Create a handler result for dry run
-		handlerName := "handler" // V2 actions use generic handler name
+		handlerName := "handler" // actions use generic handler name
 		var handlerResult *types.HandlerResult
 		for _, pur := range packResult.HandlerResults {
 			if pur.HandlerName == handlerName {
@@ -247,8 +247,8 @@ func groupActionsByPackV2(actions []types.ActionV2, packs []types.Pack) map[stri
 	return packResults
 }
 
-// convertActionResultsToPackResultsV2 converts V2 action results to pack execution results
-func convertActionResultsToPackResultsV2(results []types.ActionResultV2, packs []types.Pack) map[string]*types.PackExecutionResult {
+// convertActionResultsToPackResults converts action results to pack execution results
+func convertActionResultsToPackResults(results []types.ActionResult, packs []types.Pack) map[string]*types.PackExecutionResult {
 	// Create pack map for easy lookup
 	packMap := make(map[string]*types.Pack)
 	for i := range packs {
@@ -277,7 +277,7 @@ func convertActionResultsToPackResultsV2(results []types.ActionResultV2, packs [
 		}
 
 		// Create a minimal handler result
-		handlerName := "handler" // V2 actions don't have handler names
+		handlerName := "handler" // actions don't have handler names
 		var handlerResult *types.HandlerResult
 		for _, pur := range packResult.HandlerResults {
 			if pur.HandlerName == handlerName {

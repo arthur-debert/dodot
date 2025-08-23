@@ -67,7 +67,7 @@ func TestExecutor_Integration(t *testing.T) {
 			TargetFile: filepath.Join(homeDir, ".vimrc"),
 		}
 
-		results := exec.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.Action{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success, "Action should succeed")
@@ -103,7 +103,7 @@ func TestExecutor_Integration(t *testing.T) {
 			SourceFile: sourceFile,
 			TargetFile: filepath.Join(homeDir, ".bashrc"),
 		}
-		results := exec.Execute([]types.ActionV2{linkAction})
+		results := exec.Execute([]types.Action{linkAction})
 		require.True(t, results[0].Success)
 
 		// Now unlink it
@@ -112,7 +112,7 @@ func TestExecutor_Integration(t *testing.T) {
 			SourceFile: sourceFile,
 		}
 
-		results = exec.Execute([]types.ActionV2{unlinkAction})
+		results = exec.Execute([]types.Action{unlinkAction})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)
@@ -133,7 +133,7 @@ func TestExecutor_Integration(t *testing.T) {
 			DirPath:  binDir,
 		}
 
-		results := exec.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.Action{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)
@@ -160,7 +160,7 @@ func TestExecutor_Integration(t *testing.T) {
 			ScriptPath: scriptPath,
 		}
 
-		results := exec.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.Action{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)
@@ -198,7 +198,7 @@ echo "Test installation"
 			SentinelName: "install.sh.sentinel",
 		}
 
-		results := exec.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.Action{action})
 
 		require.Len(t, results, 1)
 		// Note: This might fail in CI environments, so we check the error
@@ -232,7 +232,7 @@ echo "Test installation"
 			TargetFile: filepath.Join(homeDir, ".dryrun-config"),
 		}
 
-		results := dryRunExecutor.Execute([]types.ActionV2{action})
+		results := dryRunExecutor.Execute([]types.Action{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)

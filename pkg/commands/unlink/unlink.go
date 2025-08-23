@@ -262,7 +262,7 @@ func removeSymlink(pack types.Pack, filename string, fs types.FS, pathsInstance 
 
 	// Find the user-facing symlink
 	// We need to reconstruct what the target would have been
-	// This matches the logic in symlink_v2.go
+	// This matches the logic in the symlink handler
 	var targetPath string
 	if pathsInstance != nil {
 		// Use centralized mapping

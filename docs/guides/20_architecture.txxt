@@ -21,13 +21,36 @@ When you run a dodot command, this is what happens:
    • Each handler (e.g., `symlink`, `shell_profile`) processes its `TriggerMatch` objects.
    • The handler generates high-level `Actions` that describe an intent, such as "link this file" or "source this script".
 
-4. Operation Planning Phase:
-   • `Actions` are converted into low-level, concrete `Operations`. An `Operation` is a specific task, like `CreateSymlink` or `WriteFile`.
-   • This plan is created without yet touching the filesystem, enabling dry runs.
+4. Execution Phase:
+   • Actions are self-contained and know how to execute themselves.
+   • Each action type (LinkAction, RunScriptAction, etc.) implements its own Execute method.
+   • Actions use the DataStore interface to perform filesystem operations safely.
+   • The executor coordinates action execution and tracks results.
 
-5. Execution Phase:
-   • A specialized executor (powered by the `go-synthfs` library) safely executes the planned `Operations`.
-   • It handles creating directories, writing files, and setting up symlinks in the correct order.
+State Management Philosophy
+---------------------------
+
+Unlike traditional dotfile managers, dodot uses the filesystem itself as its
+state database. Instead of maintaining separate metadata files, dodot stores
+state through an intermediate link layer in the XDG data directory.
+
+Key principles:
+• State is represented through filesystem structures, not data files
+• The existence of symlinks IS the state - no synchronization needed
+• Running `ls -la` tells you everything about dodot's state
+• The system is self-describing and resilient to corruption
+
+This design ensures:
+• No divergence between actual state and recorded state
+• Easy debugging - broken links are immediately visible
+• Safe to delete and recreate without losing critical information
+• No parsing, no corruption, just filesystem operations
+
+The intermediate link layer serves multiple purposes:
+• Provides indirection for graceful handling of removed source files
+• Enables state querying without separate metadata
+• Allows dodot to detect and warn about broken configurations
+• Makes the entire system observable with standard Unix tools
 
 Implementation Details
 ----------------------
@@ -42,15 +65,20 @@ Each trigger type implements the `Trigger` interface with a single
 `Match(path string) bool` method.
 
 Handler Implementation:
-Handlers implement the `Handler` interface:
+Handlers implement either `LinkingHandler` or `ProvisioningHandler` interface:
 ```
-type Handler interface {
+type LinkingHandler interface {
     Name() string
-    Process(matches []TriggerMatch) ([]Action, error)
+    ProcessLinking(matches []TriggerMatch) ([]LinkingAction, error)
+}
+
+type ProvisioningHandler interface {
+    Name() string
+    ProcessProvisioning(matches []TriggerMatch) ([]ProvisioningAction, error)
 }
 ```
 
-The Process method must be pure - same inputs always produce same outputs.
+The Process methods must be pure - same inputs always produce same outputs.
 This enables testing, caching, and predictable behavior.
 
 Registry System
@@ -80,14 +108,15 @@ dodot uses a layered approach to filesystem operations:
    • No side effects during action generation.
    • Easy to test and reason about.
 
-2. Synthetic Filesystem:
-   • All operations go through the `go-synthfs` library.
-   • Operations are validated before execution.
-   • The library automatically handles dependencies (e.g., creating a directory before placing a file in it).
+2. DataStore Interface:
+   • All filesystem operations go through the DataStore abstraction.
+   • Provides safe, tested implementations for all operations.
+   • Handles path mapping, state management, and error recovery.
 
-3. Operation Descriptions:
-   • The core pipeline produces a list of `Operations`.
-   • This list is just data, which enables powerful features like dry-run validation.
+3. Self-Contained Actions:
+   • Each action knows how to execute itself.
+   • Actions are simple data structures that implement the Execute method.
+   • This design enables dry-run, testing, and clear separation of concerns.
 
 Benefits of This Architecture
 -----------------------------
@@ -139,17 +168,18 @@ Each pack is processed independently:
 
 Multiple packs can be processed in parallel since they are independent.
 
-Action to Operation Conversion
-------------------------------
+Action Execution
+----------------
 
-The DirectExecutor converts Actions to synthfs Operations:
-• Link actions → CreateSymlink operations (with parent dir creation)
-• Write actions → CreateFile operations
-• PathAdd actions → CreateSymlink + AppendFile operations
-• Run actions → Custom operations with command execution
+Actions are self-contained and execute directly through the DataStore interface:
+• LinkAction → Creates symlinks via DataStore.CreateSymlink
+• AddToPathAction → Manages PATH entries via DataStore.AddToPath
+• AddToShellProfileAction → Sources scripts via DataStore.AddToShellProfile
+• RunScriptAction → Executes scripts via DataStore.RunScript
+• BrewAction → Runs Homebrew bundles via DataStore.RunBrew
 
-Each conversion handles edge cases like existing files, missing directories,
-and permission issues.
+Each action handles its own execution logic, including error handling,
+idempotency checks, and state management.
 
 Error Handling
 --------------
