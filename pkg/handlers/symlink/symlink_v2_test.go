@@ -9,11 +9,6 @@ import (
 )
 
 func TestSymlinkHandlerV2_ProcessLinking(t *testing.T) {
-	// Set HOME for consistent testing
-	t.Setenv("HOME", "/home/testuser")
-
-	handler := NewSymlinkHandlerV2()
-
 	tests := []struct {
 		name          string
 		matches       []types.TriggerMatch
@@ -137,6 +132,12 @@ func TestSymlinkHandlerV2_ProcessLinking(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Set HOME for consistent testing
+			t.Setenv("HOME", "/home/testuser")
+
+			// Create handler after setting environment
+			handler := NewSymlinkHandlerV2()
+
 			actions, err := handler.ProcessLinking(tt.matches)
 
 			if tt.expectedError {
@@ -220,6 +221,7 @@ func TestSymlinkHandlerV2_EnvironmentVariableExpansion(t *testing.T) {
 	t.Setenv("HOME", "/home/testuser")
 	t.Setenv("CONFIG_DIR", "/etc/myapp")
 
+	// Create handler after setting environment
 	handler := NewSymlinkHandlerV2()
 
 	matches := []types.TriggerMatch{
