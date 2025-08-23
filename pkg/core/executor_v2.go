@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
@@ -39,7 +40,7 @@ func NewExecutorV2(opts ExecutorV2Options) *ExecutorV2 {
 
 	fs := opts.FS
 	if fs == nil {
-		fs = &osFS{}
+		fs = filesystem.NewOS()
 	}
 
 	return &ExecutorV2{
@@ -143,10 +144,11 @@ func (e *ExecutorV2) handlePostExecution(action types.ActionV2) error {
 
 // handleLinkActionPost creates the final user-facing symlink
 func (e *ExecutorV2) handleLinkActionPost(action *types.LinkAction) error {
-	// The action has stored the intermediate link path
-	intermediatePath := action.IntermediatePath
-	if intermediatePath == "" {
-		return fmt.Errorf("intermediate path not set by LinkAction.Execute")
+	// Get the intermediate path by calling the datastore again
+	// This is idempotent - it will return the existing link
+	intermediatePath, err := e.dataStore.Link(action.PackName, action.SourceFile)
+	if err != nil {
+		return fmt.Errorf("failed to get intermediate link path: %w", err)
 	}
 
 	// Expand the target path
@@ -245,47 +247,4 @@ func expandPath(path string) string {
 	}
 
 	return os.ExpandEnv(path)
-}
-
-// osFS implements types.FS using the actual filesystem
-type osFS struct{}
-
-func (fs *osFS) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
-}
-
-func (fs *osFS) Lstat(name string) (os.FileInfo, error) {
-	return os.Lstat(name)
-}
-
-func (fs *osFS) ReadFile(name string) ([]byte, error) {
-	return os.ReadFile(name)
-}
-
-func (fs *osFS) WriteFile(name string, data []byte, perm os.FileMode) error {
-	return os.WriteFile(name, data, perm)
-}
-
-func (fs *osFS) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
-}
-
-func (fs *osFS) Remove(name string) error {
-	return os.Remove(name)
-}
-
-func (fs *osFS) RemoveAll(path string) error {
-	return os.RemoveAll(path)
-}
-
-func (fs *osFS) Symlink(oldname, newname string) error {
-	return os.Symlink(oldname, newname)
-}
-
-func (fs *osFS) Readlink(name string) (string, error) {
-	return os.Readlink(name)
-}
-
-func (fs *osFS) ReadDir(name string) ([]os.DirEntry, error) {
-	return os.ReadDir(name)
 }

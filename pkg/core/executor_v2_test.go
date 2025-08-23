@@ -258,8 +258,8 @@ func TestExecutorV2_LinkAction(t *testing.T) {
 		TargetFile: "~/.vimrc",
 	}
 
-	// Setup mocks
-	mockDS.On("Link", "vim", ".vimrc").Return("/data/packs/vim/symlinks/.vimrc", nil)
+	// Setup mocks - Link will be called twice: once in Execute, once in post-execution
+	mockDS.On("Link", "vim", ".vimrc").Return("/data/packs/vim/symlinks/.vimrc", nil).Twice()
 
 	// Expect filesystem operations for creating the final symlink
 	mockFS.On("MkdirAll", mock.Anything, os.FileMode(0755)).Return(nil)
@@ -278,7 +278,6 @@ func TestExecutorV2_LinkAction(t *testing.T) {
 	assert.Len(t, results, 1)
 	assert.True(t, results[0].Success)
 	assert.Nil(t, results[0].Error)
-	assert.Equal(t, "/data/packs/vim/symlinks/.vimrc", action.IntermediatePath)
 
 	mockDS.AssertExpectations(t)
 	mockFS.AssertExpectations(t)

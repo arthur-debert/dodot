@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
@@ -39,7 +40,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 	pathsInstance, err := paths.New(dotfilesRoot)
 	require.NoError(t, err)
 
-	fs := &osFS{}
+	fs := filesystem.NewOS()
 	ds := datastore.New(fs, pathsInstance)
 
 	executor := core.NewExecutorV2(core.ExecutorV2Options{
@@ -242,47 +243,4 @@ echo "Test installation"
 		targetPath := filepath.Join(homeDir, ".dryrun-config")
 		assert.NoFileExists(t, targetPath)
 	})
-}
-
-// osFS implements types.FS using the actual filesystem
-type osFS struct{}
-
-func (fs *osFS) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
-}
-
-func (fs *osFS) Lstat(name string) (os.FileInfo, error) {
-	return os.Lstat(name)
-}
-
-func (fs *osFS) ReadFile(name string) ([]byte, error) {
-	return os.ReadFile(name)
-}
-
-func (fs *osFS) WriteFile(name string, data []byte, perm os.FileMode) error {
-	return os.WriteFile(name, data, perm)
-}
-
-func (fs *osFS) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
-}
-
-func (fs *osFS) Remove(name string) error {
-	return os.Remove(name)
-}
-
-func (fs *osFS) RemoveAll(path string) error {
-	return os.RemoveAll(path)
-}
-
-func (fs *osFS) Symlink(oldname, newname string) error {
-	return os.Symlink(oldname, newname)
-}
-
-func (fs *osFS) Readlink(name string) (string, error) {
-	return os.Readlink(name)
-}
-
-func (fs *osFS) ReadDir(name string) ([]os.DirEntry, error) {
-	return os.ReadDir(name)
 }
