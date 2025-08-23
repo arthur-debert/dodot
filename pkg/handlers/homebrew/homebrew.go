@@ -28,31 +28,31 @@ const homebrewTemplate = `# Homebrew dependencies for PACK_NAME pack
 # brew "vim"
 # cask "visual-studio-code"`
 
-// HomebrewHandlerV2 processes Brewfiles to install packages via Homebrew
-type HomebrewHandlerV2 struct{}
+// HomebrewHandler processes Brewfiles to install packages via Homebrew
+type HomebrewHandler struct{}
 
-// NewHomebrewHandlerV2 creates a new instance of the Homebrew handler
-func NewHomebrewHandlerV2() *HomebrewHandlerV2 {
-	return &HomebrewHandlerV2{}
+// NewHomebrewHandler creates a new instance of the Homebrew handler
+func NewHomebrewHandler() *HomebrewHandler {
+	return &HomebrewHandler{}
 }
 
 // Name returns the unique name of this handler
-func (h *HomebrewHandlerV2) Name() string {
+func (h *HomebrewHandler) Name() string {
 	return HomebrewHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (h *HomebrewHandlerV2) Description() string {
+func (h *HomebrewHandler) Description() string {
 	return "Processes Brewfiles to install Homebrew packages"
 }
 
 // RunMode returns whether this handler runs once or many times
-func (h *HomebrewHandlerV2) RunMode() types.RunMode {
+func (h *HomebrewHandler) RunMode() types.RunMode {
 	return types.RunModeProvisioning
 }
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances
-func (h *HomebrewHandlerV2) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
 	logger := logging.GetLogger("handlers.homebrew.v2")
 	actions := make([]types.ProvisioningAction, 0, len(matches))
 
@@ -91,15 +91,15 @@ func (h *HomebrewHandlerV2) ProcessProvisioning(matches []types.TriggerMatch) ([
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
-func (h *HomebrewHandlerV2) ValidateOptions(options map[string]interface{}) error {
+func (h *HomebrewHandler) ValidateOptions(options map[string]interface{}) error {
 	// Homebrew handler doesn't have any options
 	return nil
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *HomebrewHandlerV2) GetTemplateContent() string {
+func (h *HomebrewHandler) GetTemplateContent() string {
 	return homebrewTemplate
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandler = (*HomebrewHandlerV2)(nil)
+var _ types.ProvisioningHandler = (*HomebrewHandler)(nil)

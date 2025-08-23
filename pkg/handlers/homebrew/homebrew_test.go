@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestHomebrewHandlerV2_ProcessProvisioning(t *testing.T) {
+func TestHomebrewHandler_ProcessProvisioning(t *testing.T) {
 	// Create a temporary directory for test Brewfiles
 	tempDir := t.TempDir()
 
@@ -32,7 +32,7 @@ brew 'ripgrep'
 	require.NoError(t, os.MkdirAll(filepath.Dir(brewfile2Path), 0755))
 	require.NoError(t, os.WriteFile(brewfile2Path, []byte(brewfile2Content), 0644))
 
-	handler := NewHomebrewHandlerV2()
+	handler := NewHomebrewHandler()
 
 	tests := []struct {
 		name          string
@@ -155,8 +155,8 @@ brew 'ripgrep'
 	}
 }
 
-func TestHomebrewHandlerV2_ValidateOptions(t *testing.T) {
-	handler := NewHomebrewHandlerV2()
+func TestHomebrewHandler_ValidateOptions(t *testing.T) {
+	handler := NewHomebrewHandler()
 
 	tests := []struct {
 		name          string
@@ -194,8 +194,8 @@ func TestHomebrewHandlerV2_ValidateOptions(t *testing.T) {
 	}
 }
 
-func TestHomebrewHandlerV2_Properties(t *testing.T) {
-	handler := NewHomebrewHandlerV2()
+func TestHomebrewHandler_Properties(t *testing.T) {
+	handler := NewHomebrewHandler()
 
 	assert.Equal(t, HomebrewHandlerName, handler.Name())
 	assert.Equal(t, "Processes Brewfiles to install Homebrew packages", handler.Description())

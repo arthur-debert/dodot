@@ -14,7 +14,7 @@ func GetV2Handler(name string) interface{} {
 	case symlink.SymlinkHandlerName:
 		return symlink.NewSymlinkHandler()
 	case homebrew.HomebrewHandlerName:
-		return homebrew.NewHomebrewHandlerV2()
+		return homebrew.NewHomebrewHandler()
 	case provision.ProvisionScriptHandlerName:
 		return provision.NewProvisionScriptHandlerV2()
 	case path.PathHandlerName:
