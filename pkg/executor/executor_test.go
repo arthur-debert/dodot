@@ -1,11 +1,11 @@
-package core_test
+package executor_test
 
 import (
 	"errors"
 	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -139,7 +139,7 @@ func (m *MockDataStore) GetStatus(pack, sourceFile string) (types.Status, error)
 	return args.Get(0).(types.Status), args.Error(1)
 }
 
-func TestExecutorV2_Execute(t *testing.T) {
+func TestExecutor_Execute(t *testing.T) {
 	tests := []struct {
 		name         string
 		actions      []types.ActionV2
@@ -228,14 +228,14 @@ func TestExecutorV2_Execute(t *testing.T) {
 				tt.setupMocks(mockDS, mockFS, tt.actions)
 			}
 
-			executor := core.NewExecutorV2(core.ExecutorV2Options{
+			exec := executor.New(executor.Options{
 				DataStore: mockDS,
 				DryRun:    tt.dryRun,
 				Logger:    zerolog.Nop(),
 				FS:        mockFS,
 			})
 
-			results := executor.Execute(tt.actions)
+			results := exec.Execute(tt.actions)
 
 			assert.Len(t, results, tt.expectedLen)
 			if tt.checkResults != nil {
@@ -248,7 +248,7 @@ func TestExecutorV2_Execute(t *testing.T) {
 	}
 }
 
-func TestExecutorV2_LinkAction(t *testing.T) {
+func TestExecutor_LinkAction(t *testing.T) {
 	mockDS := new(MockDataStore)
 	mockFS := new(MockFS)
 
@@ -266,14 +266,14 @@ func TestExecutorV2_LinkAction(t *testing.T) {
 	mockFS.On("Lstat", mock.Anything).Return(nil, os.ErrNotExist)
 	mockFS.On("Symlink", "/data/packs/vim/symlinks/.vimrc", mock.Anything).Return(nil)
 
-	executor := core.NewExecutorV2(core.ExecutorV2Options{
+	exec := executor.New(executor.Options{
 		DataStore: mockDS,
 		DryRun:    false,
 		Logger:    zerolog.Nop(),
 		FS:        mockFS,
 	})
 
-	results := executor.Execute([]types.ActionV2{action})
+	results := exec.Execute([]types.ActionV2{action})
 
 	assert.Len(t, results, 1)
 	assert.True(t, results[0].Success)
@@ -283,7 +283,7 @@ func TestExecutorV2_LinkAction(t *testing.T) {
 	mockFS.AssertExpectations(t)
 }
 
-func TestExecutorV2_RunScriptAction(t *testing.T) {
+func TestExecutor_RunScriptAction(t *testing.T) {
 	t.Run("script needs provisioning", func(t *testing.T) {
 		mockDS := new(MockDataStore)
 		mockFS := new(MockFS)
@@ -302,14 +302,14 @@ func TestExecutorV2_RunScriptAction(t *testing.T) {
 		// Note: Script execution will fail because the path doesn't exist
 		// This is expected in unit tests
 
-		executor := core.NewExecutorV2(core.ExecutorV2Options{
+		exec := executor.New(executor.Options{
 			DataStore: mockDS,
 			DryRun:    false,
 			Logger:    zerolog.Nop(),
 			FS:        mockFS,
 		})
 
-		results := executor.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.ActionV2{action})
 
 		assert.Len(t, results, 1)
 		assert.False(t, results[0].Success) // Expected to fail due to missing script
@@ -335,14 +335,14 @@ func TestExecutorV2_RunScriptAction(t *testing.T) {
 		mockDS.On("NeedsProvisioning", "dev", "install.sh.sentinel", "sha256:12345").
 			Return(false, nil)
 
-		executor := core.NewExecutorV2(core.ExecutorV2Options{
+		exec := executor.New(executor.Options{
 			DataStore: mockDS,
 			DryRun:    false,
 			Logger:    zerolog.Nop(),
 			FS:        mockFS,
 		})
 
-		results := executor.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.ActionV2{action})
 
 		assert.Len(t, results, 1)
 		assert.True(t, results[0].Success)

@@ -1,4 +1,4 @@
-package core
+package executor
 
 import (
 	"fmt"
@@ -11,11 +11,12 @@ import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/utils"
 	"github.com/rs/zerolog"
 )
 
-// ExecutorV2Options contains configuration for the new executor
-type ExecutorV2Options struct {
+// Options contains configuration for the executor
+type Options struct {
 	DataStore datastore.DataStore
 	DryRun    bool
 	Logger    zerolog.Logger
@@ -23,19 +24,19 @@ type ExecutorV2Options struct {
 	FS types.FS
 }
 
-// ExecutorV2 is the new simplified executor that processes ActionV2 instances
-type ExecutorV2 struct {
+// Executor is the simplified executor that processes ActionV2 instances
+type Executor struct {
 	dataStore datastore.DataStore
 	dryRun    bool
 	logger    zerolog.Logger
 	fs        types.FS
 }
 
-// NewExecutorV2 creates a new executor instance
-func NewExecutorV2(opts ExecutorV2Options) *ExecutorV2 {
+// New creates a new executor instance
+func New(opts Options) *Executor {
 	logger := opts.Logger
 	if logger.GetLevel() == zerolog.Disabled {
-		logger = logging.GetLogger("core.executor_v2")
+		logger = logging.GetLogger("executor")
 	}
 
 	fs := opts.FS
@@ -43,7 +44,7 @@ func NewExecutorV2(opts ExecutorV2Options) *ExecutorV2 {
 		fs = filesystem.NewOS()
 	}
 
-	return &ExecutorV2{
+	return &Executor{
 		dataStore: opts.DataStore,
 		dryRun:    opts.DryRun,
 		logger:    logger,
@@ -52,7 +53,7 @@ func NewExecutorV2(opts ExecutorV2Options) *ExecutorV2 {
 }
 
 // Execute processes a slice of actions and returns their results
-func (e *ExecutorV2) Execute(actions []types.ActionV2) []types.ActionResultV2 {
+func (e *Executor) Execute(actions []types.ActionV2) []types.ActionResultV2 {
 	results := make([]types.ActionResultV2, 0, len(actions))
 
 	for _, action := range actions {
@@ -64,7 +65,7 @@ func (e *ExecutorV2) Execute(actions []types.ActionV2) []types.ActionResultV2 {
 }
 
 // executeAction executes a single action and returns its result
-func (e *ExecutorV2) executeAction(action types.ActionV2) types.ActionResultV2 {
+func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
 	start := time.Now()
 
 	e.logger.Debug().
@@ -130,7 +131,7 @@ func (e *ExecutorV2) executeAction(action types.ActionV2) types.ActionResultV2 {
 }
 
 // handlePostExecution handles any special logic needed after action execution
-func (e *ExecutorV2) handlePostExecution(action types.ActionV2) error {
+func (e *Executor) handlePostExecution(action types.ActionV2) error {
 	switch a := action.(type) {
 	case *types.LinkAction:
 		return e.handleLinkActionPost(a)
@@ -143,7 +144,7 @@ func (e *ExecutorV2) handlePostExecution(action types.ActionV2) error {
 }
 
 // handleLinkActionPost creates the final user-facing symlink
-func (e *ExecutorV2) handleLinkActionPost(action *types.LinkAction) error {
+func (e *Executor) handleLinkActionPost(action *types.LinkAction) error {
 	// Get the intermediate path by calling the datastore again
 	// This is idempotent - it will return the existing link
 	intermediatePath, err := e.dataStore.Link(action.PackName, action.SourceFile)
@@ -152,7 +153,7 @@ func (e *ExecutorV2) handleLinkActionPost(action *types.LinkAction) error {
 	}
 
 	// Expand the target path
-	targetPath := expandPath(action.TargetFile)
+	targetPath := utils.ExpandPath(action.TargetFile)
 
 	// Create parent directory if needed
 	targetDir := filepath.Dir(targetPath)
@@ -182,7 +183,7 @@ func (e *ExecutorV2) handleLinkActionPost(action *types.LinkAction) error {
 }
 
 // handleRunScriptActionPost executes the provisioning script
-func (e *ExecutorV2) handleRunScriptActionPost(action *types.RunScriptAction) error {
+func (e *Executor) handleRunScriptActionPost(action *types.RunScriptAction) error {
 	// The action has already checked if provisioning is needed
 	// If we're here and no error occurred, we need to run the script
 
@@ -226,25 +227,4 @@ func (e *ExecutorV2) handleRunScriptActionPost(action *types.RunScriptAction) er
 		Msg("Provisioning script executed successfully")
 
 	return nil
-}
-
-// expandPath expands ~ and environment variables in a path
-func expandPath(path string) string {
-	if path == "~" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return path
-		}
-		return home
-	}
-
-	if len(path) > 1 && path[0] == '~' && path[1] == '/' {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return path
-		}
-		return filepath.Join(home, path[2:])
-	}
-
-	return os.ExpandEnv(path)
 }

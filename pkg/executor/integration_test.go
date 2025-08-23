@@ -1,12 +1,12 @@
-package core_test
+package executor_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExecutorV2_Integration(t *testing.T) {
+func TestExecutor_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -43,7 +43,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 	fs := filesystem.NewOS()
 	ds := datastore.New(fs, pathsInstance)
 
-	executor := core.NewExecutorV2(core.ExecutorV2Options{
+	exec := executor.New(executor.Options{
 		DataStore: ds,
 		DryRun:    false,
 		Logger:    zerolog.Nop(),
@@ -67,7 +67,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 			TargetFile: filepath.Join(homeDir, ".vimrc"),
 		}
 
-		results := executor.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.ActionV2{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success, "Action should succeed")
@@ -103,7 +103,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 			SourceFile: sourceFile,
 			TargetFile: filepath.Join(homeDir, ".bashrc"),
 		}
-		results := executor.Execute([]types.ActionV2{linkAction})
+		results := exec.Execute([]types.ActionV2{linkAction})
 		require.True(t, results[0].Success)
 
 		// Now unlink it
@@ -112,7 +112,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 			SourceFile: sourceFile,
 		}
 
-		results = executor.Execute([]types.ActionV2{unlinkAction})
+		results = exec.Execute([]types.ActionV2{unlinkAction})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)
@@ -133,7 +133,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 			DirPath:  binDir,
 		}
 
-		results := executor.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.ActionV2{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)
@@ -160,7 +160,7 @@ func TestExecutorV2_Integration(t *testing.T) {
 			ScriptPath: scriptPath,
 		}
 
-		results := executor.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.ActionV2{action})
 
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Success)
@@ -198,7 +198,7 @@ echo "Test installation"
 			SentinelName: "install.sh.sentinel",
 		}
 
-		results := executor.Execute([]types.ActionV2{action})
+		results := exec.Execute([]types.ActionV2{action})
 
 		require.Len(t, results, 1)
 		// Note: This might fail in CI environments, so we check the error
@@ -212,7 +212,7 @@ echo "Test installation"
 	})
 
 	t.Run("dry run mode", func(t *testing.T) {
-		dryRunExecutor := core.NewExecutorV2(core.ExecutorV2Options{
+		dryRunExecutor := executor.New(executor.Options{
 			DataStore: ds,
 			DryRun:    true,
 			Logger:    zerolog.Nop(),
