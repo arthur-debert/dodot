@@ -20,7 +20,7 @@ func GetV2Handler(name string) interface{} {
 	case path.PathHandlerName:
 		return path.NewPathHandler()
 	case shell_profile.ShellProfileHandlerName:
-		return shell_profile.NewShellProfileHandlerV2()
+		return shell_profile.NewShellProfileHandler()
 	default:
 		return nil
 	}
