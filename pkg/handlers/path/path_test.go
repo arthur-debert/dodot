@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPathHandlerV2_ProcessLinking(t *testing.T) {
-	handler := NewPathHandlerV2()
+func TestPathHandler_ProcessLinking(t *testing.T) {
+	handler := NewPathHandler()
 
 	tests := []struct {
 		name          string
@@ -152,8 +152,8 @@ func TestPathHandlerV2_ProcessLinking(t *testing.T) {
 	}
 }
 
-func TestPathHandlerV2_ValidateOptions(t *testing.T) {
-	handler := NewPathHandlerV2()
+func TestPathHandler_ValidateOptions(t *testing.T) {
+	handler := NewPathHandler()
 
 	tests := []struct {
 		name          string
@@ -205,8 +205,8 @@ func TestPathHandlerV2_ValidateOptions(t *testing.T) {
 	}
 }
 
-func TestPathHandlerV2_Properties(t *testing.T) {
-	handler := NewPathHandlerV2()
+func TestPathHandler_Properties(t *testing.T) {
+	handler := NewPathHandler()
 
 	assert.Equal(t, PathHandlerName, handler.Name())
 	assert.Equal(t, "Adds directories to PATH", handler.Description())

@@ -18,7 +18,7 @@ func GetV2Handler(name string) interface{} {
 	case provision.ProvisionScriptHandlerName:
 		return provision.NewProvisionScriptHandlerV2()
 	case path.PathHandlerName:
-		return path.NewPathHandlerV2()
+		return path.NewPathHandler()
 	case shell_profile.ShellProfileHandlerName:
 		return shell_profile.NewShellProfileHandlerV2()
 	default:

@@ -10,35 +10,35 @@ import (
 // PathHandlerName is the name of the path handler
 const PathHandlerName = "path"
 
-// PathHandlerV2 handles directories by adding them to PATH
-type PathHandlerV2 struct {
+// PathHandler handles directories by adding them to PATH
+type PathHandler struct {
 	targetDir string
 }
 
-// NewPathHandlerV2 creates a new PathHandlerV2
-func NewPathHandlerV2() *PathHandlerV2 {
-	return &PathHandlerV2{
+// NewPathHandler creates a new PathHandler
+func NewPathHandler() *PathHandler {
+	return &PathHandler{
 		targetDir: "~/bin",
 	}
 }
 
 // Name returns the unique name of this handler
-func (h *PathHandlerV2) Name() string {
+func (h *PathHandler) Name() string {
 	return PathHandlerName
 }
 
 // Description returns a human-readable description
-func (h *PathHandlerV2) Description() string {
+func (h *PathHandler) Description() string {
 	return "Adds directories to PATH"
 }
 
 // RunMode returns when this handler should run
-func (h *PathHandlerV2) RunMode() types.RunMode {
+func (h *PathHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
 // ProcessLinking takes directories and creates AddToPathAction instances
-func (h *PathHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
 	logger := logging.GetLogger("handlers.path.v2")
 	actions := make([]types.LinkingAction, 0, len(matches))
 
@@ -85,7 +85,7 @@ func (h *PathHandlerV2) ProcessLinking(matches []types.TriggerMatch) ([]types.Li
 }
 
 // ValidateOptions checks if the provided options are valid
-func (h *PathHandlerV2) ValidateOptions(options map[string]interface{}) error {
+func (h *PathHandler) ValidateOptions(options map[string]interface{}) error {
 	if options == nil {
 		return nil
 	}
@@ -108,9 +108,9 @@ func (h *PathHandlerV2) ValidateOptions(options map[string]interface{}) error {
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *PathHandlerV2) GetTemplateContent() string {
+func (h *PathHandler) GetTemplateContent() string {
 	return ""
 }
 
 // Verify interface compliance
-var _ types.LinkingHandler = (*PathHandlerV2)(nil)
+var _ types.LinkingHandler = (*PathHandler)(nil)
