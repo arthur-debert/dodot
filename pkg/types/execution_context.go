@@ -116,7 +116,7 @@ type HandlerResult struct {
 	Pack string
 
 	// Actions are the original actions that were executed
-	Actions []ActionV2
+	Actions []Action
 }
 
 // NewExecutionContext creates a new execution context

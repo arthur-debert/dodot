@@ -185,7 +185,7 @@ func getCommandFromRunMode(mode types.RunMode) string {
 }
 
 // groupActionsByPackV2 groups V2 actions by pack for dry run display
-func groupActionsByPackV2(actions []types.ActionV2, packs []types.Pack) map[string]*types.PackExecutionResult {
+func groupActionsByPackV2(actions []types.Action, packs []types.Pack) map[string]*types.PackExecutionResult {
 	// Create pack map for easy lookup
 	packMap := make(map[string]*types.Pack)
 	for i := range packs {
@@ -248,7 +248,7 @@ func groupActionsByPackV2(actions []types.ActionV2, packs []types.Pack) map[stri
 }
 
 // convertActionResultsToPackResultsV2 converts V2 action results to pack execution results
-func convertActionResultsToPackResultsV2(results []types.ActionResultV2, packs []types.Pack) map[string]*types.PackExecutionResult {
+func convertActionResultsToPackResultsV2(results []types.ActionResult, packs []types.Pack) map[string]*types.PackExecutionResult {
 	// Create pack map for easy lookup
 	packMap := make(map[string]*types.Pack)
 	for i := range packs {

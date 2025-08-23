@@ -7,8 +7,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// getActionStatus checks the deployment status for a specific ActionV2
-func getActionStatus(action types.ActionV2, dataStore types.DataStore) (types.Status, error) {
+// getActionStatus checks the deployment status for a specific Action
+func getActionStatus(action types.Action, dataStore types.DataStore) (types.Status, error) {
 	switch a := action.(type) {
 	case *types.LinkAction:
 		return dataStore.GetSymlinkStatus(a.PackName, a.SourceFile)
@@ -33,8 +33,8 @@ func getActionStatus(action types.ActionV2, dataStore types.DataStore) (types.St
 	}
 }
 
-// getActionFilePath extracts the file path from an ActionV2 for display
-func getActionFilePath(action types.ActionV2) string {
+// getActionFilePath extracts the file path from an Action for display
+func getActionFilePath(action types.Action) string {
 	switch a := action.(type) {
 	case *types.LinkAction:
 		return filepath.Base(a.SourceFile)
@@ -51,8 +51,8 @@ func getActionFilePath(action types.ActionV2) string {
 	}
 }
 
-// getActionHandler returns the handler name for an ActionV2
-func getActionHandler(action types.ActionV2) string {
+// getActionHandler returns the handler name for an Action
+func getActionHandler(action types.Action) string {
 	switch action.(type) {
 	case *types.LinkAction:
 		return "symlink"

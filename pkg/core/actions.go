@@ -9,13 +9,13 @@ import (
 )
 
 // GetActions takes trigger matches grouped by handler and calls the appropriate handler methods
-func GetActions(matches []types.TriggerMatch) ([]types.ActionV2, error) {
+func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 	logger := logging.GetLogger("core.actions")
 
 	// Group matches by handler
 	handlerGroups := groupMatchesByHandler(matches)
 
-	var allActions []types.ActionV2
+	var allActions []types.Action
 
 	for handlerName, handlerMatches := range handlerGroups {
 		logger.Debug().
@@ -39,7 +39,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.ActionV2, error) {
 			if err != nil {
 				return nil, fmt.Errorf("handler %s failed to process linking: %w", handlerName, err)
 			}
-			// Convert LinkingAction to ActionV2
+			// Convert LinkingAction to Action
 			for _, action := range linkingActions {
 				allActions = append(allActions, action)
 			}
@@ -49,7 +49,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.ActionV2, error) {
 			if err != nil {
 				return nil, fmt.Errorf("handler %s failed to process provisioning: %w", handlerName, err)
 			}
-			// Convert ProvisioningAction to ActionV2
+			// Convert ProvisioningAction to Action
 			for _, action := range provisioningActions {
 				allActions = append(allActions, action)
 			}
@@ -82,8 +82,8 @@ func groupMatchesByHandler(matches []types.TriggerMatch) map[string][]types.Trig
 }
 
 // FilterActionsByRunMode filters V2 actions based on their type
-func FilterActionsByRunMode(actions []types.ActionV2, mode types.RunMode) []types.ActionV2 {
-	var filtered []types.ActionV2
+func FilterActionsByRunMode(actions []types.Action, mode types.RunMode) []types.Action {
+	var filtered []types.Action
 
 	for _, action := range actions {
 		// Check if action is a linking or provisioning type
@@ -106,14 +106,14 @@ func FilterActionsByRunMode(actions []types.ActionV2, mode types.RunMode) []type
 }
 
 // FilterProvisioningActions filters provisioning actions based on whether they need to run
-func FilterProvisioningActions(actions []types.ActionV2, force bool, dataStore types.DataStore) ([]types.ActionV2, error) {
+func FilterProvisioningActions(actions []types.Action, force bool, dataStore types.DataStore) ([]types.Action, error) {
 	if force {
 		// If force is true, run all actions
 		return actions, nil
 	}
 
 	logger := logging.GetLogger("core.actions")
-	var filtered []types.ActionV2
+	var filtered []types.Action
 
 	for _, action := range actions {
 		// Only filter provisioning actions

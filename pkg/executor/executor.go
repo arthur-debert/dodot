@@ -24,7 +24,7 @@ type Options struct {
 	FS types.FS
 }
 
-// Executor is the simplified executor that processes ActionV2 instances
+// Executor is the simplified executor that processes Action instances
 type Executor struct {
 	dataStore datastore.DataStore
 	dryRun    bool
@@ -53,8 +53,8 @@ func New(opts Options) *Executor {
 }
 
 // Execute processes a slice of actions and returns their results
-func (e *Executor) Execute(actions []types.ActionV2) []types.ActionResultV2 {
-	results := make([]types.ActionResultV2, 0, len(actions))
+func (e *Executor) Execute(actions []types.Action) []types.ActionResult {
+	results := make([]types.ActionResult, 0, len(actions))
 
 	for _, action := range actions {
 		result := e.executeAction(action)
@@ -65,7 +65,7 @@ func (e *Executor) Execute(actions []types.ActionV2) []types.ActionResultV2 {
 }
 
 // executeAction executes a single action and returns its result
-func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
+func (e *Executor) executeAction(action types.Action) types.ActionResult {
 	start := time.Now()
 
 	e.logger.Debug().
@@ -76,7 +76,7 @@ func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
 		Msg("Executing action")
 
 	if e.dryRun {
-		return types.ActionResultV2{
+		return types.ActionResult{
 			Action:   action,
 			Success:  true,
 			Skipped:  true,
@@ -93,7 +93,7 @@ func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
 			Str("action", fmt.Sprintf("%T", action)).
 			Msg("Action execution failed")
 
-		return types.ActionResultV2{
+		return types.ActionResult{
 			Action:   action,
 			Success:  false,
 			Error:    err,
@@ -109,7 +109,7 @@ func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
 			Str("action", fmt.Sprintf("%T", action)).
 			Msg("Post-execution handling failed")
 
-		return types.ActionResultV2{
+		return types.ActionResult{
 			Action:   action,
 			Success:  false,
 			Error:    err,
@@ -123,7 +123,7 @@ func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
 		Dur("duration", time.Since(start)).
 		Msg("Action executed successfully")
 
-	return types.ActionResultV2{
+	return types.ActionResult{
 		Action:   action,
 		Success:  true,
 		Duration: time.Since(start),
@@ -131,7 +131,7 @@ func (e *Executor) executeAction(action types.ActionV2) types.ActionResultV2 {
 }
 
 // handlePostExecution handles any special logic needed after action execution
-func (e *Executor) handlePostExecution(action types.ActionV2) error {
+func (e *Executor) handlePostExecution(action types.Action) error {
 	switch a := action.(type) {
 	case *types.LinkAction:
 		return e.handleLinkActionPost(a)

@@ -4,10 +4,10 @@ import (
 	"time"
 )
 
-// ActionResultV2 represents the outcome of executing an action
-type ActionResultV2 struct {
+// ActionResult represents the outcome of executing an action
+type ActionResult struct {
 	// Action that was executed
-	Action ActionV2
+	Action Action
 
 	// Success indicates whether the action completed successfully
 	Success bool

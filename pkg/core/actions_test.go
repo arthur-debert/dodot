@@ -11,14 +11,14 @@ import (
 func TestFilterActionsByRunMode(t *testing.T) {
 	tests := []struct {
 		name          string
-		actions       []types.ActionV2
+		actions       []types.Action
 		mode          types.RunMode
 		expectedCount int
 		expectedTypes []string
 	}{
 		{
 			name: "filter linking actions",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 				&types.AddToPathAction{PackName: "test", DirPath: "/path"},
 				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
@@ -29,7 +29,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 		},
 		{
 			name: "filter provisioning actions",
-			actions: []types.ActionV2{
+			actions: []types.Action{
 				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
 				&types.BrewAction{PackName: "test", BrewfilePath: "Brewfile"},
@@ -40,7 +40,7 @@ func TestFilterActionsByRunMode(t *testing.T) {
 		},
 		{
 			name:          "empty actions",
-			actions:       []types.ActionV2{},
+			actions:       []types.Action{},
 			mode:          types.RunModeLinking,
 			expectedCount: 0,
 			expectedTypes: []string{},
@@ -72,7 +72,7 @@ func TestFilterProvisioningActions(t *testing.T) {
 		},
 	}
 
-	actions := []types.ActionV2{
+	actions := []types.Action{
 		&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 		&types.RunScriptAction{
 			PackName:     "test",
