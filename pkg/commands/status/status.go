@@ -7,6 +7,8 @@
 package status
 
 import (
+	"fmt"
+
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -52,15 +54,7 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 		Int("packCount", len(selectedPacks)).
 		Msg("Found packs to check")
 
-	// Get status for all packs
-	result, err := core.GetMultiPackStatus(selectedPacks, "status", opts.FileSystem, opts.Paths)
-	if err != nil {
-		return nil, err
-	}
-
-	logger.Info().
-		Int("packCount", len(result.Packs)).
-		Msg("Status check complete")
-
-	return result, nil
+	// TODO: Update status command to work with V2 actions
+	// Temporarily disabled while migrating to V2 system
+	return nil, fmt.Errorf("status command temporarily disabled during V2 migration")
 }

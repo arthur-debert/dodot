@@ -39,10 +39,3 @@ func (ld *LinkDetector) DetectDanglingLinks(actions []types.ActionV2) ([]Danglin
 	// Temporarily disabled while migrating to V2 action system
 	return nil, nil
 }
-
-// checkSymlinkChain checks a single symlink action for dangling links
-// TODO: Update to work with ActionV2 system  
-func (ld *LinkDetector) checkSymlinkChain(action *types.ActionV2) (*DanglingLink, error) {
-	// Temporarily disabled while migrating to V2 action system
-	return nil, nil
-}

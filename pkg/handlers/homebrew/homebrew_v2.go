@@ -26,8 +26,7 @@ const homebrewTemplate = `# Homebrew dependencies for PACK_NAME pack
 # Examples:
 # brew "git"
 # brew "vim"
-# cask "visual-studio-code"
-`
+# cask "visual-studio-code"`
 
 // HomebrewHandlerV2 processes Brewfiles to install packages via Homebrew
 type HomebrewHandlerV2 struct{}
