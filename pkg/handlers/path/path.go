@@ -112,12 +112,35 @@ func (h *PathHandler) GetTemplateContent() string {
 	return ""
 }
 
-// PreClear performs no additional cleanup for path handler
+// Clear performs no additional cleanup for path handler
 // The state directory removal is sufficient
-func (h *PathHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+func (h *PathHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.path").With().
+		Str("pack", ctx.Pack.Name).
+		Bool("dryRun", ctx.DryRun).
+		Logger()
+
 	// Path handler doesn't need to do anything special
 	// Removing the state directory is sufficient - shell integration will stop including it
-	return []types.ClearedItem{}, nil
+	logger.Debug().Msg("Path handler clear - state removal is sufficient")
+
+	if ctx.DryRun {
+		return []types.ClearedItem{
+			{
+				Type:        "path_state",
+				Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "path"),
+				Description: "Would remove PATH entries",
+			},
+		}, nil
+	}
+
+	return []types.ClearedItem{
+		{
+			Type:        "path_state",
+			Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "path"),
+			Description: "PATH entries will be removed",
+		},
+	}, nil
 }
 
 // Verify interface compliance

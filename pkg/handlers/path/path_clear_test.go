@@ -1,6 +1,7 @@
 package path_test
 
 import (
+	"io/fs"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
@@ -72,19 +73,52 @@ func (m *mockDataStore) ListProvisioningState(packName string) (map[string][]str
 	return map[string][]string{}, nil
 }
 
-func TestPathHandler_PreClear(t *testing.T) {
+func TestPathHandler_Clear(t *testing.T) {
 	handler := path.NewPathHandler()
-	pack := types.Pack{
-		Name: "testpack",
-		Path: "/test/path",
-	}
-	dataStore := &mockDataStore{}
 
-	clearedItems, err := handler.PreClear(pack, dataStore)
+	// Create a mock context
+	ctx := types.ClearContext{
+		Pack: types.Pack{
+			Name: "testpack",
+			Path: "/test/path",
+		},
+		DataStore: &mockDataStore{},
+		FS:        &mockFS{},
+		Paths:     &mockPaths{},
+		DryRun:    false,
+	}
+
+	clearedItems, err := handler.Clear(ctx)
 	require.NoError(t, err)
 
-	// Path handler should return empty cleared items
-	assert.Empty(t, clearedItems)
+	// Path handler should return one item indicating state removal
+	assert.Len(t, clearedItems, 1)
+	assert.Equal(t, "path_state", clearedItems[0].Type)
+	assert.Contains(t, clearedItems[0].Description, "PATH entries will be removed")
+}
+
+func TestPathHandler_Clear_DryRun(t *testing.T) {
+	handler := path.NewPathHandler()
+
+	// Create a mock context with dry run
+	ctx := types.ClearContext{
+		Pack: types.Pack{
+			Name: "testpack",
+			Path: "/test/path",
+		},
+		DataStore: &mockDataStore{},
+		FS:        &mockFS{},
+		Paths:     &mockPaths{},
+		DryRun:    true,
+	}
+
+	clearedItems, err := handler.Clear(ctx)
+	require.NoError(t, err)
+
+	// Should indicate what would be removed
+	assert.Len(t, clearedItems, 1)
+	assert.Equal(t, "path_state", clearedItems[0].Type)
+	assert.Contains(t, clearedItems[0].Description, "Would remove PATH entries")
 }
 
 func TestPathHandler_ImplementsClearable(t *testing.T) {
@@ -92,4 +126,29 @@ func TestPathHandler_ImplementsClearable(t *testing.T) {
 
 	// This will fail to compile if PathHandler doesn't implement Clearable
 	var _ types.Clearable = handler
+}
+
+// Mock FS for testing
+type mockFS struct{}
+
+func (m *mockFS) Stat(name string) (fs.FileInfo, error)                      { return nil, nil }
+func (m *mockFS) Lstat(name string) (fs.FileInfo, error)                     { return nil, nil }
+func (m *mockFS) ReadDir(name string) ([]fs.DirEntry, error)                 { return nil, nil }
+func (m *mockFS) ReadFile(name string) ([]byte, error)                       { return nil, nil }
+func (m *mockFS) WriteFile(name string, data []byte, perm fs.FileMode) error { return nil }
+func (m *mockFS) MkdirAll(path string, perm fs.FileMode) error               { return nil }
+func (m *mockFS) Remove(name string) error                                   { return nil }
+func (m *mockFS) RemoveAll(path string) error                                { return nil }
+func (m *mockFS) Symlink(oldname, newname string) error                      { return nil }
+func (m *mockFS) Readlink(name string) (string, error)                       { return "", nil }
+
+// Mock Paths for testing
+type mockPaths struct{}
+
+func (m *mockPaths) PackHandlerDir(packName, handlerName string) string {
+	return "/test/data/packs/" + packName + "/" + handlerName
+}
+
+func (m *mockPaths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+	return "/home/user/" + relPath
 }

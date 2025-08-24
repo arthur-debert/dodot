@@ -3,6 +3,8 @@ package provision
 import (
 	_ "embed"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -113,11 +115,44 @@ func (h *ProvisionScriptHandler) GetTemplateContent() string {
 	return provisionTemplate
 }
 
-// PreClear prepares for provision uninstallation (stub for now)
-func (h *ProvisionScriptHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+// Clear prepares for provision cleanup (reads state, future: runs uninstall.sh)
+func (h *ProvisionScriptHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
 	logger := logging.GetLogger("handlers.provision").With().
-		Str("pack", pack.Name).
+		Str("pack", ctx.Pack.Name).
+		Bool("dryRun", ctx.DryRun).
 		Logger()
+
+	clearedItems := []types.ClearedItem{}
+
+	// Read state to understand what was provisioned
+	stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, "provision")
+	entries, err := ctx.FS.ReadDir(stateDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Debug().Msg("No provision state directory")
+			return clearedItems, nil
+		}
+		return nil, fmt.Errorf("failed to read provision state: %w", err)
+	}
+
+	// Find run records to understand what scripts were executed
+	scriptRuns := make(map[string][]string) // script name -> run timestamps
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "run-") {
+			continue
+		}
+
+		// Extract script name from run record
+		// Format: run-<timestamp>-<hash> or similar
+		// For now, just record that we found run records
+		logger.Info().
+			Str("runRecord", entry.Name()).
+			Msg("Found provision run record")
+
+		// TODO: Parse the run record to extract which script was run
+		scriptName := "install.sh" // Default assumption
+		scriptRuns[scriptName] = append(scriptRuns[scriptName], entry.Name())
+	}
 
 	// TODO: In a future release:
 	// 1. Check if uninstall.sh exists in the pack
@@ -125,14 +160,41 @@ func (h *ProvisionScriptHandler) PreClear(pack types.Pack, dataStore types.DataS
 	// 3. Execute uninstall.sh if confirmed
 	// 4. Return list of what was uninstalled
 
-	logger.Info().Msg("Provision handler clear not yet implemented - only removing state")
-	return []types.ClearedItem{
-		{
-			Type:        "provision_stub",
-			Path:        "install.sh",
-			Description: "Provision state will be removed (uninstall script not yet implemented)",
-		},
-	}, nil
+	for scriptName, runs := range scriptRuns {
+		runCount := len(runs)
+		if ctx.DryRun {
+			clearedItems = append(clearedItems, types.ClearedItem{
+				Type:        "provision_state",
+				Path:        stateDir,
+				Description: fmt.Sprintf("Would remove %d run record(s) for %s (uninstall.sh not implemented)", runCount, scriptName),
+			})
+		} else {
+			clearedItems = append(clearedItems, types.ClearedItem{
+				Type:        "provision_state",
+				Path:        stateDir,
+				Description: fmt.Sprintf("Removing %d run record(s) for %s (uninstall.sh check not implemented)", runCount, scriptName),
+			})
+		}
+	}
+
+	if len(clearedItems) == 0 && len(entries) > 0 {
+		// Had entries but no run records
+		if ctx.DryRun {
+			clearedItems = append(clearedItems, types.ClearedItem{
+				Type:        "provision_state",
+				Path:        stateDir,
+				Description: "Would remove provision state directory",
+			})
+		} else {
+			clearedItems = append(clearedItems, types.ClearedItem{
+				Type:        "provision_state",
+				Path:        stateDir,
+				Description: "Removing provision state directory",
+			})
+		}
+	}
+
+	return clearedItems, nil
 }
 
 // Verify interface compliance

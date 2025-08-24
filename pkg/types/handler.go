@@ -59,10 +59,27 @@ type ClearedItem struct {
 	Description string // Human-readable description
 }
 
+// Paths is the interface for path resolution
+// This is a subset of paths.Paths to avoid circular imports
+type Paths interface {
+	PackHandlerDir(packName, handlerName string) string
+	MapPackFileToSystem(pack *Pack, relPath string) string
+}
+
+// ClearContext provides all the resources needed for a handler to clean up
+type ClearContext struct {
+	Pack      Pack      // The pack being cleared
+	DataStore DataStore // For accessing state information
+	FS        FS        // For file operations
+	Paths     Paths     // For path resolution
+	DryRun    bool      // Whether this is a dry run
+}
+
 // Clearable represents a handler that can clean up its deployments
 type Clearable interface {
-	// PreClear performs handler-specific cleanup before state removal.
-	// This is where handlers remove user-facing symlinks, uninstall packages, etc.
-	// The datastore will handle removing the state directory after this.
-	PreClear(pack Pack, dataStore DataStore) ([]ClearedItem, error)
+	// Clear performs handler-specific cleanup.
+	// Handlers should read their state, perform cleanup, and return what was cleared.
+	// The state directory will be removed AFTER this method completes successfully.
+	// If dryRun is true, handlers should report what would be cleared without actually doing it.
+	Clear(ctx ClearContext) ([]ClearedItem, error)
 }
