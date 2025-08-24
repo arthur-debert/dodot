@@ -91,6 +91,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newUnlinkCmd())
+	rootCmd.AddCommand(newDeprovisionCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
@@ -808,6 +809,85 @@ func newUnlinkCmd() *cobra.Command {
 					}
 				}
 				fmt.Printf("\nTotal items removed: %d\n", result.TotalRemoved)
+			}
+
+			return nil
+		},
+	}
+}
+
+func newDeprovisionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:               "deprovision [packs...]",
+		Short:             MsgDeprovisionShort,
+		Long:              MsgDeprovisionLong,
+		Example:           MsgDeprovisionExample,
+		GroupID:           "core",
+		ValidArgsFunction: packNamesCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Get dry-run flag value (it's a persistent flag)
+			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Bool("dry_run", dryRun).
+				Msg("Deprovisioning packs")
+
+			// Deprovision packs using the new implementation
+			result, err := commands.DeprovisionPacks(commands.DeprovisionPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				DryRun:       dryRun,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "deprovisioning")
+				}
+				return fmt.Errorf(MsgErrDeprovisionPacks, err)
+			}
+
+			// Display results
+			if result.DryRun {
+				fmt.Println("DRY RUN - No changes made")
+			}
+
+			if result.TotalCleared == 0 {
+				fmt.Println("No provisioning state found to remove")
+			} else {
+				for _, pack := range result.Packs {
+					if len(pack.HandlersRun) > 0 {
+						fmt.Printf("\nPack: %s\n", pack.Name)
+						for _, handler := range pack.HandlersRun {
+							if handler.Error != nil {
+								fmt.Printf("  ✗ %s: %v\n", handler.HandlerName, handler.Error)
+							} else if len(handler.ClearedItems) > 0 {
+								fmt.Printf("  ✓ %s:\n", handler.HandlerName)
+								for _, item := range handler.ClearedItems {
+									fmt.Printf("    - %s: %s\n", item.Type, item.Description)
+								}
+								if handler.StateRemoved {
+									fmt.Println("    - State directory removed")
+								}
+							}
+						}
+					}
+				}
+				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
+			}
+
+			if len(result.Errors) > 0 {
+				fmt.Println("\nErrors encountered:")
+				for _, err := range result.Errors {
+					fmt.Printf("  - %v\n", err)
+				}
 			}
 
 			return nil

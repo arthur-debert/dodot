@@ -104,8 +104,14 @@ func (h *HomebrewHandler) GetTemplateContent() string {
 	return homebrewTemplate
 }
 
-// Clear prepares for homebrew uninstallation (reads state, future: uninstalls)
+// Clear prepares for homebrew uninstallation (reads state, optionally uninstalls)
 func (h *HomebrewHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
+	// Check if full uninstall is enabled
+	if os.Getenv("DODOT_HOMEBREW_UNINSTALL") == "true" {
+		return h.ClearWithUninstall(ctx)
+	}
+
+	// Otherwise use the basic implementation
 	logger := logging.GetLogger("handlers.homebrew").With().
 		Str("pack", ctx.Pack.Name).
 		Bool("dryRun", ctx.DryRun).
@@ -136,12 +142,6 @@ func (h *HomebrewHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, er
 			brewfileName = brewfileName[idx+1:]
 		}
 
-		// TODO: In a future release:
-		// 1. Read the actual Brewfile from the pack to see what packages were specified
-		// 2. Prompt user: "These packages were installed by this pack: X, Y, Z. Uninstall them?"
-		// 3. Run `brew uninstall` for confirmed packages
-		// 4. Return list of uninstalled packages
-
 		logger.Info().
 			Str("brewfile", brewfileName).
 			Str("sentinel", entry.Name()).
@@ -151,13 +151,13 @@ func (h *HomebrewHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, er
 			clearedItems = append(clearedItems, types.ClearedItem{
 				Type:        "homebrew_state",
 				Path:        filepath.Join(stateDir, entry.Name()),
-				Description: fmt.Sprintf("Would remove Homebrew state for %s (packages not uninstalled)", brewfileName),
+				Description: fmt.Sprintf("Would remove Homebrew state for %s (set DODOT_HOMEBREW_UNINSTALL=true to uninstall packages)", brewfileName),
 			})
 		} else {
 			clearedItems = append(clearedItems, types.ClearedItem{
 				Type:        "homebrew_state",
 				Path:        filepath.Join(stateDir, entry.Name()),
-				Description: fmt.Sprintf("Removing Homebrew state for %s (uninstall not yet implemented)", brewfileName),
+				Description: fmt.Sprintf("Removing Homebrew state for %s (set DODOT_HOMEBREW_UNINSTALL=true to uninstall packages)", brewfileName),
 			})
 		}
 	}
