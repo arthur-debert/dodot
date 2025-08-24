@@ -97,6 +97,17 @@ func GetAllClearableHandlers() (map[string]types.Clearable, error) {
 	return handlers, nil
 }
 
+// getHandlerStateDir returns the actual state directory name for a handler
+// Some handlers use different directory names than their handler names
+func getHandlerStateDir(handlerName string) string {
+	switch handlerName {
+	case "symlink":
+		return "symlinks" // Historical: symlink handler uses "symlinks" directory
+	default:
+		return handlerName
+	}
+}
+
 // FilterHandlersByState returns only handlers that have state for the given pack
 func FilterHandlersByState(ctx types.ClearContext, handlers map[string]types.Clearable) map[string]types.Clearable {
 	logger := logging.GetLogger("core.clear").With().
@@ -107,11 +118,14 @@ func FilterHandlersByState(ctx types.ClearContext, handlers map[string]types.Cle
 
 	for name, handler := range handlers {
 		// Check if handler has any state
-		handlerDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, name)
+		// Note: Some handlers use different directory names than their handler names
+		stateDirName := getHandlerStateDir(name)
+		handlerDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, stateDirName)
 		if _, err := ctx.FS.Stat(handlerDir); err == nil {
 			filtered[name] = handler
 			logger.Debug().
 				Str("handler", name).
+				Str("stateDir", stateDirName).
 				Msg("Handler has state")
 		}
 	}

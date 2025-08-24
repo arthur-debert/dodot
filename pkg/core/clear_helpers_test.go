@@ -50,7 +50,13 @@ func (m *mockFileInfo) Sys() interface{}   { return nil }
 type mockFilterPaths struct{}
 
 func (m *mockFilterPaths) PackHandlerDir(packName, handlerName string) string {
-	return "/data/packs/" + packName + "/" + handlerName
+	// Use the actual state directory name (e.g., "symlinks" for "symlink" handler)
+	stateDirName := handlerName
+	switch handlerName {
+	case "symlink":
+		stateDirName = "symlinks"
+	}
+	return "/data/packs/" + packName + "/" + stateDirName
 }
 
 func (m *mockFilterPaths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
@@ -71,8 +77,8 @@ func TestFilterHandlersByState(t *testing.T) {
 				"path":    &mockClearableHandler{name: "path"},
 			},
 			existingDirs: map[string]bool{
-				"/data/packs/testpack/symlink": true,
-				"/data/packs/testpack/path":    true,
+				"/data/packs/testpack/symlinks": true, // symlink handler uses "symlinks" directory
+				"/data/packs/testpack/path":     true,
 			},
 			expected: []string{"symlink", "path"},
 		},
@@ -84,7 +90,7 @@ func TestFilterHandlersByState(t *testing.T) {
 				"shell_profile": &mockClearableHandler{name: "shell_profile"},
 			},
 			existingDirs: map[string]bool{
-				"/data/packs/testpack/symlink": true,
+				"/data/packs/testpack/symlinks": true, // symlink handler uses "symlinks" directory
 				// path has no state
 				"/data/packs/testpack/shell_profile": true,
 			},
