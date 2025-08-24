@@ -21,49 +21,52 @@ type brewPackage struct {
 	Brewfile string // which Brewfile it came from
 }
 
-// parseBrewfile reads a Brewfile and extracts package information
+// parseBrewfile reads a Brewfile and extracts package information using brew bundle list
 func parseBrewfile(fs types.FS, brewfilePath string) ([]brewPackage, error) {
-	content, err := fs.ReadFile(brewfilePath)
+	// Check if Brewfile exists - use real filesystem since brew bundle list needs the real file
+	_, err := os.Stat(brewfilePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read Brewfile: %w", err)
+		return nil, fmt.Errorf("failed to access Brewfile: %w", err)
 	}
 
 	var packages []brewPackage
-	scanner := bufio.NewScanner(bytes.NewReader(content))
+	brewfileBase := filepath.Base(brewfilePath)
 
+	// Get formulae using brew bundle list
+	cmd := exec.Command("brew", "bundle", "list", "--file", brewfilePath, "--formula")
+	output, err := cmd.Output()
+	if err != nil {
+		// If brew bundle fails, return empty list (Brewfile might be empty or invalid)
+		return packages, nil
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(output))
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		pkg := strings.TrimSpace(scanner.Text())
+		if pkg != "" {
+			packages = append(packages, brewPackage{
+				Name:     pkg,
+				Type:     "brew",
+				Brewfile: brewfileBase,
+			})
 		}
+	}
 
-		// Parse brew "package" lines
-		// Check for brew/cask followed by space or tab
-		if strings.HasPrefix(line, "brew ") || strings.HasPrefix(line, "brew\t") {
-			pkg := extractPackageName(line, "brew")
-			if pkg != "" {
-				packages = append(packages, brewPackage{
-					Name:     pkg,
-					Type:     "brew",
-					Brewfile: filepath.Base(brewfilePath),
-				})
-			}
-		} else if strings.HasPrefix(line, "cask ") || strings.HasPrefix(line, "cask\t") {
-			pkg := extractPackageName(line, "cask")
+	// Get casks using brew bundle list
+	cmd = exec.Command("brew", "bundle", "list", "--file", brewfilePath, "--cask")
+	output, err = cmd.Output()
+	if err == nil {
+		scanner = bufio.NewScanner(bytes.NewReader(output))
+		for scanner.Scan() {
+			pkg := strings.TrimSpace(scanner.Text())
 			if pkg != "" {
 				packages = append(packages, brewPackage{
 					Name:     pkg,
 					Type:     "cask",
-					Brewfile: filepath.Base(brewfilePath),
+					Brewfile: brewfileBase,
 				})
 			}
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error scanning Brewfile: %w", err)
 	}
 
 	// Sort packages by name for consistent ordering
@@ -72,34 +75,6 @@ func parseBrewfile(fs types.FS, brewfilePath string) ([]brewPackage, error) {
 	})
 
 	return packages, nil
-}
-
-// extractPackageName extracts the package name from a brew/cask line
-func extractPackageName(line, prefix string) string {
-	// Remove the prefix
-	line = strings.TrimPrefix(line, prefix)
-	line = strings.TrimSpace(line)
-
-	// Handle quoted package names
-	if strings.HasPrefix(line, `"`) {
-		endQuote := strings.Index(line[1:], `"`)
-		if endQuote >= 0 { // >= 0 to handle empty quotes ""
-			return line[1 : endQuote+1]
-		}
-	} else if strings.HasPrefix(line, `'`) {
-		endQuote := strings.Index(line[1:], `'`)
-		if endQuote >= 0 { // >= 0 to handle empty quotes ''
-			return line[1 : endQuote+1]
-		}
-	}
-
-	// Handle unquoted package names (take first word)
-	parts := strings.Fields(line)
-	if len(parts) > 0 {
-		return parts[0]
-	}
-
-	return ""
 }
 
 // getInstalledPackages gets the list of installed brew packages

@@ -1,0 +1,200 @@
+Upfront Confirmation System for On/Off Commands
+===============================================
+
+Overview
+--------
+Design a confirmation system to collect all user confirmations upfront before executing 
+operations in the upcoming `dodot on` and `dodot off` commands. This enables smooth 
+uninterrupted execution after initial user approval.
+
+Problem Statement
+-----------------
+Current confirmation handling is minimal and ad-hoc:
+- Only homebrew handler requires confirmation (during ClearWithUninstall)
+- Confirmations happen during execution, not upfront
+- Users may wait minutes between confirmation prompts
+- No way to see full scope of changes before committing
+
+For the new `dodot on`/`dodot off` commands that run all handlers across all packs,
+we need upfront confirmation gathering to provide better user experience.
+
+Current State Analysis
+----------------------
+
+Execution Flow:
+- All commands process packs sequentially (confirmed)
+- Each pack processed completely before moving to next
+- No parallel processing anywhere in codebase
+
+Handler Processing:
+- All handlers do pure analysis/planning during ProcessProvisioning/ProcessLinking
+- No side effects during processing phase (only minimal file I/O for checksums)
+- Actual system changes happen during action execution phase
+- Clear separation between analysis and execution already exists
+
+Existing Confirmations:
+- Homebrew handler: ClearWithUninstall prompts for package uninstallation
+- All other handlers: operate silently without confirmation
+- Provision handler: has TODOs for future uninstall.sh confirmation
+
+Proposed Solution: Single-Phase Approach
+-----------------------------------------
+
+Core Insight: "Handler processing is cheap analysis work"
+Since handlers already separate analysis from execution, we can:
+1. Process all handlers → return (actions, confirmations)  
+2. Collect and present all confirmations to user
+3. If approved → execute actions using existing infrastructure
+
+Implementation Design:
+
+### 1. Extend Handler Return Types
+
+```go
+// Add to types package
+type ConfirmationRequest struct {
+    ID          string   // Unique identifier
+    Pack        string   // Which pack
+    Handler     string   // Which handler  
+    Operation   string   // "provision" or "clear"
+    Title       string   // Brief title
+    Description string   // Detailed description
+    Items       []string // Specific items (packages, files, etc.)
+    Default     bool     // Default response
+}
+
+type ProcessingResult struct {
+    Actions       []types.Action
+    Confirmations []ConfirmationRequest  // NEW
+}
+```
+
+### 2. Handler Changes
+
+Modify handler methods to return ProcessingResult instead of []types.Action:
+
+```go
+// Before
+func (h *HomebrewHandler) ProcessProvisioning(ctx) []types.Action
+
+// After  
+func (h *HomebrewHandler) ProcessProvisioning(ctx) ProcessingResult {
+    actions := []types.Action{...}
+    confirmations := []ConfirmationRequest{...} // Extract from existing logic
+    return ProcessingResult{actions, confirmations}
+}
+```
+
+### 3. Execution Flow
+
+```
+1. Process All Handlers:
+   ├── For each pack:
+   │   ├── For each handler:
+   │   │   └── handler.Process() → (actions, confirmations)
+   │   └── Collect results
+   └── Aggregate all actions and confirmations
+
+2. Present Confirmations:
+   ├── Group confirmations by type/pack
+   ├── Show unified confirmation dialog
+   └── Collect user responses
+
+3. Execute Actions:
+   ├── If all confirmations approved:
+   │   ├── Execute actions using existing infrastructure
+   │   └── Return results
+   └── If declined: skip execution
+```
+
+### 4. Confirmation Dialog Design
+
+```
+The following operations require confirmation:
+
+📦 Pack: development-tools
+└── 🍺 Homebrew (uninstall packages)
+    └── Would uninstall: git, vim, curl, node@18
+
+📦 Pack: personal-scripts  
+└── 🔧 Provision (run uninstall script)
+    └── Would run: ~/.dotfiles/personal-scripts/uninstall.sh
+
+Continue with these operations? [y/N]: y
+
+Detailed confirmations:
+1. Uninstall 4 homebrew packages from development-tools? [Y/n]: y
+2. Run uninstall script for personal-scripts? [Y/n]: y
+
+✅ All confirmations collected. Proceeding with execution...
+```
+
+Implementation Plan
+-------------------
+
+Phase 1: Core Infrastructure
+- Add ConfirmationRequest type to types package
+- Add ProcessingResult type to types package  
+- Create confirmation collection utilities
+
+Phase 2: Handler Updates
+- Update handler interfaces to return ProcessingResult
+- Extract confirmation logic from homebrew ClearWithUninstall
+- Update all handlers to return empty confirmations initially
+
+Phase 3: Command Integration  
+- Update existing commands to handle ProcessingResult
+- Create unified confirmation dialog system
+- Add confirmation collection to command pipeline
+
+Phase 4: On/Off Commands
+- Implement `dodot on` command using new confirmation system
+- Implement `dodot off` command using new confirmation system
+- Both commands run all handler types (provisioning + linking)
+
+Benefits
+--------
+1. Better UX: User sees full scope upfront, no waiting between prompts
+2. Informed decisions: User can review all changes before committing
+3. Uninterrupted execution: Long operations run without user intervention  
+4. Minimal changes: Builds on existing architecture
+5. Performance: No duplicate handler processing
+6. Maintainability: Single execution path per handler
+
+Risk Assessment
+---------------
+
+Low Risk Overall:
+- Leverages existing handler architecture (analysis/execution separation)
+- Minimal interface changes required
+- Handlers already do the analysis work needed
+- Clear mitigation strategies for identified issues
+
+Potential Issues & Mitigations:
+- Action staleness: Add validation before execution
+- Confirmation complexity: Extract existing homebrew logic patterns
+- Error handling: Use existing error handling patterns  
+- Backward compatibility: Make confirmations optional in return types
+
+Alternative Considered: Two-Phase Approach
+-------------------------------------------
+Considered separate "query confirmations" and "execute with confirmations" 
+handler interfaces, but rejected due to:
+- Much higher implementation complexity
+- Duplicate processing logic required
+- Significant architectural changes needed  
+- Worse performance (handlers run twice)
+
+The single-phase approach is superior because handler processing is cheap
+analysis work that naturally produces both actions and confirmation requests.
+
+Conclusion
+----------
+The single-phase confirmation system provides an elegant solution that:
+- Requires minimal changes to existing architecture
+- Delivers excellent user experience for on/off commands
+- Maintains backward compatibility  
+- Has manageable implementation complexity
+
+This design is ready for implementation and will enable the final stage
+of the CLI interface reorganization.
