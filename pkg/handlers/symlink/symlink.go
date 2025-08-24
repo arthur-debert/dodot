@@ -170,5 +170,104 @@ func (h *SymlinkHandler) GetTemplateContent() string {
 	return ""
 }
 
+// Clear removes user-facing symlinks before state removal
+func (h *SymlinkHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.symlink").With().
+		Str("pack", ctx.Pack.Name).
+		Bool("dryRun", ctx.DryRun).
+		Logger()
+
+	clearedItems := []types.ClearedItem{}
+
+	// Get the symlinks directory for this pack
+	symlinksDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, "symlinks")
+
+	// Read all intermediate symlinks
+	entries, err := ctx.FS.ReadDir(symlinksDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Debug().Msg("No symlinks directory, nothing to clear")
+			return clearedItems, nil
+		}
+		return nil, fmt.Errorf("failed to read symlinks directory: %w", err)
+	}
+
+	// Process each intermediate symlink
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		intermediatePath := filepath.Join(symlinksDir, entry.Name())
+
+		// Read where the intermediate link points (source file)
+		sourceFile, err := ctx.FS.Readlink(intermediatePath)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("intermediate", intermediatePath).
+				Msg("failed to read intermediate symlink")
+			continue
+		}
+
+		// Determine the user-facing symlink path
+		targetPath := ctx.Paths.MapPackFileToSystem(&ctx.Pack, entry.Name())
+
+		// Check if the user-facing symlink exists and points to our intermediate
+		linkTarget, err := ctx.FS.Readlink(targetPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				logger.Debug().
+					Err(err).
+					Str("target", targetPath).
+					Msg("failed to read user-facing symlink")
+			}
+			continue
+		}
+
+		// Only remove if it points to our intermediate link
+		if linkTarget == intermediatePath {
+			if ctx.DryRun {
+				clearedItems = append(clearedItems, types.ClearedItem{
+					Type:        "symlink",
+					Path:        targetPath,
+					Description: fmt.Sprintf("Would remove symlink to %s", filepath.Base(sourceFile)),
+				})
+			} else {
+				if err := ctx.FS.Remove(targetPath); err != nil {
+					logger.Error().
+						Err(err).
+						Str("target", targetPath).
+						Msg("failed to remove user-facing symlink")
+					clearedItems = append(clearedItems, types.ClearedItem{
+						Type:        "symlink_error",
+						Path:        targetPath,
+						Description: fmt.Sprintf("Failed to remove symlink: %v", err),
+					})
+				} else {
+					logger.Info().
+						Str("target", targetPath).
+						Str("source", sourceFile).
+						Msg("removed user-facing symlink")
+					clearedItems = append(clearedItems, types.ClearedItem{
+						Type:        "symlink",
+						Path:        targetPath,
+						Description: fmt.Sprintf("Removed symlink to %s", filepath.Base(sourceFile)),
+					})
+				}
+			}
+		} else {
+			logger.Warn().
+				Str("target", targetPath).
+				Str("expected", intermediatePath).
+				Str("actual", linkTarget).
+				Msg("user-facing symlink points elsewhere, not removing")
+		}
+	}
+
+	return clearedItems, nil
+}
+
 // Verify interface compliance
 var _ types.LinkingHandler = (*SymlinkHandler)(nil)
+var _ types.Clearable = (*SymlinkHandler)(nil)

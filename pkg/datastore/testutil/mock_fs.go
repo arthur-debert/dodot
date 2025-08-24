@@ -126,6 +126,14 @@ func (m *MockFS) Remove(name string) error {
 func (m *MockFS) RemoveAll(path string) error {
 	cleanPath := m.normalizePath(path)
 	prefix := cleanPath
+
+	// Remove the directory entry itself if it exists
+	delete(m.MapFS, cleanPath)
+
+	// Remove all entries with this prefix
+	if !strings.HasSuffix(prefix, "/") {
+		prefix = prefix + "/"
+	}
 	for p := range m.MapFS {
 		if strings.HasPrefix(p, prefix) {
 			delete(m.MapFS, p)

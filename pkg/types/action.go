@@ -20,6 +20,11 @@ type DataStore interface {
 	GetShellProfileStatus(pack, scriptPath string) (Status, error)
 	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (Status, error)
 	GetBrewStatus(pack, brewfilePath, currentChecksum string) (Status, error)
+
+	// State removal methods
+	DeleteProvisioningState(packName, handlerName string) error
+	GetProvisioningHandlers(packName string) ([]string, error)
+	ListProvisioningState(packName string) (map[string][]string, error)
 }
 
 // Action is the base interface for all actions.

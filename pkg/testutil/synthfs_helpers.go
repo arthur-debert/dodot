@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -54,5 +55,6 @@ func IsNotExist(err error) bool {
 		return false
 	}
 	// Check for the standard not exist error
-	return err.Error() == "file does not exist"
+	return strings.Contains(err.Error(), "file does not exist") ||
+		strings.Contains(err.Error(), "no such file or directory")
 }

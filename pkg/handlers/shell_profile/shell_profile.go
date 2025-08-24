@@ -89,5 +89,37 @@ func (h *ShellProfileHandler) GetTemplateContent() string {
 	return aliasesTemplate
 }
 
+// Clear performs no additional cleanup for shell profile handler
+// The state directory removal is sufficient
+func (h *ShellProfileHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.shell_profile").With().
+		Str("pack", ctx.Pack.Name).
+		Bool("dryRun", ctx.DryRun).
+		Logger()
+
+	// Shell profile handler doesn't need to do anything special
+	// Removing the state directory is sufficient - shell integration will stop sourcing scripts
+	logger.Debug().Msg("Shell profile handler clear - state removal is sufficient")
+
+	if ctx.DryRun {
+		return []types.ClearedItem{
+			{
+				Type:        "shell_profile_state",
+				Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "shell_profile"),
+				Description: "Would remove shell profile sources",
+			},
+		}, nil
+	}
+
+	return []types.ClearedItem{
+		{
+			Type:        "shell_profile_state",
+			Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "shell_profile"),
+			Description: "Shell profile sources will be removed",
+		},
+	}, nil
+}
+
 // Verify interface compliance
 var _ types.LinkingHandler = (*ShellProfileHandler)(nil)
+var _ types.Clearable = (*ShellProfileHandler)(nil)
