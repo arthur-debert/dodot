@@ -21,6 +21,7 @@ package commands
 import (
 	"github.com/arthur-debert/dodot/pkg/commands/addignore"
 	"github.com/arthur-debert/dodot/pkg/commands/adopt"
+	"github.com/arthur-debert/dodot/pkg/commands/deprovision"
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/commands/link"
@@ -95,4 +96,12 @@ type UnlinkResult = unlink.UnlinkResult
 
 func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 	return unlink.UnlinkPacks(opts)
+}
+
+// DeprovisionPacks removes provisioning state for specified packs.
+type DeprovisionPacksOptions = deprovision.DeprovisionPacksOptions
+type DeprovisionResult = deprovision.DeprovisionResult
+
+func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) {
+	return deprovision.DeprovisionPacks(opts)
 }
