@@ -51,3 +51,18 @@ type DualModeHandler interface {
 	LinkingHandler
 	ProvisioningHandler
 }
+
+// ClearedItem represents something that was removed during a clear operation
+type ClearedItem struct {
+	Type        string // "symlink", "brew_package", "script_output", etc.
+	Path        string // What was removed/affected
+	Description string // Human-readable description
+}
+
+// Clearable represents a handler that can clean up its deployments
+type Clearable interface {
+	// PreClear performs handler-specific cleanup before state removal.
+	// This is where handlers remove user-facing symlinks, uninstall packages, etc.
+	// The datastore will handle removing the state directory after this.
+	PreClear(pack Pack, dataStore DataStore) ([]ClearedItem, error)
+}

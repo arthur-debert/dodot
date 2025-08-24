@@ -113,5 +113,28 @@ func (h *ProvisionScriptHandler) GetTemplateContent() string {
 	return provisionTemplate
 }
 
+// PreClear prepares for provision uninstallation (stub for now)
+func (h *ProvisionScriptHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.provision").With().
+		Str("pack", pack.Name).
+		Logger()
+
+	// TODO: In a future release:
+	// 1. Check if uninstall.sh exists in the pack
+	// 2. If it exists, prompt user: "Run uninstall.sh for this pack?"
+	// 3. Execute uninstall.sh if confirmed
+	// 4. Return list of what was uninstalled
+
+	logger.Info().Msg("Provision handler clear not yet implemented - only removing state")
+	return []types.ClearedItem{
+		{
+			Type:        "provision_stub",
+			Path:        "install.sh",
+			Description: "Provision state will be removed (uninstall script not yet implemented)",
+		},
+	}, nil
+}
+
 // Verify interface compliance
 var _ types.ProvisioningHandler = (*ProvisionScriptHandler)(nil)
+var _ types.Clearable = (*ProvisionScriptHandler)(nil)

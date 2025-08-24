@@ -101,5 +101,28 @@ func (h *HomebrewHandler) GetTemplateContent() string {
 	return homebrewTemplate
 }
 
+// PreClear prepares for homebrew uninstallation (stub for now)
+func (h *HomebrewHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.homebrew").With().
+		Str("pack", pack.Name).
+		Logger()
+
+	// TODO: In a future release:
+	// 1. Read Brewfile content to understand what was installed
+	// 2. Prompt user: "These packages were installed by this pack: X, Y, Z. Uninstall them?"
+	// 3. Run `brew uninstall` for confirmed packages
+	// 4. Return list of uninstalled packages
+
+	logger.Info().Msg("Homebrew handler clear not yet implemented - only removing state")
+	return []types.ClearedItem{
+		{
+			Type:        "homebrew_stub",
+			Path:        "Brewfile",
+			Description: "Homebrew state will be removed (uninstall not yet implemented)",
+		},
+	}, nil
+}
+
 // Verify interface compliance
 var _ types.ProvisioningHandler = (*HomebrewHandler)(nil)
+var _ types.Clearable = (*HomebrewHandler)(nil)

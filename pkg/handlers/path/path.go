@@ -112,5 +112,14 @@ func (h *PathHandler) GetTemplateContent() string {
 	return ""
 }
 
+// PreClear performs no additional cleanup for path handler
+// The state directory removal is sufficient
+func (h *PathHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+	// Path handler doesn't need to do anything special
+	// Removing the state directory is sufficient - shell integration will stop including it
+	return []types.ClearedItem{}, nil
+}
+
 // Verify interface compliance
 var _ types.LinkingHandler = (*PathHandler)(nil)
+var _ types.Clearable = (*PathHandler)(nil)

@@ -170,5 +170,21 @@ func (h *SymlinkHandler) GetTemplateContent() string {
 	return ""
 }
 
+// PreClear removes user-facing symlinks before state removal
+func (h *SymlinkHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.symlink").With().
+		Str("pack", pack.Name).
+		Logger()
+
+	clearedItems := []types.ClearedItem{}
+
+	// We need access to the filesystem and paths which aren't available through DataStore interface
+	// This is a limitation of the current design - the unlink command will handle symlink removal
+	// In a future iteration, we could enhance the DataStore interface or pass additional context
+	logger.Debug().Msg("Symlink PreClear deferred to command implementation")
+	return clearedItems, nil
+}
+
 // Verify interface compliance
 var _ types.LinkingHandler = (*SymlinkHandler)(nil)
+var _ types.Clearable = (*SymlinkHandler)(nil)

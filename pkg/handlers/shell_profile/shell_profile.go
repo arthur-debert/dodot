@@ -89,5 +89,14 @@ func (h *ShellProfileHandler) GetTemplateContent() string {
 	return aliasesTemplate
 }
 
+// PreClear performs no additional cleanup for shell profile handler
+// The state directory removal is sufficient
+func (h *ShellProfileHandler) PreClear(pack types.Pack, dataStore types.DataStore) ([]types.ClearedItem, error) {
+	// Shell profile handler doesn't need to do anything special
+	// Removing the state directory is sufficient - shell integration will stop sourcing scripts
+	return []types.ClearedItem{}, nil
+}
+
 // Verify interface compliance
 var _ types.LinkingHandler = (*ShellProfileHandler)(nil)
+var _ types.Clearable = (*ShellProfileHandler)(nil)
