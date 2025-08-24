@@ -272,9 +272,10 @@ func (h *HomebrewHandler) GetClearConfirmations(ctx types.ClearContext) ([]types
 	// Group packages by type for display
 	var brewNames, caskNames []string
 	for _, pkg := range allPackagesToUninstall {
-		if pkg.Type == "brew" {
+		switch pkg.Type {
+		case "brew":
 			brewNames = append(brewNames, pkg.Name)
-		} else if pkg.Type == "cask" {
+		case "cask":
 			caskNames = append(caskNames, pkg.Name)
 		}
 	}

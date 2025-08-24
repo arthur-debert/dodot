@@ -70,8 +70,26 @@ func (h *SymlinkHandler) RunMode() types.RunMode {
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
 func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+	result, err := h.ProcessLinkingWithConfirmations(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert ProcessingResult actions to LinkingAction slice for backward compatibility
+	linkingActions := make([]types.LinkingAction, 0, len(result.Actions))
+	for _, action := range result.Actions {
+		if linkAction, ok := action.(types.LinkingAction); ok {
+			linkingActions = append(linkingActions, linkAction)
+		}
+	}
+
+	return linkingActions, nil
+}
+
+// ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
+func (h *SymlinkHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.symlink")
-	actions := make([]types.LinkingAction, 0, len(matches))
+	actions := make([]types.Action, 0, len(matches))
 
 	// Get target directory from options or use default
 	targetDir := h.defaultTarget
@@ -111,7 +129,7 @@ func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.L
 				Str("source1", existingSource).
 				Str("source2", match.AbsolutePath).
 				Msg("symlink conflict detected - multiple files want same target")
-			return nil, fmt.Errorf("symlink conflict: both %s and %s want to link to %s",
+			return types.ProcessingResult{}, fmt.Errorf("symlink conflict: both %s and %s want to link to %s",
 				existingSource, match.AbsolutePath, targetPath)
 		}
 
@@ -138,7 +156,9 @@ func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.L
 		Int("action_count", len(actions)).
 		Msg("processed trigger matches")
 
-	return actions, nil
+	// Symlink operations don't need confirmation - they're just creating links
+	// Confirmation is only needed for clearing/unlinking
+	return types.NewProcessingResult(actions), nil
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
@@ -270,4 +290,5 @@ func (h *SymlinkHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, err
 
 // Verify interface compliance
 var _ types.LinkingHandler = (*SymlinkHandler)(nil)
+var _ types.LinkingHandlerWithConfirmations = (*SymlinkHandler)(nil)
 var _ types.Clearable = (*SymlinkHandler)(nil)

@@ -78,7 +78,7 @@ func TestHomebrewHandler_ProcessProvisioning_BackwardCompatibility(t *testing.T)
 
 func TestHomebrewHandler_GetClearConfirmations_Disabled(t *testing.T) {
 	// Ensure env var is not set
-	os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
+	_ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
 
 	h := NewHomebrewHandler()
 	fs := testutil.NewTestFS()
@@ -98,8 +98,8 @@ func TestHomebrewHandler_GetClearConfirmations_Disabled(t *testing.T) {
 
 func TestHomebrewHandler_GetClearConfirmations_NoState(t *testing.T) {
 	// Set env var to enable uninstall
-	os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true")
-	defer os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
+	require.NoError(t, os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"))
+	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
 	h := NewHomebrewHandler()
 	fs := testutil.NewTestFS()
@@ -130,8 +130,8 @@ func TestHomebrewHandler_GetClearConfirmations_WithPackages(t *testing.T) {
 	}
 
 	// Set env var to enable uninstall
-	os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true")
-	defer os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
+	require.NoError(t, os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"))
+	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
 	h := NewHomebrewHandler()
 	fs := testutil.NewTestFS()
@@ -182,7 +182,7 @@ cask "visual-studio-code"`
 
 func TestHomebrewHandler_ClearWithConfirmations_NoUninstall(t *testing.T) {
 	// Ensure env var is not set
-	os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
+	_ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
 
 	h := NewHomebrewHandler()
 	fs := testutil.NewTestFS()
@@ -203,8 +203,8 @@ func TestHomebrewHandler_ClearWithConfirmations_NoUninstall(t *testing.T) {
 
 func TestHomebrewHandler_ClearWithConfirmations_UserDeclined(t *testing.T) {
 	// Set env var to enable uninstall
-	os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true")
-	defer os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
+	require.NoError(t, os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"))
+	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
 	h := NewHomebrewHandler()
 	fs := testutil.NewTestFS()

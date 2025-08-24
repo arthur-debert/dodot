@@ -66,8 +66,26 @@ func (h *ProvisionScriptHandler) RunMode() types.RunMode {
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
 func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+	result, err := h.ProcessProvisioningWithConfirmations(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert ProcessingResult actions to ProvisioningAction slice for backward compatibility
+	provisioningActions := make([]types.ProvisioningAction, 0, len(result.Actions))
+	for _, action := range result.Actions {
+		if provAction, ok := action.(types.ProvisioningAction); ok {
+			provisioningActions = append(provisioningActions, provAction)
+		}
+	}
+
+	return provisioningActions, nil
+}
+
+// ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
+func (h *ProvisionScriptHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.provision")
-	actions := make([]types.ProvisioningAction, 0, len(matches))
+	actions := make([]types.Action, 0, len(matches))
 
 	for _, match := range matches {
 		logger.Debug().
@@ -82,7 +100,7 @@ func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatc
 				Err(err).
 				Str("path", match.AbsolutePath).
 				Msg("Failed to calculate checksum")
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
+			return types.ProcessingResult{}, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
 		}
 
 		// Create RunScriptAction
@@ -101,7 +119,9 @@ func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatc
 		Int("action_count", len(actions)).
 		Msg("processed provisioning script matches")
 
-	return actions, nil
+	// Provision scripts don't need confirmation - they're just running install scripts
+	// Confirmation is only needed for clearing/uninstalling
+	return types.NewProcessingResult(actions), nil
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
@@ -199,4 +219,5 @@ func (h *ProvisionScriptHandler) Clear(ctx types.ClearContext) ([]types.ClearedI
 
 // Verify interface compliance
 var _ types.ProvisioningHandler = (*ProvisionScriptHandler)(nil)
+var _ types.ProvisioningHandlerWithConfirmations = (*ProvisionScriptHandler)(nil)
 var _ types.Clearable = (*ProvisionScriptHandler)(nil)
