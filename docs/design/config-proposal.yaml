@@ -52,12 +52,10 @@ priorities:
   matchers:
     install-script: 90
     brewfile: 90
+    bin-dir: 90
+    local-bin-dir: 90
     shell-aliases: 80
     shell-profile: 80
-    bin-dir: 90
-    bin-path: 80
-    local-bin-dir: 90
-    local-bin-path: 80
     template: 70
     symlink-catchall: 0
 
@@ -158,19 +156,9 @@ matchers:
     trigger:
       type: directory
       data:
-        pattern: bin
+        pattern: bin              # Matches directories named bin
     handler:
-      type: path
-      data: {}
-  
-  - name: bin-path
-    priority: 80
-    trigger:
-      type: directory
-      data:
-        pattern: bin
-    handler:
-      type: shell_add_path
+      type: path                 # Adds directory to PATH
       data: {}
   
   - name: local-bin-dir
@@ -178,19 +166,9 @@ matchers:
     trigger:
       type: directory
       data:
-        pattern: .local/bin
+        pattern: .local/bin       # Matches directories named .local/bin
     handler:
-      type: path
-      data: {}
-  
-  - name: local-bin-path
-    priority: 80
-    trigger:
-      type: directory
-      data:
-        pattern: .local/bin
-    handler:
-      type: shell_add_path
+      type: path                 # Adds directory to PATH
       data: {}
   
   - name: symlink-catchall
