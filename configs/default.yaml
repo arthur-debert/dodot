@@ -17,9 +17,6 @@ security:
     - .kube/config         # Kubernetes cluster credentials
     - .docker/config.json  # Docker registry authentication
   
-  # Whether to allow creating symlinks directly in $HOME (risky, can clutter home)
-  allowHomeSymlinks: false
-  
   # Whether to backup existing files before replacing them with symlinks
   backupExisting: true
   

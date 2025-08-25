@@ -9,9 +9,6 @@ func TestDefault(t *testing.T) {
 
 	// Test Security configuration
 	t.Run("Security", func(t *testing.T) {
-		if cfg.Security.AllowHomeSymlinks != false {
-			t.Errorf("expected AllowHomeSymlinks to be false")
-		}
 		if cfg.Security.BackupExisting != true {
 			t.Errorf("expected BackupExisting to be true")
 		}

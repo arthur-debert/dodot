@@ -42,8 +42,6 @@ security:
     - .kube/config
     - .docker/config.json
   
-  # Whether to allow symlinking directly to $HOME (generally unsafe)
-  allowHomeSymlinks: false
   
   # Whether to backup existing files before replacing
   backupExisting: true

@@ -7,7 +7,6 @@ import (
 // Security holds security-related configuration
 type Security struct {
 	ProtectedPaths       map[string]bool
-	AllowHomeSymlinks    bool
 	BackupExisting       bool
 	EnableRollback       bool
 	CleanupDanglingLinks bool // Controls whether to remove dangling links during deploy
@@ -139,7 +138,6 @@ func Default() *Config {
 				".kube/config":         true,
 				".docker/config.json":  true,
 			},
-			AllowHomeSymlinks:    false,
 			BackupExisting:       true,
 			EnableRollback:       true,
 			CleanupDanglingLinks: true, // Default to cleaning up dangling links
