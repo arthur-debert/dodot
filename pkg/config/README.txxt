@@ -49,6 +49,11 @@ In Phase 1, we've centralized the following configurations:
 ### 9. Default Matchers
 - Pre-configured matchers for common dotfile patterns
 
+### 10. Pack Configuration (PackConfig)
+- Pack-specific configuration from .dodot.toml files
+- Ignore rules, override rules, and path mappings
+- Moved from pkg/types to pkg/config to break import cycles
+
 ## Access Functions
 
 All configuration is accessed through the functions in `access.go`:
@@ -59,9 +64,6 @@ All configuration is accessed through the functions in `access.go`:
 - etc.
 
 ## Known Issues and TODOs
-
-### Import Cycles
-- Shell integration snippets in `pkg/types/shell.go` cannot use config due to import cycles
 
 ### Hardcoded Values
 - File permissions are still hardcoded throughout the codebase (executor, datastore, etc.)
