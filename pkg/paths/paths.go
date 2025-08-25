@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
-	"github.com/arthur-debert/dodot/pkg/constants"
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -633,7 +633,7 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	firstSegment := getFirstSegment(relPath)
 	cleanSegment := stripDotPrefix(firstSegment)
 
-	if constants.CoreUnixExceptions[cleanSegment] {
+	if config.GetLinkPaths().CoreUnixExceptions[cleanSegment] {
 		// Exception list items always go to $HOME
 		// Reconstruct the path with dot prefix on first segment
 		parts := strings.Split(relPath, string(filepath.Separator))
@@ -698,7 +698,7 @@ func (p *paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 				firstSegment := stripDotPrefix(parts[0])
 
 				// Layer 2: Check exception list
-				if constants.CoreUnixExceptions[firstSegment] {
+				if config.GetLinkPaths().CoreUnixExceptions[firstSegment] {
 					// Exception list items are stored without dot prefix
 					parts[0] = firstSegment
 					return filepath.Join(pack.Path, filepath.Join(parts...))
