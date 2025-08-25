@@ -2,77 +2,109 @@
 # This file is embedded in the dodot binary and provides all default values
 # Users can override any of these settings via their own config files
 
+# Security settings control how dodot handles sensitive files and operations
 security:
+  # Files that dodot will refuse to symlink for security reasons
+  # These typically contain credentials, keys, or authentication data
   protectedPaths:
-    - .ssh/authorized_keys
-    - .ssh/id_rsa
-    - .ssh/id_ed25519
-    - .gnupg
-    - .password-store
-    - .config/gh/hosts.yml
-    - .aws/credentials
-    - .kube/config
-    - .docker/config.json
+    - .ssh/authorized_keys  # SSH public keys for authentication
+    - .ssh/id_rsa          # SSH private key
+    - .ssh/id_ed25519      # SSH private key (ed25519)
+    - .gnupg               # GPG keys and configuration
+    - .password-store      # Pass password manager data
+    - .config/gh/hosts.yml # GitHub CLI authentication
+    - .aws/credentials     # AWS access keys
+    - .kube/config         # Kubernetes cluster credentials
+    - .docker/config.json  # Docker registry authentication
+  
+  # Whether to allow creating symlinks directly in $HOME (risky, can clutter home)
   allowHomeSymlinks: false
+  
+  # Whether to backup existing files before replacing them with symlinks
   backupExisting: true
+  
+  # Whether to enable rollback functionality (restore from backups)
   enableRollback: true
+  
+  # Whether to automatically remove broken symlinks during deploy
   cleanupDanglingLinks: true
 
+# Patterns control which files dodot processes and which it ignores
 patterns:
+  # Files/directories to ignore when scanning packs
   packIgnore:
-    - .git
-    - .svn
-    - .hg
-    - node_modules
-    - .DS_Store
-    - "*.swp"
-    - "*~"
-    - "#*#"
+    - .git            # Git repository data
+    - .svn            # Subversion repository data
+    - .hg             # Mercurial repository data
+    - node_modules    # Node.js dependencies (can be huge)
+    - .DS_Store       # macOS folder metadata
+    - "*.swp"         # Vim swap files
+    - "*~"            # Emacs/general backup files
+    - "#*#"           # Emacs auto-save files
+  
+  # Files that the catchall handler should skip
+  # These are typically dodot's own config files
   catchallExclude:
-    - .dodot.toml
-    - pack.dodot.toml
-    - .dodotignore
+    - .dodot.toml      # Pack configuration file
+    - pack.dodot.toml  # Alternative pack config name
+    - .dodotignore     # Pack-specific ignore file
+  
+  # Names of special files that dodot looks for
   specialFiles:
-    packConfig: .dodot.toml
-    altPackConfig: pack.dodot.toml
-    ignoreFile: .dodotignore
+    packConfig: .dodot.toml       # Primary pack configuration filename
+    altPackConfig: pack.dodot.toml # Alternative pack config filename
+    ignoreFile: .dodotignore      # Pack-specific ignore patterns
 
+# Priorities determine the order in which components are processed
+# Higher numbers = processed first
 priorities:
+  # Trigger priorities (how files are matched)
   triggers:
-    filename: 100
-    catchall: 0
+    filename: 100  # Exact filename matches (highest priority)
+    catchall: 0    # Catches everything else (lowest priority)
+  
+  # Handler priorities (what actions are taken)
   handlers:
-    symlink: 100
-    path: 90
-    template: 70
+    symlink: 100   # Create symlinks (highest priority)
+    path: 90       # Add to PATH
+    template: 70   # Process templates
+  
+  # Matcher priorities (built-in file patterns)
   matchers:
-    install-script: 90
-    brewfile: 90
-    shell-aliases: 80
-    shell-profile: 80
-    bin-dir: 90
-    bin-path: 80
-    local-bin-dir: 90
-    local-bin-path: 80
-    template: 70
-    symlink-catchall: 0
+    install-script: 90    # install.sh files
+    brewfile: 90         # Brewfile for Homebrew
+    shell-aliases: 80    # Shell alias files
+    shell-profile: 80    # Shell profile files
+    bin-dir: 90          # bin/ directories
+    bin-path: 80         # Add bin/ to PATH
+    local-bin-dir: 90    # .local/bin/ directories
+    local-bin-path: 80   # Add .local/bin/ to PATH
+    template: 70         # Template files
+    symlink-catchall: 0  # Default symlink everything else
 
+# Configuration for where files are linked
 linkPaths:
+  # Files/dirs that always go to $HOME instead of XDG directories
+  # These are exceptions to the smart placement rules
   coreUnixExceptions:
-    - ssh
-    - gnupg
-    - aws
-    - kube
-    - docker
-    - gitconfig
-    - bashrc
-    - zshrc
-    - profile
+    - ssh        # .ssh/ directory - SSH expects it in $HOME
+    - gnupg      # .gnupg/ directory - GPG expects it in $HOME
+    - aws        # .aws/ directory - AWS CLI expects it in $HOME
+    - kube       # .kube/ directory - kubectl expects it in $HOME
+    - docker     # .docker/ directory - Docker expects it in $HOME
+    - gitconfig  # .gitconfig file - Git expects it in $HOME
+    - bashrc     # .bashrc file - Bash expects it in $HOME
+    - zshrc      # .zshrc file - Zsh expects it in $HOME
+    - profile    # .profile file - Shell expects it in $HOME
 
+# Default configuration values for handlers
 handlerDefaults:
+  # Default directory where the path handler links executables
   pathTargetDir: "~/bin"
 
+# Templates used by handlers when creating new files
 handlerTemplates:
+  # Template for shell alias files created by 'dodot fill'
   shellAliases: |
     #!/usr/bin/env sh
     # Shell aliases for PACK_NAME pack
@@ -90,6 +122,7 @@ handlerTemplates:
     # alias ll='ls -la'
     # alias grep='grep --color=auto'
   
+  # Template for Brewfile created by 'dodot fill'
   brewfile: |
     # Homebrew dependencies for PACK_NAME pack
     # 
@@ -106,104 +139,131 @@ handlerTemplates:
     # brew "vim"
     # cask "visual-studio-code"
 
+# Shell integration snippets added to user's shell configuration
 shellIntegration:
+  # Snippet for Bash and Zsh shells
   bashZshSnippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
+  
+  # Template version with custom path (used internally)
   bashZshSnippetWithCustom: '[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"'
+  
+  # Snippet for Fish shell
   fishSnippet: |
     if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
         source "$HOME/.local/share/dodot/shell/dodot-init.fish"
     end
 
+# Logging configuration
 logging:
+  # Default log level when no -v flags are provided
   defaultLevel: warn
+  
+  # Mapping of -v flag count to log levels
   verbosityLevels:
-    0: warn
-    1: info
-    2: debug
-    3: trace
+    0: warn   # Default: warnings and errors only
+    1: info   # -v: informational messages
+    2: debug  # -vv: debug information
+    3: trace  # -vvv: detailed trace logs
+  
+  # Time format for log timestamps (Go time format)
   timeFormat: "15:04"
+  
+  # Whether to use colored output in the terminal
   enableColor: true
+  
+  # Show source file and line numbers at this verbosity level and above
   enableCallerAtVerbosity: 2
 
+# Matchers define patterns that map files to handlers
+# These are the built-in matchers that dodot uses
 matchers:
+  # Runs install.sh scripts when deploying a pack
   - name: install-script
     type: matcher
     priority: 90
     triggerType: filename
     triggerData:
-      pattern: install.sh
-    handlerType: provision
+      pattern: install.sh    # Matches files named install.sh
+    handlerType: provision   # Uses the provision handler
     handlerData: {}
   
+  # Processes Brewfiles for Homebrew package installation
   - name: brewfile
     type: matcher
     priority: 90
     triggerType: filename
     triggerData:
-      pattern: Brewfile
-    handlerType: homebrew
+      pattern: Brewfile      # Matches files named Brewfile
+    handlerType: homebrew    # Uses the homebrew handler
     handlerData: {}
   
+  # Sources shell alias files into the user's shell
   - name: shell-aliases
     type: matcher
     priority: 80
     triggerType: filename
     triggerData:
-      pattern: "*aliases.sh"
-    handlerType: shell_profile
+      pattern: "*aliases.sh"     # Matches files ending in aliases.sh
+    handlerType: shell_profile   # Uses the shell_profile handler
     handlerData:
-      placement: aliases
+      placement: aliases         # Places in the aliases section
   
+  # Sources shell profile configuration
   - name: shell-profile
     type: matcher
     priority: 80
     triggerType: filename
     triggerData:
-      pattern: profile.sh
-    handlerType: shell_profile
+      pattern: profile.sh        # Matches files named profile.sh
+    handlerType: shell_profile   # Uses the shell_profile handler
     handlerData:
-      placement: environment
+      placement: environment     # Places in the environment section
   
+  # Links executable files from bin/ directories
   - name: bin-dir
     type: matcher
     priority: 90
     triggerType: directory
     triggerData:
-      pattern: bin
-    handlerType: path
+      pattern: bin              # Matches directories named bin
+    handlerType: path           # Uses the path handler
     handlerData: {}
   
+  # Adds bin/ directories to the shell's PATH
   - name: bin-path
     type: matcher
     priority: 80
     triggerType: directory
     triggerData:
-      pattern: bin
-    handlerType: shell_add_path
+      pattern: bin              # Matches directories named bin
+    handlerType: shell_add_path # Adds directory to PATH
     handlerData: {}
   
+  # Links executable files from .local/bin/ directories
   - name: local-bin-dir
     type: matcher
     priority: 90
     triggerType: directory
     triggerData:
-      pattern: .local/bin
-    handlerType: path
+      pattern: .local/bin       # Matches directories named .local/bin
+    handlerType: path           # Uses the path handler
     handlerData: {}
   
+  # Adds .local/bin/ directories to the shell's PATH
   - name: local-bin-path
     type: matcher
     priority: 80
     triggerType: directory
     triggerData:
-      pattern: .local/bin
-    handlerType: shell_add_path
+      pattern: .local/bin       # Matches directories named .local/bin
+    handlerType: shell_add_path # Adds directory to PATH
     handlerData: {}
   
+  # Default matcher that symlinks all unmatched files
   - name: symlink-catchall
     type: matcher
-    priority: 0
-    triggerType: catchall
+    priority: 0                 # Lowest priority - runs last
+    triggerType: catchall       # Matches everything not caught above
     triggerData: {}
-    handlerType: symlink
+    handlerType: symlink        # Creates symlinks
     handlerData: {}

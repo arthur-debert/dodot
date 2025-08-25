@@ -280,39 +280,45 @@ Users can override just what they need:
 
 ```yaml
 # ~/.config/dodot/config.yaml
+
+# Add to the security settings
 security:
-  # Add custom protected paths
+  # Add custom protected paths to the existing list
+  # These will be merged with the default protected paths
   protectedPaths:
-    - .my-secret-app/config
-    - .company/credentials
+    - .my-secret-app/config   # Application with sensitive data
+    - .company/credentials    # Corporate credentials
 
-# Add custom ignore patterns
+# Extend the ignore patterns
 patterns:
+  # Add Python-specific files to ignore
   packIgnore:
-    - "*.pyc"
-    - __pycache__
-    - .pytest_cache
+    - "*.pyc"        # Python compiled files
+    - __pycache__    # Python cache directories
+    - .pytest_cache  # Pytest cache
 
-# Disable colored output
+# Override logging preferences
 logging:
-  enableColor: false
+  enableColor: false  # Disable colors for terminals that don't support them
 ```
 
 ### Custom Matchers
 Users can add their own matchers:
 
 ```yaml
-# Add Python virtual environment handler
+# ~/.config/dodot/config.yaml
+
+# Add custom matcher for Python virtual environments
 matchers:
   - name: python-venv
-    priority: 85
-    triggerType: directory
+    priority: 85              # Higher than shell-profile (80) but lower than bin-dir (90)
+    triggerType: directory    # Matches directories
     triggerData:
-      pattern: venv
+      pattern: venv          # Directory named 'venv'
     handlerType: shell_profile
     handlerData:
-      placement: environment
-      template: |
+      placement: environment # Add to environment section of shell profile
+      template: |           # Custom template for activation
         # Activate Python virtual environment
         [ -d "$PACK_DIR/venv" ] && source "$PACK_DIR/venv/bin/activate"
 ```
@@ -322,13 +328,17 @@ For dotfiles repositories with special needs:
 
 ```yaml
 # $DOTFILES_ROOT/.dodot/config.yaml
+
+# Repository-specific link path rules
 linkPaths:
   # Additional exceptions for this repository
+  # These supplement the default exceptions
   coreUnixExceptions:
-    - my-app-config  # .my-app-config must go to $HOME
+    - my-app-config  # .my-app-config must go to $HOME, not XDG
 
+# Override handler defaults for this repository
 handlerDefaults:
-  # Use different bin directory for this repo
+  # Use ~/.local/bin instead of ~/bin for this specific dotfiles repo
   pathTargetDir: "~/.local/bin"
 ```
 
