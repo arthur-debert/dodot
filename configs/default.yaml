@@ -31,10 +31,9 @@ patterns:
     - "#*#"           # Emacs auto-save files
   
   # Files that the catchall handler should skip
-  # These are typically dodot's own config files
-  catchallExclude:
-    - .dodot.toml      # Pack configuration file
-    - .dodotignore     # Pack-specific ignore file
+  # NOTE: This is automatically derived from specialFiles to avoid redundancy
+  # The catchall handler will exclude all files listed in specialFiles
+  # catchallExclude: (derived from specialFiles)
   
   # Names of special files that dodot looks for
   specialFiles:

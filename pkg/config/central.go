@@ -11,9 +11,9 @@ type Security struct {
 
 // Patterns holds various ignore and exclude patterns
 type Patterns struct {
-	PackIgnore      []string
-	CatchallExclude []string
-	SpecialFiles    SpecialFiles
+	PackIgnore      []string     `yaml:"packIgnore" json:"packIgnore"`
+	CatchallExclude []string     `yaml:"catchallExclude" json:"catchallExclude"`
+	SpecialFiles    SpecialFiles `yaml:"specialFiles" json:"specialFiles"`
 }
 
 // SpecialFiles holds names of special configuration files
@@ -114,7 +114,7 @@ type Config struct {
 
 // Default returns the default configuration
 func Default() *Config {
-	return &Config{
+	cfg := &Config{
 		Security: Security{
 			ProtectedPaths: map[string]bool{
 				".ssh/authorized_keys": true,
@@ -139,10 +139,8 @@ func Default() *Config {
 				"*~",
 				"#*#",
 			},
-			CatchallExclude: []string{
-				".dodot.toml",
-				".dodotignore",
-			},
+			// CatchallExclude is now derived from SpecialFiles
+			CatchallExclude: []string{},
 			SpecialFiles: SpecialFiles{
 				PackConfig: ".dodot.toml",
 				IgnoreFile: ".dodotignore",
@@ -214,6 +212,14 @@ end`,
 			EnableCallerAtVerbosity: 2,
 		},
 	}
+
+	// Derive CatchallExclude from SpecialFiles to avoid redundancy
+	cfg.Patterns.CatchallExclude = []string{
+		cfg.Patterns.SpecialFiles.PackConfig,
+		cfg.Patterns.SpecialFiles.IgnoreFile,
+	}
+
+	return cfg
 }
 
 func defaultMatchers() []MatcherConfig {

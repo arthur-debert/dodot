@@ -59,10 +59,28 @@ func TestDefault(t *testing.T) {
 			t.Errorf("expected IgnoreFile to be .dodotignore, got %s", cfg.Patterns.SpecialFiles.IgnoreFile)
 		}
 
-		// Test catchall excludes
-		expectedExcludes := []string{".dodot.toml", ".dodotignore"}
+		// Test catchall excludes are derived from SpecialFiles
+		expectedExcludes := []string{
+			cfg.Patterns.SpecialFiles.PackConfig,
+			cfg.Patterns.SpecialFiles.IgnoreFile,
+		}
 		if len(cfg.Patterns.CatchallExclude) != len(expectedExcludes) {
 			t.Errorf("expected %d catchall excludes, got %d", len(expectedExcludes), len(cfg.Patterns.CatchallExclude))
+		}
+		for i, exclude := range expectedExcludes {
+			if i < len(cfg.Patterns.CatchallExclude) && cfg.Patterns.CatchallExclude[i] != exclude {
+				t.Errorf("expected catchall exclude %d to be %s, got %s", i, exclude, cfg.Patterns.CatchallExclude[i])
+			}
+		}
+
+		// Verify consolidation - CatchallExclude should contain the same files as SpecialFiles
+		if cfg.Patterns.CatchallExclude[0] != cfg.Patterns.SpecialFiles.PackConfig {
+			t.Errorf("CatchallExclude[0] should be PackConfig (%s), got %s",
+				cfg.Patterns.SpecialFiles.PackConfig, cfg.Patterns.CatchallExclude[0])
+		}
+		if cfg.Patterns.CatchallExclude[1] != cfg.Patterns.SpecialFiles.IgnoreFile {
+			t.Errorf("CatchallExclude[1] should be IgnoreFile (%s), got %s",
+				cfg.Patterns.SpecialFiles.IgnoreFile, cfg.Patterns.CatchallExclude[1])
 		}
 	})
 

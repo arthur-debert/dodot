@@ -57,9 +57,8 @@ patterns:
     - "#*#"
   
   # Files excluded from catchall handler
-  catchallExclude:
-    - .dodot.toml
-    - .dodotignore
+  # NOTE: This is automatically derived from specialFiles to avoid redundancy
+  # catchallExclude: (derived from specialFiles)
   
   # Special file names dodot looks for
   specialFiles:
