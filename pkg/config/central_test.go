@@ -55,15 +55,12 @@ func TestDefault(t *testing.T) {
 		if cfg.Patterns.SpecialFiles.PackConfig != ".dodot.toml" {
 			t.Errorf("expected PackConfig to be .dodot.toml, got %s", cfg.Patterns.SpecialFiles.PackConfig)
 		}
-		if cfg.Patterns.SpecialFiles.AltPackConfig != "pack.dodot.toml" {
-			t.Errorf("expected AltPackConfig to be pack.dodot.toml, got %s", cfg.Patterns.SpecialFiles.AltPackConfig)
-		}
 		if cfg.Patterns.SpecialFiles.IgnoreFile != ".dodotignore" {
 			t.Errorf("expected IgnoreFile to be .dodotignore, got %s", cfg.Patterns.SpecialFiles.IgnoreFile)
 		}
 
 		// Test catchall excludes
-		expectedExcludes := []string{".dodot.toml", "pack.dodot.toml", ".dodotignore"}
+		expectedExcludes := []string{".dodot.toml", ".dodotignore"}
 		if len(cfg.Patterns.CatchallExclude) != len(expectedExcludes) {
 			t.Errorf("expected %d catchall excludes, got %d", len(expectedExcludes), len(cfg.Patterns.CatchallExclude))
 		}

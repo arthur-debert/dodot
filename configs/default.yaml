@@ -34,13 +34,11 @@ patterns:
   # These are typically dodot's own config files
   catchallExclude:
     - .dodot.toml      # Pack configuration file
-    - pack.dodot.toml  # Alternative pack config name
     - .dodotignore     # Pack-specific ignore file
   
   # Names of special files that dodot looks for
   specialFiles:
-    packConfig: .dodot.toml       # Primary pack configuration filename
-    altPackConfig: pack.dodot.toml # Alternative pack config filename
+    packConfig: .dodot.toml       # Pack configuration filename
     ignoreFile: .dodotignore      # Pack-specific ignore patterns
 
 # Priorities determine the order in which components are processed

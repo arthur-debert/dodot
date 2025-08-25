@@ -59,13 +59,11 @@ patterns:
   # Files excluded from catchall handler
   catchallExclude:
     - .dodot.toml
-    - pack.dodot.toml
     - .dodotignore
   
   # Special file names dodot looks for
   specialFiles:
     packConfig: .dodot.toml
-    altPackConfig: pack.dodot.toml
     ignoreFile: .dodotignore
 
 # Priorities determine processing order (higher = processed first)

@@ -18,9 +18,8 @@ type Patterns struct {
 
 // SpecialFiles holds names of special configuration files
 type SpecialFiles struct {
-	PackConfig    string
-	AltPackConfig string
-	IgnoreFile    string
+	PackConfig string
+	IgnoreFile string
 }
 
 // Priorities holds component priority settings
@@ -149,13 +148,11 @@ func Default() *Config {
 			},
 			CatchallExclude: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 			},
 			SpecialFiles: SpecialFiles{
-				PackConfig:    ".dodot.toml",
-				AltPackConfig: "pack.dodot.toml",
-				IgnoreFile:    ".dodotignore",
+				PackConfig: ".dodot.toml",
+				IgnoreFile: ".dodotignore",
 			},
 		},
 		Priorities: Priorities{
