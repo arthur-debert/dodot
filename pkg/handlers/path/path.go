@@ -39,8 +39,26 @@ func (h *PathHandler) RunMode() types.RunMode {
 
 // ProcessLinking takes directories and creates AddToPathAction instances
 func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+	result, err := h.ProcessLinkingWithConfirmations(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert ProcessingResult actions to LinkingAction slice for backward compatibility
+	linkingActions := make([]types.LinkingAction, 0, len(result.Actions))
+	for _, action := range result.Actions {
+		if linkAction, ok := action.(types.LinkingAction); ok {
+			linkingActions = append(linkingActions, linkAction)
+		}
+	}
+
+	return linkingActions, nil
+}
+
+// ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
+func (h *PathHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.path")
-	actions := make([]types.LinkingAction, 0, len(matches))
+	actions := make([]types.Action, 0, len(matches))
 
 	// Track directories to avoid duplicates
 	seenDirs := make(map[string]bool)
@@ -81,7 +99,9 @@ func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.Link
 		Int("action_count", len(actions)).
 		Msg("processed directory matches for PATH")
 
-	return actions, nil
+	// PATH operations don't need confirmation - they're just adding directories to PATH
+	// Confirmation is only needed for clearing/removing PATH entries
+	return types.NewProcessingResult(actions), nil
 }
 
 // ValidateOptions checks if the provided options are valid
@@ -145,4 +165,5 @@ func (h *PathHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error)
 
 // Verify interface compliance
 var _ types.LinkingHandler = (*PathHandler)(nil)
+var _ types.LinkingHandlerWithConfirmations = (*PathHandler)(nil)
 var _ types.Clearable = (*PathHandler)(nil)

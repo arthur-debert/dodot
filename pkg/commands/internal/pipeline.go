@@ -78,21 +78,53 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("triggerMatches", len(matches)).
 		Msg("Triggers matched")
 
-	// 5. Generate actions from triggers
-	actions, err := core.GetActions(matches)
+	// 5. Generate actions and confirmations from triggers
+	actionResult, err := core.GetActionsWithConfirmations(matches)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate actions")
 	}
 
 	logger.Debug().
-		Int("totalActions", len(actions)).
-		Msg("Actions generated")
+		Int("totalActions", len(actionResult.Actions)).
+		Int("totalConfirmations", len(actionResult.Confirmations)).
+		Msg("Actions and confirmations generated")
 
-	// 6. Create datastore for the new executor
+	// 6. Handle confirmations if present
+	var confirmationContext *types.ConfirmationContext
+	if actionResult.HasConfirmations() {
+		logger.Info().
+			Int("confirmationCount", len(actionResult.Confirmations)).
+			Msg("Confirmation requests found - presenting to user")
+
+		// Use console confirmation dialog
+		dialog := core.NewConsoleConfirmationDialog()
+
+		// Collect confirmations using utility function
+		confirmationContext, err = core.CollectAndProcessConfirmations(actionResult.Confirmations, dialog)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to collect confirmations")
+		}
+
+		// Check if user cancelled (no confirmations approved)
+		if confirmationContext != nil && !confirmationContext.AllApproved(getConfirmationIDs(actionResult.Confirmations)) {
+			logger.Info().Msg("User declined confirmations - cancelling execution")
+			// Return empty context to indicate cancellation
+			ctx := types.NewExecutionContext(getCommandFromRunMode(opts.RunMode), opts.DryRun)
+			ctx.Complete()
+			return ctx, nil
+		}
+
+		logger.Info().Msg("All confirmations approved - proceeding with execution")
+	}
+
+	// Use the generated actions
+	actions := actionResult.Actions
+
+	// 7. Create datastore for the new executor
 	fs := filesystem.NewOS()
 	dataStore := datastore.New(fs, pathsInstance)
 
-	// 7. Filter actions by run mode
+	// 8. Filter actions by run mode
 	filteredActions := core.FilterActionsByRunMode(actions, opts.RunMode)
 
 	logger.Debug().
@@ -100,7 +132,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Str("runMode", string(opts.RunMode)).
 		Msg("Actions filtered by run mode")
 
-	// 8. Filter provisioning actions based on --force flag
+	// 9. Filter provisioning actions based on --force flag
 	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
 		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, dataStore)
 		if err != nil {
@@ -111,10 +143,10 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 			Msg("Provisioning actions filtered")
 	}
 
-	// 9. Create execution context
+	// 10. Create execution context
 	ctx := types.NewExecutionContext(getCommandFromRunMode(opts.RunMode), opts.DryRun)
 
-	// 10. If dry run, we still need to create pack results structure
+	// 11. If dry run, we still need to create pack results structure
 	if opts.DryRun {
 		logger.Info().Msg("Dry run mode - creating planned results")
 		// Group actions by pack and create pack results
@@ -126,7 +158,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		return ctx, nil
 	}
 
-	// 11. Create and configure new Executor
+	// 12. Create and configure new Executor
 	executorOpts := executor.Options{
 		DataStore: dataStore,
 		DryRun:    opts.DryRun,
@@ -135,7 +167,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 
 	exec := executor.New(executorOpts)
 
-	// 12. Execute actions
+	// 13. Execute actions
 	logger.Info().
 		Int("actionCount", len(filteredActions)).
 		Msg("Executing actions")
@@ -151,7 +183,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		}
 	}
 
-	// 13. Process results into execution context
+	// 14. Process results into execution context
 	packResultsMap := convertActionResultsToPackResults(results, selectedPacks)
 	for packName, packResult := range packResultsMap {
 		ctx.AddPackResult(packName, packResult)
@@ -352,4 +384,13 @@ func convertActionResultsToPackResults(results []types.ActionResult, packs []typ
 	}
 
 	return packResults
+}
+
+// getConfirmationIDs extracts the IDs from a list of confirmation requests
+func getConfirmationIDs(confirmations []types.ConfirmationRequest) []string {
+	ids := make([]string, len(confirmations))
+	for i, confirmation := range confirmations {
+		ids[i] = confirmation.ID
+	}
+	return ids
 }

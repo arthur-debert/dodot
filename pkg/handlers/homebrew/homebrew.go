@@ -56,8 +56,26 @@ func (h *HomebrewHandler) RunMode() types.RunMode {
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances
 func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+	result, err := h.ProcessProvisioningWithConfirmations(matches)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert ProcessingResult actions to ProvisioningAction slice for backward compatibility
+	provisioningActions := make([]types.ProvisioningAction, 0, len(result.Actions))
+	for _, action := range result.Actions {
+		if provAction, ok := action.(types.ProvisioningAction); ok {
+			provisioningActions = append(provisioningActions, provAction)
+		}
+	}
+
+	return provisioningActions, nil
+}
+
+// ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
+func (h *HomebrewHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.homebrew")
-	actions := make([]types.ProvisioningAction, 0, len(matches))
+	actions := make([]types.Action, 0, len(matches))
 
 	for _, match := range matches {
 		logger.Debug().
@@ -72,7 +90,7 @@ func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]t
 				Err(err).
 				Str("path", match.AbsolutePath).
 				Msg("Failed to calculate checksum")
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
+			return types.ProcessingResult{}, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
 		}
 
 		// Create a BrewAction for the Brewfile
@@ -90,7 +108,9 @@ func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]t
 		Int("action_count", len(actions)).
 		Msg("processed Brewfile matches")
 
-	return actions, nil
+	// Homebrew provisioning doesn't need confirmation - it's just installing packages
+	// Confirmation is only needed for clearing/uninstalling
+	return types.NewProcessingResult(actions), nil
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
@@ -182,6 +202,130 @@ func (h *HomebrewHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, er
 	return clearedItems, nil
 }
 
+// GetClearConfirmations implements ClearableWithConfirmations interface
+func (h *HomebrewHandler) GetClearConfirmations(ctx types.ClearContext) ([]types.ConfirmationRequest, error) {
+	// Only provide confirmations if DODOT_HOMEBREW_UNINSTALL is enabled
+	if os.Getenv("DODOT_HOMEBREW_UNINSTALL") != "true" {
+		return []types.ConfirmationRequest{}, nil
+	}
+
+	logger := logging.GetLogger("handlers.homebrew").With().
+		Str("pack", ctx.Pack.Name).
+		Logger()
+
+	// Read state to find packages to uninstall
+	stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, "homebrew")
+	entries, err := ctx.FS.ReadDir(stateDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			logger.Debug().Msg("No homebrew state directory")
+			return []types.ConfirmationRequest{}, nil
+		}
+		return nil, fmt.Errorf("failed to read homebrew state: %w", err)
+	}
+
+	// Get installed packages list
+	installedPackages, err := getInstalledPackages()
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to get installed packages list")
+		// Continue anyway - we'll generate a generic confirmation
+	}
+
+	var allPackagesToUninstall []brewPackage
+
+	// Find all packages from Brewfiles that are currently installed
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sentinel") {
+			continue
+		}
+
+		// Find the corresponding Brewfile
+		brewfileName := strings.TrimSuffix(entry.Name(), ".sentinel")
+		if idx := strings.Index(brewfileName, "_"); idx >= 0 {
+			brewfileName = brewfileName[idx+1:]
+		}
+
+		brewfilePath := filepath.Join(ctx.Pack.Path, brewfileName)
+
+		// Parse the Brewfile to get packages
+		packages, err := parseBrewfile(ctx.FS, brewfilePath)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("brewfile", brewfilePath).
+				Msg("Failed to parse Brewfile for confirmation")
+			continue
+		}
+
+		// Filter to only installed packages
+		for _, pkg := range packages {
+			if installedPackages == nil || installedPackages[pkg.Name] {
+				allPackagesToUninstall = append(allPackagesToUninstall, pkg)
+			}
+		}
+	}
+
+	if len(allPackagesToUninstall) == 0 {
+		return []types.ConfirmationRequest{}, nil
+	}
+
+	// Group packages by type for display
+	var brewNames, caskNames []string
+	for _, pkg := range allPackagesToUninstall {
+		switch pkg.Type {
+		case "brew":
+			brewNames = append(brewNames, pkg.Name)
+		case "cask":
+			caskNames = append(caskNames, pkg.Name)
+		}
+	}
+
+	// Build description
+	var description strings.Builder
+	description.WriteString("Uninstall Homebrew packages from this pack?")
+
+	var items []string
+	if len(brewNames) > 0 {
+		items = append(items, fmt.Sprintf("Formulae: %s", strings.Join(brewNames, ", ")))
+	}
+	if len(caskNames) > 0 {
+		items = append(items, fmt.Sprintf("Casks: %s", strings.Join(caskNames, ", ")))
+	}
+
+	confirmationID := fmt.Sprintf("homebrew-clear-%s", ctx.Pack.Name)
+	confirmation := types.NewClearConfirmationRequest(
+		confirmationID,
+		ctx.Pack.Name,
+		"homebrew",
+		"Uninstall Homebrew packages",
+		description.String(),
+		items,
+		false, // Default to No for package uninstallation
+	)
+
+	return []types.ConfirmationRequest{confirmation}, nil
+}
+
+// ClearWithConfirmations implements ClearableWithConfirmations interface
+func (h *HomebrewHandler) ClearWithConfirmations(ctx types.ClearContext, confirmations *types.ConfirmationContext) ([]types.ClearedItem, error) {
+	// Check if uninstall is enabled and user approved
+	shouldUninstall := os.Getenv("DODOT_HOMEBREW_UNINSTALL") == "true"
+
+	if shouldUninstall && confirmations != nil {
+		confirmationID := fmt.Sprintf("homebrew-clear-%s", ctx.Pack.Name)
+		shouldUninstall = confirmations.IsApproved(confirmationID)
+	}
+
+	if shouldUninstall {
+		return h.ClearWithUninstall(ctx)
+	}
+
+	// Fall back to basic clear (just remove state)
+	return h.Clear(ctx)
+}
+
 // Verify interface compliance
 var _ types.ProvisioningHandler = (*HomebrewHandler)(nil)
+var _ types.ProvisioningHandlerWithConfirmations = (*HomebrewHandler)(nil)
 var _ types.Clearable = (*HomebrewHandler)(nil)
+var _ types.ClearableWithConfirmations = (*HomebrewHandler)(nil)
