@@ -46,9 +46,10 @@ type MatcherConfig struct {
 }
 
 // FilePermissions holds file and directory permission settings
-// TODO: Phase I - These permissions are currently used in config but hardcoded
-// throughout the codebase (executor, datastore, shell integration, tests, etc).
-// A future refactor should update all those locations to use these centralized values.
+// IMPORTANT: These permissions are intentionally NOT used throughout the codebase.
+// File permissions (0755, 0644, etc.) should remain hardcoded where they are used
+// as they are security-critical and context-specific. This struct exists only for
+// potential future use cases where centralized permissions might be beneficial.
 type FilePermissions struct {
 	Directory  os.FileMode
 	File       os.FileMode
