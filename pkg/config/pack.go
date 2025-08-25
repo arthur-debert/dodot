@@ -5,11 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/arthur-debert/dodot/pkg/logging"
 	toml "github.com/pelletier/go-toml/v2"
 )
-
-var log = logging.GetLogger("config")
 
 // PackConfig represents configuration options for a pack from .dodot.toml
 type PackConfig struct {
@@ -68,8 +65,6 @@ func (c *PackConfig) FindOverride(filename string) *OverrideRule {
 
 // LoadPackConfig reads and parses a pack's .dodot.toml configuration file
 func LoadPackConfig(configPath string) (PackConfig, error) {
-	logger := log.With().Str("configPath", configPath).Logger()
-
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return PackConfig{}, fmt.Errorf("failed to read config file: %w", err)
@@ -79,12 +74,6 @@ func LoadPackConfig(configPath string) (PackConfig, error) {
 	if err := toml.Unmarshal(data, &config); err != nil {
 		return PackConfig{}, fmt.Errorf("failed to parse TOML: %w", err)
 	}
-
-	logger.Debug().
-		Int("ignore_rules", len(config.Ignore)).
-		Int("override_rules", len(config.Override)).
-		Int("mappings", len(config.Mappings)).
-		Msg("Pack config loaded")
 
 	return config, nil
 }

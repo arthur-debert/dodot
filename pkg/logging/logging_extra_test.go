@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLogCommand(t *testing.T) {
@@ -25,10 +25,10 @@ func TestLogCommand(t *testing.T) {
 
 	// Check output
 	output := buf.String()
-	testutil.AssertContains(t, output, "test-cmd")
-	testutil.AssertContains(t, output, "arg1")
-	testutil.AssertContains(t, output, "arg2")
-	testutil.AssertContains(t, output, "Executing command")
+	assert.Contains(t, output, "test-cmd")
+	assert.Contains(t, output, "arg1")
+	assert.Contains(t, output, "arg2")
+	assert.Contains(t, output, "Executing command")
 }
 
 func TestLogDuration(t *testing.T) {
@@ -44,15 +44,15 @@ func TestLogDuration(t *testing.T) {
 
 	// Check output
 	output := buf.String()
-	testutil.AssertContains(t, output, "test-operation")
-	testutil.AssertContains(t, output, "duration")
+	assert.Contains(t, output, "test-operation")
+	assert.Contains(t, output, "duration")
 	// Should contain a duration of approximately 5 seconds
-	testutil.AssertTrue(t, strings.Contains(output, "5") || strings.Contains(output, "5000"))
+	assert.True(t, strings.Contains(output, "5") || strings.Contains(output, "5000"))
 }
 
 func TestMust_NoError(t *testing.T) {
 	// Should not panic when error is nil
-	testutil.AssertNoPanic(t, func() {
+	assert.NotPanics(t, func() {
 		Must(nil, "this should not panic")
 	})
 }
@@ -86,5 +86,5 @@ func TestMust_WithError(t *testing.T) {
 	}
 
 	// Should have exited with non-zero status
-	testutil.AssertFalse(t, state.Success(), "process should have exited with error")
+	assert.False(t, state.Success(), "process should have exited with error")
 }
