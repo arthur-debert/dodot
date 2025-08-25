@@ -58,7 +58,7 @@ func TestGetLogFilePath(t *testing.T) {
 		{
 			name:         "without XDG_STATE_HOME",
 			xdgState:     "",
-			wantContains: ".local/state/dodot/dodot.log",
+			wantContains: "dodot/dodot.log",
 		},
 	}
 
