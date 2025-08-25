@@ -35,6 +35,10 @@ const (
 )
 
 // Default directories and files
+// IMPORTANT: These constants define dodot's internal datastore structure and
+// are NOT user-configurable. They must remain consistent across all dodot
+// installations to ensure proper operation. User-configurable paths should
+// be added to pkg/config instead.
 const (
 	// DefaultDotfilesDir is the default directory name for dotfiles
 	DefaultDotfilesDir = "dotfiles"

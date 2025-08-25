@@ -65,22 +65,13 @@ type ShellIntegration struct {
 }
 
 // Paths holds path-related configuration
-// TODO: Phase I - These path constants are duplicated in pkg/paths/paths.go
-// Due to import cycle constraints, we cannot directly use config from paths package.
-// A future refactor should resolve this duplication, possibly by moving path
-// constants to a separate package that both can import.
+// NOTE: Internal datastore paths (StateDir, BackupsDir, etc.) are defined in
+// pkg/paths/paths.go and are NOT user-configurable. They are part of dodot's
+// internal structure and should remain consistent across all installations.
+// This struct intentionally left empty for now but may hold user-configurable
+// paths in the future.
 type Paths struct {
-	DefaultDotfilesDir string
-	DodotDirName       string
-	StateDir           string
-	BackupsDir         string
-	TemplatesDir       string
-	DeployedDir        string
-	ShellDir           string
-	ProvisionDir       string
-	HomebrewDir        string
-	InitScriptName     string
-	LogFileName        string
+	// Reserved for future user-configurable paths
 }
 
 // LinkPaths holds link path mapping configuration
@@ -213,17 +204,7 @@ func Default() *Config {
 end`,
 		},
 		Paths: Paths{
-			DefaultDotfilesDir: "dotfiles",
-			DodotDirName:       "dodot",
-			StateDir:           "state",
-			BackupsDir:         "backups",
-			TemplatesDir:       "templates",
-			DeployedDir:        "deployed",
-			ShellDir:           "shell",
-			ProvisionDir:       "provision",
-			HomebrewDir:        "homebrew",
-			InitScriptName:     "dodot-init.sh",
-			LogFileName:        "dodot.log",
+			// Reserved for future user-configurable paths
 		},
 		LinkPaths: LinkPaths{
 			CoreUnixExceptions: constants.CoreUnixExceptions,
