@@ -91,7 +91,6 @@ func TestXDGDirectoryCreation(t *testing.T) {
 
 	// Verify subdirectories
 	testutil.AssertEqual(t, filepath.Join(tmpRoot, "data", "state"), p.StateDir())
-	testutil.AssertEqual(t, filepath.Join(tmpRoot, "data", "backups"), p.BackupsDir())
 	testutil.AssertEqual(t, filepath.Join(tmpRoot, "data", "deployed"), p.DeployedDir())
 }
 

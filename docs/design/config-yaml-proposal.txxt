@@ -43,12 +43,6 @@ security:
     - .docker/config.json
   
   
-  # Whether to backup existing files before replacing
-  backupExisting: true
-  
-  # Whether to enable rollback functionality
-  enableRollback: true
-  
   # Whether to remove dangling symlinks during deploy
   cleanupDanglingLinks: true
 

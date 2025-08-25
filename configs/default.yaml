@@ -17,12 +17,6 @@ security:
     - .kube/config         # Kubernetes cluster credentials
     - .docker/config.json  # Docker registry authentication
   
-  # Whether to backup existing files before replacing them with symlinks
-  backupExisting: true
-  
-  # Whether to enable rollback functionality (restore from backups)
-  enableRollback: true
-  
   # Whether to automatically remove broken symlinks during deploy
   cleanupDanglingLinks: true
 

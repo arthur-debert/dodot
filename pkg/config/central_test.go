@@ -9,12 +9,6 @@ func TestDefault(t *testing.T) {
 
 	// Test Security configuration
 	t.Run("Security", func(t *testing.T) {
-		if cfg.Security.BackupExisting != true {
-			t.Errorf("expected BackupExisting to be true")
-		}
-		if cfg.Security.EnableRollback != true {
-			t.Errorf("expected EnableRollback to be true")
-		}
 
 		// Test protected paths
 		expectedProtected := []string{
