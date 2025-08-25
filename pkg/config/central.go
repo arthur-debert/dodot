@@ -6,25 +6,20 @@ import (
 
 // Security holds security-related configuration
 type Security struct {
-	ProtectedPaths       map[string]bool
-	AllowHomeSymlinks    bool
-	BackupExisting       bool
-	EnableRollback       bool
-	CleanupDanglingLinks bool // Controls whether to remove dangling links during deploy
+	ProtectedPaths map[string]bool
 }
 
 // Patterns holds various ignore and exclude patterns
 type Patterns struct {
-	PackIgnore      []string
-	CatchallExclude []string
-	SpecialFiles    SpecialFiles
+	PackIgnore      []string     `yaml:"packIgnore" json:"packIgnore"`
+	CatchallExclude []string     `yaml:"catchallExclude" json:"catchallExclude"`
+	SpecialFiles    SpecialFiles `yaml:"specialFiles" json:"specialFiles"`
 }
 
 // SpecialFiles holds names of special configuration files
 type SpecialFiles struct {
-	PackConfig    string
-	AltPackConfig string
-	IgnoreFile    string
+	PackConfig string
+	IgnoreFile string
 }
 
 // Priorities holds component priority settings
@@ -34,15 +29,24 @@ type Priorities struct {
 	Matchers map[string]int
 }
 
+// TriggerConfig represents trigger configuration within a matcher
+type TriggerConfig struct {
+	Type string                 `yaml:"type" json:"type"`
+	Data map[string]interface{} `yaml:"data" json:"data"`
+}
+
+// HandlerConfig represents handler configuration within a matcher
+type HandlerConfig struct {
+	Type string                 `yaml:"type" json:"type"`
+	Data map[string]interface{} `yaml:"data" json:"data"`
+}
+
 // MatcherConfig represents a matcher configuration
 type MatcherConfig struct {
-	Name        string
-	Type        string
-	Priority    int
-	TriggerType string
-	TriggerData map[string]interface{}
-	HandlerType string
-	HandlerData map[string]interface{}
+	Name     string        `yaml:"name" json:"name"`
+	Priority int           `yaml:"priority" json:"priority"`
+	Trigger  TriggerConfig `yaml:"trigger" json:"trigger"`
+	Handler  HandlerConfig `yaml:"handler" json:"handler"`
 }
 
 // FilePermissions holds file and directory permission settings
@@ -81,20 +85,6 @@ type LinkPaths struct {
 	CoreUnixExceptions map[string]bool
 }
 
-// HandlerTemplates holds template content for various handlers
-type HandlerTemplates struct {
-	// ShellAliases is the template for aliases.sh files
-	ShellAliases string
-	// Brewfile is the template for Brewfile
-	Brewfile string
-}
-
-// HandlerDefaults holds default configuration values for handlers
-type HandlerDefaults struct {
-	// PathTargetDir is the default target directory for the path handler
-	PathTargetDir string
-}
-
 // LoggingConfig holds logging-related configuration
 type LoggingConfig struct {
 	// VerbosityLevels maps verbosity flags to log levels
@@ -119,14 +109,12 @@ type Config struct {
 	ShellIntegration ShellIntegration
 	Paths            Paths
 	LinkPaths        LinkPaths
-	HandlerTemplates HandlerTemplates
-	HandlerDefaults  HandlerDefaults
 	Logging          LoggingConfig
 }
 
 // Default returns the default configuration
 func Default() *Config {
-	return &Config{
+	cfg := &Config{
 		Security: Security{
 			ProtectedPaths: map[string]bool{
 				".ssh/authorized_keys": true,
@@ -139,10 +127,6 @@ func Default() *Config {
 				".kube/config":         true,
 				".docker/config.json":  true,
 			},
-			AllowHomeSymlinks:    false,
-			BackupExisting:       true,
-			EnableRollback:       true,
-			CleanupDanglingLinks: true, // Default to cleaning up dangling links
 		},
 		Patterns: Patterns{
 			PackIgnore: []string{
@@ -155,15 +139,11 @@ func Default() *Config {
 				"*~",
 				"#*#",
 			},
-			CatchallExclude: []string{
-				".dodot.toml",
-				"pack.dodot.toml",
-				".dodotignore",
-			},
+			// CatchallExclude is now derived from SpecialFiles
+			CatchallExclude: []string{},
 			SpecialFiles: SpecialFiles{
-				PackConfig:    ".dodot.toml",
-				AltPackConfig: "pack.dodot.toml",
-				IgnoreFile:    ".dodotignore",
+				PackConfig: ".dodot.toml",
+				IgnoreFile: ".dodotignore",
 			},
 		},
 		Priorities: Priorities{
@@ -219,41 +199,6 @@ end`,
 				"profile":   true, // .profile - shell expects in $HOME
 			},
 		},
-		HandlerTemplates: HandlerTemplates{
-			ShellAliases: `#!/usr/bin/env sh
-# Shell aliases for PACK_NAME pack
-#
-# This file is sourced to add shell aliases during 'dodot deploy PACK_NAME'
-# 
-# Use standard shell alias syntax (compatible with bash/zsh/fish/etc)
-# dodot handles shell compatibility automatically
-#
-# Safe to keep empty or remove. By keeping it, you can add
-# aliases later without redeploying the pack.
-
-# Add aliases below
-# Examples:
-# alias ll='ls -la'
-# alias grep='grep --color=auto'
-`,
-			Brewfile: `# Homebrew dependencies for PACK_NAME pack
-# 
-# This file is processed by 'dodot install PACK_NAME' to install
-# packages using Homebrew. Each package is installed once during
-# initial deployment. The deployment is tracked by checksum, so
-# modifying this file will trigger a re-run.
-#
-# Safe to keep empty or remove. By keeping it, you can add
-# homebrew packages later without redeploying the pack.
-
-# Examples:
-# brew "git"
-# brew "vim"
-# cask "visual-studio-code"`,
-		},
-		HandlerDefaults: HandlerDefaults{
-			PathTargetDir: "~/bin",
-		},
 		Logging: LoggingConfig{
 			VerbosityLevels: map[int]string{
 				0: "warn",
@@ -267,110 +212,145 @@ end`,
 			EnableCallerAtVerbosity: 2,
 		},
 	}
+
+	// Derive CatchallExclude from SpecialFiles to avoid redundancy
+	cfg.Patterns.CatchallExclude = []string{
+		cfg.Patterns.SpecialFiles.PackConfig,
+		cfg.Patterns.SpecialFiles.IgnoreFile,
+	}
+
+	return cfg
 }
 
 func defaultMatchers() []MatcherConfig {
 	return []MatcherConfig{
 		{
-			Name:        "install-script",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "install.sh",
+			Name:     "install-script",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "install.sh",
+				},
 			},
-			HandlerType: "provision",
-			HandlerData: map[string]interface{}{},
-		},
-		{
-			Name:        "brewfile",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "Brewfile",
-			},
-			HandlerType: "homebrew",
-			HandlerData: map[string]interface{}{},
-		},
-		{
-			Name:        "shell-aliases",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "*aliases.sh",
-			},
-			HandlerType: "shell_profile",
-			HandlerData: map[string]interface{}{
-				"placement": "aliases",
+			Handler: HandlerConfig{
+				Type: "provision",
+				Data: map[string]interface{}{},
 			},
 		},
 		{
-			Name:        "shell-profile",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "profile.sh",
+			Name:     "brewfile",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "Brewfile",
+				},
 			},
-			HandlerType: "shell_profile",
-			HandlerData: map[string]interface{}{
-				"placement": "environment",
+			Handler: HandlerConfig{
+				Type: "homebrew",
+				Data: map[string]interface{}{},
 			},
 		},
 		{
-			Name:        "bin-dir",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": "bin",
+			Name:     "shell-aliases",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "*aliases.sh",
+				},
 			},
-			HandlerType: "path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "shell_profile",
+				Data: map[string]interface{}{
+					"placement": "aliases",
+				},
+			},
 		},
 		{
-			Name:        "bin-path",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": "bin",
+			Name:     "shell-profile",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "profile.sh",
+				},
 			},
-			HandlerType: "shell_add_path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "shell_profile",
+				Data: map[string]interface{}{
+					"placement": "environment",
+				},
+			},
 		},
 		{
-			Name:        "local-bin-dir",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": ".local/bin",
+			Name:     "bin-dir",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": "bin",
+				},
 			},
-			HandlerType: "path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "path",
+				Data: map[string]interface{}{},
+			},
 		},
 		{
-			Name:        "local-bin-path",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": ".local/bin",
+			Name:     "bin-path",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": "bin",
+				},
 			},
-			HandlerType: "shell_add_path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "shell_add_path",
+				Data: map[string]interface{}{},
+			},
 		},
 		{
-			Name:        "symlink-catchall",
-			Type:        "matcher",
-			Priority:    0,
-			TriggerType: "catchall",
-			TriggerData: map[string]interface{}{},
-			HandlerType: "symlink",
-			HandlerData: map[string]interface{}{},
+			Name:     "local-bin-dir",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": ".local/bin",
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "path",
+				Data: map[string]interface{}{},
+			},
+		},
+		{
+			Name:     "local-bin-path",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": ".local/bin",
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "shell_add_path",
+				Data: map[string]interface{}{},
+			},
+		},
+		{
+			Name:     "symlink-catchall",
+			Priority: 0,
+			Trigger: TriggerConfig{
+				Type: "catchall",
+				Data: map[string]interface{}{},
+			},
+			Handler: HandlerConfig{
+				Type: "symlink",
+				Data: map[string]interface{}{},
+			},
 		},
 	}
 }

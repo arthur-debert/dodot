@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -15,6 +14,9 @@ import (
 
 // HomebrewHandlerName is the name of the homebrew handler
 const HomebrewHandlerName = "homebrew"
+
+//go:embed homebrew-template.txt
+var brewfileTemplate string
 
 // HomebrewHandler processes Brewfiles to install packages via Homebrew
 type HomebrewHandler struct{}
@@ -106,7 +108,7 @@ func (h *HomebrewHandler) ValidateOptions(options map[string]interface{}) error 
 
 // GetTemplateContent returns the template content for this handler
 func (h *HomebrewHandler) GetTemplateContent() string {
-	return config.GetHandlerTemplates().Brewfile
+	return brewfileTemplate
 }
 
 // Clear prepares for homebrew uninstallation (reads state, optionally uninstalls)

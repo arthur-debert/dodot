@@ -1,0 +1,62 @@
+Configuration Cleanup Plan
+=========================
+
+This document tracks the configuration cleanup work identified during the Phase 2 YAML design review.
+All issues are linked to #631 (Configuration centralization and externalization).
+
+## Issues Created
+
+### 1. Remove unimplemented configuration: allowHomeSymlinks (#633)
+- Remove unused allowHomeSymlinks setting
+- Setting exists but no code checks it
+- Symlinks are created in $HOME regardless
+
+### 2. Remove unimplemented backup and rollback configuration (#634)
+- Remove backupExisting and enableRollback settings
+- Remove BackupsDir if not needed
+- No backup functionality is implemented
+
+### 3. Remove unimplemented cleanupDanglingLinks configuration (#635)
+- Remove cleanupDanglingLinks setting
+- No code checks for or removes broken symlinks
+- Feature was planned but never implemented
+
+### 4. Remove unused pack.dodot.toml alternative config name (#636)
+- Remove altPackConfig from configuration
+- Code only looks for .dodot.toml
+- pack.dodot.toml is never checked
+
+### 5. Remove unused pathTargetDir configuration (#637)
+- Remove PathTargetDir from HandlerDefaults
+- Path handler sets but never uses targetDir field
+- Marked as "reserved for future use"
+
+### 6. Use existing template files instead of embedding in config (#638)
+- Remove HandlerTemplates from configuration
+- Templates already exist as separate .txt files
+- Handlers should read templates directly from files
+
+### 7. Restructure matcher configuration for consistency (#639)
+- Fix inconsistent namespacing in matcher definitions
+- Use nested structure for trigger and handler configs
+- Make configuration more logical and consistent
+
+### 8. Consolidate pack file exclusions into single configuration (#640)
+- Merge catchallExclude and specialFiles
+- Remove redundancy in file exclusion logic
+- Create single source of truth for internal files
+
+## Implementation Order
+
+Suggested order for tackling these issues:
+1. Start with simple removals (#633, #634, #635, #636, #637)
+2. Then template consolidation (#638)
+3. Finally structural changes (#639, #640)
+
+## Branch Structure
+
+Working branch: `refac/config/feature-cleanup`
+- Based on: `feature/config-phase2-yaml`
+- Each issue should be a separate commit
+- Run tests after each change
+- Keep changes focused and atomic

@@ -52,9 +52,6 @@ const (
 	// StateDir is the subdirectory for state files
 	StateDir = "state"
 
-	// BackupsDir is the subdirectory for backups
-	BackupsDir = "backups"
-
 	// TemplatesDir is the subdirectory for templates
 	TemplatesDir = "templates"
 
@@ -87,7 +84,6 @@ type Paths interface {
 	ConfigDir() string
 	CacheDir() string
 	StateDir() string
-	BackupsDir() string
 	TemplatesDir() string
 	StatePath(packName, handlerName string) string
 	NormalizePath(path string) (string, error)
@@ -344,11 +340,6 @@ func (p *paths) GetDataSubdir(name string) string {
 // StateDir returns the directory for state files
 func (p *paths) StateDir() string {
 	return p.GetDataSubdir(StateDir)
-}
-
-// BackupsDir returns the directory for backup files
-func (p *paths) BackupsDir() string {
-	return p.GetDataSubdir(BackupsDir)
 }
 
 // TemplatesDir returns the directory for template files

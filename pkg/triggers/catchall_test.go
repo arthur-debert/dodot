@@ -22,7 +22,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 			},
 		},
@@ -34,7 +33,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 				"*.tmp",
 				"*.bak",
@@ -48,7 +46,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 				"*.log",
 				"temp*",
@@ -60,7 +57,6 @@ func TestCatchallTrigger_Creation(t *testing.T) {
 			wantErr: false,
 			expectExcludes: []string{
 				".dodot.toml",
-				"pack.dodot.toml",
 				".dodotignore",
 			},
 		},

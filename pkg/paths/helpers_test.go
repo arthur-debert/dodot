@@ -26,11 +26,6 @@ func TestGetDataSubdir(t *testing.T) {
 			expected: p.StateDir(),
 		},
 		{
-			name:     "backups directory",
-			subdir:   BackupsDir,
-			expected: p.BackupsDir(),
-		},
-		{
 			name:     "templates directory",
 			subdir:   TemplatesDir,
 			expected: p.TemplatesDir(),
