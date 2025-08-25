@@ -355,3 +355,77 @@ func TestStatusPacksRealFS(t *testing.T) {
 	assert.Len(t, result2.Packs, 1)
 	assert.Equal(t, "vim", result2.Packs[0].Name)
 }
+
+func TestStatusPacksAdditionalInfo(t *testing.T) {
+	// Test that AdditionalInfo field is properly populated for different handler types
+	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+	require.NoError(t, os.MkdirAll(homeDir, 0755))
+
+	// Create a pack with different file types
+	packDir := filepath.Join(tmpDir, "test-pack")
+	require.NoError(t, os.MkdirAll(packDir, 0755))
+
+	// Create files that trigger different handlers
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, ".vimrc"), []byte("vim config"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "install.sh"), []byte("#!/bin/sh\necho test"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "Brewfile"), []byte("brew \"git\""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "aliases.sh"), []byte("alias ll='ls -l'"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(packDir, "bin"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(packDir, "bin/mytool"), []byte("#!/bin/sh\necho tool"), 0755))
+
+	// Set HOME to our test directory
+	t.Setenv("HOME", homeDir)
+
+	testPaths, err := paths.New(tmpDir)
+	require.NoError(t, err)
+
+	result, err := StatusPacks(StatusPacksOptions{
+		DotfilesRoot: tmpDir,
+		PackNames:    []string{"test-pack"},
+		Paths:        testPaths,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, result.Packs, 1)
+
+	pack := result.Packs[0]
+	assert.Equal(t, "test-pack", pack.Name)
+
+	// Check that each file has appropriate AdditionalInfo
+	fileInfoMap := make(map[string]types.DisplayFile)
+	for _, file := range pack.Files {
+		fileInfoMap[file.Path] = file
+	}
+
+	// Test symlink handler - should show target path with ~ for home
+	vimrcFile, ok := fileInfoMap[".vimrc"]
+	assert.True(t, ok, ".vimrc should be in status")
+	assert.Equal(t, "symlink", vimrcFile.Handler)
+	assert.Equal(t, "~/.vimrc", vimrcFile.AdditionalInfo, "Symlink should show target path with ~ for home")
+
+	// Test provision handler - should show "run script"
+	installFile, ok := fileInfoMap["install.sh"]
+	assert.True(t, ok, "install.sh should be in status")
+	assert.Equal(t, "provision", installFile.Handler)
+	assert.Equal(t, "run script", installFile.AdditionalInfo, "Provision script should show 'run script'")
+
+	// Test homebrew handler - should show "brew install"
+	brewFile, ok := fileInfoMap["Brewfile"]
+	assert.True(t, ok, "Brewfile should be in status")
+	assert.Equal(t, "homebrew", brewFile.Handler)
+	assert.Equal(t, "brew install", brewFile.AdditionalInfo, "Brewfile should show 'brew install'")
+
+	// Test shell_profile handler - should show "shell source"
+	aliasesFile, ok := fileInfoMap["aliases.sh"]
+	assert.True(t, ok, "aliases.sh should be in status")
+	assert.Equal(t, "shell_profile", aliasesFile.Handler)
+	assert.Equal(t, "shell source", aliasesFile.AdditionalInfo, "Shell profile should show 'shell source'")
+
+	// Test path handler - should show "add to $PATH"
+	binDir, ok := fileInfoMap["bin"]
+	assert.True(t, ok, "bin directory should be in status")
+	assert.Equal(t, "path", binDir.Handler)
+	assert.Equal(t, "add to $PATH", binDir.AdditionalInfo, "Path handler should show 'add to $PATH'")
+}

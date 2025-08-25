@@ -2,6 +2,7 @@ package status
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -66,6 +67,26 @@ func getActionHandler(action types.Action) string {
 		return "homebrew"
 	default:
 		return "unknown"
+	}
+}
+
+// getActionAdditionalInfo extracts additional display information from an Action
+func getActionAdditionalInfo(action types.Action) string {
+	switch a := action.(type) {
+	case *types.LinkAction:
+		// For symlinks, show the target path formatted with ~ for home
+		homeDir := os.Getenv("HOME")
+		return types.FormatSymlinkForDisplay(a.TargetFile, homeDir, 46)
+	case *types.AddToPathAction:
+		return "add to $PATH"
+	case *types.AddToShellProfileAction:
+		return "shell source"
+	case *types.RunScriptAction:
+		return "run script"
+	case *types.BrewAction:
+		return "brew install"
+	default:
+		return ""
 	}
 }
 

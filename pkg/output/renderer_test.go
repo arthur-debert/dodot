@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -40,7 +39,6 @@ func TestRenderer_Render(t *testing.T) {
 				},
 			},
 			wantContent: []string{
-				"Command: status",
 				"git",
 				".gitconfig",
 				"deployed",
@@ -72,7 +70,6 @@ func TestRenderer_Render(t *testing.T) {
 			},
 			wantContent: []string{
 				"DRY RUN MODE",
-				"Command: link",
 				"vim",
 				".vimrc",
 				"queued",
@@ -170,23 +167,6 @@ func TestRenderer_Render(t *testing.T) {
 			},
 		},
 		{
-			name:    "renders timestamp",
-			noColor: true,
-			result: &types.DisplayResult{
-				Command:   "link",
-				Timestamp: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
-				Packs: []types.DisplayPack{
-					{
-						Name:   "test",
-						Status: "success",
-					},
-				},
-			},
-			wantContent: []string{
-				"Executed at: 2024-01-15 10:30:00",
-			},
-		},
-		{
 			name:    "renders empty packs message",
 			noColor: true,
 			result: &types.DisplayResult{
@@ -278,7 +258,6 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 	require.NoError(t, err)
 
 	output := buf.String()
-	assert.Contains(t, output, "Command: test")
 	assert.Contains(t, output, "test-pack")
 	assert.Contains(t, output, ".testfile")
 	assert.Contains(t, output, "deployed")
