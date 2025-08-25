@@ -48,6 +48,9 @@ type MatcherConfig struct {
 }
 
 // FilePermissions holds file and directory permission settings
+// TODO: Phase I - These permissions are currently used in config but hardcoded
+// throughout the codebase (executor, datastore, shell integration, tests, etc).
+// A future refactor should update all those locations to use these centralized values.
 type FilePermissions struct {
 	Directory  os.FileMode
 	File       os.FileMode
@@ -62,6 +65,10 @@ type ShellIntegration struct {
 }
 
 // Paths holds path-related configuration
+// TODO: Phase I - These path constants are duplicated in pkg/paths/paths.go
+// Due to import cycle constraints, we cannot directly use config from paths package.
+// A future refactor should resolve this duplication, possibly by moving path
+// constants to a separate package that both can import.
 type Paths struct {
 	DefaultDotfilesDir string
 	DodotDirName       string
