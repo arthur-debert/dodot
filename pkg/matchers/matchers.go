@@ -43,11 +43,11 @@ func DefaultMatchers() []types.Matcher {
 	for i, mc := range cfg.Matchers {
 		matchers[i] = types.Matcher{
 			Name:           mc.Name,
-			TriggerName:    mc.TriggerType,
-			HandlerName:    mc.HandlerType,
+			TriggerName:    mc.Trigger.Type,
+			HandlerName:    mc.Handler.Type,
 			Priority:       mc.Priority,
-			TriggerOptions: mc.TriggerData,
-			HandlerOptions: mc.HandlerData,
+			TriggerOptions: mc.Trigger.Data,
+			HandlerOptions: mc.Handler.Data,
 			Enabled:        true,
 		}
 	}

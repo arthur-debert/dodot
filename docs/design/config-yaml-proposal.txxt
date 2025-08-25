@@ -140,22 +140,24 @@ logging:
 # Matcher definitions
 matchers:
   - name: install-script
-    type: matcher
     priority: 90
-    triggerType: filename
-    triggerData:
-      pattern: install.sh
-    handlerType: provision
-    handlerData: {}
+    trigger:
+      type: filename
+      data:
+        pattern: install.sh
+    handler:
+      type: provision
+      data: {}
   
   - name: brewfile
-    type: matcher
     priority: 90
-    triggerType: filename
-    triggerData:
-      pattern: Brewfile
-    handlerType: homebrew
-    handlerData: {}
+    trigger:
+      type: filename
+      data:
+        pattern: Brewfile
+    handler:
+      type: homebrew
+      data: {}
   
   - name: shell-aliases
     type: matcher
@@ -261,15 +263,17 @@ Users can add their own matchers:
 matchers:
   - name: python-venv
     priority: 85              # Higher than shell-profile (80) but lower than bin-dir (90)
-    triggerType: directory    # Matches directories
-    triggerData:
-      pattern: venv          # Directory named 'venv'
-    handlerType: shell_profile
-    handlerData:
-      placement: environment # Add to environment section of shell profile
-      template: |           # Custom template for activation
-        # Activate Python virtual environment
-        [ -d "$PACK_DIR/venv" ] && source "$PACK_DIR/venv/bin/activate"
+    trigger:
+      type: directory        # Matches directories
+      data:
+        pattern: venv        # Directory named 'venv'
+    handler:
+      type: shell_profile
+      data:
+        placement: environment # Add to environment section of shell profile
+        template: |           # Custom template for activation
+          # Activate Python virtual environment
+          [ -d "$PACK_DIR/venv" ] && source "$PACK_DIR/venv/bin/activate"
 ```
 
 ### Repository-Specific Config

@@ -101,15 +101,15 @@ func TestDefault(t *testing.T) {
 				if matcher.Priority != 90 {
 					t.Errorf("expected install-script priority to be 90, got %d", matcher.Priority)
 				}
-				if matcher.TriggerType != "filename" {
-					t.Errorf("expected install-script trigger type to be filename, got %s", matcher.TriggerType)
+				if matcher.Trigger.Type != "filename" {
+					t.Errorf("expected install-script trigger type to be filename, got %s", matcher.Trigger.Type)
 				}
 			case "symlink-catchall":
 				if matcher.Priority != 0 {
 					t.Errorf("expected symlink-catchall priority to be 0, got %d", matcher.Priority)
 				}
-				if matcher.TriggerType != "catchall" {
-					t.Errorf("expected symlink-catchall trigger type to be catchall, got %s", matcher.TriggerType)
+				if matcher.Trigger.Type != "catchall" {
+					t.Errorf("expected symlink-catchall trigger type to be catchall, got %s", matcher.Trigger.Type)
 				}
 			}
 		}

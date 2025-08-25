@@ -125,91 +125,100 @@ logging:
 matchers:
   # Runs install.sh scripts when deploying a pack
   - name: install-script
-    type: matcher
     priority: 90
-    triggerType: filename
-    triggerData:
-      pattern: install.sh    # Matches files named install.sh
-    handlerType: provision   # Uses the provision handler
-    handlerData: {}
+    trigger:
+      type: filename
+      data:
+        pattern: install.sh    # Matches files named install.sh
+    handler:
+      type: provision   # Uses the provision handler
+      data: {}
   
   # Processes Brewfiles for Homebrew package installation
   - name: brewfile
-    type: matcher
     priority: 90
-    triggerType: filename
-    triggerData:
-      pattern: Brewfile      # Matches files named Brewfile
-    handlerType: homebrew    # Uses the homebrew handler
-    handlerData: {}
+    trigger:
+      type: filename
+      data:
+        pattern: Brewfile      # Matches files named Brewfile
+    handler:
+      type: homebrew    # Uses the homebrew handler
+      data: {}
   
   # Sources shell alias files into the user's shell
   - name: shell-aliases
-    type: matcher
     priority: 80
-    triggerType: filename
-    triggerData:
-      pattern: "*aliases.sh"     # Matches files ending in aliases.sh
-    handlerType: shell_profile   # Uses the shell_profile handler
-    handlerData:
-      placement: aliases         # Places in the aliases section
+    trigger:
+      type: filename
+      data:
+        pattern: "*aliases.sh"     # Matches files ending in aliases.sh
+    handler:
+      type: shell_profile   # Uses the shell_profile handler
+      data:
+        placement: aliases         # Places in the aliases section
   
   # Sources shell profile configuration
   - name: shell-profile
-    type: matcher
     priority: 80
-    triggerType: filename
-    triggerData:
-      pattern: profile.sh        # Matches files named profile.sh
-    handlerType: shell_profile   # Uses the shell_profile handler
-    handlerData:
-      placement: environment     # Places in the environment section
+    trigger:
+      type: filename
+      data:
+        pattern: profile.sh        # Matches files named profile.sh
+    handler:
+      type: shell_profile   # Uses the shell_profile handler
+      data:
+        placement: environment     # Places in the environment section
   
   # Links executable files from bin/ directories
   - name: bin-dir
-    type: matcher
     priority: 90
-    triggerType: directory
-    triggerData:
-      pattern: bin              # Matches directories named bin
-    handlerType: path           # Uses the path handler
-    handlerData: {}
+    trigger:
+      type: directory
+      data:
+        pattern: bin              # Matches directories named bin
+    handler:
+      type: path           # Uses the path handler
+      data: {}
   
   # Adds bin/ directories to the shell's PATH
   - name: bin-path
-    type: matcher
     priority: 80
-    triggerType: directory
-    triggerData:
-      pattern: bin              # Matches directories named bin
-    handlerType: shell_add_path # Adds directory to PATH
-    handlerData: {}
+    trigger:
+      type: directory
+      data:
+        pattern: bin              # Matches directories named bin
+    handler:
+      type: shell_add_path # Adds directory to PATH
+      data: {}
   
   # Links executable files from .local/bin/ directories
   - name: local-bin-dir
-    type: matcher
     priority: 90
-    triggerType: directory
-    triggerData:
-      pattern: .local/bin       # Matches directories named .local/bin
-    handlerType: path           # Uses the path handler
-    handlerData: {}
+    trigger:
+      type: directory
+      data:
+        pattern: .local/bin       # Matches directories named .local/bin
+    handler:
+      type: path           # Uses the path handler
+      data: {}
   
   # Adds .local/bin/ directories to the shell's PATH
   - name: local-bin-path
-    type: matcher
     priority: 80
-    triggerType: directory
-    triggerData:
-      pattern: .local/bin       # Matches directories named .local/bin
-    handlerType: shell_add_path # Adds directory to PATH
-    handlerData: {}
+    trigger:
+      type: directory
+      data:
+        pattern: .local/bin       # Matches directories named .local/bin
+    handler:
+      type: shell_add_path # Adds directory to PATH
+      data: {}
   
   # Default matcher that symlinks all unmatched files
   - name: symlink-catchall
-    type: matcher
     priority: 0                 # Lowest priority - runs last
-    triggerType: catchall       # Matches everything not caught above
-    triggerData: {}
-    handlerType: symlink        # Creates symlinks
-    handlerData: {}
+    trigger:
+      type: catchall       # Matches everything not caught above
+      data: {}
+    handler:
+      type: symlink        # Creates symlinks
+      data: {}

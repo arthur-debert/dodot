@@ -29,15 +29,24 @@ type Priorities struct {
 	Matchers map[string]int
 }
 
+// TriggerConfig represents trigger configuration within a matcher
+type TriggerConfig struct {
+	Type string                 `yaml:"type" json:"type"`
+	Data map[string]interface{} `yaml:"data" json:"data"`
+}
+
+// HandlerConfig represents handler configuration within a matcher
+type HandlerConfig struct {
+	Type string                 `yaml:"type" json:"type"`
+	Data map[string]interface{} `yaml:"data" json:"data"`
+}
+
 // MatcherConfig represents a matcher configuration
 type MatcherConfig struct {
-	Name        string
-	Type        string
-	Priority    int
-	TriggerType string
-	TriggerData map[string]interface{}
-	HandlerType string
-	HandlerData map[string]interface{}
+	Name     string        `yaml:"name" json:"name"`
+	Priority int           `yaml:"priority" json:"priority"`
+	Trigger  TriggerConfig `yaml:"trigger" json:"trigger"`
+	Handler  HandlerConfig `yaml:"handler" json:"handler"`
 }
 
 // FilePermissions holds file and directory permission settings
@@ -210,105 +219,132 @@ end`,
 func defaultMatchers() []MatcherConfig {
 	return []MatcherConfig{
 		{
-			Name:        "install-script",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "install.sh",
+			Name:     "install-script",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "install.sh",
+				},
 			},
-			HandlerType: "provision",
-			HandlerData: map[string]interface{}{},
-		},
-		{
-			Name:        "brewfile",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "Brewfile",
-			},
-			HandlerType: "homebrew",
-			HandlerData: map[string]interface{}{},
-		},
-		{
-			Name:        "shell-aliases",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "*aliases.sh",
-			},
-			HandlerType: "shell_profile",
-			HandlerData: map[string]interface{}{
-				"placement": "aliases",
+			Handler: HandlerConfig{
+				Type: "provision",
+				Data: map[string]interface{}{},
 			},
 		},
 		{
-			Name:        "shell-profile",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "filename",
-			TriggerData: map[string]interface{}{
-				"pattern": "profile.sh",
+			Name:     "brewfile",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "Brewfile",
+				},
 			},
-			HandlerType: "shell_profile",
-			HandlerData: map[string]interface{}{
-				"placement": "environment",
+			Handler: HandlerConfig{
+				Type: "homebrew",
+				Data: map[string]interface{}{},
 			},
 		},
 		{
-			Name:        "bin-dir",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": "bin",
+			Name:     "shell-aliases",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "*aliases.sh",
+				},
 			},
-			HandlerType: "path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "shell_profile",
+				Data: map[string]interface{}{
+					"placement": "aliases",
+				},
+			},
 		},
 		{
-			Name:        "bin-path",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": "bin",
+			Name:     "shell-profile",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": "profile.sh",
+				},
 			},
-			HandlerType: "shell_add_path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "shell_profile",
+				Data: map[string]interface{}{
+					"placement": "environment",
+				},
+			},
 		},
 		{
-			Name:        "local-bin-dir",
-			Type:        "matcher",
-			Priority:    90,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": ".local/bin",
+			Name:     "bin-dir",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": "bin",
+				},
 			},
-			HandlerType: "path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "path",
+				Data: map[string]interface{}{},
+			},
 		},
 		{
-			Name:        "local-bin-path",
-			Type:        "matcher",
-			Priority:    80,
-			TriggerType: "directory",
-			TriggerData: map[string]interface{}{
-				"pattern": ".local/bin",
+			Name:     "bin-path",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": "bin",
+				},
 			},
-			HandlerType: "shell_add_path",
-			HandlerData: map[string]interface{}{},
+			Handler: HandlerConfig{
+				Type: "shell_add_path",
+				Data: map[string]interface{}{},
+			},
 		},
 		{
-			Name:        "symlink-catchall",
-			Type:        "matcher",
-			Priority:    0,
-			TriggerType: "catchall",
-			TriggerData: map[string]interface{}{},
-			HandlerType: "symlink",
-			HandlerData: map[string]interface{}{},
+			Name:     "local-bin-dir",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": ".local/bin",
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "path",
+				Data: map[string]interface{}{},
+			},
+		},
+		{
+			Name:     "local-bin-path",
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": ".local/bin",
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "shell_add_path",
+				Data: map[string]interface{}{},
+			},
+		},
+		{
+			Name:     "symlink-catchall",
+			Priority: 0,
+			Trigger: TriggerConfig{
+				Type: "catchall",
+				Data: map[string]interface{}{},
+			},
+			Handler: HandlerConfig{
+				Type: "symlink",
+				Data: map[string]interface{}{},
+			},
 		},
 	}
 }
