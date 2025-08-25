@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -14,22 +15,6 @@ import (
 
 // HomebrewHandlerName is the name of the homebrew handler
 const HomebrewHandlerName = "homebrew"
-
-// homebrewTemplate is the template content for Brewfile
-const homebrewTemplate = `# Homebrew dependencies for PACK_NAME pack
-# 
-# This file is processed by 'dodot install PACK_NAME' to install
-# packages using Homebrew. Each package is installed once during
-# initial deployment. The deployment is tracked by checksum, so
-# modifying this file will trigger a re-run.
-#
-# Safe to keep empty or remove. By keeping it, you can add
-# homebrew packages later without redeploying the pack.
-
-# Examples:
-# brew "git"
-# brew "vim"
-# cask "visual-studio-code"`
 
 // HomebrewHandler processes Brewfiles to install packages via Homebrew
 type HomebrewHandler struct{}
@@ -121,7 +106,7 @@ func (h *HomebrewHandler) ValidateOptions(options map[string]interface{}) error 
 
 // GetTemplateContent returns the template content for this handler
 func (h *HomebrewHandler) GetTemplateContent() string {
-	return homebrewTemplate
+	return config.GetHandlerTemplates().Brewfile
 }
 
 // Clear prepares for homebrew uninstallation (reads state, optionally uninstalls)
