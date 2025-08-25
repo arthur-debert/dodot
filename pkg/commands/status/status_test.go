@@ -399,11 +399,11 @@ func TestStatusPacksAdditionalInfo(t *testing.T) {
 		fileInfoMap[file.Path] = file
 	}
 
-	// Test symlink handler - should show target path
+	// Test symlink handler - should show target path with ~ for home
 	vimrcFile, ok := fileInfoMap[".vimrc"]
 	assert.True(t, ok, ".vimrc should be in status")
 	assert.Equal(t, "symlink", vimrcFile.Handler)
-	assert.Equal(t, filepath.Join(homeDir, ".vimrc"), vimrcFile.AdditionalInfo, "Symlink should show target path")
+	assert.Equal(t, "~/.vimrc", vimrcFile.AdditionalInfo, "Symlink should show target path with ~ for home")
 
 	// Test provision handler - should show "run script"
 	installFile, ok := fileInfoMap["install.sh"]

@@ -2,6 +2,7 @@ package status
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -73,8 +74,9 @@ func getActionHandler(action types.Action) string {
 func getActionAdditionalInfo(action types.Action) string {
 	switch a := action.(type) {
 	case *types.LinkAction:
-		// For symlinks, show the target path
-		return a.TargetFile
+		// For symlinks, show the target path formatted with ~ for home
+		homeDir := os.Getenv("HOME")
+		return types.FormatSymlinkForDisplay(a.TargetFile, homeDir, 46)
 	case *types.AddToPathAction:
 		return "add to $PATH"
 	case *types.AddToShellProfileAction:
