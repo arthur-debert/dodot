@@ -16,9 +16,6 @@ security:
     - .aws/credentials     # AWS access keys
     - .kube/config         # Kubernetes cluster credentials
     - .docker/config.json  # Docker registry authentication
-  
-  # Whether to automatically remove broken symlinks during deploy
-  cleanupDanglingLinks: true
 
 # Patterns control which files dodot processes and which it ignores
 patterns:
