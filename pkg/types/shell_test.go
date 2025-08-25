@@ -112,8 +112,10 @@ func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 
 func TestGetShellIntegrationSnippet_Constants(t *testing.T) {
 	// Test that the expected values are returned
-	bashExpected := bashZshSnippet
-	fishExpected := fishSnippet
+	bashExpected := `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`
+	fishExpected := `if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+    source "$HOME/.local/share/dodot/shell/dodot-init.fish"
+end`
 
 	if bashExpected != GetShellIntegrationSnippet("bash", "") {
 		t.Errorf("expected %q, got %q", bashExpected, GetShellIntegrationSnippet("bash", ""))

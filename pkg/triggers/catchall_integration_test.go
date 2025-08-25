@@ -42,7 +42,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	pack := types.Pack{
 		Name:   "test-pack",
 		Path:   packDir,
-		Config: types.PackConfig{}, // Empty config, will use defaults
+		Config: config.PackConfig{}, // Empty config, will use defaults
 	}
 
 	// Process triggers

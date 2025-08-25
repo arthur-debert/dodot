@@ -2,14 +2,16 @@ package types
 
 import (
 	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/config"
 )
 
 func TestPackStructure(t *testing.T) {
 	pack := Pack{
 		Name: "test-pack",
 		Path: "/path/to/pack",
-		Config: PackConfig{
-			Ignore: []IgnoreRule{
+		Config: config.PackConfig{
+			Ignore: []config.IgnoreRule{
 				{Path: "*.bak"},
 			},
 		},

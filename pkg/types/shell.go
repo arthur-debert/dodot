@@ -2,20 +2,15 @@ package types
 
 import (
 	"fmt"
-)
 
-// TODO: These should be moved to config once we resolve the import cycle
-const (
-	bashZshSnippet           = `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`
-	bashZshSnippetWithCustom = `[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"`
-	fishSnippet              = `if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
-    source "$HOME/.local/share/dodot/shell/dodot-init.fish"
-end`
+	"github.com/arthur-debert/dodot/pkg/config"
 )
 
 // GetShellIntegrationSnippet returns the appropriate shell integration snippet
 // If dataDir is provided, it uses that path; otherwise it uses the default snippet
 func GetShellIntegrationSnippet(shell string, dataDir string) string {
+	shellIntegration := config.GetShellIntegration()
+
 	switch shell {
 	case "fish":
 		if dataDir != "" {
@@ -23,12 +18,12 @@ func GetShellIntegrationSnippet(shell string, dataDir string) string {
     source "%s/shell/dodot-init.fish"
 end`, dataDir, dataDir)
 		}
-		return fishSnippet
+		return shellIntegration.FishSnippet
 	default:
 		// bash/zsh
 		if dataDir != "" {
-			return fmt.Sprintf(bashZshSnippetWithCustom, dataDir, dataDir)
+			return fmt.Sprintf(shellIntegration.BashZshSnippetWithCustom, dataDir, dataDir)
 		}
-		return bashZshSnippet
+		return shellIntegration.BashZshSnippet
 	}
 }

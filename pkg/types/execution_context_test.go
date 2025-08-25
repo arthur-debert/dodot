@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -589,8 +590,8 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 	vimPack := &Pack{
 		Name: "vim",
 		Path: "/home/user/.dotfiles/vim",
-		Config: PackConfig{
-			Override: []OverrideRule{
+		Config: config.PackConfig{
+			Override: []config.OverrideRule{
 				{Path: ".vimrc", Handler: "symlink"},
 			},
 		},
@@ -753,8 +754,8 @@ func TestPackExecutionResult_EdgeCases(t *testing.T) {
 
 func TestHandlerResult_FindOverride(t *testing.T) {
 	// Test FindOverride method on PackConfig
-	pc := PackConfig{
-		Override: []OverrideRule{
+	pc := config.PackConfig{
+		Override: []config.OverrideRule{
 			{Path: ".vimrc", Handler: "symlink"},
 			{Path: "*.sh", Handler: "provision"},
 		},
@@ -763,17 +764,17 @@ func TestHandlerResult_FindOverride(t *testing.T) {
 	tests := []struct {
 		name     string
 		filename string
-		wantRule *OverrideRule
+		wantRule *config.OverrideRule
 	}{
 		{
 			name:     "exact match",
 			filename: ".vimrc",
-			wantRule: &OverrideRule{Path: ".vimrc", Handler: "symlink"},
+			wantRule: &config.OverrideRule{Path: ".vimrc", Handler: "symlink"},
 		},
 		{
 			name:     "pattern match",
 			filename: "install.sh",
-			wantRule: &OverrideRule{Path: "*.sh", Handler: "provision"},
+			wantRule: &config.OverrideRule{Path: "*.sh", Handler: "provision"},
 		},
 		{
 			name:     "no match",

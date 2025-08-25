@@ -6,15 +6,13 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 func TestLoadPackConfig(t *testing.T) {
 	tests := []struct {
 		name        string
 		content     string
-		expected    types.PackConfig
+		expected    PackConfig
 		expectError bool
 		errorMsg    string
 	}{
@@ -35,12 +33,12 @@ func TestLoadPackConfig(t *testing.T) {
   path = "my-exports.sh"
   handler = "shell_profile"
 `,
-			expected: types.PackConfig{
-				Ignore: []types.IgnoreRule{
+			expected: PackConfig{
+				Ignore: []IgnoreRule{
 					{Path: "README.md"},
 					{Path: "*.bak"},
 				},
-				Override: []types.OverrideRule{
+				Override: []OverrideRule{
 					{
 						Path:    "htoprc",
 						Handler: "symlink",
@@ -56,7 +54,7 @@ func TestLoadPackConfig(t *testing.T) {
 		{
 			name:    "empty_config",
 			content: ``,
-			expected: types.PackConfig{
+			expected: PackConfig{
 				Ignore:   nil,
 				Override: nil,
 			},
@@ -67,8 +65,8 @@ func TestLoadPackConfig(t *testing.T) {
 [[ignore]]
   path = "file.txt"
 `,
-			expected: types.PackConfig{
-				Ignore:   []types.IgnoreRule{{Path: "file.txt"}},
+			expected: PackConfig{
+				Ignore:   []IgnoreRule{{Path: "file.txt"}},
 				Override: nil,
 			},
 		},
@@ -79,9 +77,9 @@ func TestLoadPackConfig(t *testing.T) {
   path = "bashrc"
   handler = "symlink"
 `,
-			expected: types.PackConfig{
+			expected: PackConfig{
 				Ignore:   nil,
-				Override: []types.OverrideRule{{Path: "bashrc", Handler: "symlink"}},
+				Override: []OverrideRule{{Path: "bashrc", Handler: "symlink"}},
 			},
 		},
 		{

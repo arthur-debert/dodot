@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -260,8 +261,8 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 	pack := &types.Pack{
 		Name: "test-pack",
 		Path: packDir,
-		Config: types.PackConfig{
-			Override: []types.OverrideRule{
+		Config: config.PackConfig{
+			Override: []config.OverrideRule{
 				{
 					Path:    "vimrc",
 					Handler: "symlink",

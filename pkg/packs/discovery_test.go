@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -192,7 +193,7 @@ func TestLoadPackConfigFS(t *testing.T) {
 		configPath  string
 		fileContent string
 		setupFS     func(types.FS)
-		wantConfig  types.PackConfig
+		wantConfig  config.PackConfig
 		wantErr     bool
 		errContains string
 	}{
@@ -204,8 +205,8 @@ path = "*.tmp"
 
 [[ignore]]
 path = ".cache"`,
-			wantConfig: types.PackConfig{
-				Ignore: []types.IgnoreRule{
+			wantConfig: config.PackConfig{
+				Ignore: []config.IgnoreRule{
 					{Path: "*.tmp"},
 					{Path: ".cache"},
 				},
@@ -221,8 +222,8 @@ handler = "provision"
 
 [override.with]
 priority = "high"`,
-			wantConfig: types.PackConfig{
-				Override: []types.OverrideRule{
+			wantConfig: config.PackConfig{
+				Override: []config.OverrideRule{
 					{
 						Path:    "special.sh",
 						Handler: "provision",
@@ -238,7 +239,7 @@ priority = "high"`,
 			name:        "empty config file",
 			configPath:  "test/pack/.dodot.toml",
 			fileContent: " ",
-			wantConfig:  types.PackConfig{},
+			wantConfig:  config.PackConfig{},
 			wantErr:     false,
 		},
 		{
@@ -250,11 +251,11 @@ path = "*.log"
 [[override]]
 path = "install.sh"
 handler = "shell_profile"`,
-			wantConfig: types.PackConfig{
-				Ignore: []types.IgnoreRule{
+			wantConfig: config.PackConfig{
+				Ignore: []config.IgnoreRule{
 					{Path: "*.log"},
 				},
-				Override: []types.OverrideRule{
+				Override: []config.OverrideRule{
 					{
 						Path:    "install.sh",
 						Handler: "shell_profile",
@@ -283,7 +284,7 @@ handler = "shell_profile"`,
 			name:        "invalid field in TOML",
 			configPath:  "test/pack/.dodot.toml",
 			fileContent: `unknown_field = "value"`,
-			wantConfig:  types.PackConfig{},
+			wantConfig:  config.PackConfig{},
 			wantErr:     false, // TOML will ignore unknown fields
 		},
 	}
