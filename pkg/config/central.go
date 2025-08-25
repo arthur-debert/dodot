@@ -2,8 +2,6 @@ package config
 
 import (
 	"os"
-
-	"github.com/arthur-debert/dodot/pkg/constants"
 )
 
 // Security holds security-related configuration
@@ -207,7 +205,18 @@ end`,
 			// Reserved for future user-configurable paths
 		},
 		LinkPaths: LinkPaths{
-			CoreUnixExceptions: constants.CoreUnixExceptions,
+			// These files/dirs always deploy to $HOME for security or compatibility reasons
+			CoreUnixExceptions: map[string]bool{
+				"ssh":       true, // .ssh/ - security critical, expects $HOME
+				"gnupg":     true, // .gnupg/ - security critical, expects $HOME
+				"aws":       true, // .aws/ - credentials, expects $HOME
+				"kube":      true, // .kube/ - kubernetes config
+				"docker":    true, // .docker/ - docker config
+				"gitconfig": true, // .gitconfig - git expects in $HOME
+				"bashrc":    true, // .bashrc - shell expects in $HOME
+				"zshrc":     true, // .zshrc - shell expects in $HOME
+				"profile":   true, // .profile - shell expects in $HOME
+			},
 		},
 		HandlerTemplates: HandlerTemplates{
 			ShellAliases: `#!/usr/bin/env sh
