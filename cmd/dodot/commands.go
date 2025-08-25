@@ -10,6 +10,8 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
+	"github.com/arthur-debert/dodot/pkg/commands/off"
+	"github.com/arthur-debert/dodot/pkg/commands/on"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/output"
@@ -61,6 +63,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:      true,
 		SilenceErrors:     true,
 		DisableAutoGenTag: true,
+		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}, // Remove completion command
 	}
 
 	// Global flags
@@ -92,6 +95,8 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newUnlinkCmd())
 	rootCmd.AddCommand(newDeprovisionCmd())
+	rootCmd.AddCommand(newOnCmd())
+	rootCmd.AddCommand(newOffCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
@@ -881,6 +886,199 @@ func newDeprovisionCmd() *cobra.Command {
 					}
 				}
 				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
+			}
+
+			if len(result.Errors) > 0 {
+				fmt.Println("\nErrors encountered:")
+				for _, err := range result.Errors {
+					fmt.Printf("  - %v\n", err)
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func newOffCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "off [packs...]",
+		Short: "Temporarily disable packs",
+		Long:  "The off command temporarily disables packs by removing their deployments while saving the current state. This allows you to later restore them exactly as they were using the 'on' command.",
+		Example: `  # Turn off all packs
+  dodot off
+  
+  # Turn off specific packs
+  dodot off vim zsh
+  
+  # Preview what would be turned off
+  dodot off --dry-run vim`,
+		GroupID:           "core",
+		ValidArgsFunction: packNamesCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Get dry-run flag value (it's a persistent flag)
+			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Bool("dry_run", dryRun).
+				Strs("packs", args).
+				Msg("Turning off packs")
+
+			// Turn off packs using the off command
+			result, err := off.OffPacks(off.OffPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				DryRun:       dryRun,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "off")
+				}
+				return fmt.Errorf("failed to turn off packs: %w", err)
+			}
+
+			// Display results
+			if result.DryRun {
+				fmt.Println("DRY RUN - No changes made")
+			}
+
+			if result.TotalCleared == 0 {
+				fmt.Println("No deployments found to turn off")
+			} else {
+				for _, pack := range result.Packs {
+					fmt.Printf("\nPack: %s\n", pack.Name)
+					if pack.Error != nil {
+						fmt.Printf("  ✗ Error: %v\n", pack.Error)
+						continue
+					}
+
+					if pack.StateStored {
+						fmt.Printf("  ✓ State saved for restoration\n")
+					}
+
+					for _, handler := range pack.HandlersRun {
+						if handler.Error != nil {
+							fmt.Printf("  ✗ %s: %v\n", handler.HandlerName, handler.Error)
+						} else if len(handler.ClearedItems) > 0 {
+							fmt.Printf("  ✓ %s:\n", handler.HandlerName)
+							for _, item := range handler.ClearedItems {
+								fmt.Printf("    - %s\n", item.Description)
+							}
+						}
+					}
+				}
+				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
+			}
+
+			if len(result.Errors) > 0 {
+				fmt.Println("\nErrors encountered:")
+				for _, err := range result.Errors {
+					fmt.Printf("  - %v\n", err)
+				}
+			}
+
+			return nil
+		},
+	}
+}
+
+func newOnCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "on [packs...]",
+		Short: "Re-enable previously disabled packs",
+		Long:  "The on command re-enables packs that were previously disabled with 'off'. It restores the saved state if available, or redeploys the pack from scratch if no saved state exists or --force is used.",
+		Example: `  # Turn on all disabled packs
+  dodot on
+  
+  # Turn on specific packs
+  dodot on vim zsh
+  
+  # Force redeploy from scratch
+  dodot on --force vim`,
+		GroupID:           "core",
+		ValidArgsFunction: packNamesCompletion,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths (will show warning if using fallback)
+			p, err := initPaths()
+			if err != nil {
+				return err
+			}
+
+			// Get flags
+			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
+			force, _ := cmd.Root().PersistentFlags().GetBool("force")
+
+			log.Info().
+				Str("dotfiles_root", p.DotfilesRoot()).
+				Bool("dry_run", dryRun).
+				Bool("force", force).
+				Strs("packs", args).
+				Msg("Turning on packs")
+
+			// Turn on packs using the on command
+			result, err := on.OnPacks(on.OnPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				DryRun:       dryRun,
+				Force:        force,
+			})
+			if err != nil {
+				// Check if this is a pack not found error and provide detailed help
+				var dodotErr *doerrors.DodotError
+				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
+					return handlePackNotFoundError(dodotErr, p, "on")
+				}
+				return fmt.Errorf("failed to turn on packs: %w", err)
+			}
+
+			// Display results
+			if result.DryRun {
+				fmt.Println("DRY RUN - No changes made")
+			}
+
+			if result.TotalRestored == 0 && result.TotalDeployed == 0 {
+				fmt.Println("No packs to turn on")
+			} else {
+				for _, pack := range result.Packs {
+					fmt.Printf("\nPack: %s\n", pack.Name)
+					if pack.Error != nil {
+						fmt.Printf("  ✗ Error: %v\n", pack.Error)
+						continue
+					}
+
+					if !pack.WasOff {
+						fmt.Printf("  ℹ Pack was not turned off\n")
+					} else if pack.StateRestored {
+						fmt.Printf("  ✓ State restored from saved state\n")
+					} else if pack.Redeployed {
+						fmt.Printf("  ✓ Redeployed from scratch\n")
+					}
+
+					// Show deployment results if pack was redeployed
+					if pack.ExecutionCtx != nil && pack.Redeployed {
+						// Use the output renderer for deployment results
+						renderer, err := output.NewRenderer(os.Stdout, false)
+						if err == nil {
+							_ = renderer.RenderExecutionContext(pack.ExecutionCtx)
+						}
+					}
+				}
+
+				if result.TotalRestored > 0 {
+					fmt.Printf("\nTotal packs restored: %d\n", result.TotalRestored)
+				}
+				if result.TotalDeployed > 0 {
+					fmt.Printf("Total packs redeployed: %d\n", result.TotalDeployed)
+				}
 			}
 
 			if len(result.Errors) > 0 {
