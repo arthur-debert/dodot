@@ -84,42 +84,6 @@ linkPaths:
     - profile    # .profile file - Shell expects it in $HOME
 
 
-# Templates used by handlers when creating new files
-handlerTemplates:
-  # Template for shell alias files created by 'dodot fill'
-  shellAliases: |
-    #!/usr/bin/env sh
-    # Shell aliases for PACK_NAME pack
-    #
-    # This file is sourced to add shell aliases during 'dodot deploy PACK_NAME'
-    # 
-    # Use standard shell alias syntax (compatible with bash/zsh/fish/etc)
-    # dodot handles shell compatibility automatically
-    #
-    # Safe to keep empty or remove. By keeping it, you can add
-    # aliases later without redeploying the pack.
-    
-    # Add aliases below
-    # Examples:
-    # alias ll='ls -la'
-    # alias grep='grep --color=auto'
-  
-  # Template for Brewfile created by 'dodot fill'
-  brewfile: |
-    # Homebrew dependencies for PACK_NAME pack
-    # 
-    # This file is processed by 'dodot install PACK_NAME' to install
-    # packages using Homebrew. Each package is installed once during
-    # initial deployment. The deployment is tracked by checksum, so
-    # modifying this file will trigger a re-run.
-    #
-    # Safe to keep empty or remove. By keeping it, you can add
-    # homebrew packages later without redeploying the pack.
-    
-    # Examples:
-    # brew "git"
-    # brew "vim"
-    # cask "visual-studio-code"
 
 # Shell integration snippets added to user's shell configuration
 shellIntegration:
