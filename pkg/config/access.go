@@ -68,3 +68,8 @@ func GetLinkPaths() LinkPaths {
 func GetMatchers() []MatcherConfig {
 	return Get().Matchers
 }
+
+// GetLogging returns logging configuration
+func GetLogging() LoggingConfig {
+	return Get().Logging
+}

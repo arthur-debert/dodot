@@ -98,6 +98,20 @@ type HandlerDefaults struct {
 	PathTargetDir string
 }
 
+// LoggingConfig holds logging-related configuration
+type LoggingConfig struct {
+	// VerbosityLevels maps verbosity flags to log levels
+	VerbosityLevels map[int]string
+	// DefaultLevel is the default log level
+	DefaultLevel string
+	// TimeFormat is the time format for console output
+	TimeFormat string
+	// EnableColor enables color output in console
+	EnableColor bool
+	// EnableCaller enables caller information for debug and trace levels
+	EnableCallerAtVerbosity int
+}
+
 // Config is the main configuration structure
 type Config struct {
 	Security         Security
@@ -110,6 +124,7 @@ type Config struct {
 	LinkPaths        LinkPaths
 	HandlerTemplates HandlerTemplates
 	HandlerDefaults  HandlerDefaults
+	Logging          LoggingConfig
 }
 
 // Default returns the default configuration
@@ -240,6 +255,18 @@ end`,
 		},
 		HandlerDefaults: HandlerDefaults{
 			PathTargetDir: "~/bin",
+		},
+		Logging: LoggingConfig{
+			VerbosityLevels: map[int]string{
+				0: "warn",
+				1: "info",
+				2: "debug",
+				3: "trace",
+			},
+			DefaultLevel:            "warn",
+			TimeFormat:              "15:04",
+			EnableColor:             true,
+			EnableCallerAtVerbosity: 2,
 		},
 	}
 }
