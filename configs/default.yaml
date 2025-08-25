@@ -83,10 +83,6 @@ linkPaths:
     - zshrc      # .zshrc file - Zsh expects it in $HOME
     - profile    # .profile file - Shell expects it in $HOME
 
-# Default configuration values for handlers
-handlerDefaults:
-  # Default directory where the path handler links executables
-  pathTargetDir: "~/bin"
 
 # Templates used by handlers when creating new files
 handlerTemplates:

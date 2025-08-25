@@ -3,7 +3,6 @@ package path
 import (
 	"fmt"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -13,14 +12,11 @@ const PathHandlerName = "path"
 
 // PathHandler handles directories by adding them to PATH
 type PathHandler struct {
-	targetDir string
 }
 
 // NewPathHandler creates a new PathHandler
 func NewPathHandler() *PathHandler {
-	return &PathHandler{
-		targetDir: config.GetHandlerDefaults().PathTargetDir,
-	}
+	return &PathHandler{}
 }
 
 // Name returns the unique name of this handler

@@ -84,12 +84,6 @@ type HandlerTemplates struct {
 	Brewfile string
 }
 
-// HandlerDefaults holds default configuration values for handlers
-type HandlerDefaults struct {
-	// PathTargetDir is the default target directory for the path handler
-	PathTargetDir string
-}
-
 // LoggingConfig holds logging-related configuration
 type LoggingConfig struct {
 	// VerbosityLevels maps verbosity flags to log levels
@@ -115,7 +109,6 @@ type Config struct {
 	Paths            Paths
 	LinkPaths        LinkPaths
 	HandlerTemplates HandlerTemplates
-	HandlerDefaults  HandlerDefaults
 	Logging          LoggingConfig
 }
 
@@ -239,9 +232,6 @@ end`,
 # brew "git"
 # brew "vim"
 # cask "visual-studio-code"`,
-		},
-		HandlerDefaults: HandlerDefaults{
-			PathTargetDir: "~/bin",
 		},
 		Logging: LoggingConfig{
 			VerbosityLevels: map[int]string{

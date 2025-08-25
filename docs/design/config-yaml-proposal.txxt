@@ -103,10 +103,6 @@ linkPaths:
     - zshrc      # .zshrc - shell expects in $HOME
     - profile    # .profile - shell expects in $HOME
 
-# Handler-specific defaults
-handlerDefaults:
-  # Default target directory for path handler
-  pathTargetDir: "~/bin"
 
 # Handler templates (multiline strings)
 handlerTemplates:

@@ -24,11 +24,6 @@ func GetHandlerTemplates() HandlerTemplates {
 	return Get().HandlerTemplates
 }
 
-// GetHandlerDefaults returns handler default configuration
-func GetHandlerDefaults() HandlerDefaults {
-	return Get().HandlerDefaults
-}
-
 // GetPaths returns path configuration
 func GetPaths() Paths {
 	return Get().Paths
