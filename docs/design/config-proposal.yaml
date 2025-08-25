@@ -1,0 +1,181 @@
+# dodot configuration file
+# This file customizes dodot's behavior
+
+# Security settings control how dodot handles sensitive files
+security:
+  # Files/paths that should never be symlinked for security reasons
+  protectedPaths:
+    - .ssh/authorized_keys
+    - .ssh/id_rsa
+    - .ssh/id_ed25519
+    - .gnupg
+    - .password-store
+    - .config/gh/hosts.yml
+    - .aws/credentials
+    - .kube/config
+    - .docker/config.json
+  
+
+# Patterns control what files dodot processes
+patterns:
+  # Files/directories to ignore when scanning packs
+  packIgnore:
+    - .git
+    - .svn
+    - .hg
+    - node_modules
+    - .DS_Store
+    - "*.swp"
+    - "*~"
+    - "#*#"
+  
+  # Files excluded from catchall handler
+  # NOTE: This is automatically derived from specialFiles to avoid redundancy
+  # catchallExclude: (derived from specialFiles)
+  
+  # Special file names dodot looks for
+  specialFiles:
+    packConfig: .dodot.toml
+    ignoreFile: .dodotignore
+
+# Priorities determine processing order (higher = processed first)
+priorities:
+  triggers:
+    filename: 100
+    catchall: 0
+  
+  handlers:
+    symlink: 100
+    path: 90
+    template: 70
+  
+  matchers:
+    install-script: 90
+    brewfile: 90
+    bin-dir: 90
+    local-bin-dir: 90
+    shell-aliases: 80
+    shell-profile: 80
+    template: 70
+    symlink-catchall: 0
+
+# Link path configuration
+linkPaths:
+  # Files/directories that always deploy to $HOME (not XDG)
+  coreUnixExceptions:
+    - ssh        # .ssh/ - security critical
+    - gnupg      # .gnupg/ - security critical
+    - aws        # .aws/ - credentials
+    - kube       # .kube/ - kubernetes config
+    - docker     # .docker/ - docker config
+    - gitconfig  # .gitconfig - git expects in $HOME
+    - bashrc     # .bashrc - shell expects in $HOME
+    - zshrc      # .zshrc - shell expects in $HOME
+    - profile    # .profile - shell expects in $HOME
+
+
+
+# Shell integration snippets
+shellIntegration:
+  # Bash/Zsh integration
+  bashZshSnippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
+  
+  # Fish shell integration
+  fishSnippet: |
+    if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+        source "$HOME/.local/share/dodot/shell/dodot-init.fish"
+    end
+
+# Logging configuration
+logging:
+  # Default log level
+  defaultLevel: warn
+  
+  # Verbosity flag mappings
+  verbosityLevels:
+    0: warn
+    1: info
+    2: debug
+    3: trace
+  
+  # Time format for console output
+  timeFormat: "15:04"
+  
+  # Enable colored output
+  enableColor: true
+  
+  # Show caller info at this verbosity level and above
+  enableCallerAtVerbosity: 2
+
+# Matcher definitions
+matchers:
+  - name: install-script
+    priority: 90
+    trigger:
+      type: filename
+      data:
+        pattern: install.sh
+    handler:
+      type: provision
+      data: {}
+  
+  - name: brewfile
+    priority: 90
+    trigger:
+      type: filename
+      data:
+        pattern: Brewfile
+    handler:
+      type: homebrew
+      data: {}
+  
+  - name: shell-aliases
+    priority: 80
+    trigger:
+      type: filename
+      data:
+        pattern: "*aliases.sh"
+    handler:
+      type: shell_profile
+      data:
+        placement: aliases
+  
+  - name: shell-profile
+    priority: 80
+    trigger:
+      type: filename
+      data:
+        pattern: profile.sh
+    handler:
+      type: shell_profile
+      data:
+        placement: environment
+  
+  - name: bin-dir
+    priority: 90
+    trigger:
+      type: directory
+      data:
+        pattern: bin              # Matches directories named bin
+    handler:
+      type: path                 # Adds directory to PATH
+      data: {}
+  
+  - name: local-bin-dir
+    priority: 90
+    trigger:
+      type: directory
+      data:
+        pattern: .local/bin       # Matches directories named .local/bin
+    handler:
+      type: path                 # Adds directory to PATH
+      data: {}
+  
+  - name: symlink-catchall
+    priority: 0
+    trigger:
+      type: catchall
+      data: {}
+    handler:
+      type: symlink
+      data: {}

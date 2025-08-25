@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
@@ -107,6 +108,9 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 
 	logger.Debug().Msg("Processing pack triggers (flat scan)")
 
+	// Get config once at the beginning
+	cfg := config.Default()
+
 	// Get matchers from pack config, merging with defaults
 	packMatchers := getPackMatchers(pack)
 	if len(packMatchers) == 0 {
@@ -168,8 +172,8 @@ func ProcessPackTriggers(pack types.Pack) ([]types.TriggerMatch, error) {
 	for _, entry := range entries {
 		name := entry.Name()
 
-		// Skip .dodot.toml files
-		if name == ".dodot.toml" {
+		// Skip special files (derived from config)
+		if name == cfg.Patterns.SpecialFiles.PackConfig {
 			continue
 		}
 
@@ -269,6 +273,9 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 
 	logger.Debug().Msg("Processing pack triggers with FS (flat scan)")
 
+	// Get config once at the beginning
+	cfg := config.Default()
+
 	// Get matchers from pack config, merging with defaults
 	packMatchers := getPackMatchers(pack)
 	if len(packMatchers) == 0 {
@@ -331,8 +338,8 @@ func ProcessPackTriggersFS(pack types.Pack, filesystem types.FS) ([]types.Trigge
 	for _, entry := range entries {
 		name := entry.Name()
 
-		// Skip .dodot.toml files
-		if name == ".dodot.toml" {
+		// Skip special files (derived from config)
+		if name == cfg.Patterns.SpecialFiles.PackConfig {
 			continue
 		}
 

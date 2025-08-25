@@ -19,8 +19,8 @@ func TestHomebrewHandler_GetTemplateContent(t *testing.T) {
 	assert.Contains(t, content, "Homebrew dependencies")
 	assert.Contains(t, content, "PACK_NAME")
 	assert.Contains(t, content, "dodot install")
-	assert.Contains(t, content, "brew \"")
-	assert.Contains(t, content, "cask \"")
+	assert.Contains(t, content, "brew '")
+	assert.Contains(t, content, "cask '")
 
 	// Should be valid Ruby syntax (basic check)
 	assert.Contains(t, content, "#") // Comments

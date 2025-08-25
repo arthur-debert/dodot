@@ -3,13 +3,15 @@ package shell_profile
 import (
 	_ "embed"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // ShellProfileHandlerName is the name of the shell profile handler
 const ShellProfileHandlerName = "shell_profile"
+
+//go:embed aliases-template.txt
+var aliasesTemplate string
 
 // ShellProfileHandler manages shell profile modifications
 type ShellProfileHandler struct{}
@@ -89,7 +91,7 @@ func (h *ShellProfileHandler) ValidateOptions(options map[string]interface{}) er
 
 // GetTemplateContent returns the template content for this handler
 func (h *ShellProfileHandler) GetTemplateContent() string {
-	return config.GetHandlerTemplates().ShellAliases
+	return aliasesTemplate
 }
 
 // Clear performs no additional cleanup for shell profile handler

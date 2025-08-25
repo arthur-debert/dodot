@@ -9,15 +9,6 @@ func TestDefault(t *testing.T) {
 
 	// Test Security configuration
 	t.Run("Security", func(t *testing.T) {
-		if cfg.Security.AllowHomeSymlinks != false {
-			t.Errorf("expected AllowHomeSymlinks to be false")
-		}
-		if cfg.Security.BackupExisting != true {
-			t.Errorf("expected BackupExisting to be true")
-		}
-		if cfg.Security.EnableRollback != true {
-			t.Errorf("expected EnableRollback to be true")
-		}
 
 		// Test protected paths
 		expectedProtected := []string{
@@ -64,17 +55,32 @@ func TestDefault(t *testing.T) {
 		if cfg.Patterns.SpecialFiles.PackConfig != ".dodot.toml" {
 			t.Errorf("expected PackConfig to be .dodot.toml, got %s", cfg.Patterns.SpecialFiles.PackConfig)
 		}
-		if cfg.Patterns.SpecialFiles.AltPackConfig != "pack.dodot.toml" {
-			t.Errorf("expected AltPackConfig to be pack.dodot.toml, got %s", cfg.Patterns.SpecialFiles.AltPackConfig)
-		}
 		if cfg.Patterns.SpecialFiles.IgnoreFile != ".dodotignore" {
 			t.Errorf("expected IgnoreFile to be .dodotignore, got %s", cfg.Patterns.SpecialFiles.IgnoreFile)
 		}
 
-		// Test catchall excludes
-		expectedExcludes := []string{".dodot.toml", "pack.dodot.toml", ".dodotignore"}
+		// Test catchall excludes are derived from SpecialFiles
+		expectedExcludes := []string{
+			cfg.Patterns.SpecialFiles.PackConfig,
+			cfg.Patterns.SpecialFiles.IgnoreFile,
+		}
 		if len(cfg.Patterns.CatchallExclude) != len(expectedExcludes) {
 			t.Errorf("expected %d catchall excludes, got %d", len(expectedExcludes), len(cfg.Patterns.CatchallExclude))
+		}
+		for i, exclude := range expectedExcludes {
+			if i < len(cfg.Patterns.CatchallExclude) && cfg.Patterns.CatchallExclude[i] != exclude {
+				t.Errorf("expected catchall exclude %d to be %s, got %s", i, exclude, cfg.Patterns.CatchallExclude[i])
+			}
+		}
+
+		// Verify consolidation - CatchallExclude should contain the same files as SpecialFiles
+		if cfg.Patterns.CatchallExclude[0] != cfg.Patterns.SpecialFiles.PackConfig {
+			t.Errorf("CatchallExclude[0] should be PackConfig (%s), got %s",
+				cfg.Patterns.SpecialFiles.PackConfig, cfg.Patterns.CatchallExclude[0])
+		}
+		if cfg.Patterns.CatchallExclude[1] != cfg.Patterns.SpecialFiles.IgnoreFile {
+			t.Errorf("CatchallExclude[1] should be IgnoreFile (%s), got %s",
+				cfg.Patterns.SpecialFiles.IgnoreFile, cfg.Patterns.CatchallExclude[1])
 		}
 	})
 
@@ -113,15 +119,15 @@ func TestDefault(t *testing.T) {
 				if matcher.Priority != 90 {
 					t.Errorf("expected install-script priority to be 90, got %d", matcher.Priority)
 				}
-				if matcher.TriggerType != "filename" {
-					t.Errorf("expected install-script trigger type to be filename, got %s", matcher.TriggerType)
+				if matcher.Trigger.Type != "filename" {
+					t.Errorf("expected install-script trigger type to be filename, got %s", matcher.Trigger.Type)
 				}
 			case "symlink-catchall":
 				if matcher.Priority != 0 {
 					t.Errorf("expected symlink-catchall priority to be 0, got %d", matcher.Priority)
 				}
-				if matcher.TriggerType != "catchall" {
-					t.Errorf("expected symlink-catchall trigger type to be catchall, got %s", matcher.TriggerType)
+				if matcher.Trigger.Type != "catchall" {
+					t.Errorf("expected symlink-catchall trigger type to be catchall, got %s", matcher.Trigger.Type)
 				}
 			}
 		}
