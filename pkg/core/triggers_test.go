@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/matchers"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -30,9 +31,9 @@ func TestGetPackMatchers(t *testing.T) {
 			pack: types.Pack{
 				Name: "configured-pack",
 				Path: "/test/path",
-				Config: types.PackConfig{
-					Ignore: []types.IgnoreRule{{Path: "*.tmp"}},
-					Override: []types.OverrideRule{{
+				Config: config.PackConfig{
+					Ignore: []config.IgnoreRule{{Path: "*.tmp"}},
+					Override: []config.OverrideRule{{
 						Path:    "*.sh",
 						Handler: "provision",
 					}},

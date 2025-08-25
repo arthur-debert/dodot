@@ -198,7 +198,7 @@ func loadPack(packPath string) (types.Pack, error) {
 }
 
 // loadPackConfig reads and parses a pack's .dodot.toml configuration file
-func loadPackConfig(configPath string) (types.PackConfig, error) {
+func loadPackConfig(configPath string) (config.PackConfig, error) {
 	return LoadPackConfig(configPath)
 }
 
@@ -407,17 +407,17 @@ func loadPackFS(packPath string, filesystem types.FS) (types.Pack, error) {
 }
 
 // loadPackConfigFS reads and parses a pack's .dodot.toml configuration file using the provided filesystem
-func loadPackConfigFS(configPath string, filesystem types.FS) (types.PackConfig, error) {
+func loadPackConfigFS(configPath string, filesystem types.FS) (config.PackConfig, error) {
 	data, err := filesystem.ReadFile(configPath)
 	if err != nil {
-		return types.PackConfig{}, err
+		return config.PackConfig{}, err
 	}
 
 	// Parse the config from bytes
-	var config types.PackConfig
-	if err := toml.Unmarshal(data, &config); err != nil {
-		return types.PackConfig{}, errors.Wrap(err, errors.ErrConfigParse, "failed to parse TOML")
+	var cfg config.PackConfig
+	if err := toml.Unmarshal(data, &cfg); err != nil {
+		return config.PackConfig{}, errors.Wrap(err, errors.ErrConfigParse, "failed to parse TOML")
 	}
 
-	return config, nil
+	return cfg, nil
 }

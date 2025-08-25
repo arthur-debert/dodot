@@ -2,8 +2,6 @@ package config
 
 import (
 	"os"
-
-	"github.com/arthur-debert/dodot/pkg/constants"
 )
 
 // Security holds security-related configuration
@@ -48,6 +46,10 @@ type MatcherConfig struct {
 }
 
 // FilePermissions holds file and directory permission settings
+// IMPORTANT: These permissions are intentionally NOT used throughout the codebase.
+// File permissions (0755, 0644, etc.) should remain hardcoded where they are used
+// as they are security-critical and context-specific. This struct exists only for
+// potential future use cases where centralized permissions might be beneficial.
 type FilePermissions struct {
 	Directory  os.FileMode
 	File       os.FileMode
@@ -62,18 +64,13 @@ type ShellIntegration struct {
 }
 
 // Paths holds path-related configuration
+// NOTE: Internal datastore paths (StateDir, BackupsDir, etc.) are defined in
+// pkg/paths/paths.go and are NOT user-configurable. They are part of dodot's
+// internal structure and should remain consistent across all installations.
+// This struct intentionally left empty for now but may hold user-configurable
+// paths in the future.
 type Paths struct {
-	DefaultDotfilesDir string
-	DodotDirName       string
-	StateDir           string
-	BackupsDir         string
-	TemplatesDir       string
-	DeployedDir        string
-	ShellDir           string
-	ProvisionDir       string
-	HomebrewDir        string
-	InitScriptName     string
-	LogFileName        string
+	// Reserved for future user-configurable paths
 }
 
 // LinkPaths holds link path mapping configuration
@@ -82,6 +79,34 @@ type LinkPaths struct {
 	// These are typically security-critical or shell-expected locations
 	// Release C: Layer 2 - Exception List
 	CoreUnixExceptions map[string]bool
+}
+
+// HandlerTemplates holds template content for various handlers
+type HandlerTemplates struct {
+	// ShellAliases is the template for aliases.sh files
+	ShellAliases string
+	// Brewfile is the template for Brewfile
+	Brewfile string
+}
+
+// HandlerDefaults holds default configuration values for handlers
+type HandlerDefaults struct {
+	// PathTargetDir is the default target directory for the path handler
+	PathTargetDir string
+}
+
+// LoggingConfig holds logging-related configuration
+type LoggingConfig struct {
+	// VerbosityLevels maps verbosity flags to log levels
+	VerbosityLevels map[int]string
+	// DefaultLevel is the default log level
+	DefaultLevel string
+	// TimeFormat is the time format for console output
+	TimeFormat string
+	// EnableColor enables color output in console
+	EnableColor bool
+	// EnableCaller enables caller information for debug and trace levels
+	EnableCallerAtVerbosity int
 }
 
 // Config is the main configuration structure
@@ -94,6 +119,9 @@ type Config struct {
 	ShellIntegration ShellIntegration
 	Paths            Paths
 	LinkPaths        LinkPaths
+	HandlerTemplates HandlerTemplates
+	HandlerDefaults  HandlerDefaults
+	Logging          LoggingConfig
 }
 
 // Default returns the default configuration
@@ -175,20 +203,68 @@ func Default() *Config {
 end`,
 		},
 		Paths: Paths{
-			DefaultDotfilesDir: "dotfiles",
-			DodotDirName:       "dodot",
-			StateDir:           "state",
-			BackupsDir:         "backups",
-			TemplatesDir:       "templates",
-			DeployedDir:        "deployed",
-			ShellDir:           "shell",
-			ProvisionDir:       "provision",
-			HomebrewDir:        "homebrew",
-			InitScriptName:     "dodot-init.sh",
-			LogFileName:        "dodot.log",
+			// Reserved for future user-configurable paths
 		},
 		LinkPaths: LinkPaths{
-			CoreUnixExceptions: constants.CoreUnixExceptions,
+			// These files/dirs always deploy to $HOME for security or compatibility reasons
+			CoreUnixExceptions: map[string]bool{
+				"ssh":       true, // .ssh/ - security critical, expects $HOME
+				"gnupg":     true, // .gnupg/ - security critical, expects $HOME
+				"aws":       true, // .aws/ - credentials, expects $HOME
+				"kube":      true, // .kube/ - kubernetes config
+				"docker":    true, // .docker/ - docker config
+				"gitconfig": true, // .gitconfig - git expects in $HOME
+				"bashrc":    true, // .bashrc - shell expects in $HOME
+				"zshrc":     true, // .zshrc - shell expects in $HOME
+				"profile":   true, // .profile - shell expects in $HOME
+			},
+		},
+		HandlerTemplates: HandlerTemplates{
+			ShellAliases: `#!/usr/bin/env sh
+# Shell aliases for PACK_NAME pack
+#
+# This file is sourced to add shell aliases during 'dodot deploy PACK_NAME'
+# 
+# Use standard shell alias syntax (compatible with bash/zsh/fish/etc)
+# dodot handles shell compatibility automatically
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# aliases later without redeploying the pack.
+
+# Add aliases below
+# Examples:
+# alias ll='ls -la'
+# alias grep='grep --color=auto'
+`,
+			Brewfile: `# Homebrew dependencies for PACK_NAME pack
+# 
+# This file is processed by 'dodot install PACK_NAME' to install
+# packages using Homebrew. Each package is installed once during
+# initial deployment. The deployment is tracked by checksum, so
+# modifying this file will trigger a re-run.
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# homebrew packages later without redeploying the pack.
+
+# Examples:
+# brew "git"
+# brew "vim"
+# cask "visual-studio-code"`,
+		},
+		HandlerDefaults: HandlerDefaults{
+			PathTargetDir: "~/bin",
+		},
+		Logging: LoggingConfig{
+			VerbosityLevels: map[int]string{
+				0: "warn",
+				1: "info",
+				2: "debug",
+				3: "trace",
+			},
+			DefaultLevel:            "warn",
+			TimeFormat:              "15:04",
+			EnableColor:             true,
+			EnableCallerAtVerbosity: 2,
 		},
 	}
 }

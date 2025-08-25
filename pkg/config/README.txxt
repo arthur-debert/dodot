@@ -1,0 +1,82 @@
+# dodot Configuration Package
+
+This package centralizes all configuration for the dodot application.
+
+## Phase 1 - Centralization (Completed)
+
+In Phase 1, we've centralized the following configurations:
+
+### 1. Handler Configuration
+- **HandlerTemplates**: Templates for shell aliases and Brewfile
+- **HandlerDefaults**: Default values like path handler target directory
+
+### 2. Security Configuration
+- Protected paths that should not be symlinked
+- Home symlink permissions
+- Backup and rollback settings
+- Cleanup settings for dangling links
+
+### 3. Pattern Configuration
+- Pack ignore patterns
+- Catchall exclusions
+- Special file names
+
+### 4. Priority Configuration
+- Trigger priorities
+- Handler priorities  
+- Matcher priorities
+
+### 5. File Permissions
+- Directory permissions (0755)
+- File permissions (0644)
+- Executable permissions (0755)
+
+### 6. Shell Integration
+- Bash/Zsh snippets
+- Fish snippets
+- Custom directory support
+
+### 7. Path Configuration
+- Reserved for future user-configurable paths
+- Internal datastore paths remain in pkg/paths/paths.go (not user-configurable)
+
+### 8. Logging Configuration
+- Verbosity level mappings
+- Time format
+- Color settings
+- Caller information settings
+
+### 9. Default Matchers
+- Pre-configured matchers for common dotfile patterns
+
+### 10. Pack Configuration (PackConfig)
+- Pack-specific configuration from .dodot.toml files
+- Ignore rules, override rules, and path mappings
+- Moved from pkg/types to pkg/config to break import cycles
+
+## Access Functions
+
+All configuration is accessed through the functions in `access.go`:
+- `Get()` - Returns the full configuration
+- `GetHandlerTemplates()` - Returns handler templates
+- `GetHandlerDefaults()` - Returns handler defaults
+- `GetSecurity()` - Returns security settings
+- etc.
+
+## Known Issues and TODOs
+
+### Hardcoded Values
+- File permissions are still hardcoded throughout the codebase (executor, datastore, etc.)
+- These should be updated to use centralized values in a future refactor
+
+## Next Phases
+
+### Phase 2 - Externalization
+- Create YAML schema for all configuration
+- Embed default configuration YAML in binary
+- Parse and use YAML configuration at runtime
+
+### Phase 3 - User Customization  
+- Integrate koanf for configuration management
+- Support user configuration files in dotfiles root
+- Implement smart merging of user config over defaults

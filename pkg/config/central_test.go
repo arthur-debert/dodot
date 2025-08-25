@@ -152,16 +152,9 @@ func TestDefault(t *testing.T) {
 		}
 	})
 
-	// Test Paths configuration
+	// Test Paths configuration (currently empty, reserved for future use)
 	t.Run("Paths", func(t *testing.T) {
-		if cfg.Paths.DefaultDotfilesDir != "dotfiles" {
-			t.Errorf("expected DefaultDotfilesDir to be dotfiles, got %s", cfg.Paths.DefaultDotfilesDir)
-		}
-		if cfg.Paths.DodotDirName != "dodot" {
-			t.Errorf("expected DodotDirName to be dodot, got %s", cfg.Paths.DodotDirName)
-		}
-		if cfg.Paths.InitScriptName != "dodot-init.sh" {
-			t.Errorf("expected InitScriptName to be dodot-init.sh, got %s", cfg.Paths.InitScriptName)
-		}
+		// Paths struct is intentionally empty for now
+		// Internal datastore paths are in pkg/paths/paths.go
 	})
 }

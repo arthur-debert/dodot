@@ -3,6 +3,7 @@ package path
 import (
 	"fmt"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -18,7 +19,7 @@ type PathHandler struct {
 // NewPathHandler creates a new PathHandler
 func NewPathHandler() *PathHandler {
 	return &PathHandler{
-		targetDir: "~/bin",
+		targetDir: config.GetHandlerDefaults().PathTargetDir,
 	}
 }
 

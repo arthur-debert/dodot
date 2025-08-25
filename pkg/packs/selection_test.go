@@ -3,6 +3,7 @@ package packs
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,16 +42,16 @@ func TestGetPackNames(t *testing.T) {
 				{
 					Name: "vim",
 					Path: "/home/user/.dotfiles/vim",
-					Config: types.PackConfig{
-						Ignore: []types.IgnoreRule{{Path: "*.tmp"}},
+					Config: config.PackConfig{
+						Ignore: []config.IgnoreRule{{Path: "*.tmp"}},
 					},
 					Metadata: map[string]interface{}{"version": "1.0"},
 				},
 				{
 					Name: "zsh",
 					Path: "/home/user/.dotfiles/zsh",
-					Config: types.PackConfig{
-						Override: []types.OverrideRule{{Path: ".zshrc", Handler: "symlink"}},
+					Config: config.PackConfig{
+						Override: []config.OverrideRule{{Path: ".zshrc", Handler: "symlink"}},
 					},
 				},
 			},
@@ -157,8 +158,8 @@ func TestSelectPacks(t *testing.T) {
 				{
 					Name: "vim",
 					Path: "/home/user/.dotfiles/vim",
-					Config: types.PackConfig{
-						Ignore: []types.IgnoreRule{{Path: "*.tmp"}},
+					Config: config.PackConfig{
+						Ignore: []config.IgnoreRule{{Path: "*.tmp"}},
 					},
 					Metadata: map[string]interface{}{"test": true},
 				},
@@ -168,8 +169,8 @@ func TestSelectPacks(t *testing.T) {
 				{
 					Name: "vim",
 					Path: "/home/user/.dotfiles/vim",
-					Config: types.PackConfig{
-						Ignore: []types.IgnoreRule{{Path: "*.tmp"}},
+					Config: config.PackConfig{
+						Ignore: []config.IgnoreRule{{Path: "*.tmp"}},
 					},
 					Metadata: map[string]interface{}{"test": true},
 				},

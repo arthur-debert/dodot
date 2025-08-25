@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -744,7 +745,7 @@ func TestLayer4CustomMappings(t *testing.T) {
 	pack := &types.Pack{
 		Name: "test",
 		Path: "/dotfiles/test",
-		Config: types.PackConfig{
+		Config: config.PackConfig{
 			Mappings: map[string]string{
 				"special/config": "$HOME/.special_location",
 				"app.conf":       "$XDG_CONFIG_HOME/myapp/app.conf",
@@ -818,7 +819,7 @@ func TestLayer4Precedence(t *testing.T) {
 	pack := &types.Pack{
 		Name: "test",
 		Path: "/dotfiles/test",
-		Config: types.PackConfig{
+		Config: config.PackConfig{
 			Mappings: map[string]string{
 				"ssh/config":   "$HOME/.ssh_custom/config",
 				"_home/forced": "$XDG_CONFIG_HOME/not-home",
