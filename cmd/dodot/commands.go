@@ -61,6 +61,7 @@ func NewRootCmd() *cobra.Command {
 		SilenceUsage:      true, // We'll show help manually
 		SilenceErrors:     true, // We'll handle error display ourselves
 		DisableAutoGenTag: true,
+		CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}, // Remove completion command
 	}
 
 	// Global flags
