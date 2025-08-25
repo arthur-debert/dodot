@@ -84,6 +84,20 @@ type LinkPaths struct {
 	CoreUnixExceptions map[string]bool
 }
 
+// HandlerTemplates holds template content for various handlers
+type HandlerTemplates struct {
+	// ShellAliases is the template for aliases.sh files
+	ShellAliases string
+	// Brewfile is the template for Brewfile
+	Brewfile string
+}
+
+// HandlerDefaults holds default configuration values for handlers
+type HandlerDefaults struct {
+	// PathTargetDir is the default target directory for the path handler
+	PathTargetDir string
+}
+
 // Config is the main configuration structure
 type Config struct {
 	Security         Security
@@ -94,6 +108,8 @@ type Config struct {
 	ShellIntegration ShellIntegration
 	Paths            Paths
 	LinkPaths        LinkPaths
+	HandlerTemplates HandlerTemplates
+	HandlerDefaults  HandlerDefaults
 }
 
 // Default returns the default configuration
@@ -189,6 +205,41 @@ end`,
 		},
 		LinkPaths: LinkPaths{
 			CoreUnixExceptions: constants.CoreUnixExceptions,
+		},
+		HandlerTemplates: HandlerTemplates{
+			ShellAliases: `#!/usr/bin/env sh
+# Shell aliases for PACK_NAME pack
+#
+# This file is sourced to add shell aliases during 'dodot deploy PACK_NAME'
+# 
+# Use standard shell alias syntax (compatible with bash/zsh/fish/etc)
+# dodot handles shell compatibility automatically
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# aliases later without redeploying the pack.
+
+# Add aliases below
+# Examples:
+# alias ll='ls -la'
+# alias grep='grep --color=auto'
+`,
+			Brewfile: `# Homebrew dependencies for PACK_NAME pack
+# 
+# This file is processed by 'dodot install PACK_NAME' to install
+# packages using Homebrew. Each package is installed once during
+# initial deployment. The deployment is tracked by checksum, so
+# modifying this file will trigger a re-run.
+#
+# Safe to keep empty or remove. By keeping it, you can add
+# homebrew packages later without redeploying the pack.
+
+# Examples:
+# brew "git"
+# brew "vim"
+# cask "visual-studio-code"`,
+		},
+		HandlerDefaults: HandlerDefaults{
+			PathTargetDir: "~/bin",
 		},
 	}
 }
