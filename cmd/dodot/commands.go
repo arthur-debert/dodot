@@ -58,8 +58,8 @@ func NewRootCmd() *cobra.Command {
 			_ = cmd.Help()
 			return fmt.Errorf("no command specified")
 		},
-		SilenceUsage:      false, // Show usage on command errors
-		SilenceErrors:     false, // Show cobra errors (like unknown commands)
+		SilenceUsage:      true, // We'll show help manually
+		SilenceErrors:     true, // We'll handle error display ourselves
 		DisableAutoGenTag: true,
 	}
 
