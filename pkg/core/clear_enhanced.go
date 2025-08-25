@@ -52,7 +52,7 @@ func ClearHandlerEnhanced(ctx types.ClearContext, handler types.Clearable, handl
 			// For linking handlers, remove directory directly
 			logger.Debug().Msg("Removing linking handler state directory")
 			// Use the actual state directory name (e.g., "symlinks" for "symlink" handler)
-			stateDirName := getHandlerStateDir(handlerName)
+			stateDirName := GetHandlerStateDir(handlerName)
 			stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, stateDirName)
 
 			// Check if directory exists

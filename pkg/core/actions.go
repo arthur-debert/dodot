@@ -8,14 +8,35 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// GetActions takes trigger matches grouped by handler and calls the appropriate handler methods
+// ActionGenerationResult holds both actions and confirmations from handler processing
+type ActionGenerationResult struct {
+	Actions       []types.Action
+	Confirmations []types.ConfirmationRequest
+}
+
+// HasConfirmations returns true if there are any confirmation requests
+func (r ActionGenerationResult) HasConfirmations() bool {
+	return len(r.Confirmations) > 0
+}
+
+// GetActions takes trigger matches grouped by handler and calls the appropriate handler methods (backward compatibility)
 func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
+	result, err := GetActionsWithConfirmations(matches)
+	if err != nil {
+		return nil, err
+	}
+	return result.Actions, nil
+}
+
+// GetActionsWithConfirmations takes trigger matches and returns both actions and confirmation requests
+func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGenerationResult, error) {
 	logger := logging.GetLogger("core.actions")
 
 	// Group matches by handler
 	handlerGroups := groupMatchesByHandler(matches)
 
 	var allActions []types.Action
+	var allConfirmations []types.ConfirmationRequest
 
 	for handlerName, handlerMatches := range handlerGroups {
 		logger.Debug().
@@ -32,12 +53,31 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 			continue
 		}
 
-		// Process based on handler type
+		// Process based on handler type, preferring confirmation-capable interfaces
 		switch h := handler.(type) {
+		case types.LinkingHandlerWithConfirmations:
+			// Use confirmation-capable interface
+			result, err := h.ProcessLinkingWithConfirmations(handlerMatches)
+			if err != nil {
+				return ActionGenerationResult{}, fmt.Errorf("handler %s failed to process linking with confirmations: %w", handlerName, err)
+			}
+			allActions = append(allActions, result.Actions...)
+			allConfirmations = append(allConfirmations, result.Confirmations...)
+
+		case types.ProvisioningHandlerWithConfirmations:
+			// Use confirmation-capable interface
+			result, err := h.ProcessProvisioningWithConfirmations(handlerMatches)
+			if err != nil {
+				return ActionGenerationResult{}, fmt.Errorf("handler %s failed to process provisioning with confirmations: %w", handlerName, err)
+			}
+			allActions = append(allActions, result.Actions...)
+			allConfirmations = append(allConfirmations, result.Confirmations...)
+
 		case types.LinkingHandler:
+			// Fallback to basic linking interface
 			linkingActions, err := h.ProcessLinking(handlerMatches)
 			if err != nil {
-				return nil, fmt.Errorf("handler %s failed to process linking: %w", handlerName, err)
+				return ActionGenerationResult{}, fmt.Errorf("handler %s failed to process linking: %w", handlerName, err)
 			}
 			// Convert LinkingAction to Action
 			for _, action := range linkingActions {
@@ -45,9 +85,10 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 			}
 
 		case types.ProvisioningHandler:
+			// Fallback to basic provisioning interface
 			provisioningActions, err := h.ProcessProvisioning(handlerMatches)
 			if err != nil {
-				return nil, fmt.Errorf("handler %s failed to process provisioning: %w", handlerName, err)
+				return ActionGenerationResult{}, fmt.Errorf("handler %s failed to process provisioning: %w", handlerName, err)
 			}
 			// Convert ProvisioningAction to Action
 			for _, action := range provisioningActions {
@@ -63,9 +104,13 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 
 	logger.Info().
 		Int("totalActions", len(allActions)).
-		Msg("Generated V2 actions from trigger matches")
+		Int("totalConfirmations", len(allConfirmations)).
+		Msg("Generated V2 actions and confirmations from trigger matches")
 
-	return allActions, nil
+	return ActionGenerationResult{
+		Actions:       allActions,
+		Confirmations: allConfirmations,
+	}, nil
 }
 
 // groupMatchesByHandler groups trigger matches by their handler name

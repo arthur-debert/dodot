@@ -1,26 +1,35 @@
 package unlink
 
-import ()
+import (
+	"fmt"
 
-// UnlinkPacksOptions contains options for the off command
+	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/types"
+)
+
+// UnlinkPacksOptions contains options for the unlink command
 type UnlinkPacksOptions struct {
 	// DotfilesRoot is the path to the dotfiles directory
 	DotfilesRoot string
 
-	// DataDir is the dodot data directory
+	// DataDir is the dodot data directory (unused, kept for compatibility)
 	DataDir string
 
-	// PackNames is the list of pack names to turn off (empty = all)
+	// PackNames is the list of pack names to unlink (empty = all)
 	PackNames []string
 
-	// Force skips confirmation prompts
+	// Force skips confirmation prompts (unused in clearable implementation)
 	Force bool
 
 	// DryRun shows what would be removed without actually removing
 	DryRun bool
 }
 
-// UnlinkResult contains the result of the off command
+// UnlinkResult contains the result of the unlink command
 type UnlinkResult struct {
 	// Packs that were processed
 	Packs []PackUnlinkResult `json:"packs"`
@@ -70,12 +79,131 @@ type RemovedItem struct {
 // This implementation uses the clearable infrastructure to ensure consistency
 // with other clear operations.
 func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
-	// Use the new clearable-based implementation
-	v2Opts := UnlinkPacksV2Options{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		Force:        opts.Force,
-		DryRun:       opts.DryRun,
+	logger := logging.GetLogger("commands.unlink")
+	logger.Debug().
+		Str("dotfilesRoot", opts.DotfilesRoot).
+		Strs("packNames", opts.PackNames).
+		Bool("dryRun", opts.DryRun).
+		Msg("Starting unlink command")
+
+	// Initialize paths
+	p, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize paths: %w", err)
 	}
-	return UnlinkPacksV2(v2Opts)
+
+	// Initialize filesystem
+	fs := filesystem.NewOS()
+
+	// Initialize datastore
+	ds := datastore.New(fs, p)
+
+	// Discover and select packs
+	packs, err := core.DiscoverAndSelectPacks(opts.DotfilesRoot, opts.PackNames)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover packs: %w", err)
+	}
+
+	// Get linking handlers only
+	linkingHandlers, err := core.GetClearableHandlersByMode(types.RunModeLinking)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get linking handlers: %w", err)
+	}
+
+	logger.Debug().
+		Int("packCount", len(packs)).
+		Int("handlerCount", len(linkingHandlers)).
+		Msg("Discovered packs and handlers")
+
+	// Process each pack
+	result := &UnlinkResult{
+		DryRun: opts.DryRun,
+	}
+
+	for _, pack := range packs {
+		packResult := PackUnlinkResult{
+			Name: pack.Name,
+		}
+
+		// Create clear context for this pack
+		ctx := types.ClearContext{
+			Pack:      pack,
+			DataStore: ds,
+			FS:        fs,
+			Paths:     p,
+			DryRun:    opts.DryRun,
+		}
+
+		// Filter handlers to only those with state
+		handlersWithState := core.FilterHandlersByState(ctx, linkingHandlers)
+
+		logger.Debug().
+			Str("pack", pack.Name).
+			Int("handlersWithState", len(handlersWithState)).
+			Msg("Filtered handlers by state")
+
+		if len(handlersWithState) == 0 {
+			logger.Debug().
+				Str("pack", pack.Name).
+				Msg("No linking state to clear")
+			result.Packs = append(result.Packs, packResult)
+			continue
+		}
+
+		// Clear handlers for this pack using enhanced method that handles linking handlers
+		clearResults, err := core.ClearHandlersEnhanced(ctx, handlersWithState)
+		if err != nil {
+			packResult.Errors = append(packResult.Errors, err.Error())
+			logger.Error().
+				Err(err).
+				Str("pack", pack.Name).
+				Msg("Failed to clear handlers")
+		}
+
+		// Convert clear results to unlink format
+		for handlerName, clearResult := range clearResults {
+			if clearResult.Error != nil {
+				packResult.Errors = append(packResult.Errors,
+					fmt.Sprintf("%s: %v", handlerName, clearResult.Error))
+			}
+
+			// Convert cleared items to removed items
+			for _, item := range clearResult.ClearedItems {
+				removedItem := RemovedItem{
+					Type:    item.Type,
+					Path:    item.Path,
+					Success: clearResult.Error == nil,
+				}
+
+				// For symlinks, the description contains target info
+				// We don't have direct access to the target, but that's OK
+				// The important part is that the symlink was removed
+
+				packResult.RemovedItems = append(packResult.RemovedItems, removedItem)
+			}
+
+			// Add state directory removal as a separate item
+			// In dry run mode, we still want to report what would be removed
+			if clearResult.StateRemoved || ctx.DryRun {
+				// Use the actual state directory name (e.g., "symlinks" for "symlink" handler)
+				stateDirName := core.GetHandlerStateDir(handlerName)
+				packResult.RemovedItems = append(packResult.RemovedItems, RemovedItem{
+					Type:    handlerName + "_directory",
+					Path:    p.PackHandlerDir(pack.Name, stateDirName),
+					Success: true,
+				})
+			}
+		}
+
+		result.TotalRemoved += len(packResult.RemovedItems)
+		result.Packs = append(result.Packs, packResult)
+	}
+
+	logger.Info().
+		Int("packsProcessed", len(result.Packs)).
+		Int("totalRemoved", result.TotalRemoved).
+		Bool("dryRun", opts.DryRun).
+		Msg("Unlink command completed")
+
+	return result, nil
 }
