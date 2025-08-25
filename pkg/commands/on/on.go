@@ -147,29 +147,32 @@ func processPackOn(pack types.Pack, p paths.Paths, opts OnPacksOptions) PackOnRe
 	}
 
 	// Check if pack has stored off-state
-	if !opts.Force && off.IsPackOff(p, pack.Name) {
+	if off.IsPackOff(p, pack.Name) {
 		packResult.WasOff = true
 
-		// Attempt to restore from stored state
-		if err := restorePackState(pack, p, opts.DryRun); err != nil {
-			logger.Warn().
-				Str("pack", pack.Name).
-				Err(err).
-				Msg("Failed to restore pack state, falling back to re-deployment")
-		} else {
-			packResult.StateRestored = true
+		// Only attempt restoration if not forcing
+		if !opts.Force {
+			// Attempt to restore from stored state
+			if err := restorePackState(pack, p, opts.DryRun); err != nil {
+				logger.Warn().
+					Str("pack", pack.Name).
+					Err(err).
+					Msg("Failed to restore pack state, falling back to re-deployment")
+			} else {
+				packResult.StateRestored = true
 
-			// Clean up stored state file (unless dry run)
-			if !opts.DryRun {
-				if err := removePackOffState(p, pack.Name); err != nil {
-					logger.Warn().
-						Str("pack", pack.Name).
-						Err(err).
-						Msg("Failed to remove off-state file")
+				// Clean up stored state file (unless dry run)
+				if !opts.DryRun {
+					if err := removePackOffState(p, pack.Name); err != nil {
+						logger.Warn().
+							Str("pack", pack.Name).
+							Err(err).
+							Msg("Failed to remove off-state file")
+					}
 				}
-			}
 
-			return packResult
+				return packResult
+			}
 		}
 	}
 
