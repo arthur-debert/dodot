@@ -69,6 +69,25 @@ func getActionHandler(action types.Action) string {
 	}
 }
 
+// getActionAdditionalInfo extracts additional display information from an Action
+func getActionAdditionalInfo(action types.Action) string {
+	switch a := action.(type) {
+	case *types.LinkAction:
+		// For symlinks, show the target path
+		return a.TargetFile
+	case *types.AddToPathAction:
+		return "add to $PATH"
+	case *types.AddToShellProfileAction:
+		return "shell source"
+	case *types.RunScriptAction:
+		return "run script"
+	case *types.BrewAction:
+		return "brew install"
+	default:
+		return ""
+	}
+}
+
 // statusStateToDisplayStatus converts internal status states to display status strings
 func statusStateToDisplayStatus(state types.StatusState) string {
 	switch state {
