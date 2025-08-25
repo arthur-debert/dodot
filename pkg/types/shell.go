@@ -4,16 +4,11 @@ import (
 	"fmt"
 )
 
-// Shell integration constants
+// TODO: These should be moved to config once we resolve the import cycle
 const (
-	// ShellIntegrationSnippet is the line users need to add to their shell config
-	ShellIntegrationSnippet = `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`
-
-	// ShellIntegrationSnippetWithCustomDir is the snippet template for custom DODOT_DATA_DIR
-	ShellIntegrationSnippetWithCustomDir = `[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"`
-
-	// FishIntegrationSnippet is the line for Fish shell users
-	FishIntegrationSnippet = `if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+	bashZshSnippet           = `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`
+	bashZshSnippetWithCustom = `[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"`
+	fishSnippet              = `if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
     source "$HOME/.local/share/dodot/shell/dodot-init.fish"
 end`
 )
@@ -28,12 +23,12 @@ func GetShellIntegrationSnippet(shell string, dataDir string) string {
     source "%s/shell/dodot-init.fish"
 end`, dataDir, dataDir)
 		}
-		return FishIntegrationSnippet
+		return fishSnippet
 	default:
 		// bash/zsh
 		if dataDir != "" {
-			return fmt.Sprintf(`[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"`, dataDir, dataDir)
+			return fmt.Sprintf(bashZshSnippetWithCustom, dataDir, dataDir)
 		}
-		return ShellIntegrationSnippet
+		return bashZshSnippet
 	}
 }

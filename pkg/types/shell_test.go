@@ -111,15 +111,18 @@ func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 }
 
 func TestGetShellIntegrationSnippet_Constants(t *testing.T) {
-	// Test that the constants are used correctly
-	if ShellIntegrationSnippet != GetShellIntegrationSnippet("bash", "") {
-		t.Errorf("expected %q, got %q", ShellIntegrationSnippet, GetShellIntegrationSnippet("bash", ""))
+	// Test that the expected values are returned
+	bashExpected := bashZshSnippet
+	fishExpected := fishSnippet
+
+	if bashExpected != GetShellIntegrationSnippet("bash", "") {
+		t.Errorf("expected %q, got %q", bashExpected, GetShellIntegrationSnippet("bash", ""))
 	}
-	if ShellIntegrationSnippet != GetShellIntegrationSnippet("zsh", "") {
-		t.Errorf("expected %q, got %q", ShellIntegrationSnippet, GetShellIntegrationSnippet("zsh", ""))
+	if bashExpected != GetShellIntegrationSnippet("zsh", "") {
+		t.Errorf("expected %q, got %q", bashExpected, GetShellIntegrationSnippet("zsh", ""))
 	}
-	if FishIntegrationSnippet != GetShellIntegrationSnippet("fish", "") {
-		t.Errorf("expected %q, got %q", FishIntegrationSnippet, GetShellIntegrationSnippet("fish", ""))
+	if fishExpected != GetShellIntegrationSnippet("fish", "") {
+		t.Errorf("expected %q, got %q", fishExpected, GetShellIntegrationSnippet("fish", ""))
 	}
 }
 
