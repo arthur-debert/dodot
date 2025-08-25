@@ -146,13 +146,13 @@ func getPackDisplayStatus(pack types.Pack, dataStore types.DataStore, fs types.F
 
 		// Convert to display format
 		displayFile := types.DisplayFile{
-			Handler:       getActionHandler(action),
-			Path:          getActionFilePath(action),
-			Status:        statusStateToDisplayStatus(status.State),
-			Message:       status.Message,
-			LastExecuted:  status.Timestamp,
-			HandlerSymbol: types.GetHandlerSymbol(getActionHandler(action)),
-			// TODO: Add additional info like symlink targets
+			Handler:        getActionHandler(action),
+			Path:           getActionFilePath(action),
+			Status:         statusStateToDisplayStatus(status.State),
+			Message:        status.Message,
+			LastExecuted:   status.Timestamp,
+			HandlerSymbol:  types.GetHandlerSymbol(getActionHandler(action)),
+			AdditionalInfo: getActionAdditionalInfo(action),
 		}
 
 		displayPack.Files = append(displayPack.Files, displayFile)

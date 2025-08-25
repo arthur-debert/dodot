@@ -76,7 +76,7 @@ styles:
     # foreground: success
     bold: true
   Error:
-    # foreground: error
+    foreground: error
     bold: true
   Warning:
     # foreground: warning
