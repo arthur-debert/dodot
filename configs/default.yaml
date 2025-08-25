@@ -1,0 +1,209 @@
+# dodot default configuration
+# This file is embedded in the dodot binary and provides all default values
+# Users can override any of these settings via their own config files
+
+security:
+  protectedPaths:
+    - .ssh/authorized_keys
+    - .ssh/id_rsa
+    - .ssh/id_ed25519
+    - .gnupg
+    - .password-store
+    - .config/gh/hosts.yml
+    - .aws/credentials
+    - .kube/config
+    - .docker/config.json
+  allowHomeSymlinks: false
+  backupExisting: true
+  enableRollback: true
+  cleanupDanglingLinks: true
+
+patterns:
+  packIgnore:
+    - .git
+    - .svn
+    - .hg
+    - node_modules
+    - .DS_Store
+    - "*.swp"
+    - "*~"
+    - "#*#"
+  catchallExclude:
+    - .dodot.toml
+    - pack.dodot.toml
+    - .dodotignore
+  specialFiles:
+    packConfig: .dodot.toml
+    altPackConfig: pack.dodot.toml
+    ignoreFile: .dodotignore
+
+priorities:
+  triggers:
+    filename: 100
+    catchall: 0
+  handlers:
+    symlink: 100
+    path: 90
+    template: 70
+  matchers:
+    install-script: 90
+    brewfile: 90
+    shell-aliases: 80
+    shell-profile: 80
+    bin-dir: 90
+    bin-path: 80
+    local-bin-dir: 90
+    local-bin-path: 80
+    template: 70
+    symlink-catchall: 0
+
+linkPaths:
+  coreUnixExceptions:
+    - ssh
+    - gnupg
+    - aws
+    - kube
+    - docker
+    - gitconfig
+    - bashrc
+    - zshrc
+    - profile
+
+handlerDefaults:
+  pathTargetDir: "~/bin"
+
+handlerTemplates:
+  shellAliases: |
+    #!/usr/bin/env sh
+    # Shell aliases for PACK_NAME pack
+    #
+    # This file is sourced to add shell aliases during 'dodot deploy PACK_NAME'
+    # 
+    # Use standard shell alias syntax (compatible with bash/zsh/fish/etc)
+    # dodot handles shell compatibility automatically
+    #
+    # Safe to keep empty or remove. By keeping it, you can add
+    # aliases later without redeploying the pack.
+    
+    # Add aliases below
+    # Examples:
+    # alias ll='ls -la'
+    # alias grep='grep --color=auto'
+  
+  brewfile: |
+    # Homebrew dependencies for PACK_NAME pack
+    # 
+    # This file is processed by 'dodot install PACK_NAME' to install
+    # packages using Homebrew. Each package is installed once during
+    # initial deployment. The deployment is tracked by checksum, so
+    # modifying this file will trigger a re-run.
+    #
+    # Safe to keep empty or remove. By keeping it, you can add
+    # homebrew packages later without redeploying the pack.
+    
+    # Examples:
+    # brew "git"
+    # brew "vim"
+    # cask "visual-studio-code"
+
+shellIntegration:
+  bashZshSnippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
+  bashZshSnippetWithCustom: '[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"'
+  fishSnippet: |
+    if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+        source "$HOME/.local/share/dodot/shell/dodot-init.fish"
+    end
+
+logging:
+  defaultLevel: warn
+  verbosityLevels:
+    0: warn
+    1: info
+    2: debug
+    3: trace
+  timeFormat: "15:04"
+  enableColor: true
+  enableCallerAtVerbosity: 2
+
+matchers:
+  - name: install-script
+    type: matcher
+    priority: 90
+    triggerType: filename
+    triggerData:
+      pattern: install.sh
+    handlerType: provision
+    handlerData: {}
+  
+  - name: brewfile
+    type: matcher
+    priority: 90
+    triggerType: filename
+    triggerData:
+      pattern: Brewfile
+    handlerType: homebrew
+    handlerData: {}
+  
+  - name: shell-aliases
+    type: matcher
+    priority: 80
+    triggerType: filename
+    triggerData:
+      pattern: "*aliases.sh"
+    handlerType: shell_profile
+    handlerData:
+      placement: aliases
+  
+  - name: shell-profile
+    type: matcher
+    priority: 80
+    triggerType: filename
+    triggerData:
+      pattern: profile.sh
+    handlerType: shell_profile
+    handlerData:
+      placement: environment
+  
+  - name: bin-dir
+    type: matcher
+    priority: 90
+    triggerType: directory
+    triggerData:
+      pattern: bin
+    handlerType: path
+    handlerData: {}
+  
+  - name: bin-path
+    type: matcher
+    priority: 80
+    triggerType: directory
+    triggerData:
+      pattern: bin
+    handlerType: shell_add_path
+    handlerData: {}
+  
+  - name: local-bin-dir
+    type: matcher
+    priority: 90
+    triggerType: directory
+    triggerData:
+      pattern: .local/bin
+    handlerType: path
+    handlerData: {}
+  
+  - name: local-bin-path
+    type: matcher
+    priority: 80
+    triggerType: directory
+    triggerData:
+      pattern: .local/bin
+    handlerType: shell_add_path
+    handlerData: {}
+  
+  - name: symlink-catchall
+    type: matcher
+    priority: 0
+    triggerType: catchall
+    triggerData: {}
+    handlerType: symlink
+    handlerData: {}
