@@ -66,13 +66,9 @@ path = "temp/*"
 	packs, err := GetPacks(candidates)
 	testutil.AssertNoError(t, err)
 
-	// 3. Process triggers for each pack
-	var allMatches []types.TriggerMatch
-	for _, pack := range packs {
-		matches, err := ProcessPackTriggers(pack)
-		testutil.AssertNoError(t, err)
-		allMatches = append(allMatches, matches...)
-	}
+	// 3. Process triggers for all packs
+	allMatches, err := GetMatches(packs)
+	testutil.AssertNoError(t, err)
 
 	// 4. Convert to actions
 	actions, err := GetActions(allMatches)

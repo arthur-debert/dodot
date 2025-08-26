@@ -16,6 +16,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/matchers"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -112,7 +113,7 @@ func getPackDisplayStatus(pack types.Pack, dataStore types.DataStore, fs types.F
 	}
 
 	// Get all trigger matches for this pack
-	matches, err := core.ProcessPackTriggersFS(pack, fs)
+	matches, err := matchers.ScanPack(pack, fs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process triggers: %w", err)
 	}
