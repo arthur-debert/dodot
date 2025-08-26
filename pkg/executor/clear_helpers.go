@@ -1,4 +1,4 @@
-package core
+package executor
 
 import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
@@ -7,9 +7,10 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// GetClearableHandlersByMode returns handlers that implement Clearable, grouped by run mode
+// GetClearableHandlersByMode returns handlers that implement Clearable, grouped by run mode.
+// This is used by commands to get only the handlers they need to clear.
 func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearable, error) {
-	logger := logging.GetLogger("core.clear")
+	logger := logging.GetLogger("executor.clear")
 	result := make(map[string]handlers.Clearable)
 
 	// Get all registered handler names
@@ -70,7 +71,7 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 
 // GetAllClearableHandlers returns all handlers that implement Clearable
 func GetAllClearableHandlers() (map[string]handlers.Clearable, error) {
-	logger := logging.GetLogger("core.clear")
+	logger := logging.GetLogger("executor.clear")
 	handlers := make(map[string]handlers.Clearable)
 
 	// Get linking handlers
@@ -98,29 +99,30 @@ func GetAllClearableHandlers() (map[string]handlers.Clearable, error) {
 	return handlers, nil
 }
 
-// GetHandlerStateDir returns the actual state directory name for a handler
-// Some handlers use different directory names than their handler names
-func GetHandlerStateDir(handlerName string) string {
-	switch handlerName {
-	case "symlink":
-		return "symlinks" // Historical: symlink handler uses "symlinks" directory
-	default:
-		return handlerName
-	}
-}
-
-// FilterHandlersByState returns only handlers that have state for the given pack
+// FilterHandlersByState returns only handlers that have state for the given pack.
+// This allows commands to skip handlers that have nothing to clear.
 func FilterHandlersByState(ctx types.ClearContext, handlersMap map[string]handlers.Clearable) map[string]handlers.Clearable {
-	logger := logging.GetLogger("core.clear").With().
+	logger := logging.GetLogger("executor.clear").With().
 		Str("pack", ctx.Pack.Name).
 		Logger()
 
 	filtered := make(map[string]handlers.Clearable)
 
 	for name, handler := range handlersMap {
-		// Check if handler has any state
-		// Note: Some handlers use different directory names than their handler names
-		stateDirName := GetHandlerStateDir(name)
+		// The handler knows its own state directory structure
+		// We check if any state exists for this handler/pack combination
+		
+		// For now, we check the standard locations. In the future,
+		// handlers could expose a method to check for state existence.
+		var stateDirName string
+		
+		// Historical convention: symlink handler uses "symlinks" directory
+		if name == "symlink" {
+			stateDirName = "symlinks"
+		} else {
+			stateDirName = name
+		}
+		
 		handlerDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, stateDirName)
 		if _, err := ctx.FS.Stat(handlerDir); err == nil {
 			filtered[name] = handler
@@ -137,4 +139,19 @@ func FilterHandlersByState(ctx types.ClearContext, handlersMap map[string]handle
 		Msg("Filtered handlers by state")
 
 	return filtered
+}
+
+// GetHandlerStateDir returns the state directory name for a handler.
+// This is exported for backward compatibility with commands that need
+// to know the state directory structure.
+//
+// TODO: This should eventually be moved to the handler interface so
+// each handler can declare its own state directory name.
+func GetHandlerStateDir(handlerName string) string {
+	switch handlerName {
+	case "symlink":
+		return "symlinks" // Historical: symlink handler uses "symlinks" directory
+	default:
+		return handlerName
+	}
 }
