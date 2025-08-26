@@ -17,6 +17,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -32,6 +33,7 @@ func NewRootCmd() *cobra.Command {
 		dryRun     bool
 		force      bool
 		configFile string
+		formatStr  string
 	)
 
 	rootCmd := &cobra.Command{
@@ -71,6 +73,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, MsgFlagDryRun)
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, MsgFlagForce)
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to custom styles configuration file")
+	rootCmd.PersistentFlags().StringVar(&formatStr, "format", "auto", "Output format (auto|term|text|json)")
 
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
@@ -291,14 +294,19 @@ func newLinkCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrLinkPacks, err)
 			}
 
-			// Display results using the new output renderer
-			// The renderer will automatically detect NO_COLOR environment variable
-			// through lipgloss/termenv
-			renderer, err := output.NewRenderer(os.Stdout, false)
+			// Get format flag and create appropriate renderer
+			formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
+			format, err := ui.ParseFormat(formatStr)
+			if err != nil {
+				return fmt.Errorf("invalid format: %w", err)
+			}
+
+			renderer, err := ui.NewRenderer(format, os.Stdout)
 			if err != nil {
 				return fmt.Errorf("failed to create renderer: %w", err)
 			}
-			if err := renderer.RenderExecutionContext(ctx); err != nil {
+
+			if err := renderer.RenderResult(ctx); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
 
