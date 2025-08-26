@@ -8,6 +8,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -287,6 +288,25 @@ func (h *SymlinkHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, err
 	}
 
 	return clearedItems, nil
+}
+
+// init registers the symlink handler factory
+func init() {
+	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+	registry.MustRegister(handlerFactoryRegistry, SymlinkHandlerName, func(options map[string]interface{}) (interface{}, error) {
+		handler := NewSymlinkHandler()
+
+		// Apply options if provided
+		if options != nil {
+			if err := handler.ValidateOptions(options); err != nil {
+				return nil, err
+			}
+			// For symlink handler, options typically include target directory
+			// The specific options are applied during ProcessLinking
+		}
+
+		return handler, nil
+	})
 }
 
 // Verify interface compliance

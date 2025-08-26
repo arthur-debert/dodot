@@ -903,15 +903,15 @@ func newDeprovisionCmd() *cobra.Command {
 func newOffCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "off [packs...]",
-		Short: "Temporarily disable packs",
-		Long:  "The off command temporarily disables packs by removing their deployments while saving the current state. This allows you to later restore them exactly as they were using the 'on' command.",
-		Example: `  # Turn off all packs
+		Short: "Remove and uninstall packs completely",
+		Long:  "The off command completely removes pack deployments by running 'deprovision' followed by 'unlink'. This uninstalls all provisioned resources (homebrew packages, etc.) and removes all symlinks. Note: This is a complete removal - no state is saved for restoration.",
+		Example: `  # Remove all pack deployments
   dodot off
   
-  # Turn off specific packs
+  # Remove specific packs
   dodot off vim zsh
   
-  # Preview what would be turned off
+  # Preview what would be removed
   dodot off --dry-run vim`,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
@@ -954,28 +954,37 @@ func newOffCmd() *cobra.Command {
 			if result.TotalCleared == 0 {
 				fmt.Println("No deployments found to turn off")
 			} else {
-				for _, pack := range result.Packs {
-					fmt.Printf("\nPack: %s\n", pack.Name)
-					if pack.Error != nil {
-						fmt.Printf("  ✗ Error: %v\n", pack.Error)
-						continue
-					}
-
-					if pack.StateStored {
-						fmt.Printf("  ✓ State saved for restoration\n")
-					}
-
-					for _, handler := range pack.HandlersRun {
-						if handler.Error != nil {
-							fmt.Printf("  ✗ %s: %v\n", handler.HandlerName, handler.Error)
-						} else if len(handler.ClearedItems) > 0 {
-							fmt.Printf("  ✓ %s:\n", handler.HandlerName)
-							for _, item := range handler.ClearedItems {
-								fmt.Printf("    - %s\n", item.Description)
+				// Display unlink results
+				if result.UnlinkResult != nil && result.UnlinkResult.TotalRemoved > 0 {
+					fmt.Printf("\nUnlink Results:\n")
+					for _, pack := range result.UnlinkResult.Packs {
+						fmt.Printf("  Pack: %s\n", pack.Name)
+						for _, item := range pack.RemovedItems {
+							if item.Success {
+								fmt.Printf("    - %s: %s\n", item.Type, item.Path)
+							} else {
+								fmt.Printf("    ✗ %s: %s (error: %s)\n", item.Type, item.Path, item.Error)
 							}
 						}
 					}
 				}
+
+				// Display deprovision results
+				if result.DeprovisionResult != nil && result.DeprovisionResult.TotalCleared > 0 {
+					fmt.Printf("\nDeprovision Results:\n")
+					for _, pack := range result.DeprovisionResult.Packs {
+						fmt.Printf("  Pack: %s\n", pack.Name)
+						for _, handler := range pack.HandlersRun {
+							if len(handler.ClearedItems) > 0 {
+								fmt.Printf("    %s:\n", handler.HandlerName)
+								for _, item := range handler.ClearedItems {
+									fmt.Printf("      - %s\n", item.Description)
+								}
+							}
+						}
+					}
+				}
+
 				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
 			}
 
@@ -994,16 +1003,16 @@ func newOffCmd() *cobra.Command {
 func newOnCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "on [packs...]",
-		Short: "Re-enable previously disabled packs",
-		Long:  "The on command re-enables packs that were previously disabled with 'off'. It restores the saved state if available, or redeploys the pack from scratch if no saved state exists or --force is used.",
-		Example: `  # Turn on all disabled packs
+		Short: "Install and deploy packs",
+		Long:  "The on command deploys packs by running 'link' followed by 'provision'. This creates all symlinks and installs all provisioned resources (homebrew packages, etc.). This is equivalent to running 'dodot link' followed by 'dodot provision'.",
+		Example: `  # Deploy all packs
   dodot on
   
-  # Turn on specific packs
+  # Deploy specific packs
   dodot on vim zsh
   
-  # Force redeploy from scratch
-  dodot on --force vim`,
+  # Preview deployment
+  dodot on --dry-run vim`,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1045,40 +1054,28 @@ func newOnCmd() *cobra.Command {
 				fmt.Println("DRY RUN - No changes made")
 			}
 
-			if result.TotalRestored == 0 && result.TotalDeployed == 0 {
+			if result.TotalDeployed == 0 {
 				fmt.Println("No packs to turn on")
 			} else {
-				for _, pack := range result.Packs {
-					fmt.Printf("\nPack: %s\n", pack.Name)
-					if pack.Error != nil {
-						fmt.Printf("  ✗ Error: %v\n", pack.Error)
-						continue
-					}
-
-					if !pack.WasOff {
-						fmt.Printf("  ℹ Pack was not turned off\n")
-					} else if pack.StateRestored {
-						fmt.Printf("  ✓ State restored from saved state\n")
-					} else if pack.Redeployed {
-						fmt.Printf("  ✓ Redeployed from scratch\n")
-					}
-
-					// Show deployment results if pack was redeployed
-					if pack.ExecutionCtx != nil && pack.Redeployed {
-						// Use the output renderer for deployment results
-						renderer, err := output.NewRenderer(os.Stdout, false)
-						if err == nil {
-							_ = renderer.RenderExecutionContext(pack.ExecutionCtx)
-						}
+				// Display link results
+				if result.LinkResult != nil {
+					fmt.Printf("\nLink Results:\n")
+					renderer, err := output.NewRenderer(os.Stdout, false)
+					if err == nil {
+						_ = renderer.RenderExecutionContext(result.LinkResult)
 					}
 				}
 
-				if result.TotalRestored > 0 {
-					fmt.Printf("\nTotal packs restored: %d\n", result.TotalRestored)
+				// Display provision results
+				if result.ProvisionResult != nil && result.ProvisionResult.CompletedActions > 0 {
+					fmt.Printf("\nProvision Results:\n")
+					renderer, err := output.NewRenderer(os.Stdout, false)
+					if err == nil {
+						_ = renderer.RenderExecutionContext(result.ProvisionResult)
+					}
 				}
-				if result.TotalDeployed > 0 {
-					fmt.Printf("Total packs redeployed: %d\n", result.TotalDeployed)
-				}
+
+				fmt.Printf("\nTotal items deployed: %d\n", result.TotalDeployed)
 			}
 
 			if len(result.Errors) > 0 {

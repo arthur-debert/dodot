@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -311,6 +312,23 @@ func (h *HomebrewHandler) ClearWithConfirmations(ctx types.ClearContext, confirm
 
 	// Fall back to basic clear (just remove state)
 	return h.Clear(ctx)
+}
+
+// init registers the homebrew handler factory
+func init() {
+	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+	registry.MustRegister(handlerFactoryRegistry, HomebrewHandlerName, func(options map[string]interface{}) (interface{}, error) {
+		handler := NewHomebrewHandler()
+
+		// Apply options if provided
+		if options != nil {
+			if err := handler.ValidateOptions(options); err != nil {
+				return nil, err
+			}
+		}
+
+		return handler, nil
+	})
 }
 
 // Verify interface compliance

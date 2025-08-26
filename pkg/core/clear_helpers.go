@@ -2,13 +2,8 @@ package core
 
 import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
-	"github.com/arthur-debert/dodot/pkg/handlers/install"
-	"github.com/arthur-debert/dodot/pkg/handlers/path"
-	"github.com/arthur-debert/dodot/pkg/handlers/registry"
-	"github.com/arthur-debert/dodot/pkg/handlers/shell"
-	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -17,21 +12,26 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 	logger := logging.GetLogger("core.clear")
 	result := make(map[string]handlers.Clearable)
 
-	// List of all handler names
-	handlerNames := []string{
-		symlink.SymlinkHandlerName,
-		path.PathHandlerName,
-		shell.ShellHandlerName,
-		homebrew.HomebrewHandlerName,
-		install.InstallHandlerName,
-	}
+	// Get all registered handler names
+	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+	handlerNames := handlerFactoryRegistry.List()
 
 	for _, name := range handlerNames {
-		handler := registry.GetHandler(name)
-		if handler == nil {
+		factory, err := registry.GetHandlerFactory(name)
+		if err != nil {
 			logger.Warn().
 				Str("handler", name).
-				Msg("Failed to get handler")
+				Err(err).
+				Msg("Failed to get handler factory")
+			continue
+		}
+
+		handler, err := factory(nil)
+		if err != nil {
+			logger.Warn().
+				Str("handler", name).
+				Err(err).
+				Msg("Failed to create handler instance")
 			continue
 		}
 

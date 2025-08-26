@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Parse flags
+IMPORTS_ONLY=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --imports)
+            IMPORTS_ONLY=true
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            exit 1
+            ;;
+        *)
+            # This is the package argument
+            PACKAGE="$1"
+            shift
+            break
+            ;;
+    esac
+done
+
+# Check if package argument is provided
+if [ -z "${PACKAGE:-}" ]; then
+    echo "Usage: $0 [--imports] <package>"
+    echo "Options:"
+    echo "  --imports    Show only direct imports instead of deep dependencies"
+    echo "Examples:"
+    echo "  $0 ./pkg/types/..."
+    echo "  $0 pkg/types"
+    echo "  $0 --imports ./pkg/types"
+    echo "  $0 github.com/arthur-debert/dodot/pkg/types"
+    exit 1
+fi
+
+# Get the repository name from GH_REPO environment variable
+if [ -z "${GH_REPO:-}" ]; then
+    echo "Error: GH_REPO environment variable is not set"
+    exit 1
+fi
+
+REPO_NAME="github.com/${GH_REPO}"
+
+# Handle relative paths - prefix with ./ if it doesn't start with ./ or github.com
+if [[ "$PACKAGE" != ./* ]] && [[ "$PACKAGE" != github.com/* ]]; then
+    PACKAGE="./$PACKAGE"
+fi
+
+# Get dependencies or imports, filter for internal ones only, and sort
+if [ "$IMPORTS_ONLY" = true ]; then
+    go list -f '{{range .Imports}}{{.}}{{"\n"}}{{end}}' "$PACKAGE" 2>/dev/null | \
+        grep "^${REPO_NAME}" | \
+        sort -u
+else
+    go list -f '{{range .Deps}}{{.}}{{"\n"}}{{end}}' "$PACKAGE" 2>/dev/null | \
+        grep "^${REPO_NAME}" | \
+        sort -u
+fi

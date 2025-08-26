@@ -5,6 +5,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -159,6 +160,23 @@ func (h *PathHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error)
 			Description: "PATH entries will be removed",
 		},
 	}, nil
+}
+
+// init registers the path handler factory
+func init() {
+	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+	registry.MustRegister(handlerFactoryRegistry, PathHandlerName, func(options map[string]interface{}) (interface{}, error) {
+		handler := NewPathHandler()
+
+		// Apply options if provided
+		if options != nil {
+			if err := handler.ValidateOptions(options); err != nil {
+				return nil, err
+			}
+		}
+
+		return handler, nil
+	})
 }
 
 // Verify interface compliance
