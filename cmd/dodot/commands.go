@@ -23,6 +23,22 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// createRenderer is a helper function to create a renderer based on the format flag
+func createRenderer(cmd *cobra.Command) (ui.Renderer, error) {
+	formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
+	format, err := ui.ParseFormat(formatStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid format: %w", err)
+	}
+
+	renderer, err := ui.NewRenderer(format, os.Stdout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create renderer: %w", err)
+	}
+
+	return renderer, nil
+}
+
 // NewRootCmd creates and returns the root command
 func NewRootCmd() *cobra.Command {
 	// Initialize custom template formatting functions
@@ -294,16 +310,10 @@ func newLinkCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrLinkPacks, err)
 			}
 
-			// Get format flag and create appropriate renderer
-			formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
-			format, err := ui.ParseFormat(formatStr)
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf("invalid format: %w", err)
-			}
-
-			renderer, err := ui.NewRenderer(format, os.Stdout)
-			if err != nil {
-				return fmt.Errorf("failed to create renderer: %w", err)
+				return err
 			}
 
 			if err := renderer.RenderResult(ctx); err != nil {
@@ -357,16 +367,10 @@ func newProvisionCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrProvisionPacks, err)
 			}
 
-			// Get format flag and create appropriate renderer
-			formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
-			format, err := ui.ParseFormat(formatStr)
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf("invalid format: %w", err)
-			}
-
-			renderer, err := ui.NewRenderer(format, os.Stdout)
-			if err != nil {
-				return fmt.Errorf("failed to create renderer: %w", err)
+				return err
 			}
 
 			if err := renderer.RenderResult(ctx); err != nil {
@@ -452,16 +456,10 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrStatusPacks, err)
 			}
 
-			// Get format flag and create appropriate renderer
-			formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
-			format, err := ui.ParseFormat(formatStr)
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf("invalid format: %w", err)
-			}
-
-			renderer, err := ui.NewRenderer(format, os.Stdout)
-			if err != nil {
-				return fmt.Errorf("failed to create renderer: %w", err)
+				return err
 			}
 
 			if err := renderer.RenderResult(result); err != nil {
@@ -1075,16 +1073,10 @@ func newOnCmd() *cobra.Command {
 			if result.TotalDeployed == 0 {
 				fmt.Println("No packs to turn on")
 			} else {
-				// Get format flag and create appropriate renderer
-				formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
-				format, err := ui.ParseFormat(formatStr)
+				// Create renderer for displaying results
+				renderer, err := createRenderer(cmd)
 				if err != nil {
-					return fmt.Errorf("invalid format: %w", err)
-				}
-
-				renderer, err := ui.NewRenderer(format, os.Stdout)
-				if err != nil {
-					return fmt.Errorf("failed to create renderer: %w", err)
+					return err
 				}
 
 				// Display link results
