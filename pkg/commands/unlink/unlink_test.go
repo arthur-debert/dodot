@@ -73,7 +73,7 @@ func TestUnlinkPacks_Integration(t *testing.T) {
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "symlinks"))
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "path"))
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "shell"))
-	assert.DirExists(t, testPaths.PackHandlerDir("test", "sentinels"))
+	assert.DirExists(t, testPaths.PackHandlerDir("test", "install"))
 
 	// Now unlink the pack
 	result, err := UnlinkPacks(UnlinkPacksOptions{
@@ -120,7 +120,7 @@ func TestUnlinkPacks_Integration(t *testing.T) {
 	assert.NoDirExists(t, testPaths.PackHandlerDir("test", "shell"))
 
 	// Verify sentinels were NOT removed
-	assert.DirExists(t, testPaths.PackHandlerDir("test", "sentinels"), "Sentinels should remain")
+	assert.DirExists(t, testPaths.PackHandlerDir("test", "install"), "Install handler state should remain")
 }
 
 func TestUnlinkPacks_DryRun(t *testing.T) {
