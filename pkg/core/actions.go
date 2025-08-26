@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
+	"github.com/arthur-debert/dodot/pkg/handlers/registry"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -45,7 +46,7 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 			Msg("Processing matches for handler")
 
 		// Get handler directly
-		handler := handlers.GetHandler(handlerName)
+		handler := registry.GetHandler(handlerName)
 		if handler == nil {
 			logger.Warn().
 				Str("handler", handlerName).
@@ -55,7 +56,7 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 
 		// Process based on handler type, preferring confirmation-capable interfaces
 		switch h := handler.(type) {
-		case types.LinkingHandlerWithConfirmations:
+		case handlers.LinkingHandlerWithConfirmations:
 			// Use confirmation-capable interface
 			result, err := h.ProcessLinkingWithConfirmations(handlerMatches)
 			if err != nil {
@@ -64,7 +65,7 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 			allActions = append(allActions, result.Actions...)
 			allConfirmations = append(allConfirmations, result.Confirmations...)
 
-		case types.ProvisioningHandlerWithConfirmations:
+		case handlers.ProvisioningHandlerWithConfirmations:
 			// Use confirmation-capable interface
 			result, err := h.ProcessProvisioningWithConfirmations(handlerMatches)
 			if err != nil {
@@ -73,7 +74,7 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 			allActions = append(allActions, result.Actions...)
 			allConfirmations = append(allConfirmations, result.Confirmations...)
 
-		case types.LinkingHandler:
+		case handlers.LinkingHandler:
 			// Fallback to basic linking interface
 			linkingActions, err := h.ProcessLinking(handlerMatches)
 			if err != nil {
@@ -84,7 +85,7 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 				allActions = append(allActions, action)
 			}
 
-		case types.ProvisioningHandler:
+		case handlers.ProvisioningHandler:
 			// Fallback to basic provisioning interface
 			provisioningActions, err := h.ProcessProvisioning(handlerMatches)
 			if err != nil {

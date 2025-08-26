@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -233,14 +234,17 @@ func TestHomebrewHandler_InterfaceCompliance(t *testing.T) {
 	h := NewHomebrewHandler()
 
 	// Should implement all expected interfaces
-	var _ types.ProvisioningHandler = h
-	var _ types.ProvisioningHandlerWithConfirmations = h
-	var _ types.Clearable = h
-	var _ types.ClearableWithConfirmations = h
+	var _ handlers.ProvisioningHandler = h
+	var _ handlers.ProvisioningHandlerWithConfirmations = h
+	var _ handlers.Clearable = h
+	var _ handlers.ClearableWithConfirmations = h
 
-	// Should be detectable by helper functions
-	assert.True(t, types.IsProvisioningHandlerWithConfirmations(h))
-	assert.True(t, types.IsClearableWithConfirmations(h))
+	// Verify through type assertion
+	_, ok := interface{}(h).(handlers.ProvisioningHandlerWithConfirmations)
+	assert.True(t, ok, "Should implement ProvisioningHandlerWithConfirmations")
+
+	_, ok = interface{}(h).(handlers.ClearableWithConfirmations)
+	assert.True(t, ok, "Should implement ClearableWithConfirmations")
 }
 
 func TestHomebrewHandler_ProcessProvisioningWithConfirmations_MultipleMatches(t *testing.T) {

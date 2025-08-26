@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -66,13 +67,13 @@ func (m *mockFilterPaths) MapPackFileToSystem(pack *types.Pack, relPath string) 
 func TestFilterHandlersByState(t *testing.T) {
 	tests := []struct {
 		name         string
-		handlers     map[string]types.Clearable
+		handlers     map[string]handlers.Clearable
 		existingDirs map[string]bool
 		expected     []string
 	}{
 		{
 			name: "all handlers have state",
-			handlers: map[string]types.Clearable{
+			handlers: map[string]handlers.Clearable{
 				"symlink": &mockClearableHandler{name: "symlink"},
 				"path":    &mockClearableHandler{name: "path"},
 			},
@@ -84,7 +85,7 @@ func TestFilterHandlersByState(t *testing.T) {
 		},
 		{
 			name: "some handlers have state",
-			handlers: map[string]types.Clearable{
+			handlers: map[string]handlers.Clearable{
 				"symlink": &mockClearableHandler{name: "symlink"},
 				"path":    &mockClearableHandler{name: "path"},
 				"shell":   &mockClearableHandler{name: "shell"},
@@ -98,7 +99,7 @@ func TestFilterHandlersByState(t *testing.T) {
 		},
 		{
 			name: "no handlers have state",
-			handlers: map[string]types.Clearable{
+			handlers: map[string]handlers.Clearable{
 				"symlink": &mockClearableHandler{name: "symlink"},
 				"path":    &mockClearableHandler{name: "path"},
 			},

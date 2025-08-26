@@ -5,6 +5,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/registry"
 	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -12,9 +13,9 @@ import (
 )
 
 // GetClearableHandlersByMode returns handlers that implement Clearable, grouped by run mode
-func GetClearableHandlersByMode(mode types.RunMode) (map[string]types.Clearable, error) {
+func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearable, error) {
 	logger := logging.GetLogger("core.clear")
-	result := make(map[string]types.Clearable)
+	result := make(map[string]handlers.Clearable)
 
 	// List of all handler names
 	handlerNames := []string{
@@ -26,7 +27,7 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]types.Clearable,
 	}
 
 	for _, name := range handlerNames {
-		handler := handlers.GetHandler(name)
+		handler := registry.GetHandler(name)
 		if handler == nil {
 			logger.Warn().
 				Str("handler", name).
@@ -37,9 +38,9 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]types.Clearable,
 		// Check if handler matches the requested mode
 		var handlerMode types.RunMode
 		switch h := handler.(type) {
-		case types.LinkingHandler:
+		case handlers.LinkingHandler:
 			handlerMode = h.RunMode()
-		case types.ProvisioningHandler:
+		case handlers.ProvisioningHandler:
 			handlerMode = h.RunMode()
 		default:
 			continue
@@ -50,7 +51,7 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]types.Clearable,
 		}
 
 		// Check if handler implements Clearable
-		if clearable, ok := handler.(types.Clearable); ok {
+		if clearable, ok := handler.(handlers.Clearable); ok {
 			result[name] = clearable
 		} else {
 			logger.Debug().
@@ -68,9 +69,9 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]types.Clearable,
 }
 
 // GetAllClearableHandlers returns all handlers that implement Clearable
-func GetAllClearableHandlers() (map[string]types.Clearable, error) {
+func GetAllClearableHandlers() (map[string]handlers.Clearable, error) {
 	logger := logging.GetLogger("core.clear")
-	handlers := make(map[string]types.Clearable)
+	handlers := make(map[string]handlers.Clearable)
 
 	// Get linking handlers
 	linkingHandlers, err := GetClearableHandlersByMode(types.RunModeLinking)
@@ -109,14 +110,14 @@ func GetHandlerStateDir(handlerName string) string {
 }
 
 // FilterHandlersByState returns only handlers that have state for the given pack
-func FilterHandlersByState(ctx types.ClearContext, handlers map[string]types.Clearable) map[string]types.Clearable {
+func FilterHandlersByState(ctx types.ClearContext, handlersMap map[string]handlers.Clearable) map[string]handlers.Clearable {
 	logger := logging.GetLogger("core.clear").With().
 		Str("pack", ctx.Pack.Name).
 		Logger()
 
-	filtered := make(map[string]types.Clearable)
+	filtered := make(map[string]handlers.Clearable)
 
-	for name, handler := range handlers {
+	for name, handler := range handlersMap {
 		// Check if handler has any state
 		// Note: Some handlers use different directory names than their handler names
 		stateDirName := GetHandlerStateDir(name)
@@ -131,7 +132,7 @@ func FilterHandlersByState(ctx types.ClearContext, handlers map[string]types.Cle
 	}
 
 	logger.Debug().
-		Int("totalHandlers", len(handlers)).
+		Int("totalHandlers", len(handlersMap)).
 		Int("withState", len(filtered)).
 		Msg("Filtered handlers by state")
 

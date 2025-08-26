@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -12,7 +13,7 @@ import (
 // It handles provisioning and linking handlers differently:
 // - Provisioning handlers: Use DeleteProvisioningState to remove state directory
 // - Linking handlers: Manually remove the state directory since DeleteProvisioningState rejects them
-func ClearHandlerEnhanced(ctx types.ClearContext, handler types.Clearable, handlerName string) (*ClearResult, error) {
+func ClearHandlerEnhanced(ctx types.ClearContext, handler handlers.Clearable, handlerName string) (*ClearResult, error) {
 	logger := logging.GetLogger("core.clear").With().
 		Str("pack", ctx.Pack.Name).
 		Str("handler", handlerName).
@@ -89,7 +90,7 @@ func ClearHandlerEnhanced(ctx types.ClearContext, handler types.Clearable, handl
 }
 
 // ClearHandlersEnhanced clears multiple handlers for a pack using the enhanced method
-func ClearHandlersEnhanced(ctx types.ClearContext, handlers map[string]types.Clearable) (map[string]*ClearResult, error) {
+func ClearHandlersEnhanced(ctx types.ClearContext, handlers map[string]handlers.Clearable) (map[string]*ClearResult, error) {
 	logger := logging.GetLogger("core.clear").With().
 		Str("pack", ctx.Pack.Name).
 		Int("handlerCount", len(handlers)).

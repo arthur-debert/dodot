@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -18,7 +19,7 @@ type ClearResult struct {
 // ClearHandler orchestrates the clearing of a handler's deployments and state.
 // It first calls the handler's Clear method to perform handler-specific cleanup,
 // then removes the handler's state directory.
-func ClearHandler(ctx types.ClearContext, handler types.Clearable, handlerName string) (*ClearResult, error) {
+func ClearHandler(ctx types.ClearContext, handler handlers.Clearable, handlerName string) (*ClearResult, error) {
 	logger := logging.GetLogger("core.clear").With().
 		Str("pack", ctx.Pack.Name).
 		Str("handler", handlerName).
@@ -63,7 +64,7 @@ func ClearHandler(ctx types.ClearContext, handler types.Clearable, handlerName s
 }
 
 // ClearHandlers clears multiple handlers for a pack
-func ClearHandlers(ctx types.ClearContext, handlers map[string]types.Clearable) (map[string]*ClearResult, error) {
+func ClearHandlers(ctx types.ClearContext, handlers map[string]handlers.Clearable) (map[string]*ClearResult, error) {
 	logger := logging.GetLogger("core.clear").With().
 		Str("pack", ctx.Pack.Name).
 		Int("handlerCount", len(handlers)).

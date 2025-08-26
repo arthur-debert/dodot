@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -218,6 +219,6 @@ func (h *InstallHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, err
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandler = (*InstallHandler)(nil)
-var _ types.ProvisioningHandlerWithConfirmations = (*InstallHandler)(nil)
-var _ types.Clearable = (*InstallHandler)(nil)
+var _ handlers.ProvisioningHandler = (*InstallHandler)(nil)
+var _ handlers.ProvisioningHandlerWithConfirmations = (*InstallHandler)(nil)
+var _ handlers.Clearable = (*InstallHandler)(nil)

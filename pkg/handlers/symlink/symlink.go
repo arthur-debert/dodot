@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -289,6 +290,6 @@ func (h *SymlinkHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, err
 }
 
 // Verify interface compliance
-var _ types.LinkingHandler = (*SymlinkHandler)(nil)
-var _ types.LinkingHandlerWithConfirmations = (*SymlinkHandler)(nil)
-var _ types.Clearable = (*SymlinkHandler)(nil)
+var _ handlers.LinkingHandler = (*SymlinkHandler)(nil)
+var _ handlers.LinkingHandlerWithConfirmations = (*SymlinkHandler)(nil)
+var _ handlers.Clearable = (*SymlinkHandler)(nil)

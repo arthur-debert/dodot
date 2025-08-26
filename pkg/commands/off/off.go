@@ -9,6 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -146,7 +147,7 @@ func OffPacks(opts OffPacksOptions) (*OffResult, error) {
 }
 
 // processPackOff handles turning off a single pack with confirmation support
-func processPackOff(pack types.Pack, allHandlers map[string]types.Clearable, ds datastore.DataStore, fs types.FS, p paths.Paths, dryRun bool) (PackOffResult, error) {
+func processPackOff(pack types.Pack, allHandlers map[string]handlers.Clearable, ds datastore.DataStore, fs types.FS, p paths.Paths, dryRun bool) (PackOffResult, error) {
 	logger := logging.GetLogger("commands.off")
 
 	// Create clear context for this pack
@@ -182,7 +183,7 @@ func processPackOff(pack types.Pack, allHandlers map[string]types.Clearable, ds 
 	handlerConfirmations := make(map[string][]types.ConfirmationRequest)
 
 	for handlerName, handler := range handlersWithState {
-		if confirmationHandler, ok := handler.(types.ClearableWithConfirmations); ok {
+		if confirmationHandler, ok := handler.(handlers.ClearableWithConfirmations); ok {
 			confirmations, err := confirmationHandler.GetClearConfirmations(ctx)
 			if err != nil {
 				return packResult, fmt.Errorf("failed to get confirmations from handler %s: %w", handlerName, err)
@@ -230,7 +231,7 @@ func processPackOff(pack types.Pack, allHandlers map[string]types.Clearable, ds 
 
 		if len(allConfirmations) > 0 && confirmationContext != nil {
 			// Use confirmation-aware clearing for handlers that support it
-			if confirmationHandler, ok := handler.(types.ClearableWithConfirmations); ok {
+			if confirmationHandler, ok := handler.(handlers.ClearableWithConfirmations); ok {
 				clearedItems, clearErr = confirmationHandler.ClearWithConfirmations(ctx, confirmationContext)
 			} else {
 				clearedItems, clearErr = handler.Clear(ctx)
