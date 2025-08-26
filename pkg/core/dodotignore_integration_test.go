@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -59,15 +60,15 @@ path = "temp/*"
 
 	// Run the core pipeline directly
 	// 1. Get pack candidates
-	candidates, err := GetPackCandidates(root)
+	candidates, err := packs.GetPackCandidates(root)
 	testutil.AssertNoError(t, err)
 
 	// 2. Get packs
-	packs, err := GetPacks(candidates)
+	allPacks, err := packs.GetPacks(candidates)
 	testutil.AssertNoError(t, err)
 
 	// 3. Process triggers for all packs
-	allMatches, err := GetMatches(packs)
+	allMatches, err := GetMatches(allPacks)
 	testutil.AssertNoError(t, err)
 
 	// 4. Convert to actions
@@ -77,7 +78,7 @@ path = "temp/*"
 	// 5. Convert to operations
 	// Verify packs were processed correctly
 	packNames := make(map[string]bool)
-	for _, pack := range packs {
+	for _, pack := range allPacks {
 		packNames[pack.Name] = true
 	}
 
@@ -120,7 +121,7 @@ path = "temp/*"
 		}
 	}
 
-	t.Logf("Processed %d packs with %d total actions", len(packs), len(actions))
+	t.Logf("Processed %d packs with %d total actions", len(allPacks), len(actions))
 }
 
 func TestDodotIgnoreFunctionality(t *testing.T) {
@@ -129,14 +130,14 @@ func TestDodotIgnoreFunctionality(t *testing.T) {
 		packDir := testutil.TempDir(t, "test-pack")
 
 		// Test without .dodotignore
-		testutil.AssertFalse(t, shouldIgnorePack(packDir),
+		testutil.AssertFalse(t, packs.ShouldIgnorePack(packDir),
 			"Pack without .dodotignore should not be ignored")
 
 		// Create .dodotignore file
 		testutil.CreateFile(t, packDir, ".dodotignore", "")
 
 		// Test with .dodotignore
-		testutil.AssertTrue(t, shouldIgnorePack(packDir),
+		testutil.AssertTrue(t, packs.ShouldIgnorePack(packDir),
 			"Pack with .dodotignore should be ignored")
 	})
 
@@ -218,18 +219,18 @@ func TestGetPacksWithDodotIgnore(t *testing.T) {
 	testutil.CreateFile(t, pack3, "file.txt", "content")
 
 	// Get pack candidates
-	candidates, err := GetPackCandidates(root)
+	candidates, err := packs.GetPackCandidates(root)
 	testutil.AssertNoError(t, err)
 	testutil.AssertEqual(t, 3, len(candidates), "Should find all 3 directories as candidates")
 
 	// Get packs (should skip the one with .dodotignore)
-	packs, err := GetPacks(candidates)
+	allPacks, err := packs.GetPacks(candidates)
 	testutil.AssertNoError(t, err)
-	testutil.AssertEqual(t, 2, len(packs), "Should only load 2 packs (skipping the one with .dodotignore)")
+	testutil.AssertEqual(t, 2, len(allPacks), "Should only load 2 packs (skipping the one with .dodotignore)")
 
 	// Check pack names
 	packNames := make(map[string]bool)
-	for _, pack := range packs {
+	for _, pack := range allPacks {
 		packNames[pack.Name] = true
 	}
 

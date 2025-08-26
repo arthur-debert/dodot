@@ -1,4 +1,4 @@
-package core
+package packs
 
 import (
 	"fmt"
@@ -255,14 +255,14 @@ handler = "symlink"
 		t.Run(tt.name, func(t *testing.T) {
 			candidates := tt.setup(t)
 
-			packs, err := GetPacks(candidates)
+			allPacks, err := GetPacks(candidates)
 
 			testutil.AssertNoError(t, err)
-			testutil.AssertEqual(t, tt.expectedCount, len(packs),
+			testutil.AssertEqual(t, tt.expectedCount, len(allPacks),
 				"unexpected number of packs")
 
 			if tt.validate != nil {
-				tt.validate(t, packs)
+				tt.validate(t, allPacks)
 			}
 		})
 	}
@@ -291,12 +291,12 @@ func TestPackDiscoveryIntegration(t *testing.T) {
 		"expected at least 4 packs, got %d", len(candidates))
 
 	// Load packs
-	packs, err := GetPacks(candidates)
+	allPacks, err := GetPacks(candidates)
 	testutil.AssertNoError(t, err)
 
 	// Verify we got the expected packs
 	packNames := make(map[string]bool)
-	for _, p := range packs {
+	for _, p := range allPacks {
 		packNames[p.Name] = true
 	}
 
@@ -428,7 +428,7 @@ func TestValidatePack(t *testing.T) {
 	}
 }
 
-func TestSelectPacks(t *testing.T) {
+func TestSelectPacksIntegration(t *testing.T) {
 	// Create test packs
 	createTestPacks := func() []types.Pack {
 		return []types.Pack{
@@ -521,14 +521,14 @@ func TestSelectPacks(t *testing.T) {
 	}
 }
 
-func TestGetPackNames(t *testing.T) {
+func TestGetPackNamesIntegration(t *testing.T) {
 	packs := []types.Pack{
 		{Name: "pack1"},
 		{Name: "pack2"},
 		{Name: "pack3"},
 	}
 
-	names := getPackNames(packs)
+	names := GetPackNames(packs)
 	expected := []string{"pack1", "pack2", "pack3"}
 
 	testutil.AssertSliceEqual(t, expected, names)
