@@ -452,14 +452,19 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrStatusPacks, err)
 			}
 
-			// Display results using the new output renderer
-			// The renderer will automatically detect NO_COLOR environment variable
-			// through lipgloss/termenv
-			renderer, err := output.NewRenderer(os.Stdout, false)
+			// Get format flag and create appropriate renderer
+			formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
+			format, err := ui.ParseFormat(formatStr)
+			if err != nil {
+				return fmt.Errorf("invalid format: %w", err)
+			}
+
+			renderer, err := ui.NewRenderer(format, os.Stdout)
 			if err != nil {
 				return fmt.Errorf("failed to create renderer: %w", err)
 			}
-			if err := renderer.Render(result); err != nil {
+
+			if err := renderer.RenderResult(result); err != nil {
 				return fmt.Errorf("failed to display status: %w", err)
 			}
 
