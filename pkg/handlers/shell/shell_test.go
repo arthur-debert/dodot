@@ -1,4 +1,4 @@
-package shell_profile
+package shell
 
 import (
 	"testing"
@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestShellProfileHandler_ProcessLinking(t *testing.T) {
-	handler := NewShellProfileHandler()
+func TestShellHandler_ProcessLinking(t *testing.T) {
+	handler := NewShellHandler()
 
 	tests := []struct {
 		name          string
@@ -144,8 +144,8 @@ func TestShellProfileHandler_ProcessLinking(t *testing.T) {
 	}
 }
 
-func TestShellProfileHandler_ValidateOptions(t *testing.T) {
-	handler := NewShellProfileHandler()
+func TestShellHandler_ValidateOptions(t *testing.T) {
+	handler := NewShellHandler()
 
 	tests := []struct {
 		name          string
@@ -183,10 +183,10 @@ func TestShellProfileHandler_ValidateOptions(t *testing.T) {
 	}
 }
 
-func TestShellProfileHandler_Properties(t *testing.T) {
-	handler := NewShellProfileHandler()
+func TestShellHandler_Properties(t *testing.T) {
+	handler := NewShellHandler()
 
-	assert.Equal(t, ShellProfileHandlerName, handler.Name())
+	assert.Equal(t, ShellHandlerName, handler.Name())
 	assert.Equal(t, "Manages shell profile modifications (e.g., sourcing aliases)", handler.Description())
 	assert.Equal(t, types.RunModeLinking, handler.RunMode())
 

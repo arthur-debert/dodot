@@ -22,9 +22,9 @@ func TestShellInitScript_HandlesMissingFiles(t *testing.T) {
 		{
 			name: "handles missing shell profile source files",
 			setupFiles: func(t *testing.T, dataDir, dotfilesRoot string) {
-				// Create shell_profile directory with symlink to non-existent file
-				deployedDir := filepath.Join(dataDir, "deployed", "shell_profile")
-				testutil.CreateDir(t, dataDir, "deployed/shell_profile")
+				// Create shell directory with symlink to non-existent file
+				deployedDir := filepath.Join(dataDir, "deployed", "shell")
+				testutil.CreateDir(t, dataDir, "deployed/shell")
 
 				// Create symlink to non-existent file
 				nonExistentSource := filepath.Join(dotfilesRoot, "vim", "aliases.sh")
@@ -79,9 +79,9 @@ func TestShellInitScript_HandlesMissingFiles(t *testing.T) {
 		{
 			name: "sources existing files successfully",
 			setupFiles: func(t *testing.T, dataDir, dotfilesRoot string) {
-				// Create shell_profile directory with valid symlink
-				deployedDir := filepath.Join(dataDir, "deployed", "shell_profile")
-				testutil.CreateDir(t, dataDir, "deployed/shell_profile")
+				// Create shell directory with valid symlink
+				deployedDir := filepath.Join(dataDir, "deployed", "shell")
+				testutil.CreateDir(t, dataDir, "deployed/shell")
 
 				// Create actual source file
 				testutil.CreateFile(t, dotfilesRoot, "vim/aliases.sh", "echo 'Aliases loaded'")
@@ -167,7 +167,7 @@ func TestShellInitScript_ConditionalSourcing(t *testing.T) {
 
 	testutil.CreateDir(t, tempDir, "data")
 	testutil.CreateDir(t, tempDir, "dotfiles")
-	testutil.CreateDir(t, dataDir, "deployed/shell_profile")
+	testutil.CreateDir(t, dataDir, "deployed/shell")
 	testutil.CreateDir(t, dataDir, "deployed/path")
 
 	// Create a mix of existing and non-existing files
@@ -175,12 +175,12 @@ func TestShellInitScript_ConditionalSourcing(t *testing.T) {
 	testutil.CreateFile(t, dotfilesRoot, "bash/aliases.sh",
 		"export TEST_ALIAS_LOADED=1")
 	existingSource := filepath.Join(dotfilesRoot, "bash", "aliases.sh")
-	existingSymlink := filepath.Join(dataDir, "deployed", "shell_profile", "aliases.sh")
+	existingSymlink := filepath.Join(dataDir, "deployed", "shell", "aliases.sh")
 	require.NoError(t, os.Symlink(existingSource, existingSymlink))
 
 	// Non-existing file
 	nonExistingSource := filepath.Join(dotfilesRoot, "zsh", "functions.sh")
-	nonExistingSymlink := filepath.Join(dataDir, "deployed", "shell_profile", "functions.sh")
+	nonExistingSymlink := filepath.Join(dataDir, "deployed", "shell", "functions.sh")
 	require.NoError(t, os.Symlink(nonExistingSource, nonExistingSymlink))
 
 	// Existing directory for PATH
@@ -256,11 +256,11 @@ func TestShellInitScript_SuppressesErrors(t *testing.T) {
 
 	testutil.CreateDir(t, tempDir, "data")
 	testutil.CreateDir(t, tempDir, "dotfiles")
-	testutil.CreateDir(t, dataDir, "deployed/shell_profile")
+	testutil.CreateDir(t, dataDir, "deployed/shell")
 
 	// Create a symlink to a non-existent file
 	nonExistentSource := filepath.Join(dotfilesRoot, "bash", "missing.sh")
-	brokenSymlink := filepath.Join(dataDir, "deployed", "shell_profile", "missing.sh")
+	brokenSymlink := filepath.Join(dataDir, "deployed", "shell", "missing.sh")
 	require.NoError(t, os.Symlink(nonExistentSource, brokenSymlink))
 
 	// Read the shell init script

@@ -269,7 +269,7 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 				},
 				{
 					Path:    "bash*", // Pattern match
-					Handler: "shell_profile",
+					Handler: "shell",
 				},
 			},
 		},
@@ -286,7 +286,7 @@ func TestToDisplayResult_FileOverrideDetection(t *testing.T) {
 	})
 
 	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "shell_profile",
+		HandlerName: "shell",
 		Files:       []string{filepath.Join(packDir, "bashrc")},
 		Status:      types.StatusReady,
 		Message:     "included",
@@ -459,9 +459,9 @@ func TestToDisplayResult_HandlerAwareMessages(t *testing.T) {
 		EndTime:     testTime,
 	})
 
-	// Test shell_profile Handler - success
+	// Test shell Handler - success
 	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "shell_profile",
+		HandlerName: "shell",
 		Files:       []string{filepath.Join(packDir, "aliases.sh")},
 		Status:      types.StatusReady,
 		EndTime:     testTime,
@@ -515,9 +515,9 @@ func TestToDisplayResult_HandlerAwareMessages(t *testing.T) {
 	expectedDate := testTime.Format("2006-01-02")
 	testutil.AssertEqual(t, fmt.Sprintf("executed on %s", expectedDate), homebrewSuccess.Message)
 
-	// Test shell_profile success message
-	shellSuccess := fileMap["shell_profile_aliases.sh"]
-	testutil.AssertTrue(t, shellSuccess != nil, "shell_profile success file should exist")
+	// Test shell success message
+	shellSuccess := fileMap["shell_aliases.sh"]
+	testutil.AssertTrue(t, shellSuccess != nil, "shell success file should exist")
 	testutil.AssertEqual(t, "included in shell profile", shellSuccess.Message)
 
 	// Test install error message

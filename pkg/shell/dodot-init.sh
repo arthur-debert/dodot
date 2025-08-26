@@ -46,8 +46,8 @@ export DODOT_BREWFILES=""
 DODOT_DEPLOYED_DIR="$DODOT_DATA_DIR/deployed"
 
 # 1. Source all shell profile scripts (aliases, environment variables, etc.)
-if [ -d "$DODOT_DEPLOYED_DIR/shell_profile" ]; then
-    for script in "$DODOT_DEPLOYED_DIR/shell_profile"/*.sh; do
+if [ -d "$DODOT_DEPLOYED_DIR/shell" ]; then
+    for script in "$DODOT_DEPLOYED_DIR/shell"/*.sh; do
         if [ -f "$script" ] && [ -r "$script" ]; then
             # Check if the symlink target exists
             if [ -e "$script" ]; then
@@ -278,9 +278,9 @@ dodot_status() {
         echo "Deployed items:"
 
         # Shell profiles
-        if [ -d "$DODOT_DEPLOYED_DIR/shell_profile" ] && [ -n "$(ls -A "$DODOT_DEPLOYED_DIR/shell_profile" 2>/dev/null)" ]; then
+        if [ -d "$DODOT_DEPLOYED_DIR/shell" ] && [ -n "$(ls -A "$DODOT_DEPLOYED_DIR/shell" 2>/dev/null)" ]; then
             echo "  Shell profiles:"
-            for item in "$DODOT_DEPLOYED_DIR/shell_profile"/*; do
+            for item in "$DODOT_DEPLOYED_DIR/shell"/*; do
                 if [ -L "$item" ]; then
                     target=$(readlink "$item")
                     if [ -e "$item" ]; then

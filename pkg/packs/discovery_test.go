@@ -250,7 +250,7 @@ path = "*.log"
 
 [[override]]
 path = "install.sh"
-handler = "shell_profile"`,
+handler = "shell"`,
 			wantConfig: config.PackConfig{
 				Ignore: []config.IgnoreRule{
 					{Path: "*.log"},
@@ -258,7 +258,7 @@ handler = "shell_profile"`,
 				Override: []config.OverrideRule{
 					{
 						Path:    "install.sh",
-						Handler: "shell_profile",
+						Handler: "shell",
 					},
 				},
 			},

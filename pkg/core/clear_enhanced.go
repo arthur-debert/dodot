@@ -123,7 +123,7 @@ func ClearHandlersEnhanced(ctx types.ClearContext, handlers map[string]types.Cle
 // isProvisioningHandler returns true if the handler is a provisioning handler
 func isProvisioningHandler(handlerName string) bool {
 	switch handlerName {
-	case "provision", "homebrew":
+	case "install", "homebrew":
 		return true
 	default:
 		return false

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Minimal test for shell_profile handler - happy path only
+# Minimal test for shell handler - happy path only
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh
@@ -16,7 +16,7 @@ teardown() {
     teardown_with_debug
 }
 
-@test "shell_profile: YES - profile sourced in init.sh" {
+@test "shell: YES - profile sourced in init.sh" {
     # Deploy nvim pack
     dodot_run deploy nvim
     [ "$status" -eq 0 ]
@@ -25,7 +25,7 @@ teardown() {
     assert_profile_in_init "nvim" "profile.sh"
 }
 
-@test "shell_profile: NO - profile not sourced (verify absence)" {
+@test "shell: NO - profile not sourced (verify absence)" {
     # Create a pack with no profile.sh file (only other files)
     mkdir -p "$DOTFILES_ROOT/vim"
     echo "set number" > "$DOTFILES_ROOT/vim/vimrc"

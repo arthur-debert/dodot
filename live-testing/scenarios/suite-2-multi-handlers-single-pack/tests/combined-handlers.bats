@@ -35,10 +35,10 @@ teardown() {
     assert_executable_available "mytool" "tools-bin"
 }
 
-# Test: symlink + shell_profile combination in deployment
-@test "deploy-type combined: symlink + shell_profile in one pack" {
+# Test: symlink + shell combination in deployment
+@test "deploy-type combined: symlink + shell in one pack" {
     # Deploy shell-config pack with both regular files and shell profile
-    # This should trigger both symlink and shell_profile handlers
+    # This should trigger both symlink and shell handlers
     dodot_run deploy shell-config
     [ "$status" -eq 0 ]
     
@@ -51,16 +51,16 @@ teardown() {
     grep -q "PS1=" "$HOME/bashrc" || fail "bashrc should contain PS1="
 }
 
-# Test: install_script + homebrew combination for installation
-@test "install-type combined: install_script + homebrew in one pack" {
+# Test: install + homebrew combination for installation
+@test "install-type combined: install + homebrew in one pack" {
     # Install dev-tools pack with both install.sh and Brewfile
-    # This should trigger both install_script and homebrew handlers
+    # This should trigger both install and homebrew handlers
     dodot_run install dev-tools
     [ "$status" -eq 0 ]
     
     # Focus on integration: verify both install-type handlers ran
     # Key test: both install methods completed successfully
-    assert_install_script_executed "dev-tools"
+    assert_install_executed "dev-tools"
     assert_brewfile_processed "dev-tools"
     
     # Verify integration result: expected artifact from install script
@@ -74,7 +74,7 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Verify install-type handlers completed
-    assert_install_script_executed "ultimate"
+    assert_install_executed "ultimate"
     assert_brewfile_processed "ultimate"
     
     # Now deploy to trigger deploy-type handlers
@@ -110,7 +110,7 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Verify install-type handlers did NOT run
-    assert_install_script_not_executed "dev-tools"
+    assert_install_not_executed "dev-tools"
     assert_brewfile_not_processed "dev-tools"
     
     # The command should succeed (exit 0) but skip inappropriate handlers
@@ -128,7 +128,7 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Verify BOTH install-type and deploy-type handlers ran
-    assert_install_script_executed "ultimate"
+    assert_install_executed "ultimate"
     assert_brewfile_processed "ultimate"
     assert_symlink_deployed "ultimate" "ultimate.conf" "$HOME/ultimate.conf"
     assert_profile_in_init "ultimate" "profile.sh"
@@ -147,7 +147,7 @@ teardown() {
     assert_profile_in_init "ultimate" "profile.sh"
     
     # But install-type handlers should NOT have run
-    assert_install_script_not_executed "ultimate"
+    assert_install_not_executed "ultimate"
     assert_brewfile_not_processed "ultimate"
     
     echo "PASS: Command boundaries verified - install runs all, deploy skips install-type"

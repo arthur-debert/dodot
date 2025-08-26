@@ -19,7 +19,7 @@
 //	[matchers.install-scripts]
 //	trigger = "filename"
 //	patterns = ["install.sh"]
-//	handler = "provision"
+//	handler = "install"
 //	priority = 90
 //
 // Or in a pack-specific .dodot.toml:
@@ -27,7 +27,7 @@
 //	[[matchers]]
 //	trigger = "filename"
 //	patterns = ["setup.sh", "init.sh"]
-//	handler = "provision"
+//	handler = "install"
 //
 // # File Selection Process
 //
@@ -171,4 +171,4 @@
 //
 // Use ProvisionScriptHandler when you need custom logic that package managers
 // can't handle, or when you need to perform complex multi-step installations.
-package provision
+package install

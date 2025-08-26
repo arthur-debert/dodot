@@ -1,4 +1,4 @@
-package provision
+package install
 
 import (
 	"os"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestProvisionScriptHandler_ProcessProvisioning(t *testing.T) {
+func TestInstallHandler_ProcessProvisioning(t *testing.T) {
 	// Create a temporary directory for test scripts
 	tempDir := t.TempDir()
 
@@ -25,7 +25,7 @@ func TestProvisionScriptHandler_ProcessProvisioning(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Dir(script2Path), 0755))
 	require.NoError(t, os.WriteFile(script2Path, []byte(script2Content), 0755))
 
-	handler := NewProvisionScriptHandler()
+	handler := NewInstallHandler()
 
 	tests := []struct {
 		name          string
@@ -152,8 +152,8 @@ func TestProvisionScriptHandler_ProcessProvisioning(t *testing.T) {
 	}
 }
 
-func TestProvisionScriptHandler_ValidateOptions(t *testing.T) {
-	handler := NewProvisionScriptHandler()
+func TestInstallHandler_ValidateOptions(t *testing.T) {
+	handler := NewInstallHandler()
 
 	tests := []struct {
 		name          string
@@ -191,10 +191,10 @@ func TestProvisionScriptHandler_ValidateOptions(t *testing.T) {
 	}
 }
 
-func TestProvisionScriptHandler_Properties(t *testing.T) {
-	handler := NewProvisionScriptHandler()
+func TestInstallHandler_Properties(t *testing.T) {
+	handler := NewInstallHandler()
 
-	assert.Equal(t, ProvisionScriptHandlerName, handler.Name())
+	assert.Equal(t, InstallHandlerName, handler.Name())
 	assert.Equal(t, "Runs install.sh scripts for initial setup", handler.Description())
 	assert.Equal(t, types.RunModeProvisioning, handler.RunMode())
 

@@ -164,7 +164,7 @@ matchers:
     triggerType: filename
     triggerData:
       pattern: "*aliases.sh"
-    handlerType: shell_profile
+    handlerType: shell
     handlerData:
       placement: aliases
   
@@ -174,7 +174,7 @@ matchers:
     triggerType: filename
     triggerData:
       pattern: profile.sh
-    handlerType: shell_profile
+    handlerType: shell
     handlerData:
       placement: environment
   
@@ -267,7 +267,7 @@ matchers:
       data:
         pattern: venv        # Directory named 'venv'
     handler:
-      type: shell_profile
+      type: shell
       data:
         placement: environment # Add to environment section of shell profile
         template: |           # Custom template for activation

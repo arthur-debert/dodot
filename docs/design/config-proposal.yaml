@@ -136,7 +136,7 @@ matchers:
       data:
         pattern: "*aliases.sh"
     handler:
-      type: shell_profile
+      type: shell
       data:
         placement: aliases
   
@@ -147,7 +147,7 @@ matchers:
       data:
         pattern: profile.sh
     handler:
-      type: shell_profile
+      type: shell
       data:
         placement: environment
   

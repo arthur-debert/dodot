@@ -48,10 +48,10 @@ Pattern: Various combinations with YES/NO assertions
 - Test: bin directory deployed and added to PATH in init.sh ✓ DONE
 
 2.2 Deploy-type Handlers Combined ✓ DONE
-- Test: symlink + shell_profile in one pack (both deployed) ✓ DONE
+- Test: symlink + shell in one pack (both deployed) ✓ DONE
 
 2.3 Install-type Handlers Combined ✓ DONE
-- Test: install_script + homebrew in one pack (both executed) ✓ DONE
+- Test: install + homebrew in one pack (both executed) ✓ DONE
 
 2.4 All Handlers in One Pack ✓ DONE
 - Test: pack with all 6 handler types (all work correctly) ✓ DONE

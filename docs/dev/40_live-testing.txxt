@@ -48,7 +48,7 @@ Test Suites
 Tests are organized in 5 progressive suites that build in complexity:
 
 Suite 1: Single Handlers
-• Tests each handler in isolation (symlink, shell_profile, path, etc.)
+• Tests each handler in isolation (symlink, shell, path, etc.)
 • Verifies basic functionality works correctly
 • Foundation for more complex tests
 
@@ -82,7 +82,7 @@ assertions.sh:
 • assert_env_set() - Environment variable validation
 
 assertions_shell.sh:
-• assert_shell_profile_sourced() - Checks shell initialization
+• assert_shell_sourced() - Checks shell initialization
 • assert_profile_in_init() - Verifies dodot init.sh entries
 
 assertions_path.sh:
@@ -90,7 +90,7 @@ assertions_path.sh:
 • assert_executable_available() - Checks PATH accessibility
 
 assertions_install.sh:
-• assert_install_script_executed() - Verifies script execution
+• assert_install_executed() - Verifies script execution
 • assert_install_artifact_exists() - Checks created files
 
 assertions_homebrew.sh:

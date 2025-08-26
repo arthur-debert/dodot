@@ -1,4 +1,4 @@
-// Package shell_profile provides the ShellProfileHandler implementation for dodot.
+// Package shell provides the ShellProfileHandler implementation for dodot.
 //
 // # Overview
 //
@@ -22,7 +22,7 @@
 //	[matchers.shell-profiles]
 //	trigger = "filename"
 //	patterns = ["aliases.sh", "profile.sh", "*.profile.sh"]
-//	handler = "shell_profile"
+//	handler = "shell"
 //	priority = 80
 //
 // Or in a pack-specific .dodot.toml:
@@ -30,7 +30,7 @@
 //	[[matchers]]
 //	trigger = "directory"
 //	path = "shell"
-//	handler = "shell_profile"
+//	handler = "shell"
 //
 // # File Selection Process
 //
@@ -199,4 +199,4 @@
 // Use ShellProfileHandler when you need to add dynamic behavior to your shell
 // environment, such as aliases, functions, or conditional configuration that
 // varies by machine or environment.
-package shell_profile
+package shell

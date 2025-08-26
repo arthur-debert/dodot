@@ -118,7 +118,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 								Message: "linked to .bashrc",
 							},
 							{
-								Handler: "shell_profile",
+								Handler: "shell",
 								Path:    "aliases",
 								Status:  "queue",
 								Message: "not yet applied",
@@ -132,7 +132,7 @@ func TestSimpleRenderer_Render(t *testing.T) {
 				"status",
 				"shell [status=queue]:",
 				"symlink",
-				"shell_profile",
+				"shell",
 				"not yet applied [status=queue]",
 				"linked to .bashrc [status=success]",
 			},

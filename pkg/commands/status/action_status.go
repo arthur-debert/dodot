@@ -60,9 +60,9 @@ func getActionHandler(action types.Action) string {
 	case *types.AddToPathAction:
 		return "path"
 	case *types.AddToShellProfileAction:
-		return "shell_profile"
+		return "shell"
 	case *types.RunScriptAction:
-		return "provision"
+		return "install"
 	case *types.BrewAction:
 		return "homebrew"
 	default:

@@ -407,7 +407,7 @@ func (p *paths) GetDeployedSubdir(name string) string {
 
 // ShellProfileDir returns the shell profile deployment directory
 func (p *paths) ShellProfileDir() string {
-	return p.GetDeployedSubdir("shell_profile")
+	return p.GetDeployedSubdir("shell")
 }
 
 // PathDir returns the PATH deployment directory
@@ -457,7 +457,7 @@ func (p *paths) HomebrewDir() string {
 //   - "homebrew" - for Brewfile executions
 func (p *paths) SentinelPath(handlerType, packName string) string {
 	switch handlerType {
-	case "provision":
+	case "install":
 		return filepath.Join(p.ProvisionDir(), "sentinels", packName)
 	case "homebrew":
 		return filepath.Join(p.HomebrewDir(), packName)

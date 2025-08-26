@@ -31,7 +31,7 @@ func TestLoadPackConfig(t *testing.T) {
 
 [[override]]
   path = "my-exports.sh"
-  handler = "shell_profile"
+  handler = "shell"
 `,
 			expected: PackConfig{
 				Ignore: []IgnoreRule{
@@ -46,7 +46,7 @@ func TestLoadPackConfig(t *testing.T) {
 					},
 					{
 						Path:    "my-exports.sh",
-						Handler: "shell_profile",
+						Handler: "shell",
 					},
 				},
 			},

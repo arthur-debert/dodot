@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Shell-specific assertion functions for dodot live system tests
 
-# assert_shell_profile_sourced() - Verify shell profile is sourced
+# assert_shell_sourced() - Verify shell profile is sourced
 # Args:
 #   $1 - pack name
 #   $2 - file path relative to pack
 #
-# Example: assert_shell_profile_sourced "nvim" "alias.sh"
-assert_shell_profile_sourced() {
+# Example: assert_shell_sourced "nvim" "alias.sh"
+assert_shell_sourced() {
     local pack="$1"
     local file="$2"
     
     if [ -z "$pack" ] || [ -z "$file" ]; then
-        echo "ERROR: assert_shell_profile_sourced requires pack and file arguments" >&2
+        echo "ERROR: assert_shell_sourced requires pack and file arguments" >&2
         return 1
     fi
     
@@ -151,7 +151,7 @@ debug_shell_integration() {
 }
 
 # Export functions
-export -f assert_shell_profile_sourced
+export -f assert_shell_sourced
 export -f assert_profile_in_init
 export -f assert_path_added
 export -f assert_no_profile_for_pack

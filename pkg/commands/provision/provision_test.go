@@ -60,7 +60,7 @@ echo "Tools installed" > /tmp/install-run-marker
 	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
 
 	// Handlers use generic "handler" name, but we should have multiple handler results
-	// (both install_script and symlink handlers)
+	// (both install and symlink handlers)
 	testutil.AssertTrue(t, len(packResult.HandlerResults) >= 2, "Should have multiple handler results")
 
 	// Check that all handlers completed successfully

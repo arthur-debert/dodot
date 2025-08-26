@@ -85,8 +85,8 @@ func TestGetDeployedSubdir(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "shell_profile subdirectory",
-			subdir:   "shell_profile",
+			name:     "shell subdirectory",
+			subdir:   "shell",
 			expected: p.ShellProfileDir(),
 		},
 		{
@@ -153,7 +153,7 @@ func TestHelperMethodsConsistency(t *testing.T) {
 	// Verify that nested paths work correctly
 	deployedBase := p.DeployedDir()
 	shellProfileViaInterface := p.ShellProfileDir()
-	shellProfileDirect := filepath.Join(deployedBase, "shell_profile")
+	shellProfileDirect := filepath.Join(deployedBase, "shell")
 
 	if shellProfileViaInterface != shellProfileDirect {
 		t.Errorf("ShellProfileDir result differs from direct filepath.Join: %s != %s",

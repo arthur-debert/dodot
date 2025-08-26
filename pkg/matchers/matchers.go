@@ -11,9 +11,9 @@ import (
 
 	// Import handlers and triggers to register them via init() functions
 	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/provision"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
 	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )

@@ -57,7 +57,7 @@ teardown() {
 }
 
 # Shell profile edge cases
-@test "shell_profile: repeated deploy doesn't duplicate entries" {
+@test "shell: repeated deploy doesn't duplicate entries" {
     # Deploy the profile pack for the first time
     dodot_run deploy profile-pack
     [ "$status" -eq 0 ]

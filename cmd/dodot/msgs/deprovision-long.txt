@@ -3,7 +3,7 @@ effectively uninstalling or clearing resources that were deployed by
 provisioning handlers.
 
 This command only affects provisioning handlers (homebrew, provision)
-and preserves all linking handler state (symlinks, path, shell_profile).
+and preserves all linking handler state (symlinks, path, shell).
 
 When run without any pack names, it will deprovision all packs.
 Use the --dry-run flag to preview what would be removed without

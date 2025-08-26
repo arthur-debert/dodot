@@ -18,7 +18,7 @@ When you run a dodot command, this is what happens:
    • Create `TriggerMatch` objects for files that match, linking them to a handler.
 
 3. Action Generation Phase:
-   • Each handler (e.g., `symlink`, `shell_profile`) processes its `TriggerMatch` objects.
+   • Each handler (e.g., `symlink`, `shell`) processes its `TriggerMatch` objects.
    • The handler generates high-level `Actions` that describe an intent, such as "link this file" or "source this script".
 
 4. Execution Phase:

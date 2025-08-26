@@ -27,9 +27,9 @@ including examples, configuration, and best practices, see:
    - See: `pkg/handlers/homebrew/doc.go`
    - Use for: System packages, GUI apps (macOS)
 
-4. **ShellProfileHandler** (`shell_profile`)
+4. **ShellProfileHandler** (`shell`)
    - Sources shell scripts into your environment
-   - See: `pkg/handlers/shell_profile/doc.go`
+   - See: `pkg/handlers/shell/doc.go`
    - Use for: Aliases, functions, shell customization
 
 5. **PathHandler** (`path`)
@@ -63,7 +63,7 @@ Handlers run in different phases based on their RunMode:
 | symlink | Link | Link configs | Symlinks in ~ |
 | provision | Provision | Run setup scripts | Whatever scripts create |
 | brew | Provision | Manage packages | System packages |
-| shell_profile | Link | Shell config | Entries in init.sh |
+| shell | Link | Shell config | Entries in init.sh |
 | path | Link | PATH management | PATH exports |
 
 ## Handler Documentation Structure

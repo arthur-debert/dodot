@@ -338,7 +338,7 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 							}
 						}
 
-					case "shell_profile":
+					case "shell":
 						// For shell profile entries, indicate the shell type if detectable
 						for _, action := range pur.Actions {
 							if shellAction, ok := action.(*AddToShellProfileAction); ok {
@@ -443,7 +443,7 @@ func generateHandlerMessage(handlerName, filePath, status string, lastExecuted *
 			return fmt.Sprintf("will be linked to $HOME/%s", fileName)
 		}
 
-	case "shell_profile", "shell_add_path":
+	case "shell", "shell_add_path":
 		switch status {
 		case "success":
 			if lastExecuted != nil {

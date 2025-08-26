@@ -431,24 +431,24 @@ func TestGenerateHandlerMessage(t *testing.T) {
 		},
 		// Shell profile tests
 		{
-			name:         "shell_profile success with time",
-			handlerName:  "shell_profile",
+			name:         "shell success with time",
+			handlerName:  "shell",
 			filePath:     "/path/to/.bashrc",
 			status:       "success",
 			lastExecuted: &testTime,
 			wantContains: "included in shell profile",
 		},
 		{
-			name:         "shell_profile success no time",
-			handlerName:  "shell_profile",
+			name:         "shell success no time",
+			handlerName:  "shell",
 			filePath:     "/path/to/.bashrc",
 			status:       "success",
 			lastExecuted: nil,
 			wantContains: "added to shell profile",
 		},
 		{
-			name:         "shell_profile error",
-			handlerName:  "shell_profile",
+			name:         "shell error",
+			handlerName:  "shell",
 			filePath:     "/path/to/.bashrc",
 			status:       "error",
 			wantContains: "failed to add to shell profile",
@@ -523,7 +523,7 @@ func TestGenerateHandlerMessage(t *testing.T) {
 			wantContains: "executed during installation on 2023-12-25",
 		},
 		{
-			name:         "install_script success no time",
+			name:         "install success no time",
 			handlerName:  "provision",
 			filePath:     "/path/to/install.sh",
 			status:       "success",
@@ -622,7 +622,7 @@ func TestExecutionContext_ToDisplayResult(t *testing.T) {
 
 	zshResult := NewPackExecutionResult(zshPack)
 	zshResult.AddHandlerResult(&HandlerResult{
-		HandlerName: "shell_profile",
+		HandlerName: "shell",
 		Files:       []string{".zshrc"},
 		Status:      StatusSkipped,
 		Pack:        "zsh",

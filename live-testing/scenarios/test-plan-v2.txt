@@ -45,15 +45,15 @@ Purpose: Test handler interactions within single packs
 Pattern: Various combinations with YES/NO assertions
 
 2.1 Deploy-type Handlers Combined
-- Test: symlink + shell_profile in one pack (both deployed)
-- Test: symlink + shell_profile NOT deployed (verify absence)
+- Test: symlink + shell in one pack (both deployed)
+- Test: symlink + shell NOT deployed (verify absence)
 
 2.2 Install-type Handlers Combined  
-- Test: install_script + homebrew in one pack (both executed)
-- Test: install_script + homebrew NOT executed (verify absence)
+- Test: install + homebrew in one pack (both executed)
+- Test: install + homebrew NOT executed (verify absence)
 
 2.3 Mixed Deploy/Install Handlers
-- Test: symlink + install_script in one pack (correct separation)
+- Test: symlink + install in one pack (correct separation)
 - Test: path + homebrew in one pack (correct execution)
 
 2.4 All Handlers in One Pack
@@ -164,7 +164,7 @@ Needed Implementation:
 Migration Path:
 1. Reorganize existing isolated-* tests into Suite 1
 2. Add missing NO tests to Suite 1
-3. Fix known issues (install_script artifacts, template expansion)
+3. Fix known issues (install artifacts, template expansion)
 4. Implement Suite 2 (single pack combinations)
 5. Implement Suite 3 (multi-pack scenarios)
 6. Implement Suite 4 (edge cases per handler)

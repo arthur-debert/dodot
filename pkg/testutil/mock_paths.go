@@ -61,7 +61,7 @@ func (m *MockPaths) DeployedPath() string {
 
 // DeployedShellProfile returns the deployed shell profile directory
 func (m *MockPaths) DeployedShellProfile() string {
-	return m.DataDir() + "/deployed/shell_profile"
+	return m.DataDir() + "/deployed/shell"
 }
 
 // InitScript returns the path to the init script

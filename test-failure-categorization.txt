@@ -58,7 +58,7 @@
 - pkg/handlers/homebrew/homebrew_v2_test.go
 - pkg/handlers/path/path_v2_test.go
 - pkg/handlers/provision/provision_v2_test.go
-- pkg/handlers/shell_profile/shell_profile_v2_test.go
+- pkg/handlers/shell/shell_v2_test.go
 - pkg/handlers/symlink/symlink_v2_test.go
 
 #### Core V2 Tests
@@ -81,7 +81,7 @@
 - pkg/executor
 - pkg/filesystem
 - pkg/handlers/path
-- pkg/handlers/shell_profile
+- pkg/handlers/shell
 - pkg/internal/hashutil
 - pkg/lipbalm
 - pkg/logging
@@ -159,7 +159,7 @@ rm -rf pkg/commands/status/  # Or add t.Skip() to all tests
 ```bash
 # V2 tests that ARE working:
 # ✅ pkg/handlers/path/path_v2_test.go - PASSES
-# ✅ pkg/handlers/shell_profile/shell_profile_v2_test.go - PASSES
+# ✅ pkg/handlers/shell/shell_v2_test.go - PASSES
 
 # V2 tests blocked by other failures:
 # ❌ pkg/handlers/homebrew/homebrew_v2_test.go - blocked by homebrew_template_test.go

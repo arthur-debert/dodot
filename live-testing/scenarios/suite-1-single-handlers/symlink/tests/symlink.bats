@@ -38,7 +38,7 @@ teardown() {
     mkdir -p "$DOTFILES_ROOT/priority-pack"
     
     # Add files that are handled by other handlers with higher priority than symlink
-    # Install script - handled by install_script handler
+    # Install script - handled by install handler
     cat > "$DOTFILES_ROOT/priority-pack/install.sh" << 'EOF'
 #!/bin/bash
 echo "Installing"
@@ -50,7 +50,7 @@ EOF
 brew "tree"
 EOF
     
-    # Shell profile - handled by shell_profile handler
+    # Shell profile - handled by shell handler
     cat > "$DOTFILES_ROOT/priority-pack/profile.sh" << 'EOF'
 export VAR=value
 EOF
