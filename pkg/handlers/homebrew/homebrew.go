@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -280,15 +281,16 @@ func (h *HomebrewHandler) GetClearConfirmations(ctx types.ClearContext) ([]types
 	}
 
 	confirmationID := fmt.Sprintf("homebrew-clear-%s", ctx.Pack.Name)
-	confirmation := types.NewClearConfirmationRequest(
-		confirmationID,
-		ctx.Pack.Name,
-		"homebrew",
-		"Uninstall Homebrew packages",
-		description.String(),
-		items,
-		false, // Default to No for package uninstallation
-	)
+	confirmation := types.ConfirmationRequest{
+		ID:          confirmationID,
+		Pack:        ctx.Pack.Name,
+		Handler:     "homebrew",
+		Operation:   "clear",
+		Title:       "Uninstall Homebrew packages",
+		Description: description.String(),
+		Items:       items,
+		Default:     false, // Default to No for package uninstallation
+	}
 
 	return []types.ConfirmationRequest{confirmation}, nil
 }
@@ -312,7 +314,7 @@ func (h *HomebrewHandler) ClearWithConfirmations(ctx types.ClearContext, confirm
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandler = (*HomebrewHandler)(nil)
-var _ types.ProvisioningHandlerWithConfirmations = (*HomebrewHandler)(nil)
-var _ types.Clearable = (*HomebrewHandler)(nil)
-var _ types.ClearableWithConfirmations = (*HomebrewHandler)(nil)
+var _ handlers.ProvisioningHandler = (*HomebrewHandler)(nil)
+var _ handlers.ProvisioningHandlerWithConfirmations = (*HomebrewHandler)(nil)
+var _ handlers.Clearable = (*HomebrewHandler)(nil)
+var _ handlers.ClearableWithConfirmations = (*HomebrewHandler)(nil)

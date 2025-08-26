@@ -3,6 +3,7 @@ package path
 import (
 	"fmt"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -161,6 +162,6 @@ func (h *PathHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error)
 }
 
 // Verify interface compliance
-var _ types.LinkingHandler = (*PathHandler)(nil)
-var _ types.LinkingHandlerWithConfirmations = (*PathHandler)(nil)
-var _ types.Clearable = (*PathHandler)(nil)
+var _ handlers.LinkingHandler = (*PathHandler)(nil)
+var _ handlers.LinkingHandlerWithConfirmations = (*PathHandler)(nil)
+var _ handlers.Clearable = (*PathHandler)(nil)

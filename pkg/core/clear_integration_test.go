@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
@@ -19,7 +20,7 @@ func TestClearInfrastructure_Integration(t *testing.T) {
 	tests := []struct {
 		name        string
 		handlerName string
-		handler     types.Clearable
+		handler     handlers.Clearable
 		runMode     types.RunMode
 	}{
 		{
@@ -56,9 +57,9 @@ func TestClearInfrastructure_Integration(t *testing.T) {
 			// Verify handler has the correct run mode
 			var actualMode types.RunMode
 			switch h := tt.handler.(type) {
-			case types.LinkingHandler:
+			case handlers.LinkingHandler:
 				actualMode = h.RunMode()
-			case types.ProvisioningHandler:
+			case handlers.ProvisioningHandler:
 				actualMode = h.RunMode()
 			default:
 				t.Fatalf("Handler %s doesn't implement LinkingHandler or ProvisioningHandler", tt.handlerName)

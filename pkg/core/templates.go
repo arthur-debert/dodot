@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/handlers"
+	handlersRegistry "github.com/arthur-debert/dodot/pkg/handlers/registry"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
 	"github.com/arthur-debert/dodot/pkg/registry"
@@ -56,7 +56,7 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 		// Check if this is a filename trigger
 		if filenameTrigger, ok := trigger.(*triggers.FileNameTrigger); ok {
 			// Get the handler
-			handler := handlers.GetHandler(matcher.HandlerName)
+			handler := handlersRegistry.GetHandler(matcher.HandlerName)
 			if handler == nil {
 				logger.Warn().Str("handler", matcher.HandlerName).Msg("Failed to get handler")
 				continue

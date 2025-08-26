@@ -206,7 +206,7 @@ echo "Test installation"
 			t.Logf("Script execution failed (might be expected in CI): %v", results[0].Error)
 		} else {
 			// Verify the sentinel was created
-			sentinelPath := filepath.Join(dataDir, "packs", packName, "sentinels", "install.sh.sentinel")
+			sentinelPath := filepath.Join(dataDir, "packs", packName, "install", "install.sh.sentinel")
 			assert.FileExists(t, sentinelPath)
 		}
 	})

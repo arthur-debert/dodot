@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -125,7 +126,7 @@ func TestPathHandler_ImplementsClearable(t *testing.T) {
 	handler := path.NewPathHandler()
 
 	// This will fail to compile if PathHandler doesn't implement Clearable
-	var _ types.Clearable = handler
+	var _ handlers.Clearable = handler
 }
 
 // Mock FS for testing

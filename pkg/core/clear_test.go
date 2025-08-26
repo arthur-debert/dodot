@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -244,7 +245,7 @@ func TestClearHandlers_Multiple(t *testing.T) {
 		},
 	}
 
-	handlers := map[string]types.Clearable{
+	handlers := map[string]handlers.Clearable{
 		"handler1": handler1,
 		"handler2": handler2,
 	}
@@ -303,7 +304,7 @@ func TestClearHandlers_PartialFailure(t *testing.T) {
 		clearError: errors.New("handler2 failed"),
 	}
 
-	handlers := map[string]types.Clearable{
+	handlers := map[string]handlers.Clearable{
 		"handler1": handler1,
 		"handler2": handler2,
 	}

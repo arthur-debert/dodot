@@ -166,7 +166,7 @@ func (s *DataStoreSuite) TestRecordProvisioning() {
 	sentinelName := "install.sh.sentinel"
 	checksum := "sha256:12345"
 
-	sentinelDir := s.paths.PackHandlerDir(packName, "sentinels")
+	sentinelDir := s.paths.PackHandlerDir(packName, "install")
 	s.Require().NoError(s.fs.MkdirAll(sentinelDir, 0755))
 
 	err := ds.RecordProvisioning(packName, sentinelName, checksum)
@@ -191,7 +191,7 @@ func (s *DataStoreSuite) TestNeedsProvisioning() {
 	s.True(needs)
 
 	// 2. Sentinel file exists with correct checksum
-	sentinelDir := s.paths.PackHandlerDir(packName, "sentinels")
+	sentinelDir := s.paths.PackHandlerDir(packName, "install")
 	s.Require().NoError(s.fs.MkdirAll(sentinelDir, 0755))
 	s.Require().NoError(ds.RecordProvisioning(packName, sentinelName, checksum))
 	needs, err = ds.NeedsProvisioning(packName, sentinelName, checksum)

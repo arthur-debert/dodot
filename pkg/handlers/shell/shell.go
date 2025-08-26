@@ -3,6 +3,7 @@ package shell
 import (
 	_ "embed"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -126,6 +127,6 @@ func (h *ShellHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error
 }
 
 // Verify interface compliance
-var _ types.LinkingHandler = (*ShellHandler)(nil)
-var _ types.LinkingHandlerWithConfirmations = (*ShellHandler)(nil)
-var _ types.Clearable = (*ShellHandler)(nil)
+var _ handlers.LinkingHandler = (*ShellHandler)(nil)
+var _ handlers.LinkingHandlerWithConfirmations = (*ShellHandler)(nil)
+var _ handlers.Clearable = (*ShellHandler)(nil)
