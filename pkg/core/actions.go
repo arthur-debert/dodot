@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/handlers/registry"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -45,12 +45,23 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 			Int("matches", len(handlerMatches)).
 			Msg("Processing matches for handler")
 
-		// Get handler directly
-		handler := registry.GetHandler(handlerName)
-		if handler == nil {
+		// Get handler factory and create instance
+		factory, err := registry.GetHandlerFactory(handlerName)
+		if err != nil {
 			logger.Warn().
 				Str("handler", handlerName).
-				Msg("No V2 handler found, skipping")
+				Err(err).
+				Msg("No handler factory found, skipping")
+			continue
+		}
+
+		// Create handler instance with no options (using defaults)
+		handler, err := factory(nil)
+		if err != nil {
+			logger.Error().
+				Str("handler", handlerName).
+				Err(err).
+				Msg("Failed to create handler instance")
 			continue
 		}
 

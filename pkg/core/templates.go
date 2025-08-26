@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	handlersRegistry "github.com/arthur-debert/dodot/pkg/handlers/registry"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/matchers"
 	"github.com/arthur-debert/dodot/pkg/registry"
@@ -56,7 +55,23 @@ func GetCompletePackTemplate(packName string) ([]PackTemplateFile, error) {
 		// Check if this is a filename trigger
 		if filenameTrigger, ok := trigger.(*triggers.FileNameTrigger); ok {
 			// Get the handler
-			handler := handlersRegistry.GetHandler(matcher.HandlerName)
+			factory, err := registry.GetHandlerFactory(matcher.HandlerName)
+			if err != nil {
+				logger.Debug().
+					Str("handler", matcher.HandlerName).
+					Err(err).
+					Msg("Handler factory not found, skipping")
+				continue
+			}
+
+			handler, err := factory(matcher.HandlerOptions)
+			if err != nil {
+				logger.Debug().
+					Str("handler", matcher.HandlerName).
+					Err(err).
+					Msg("Failed to create handler, skipping")
+				continue
+			}
 			if handler == nil {
 				logger.Warn().Str("handler", matcher.HandlerName).Msg("Failed to get handler")
 				continue

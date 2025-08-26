@@ -5,14 +5,14 @@ import (
 	"os"
 
 	"github.com/arthur-debert/dodot/cmd/dodot"
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/output/styles"
-
-	// Import packages to ensure their init() functions are called for registration
-	_ "github.com/arthur-debert/dodot/pkg/handlers"
-	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 func main() {
+	// Initialize core system (registers handlers, sets up config, etc.)
+	core.MustInitialize()
+
 	rootCmd := dodot.NewRootCmd()
 	if err := rootCmd.Execute(); err != nil {
 		// Print the error in red

@@ -9,25 +9,19 @@ import (
 	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 
-	// Import handlers and triggers to register them via init() functions
-	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
+	// Import triggers to register them via init() functions
 	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 // defaultMatchers stores the default matchers
 var defaultMatchers = make(map[string]types.Matcher)
 
-// init registers all default handlers and triggers needed by the default matchers
+// init registers all default triggers needed by the default matchers
 // by importing the packages, which triggers their init() functions
 func init() {
-	// The import of handlers and triggers packages above will automatically
-	// register all handlers and triggers through their init() functions.
-	// This ensures that any code importing matchers gets all the default
-	// handlers and triggers registered without needing separate imports.
+	// The import of triggers package above will automatically register
+	// all triggers through their init() functions. Handler registration
+	// is now managed separately via the registry system.
 }
 
 // RegisterDefaultMatcher registers a default matcher
@@ -113,8 +107,11 @@ func ValidateMatcher(matcher *types.Matcher) error {
 		return fmt.Errorf("unknown trigger: %s", matcher.TriggerName)
 	}
 
-	// Handlers are not registered in the registry, so we don't validate them here
-	// Handler validation happens when the handler is instantiated
+	// Check if handler factory exists
+	_, err = registry.GetHandlerFactory(matcher.HandlerName)
+	if err != nil {
+		return fmt.Errorf("unknown handler: %s", matcher.HandlerName)
+	}
 
 	return nil
 }
