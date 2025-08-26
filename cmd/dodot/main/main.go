@@ -6,7 +6,7 @@ import (
 
 	"github.com/arthur-debert/dodot/cmd/dodot"
 	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/output/styles"
+	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
 )
 
 func main() {

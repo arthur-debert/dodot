@@ -1,7 +1,7 @@
 package output
 
 import (
-	"github.com/arthur-debert/dodot/pkg/output/styles"
+	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
 )
 
 // LoadStylesFromFile loads a custom styles configuration from the specified file path.

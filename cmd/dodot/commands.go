@@ -14,10 +14,10 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/on"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/output"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
