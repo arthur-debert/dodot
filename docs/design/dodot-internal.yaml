@@ -1,0 +1,153 @@
+# Internal dodot configuration
+# This contains system-level settings that users typically don't need to modify
+
+# Logging configuration - maps to pkg/logging
+logging:
+  default_level: warn                    # DefaultLevel
+  verbosity_levels:                     # VerbosityLevels  
+    0: warn
+    1: info
+    2: debug
+    3: trace
+  time_format: "15:04"                  # TimeFormat
+  enable_color: true                    # EnableColor
+  enable_caller_at_verbosity: 2         # EnableCallerAtVerbosity
+
+# Core system priorities for processing order
+priorities:
+  triggers:
+    filename: 100                       # FileNameTrigger priority
+    directory: 90                       # DirectoryTrigger priority  
+    catchall: 0                        # CatchallTrigger priority
+  
+  handlers:
+    symlink: 100                       # SymlinkHandler priority
+    path: 90                          # PathHandler priority
+    install: 90                       # InstallHandler priority (was provision)
+    shell: 80                         # ShellHandler priority
+    homebrew: 90                      # HomebrewHandler priority
+    template: 70                      # TemplateHandler priority
+
+# Shell integration templates
+shell_integration:
+  # Bash/Zsh integration snippet
+  bash_zsh_snippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
+  
+  # Fish shell integration snippet
+  fish_snippet: |
+    if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+        source "$HOME/.local/share/dodot/shell/dodot-init.fish"
+    end
+
+# Default matcher definitions - internal system matchers
+default_matchers:
+  - name: install-script
+    priority: 90
+    trigger:
+      type: filename
+      data:
+        pattern: install.sh
+    handler:
+      type: install
+      data: {}
+  
+  - name: brewfile  
+    priority: 90
+    trigger:
+      type: filename
+      data:
+        pattern: Brewfile
+    handler:
+      type: homebrew
+      data: {}
+  
+  - name: shell-aliases
+    priority: 80
+    trigger:
+      type: filename
+      data:
+        pattern: "*aliases.sh"
+    handler:
+      type: shell
+      data:
+        placement: aliases
+  
+  - name: shell-profile
+    priority: 80
+    trigger:
+      type: filename
+      data:
+        pattern: "profile.sh"
+    handler:
+      type: shell
+      data:
+        placement: environment
+        
+  - name: shell-login
+    priority: 80
+    trigger:
+      type: filename
+      data:
+        pattern: "login.sh"
+    handler:
+      type: shell
+      data:
+        placement: login
+  
+  - name: bin-dir
+    priority: 90
+    trigger:
+      type: directory
+      data:
+        pattern: bin
+    handler:
+      type: path
+      data: {}
+  
+  - name: local-bin-dir
+    priority: 90
+    trigger:
+      type: directory
+      data:
+        pattern: .local/bin
+    handler:
+      type: path
+      data: {}
+  
+  - name: symlink-catchall
+    priority: 0
+    trigger:
+      type: catchall
+      data: {}
+    handler:
+      type: symlink
+      data: {}
+
+# Handler-specific internal configurations
+handler_defaults:
+  symlink:
+    use_relative_paths: true           # UseRelativePaths
+    create_missing_dirs: true          # CreateMissingDirs
+  
+  path:
+    target_dir: "~/bin"                # Default path target directory
+  
+  homebrew:
+    auto_install: false                # AutoInstall homebrew if missing
+    update_existing: true              # UpdateExisting packages
+  
+  shell:
+    create_init_files: true            # Create shell init files automatically
+    backup_existing: false             # Backup existing shell configs
+
+# System paths and directories  
+system_paths:
+  config_dir: ".config/dodot"          # User config directory
+  data_dir: ".local/share/dodot"       # User data directory  
+  cache_dir: ".cache/dodot"            # User cache directory
+  
+# File system safety settings
+filesystem:
+  dry_run: false                       # Global dry run mode
+  max_symlink_depth: 10               # Maximum symlink recursion depth
+  backup_extension: ".dodot-backup"    # Extension for backup files

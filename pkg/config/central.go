@@ -6,27 +6,27 @@ import (
 
 // Security holds security-related configuration
 type Security struct {
-	ProtectedPaths map[string]bool
+	ProtectedPaths map[string]bool `koanf:"protected_paths"`
 }
 
 // Patterns holds various ignore and exclude patterns
 type Patterns struct {
-	PackIgnore      []string     `yaml:"packIgnore" json:"packIgnore"`
-	CatchallExclude []string     `yaml:"catchallExclude" json:"catchallExclude"`
-	SpecialFiles    SpecialFiles `yaml:"specialFiles" json:"specialFiles"`
+	PackIgnore      []string     `koanf:"pack_ignore" yaml:"packIgnore" json:"packIgnore"`
+	CatchallExclude []string     `koanf:"catchall_exclude" yaml:"catchallExclude" json:"catchallExclude"`
+	SpecialFiles    SpecialFiles `koanf:"special_files" yaml:"specialFiles" json:"specialFiles"`
 }
 
 // SpecialFiles holds names of special configuration files
 type SpecialFiles struct {
-	PackConfig string
-	IgnoreFile string
+	PackConfig string `koanf:"pack_config"`
+	IgnoreFile string `koanf:"ignore_file"`
 }
 
 // Priorities holds component priority settings
 type Priorities struct {
-	Triggers map[string]int
-	Handlers map[string]int
-	Matchers map[string]int
+	Triggers map[string]int `koanf:"triggers"`
+	Handlers map[string]int `koanf:"handlers"`
+	Matchers map[string]int `koanf:"matchers"`
 }
 
 // TriggerConfig represents trigger configuration within a matcher
@@ -55,16 +55,16 @@ type MatcherConfig struct {
 // as they are security-critical and context-specific. This struct exists only for
 // potential future use cases where centralized permissions might be beneficial.
 type FilePermissions struct {
-	Directory  os.FileMode
-	File       os.FileMode
-	Executable os.FileMode
+	Directory  os.FileMode `koanf:"directory"`
+	File       os.FileMode `koanf:"file"`
+	Executable os.FileMode `koanf:"executable"`
 }
 
 // ShellIntegration holds shell integration snippets
 type ShellIntegration struct {
-	BashZshSnippet           string
-	BashZshSnippetWithCustom string
-	FishSnippet              string
+	BashZshSnippet           string `koanf:"bash_zsh_snippet"`
+	BashZshSnippetWithCustom string `koanf:"bash_zsh_snippet_with_custom"`
+	FishSnippet              string `koanf:"fish_snippet"`
 }
 
 // Paths holds path-related configuration
@@ -82,34 +82,34 @@ type LinkPaths struct {
 	// CoreUnixExceptions lists tools that should always deploy to $HOME
 	// These are typically security-critical or shell-expected locations
 	// Release C: Layer 2 - Exception List
-	CoreUnixExceptions map[string]bool
+	CoreUnixExceptions map[string]bool `koanf:"force_home"`
 }
 
 // LoggingConfig holds logging-related configuration
 type LoggingConfig struct {
 	// VerbosityLevels maps verbosity flags to log levels
-	VerbosityLevels map[int]string
+	VerbosityLevels map[int]string `koanf:"verbosity_levels"`
 	// DefaultLevel is the default log level
-	DefaultLevel string
+	DefaultLevel string `koanf:"default_level"`
 	// TimeFormat is the time format for console output
-	TimeFormat string
+	TimeFormat string `koanf:"time_format"`
 	// EnableColor enables color output in console
-	EnableColor bool
+	EnableColor bool `koanf:"enable_color"`
 	// EnableCaller enables caller information for debug and trace levels
-	EnableCallerAtVerbosity int
+	EnableCallerAtVerbosity int `koanf:"enable_caller_at_verbosity"`
 }
 
 // Config is the main configuration structure
 type Config struct {
-	Security         Security
-	Patterns         Patterns
-	Priorities       Priorities
-	Matchers         []MatcherConfig
-	FilePermissions  FilePermissions
-	ShellIntegration ShellIntegration
-	Paths            Paths
-	LinkPaths        LinkPaths
-	Logging          LoggingConfig
+	Security         Security         `koanf:"security"`
+	Patterns         Patterns         `koanf:"patterns"`
+	Priorities       Priorities       `koanf:"priorities"`
+	Matchers         []MatcherConfig  `koanf:"matchers"`
+	FilePermissions  FilePermissions  `koanf:"file_permissions"`
+	ShellIntegration ShellIntegration `koanf:"shell_integration"`
+	Paths            Paths            `koanf:"paths"`
+	LinkPaths        LinkPaths        `koanf:"link_paths"`
+	Logging          LoggingConfig    `koanf:"logging"`
 }
 
 // Default returns the default configuration

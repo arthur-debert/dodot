@@ -1,0 +1,54 @@
+# dodot configuration file
+# This file customizes dodot's behavior
+
+pack:
+  # These will not get processed as a dotfile inside a pack
+  ignore: 
+    - .git
+    - .svn
+    - .hg
+    - node_modules
+    - .DS_Store
+    - "*.swp"
+    - "*~"
+    - "#*#"
+    - ".env*"
+    - ".terraform/"
+
+dodot:
+  # If present dodot will load for its config
+  config: .dodot.toml
+  # If present dodot will not process the path  
+  ignore: .dodotignore
+
+symlink:
+  # These cannot be linked to $XDG_CONFIG_HOME or $XDG_DATA_HOME 
+  force_home:
+    - ssh        # .ssh/ - security critical
+    - gnupg      # .gnupg/ - security critical
+    - aws        # .aws/ - credentials
+    - kube       # .kube/ - kubernetes config
+    - docker     # .docker/ - docker config
+    - gitconfig  # .gitconfig - git expects in $HOME
+    - bashrc     # .bashrc - shell expects in $HOME
+    - zshrc      # .zshrc - shell expects in $HOME
+    - profile    # .profile - shell expects in $HOME
+
+  # These won't be linked for security reasons from your dotfiles
+  protected_paths:
+    - .ssh/authorized_keys
+    - .ssh/id_rsa
+    - .ssh/id_ed25519
+    - .gnupg
+    - .password-store
+    - .config/gh/hosts.yml
+    - .aws/credentials
+    - .kube/config
+    - .docker/config.json
+
+# The file name to handler mapping
+file_mapping: 
+  path: bin
+  install: install.sh
+  shell: [aliases.sh, profile.sh, login.sh]
+  homebrew: Brewfile

@@ -6,7 +6,14 @@ var globalConfig *Config
 // Initialize sets up the global configuration
 func Initialize(cfg *Config) {
 	if cfg == nil {
-		cfg = Default()
+		// Use the new configuration loader instead of Default()
+		loadedCfg, err := LoadConfiguration()
+		if err != nil {
+			// Fallback to hardcoded defaults if loading fails
+			cfg = Default()
+		} else {
+			cfg = loadedCfg
+		}
 	}
 	globalConfig = cfg
 }
