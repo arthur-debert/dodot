@@ -39,6 +39,37 @@ func DiscoverAndSelectPacks(dotfilesRoot string, packNames []string) ([]types.Pa
 	return allPacks, nil
 }
 
+// DiscoverAndSelectPacksFS is a helper that combines pack discovery and selection with filesystem support.
+// It discovers all packs in dotfilesRoot using the provided filesystem and optionally filters by packNames.
+// If packNames is empty, all discovered packs are returned.
+// Pack names are normalized to handle trailing slashes from shell completion.
+func DiscoverAndSelectPacksFS(dotfilesRoot string, packNames []string, filesystem types.FS) ([]types.Pack, error) {
+	// Get pack candidates using filesystem
+	candidates, err := packs.GetPackCandidatesFS(dotfilesRoot, filesystem)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get packs using filesystem
+	allPacks, err := packs.GetPacksFS(candidates, filesystem)
+	if err != nil {
+		return nil, err
+	}
+
+	// Select specific packs if requested
+	if len(packNames) > 0 {
+		// Normalize pack names by removing trailing slashes
+		normalized := normalizePackNames(packNames)
+		selected, err := packs.SelectPacks(allPacks, normalized)
+		if err != nil {
+			return nil, err
+		}
+		return selected, nil
+	}
+
+	return allPacks, nil
+}
+
 // FindPack discovers all packs and returns the one with the specified name.
 // Returns an error if the pack is not found.
 // Pack name is normalized to handle trailing slashes from shell completion.
@@ -69,37 +100,6 @@ func ValidateDotfilesRoot(dotfilesRoot string) error {
 	// We just need to check if we can discover packs
 	_, err := packs.GetPackCandidates(dotfilesRoot)
 	return err
-}
-
-// DiscoverAndSelectPacksFS is a helper that combines pack discovery and selection with filesystem support.
-// It discovers all packs in dotfilesRoot using the provided filesystem and optionally filters by packNames.
-// If packNames is empty, all discovered packs are returned.
-// Pack names are normalized to handle trailing slashes from shell completion.
-func DiscoverAndSelectPacksFS(dotfilesRoot string, packNames []string, filesystem types.FS) ([]types.Pack, error) {
-	// Get pack candidates using filesystem
-	candidates, err := packs.GetPackCandidatesFS(dotfilesRoot, filesystem)
-	if err != nil {
-		return nil, err
-	}
-
-	// Get packs using filesystem
-	allPacks, err := packs.GetPacksFS(candidates, filesystem)
-	if err != nil {
-		return nil, err
-	}
-
-	// Select specific packs if requested
-	if len(packNames) > 0 {
-		// Normalize pack names by removing trailing slashes
-		normalized := normalizePackNames(packNames)
-		selected, err := packs.SelectPacks(allPacks, normalized)
-		if err != nil {
-			return nil, err
-		}
-		return selected, nil
-	}
-
-	return allPacks, nil
 }
 
 // normalizePackName removes trailing slashes from a pack name.
