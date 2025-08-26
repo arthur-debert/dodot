@@ -46,7 +46,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	}
 
 	// Process triggers
-	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
+	matches, err := core.GetMatches([]types.Pack{pack})
 	testutil.AssertNoError(t, err)
 
 	// Build a map of matched files to their handlers
@@ -128,7 +128,7 @@ handler = "template"
 	}
 
 	// Process triggers
-	matches, err := core.ProcessPackTriggers(pack) //nolint:staticcheck // Testing deprecated function
+	matches, err := core.GetMatches([]types.Pack{pack})
 	testutil.AssertNoError(t, err)
 
 	// Build a map of matched files to their handlers

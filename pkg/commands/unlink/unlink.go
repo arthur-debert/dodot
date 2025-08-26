@@ -5,6 +5,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -105,7 +106,7 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 	}
 
 	// Get linking handlers only
-	linkingHandlers, err := core.GetClearableHandlersByMode(types.RunModeLinking)
+	linkingHandlers, err := executor.GetClearableHandlersByMode(types.RunModeLinking)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get linking handlers: %w", err)
 	}
@@ -135,7 +136,7 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 		}
 
 		// Filter handlers to only those with state
-		handlersWithState := core.FilterHandlersByState(ctx, linkingHandlers)
+		handlersWithState := executor.FilterHandlersByState(ctx, linkingHandlers)
 
 		logger.Debug().
 			Str("pack", pack.Name).
@@ -151,7 +152,7 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 		}
 
 		// Clear handlers for this pack using enhanced method that handles linking handlers
-		clearResults, err := core.ClearHandlersEnhanced(ctx, handlersWithState)
+		clearResults, err := executor.ClearHandlers(ctx, handlersWithState)
 		if err != nil {
 			packResult.Errors = append(packResult.Errors, err.Error())
 			logger.Error().
@@ -186,7 +187,7 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 			// In dry run mode, we still want to report what would be removed
 			if clearResult.StateRemoved || ctx.DryRun {
 				// Use the actual state directory name (e.g., "symlinks" for "symlink" handler)
-				stateDirName := core.GetHandlerStateDir(handlerName)
+				stateDirName := executor.GetHandlerStateDir(handlerName)
 				packResult.RemovedItems = append(packResult.RemovedItems, RemovedItem{
 					Type:    handlerName + "_directory",
 					Path:    p.PackHandlerDir(pack.Name, stateDirName),

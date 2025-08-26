@@ -1,4 +1,4 @@
-package core_test
+package executor_test
 
 import (
 	"io/fs"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -118,7 +118,7 @@ func TestFilterHandlersByState(t *testing.T) {
 				Paths: &mockFilterPaths{},
 			}
 
-			filtered := core.FilterHandlersByState(ctx, tt.handlers)
+			filtered := executor.FilterHandlersByState(ctx, tt.handlers)
 
 			// Check we got the expected handlers
 			assert.Len(t, filtered, len(tt.expected))

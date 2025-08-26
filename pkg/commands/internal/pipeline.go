@@ -69,7 +69,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Msg("Packs selected")
 
 	// 4. Get firing triggers for the packs
-	matches, err := core.GetFiringTriggers(selectedPacks)
+	matches, err := core.GetMatches(selectedPacks)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get firing triggers")
 	}

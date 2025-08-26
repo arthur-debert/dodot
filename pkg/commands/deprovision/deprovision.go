@@ -5,6 +5,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -75,7 +76,7 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 	}
 
 	// Get provisioning handlers
-	provisioningHandlers, err := core.GetClearableHandlersByMode(types.RunModeProvisioning)
+	provisioningHandlers, err := executor.GetClearableHandlersByMode(types.RunModeProvisioning)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get provisioning handlers: %w", err)
 	}
@@ -105,7 +106,7 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 		}
 
 		// Filter handlers to only those with state
-		handlersWithState := core.FilterHandlersByState(ctx, provisioningHandlers)
+		handlersWithState := executor.FilterHandlersByState(ctx, provisioningHandlers)
 
 		logger.Debug().
 			Str("pack", pack.Name).
@@ -121,7 +122,7 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 		}
 
 		// Clear handlers for this pack
-		clearResults, err := core.ClearHandlers(ctx, handlersWithState)
+		clearResults, err := executor.ClearHandlers(ctx, handlersWithState)
 		if err != nil {
 			packResult.Error = err
 			result.Errors = append(result.Errors, fmt.Errorf("pack %s: %w", pack.Name, err))

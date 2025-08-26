@@ -1,9 +1,9 @@
-package core_test
+package executor_test
 
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
@@ -91,7 +91,7 @@ func TestClearHelpers_WithRealHandlers(t *testing.T) {
 	// Test GetClearableHandlersByMode with real handler setup
 
 	// Test linking mode
-	linkingHandlers, err := core.GetClearableHandlersByMode(types.RunModeLinking)
+	linkingHandlers, err := executor.GetClearableHandlersByMode(types.RunModeLinking)
 	require.NoError(t, err)
 
 	// We expect at least symlink and path handlers
@@ -105,7 +105,7 @@ func TestClearHelpers_WithRealHandlers(t *testing.T) {
 	assert.True(t, hasPath, "Should have path handler")
 
 	// Test provisioning mode
-	provisioningHandlers, err := core.GetClearableHandlersByMode(types.RunModeProvisioning)
+	provisioningHandlers, err := executor.GetClearableHandlersByMode(types.RunModeProvisioning)
 	require.NoError(t, err)
 
 	// We expect at least homebrew and provision handlers
@@ -119,7 +119,7 @@ func TestClearHelpers_WithRealHandlers(t *testing.T) {
 	assert.True(t, hasInstall, "Should have install handler")
 
 	// Test GetAllClearableHandlers
-	allHandlers, err := core.GetAllClearableHandlers()
+	allHandlers, err := executor.GetAllClearableHandlers()
 	require.NoError(t, err)
 
 	// Should have all handlers combined

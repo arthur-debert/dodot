@@ -1,10 +1,10 @@
-package core_test
+package executor_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -102,7 +102,7 @@ func TestClearHandler_Success(t *testing.T) {
 	}
 
 	// Execute
-	result, err := core.ClearHandler(ctx, handler, "test-handler")
+	result, err := executor.ClearHandler(ctx, handler, "test-handler")
 
 	// Verify
 	require.NoError(t, err)
@@ -142,7 +142,7 @@ func TestClearHandler_DryRun(t *testing.T) {
 	}
 
 	// Execute
-	result, err := core.ClearHandler(ctx, handler, "test-handler")
+	result, err := executor.ClearHandler(ctx, handler, "test-handler")
 
 	// Verify
 	require.NoError(t, err)
@@ -175,7 +175,7 @@ func TestClearHandler_HandlerError(t *testing.T) {
 	}
 
 	// Execute
-	result, err := core.ClearHandler(ctx, handler, "test-handler")
+	result, err := executor.ClearHandler(ctx, handler, "test-handler")
 
 	// Verify
 	require.Error(t, err)
@@ -214,7 +214,7 @@ func TestClearHandler_StateRemovalError(t *testing.T) {
 	}
 
 	// Execute
-	result, err := core.ClearHandler(ctx, handler, "test-handler")
+	result, err := executor.ClearHandler(ctx, handler, "test-handler")
 
 	// Verify
 	require.Error(t, err)
@@ -262,7 +262,7 @@ func TestClearHandlers_Multiple(t *testing.T) {
 	}
 
 	// Execute
-	results, err := core.ClearHandlers(ctx, handlers)
+	results, err := executor.ClearHandlers(ctx, handlers)
 
 	// Verify
 	require.NoError(t, err)
@@ -321,7 +321,7 @@ func TestClearHandlers_PartialFailure(t *testing.T) {
 	}
 
 	// Execute
-	results, err := core.ClearHandlers(ctx, handlers)
+	results, err := executor.ClearHandlers(ctx, handlers)
 
 	// Verify
 	require.Error(t, err, "Should return error if any handler fails")

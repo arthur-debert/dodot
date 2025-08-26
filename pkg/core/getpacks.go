@@ -1,8 +1,6 @@
 package core
 
 import (
-	"strings"
-
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -28,7 +26,7 @@ func DiscoverAndSelectPacks(dotfilesRoot string, packNames []string) ([]types.Pa
 	// Select specific packs if requested
 	if len(packNames) > 0 {
 		// Normalize pack names by removing trailing slashes
-		normalized := normalizePackNames(packNames)
+		normalized := packs.NormalizePackNames(packNames)
 		selected, err := packs.SelectPacks(allPacks, normalized)
 		if err != nil {
 			return nil, err
@@ -37,38 +35,6 @@ func DiscoverAndSelectPacks(dotfilesRoot string, packNames []string) ([]types.Pa
 	}
 
 	return allPacks, nil
-}
-
-// FindPack discovers all packs and returns the one with the specified name.
-// Returns an error if the pack is not found.
-// Pack name is normalized to handle trailing slashes from shell completion.
-func FindPack(dotfilesRoot string, packName string) (*types.Pack, error) {
-	// Normalize pack name
-	normalized := normalizePackName(packName)
-
-	packs, err := DiscoverAndSelectPacks(dotfilesRoot, []string{normalized})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(packs) == 0 {
-		return nil, errors.Newf(errors.ErrPackNotFound, "pack %q not found", normalized)
-	}
-
-	return &packs[0], nil
-}
-
-// ValidateDotfilesRoot checks if the dotfiles root exists and is a directory.
-// This centralizes the validation that multiple commands need.
-func ValidateDotfilesRoot(dotfilesRoot string) error {
-	if dotfilesRoot == "" {
-		return errors.New(errors.ErrInvalidInput, "dotfiles root cannot be empty")
-	}
-
-	// The actual validation happens in packs.GetPackCandidates
-	// We just need to check if we can discover packs
-	_, err := packs.GetPackCandidates(dotfilesRoot)
-	return err
 }
 
 // DiscoverAndSelectPacksFS is a helper that combines pack discovery and selection with filesystem support.
@@ -91,7 +57,7 @@ func DiscoverAndSelectPacksFS(dotfilesRoot string, packNames []string, filesyste
 	// Select specific packs if requested
 	if len(packNames) > 0 {
 		// Normalize pack names by removing trailing slashes
-		normalized := normalizePackNames(packNames)
+		normalized := packs.NormalizePackNames(packNames)
 		selected, err := packs.SelectPacks(allPacks, normalized)
 		if err != nil {
 			return nil, err
@@ -102,17 +68,34 @@ func DiscoverAndSelectPacksFS(dotfilesRoot string, packNames []string, filesyste
 	return allPacks, nil
 }
 
-// normalizePackName removes trailing slashes from a pack name.
-// This handles cases where shell completion adds a trailing slash to directory names.
-func normalizePackName(name string) string {
-	return strings.TrimRight(name, "/")
+// FindPack discovers all packs and returns the one with the specified name.
+// Returns an error if the pack is not found.
+// Pack name is normalized to handle trailing slashes from shell completion.
+func FindPack(dotfilesRoot string, packName string) (*types.Pack, error) {
+	// Normalize pack name
+	normalized := packs.NormalizePackName(packName)
+
+	allPacks, err := DiscoverAndSelectPacks(dotfilesRoot, []string{normalized})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(allPacks) == 0 {
+		return nil, errors.Newf(errors.ErrPackNotFound, "pack %q not found", normalized)
+	}
+
+	return &allPacks[0], nil
 }
 
-// normalizePackNames removes trailing slashes from all pack names in the slice.
-func normalizePackNames(names []string) []string {
-	normalized := make([]string, len(names))
-	for i, name := range names {
-		normalized[i] = normalizePackName(name)
+// ValidateDotfilesRoot checks if the dotfiles root exists and is a directory.
+// This centralizes the validation that multiple commands need.
+func ValidateDotfilesRoot(dotfilesRoot string) error {
+	if dotfilesRoot == "" {
+		return errors.New(errors.ErrInvalidInput, "dotfiles root cannot be empty")
 	}
-	return normalized
+
+	// The actual validation happens in packs.GetPackCandidates
+	// We just need to check if we can discover packs
+	_, err := packs.GetPackCandidates(dotfilesRoot)
+	return err
 }
