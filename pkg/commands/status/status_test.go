@@ -196,6 +196,11 @@ func TestStatusPacks(t *testing.T) {
 func TestStatusPacks_Integration(t *testing.T) {
 	// This test verifies status checking after actual deployment
 	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+	require.NoError(t, os.MkdirAll(homeDir, 0755))
+
+	// Set HOME to a predictable value for consistent symlink resolution
+	t.Setenv("HOME", homeDir)
 
 	// Create a pack with various files
 	packDir := filepath.Join(tmpDir, "test")
