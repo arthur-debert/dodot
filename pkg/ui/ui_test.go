@@ -165,6 +165,98 @@ func TestTextRenderer(t *testing.T) {
 		assert.Contains(t, output, ".vimrc")
 		assert.Contains(t, output, "symlink")
 	})
+
+	t.Run("render execution context", func(t *testing.T) {
+		buf.Reset()
+		ctx := &types.ExecutionContext{
+			Command: "test",
+			DryRun:  true,
+			PackResults: map[string]*types.PackExecutionResult{
+				"vim": {
+					Pack: &types.Pack{Name: "vim"},
+					HandlerResults: []*types.HandlerResult{
+						{
+							HandlerName: "symlink",
+							Status:      "success",
+							Files:       []string{".vimrc"},
+						},
+					},
+					Status: "success",
+				},
+			},
+		}
+		err := renderer.RenderResult(ctx)
+		assert.NoError(t, err)
+		output := buf.String()
+		assert.Contains(t, output, "test (dry run)")
+		assert.Contains(t, output, "vim [status=queue]:")
+		assert.Contains(t, output, "symlink")
+	})
+
+	t.Run("render display result with ignored pack", func(t *testing.T) {
+		buf.Reset()
+		result := &types.DisplayResult{
+			Packs: []types.DisplayPack{
+				{
+					Name:      "ignored-pack",
+					IsIgnored: true,
+				},
+			},
+		}
+		err := renderer.RenderResult(result)
+		assert.NoError(t, err)
+		output := buf.String()
+		assert.Contains(t, output, "ignored-pack")
+		assert.Contains(t, output, "[ignored]")
+		assert.Contains(t, output, ".dodotignore : dodot is ignoring this dir")
+	})
+
+	t.Run("render display result with config file", func(t *testing.T) {
+		buf.Reset()
+		result := &types.DisplayResult{
+			Packs: []types.DisplayPack{
+				{
+					Name:      "test",
+					HasConfig: true,
+					Files: []types.DisplayFile{
+						{
+							Path:    ".dodot.toml",
+							Status:  "config",
+							Handler: "config",
+						},
+					},
+				},
+			},
+		}
+		err := renderer.RenderResult(result)
+		assert.NoError(t, err)
+		output := buf.String()
+		assert.Contains(t, output, "test")
+		assert.Contains(t, output, "[config]")
+		assert.Contains(t, output, ".dodot.toml")
+		assert.Contains(t, output, "[status=config]")
+	})
+
+	t.Run("render empty display result", func(t *testing.T) {
+		buf.Reset()
+		result := &types.DisplayResult{
+			Command: "test",
+			Packs:   []types.DisplayPack{},
+		}
+		err := renderer.RenderResult(result)
+		assert.NoError(t, err)
+		output := buf.String()
+		assert.Contains(t, output, "No packs to process")
+	})
+
+	t.Run("render unknown result type", func(t *testing.T) {
+		buf.Reset()
+		unknownData := map[string]string{"foo": "bar"}
+		err := renderer.RenderResult(unknownData)
+		assert.NoError(t, err)
+		output := buf.String()
+		assert.Contains(t, output, "map[foo:bar]")
+	})
 }
 
 func TestTerminalRenderer(t *testing.T) {
