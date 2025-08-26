@@ -1,6 +1,14 @@
 Upfront Confirmation System for On/Off Commands
 ===============================================
 
+NOTE: This proposal is outdated. The on/off commands have been implemented as simple
+wrappers: `on` = `link` + `provision`, `off` = `deprovision` + `unlink`. No state
+is preserved between operations. The confirmation system described here was not
+implemented as the commands now simply delegate to existing functionality.
+
+Original Proposal (Historical)
+------------------------------
+
 Overview
 --------
 Design a confirmation system to collect all user confirmations upfront before executing 

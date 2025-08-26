@@ -45,7 +45,10 @@ Common Commands:
 • dodot status - Show current state and what would be done
 • dodot link - Create symlinks for configurations  
 • dodot provision - Run install scripts and Brewfiles
+• dodot on - Deploy packs (equivalent to link + provision)
+• dodot off - Remove packs completely (equivalent to deprovision + unlink)
 • dodot list - Show available packs
 • dodot unlink - Remove symlinks
+• dodot deprovision - Remove provisioned resources
 
 Use --all flag to operate on all packs at once.

@@ -1,0 +1,205 @@
+#!/bin/bash
+
+usage() {
+    echo "Usage: $0 <path> [--by-package] [--nested] [--sort-loc]"
+    echo "Count lines of Go code, separating application and test code"
+    echo ""
+    echo "Options:"
+    echo "  --by-package    Aggregate results by package/directory (default: summary only)"
+    echo "  --nested        Include all nested directories (default: only direct children)"
+    echo "  --sort-loc      Sort by code LOC count (default: alphabetical)"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+PATH_ARG="$1"
+BY_PACKAGE=false
+NESTED=false
+SORT_BY_LOC=false
+
+# Parse flags
+shift
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --by-package)
+            BY_PACKAGE=true
+            ;;
+        --nested)
+            NESTED=true
+            ;;
+        --sort-loc)
+            SORT_BY_LOC=true
+            ;;
+        *)
+            echo "Unknown option: $1"
+            usage
+            ;;
+    esac
+    shift
+done
+
+# Ensure path exists
+if [ ! -d "$PATH_ARG" ]; then
+    echo "Error: Path '$PATH_ARG' does not exist or is not a directory"
+    exit 1
+fi
+
+echo "Go Code Analysis for: $PATH_ARG"
+echo "================================================================================="
+echo ""
+
+# Header for the unified table
+echo "────────────────────────────────────────────────────────────────"
+printf "%-40s %10s %10s\n" "Package" "Test Code" "Code"
+printf "%-40s %10s %10s\n" "───────" "─────────" "────"
+
+# Initialize totals
+total_files=0
+total_code=0
+total_comments=0
+total_test_files=0
+total_test_code=0
+
+if [ "$BY_PACKAGE" = true ]; then
+    # Create temp file for storing results
+    RESULTS_TEMP=$(mktemp)
+    
+    if [ "$NESTED" = true ]; then
+        # Find all directories with any Go files (nested)
+        find "$PATH_ARG" -type f -name "*.go" -exec dirname {} \; | sort -u | while read -r dir; do
+            # Get relative path for display
+            rel_dir=$(echo "$dir" | sed "s|^$PATH_ARG/||" | sed "s|^$PATH_ARG||")
+            [ -z "$rel_dir" ] && rel_dir="."
+            
+            # Count application code for this directory only (not recursive)
+            app_result=$(find "$dir" -maxdepth 1 -type f -name "*.go" ! -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+            
+            if [ -n "$app_result" ]; then
+                app_files=$(echo "$app_result" | awk '{print $2}')
+                app_code=$(echo "$app_result" | awk '{print $6}')
+                app_comments=$(echo "$app_result" | awk '{print $5}')
+            else
+                app_files=0
+                app_code=0
+                app_comments=0
+            fi
+            
+            # Count test code for this directory only (not recursive)
+            test_result=$(find "$dir" -maxdepth 1 -type f -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+            
+            if [ -n "$test_result" ]; then
+                test_files=$(echo "$test_result" | awk '{print $2}')
+                test_code=$(echo "$test_result" | awk '{print $6}')
+            else
+                test_files=0
+                test_code=0
+            fi
+            
+            # Store results if there's any code in this package
+            if [ "$app_files" -gt 0 ] || [ "$test_files" -gt 0 ]; then
+                echo "$app_code|$test_code|$rel_dir" >> "$RESULTS_TEMP"
+            fi
+        done
+    else
+        # Only show direct children directories
+        # First, count files in the root directory itself
+        app_result=$(find "$PATH_ARG" -maxdepth 1 -type f -name "*.go" ! -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+        test_result=$(find "$PATH_ARG" -maxdepth 1 -type f -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+        
+        if [ -n "$app_result" ] || [ -n "$test_result" ]; then
+            if [ -n "$app_result" ]; then
+                app_files=$(echo "$app_result" | awk '{print $2}')
+                app_code=$(echo "$app_result" | awk '{print $6}')
+                app_comments=$(echo "$app_result" | awk '{print $5}')
+            else
+                app_files=0
+                app_code=0
+                app_comments=0
+            fi
+            
+            if [ -n "$test_result" ]; then
+                test_files=$(echo "$test_result" | awk '{print $2}')
+                test_code=$(echo "$test_result" | awk '{print $6}')
+            else
+                test_files=0
+                test_code=0
+            fi
+            
+            if [ "$app_files" -gt 0 ] || [ "$test_files" -gt 0 ]; then
+                echo "$app_code|$test_code|." >> "$RESULTS_TEMP"
+            fi
+        fi
+        
+        # Then, count for each direct child directory
+        find "$PATH_ARG" -mindepth 1 -maxdepth 1 -type d | sort | while read -r dir; do
+            # Get directory name for display
+            dir_name=$(basename "$dir")
+            
+            # Count all Go files recursively in this directory
+            app_result=$(find "$dir" -type f -name "*.go" ! -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+            
+            if [ -n "$app_result" ]; then
+                app_files=$(echo "$app_result" | awk '{print $2}')
+                app_code=$(echo "$app_result" | awk '{print $6}')
+                app_comments=$(echo "$app_result" | awk '{print $5}')
+            else
+                app_files=0
+                app_code=0
+                app_comments=0
+            fi
+            
+            # Count all test files recursively in this directory
+            test_result=$(find "$dir" -type f -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+            
+            if [ -n "$test_result" ]; then
+                test_files=$(echo "$test_result" | awk '{print $2}')
+                test_code=$(echo "$test_result" | awk '{print $6}')
+            else
+                test_files=0
+                test_code=0
+            fi
+            
+            # Store results if there's any code in this directory
+            if [ "$app_files" -gt 0 ] || [ "$test_files" -gt 0 ]; then
+                echo "$app_code|$test_code|$dir_name" >> "$RESULTS_TEMP"
+            fi
+        done
+    fi
+    
+    # Now sort and print results
+    if [ -f "$RESULTS_TEMP" ]; then
+        if [ "$SORT_BY_LOC" = true ]; then
+            # Sort by code LOC (descending)
+            sort -t'|' -k1 -nr "$RESULTS_TEMP" | while IFS='|' read -r app_code test_code package; do
+                printf "%-40s %10s \033[1m%10s\033[0m\n" "$package" "$test_code" "$app_code"
+            done
+        else
+            # Sort by package name (alphabetically)
+            sort -t'|' -k3 "$RESULTS_TEMP" | while IFS='|' read -r app_code test_code package; do
+                printf "%-40s %10s \033[1m%10s\033[0m\n" "$package" "$test_code" "$app_code"
+            done
+        fi
+        rm -f "$RESULTS_TEMP"
+    fi
+fi
+
+# Calculate totals
+app_total=$(find "$PATH_ARG" -type f -name "*.go" ! -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+if [ -n "$app_total" ]; then
+    total_files=$(echo "$app_total" | awk '{print $2}')
+    total_code=$(echo "$app_total" | awk '{print $6}')
+    total_comments=$(echo "$app_total" | awk '{print $5}')
+fi
+
+test_total=$(find "$PATH_ARG" -type f -name "*_test.go" -exec scc {} + 2>/dev/null | grep "^Go" | head -1)
+if [ -n "$test_total" ]; then
+    total_test_files=$(echo "$test_total" | awk '{print $2}')
+    total_test_code=$(echo "$test_total" | awk '{print $6}')
+fi
+
+# Print separator before total
+echo "────────────────────────────────────────────────────────────────"
+printf "%-40s %10s \033[1m%10s\033[0m\n" "TOTAL" "$total_test_code" "$total_code"
