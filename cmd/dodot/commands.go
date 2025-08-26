@@ -1075,21 +1075,31 @@ func newOnCmd() *cobra.Command {
 			if result.TotalDeployed == 0 {
 				fmt.Println("No packs to turn on")
 			} else {
+				// Get format flag and create appropriate renderer
+				formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
+				format, err := ui.ParseFormat(formatStr)
+				if err != nil {
+					return fmt.Errorf("invalid format: %w", err)
+				}
+
+				renderer, err := ui.NewRenderer(format, os.Stdout)
+				if err != nil {
+					return fmt.Errorf("failed to create renderer: %w", err)
+				}
+
 				// Display link results
 				if result.LinkResult != nil {
 					fmt.Printf("\nLink Results:\n")
-					renderer, err := output.NewRenderer(os.Stdout, false)
-					if err == nil {
-						_ = renderer.RenderExecutionContext(result.LinkResult)
+					if err := renderer.RenderResult(result.LinkResult); err != nil {
+						log.Error().Err(err).Msg("Failed to render link results")
 					}
 				}
 
 				// Display provision results
 				if result.ProvisionResult != nil && result.ProvisionResult.CompletedActions > 0 {
 					fmt.Printf("\nProvision Results:\n")
-					renderer, err := output.NewRenderer(os.Stdout, false)
-					if err == nil {
-						_ = renderer.RenderExecutionContext(result.ProvisionResult)
+					if err := renderer.RenderResult(result.ProvisionResult); err != nil {
+						log.Error().Err(err).Msg("Failed to render provision results")
 					}
 				}
 
