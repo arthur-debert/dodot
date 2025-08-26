@@ -47,11 +47,11 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 			},
 		},
 		{
-			name: "shell_profiles_tracked",
+			name: "shells_tracked",
 			setupFixture: func(t *testing.T, dataDir, dotfilesRoot string) {
 				// Create deployed shell profiles
-				deployedProfile := filepath.Join(dataDir, "deployed", "shell_profile")
-				testutil.CreateDir(t, dataDir, "deployed/shell_profile")
+				deployedProfile := filepath.Join(dataDir, "deployed", "shell")
+				testutil.CreateDir(t, dataDir, "deployed/shell")
 
 				// Create fake shell scripts
 				aliasesPath := filepath.Join(dotfilesRoot, "base", "aliases.sh")
@@ -138,7 +138,7 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 			setupFixture: func(t *testing.T, dataDir, dotfilesRoot string) {
 				// Create all types of deployments
 				testutil.CreateDir(t, dataDir, "deployed/symlink")
-				testutil.CreateDir(t, dataDir, "deployed/shell_profile")
+				testutil.CreateDir(t, dataDir, "deployed/shell")
 				testutil.CreateDir(t, dataDir, "deployed/path")
 				testutil.CreateDir(t, dataDir, "deployed/shell_source")
 				testutil.CreateDir(t, dataDir, "provision/sentinels")
@@ -154,7 +154,7 @@ func TestShellInitScriptEnvironmentVariables(t *testing.T) {
 				aliasesPath := filepath.Join(dotfilesRoot, "base", "aliases.sh")
 				testutil.CreateDir(t, dotfilesRoot, "base")
 				testutil.CreateFile(t, filepath.Dir(aliasesPath), "aliases.sh", "alias ll='ls -l'")
-				testutil.CreateSymlink(t, aliasesPath, filepath.Join(dataDir, "deployed/shell_profile/aliases.sh"))
+				testutil.CreateSymlink(t, aliasesPath, filepath.Join(dataDir, "deployed/shell/aliases.sh"))
 
 				// Path dirs
 				toolsBin := filepath.Join(dotfilesRoot, "tools", "bin")

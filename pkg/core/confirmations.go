@@ -197,7 +197,7 @@ func getHandlerEmoji(handler string) string {
 		return "🔗"
 	case "provision":
 		return "🔧"
-	case "shell_profile":
+	case "shell":
 		return "🐚"
 	case "path":
 		return "📁"

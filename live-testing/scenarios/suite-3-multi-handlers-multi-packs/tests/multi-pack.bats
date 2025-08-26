@@ -3,7 +3,7 @@
 # Suite 3: Tests multiple handlers across multiple packs
 # This suite validates that dodot correctly handles scenarios where:
 # - Multiple packs are present in the dotfiles directory
-# - Different packs use different handlers (symlink, path, install_script, etc.)
+# - Different packs use different handlers (symlink, path, install, etc.)
 # - Handlers from different packs interact correctly (e.g., multiple PATH entries)
 # - Operations are performed in the correct order across packs
 
@@ -99,12 +99,12 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Verify install-pack install script and homebrew
-    assert_install_script_executed "install-pack"
+    assert_install_executed "install-pack"
     assert_install_artifact_exists "$HOME/.local/install-pack/marker.txt"
     assert_brewfile_processed "install-pack"
     
     # Verify mixed-pack install script and homebrew
-    assert_install_script_executed "mixed-pack"
+    assert_install_executed "mixed-pack"
     assert_install_artifact_exists "$HOME/.local/mixed-pack/marker.txt"
     assert_brewfile_processed "mixed-pack"
     

@@ -24,7 +24,7 @@ func TestDeploymentPaths(t *testing.T) {
 		{
 			name:     "shell profile dir",
 			method:   p.ShellProfileDir,
-			expected: filepath.Join(p.DeployedDir(), "shell_profile"),
+			expected: filepath.Join(p.DeployedDir(), "shell"),
 		},
 		{
 			name:     "path dir",

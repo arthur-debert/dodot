@@ -141,7 +141,7 @@ func TestGetHandlerEmoji(t *testing.T) {
 		{"homebrew", "🍺"},
 		{"symlink", "🔗"},
 		{"provision", "🔧"},
-		{"shell_profile", "🐚"},
+		{"shell", "🐚"},
 		{"path", "📁"},
 		{"unknown", "⚙️"},
 		{"", "⚙️"},

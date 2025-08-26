@@ -167,7 +167,7 @@ func TestExecutor_Integration(t *testing.T) {
 		assert.Nil(t, results[0].Error)
 
 		// Verify the shell profile link was created
-		profileLinkPath := filepath.Join(dataDir, "packs", packName, "shell_profile", "aliases.sh")
+		profileLinkPath := filepath.Join(dataDir, "packs", packName, "shell", "aliases.sh")
 		assert.FileExists(t, profileLinkPath)
 
 		// Verify it points to the correct file

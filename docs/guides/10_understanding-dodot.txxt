@@ -33,7 +33,7 @@ Ideas and Concepts
    a pack unless it contains a .dodotignore file.
 
 3. Handler: A "skill" that dodot possesses. For example, the symlink handler can link config files, the
-   path handler can add directories to the system $PATH, and the shell_profile handler can source scripts
+   path handler can add directories to the system $PATH, and the shell handler can source scripts
    into the user's shell.
 
 4. Trigger: A function that determines if a file should be processed. It takes a file path and returns true

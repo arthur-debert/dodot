@@ -59,7 +59,7 @@ func TestProcessPackTriggers_CatchallBehavior(t *testing.T) {
 	testutil.AssertEqual(t, "symlink", matchMap[".vimrc"])
 	testutil.AssertEqual(t, "symlink", matchMap[".bashrc"])
 	testutil.AssertEqual(t, "homebrew", matchMap["Brewfile"])
-	testutil.AssertEqual(t, "provision", matchMap["install.sh"])
+	testutil.AssertEqual(t, "install", matchMap["install.sh"])
 
 	// Verify catchall caught the remaining files
 	testutil.AssertEqual(t, "symlink", matchMap["custom.conf"])
@@ -97,7 +97,7 @@ func TestProcessPackTriggers_CatchallWithOverrides(t *testing.T) {
 	packConfigContent := `
 [[override]]
 path = "custom.conf"
-handler = "shell_profile"
+handler = "shell"
 
 [[override]]
 path = "data.json"
@@ -107,7 +107,7 @@ handler = "template"
 
 	// Create test files
 	testFiles := map[string]string{
-		"custom.conf": "custom config",  // Should be overridden to shell_profile
+		"custom.conf": "custom config",  // Should be overridden to shell
 		"data.json":   "{}",             // Should be overridden to template
 		"random.txt":  "random content", // Should match catchall
 	}
@@ -138,7 +138,7 @@ handler = "template"
 	}
 
 	// Verify overrides took precedence over catchall
-	testutil.AssertEqual(t, "shell_profile", matchMap["custom.conf"])
+	testutil.AssertEqual(t, "shell", matchMap["custom.conf"])
 	testutil.AssertEqual(t, "template", matchMap["data.json"])
 
 	// Verify catchall still caught the remaining file

@@ -130,7 +130,7 @@ matchers:
       data:
         pattern: install.sh    # Matches files named install.sh
     handler:
-      type: provision   # Uses the provision handler
+      type: install   # Uses the install handler
       data: {}
   
   # Processes Brewfiles for Homebrew package installation
@@ -152,7 +152,7 @@ matchers:
       data:
         pattern: "*aliases.sh"     # Matches files ending in aliases.sh
     handler:
-      type: shell_profile   # Uses the shell_profile handler
+      type: shell   # Uses the shell handler
       data:
         placement: aliases         # Places in the aliases section
   
@@ -164,7 +164,7 @@ matchers:
       data:
         pattern: profile.sh        # Matches files named profile.sh
     handler:
-      type: shell_profile   # Uses the shell_profile handler
+      type: shell   # Uses the shell handler
       data:
         placement: environment     # Places in the environment section
   

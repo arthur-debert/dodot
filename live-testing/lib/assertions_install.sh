@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Install-related assertion functions for dodot live system tests
 
-# assert_install_script_executed() - Verify install script was executed
+# assert_install_executed() - Verify install script was executed
 # Args:
 #   $1 - pack name
 #
-# Example: assert_install_script_executed "tools"
-assert_install_script_executed() {
+# Example: assert_install_executed "tools"
+assert_install_executed() {
     local pack="$1"
     
     if [ -z "$pack" ]; then
-        echo "ERROR: assert_install_script_executed requires pack argument" >&2
+        echo "ERROR: assert_install_executed requires pack argument" >&2
         return 1
     fi
     
@@ -36,14 +36,14 @@ assert_install_script_executed() {
     return 0
 }
 
-# assert_install_script_not_executed() - Verify install script was not executed
+# assert_install_not_executed() - Verify install script was not executed
 # Args:
 #   $1 - pack name
-assert_install_script_not_executed() {
+assert_install_not_executed() {
     local pack="$1"
     
     if [ -z "$pack" ]; then
-        echo "ERROR: assert_install_script_not_executed requires pack argument" >&2
+        echo "ERROR: assert_install_not_executed requires pack argument" >&2
         return 1
     fi
     
@@ -79,6 +79,6 @@ assert_install_artifact_exists() {
 }
 
 # Export functions
-export -f assert_install_script_executed
-export -f assert_install_script_not_executed
+export -f assert_install_executed
+export -f assert_install_not_executed
 export -f assert_install_artifact_exists

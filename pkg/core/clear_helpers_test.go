@@ -85,16 +85,16 @@ func TestFilterHandlersByState(t *testing.T) {
 		{
 			name: "some handlers have state",
 			handlers: map[string]types.Clearable{
-				"symlink":       &mockClearableHandler{name: "symlink"},
-				"path":          &mockClearableHandler{name: "path"},
-				"shell_profile": &mockClearableHandler{name: "shell_profile"},
+				"symlink": &mockClearableHandler{name: "symlink"},
+				"path":    &mockClearableHandler{name: "path"},
+				"shell":   &mockClearableHandler{name: "shell"},
 			},
 			existingDirs: map[string]bool{
 				"/data/packs/testpack/symlinks": true, // symlink handler uses "symlinks" directory
 				// path has no state
-				"/data/packs/testpack/shell_profile": true,
+				"/data/packs/testpack/shell": true,
 			},
-			expected: []string{"symlink", "shell_profile"},
+			expected: []string{"symlink", "shell"},
 		},
 		{
 			name: "no handlers have state",

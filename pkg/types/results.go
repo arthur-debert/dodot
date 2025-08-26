@@ -142,7 +142,7 @@ func GetHandlerSymbol(handlerName string) string {
 	switch handlerName {
 	case "symlink":
 		return "➞"
-	case "shell_profile", "shell_add_path":
+	case "shell", "shell_add_path":
 		return "⚙"
 	case "path":
 		return "+"
@@ -160,7 +160,7 @@ func GetHandlerAdditionalInfo(handlerName string) string {
 	switch handlerName {
 	case "symlink":
 		return "" // Will be filled with actual target
-	case "shell_profile", "shell_add_path":
+	case "shell", "shell_add_path":
 		return "shell source"
 	case "path":
 		return "add to $PATH"

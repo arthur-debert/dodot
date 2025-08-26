@@ -234,7 +234,7 @@ func defaultMatchers() []MatcherConfig {
 				},
 			},
 			Handler: HandlerConfig{
-				Type: "provision",
+				Type: "install",
 				Data: map[string]interface{}{},
 			},
 		},
@@ -262,7 +262,7 @@ func defaultMatchers() []MatcherConfig {
 				},
 			},
 			Handler: HandlerConfig{
-				Type: "shell_profile",
+				Type: "shell",
 				Data: map[string]interface{}{
 					"placement": "aliases",
 				},
@@ -278,7 +278,7 @@ func defaultMatchers() []MatcherConfig {
 				},
 			},
 			Handler: HandlerConfig{
-				Type: "shell_profile",
+				Type: "shell",
 				Data: map[string]interface{}{
 					"placement": "environment",
 				},

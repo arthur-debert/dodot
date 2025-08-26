@@ -55,7 +55,7 @@ type PackUnlinkResult struct {
 
 // RemovedItem represents a single removed deployment
 type RemovedItem struct {
-	// Type of item (symlink, path, shell_profile, etc.)
+	// Type of item (symlink, path, shell, etc.)
 	Type string `json:"type"`
 
 	// Path that was removed
@@ -73,7 +73,7 @@ type RemovedItem struct {
 
 // UnlinkPacks removes deployments for the specified packs
 //
-// This command undoes the effects of linking handlers (symlink, path, shell_profile)
+// This command undoes the effects of linking handlers (symlink, path, shell)
 // but deliberately leaves provisioning handlers (provision, homebrew) untouched.
 //
 // This implementation uses the clearable infrastructure to ensure consistency

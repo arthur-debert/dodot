@@ -1,4 +1,4 @@
-package shell_profile
+package shell
 
 import (
 	_ "embed"
@@ -7,37 +7,37 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// ShellProfileHandlerName is the name of the shell profile handler
-const ShellProfileHandlerName = "shell_profile"
+// ShellHandlerName is the name of the shell profile handler
+const ShellHandlerName = "shell"
 
 //go:embed aliases-template.txt
 var aliasesTemplate string
 
-// ShellProfileHandler manages shell profile modifications
-type ShellProfileHandler struct{}
+// ShellHandler manages shell profile modifications
+type ShellHandler struct{}
 
-// NewShellProfileHandler creates a new instance of the ShellProfileHandler
-func NewShellProfileHandler() *ShellProfileHandler {
-	return &ShellProfileHandler{}
+// NewShellHandler creates a new instance of the ShellHandler
+func NewShellHandler() *ShellHandler {
+	return &ShellHandler{}
 }
 
 // Name returns the unique name of this handler
-func (h *ShellProfileHandler) Name() string {
-	return ShellProfileHandlerName
+func (h *ShellHandler) Name() string {
+	return ShellHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (h *ShellProfileHandler) Description() string {
+func (h *ShellHandler) Description() string {
 	return "Manages shell profile modifications (e.g., sourcing aliases)"
 }
 
 // RunMode returns when this handler should run
-func (h *ShellProfileHandler) RunMode() types.RunMode {
+func (h *ShellHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
 
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
-func (h *ShellProfileHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *ShellHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -55,8 +55,8 @@ func (h *ShellProfileHandler) ProcessLinking(matches []types.TriggerMatch) ([]ty
 }
 
 // ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
-func (h *ShellProfileHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
-	logger := logging.GetLogger("handlers.shell_profile")
+func (h *ShellHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+	logger := logging.GetLogger("handlers.shell")
 	actions := make([]types.Action, 0, len(matches))
 
 	for _, match := range matches {
@@ -85,19 +85,19 @@ func (h *ShellProfileHandler) ProcessLinkingWithConfirmations(matches []types.Tr
 }
 
 // ValidateOptions checks if the provided options are valid
-func (h *ShellProfileHandler) ValidateOptions(options map[string]interface{}) error {
+func (h *ShellHandler) ValidateOptions(options map[string]interface{}) error {
 	return nil // No options to validate yet
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *ShellProfileHandler) GetTemplateContent() string {
+func (h *ShellHandler) GetTemplateContent() string {
 	return aliasesTemplate
 }
 
 // Clear performs no additional cleanup for shell profile handler
 // The state directory removal is sufficient
-func (h *ShellProfileHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
-	logger := logging.GetLogger("handlers.shell_profile").With().
+func (h *ShellHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.shell").With().
 		Str("pack", ctx.Pack.Name).
 		Bool("dryRun", ctx.DryRun).
 		Logger()
@@ -109,8 +109,8 @@ func (h *ShellProfileHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem
 	if ctx.DryRun {
 		return []types.ClearedItem{
 			{
-				Type:        "shell_profile_state",
-				Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "shell_profile"),
+				Type:        "shell_state",
+				Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "shell"),
 				Description: "Would remove shell profile sources",
 			},
 		}, nil
@@ -118,14 +118,14 @@ func (h *ShellProfileHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem
 
 	return []types.ClearedItem{
 		{
-			Type:        "shell_profile_state",
-			Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "shell_profile"),
+			Type:        "shell_state",
+			Path:        ctx.Paths.PackHandlerDir(ctx.Pack.Name, "shell"),
 			Description: "Shell profile sources will be removed",
 		},
 	}, nil
 }
 
 // Verify interface compliance
-var _ types.LinkingHandler = (*ShellProfileHandler)(nil)
-var _ types.LinkingHandlerWithConfirmations = (*ShellProfileHandler)(nil)
-var _ types.Clearable = (*ShellProfileHandler)(nil)
+var _ types.LinkingHandler = (*ShellHandler)(nil)
+var _ types.LinkingHandlerWithConfirmations = (*ShellHandler)(nil)
+var _ types.Clearable = (*ShellHandler)(nil)

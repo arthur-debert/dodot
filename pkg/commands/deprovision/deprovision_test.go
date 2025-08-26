@@ -55,8 +55,8 @@ func TestDeprovisionPacks(t *testing.T) {
 				pack2Dir := env.CreatePack("pack2")
 				testutil.CreateFile(t, pack2Dir, "Brewfile", "brew 'node'")
 
-				// Add provisioning state
-				state1Dir := filepath.Join(env.DataDir(), "packs", "pack1", "provision")
+				// Add install state
+				state1Dir := filepath.Join(env.DataDir(), "packs", "pack1", "install")
 				require.NoError(t, os.MkdirAll(state1Dir, 0755))
 				testutil.CreateFile(t, state1Dir, "run-2024-01-01T00:00:00Z-abc123", "checksum:timestamp")
 
@@ -88,13 +88,13 @@ func TestDeprovisionPacks(t *testing.T) {
 				env.CreatePack("zsh")
 
 				// Add state only to vim
-				stateDir := filepath.Join(env.DataDir(), "packs", "vim", "provision")
+				stateDir := filepath.Join(env.DataDir(), "packs", "vim", "install")
 				require.NoError(t, os.MkdirAll(stateDir, 0755))
 				testutil.CreateFile(t, stateDir, "run-2024-01-01T00:00:00Z-abc123", "checksum:timestamp")
 			},
 			packNames:   []string{}, // Empty means all packs
 			dryRun:      false,
-			wantCleared: 1, // vim pack has provision state
+			wantCleared: 1, // vim pack has install state
 			wantError:   false,
 			checkResult: func(t *testing.T, result *deprovision.DeprovisionResult) {
 				// Should process all packs but only clear those with state
@@ -114,7 +114,7 @@ func TestDeprovisionPacks(t *testing.T) {
 				packDir := env.CreatePack("testpack")
 				testutil.CreateFile(t, packDir, "install.sh", "echo test")
 
-				stateDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
+				stateDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
 				require.NoError(t, os.MkdirAll(stateDir, 0755))
 				testutil.CreateFile(t, stateDir, "run-2024-01-01T00:00:00Z-abc123", "checksum:timestamp")
 			},
@@ -133,7 +133,7 @@ func TestDeprovisionPacks(t *testing.T) {
 			},
 		},
 		{
-			name: "skip packs without provisioning state",
+			name: "skip packs without install state",
 			setup: func(env *testutil.TestEnvironment) {
 				// Create pack with only linking state
 				packDir := env.CreatePack("linkonly")
@@ -237,7 +237,7 @@ func TestDeprovisionResult_Structure(t *testing.T) {
 				Name: "pack2",
 				HandlersRun: []deprovision.HandlerResult{
 					{
-						HandlerName: "provision",
+						HandlerName: "install",
 						ClearedItems: []types.ClearedItem{
 							{Type: "script", Description: "install.sh"},
 						},

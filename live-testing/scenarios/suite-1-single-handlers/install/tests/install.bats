@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Minimal test for install_script handler - happy path only
+# Minimal test for install handler - happy path only
 
 # Load common test setup with debug support
 source /workspace/live-testing/lib/common.sh
@@ -16,13 +16,13 @@ teardown() {
     teardown_with_debug
 }
 
-@test "install_script: YES - script executed (marker created)" {
+@test "install: YES - script executed (marker created)" {
     # Install dev pack
     dodot_run install dev
     [ "$status" -eq 0 ]
     
     # Use proper assertion helpers
-    assert_install_script_executed "dev"
+    assert_install_executed "dev"
     
     # Verify the marker file was created using the helper
     assert_install_artifact_exists "$HOME/.local/test/marker.txt"
@@ -33,7 +33,7 @@ teardown() {
     [ "$output" = "installed" ]
 }
 
-@test "install_script: NO - script not executed (verify absence)" {
+@test "install: NO - script not executed (verify absence)" {
     # Create a pack with no install.sh file
     mkdir -p "$DOTFILES_ROOT/config"
     echo "config=value" > "$DOTFILES_ROOT/config/settings.conf"
@@ -43,5 +43,5 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Use proper assertion helper
-    assert_install_script_not_executed "config"
+    assert_install_not_executed "config"
 }

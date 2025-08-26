@@ -37,7 +37,7 @@ Here's what dodot's state storage looks like after linking various handlers:
 │   │   ├── .zshrc → ~/dotfiles/zsh/zshrc
 │   │   └── .gitconfig → ~/dotfiles/git/gitconfig
 │   │
-│   ├── shell_profile/   # Shell scripts to source
+│   ├── shell/   # Shell scripts to source
 │   │   ├── vim_aliases.sh → ~/dotfiles/vim/aliases.sh
 │   │   ├── git_functions.sh → ~/dotfiles/git/functions.sh
 │   │   └── tools_env.sh → ~/dotfiles/tools/env.sh
@@ -57,7 +57,7 @@ Here's what dodot's state storage looks like after linking various handlers:
 │       └── setup.sh
 │
 └── shell/
-    └── dodot-init.sh   # Sources everything in shell_profile/ and adds path/ to PATH
+    └── dodot-init.sh   # Sources everything in shell/ and adds path/ to PATH
 ```
 
 How Each Handler Stores State
@@ -70,7 +70,7 @@ How Each Handler Stores State
    • State = existence of these symlinks
 
 2. Shell Profile Handler:
-   • Creates symlinks in deployed/shell_profile/
+   • Creates symlinks in deployed/shell/
    • Naming: <pack>_<filename> (e.g., vim_aliases.sh)
    • dodot-init.sh sources all files in this directory
    • State = existence of symlinks
@@ -141,7 +141,7 @@ Shell Integration
 
 dodot uses a single shell integration point: dodot-init.sh. This script:
 
-1. Sources all files in deployed/shell_profile/
+1. Sources all files in deployed/shell/
 2. Adds all directories in deployed/path/ to PATH
 3. Exports environment variables for tracking
 4. Provides helper functions for status checking

@@ -101,11 +101,11 @@ func (s *filesystemDataStore) AddToPath(pack, dirPath string) error {
 
 func (s *filesystemDataStore) AddToShellProfile(pack, scriptPath string) error {
 	baseName := filepath.Base(scriptPath)
-	intermediateLinkDir := s.paths.PackHandlerDir(pack, "shell_profile")
+	intermediateLinkDir := s.paths.PackHandlerDir(pack, "shell")
 	intermediateLinkPath := filepath.Join(intermediateLinkDir, baseName)
 
 	if err := s.fs.MkdirAll(intermediateLinkDir, 0755); err != nil {
-		return fmt.Errorf("failed to create shell_profile directory for pack %s: %w", pack, err)
+		return fmt.Errorf("failed to create shell directory for pack %s: %w", pack, err)
 	}
 
 	// If the link already exists and points to the correct source, do nothing.
@@ -116,12 +116,12 @@ func (s *filesystemDataStore) AddToShellProfile(pack, scriptPath string) error {
 	// If it exists but is wrong, remove it first.
 	if _, err := s.fs.Lstat(intermediateLinkPath); err == nil {
 		if err := s.fs.Remove(intermediateLinkPath); err != nil {
-			return fmt.Errorf("failed to remove existing incorrect shell_profile link: %w", err)
+			return fmt.Errorf("failed to remove existing incorrect shell link: %w", err)
 		}
 	}
 
 	if err := s.fs.Symlink(scriptPath, intermediateLinkPath); err != nil {
-		return fmt.Errorf("failed to create shell_profile symlink: %w", err)
+		return fmt.Errorf("failed to create shell symlink: %w", err)
 	}
 
 	return nil
@@ -310,7 +310,7 @@ func (s *filesystemDataStore) GetPathStatus(pack, dirPath string) (types.Status,
 // GetShellProfileStatus checks the status of a shell profile script deployment
 func (s *filesystemDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
 	baseName := filepath.Base(scriptPath)
-	intermediateLinkPath := filepath.Join(s.paths.PackHandlerDir(pack, "shell_profile"), baseName)
+	intermediateLinkPath := filepath.Join(s.paths.PackHandlerDir(pack, "shell"), baseName)
 
 	exists, valid, err := s.checkIntermediateLink(intermediateLinkPath, scriptPath)
 	if err != nil {
@@ -496,7 +496,7 @@ func (s *filesystemDataStore) ListProvisioningState(packName string) (map[string
 // isProvisioningHandler returns true if the handler is a provisioning handler
 func isProvisioningHandler(handlerName string) bool {
 	switch handlerName {
-	case "provision", "homebrew":
+	case "install", "homebrew":
 		return true
 	default:
 		return false

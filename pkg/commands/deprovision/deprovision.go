@@ -47,7 +47,7 @@ type HandlerResult struct {
 
 // DeprovisionPacks removes provisioning state for the specified packs.
 // It only clears provisioning handlers (homebrew, provision) while preserving
-// linking handler state (symlinks, path, shell_profile).
+// linking handler state (symlinks, path, shell).
 func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) {
 	logger := logging.GetLogger("commands.deprovision")
 	logger.Debug().

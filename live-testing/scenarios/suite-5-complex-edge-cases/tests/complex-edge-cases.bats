@@ -59,7 +59,7 @@ teardown() {
     [[ "$output" == *"essential-tool"* ]] || [[ "$output" == *"not found"* ]]
     
     # Verify install did not complete
-    assert_install_script_not_executed "tools-consumer"
+    assert_install_not_executed "tools-consumer"
     assert_file_not_exists "$HOME/.local/tools-consumer/marker.txt"
     
     # Now deploy the provider pack first
@@ -80,7 +80,7 @@ teardown() {
     [ "$status" -eq 0 ]
     
     # Verify installation completed successfully
-    assert_install_script_executed "tools-consumer"
+    assert_install_executed "tools-consumer"
     assert_install_artifact_exists "$HOME/.local/tools-consumer/marker.txt"
     grep -q "installed-with-dependencies" "$HOME/.local/tools-consumer/marker.txt" || fail "File $HOME/.local/tools-consumer/marker.txt should contain: installed-with-dependencies"
     
@@ -178,7 +178,7 @@ teardown() {
     dodot_run install pack-10
     [ "$status" -eq 0 ]
     
-    assert_install_script_executed "pack-10"
+    assert_install_executed "pack-10"
     assert_install_artifact_exists "$HOME/.local/pack-10/marker.txt"
     
     # Deploy mixed packs (11-12)
@@ -193,7 +193,7 @@ teardown() {
     dodot_run install pack-12
     [ "$status" -eq 0 ]
     
-    assert_install_script_executed "pack-12"
+    assert_install_executed "pack-12"
     assert_file_exists "$HOME/.local/pack-12/install-time.txt"
     
     # Deploy remaining handlers for pack-12

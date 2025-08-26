@@ -94,8 +94,8 @@ func TestExecutionContext_ToDisplayResult_WithActionDetails(t *testing.T) {
 		assert.Equal(t, "→ $PATH/bin", file.AdditionalInfo)
 	})
 
-	// Test shell_profile handler with AddToShellProfileAction
-	t.Run("shell_profile handler shows shell type", func(t *testing.T) {
+	// Test shell handler with AddToShellProfileAction
+	t.Run("shell handler shows shell type", func(t *testing.T) {
 		testCases := []struct {
 			scriptName   string
 			expectedInfo string
@@ -112,7 +112,7 @@ func TestExecutionContext_ToDisplayResult_WithActionDetails(t *testing.T) {
 				packResult := types.NewPackExecutionResult(pack)
 
 				handlerResult := &types.HandlerResult{
-					HandlerName: "shell_profile",
+					HandlerName: "shell",
 					Files:       []string{tc.scriptName},
 					Status:      types.StatusReady,
 					StartTime:   time.Now(),
@@ -136,7 +136,7 @@ func TestExecutionContext_ToDisplayResult_WithActionDetails(t *testing.T) {
 				require.Len(t, displayResult.Packs[0].Files, 1)
 
 				file := displayResult.Packs[0].Files[0]
-				assert.Equal(t, "shell_profile", file.Handler)
+				assert.Equal(t, "shell", file.Handler)
 				assert.Equal(t, tc.scriptName, file.Path)
 				assert.Equal(t, tc.expectedInfo, file.AdditionalInfo)
 			})

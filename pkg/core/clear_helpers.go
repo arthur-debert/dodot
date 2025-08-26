@@ -3,9 +3,9 @@ package core
 import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
-	"github.com/arthur-debert/dodot/pkg/handlers/provision"
-	"github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
+	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -20,9 +20,9 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]types.Clearable,
 	handlerNames := []string{
 		symlink.SymlinkHandlerName,
 		path.PathHandlerName,
-		shell_profile.ShellProfileHandlerName,
+		shell.ShellHandlerName,
 		homebrew.HomebrewHandlerName,
-		provision.ProvisionScriptHandlerName,
+		install.InstallHandlerName,
 	}
 
 	for _, name := range handlerNames {

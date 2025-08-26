@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
-	"github.com/arthur-debert/dodot/pkg/handlers/provision"
-	"github.com/arthur-debert/dodot/pkg/handlers/shell_profile"
+	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )
 
@@ -15,12 +15,12 @@ func GetHandler(name string) interface{} {
 		return symlink.NewSymlinkHandler()
 	case homebrew.HomebrewHandlerName:
 		return homebrew.NewHomebrewHandler()
-	case provision.ProvisionScriptHandlerName:
-		return provision.NewProvisionScriptHandler()
+	case install.InstallHandlerName:
+		return install.NewInstallHandler()
 	case path.PathHandlerName:
 		return path.NewPathHandler()
-	case shell_profile.ShellProfileHandlerName:
-		return shell_profile.NewShellProfileHandler()
+	case shell.ShellHandlerName:
+		return shell.NewShellHandler()
 	default:
 		return nil
 	}

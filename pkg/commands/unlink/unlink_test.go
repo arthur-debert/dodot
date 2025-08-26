@@ -72,7 +72,7 @@ func TestUnlinkPacks_Integration(t *testing.T) {
 	assert.FileExists(t, userSymlink)
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "symlinks"))
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "path"))
-	assert.DirExists(t, testPaths.PackHandlerDir("test", "shell_profile"))
+	assert.DirExists(t, testPaths.PackHandlerDir("test", "shell"))
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "sentinels"))
 
 	// Now unlink the pack
@@ -103,7 +103,7 @@ func TestUnlinkPacks_Integration(t *testing.T) {
 			pathDirRemoved = true
 			assert.True(t, item.Success)
 		}
-		if item.Type == "shell_profile_directory" {
+		if item.Type == "shell_directory" {
 			shellDirRemoved = true
 			assert.True(t, item.Success)
 		}
@@ -117,7 +117,7 @@ func TestUnlinkPacks_Integration(t *testing.T) {
 	assert.NoFileExists(t, userSymlink, "User symlink should be gone")
 	assert.NoDirExists(t, testPaths.PackHandlerDir("test", "symlinks"))
 	assert.NoDirExists(t, testPaths.PackHandlerDir("test", "path"))
-	assert.NoDirExists(t, testPaths.PackHandlerDir("test", "shell_profile"))
+	assert.NoDirExists(t, testPaths.PackHandlerDir("test", "shell"))
 
 	// Verify sentinels were NOT removed
 	assert.DirExists(t, testPaths.PackHandlerDir("test", "sentinels"), "Sentinels should remain")

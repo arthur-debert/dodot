@@ -257,10 +257,10 @@ func TestOffPacks_MultipleHandlers(t *testing.T) {
 	sentinelFile := filepath.Join(homebrewStateDir, "mypack_Brewfile.sentinel")
 	testutil.CreateFile(t, sentinelFile, "", "sha256:2024-01-01T00:00:00Z")
 
-	// Provision handler state
-	provisionStateDir := filepath.Join(env.DataDir(), "packs", "mypack", "provision")
-	require.NoError(t, os.MkdirAll(provisionStateDir, 0755))
-	runRecord := filepath.Join(provisionStateDir, "run-2024-01-01T00:00:00Z-abc123")
+	// Install handler state
+	installStateDir := filepath.Join(env.DataDir(), "packs", "mypack", "install")
+	require.NoError(t, os.MkdirAll(installStateDir, 0755))
+	runRecord := filepath.Join(installStateDir, "run-2024-01-01T00:00:00Z-abc123")
 	testutil.CreateFile(t, runRecord, "", "sha256:xyz")
 
 	// PATH handler state
@@ -285,7 +285,7 @@ func TestOffPacks_MultipleHandlers(t *testing.T) {
 	assert.True(t, packResult.StateStored)
 
 	// Should have results for all handlers with state
-	assert.Len(t, packResult.HandlersRun, 4) // symlink, homebrew, provision, path
+	assert.Len(t, packResult.HandlersRun, 4) // symlink, homebrew, install, path
 
 	handlerNames := make([]string, len(packResult.HandlersRun))
 	for i, hr := range packResult.HandlersRun {
@@ -298,7 +298,7 @@ func TestOffPacks_MultipleHandlers(t *testing.T) {
 	// Check that all expected handlers are present (order may vary)
 	assert.Contains(t, handlerNames, "symlink")
 	assert.Contains(t, handlerNames, "homebrew")
-	assert.Contains(t, handlerNames, "provision")
+	assert.Contains(t, handlerNames, "install")
 	assert.Contains(t, handlerNames, "path")
 
 	// Verify off-state file contains all handlers
@@ -314,7 +314,7 @@ func TestOffPacks_MultipleHandlers(t *testing.T) {
 	assert.Len(t, state.Handlers, 4)
 	assert.Contains(t, state.Handlers, "symlink")
 	assert.Contains(t, state.Handlers, "homebrew")
-	assert.Contains(t, state.Handlers, "provision")
+	assert.Contains(t, state.Handlers, "install")
 	assert.Contains(t, state.Handlers, "path")
 }
 

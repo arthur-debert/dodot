@@ -56,7 +56,7 @@ Dodot tracks links using a persistent structure in the data directory
     ├── deployed/
     │   ├── symlink/        # Intermediate symlinks
     │   ├── path/           # PATH directories
-    │   └── shell_profile/  # Shell scripts to source
+    │   └── shell/  # Shell scripts to source
     ├── install/            # Install script sentinels
     └── homebrew/          # Homebrew sentinels
 
@@ -66,7 +66,7 @@ To determine if something is linked:
    - Also verify the chain: target → intermediate → source
    - Detect broken links if source was deleted
 
-2. **Shell Profiles**: Check if script exists in deployed/shell_profile/
+2. **Shell Profiles**: Check if script exists in deployed/shell/
    - These are sourced by dodot-init.sh
 
 3. **PATH entries**: Check if directory symlink exists in deployed/path/
@@ -249,7 +249,7 @@ Build the status system incrementally, starting with the core building blocks:
      * ActionTypeLink: Does the intermediate symlink exist?
      * ActionTypeInstall/ActionTypeBrew: Does the sentinel file exist?
      * ActionTypePathAdd: Does the path symlink exist in the data directory?
-     * ActionTypeShellSource: Is the source file linked in deployed/shell_profile/?
+     * ActionTypeShellSource: Is the source file linked in deployed/shell/?
    - This delivers core value quickly with minimal complexity
 
 2. **Phase 2: Pack-Level Status**

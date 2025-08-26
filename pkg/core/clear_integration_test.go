@@ -5,8 +5,8 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
-	"github.com/arthur-debert/dodot/pkg/handlers/provision"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -41,9 +41,9 @@ func TestClearInfrastructure_Integration(t *testing.T) {
 			runMode:     types.RunModeProvisioning,
 		},
 		{
-			name:        "provision handler",
-			handlerName: provision.ProvisionScriptHandlerName,
-			handler:     provision.NewProvisionScriptHandler(),
+			name:        "install handler",
+			handlerName: install.InstallHandlerName,
+			handler:     install.NewInstallHandler(),
 			runMode:     types.RunModeProvisioning,
 		},
 	}
@@ -114,8 +114,8 @@ func TestClearHelpers_WithRealHandlers(t *testing.T) {
 	_, hasHomebrew := provisioningHandlers[homebrew.HomebrewHandlerName]
 	assert.True(t, hasHomebrew, "Should have homebrew handler")
 
-	_, hasProvision := provisioningHandlers[provision.ProvisionScriptHandlerName]
-	assert.True(t, hasProvision, "Should have provision handler")
+	_, hasInstall := provisioningHandlers[install.InstallHandlerName]
+	assert.True(t, hasInstall, "Should have install handler")
 
 	// Test GetAllClearableHandlers
 	allHandlers, err := core.GetAllClearableHandlers()

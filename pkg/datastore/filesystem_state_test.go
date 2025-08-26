@@ -25,21 +25,21 @@ func TestDeleteProvisioningState(t *testing.T) {
 		checkFunc   func(t *testing.T, env *testutil.TestEnvironment, fs types.FS)
 	}{
 		{
-			name:        "deletes provision handler state",
+			name:        "deletes install handler state",
 			packName:    "testpack",
-			handlerName: "provision",
+			handlerName: "install",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create provision state
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
-				sentinelPath := filepath.Join(provisionDir, "run-2024-01-01T00:00:00Z-abc123")
+				// Create install state
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
+				sentinelPath := filepath.Join(installDir, "run-2024-01-01T00:00:00Z-abc123")
 				require.NoError(t, fs.WriteFile(sentinelPath, []byte("checksum:timestamp"), 0644))
 			},
 			checkFunc: func(t *testing.T, env *testutil.TestEnvironment, fs types.FS) {
-				// Verify provision directory is gone
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				_, err := fs.Stat(provisionDir)
-				assert.True(t, testutil.IsNotExist(err), "provision directory should be removed")
+				// Verify install directory is gone
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				_, err := fs.Stat(installDir)
+				assert.True(t, testutil.IsNotExist(err), "install directory should be removed")
 			},
 		},
 		{
@@ -84,7 +84,7 @@ func TestDeleteProvisioningState(t *testing.T) {
 		{
 			name:        "handles non-existent directory gracefully",
 			packName:    "testpack",
-			handlerName: "provision",
+			handlerName: "install",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
 				// Don't create anything
 			},
@@ -95,20 +95,20 @@ func TestDeleteProvisioningState(t *testing.T) {
 		{
 			name:        "removes directory with multiple files",
 			packName:    "testpack",
-			handlerName: "provision",
+			handlerName: "install",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create multiple provision runs
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
+				// Create multiple install runs
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
 				for i := 0; i < 3; i++ {
-					sentinelPath := filepath.Join(provisionDir, fmt.Sprintf("run-%d", i))
+					sentinelPath := filepath.Join(installDir, fmt.Sprintf("run-%d", i))
 					require.NoError(t, fs.WriteFile(sentinelPath, []byte("data"), 0644))
 				}
 			},
 			checkFunc: func(t *testing.T, env *testutil.TestEnvironment, fs types.FS) {
-				// Verify provision directory is gone
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				_, err := fs.Stat(provisionDir)
+				// Verify install directory is gone
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				_, err := fs.Stat(installDir)
 				assert.True(t, testutil.IsNotExist(err))
 			},
 		},
@@ -177,16 +177,16 @@ func TestGetProvisioningHandlers(t *testing.T) {
 			want: []string{},
 		},
 		{
-			name:     "returns provision handler",
+			name:     "returns install handler",
 			packName: "testpack",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create provision state
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
-				sentinelPath := filepath.Join(provisionDir, "run-sentinel")
+				// Create install state
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
+				sentinelPath := filepath.Join(installDir, "run-sentinel")
 				require.NoError(t, fs.WriteFile(sentinelPath, []byte("data"), 0644))
 			},
-			want: []string{"provision"},
+			want: []string{"install"},
 		},
 		{
 			name:     "returns homebrew handler",
@@ -204,10 +204,10 @@ func TestGetProvisioningHandlers(t *testing.T) {
 			name:     "returns multiple provisioning handlers",
 			packName: "testpack",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create both provision and homebrew state
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
-				sentinelPath := filepath.Join(provisionDir, "run-sentinel")
+				// Create both install and homebrew state
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
+				sentinelPath := filepath.Join(installDir, "run-sentinel")
 				require.NoError(t, fs.WriteFile(sentinelPath, []byte("data"), 0644))
 
 				brewDir := filepath.Join(env.DataDir(), "packs", "testpack", "homebrew")
@@ -215,15 +215,15 @@ func TestGetProvisioningHandlers(t *testing.T) {
 				brewSentinel := filepath.Join(brewDir, "Brewfile.sentinel")
 				require.NoError(t, fs.WriteFile(brewSentinel, []byte("data"), 0644))
 			},
-			want: []string{"homebrew", "provision"},
+			want: []string{"homebrew", "install"},
 		},
 		{
 			name:     "ignores empty provisioning directories",
 			packName: "testpack",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create empty provision directory
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
+				// Create empty install directory
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
 			},
 			want: []string{},
 		},
@@ -271,24 +271,24 @@ func TestListProvisioningState(t *testing.T) {
 			want: map[string][]string{},
 		},
 		{
-			name:     "returns provision handler files",
+			name:     "returns install handler files",
 			packName: "testpack",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create provision state with multiple runs
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
+				// Create install state with multiple runs
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
 
 				files := []string{
 					"run-2024-01-01T00:00:00Z-abc123",
 					"run-2024-01-02T00:00:00Z-def456",
 				}
 				for _, file := range files {
-					path := filepath.Join(provisionDir, file)
+					path := filepath.Join(installDir, file)
 					require.NoError(t, fs.WriteFile(path, []byte("data"), 0644))
 				}
 			},
 			want: map[string][]string{
-				"provision": {
+				"install": {
 					"run-2024-01-01T00:00:00Z-abc123",
 					"run-2024-01-02T00:00:00Z-def456",
 				},
@@ -322,11 +322,11 @@ func TestListProvisioningState(t *testing.T) {
 			name:     "returns multiple handlers",
 			packName: "testpack",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create provision state
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
-				provFile := filepath.Join(provisionDir, "run-sentinel")
-				require.NoError(t, fs.WriteFile(provFile, []byte("data"), 0644))
+				// Create install state
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
+				installFile := filepath.Join(installDir, "run-sentinel")
+				require.NoError(t, fs.WriteFile(installFile, []byte("data"), 0644))
 
 				// Create homebrew state
 				brewDir := filepath.Join(env.DataDir(), "packs", "testpack", "homebrew")
@@ -341,8 +341,8 @@ func TestListProvisioningState(t *testing.T) {
 				require.NoError(t, fs.Symlink("/source/vimrc", linkPath))
 			},
 			want: map[string][]string{
-				"provision": {"run-sentinel"},
-				"homebrew":  {"Brewfile.sentinel"},
+				"install":  {"run-sentinel"},
+				"homebrew": {"Brewfile.sentinel"},
 			},
 		},
 		{
@@ -359,20 +359,20 @@ func TestListProvisioningState(t *testing.T) {
 			name:     "ignores subdirectories",
 			packName: "testpack",
 			setupFunc: func(env *testutil.TestEnvironment, fs types.FS) {
-				// Create provision state with a subdirectory
-				provisionDir := filepath.Join(env.DataDir(), "packs", "testpack", "provision")
-				require.NoError(t, fs.MkdirAll(provisionDir, 0755))
+				// Create install state with a subdirectory
+				installDir := filepath.Join(env.DataDir(), "packs", "testpack", "install")
+				require.NoError(t, fs.MkdirAll(installDir, 0755))
 
 				// Create a file
-				file := filepath.Join(provisionDir, "run-sentinel")
+				file := filepath.Join(installDir, "run-sentinel")
 				require.NoError(t, fs.WriteFile(file, []byte("data"), 0644))
 
 				// Create a subdirectory (should be ignored)
-				subdir := filepath.Join(provisionDir, "subdir")
+				subdir := filepath.Join(installDir, "subdir")
 				require.NoError(t, fs.MkdirAll(subdir, 0755))
 			},
 			want: map[string][]string{
-				"provision": {"run-sentinel"},
+				"install": {"run-sentinel"},
 			},
 		},
 	}

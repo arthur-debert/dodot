@@ -1,4 +1,4 @@
-package provision
+package install
 
 import (
 	_ "embed"
@@ -11,8 +11,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// ProvisionScriptHandlerName is the name of the provision handler
-const ProvisionScriptHandlerName = "provision"
+// InstallHandlerName is the name of the provision handler
+const InstallHandlerName = "install"
 
 // provisionTemplate is the template content for install.sh
 const provisionTemplate = `#!/usr/bin/env bash
@@ -41,31 +41,31 @@ echo "Installing PACK_NAME pack..."
 # curl -fsSL https://example.com/install.sh | bash
 `
 
-// ProvisionScriptHandler runs install.sh scripts
-type ProvisionScriptHandler struct{}
+// InstallHandler runs install.sh scripts
+type InstallHandler struct{}
 
-// NewProvisionScriptHandler creates a new instance of the install script handler
-func NewProvisionScriptHandler() *ProvisionScriptHandler {
-	return &ProvisionScriptHandler{}
+// NewInstallHandler creates a new instance of the install script handler
+func NewInstallHandler() *InstallHandler {
+	return &InstallHandler{}
 }
 
 // Name returns the unique name of this handler
-func (h *ProvisionScriptHandler) Name() string {
-	return ProvisionScriptHandlerName
+func (h *InstallHandler) Name() string {
+	return InstallHandlerName
 }
 
 // Description returns a human-readable description of what this handler does
-func (h *ProvisionScriptHandler) Description() string {
+func (h *InstallHandler) Description() string {
 	return "Runs install.sh scripts for initial setup"
 }
 
 // RunMode returns whether this handler runs once or many times
-func (h *ProvisionScriptHandler) RunMode() types.RunMode {
+func (h *InstallHandler) RunMode() types.RunMode {
 	return types.RunModeProvisioning
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
-func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+func (h *InstallHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
 	result, err := h.ProcessProvisioningWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -83,8 +83,8 @@ func (h *ProvisionScriptHandler) ProcessProvisioning(matches []types.TriggerMatc
 }
 
 // ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
-func (h *ProvisionScriptHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
-	logger := logging.GetLogger("handlers.provision")
+func (h *InstallHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+	logger := logging.GetLogger("handlers.install")
 	actions := make([]types.Action, 0, len(matches))
 
 	for _, match := range matches {
@@ -125,34 +125,34 @@ func (h *ProvisionScriptHandler) ProcessProvisioningWithConfirmations(matches []
 }
 
 // ValidateOptions checks if the provided options are valid for this handler
-func (h *ProvisionScriptHandler) ValidateOptions(options map[string]interface{}) error {
+func (h *InstallHandler) ValidateOptions(options map[string]interface{}) error {
 	// Install script handler doesn't have any options
 	return nil
 }
 
 // GetTemplateContent returns the template content for this handler
-func (h *ProvisionScriptHandler) GetTemplateContent() string {
+func (h *InstallHandler) GetTemplateContent() string {
 	return provisionTemplate
 }
 
 // Clear prepares for provision cleanup (reads state, future: runs uninstall.sh)
-func (h *ProvisionScriptHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
-	logger := logging.GetLogger("handlers.provision").With().
+func (h *InstallHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
+	logger := logging.GetLogger("handlers.install").With().
 		Str("pack", ctx.Pack.Name).
 		Bool("dryRun", ctx.DryRun).
 		Logger()
 
 	clearedItems := []types.ClearedItem{}
 
-	// Read state to understand what was provisioned
-	stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, "provision")
+	// Read state to understand what was installed
+	stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, "install")
 	entries, err := ctx.FS.ReadDir(stateDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			logger.Debug().Msg("No provision state directory")
+			logger.Debug().Msg("No install state directory")
 			return clearedItems, nil
 		}
-		return nil, fmt.Errorf("failed to read provision state: %w", err)
+		return nil, fmt.Errorf("failed to read install state: %w", err)
 	}
 
 	// Find run records to understand what scripts were executed
@@ -203,13 +203,13 @@ func (h *ProvisionScriptHandler) Clear(ctx types.ClearContext) ([]types.ClearedI
 			clearedItems = append(clearedItems, types.ClearedItem{
 				Type:        "provision_state",
 				Path:        stateDir,
-				Description: "Would remove provision state directory",
+				Description: "Would remove install state directory",
 			})
 		} else {
 			clearedItems = append(clearedItems, types.ClearedItem{
 				Type:        "provision_state",
 				Path:        stateDir,
-				Description: "Removing provision state directory",
+				Description: "Removing install state directory",
 			})
 		}
 	}
@@ -218,6 +218,6 @@ func (h *ProvisionScriptHandler) Clear(ctx types.ClearContext) ([]types.ClearedI
 }
 
 // Verify interface compliance
-var _ types.ProvisioningHandler = (*ProvisionScriptHandler)(nil)
-var _ types.ProvisioningHandlerWithConfirmations = (*ProvisionScriptHandler)(nil)
-var _ types.Clearable = (*ProvisionScriptHandler)(nil)
+var _ types.ProvisioningHandler = (*InstallHandler)(nil)
+var _ types.ProvisioningHandlerWithConfirmations = (*InstallHandler)(nil)
+var _ types.Clearable = (*InstallHandler)(nil)

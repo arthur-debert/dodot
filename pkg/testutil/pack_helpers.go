@@ -140,10 +140,10 @@ trigger = "filename"
 pattern = "Brewfile"
 handler = "homebrew"
 `,
-	"provision": `[[rules]]
+	"install": `[[rules]]
 trigger = "filename"
 pattern = "install.sh"
-handler = "provision"
+handler = "install"
 `,
 }
 

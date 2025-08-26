@@ -154,7 +154,7 @@ func (s *DataStoreSuite) TestAddToShellProfile() {
 	err := ds.AddToShellProfile(packName, scriptPath)
 	s.Require().NoError(err)
 
-	expectedIntermediatePath := filepath.Join(s.paths.DataDir(), "packs", packName, "shell_profile", "aliases.sh")
+	expectedIntermediatePath := filepath.Join(s.paths.DataDir(), "packs", packName, "shell", "aliases.sh")
 	target, err := s.fs.Readlink(expectedIntermediatePath)
 	s.Require().NoError(err)
 	s.Equal(scriptPath, target)

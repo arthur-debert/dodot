@@ -25,7 +25,7 @@ changes, this means files under source control are the actual linked
 files - not copies.
 
 This is achieved primarily through symbolic links. For many handlers
-(`symlink`, `shell_profile`), the file in your repository acts as the link
+(`symlink`, `shell`), the file in your repository acts as the link
 source. There's nothing to "update" since changes to these config files
 are immediately live on the system.
 
@@ -72,7 +72,7 @@ Limitations:
 Examples of Trade-offs:
 
 Immediate vs. Deployed Changes:
-• **Live:** Edit a file handled by the `symlink` or `shell_profile`
+• **Live:** Edit a file handled by the `symlink` or `shell`
   handlers. The changes are live instantly (or on the next shell start).
 • **Requires Linking:** Edit a provision script or a `Brewfile`.
   You must run `dodot link` for the changes to take effect.

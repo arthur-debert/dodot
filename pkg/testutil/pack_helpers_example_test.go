@@ -65,7 +65,7 @@ func TestExample_BeforeAndAfter(t *testing.T) {
 		}
 	})
 
-	t.Run("install_script_pack", func(t *testing.T) {
+	t.Run("install_pack", func(t *testing.T) {
 		// Setup pack with install script
 		pack := testutil.SetupTestPack(t, "tools")
 
@@ -75,7 +75,7 @@ echo "Installing tools..."
 `)
 
 		// Add install script config
-		pack.AddStandardConfig(t, "provision")
+		pack.AddStandardConfig(t, "install")
 
 		// Test that install.sh is executable
 		assert.FileExists(t, filepath.Join(pack.Dir, "install.sh"))

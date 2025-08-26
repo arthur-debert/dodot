@@ -196,6 +196,11 @@ func TestStatusPacks(t *testing.T) {
 func TestStatusPacks_Integration(t *testing.T) {
 	// This test verifies status checking after actual deployment
 	tmpDir := t.TempDir()
+	homeDir := filepath.Join(tmpDir, "home")
+	require.NoError(t, os.MkdirAll(homeDir, 0755))
+
+	// Set HOME to a predictable value for consistent symlink resolution
+	t.Setenv("HOME", homeDir)
 
 	// Create a pack with various files
 	packDir := filepath.Join(tmpDir, "test")
@@ -405,11 +410,11 @@ func TestStatusPacksAdditionalInfo(t *testing.T) {
 	assert.Equal(t, "symlink", vimrcFile.Handler)
 	assert.Equal(t, "~/.vimrc", vimrcFile.AdditionalInfo, "Symlink should show target path with ~ for home")
 
-	// Test provision handler - should show "run script"
+	// Test install handler - should show "run script"
 	installFile, ok := fileInfoMap["install.sh"]
 	assert.True(t, ok, "install.sh should be in status")
-	assert.Equal(t, "provision", installFile.Handler)
-	assert.Equal(t, "run script", installFile.AdditionalInfo, "Provision script should show 'run script'")
+	assert.Equal(t, "install", installFile.Handler)
+	assert.Equal(t, "run script", installFile.AdditionalInfo, "Install script should show 'run script'")
 
 	// Test homebrew handler - should show "brew install"
 	brewFile, ok := fileInfoMap["Brewfile"]
@@ -417,10 +422,10 @@ func TestStatusPacksAdditionalInfo(t *testing.T) {
 	assert.Equal(t, "homebrew", brewFile.Handler)
 	assert.Equal(t, "brew install", brewFile.AdditionalInfo, "Brewfile should show 'brew install'")
 
-	// Test shell_profile handler - should show "shell source"
+	// Test shell handler - should show "shell source"
 	aliasesFile, ok := fileInfoMap["aliases.sh"]
 	assert.True(t, ok, "aliases.sh should be in status")
-	assert.Equal(t, "shell_profile", aliasesFile.Handler)
+	assert.Equal(t, "shell", aliasesFile.Handler)
 	assert.Equal(t, "shell source", aliasesFile.AdditionalInfo, "Shell profile should show 'shell source'")
 
 	// Test path handler - should show "add to $PATH"
