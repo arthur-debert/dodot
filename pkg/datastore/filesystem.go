@@ -128,11 +128,11 @@ func (s *filesystemDataStore) AddToShellProfile(pack, scriptPath string) error {
 }
 
 func (s *filesystemDataStore) RecordProvisioning(pack, sentinelName, checksum string) error {
-	sentinelDir := s.paths.PackHandlerDir(pack, "sentinels")
+	sentinelDir := s.paths.PackHandlerDir(pack, "install")
 	sentinelPath := filepath.Join(sentinelDir, sentinelName)
 
 	if err := s.fs.MkdirAll(sentinelDir, 0755); err != nil {
-		return fmt.Errorf("failed to create sentinels directory for pack %s: %w", pack, err)
+		return fmt.Errorf("failed to create install directory for pack %s: %w", pack, err)
 	}
 
 	// Use pipe separator to avoid conflicts with checksums that contain colons
@@ -145,7 +145,7 @@ func (s *filesystemDataStore) RecordProvisioning(pack, sentinelName, checksum st
 }
 
 func (s *filesystemDataStore) NeedsProvisioning(pack, sentinelName, checksum string) (bool, error) {
-	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, "sentinels"), sentinelName)
+	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, "install"), sentinelName)
 
 	content, err := s.fs.ReadFile(sentinelPath)
 	if err != nil {
@@ -168,7 +168,7 @@ func (s *filesystemDataStore) NeedsProvisioning(pack, sentinelName, checksum str
 // getPreviousRun retrieves information about the last execution of a handler
 // Returns the timestamp and checksum if available, or nil if never run
 func (s *filesystemDataStore) getPreviousRun(pack, handler, sentinelName string) (*time.Time, string, error) {
-	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, "sentinels"), sentinelName)
+	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, handler), sentinelName)
 
 	content, err := s.fs.ReadFile(sentinelPath)
 	if err != nil {
@@ -339,7 +339,7 @@ func (s *filesystemDataStore) GetShellProfileStatus(pack, scriptPath string) (ty
 
 // GetProvisioningStatus checks the status of a provisioning action
 func (s *filesystemDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
-	timestamp, lastChecksum, err := s.getPreviousRun(pack, "provision", sentinelName)
+	timestamp, lastChecksum, err := s.getPreviousRun(pack, "install", sentinelName)
 	if err != nil {
 		return types.Status{}, err
 	}
