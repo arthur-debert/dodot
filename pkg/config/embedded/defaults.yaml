@@ -29,7 +29,7 @@ priorities:
 shell_integration:
   bash_zsh_snippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
   bash_zsh_snippet_with_custom: '[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"'
-  fish_snippet: |
+  fish_snippet: |-
     if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
         source "$HOME/.local/share/dodot/shell/dodot-init.fish"
     end
