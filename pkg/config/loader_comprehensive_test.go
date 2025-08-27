@@ -10,17 +10,17 @@ import (
 )
 
 func TestLoadConfiguration_EdgeCases(t *testing.T) {
-	t.Run("handles invalid YAML in user config gracefully", func(t *testing.T) {
+	t.Run("handles invalid TOML in user config gracefully", func(t *testing.T) {
 		tempDir := t.TempDir()
-		configPath := filepath.Join(tempDir, "dodot", "config.yaml")
+		configPath := filepath.Join(tempDir, "dodot", "config.toml")
 		require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
 
 		invalidConfig := `
-logging:
-  default_level: debug
-  this is not valid yaml
-pack
-  ignore: [.cache
+[logging]
+default_level = "debug"
+this is not valid toml
+[pack
+ignore = [.cache
 `
 		err := os.WriteFile(configPath, []byte(invalidConfig), 0644)
 		require.NoError(t, err)

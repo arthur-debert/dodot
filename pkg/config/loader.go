@@ -10,17 +10,17 @@ import (
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/parsers/toml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
 
-//go:embed embedded/defaults.yaml
+//go:embed embedded/defaults.toml
 var defaultConfig []byte
 
-//go:embed embedded/user-defaults.yaml
+//go:embed embedded/user-defaults.toml
 var userDefaultConfig []byte
 
 type rawBytesProvider struct{ bytes []byte }
@@ -48,7 +48,7 @@ func LoadConfiguration() (*Config, error) {
 			// Here we must tell koanf to merge, not just load.
 			// Since WithMerge doesn't exist, we can load into a temp koanf and merge manually.
 			tempK := koanf.New(".")
-			if err := tempK.Load(file.Provider(configPath), yaml.Parser()); err != nil {
+			if err := tempK.Load(file.Provider(configPath), toml.Parser()); err != nil {
 				return nil, fmt.Errorf("failed to load user config from %s: %w", configPath, err)
 			}
 			mergeMaps(k.All(), tempK.All())
@@ -147,20 +147,20 @@ func mapToBoolMapHookFunc() mapstructure.DecodeHookFunc {
 func getUserConfigPaths() []string {
 	var paths []string
 	if dotfilesRoot := os.Getenv("DOTFILES_ROOT"); dotfilesRoot != "" {
-		paths = append(paths, filepath.Join(dotfilesRoot, ".dodot", "config.yaml"))
+		paths = append(paths, filepath.Join(dotfilesRoot, ".dodot", "config.toml"))
 	}
 	if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
-		paths = append(paths, filepath.Join(xdgConfigHome, "dodot", "config.yaml"))
+		paths = append(paths, filepath.Join(xdgConfigHome, "dodot", "config.toml"))
 	}
 	if homeDir, ok := os.LookupEnv("HOME"); ok {
-		paths = append(paths, filepath.Join(homeDir, ".config", "dodot", "config.yaml"))
+		paths = append(paths, filepath.Join(homeDir, ".config", "dodot", "config.toml"))
 	}
 	return paths
 }
 
 func getSystemDefaults() map[string]interface{} {
 	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: defaultConfig}, yaml.Parser()); err != nil {
+	if err := k.Load(&rawBytesProvider{bytes: defaultConfig}, toml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
 	return k.All()
@@ -168,7 +168,7 @@ func getSystemDefaults() map[string]interface{} {
 
 func parseUserDefaults() map[string]interface{} {
 	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: userDefaultConfig}, yaml.Parser()); err != nil {
+	if err := k.Load(&rawBytesProvider{bytes: userDefaultConfig}, toml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
 	return transformUserToInternal(k.All())

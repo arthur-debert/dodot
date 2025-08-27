@@ -1,0 +1,51 @@
+# User-facing configuration defaults
+# These provide sensible defaults for user-configurable settings
+
+[pack]
+ignore = [
+    ".git",
+    ".svn",
+    ".hg",
+    "node_modules",
+    ".DS_Store",
+    "*.swp",
+    "*~",
+    "#*#",
+    ".env*",
+    ".terraform/"
+]
+
+[dodot]
+config = ".dodot.toml"
+ignore = ".dodotignore"
+
+[symlink]
+force_home = [
+    "ssh",        # .ssh/ - security critical
+    "gnupg",      # .gnupg/ - security critical
+    "aws",        # .aws/ - credentials
+    "kube",       # .kube/ - kubernetes config
+    "docker",     # .docker/ - docker config
+    "gitconfig",  # .gitconfig - git expects in $HOME
+    "bashrc",     # .bashrc - shell expects in $HOME
+    "zshrc",      # .zshrc - shell expects in $HOME
+    "profile"     # .profile - shell expects in $HOME
+]
+
+protected_paths = [
+    ".ssh/authorized_keys",
+    ".ssh/id_rsa",
+    ".ssh/id_ed25519",
+    ".gnupg",
+    ".password-store",
+    ".config/gh/hosts.yml",
+    ".aws/credentials",
+    ".kube/config",
+    ".docker/config.json"
+]
+
+[file_mapping]
+path = "bin"
+install = "install.sh"
+shell = ["aliases.sh", "profile.sh", "login.sh"]
+homebrew = "Brewfile"
