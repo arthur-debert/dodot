@@ -27,6 +27,22 @@ func New(output io.Writer) (*Renderer, error) {
 func (r *Renderer) RenderResult(result interface{}) error {
 	// For now, delegate to the legacy renderer based on type
 	switch v := result.(type) {
+	case *types.CommandResult:
+		// Render the optional message first
+		if v.Message != "" {
+			if _, err := fmt.Fprintln(r.output, v.Message); err != nil {
+				return err
+			}
+			// Add a blank line between message and pack status
+			if _, err := fmt.Fprintln(r.output); err != nil {
+				return err
+			}
+		}
+		// Then render the pack status
+		if v.Result != nil {
+			return r.legacyRenderer.Render(v.Result)
+		}
+		return nil
 	case *types.ExecutionContext:
 		// Convert to DisplayResult first
 		displayResult := v.ToDisplayResult()

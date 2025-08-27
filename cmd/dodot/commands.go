@@ -316,7 +316,22 @@ func newLinkCmd() *cobra.Command {
 				return err
 			}
 
-			if err := renderer.RenderResult(ctx); err != nil {
+			// Convert ExecutionContext to DisplayResult and wrap with CommandResult
+			displayResult := ctx.ToDisplayResult()
+
+			// Get pack names for the message
+			packNames := make([]string, 0, len(displayResult.Packs))
+			for _, pack := range displayResult.Packs {
+				packNames = append(packNames, pack.Name)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: types.FormatCommandMessage("linked", packNames),
+				Result:  displayResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
 
