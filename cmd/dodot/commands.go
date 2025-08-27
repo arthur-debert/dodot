@@ -812,7 +812,7 @@ func newUnlinkCmd() *cobra.Command {
 				Bool("force", force).
 				Msg("Unlinking packs")
 
-			// Run off command
+			// Run unlink command
 			result, err := commands.UnlinkPacks(commands.UnlinkPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				DataDir:      p.DataDir(),
@@ -829,37 +829,42 @@ func newUnlinkCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrUnlinkPacks, err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
-			if result.TotalRemoved == 0 {
-				fmt.Println("No deployments found to remove")
-			} else {
-				for _, pack := range result.Packs {
-					if len(pack.RemovedItems) > 0 {
-						fmt.Printf("\nPack: %s\n", pack.Name)
-						for _, item := range pack.RemovedItems {
-							if item.Success {
-								fmt.Printf("  ✓ Removed %s: %s", item.Type, item.Path)
-								if item.Target != "" {
-									fmt.Printf(" -> %s", item.Target)
-								}
-								fmt.Println()
-							} else {
-								fmt.Printf("  ✗ Failed to remove %s: %s (%s)\n", item.Type, item.Path, item.Error)
-							}
-						}
-					}
-					if len(pack.Errors) > 0 {
-						fmt.Printf("  Errors:\n")
-						for _, err := range pack.Errors {
-							fmt.Printf("    - %s\n", err)
-						}
-					}
+			// After unlinking, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect unlink action
+			statusResult.Command = "unlink"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			packNames := make([]string, 0, len(result.Packs))
+			for _, pack := range result.Packs {
+				if len(pack.RemovedItems) > 0 {
+					packNames = append(packNames, pack.Name)
 				}
-				fmt.Printf("\nTotal items removed: %d\n", result.TotalRemoved)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: types.FormatCommandMessage("unlinked", packNames),
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
