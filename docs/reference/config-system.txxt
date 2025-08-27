@@ -1,0 +1,122 @@
+Configuration System
+===================
+
+dodot uses koanf for flexible configuration management with multiple sources and formats.
+
+## How It Works
+
+### Loading Order
+
+Configuration is loaded and merged in this order:
+
+1. **System defaults** (embedded in binary)
+2. **User defaults** (embedded, user-friendly format)
+3. **User config file** (first found):
+   - `$DOTFILES_ROOT/.dodot/config.yaml`
+   - `$XDG_CONFIG_HOME/dodot/config.yaml`
+   - `$HOME/.config/dodot/config.yaml`
+4. **Environment variables** (`DODOT_*` prefix)
+
+Each layer merges with the previous, with later sources taking precedence.
+
+### Two Configuration Styles
+
+dodot supports two YAML formats that are automatically transformed:
+
+**User-Friendly Format** (what you write):
+```yaml
+pack:
+  ignore: [.git, node_modules]
+symlink:
+  force_home: [ssh, gitconfig]
+  protected_paths: [.ssh/id_rsa]
+logging:
+  level: info
+```
+
+**Internal Format** (how dodot sees it):
+```yaml
+patterns:
+  pack_ignore: [.git, node_modules]
+link_paths:
+  core_unix_exceptions: [ssh, gitconfig]
+security:
+  protected_paths: [.ssh/id_rsa]
+logging:
+  default_level: info
+```
+
+The transformation happens automatically - use whichever format you prefer.
+
+### Merge Strategy
+
+koanf merges configurations using these rules:
+
+- **Maps/Objects**: Deep merge (nested values combined)
+- **Arrays/Lists**: Append (all values kept)
+- **Scalars**: Override (last value wins)
+
+Example:
+```yaml
+# Base config
+symlink:
+  protected_paths: [.ssh/authorized_keys]
+
+# User config
+symlink:
+  protected_paths: [.aws/credentials]
+
+# Result: Both paths are protected
+protected_paths: [.ssh/authorized_keys, .aws/credentials]
+```
+
+### Environment Variables
+
+Any config value can be overridden via environment:
+
+```bash
+DODOT_LOGGING_DEFAULT_LEVEL=debug
+DODOT_SECURITY_PROTECTED_PATHS=".ssh/id_rsa,.gnupg"
+```
+
+Pattern: `DODOT_<SECTION>_<KEY>` (nested keys use underscores)
+
+## Configuration Sections
+
+Key configuration areas:
+
+- **Security**: Protected paths that shouldn't be symlinked
+- **Patterns**: Files to ignore, special filenames
+- **Logging**: Verbosity levels, formatting
+- **LinkPaths**: Force certain files to $HOME instead of XDG
+- **Matchers**: Define custom file handling rules
+
+## Custom Matchers
+
+Add your own file handling rules:
+
+```yaml
+matchers:
+  - name: python-venv
+    priority: 85
+    trigger:
+      type: directory
+      data:
+        pattern: venv
+    handler:
+      type: shell
+      data:
+        placement: environment
+```
+
+## Pack Configuration
+
+Individual packs can have `.dodot.toml` files:
+
+```toml
+[dodot]
+ignore = ["temp", "*.log"]
+
+[overrides."specific-file.conf"]
+handler = "template"
+```

@@ -1,0 +1,191 @@
+Architecture
+===========
+
+This document describes dodot's technical architecture and implementation details.
+
+## Core Concepts
+
+- **Dotfiles Root**: Base directory containing all dotfile packs (defaults to ~/dotfiles)
+- **Pack**: A directory containing related dotfiles (vim/, git/, zsh/)
+- **Trigger**: Pattern matcher that identifies files (filename, directory, extension)
+- **Handler**: Action generator that processes matched files (symlink, provision, brew, shell)
+- **Matcher**: Configuration binding triggers to handlers
+- **Action**: Self-contained operation to be executed
+- **DataStore**: Centralized state store for tracking operations
+
+## Processing Pipeline
+
+dodot follows a predictable four-stage pipeline:
+
+```
+1. Discovery → 2. Matching → 3. Generation → 4. Execution
+```
+
+### Stage 1: Discovery (GetPacks)
+- Scans DOTFILES_ROOT for pack directories
+- Applies ignore patterns from configuration
+- Returns ordered list of packs with metadata
+
+### Stage 2: Matching (GetFiringTriggers)
+- For each pack, evaluates all triggers
+- Triggers check files against their patterns
+- Returns map of trigger → matched files
+
+### Stage 3: Generation (GetActions)
+- Firing triggers invoke their handlers
+- Handlers generate actions for matched files
+- Actions are self-contained with all needed data
+
+### Stage 4: Execution (Execute/Apply)
+- Actions execute through DataStore
+- Operations are performed in priority order
+- Results are tracked and reported
+
+## State Management
+
+dodot uses a "double-link" architecture for state:
+
+```
+Repository File → DataStore Link → Target Location
+~/dotfiles/vim/.vimrc → ~/.local/share/dodot/links/.vimrc → ~/.vimrc
+```
+
+This provides:
+- **State representation** without databases
+- **Conflict detection** before operations
+- **Clean uninstall** by removing intermediate layer
+- **Operation tracking** through sentinel files
+
+## Implementation Details
+
+### Package Organization
+
+```
+pkg/
+├── core/          # Pipeline functions (GetPacks, etc.)
+├── types/         # Type definitions and interfaces
+├── triggers/      # Trigger implementations
+├── handlers/      # Handler implementations
+├── matchers/      # Matcher system
+├── actions/       # Action types
+├── datastore/     # State management
+├── registry/      # Extensibility system
+└── config/        # Configuration management
+```
+
+### Key Interfaces
+
+```go
+type Trigger interface {
+    Fires(fs synthfs.FS, pack Pack) ([]string, error)
+}
+
+type Handler interface {
+    GenerateActions(pack Pack, files []string) ([]Action, error)
+}
+
+type Action interface {
+    Execute(ds DataStore) error
+    Type() string
+}
+```
+
+## Registry System
+
+The registry provides extensibility without plugins:
+
+### Three Core Registries
+
+1. **Trigger Registry** - All available triggers
+2. **Handler Registry** - All available handlers  
+3. **Matcher Registry** - Pre-configured matchers
+
+### Registration Flow
+
+```go
+// At initialization
+registry.RegisterTrigger("filename", NewFilenameTrigger)
+registry.RegisterHandler("symlink", NewSymlinkHandler)
+
+// At runtime
+trigger := registry.GetTrigger("filename", config)
+handler := registry.GetHandler("symlink", config)
+```
+
+### Extensibility Benefits
+
+- **Type Safety**: Compile-time checking
+- **Simplicity**: No plugin complexity
+- **Performance**: Zero runtime overhead
+- **Testability**: Easy to mock registries
+- **Composition**: Layer configurations
+
+## CLI Architecture
+
+The CLI layer follows strict design principles:
+
+### Thin CLI Layer
+
+- **Commands** only parse arguments and format output
+- **Business logic** lives in pkg/, returns structured data
+- **No string formatting** in core functions
+- **Clear boundaries** between layers
+
+### Package Organization
+
+```
+cmd/dodot/
+├── msgs.go       # User-facing messages
+├── output/       # Output formatting
+├── status.go     # Status command
+├── link.go       # Link command
+└── unlink.go     # Unlink command
+```
+
+### Unified Output System
+
+```go
+// Terminal output with colors/tables
+renderer := output.NewTerminalRenderer()
+
+// JSON output for scripting
+renderer := output.NewJSONRenderer()
+
+// Text output for logs
+renderer := output.NewTextRenderer()
+```
+
+## Design Benefits
+
+### Separation of Concerns
+Each component has a single responsibility:
+- Triggers: Detect files
+- Handlers: Generate actions
+- Actions: Execute operations
+- DataStore: Manage state
+
+### Pure Functions
+Handlers and triggers are stateless:
+- Easy to test
+- No side effects
+- Predictable behavior
+
+### Type Safety
+Strong typing throughout:
+- No interface{} abuse
+- Compile-time guarantees
+- Self-documenting code
+
+## Performance Considerations
+
+- **Lazy evaluation**: Only process requested packs
+- **Parallel discovery**: Scan packs concurrently
+- **Minimal I/O**: Cache filesystem operations
+- **Early termination**: Stop on first error in dry-run
+
+## Error Philosophy
+
+- **Fail fast**: Stop on first error
+- **Clear messages**: Include context and suggestions
+- **Error codes**: Stable identifiers for testing
+- **Recovery hints**: Tell users how to fix issues

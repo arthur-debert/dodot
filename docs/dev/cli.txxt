@@ -1,0 +1,52 @@
+CLI Architecture
+===============
+
+The CLI layer is a thin wrapper around the core API that handles user interaction.
+
+## Design Principle
+
+The core API in `pkg/` returns complete data structures. The CLI layer in `cmd/dodot/` handles:
+
+- Command parsing (via Cobra)
+- Output formatting 
+- User interaction
+- Progress indication
+
+## Separation of Concerns
+
+```go
+// CORE API (pkg/core/)
+func GetPacks(fs synthfs.FS, dir string) ([]types.Pack, error) {
+    // Returns full data structures
+    return packs, nil
+}
+
+// CLI LAYER (cmd/dodot/)  
+func runStatus(cmd *cobra.Command, args []string) error {
+    // 1. Call core API
+    packs, err := core.GetPacks(fs, dir)
+    
+    // 2. Format for display
+    renderer.RenderPacks(packs)
+    
+    return nil
+}
+```
+
+## Output Rendering
+
+All output formatting happens in the CLI layer:
+
+- Terminal output with colors and tables
+- JSON output for scripting
+- Progress bars and spinners
+- Error formatting
+
+See `reference/cli-output.txxt` for detailed output specifications.
+
+## Key Points
+
+1. **No business logic in CLI** - Just parsing and formatting
+2. **Core returns data** - Not formatted strings
+3. **Multiple output formats** - Terminal, JSON, text
+4. **Testable** - Core API tested separately from CLI

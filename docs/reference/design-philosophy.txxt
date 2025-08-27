@@ -1,0 +1,129 @@
+Design Philosophy
+================
+
+dodot is built on a set of core principles that drive every design decision.
+
+## Core Principles
+
+1. **No State Management** - The filesystem IS the state
+2. **Everything is a Symlink** - Live editing, no copying
+3. **Convention Over Configuration** - Smart defaults that just work
+4. **Transparency** - You can always see what dodot will do
+5. **Simplicity** - Do one thing well: manage dotfiles
+
+## The Mental Model
+
+dodot thinks in three concepts:
+
+**Packs** → **Handlers** → **Actions**
+
+- **Packs**: Directories of related dotfiles (vim/, zsh/, git/)
+- **Handlers**: Skills dodot has (symlink, provision, brew, shell)
+- **Actions**: What gets done ("symlink .vimrc to ~/.vimrc")
+
+That's it. No databases, no state files, no magic.
+
+## Design Philosophy
+
+### Live Configuration Through Symlinks
+
+Your dotfiles repository IS your live configuration:
+
+```bash
+~/.vimrc → ~/dotfiles/vim/.vimrc
+```
+
+Edit either file, changes apply immediately. No sync, no push, no rebuild.
+
+### Convention Over Configuration
+
+dodot makes intelligent assumptions:
+
+- `.vimrc` goes to `~/.vimrc`
+- Files in `bin/` directories get added to PATH
+- `install.sh` runs once during setup
+- `Brewfile` installs Homebrew packages
+
+You can override these, but the defaults handle 90% of cases.
+
+### Separation of Concerns
+
+1. **Triggers** match files (detect)
+2. **Handlers** generate actions (plan)
+3. **Actions** execute operations (do)
+
+Each layer is independent and testable.
+
+## The Execution Flow
+
+Every dodot command follows the same pipeline:
+
+```
+Discover Packs → Fire Triggers → Generate Actions → Execute Actions
+```
+
+This predictability means:
+- You can always preview with `--dry-run`
+- The order is deterministic
+- No surprises or hidden behavior
+
+## Trade-offs and Consequences
+
+### What We Get
+
+- **Zero learning curve**: If you understand symlinks, you understand dodot
+- **Live editing**: Change a file, see results immediately
+- **Transparency**: `ls -la ~` shows exactly what's managed
+- **Version control**: Git tracks your actual configuration files
+- **Portability**: No dodot-specific formats or databases
+
+### What We Accept
+
+- **No rollback**: Symlinks don't have history (use git)
+- **No profiles**: One configuration per machine
+- **Manual organization**: You decide the structure
+- **Platform differences**: Some features are OS-specific
+
+## File Organization Philosophy
+
+The **pack** is the unit of organization:
+
+```
+dotfiles/
+├── vim/          # Everything Vim
+│   ├── .vimrc
+│   └── .vim/
+├── zsh/          # Everything Zsh
+│   ├── .zshrc
+│   └── aliases.sh
+└── git/          # Everything Git
+    └── .gitconfig
+```
+
+Packs can be:
+- Copied between repos
+- Shared with others
+- Enabled/disabled as a unit
+- Self-contained with their own install.sh
+
+## When dodot Fits
+
+dodot is perfect when you want:
+
+- Direct control over your dotfiles
+- Live editing without rebuilds
+- Simple, predictable behavior
+- Version control for configurations
+- Cross-platform dotfile management
+
+dodot is not for you if you need:
+
+- Multiple configuration profiles
+- Complex state management
+- Rollback capabilities
+- Template transformations
+- Secret management
+
+## The Bottom Line
+
+dodot does the minimum required to be useful and nothing more. It respects that your dotfiles are yours - it just helps you put them in the right places.
