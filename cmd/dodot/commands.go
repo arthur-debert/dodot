@@ -429,22 +429,34 @@ func newListCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
 
-			// Use the actual ListPacks implementation
-			result, err := commands.ListPacks(commands.ListPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-			})
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf(MsgErrListPacks, err)
+				return err
 			}
 
-			// Display the packs in a simple format
-			if len(result.Packs) == 0 {
-				fmt.Println("No packs found")
-			} else {
-				fmt.Println("Available packs:")
-				for _, pack := range result.Packs {
-					fmt.Printf("  %s\n", pack.Name)
-				}
+			// Get the status of all packs (empty pack names means all packs)
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{}, // Empty means all packs
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect list action
+			statusResult.Command = "list"
+			statusResult.DryRun = false
+
+			// Create CommandResult without message (list command doesn't need one)
+			cmdResult := &types.CommandResult{
+				Message: "", // No message for list command
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -533,13 +545,37 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
-			// Operations are already executed by the command
-			// No need to execute them again
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
 
-			// Display results
-			fmt.Printf(MsgPackCreatedFormat, packName)
-			for _, file := range result.FilesCreated {
-				fmt.Printf(MsgOperationItem, file)
+			// Get the status of the newly created pack
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect init action
+			statusResult.Command = "init"
+			statusResult.DryRun = false
+
+			// Create message based on what was created
+			message := fmt.Sprintf("The pack %s has been initialized with %d files.", packName, len(result.FilesCreated))
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -582,17 +618,42 @@ func newFillCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrFillPack, err)
 			}
 
-			// Operations are already executed by the command
-			// No need to execute them again
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
 
-			// Display results
+			// Get the status of the filled pack
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect fill action
+			statusResult.Command = "fill"
+			statusResult.DryRun = false
+
+			// Create message based on what was created
+			var message string
 			if len(result.FilesCreated) == 0 {
-				fmt.Printf(MsgPackHasAllFiles, packName)
+				message = fmt.Sprintf("The pack %s already has all file types.", packName)
 			} else {
-				fmt.Printf(MsgPackFilledFormat, packName)
-				for _, file := range result.FilesCreated {
-					fmt.Printf(MsgOperationItem, file)
-				}
+				message = fmt.Sprintf("The pack %s has been filled with %d placeholder files.", packName, len(result.FilesCreated))
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -645,15 +706,46 @@ func newAdoptCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrAdoptFiles, err)
 			}
 
-			// Display results
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
+			// Get the status of the pack after adoption
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect adopt action
+			statusResult.Command = "adopt"
+			statusResult.DryRun = false
+
+			// Create message based on what was adopted
+			var message string
 			if len(result.AdoptedFiles) == 0 {
-				fmt.Print(MsgNoFilesAdopted)
+				message = fmt.Sprintf("No files were adopted into the pack %s.", packName)
+			} else if len(result.AdoptedFiles) == 1 {
+				message = fmt.Sprintf("The file %s has been adopted into the pack %s.",
+					filepath.Base(result.AdoptedFiles[0].OriginalPath), packName)
 			} else {
-				for _, adopted := range result.AdoptedFiles {
-					fmt.Printf(MsgFileAdopted, adopted.OriginalPath, adopted.NewPath)
-					fmt.Printf(MsgSymlinkCreated, adopted.OriginalPath, adopted.NewPath)
-				}
-				fmt.Printf(MsgAdoptSuccess, len(result.AdoptedFiles), packName)
+				message = fmt.Sprintf("%d files have been adopted into the pack %s.",
+					len(result.AdoptedFiles), packName)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -708,11 +800,42 @@ func newAddIgnoreCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrAddIgnore, err)
 			}
 
-			// Display results
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
+			// Get the status of the pack after adding ignore
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect add-ignore action
+			statusResult.Command = "add-ignore"
+			statusResult.DryRun = false
+
+			// Create message based on the result
+			var message string
 			if result.AlreadyExisted {
-				fmt.Printf(MsgIgnoreFileExists, packName)
+				message = fmt.Sprintf("The pack %s already has a .dodotignore file.", packName)
 			} else {
-				fmt.Printf(MsgIgnoreFileCreated, packName)
+				message = fmt.Sprintf("A .dodotignore file has been added to the pack %s.", packName)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
