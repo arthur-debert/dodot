@@ -103,13 +103,6 @@ logging:
   # Default log level when no -v flags are provided
   defaultLevel: warn
   
-  # Mapping of -v flag count to log levels
-  verbosityLevels:
-    0: warn   # Default: warnings and errors only
-    1: info   # -v: informational messages
-    2: debug  # -vv: debug information
-    3: trace  # -vvv: detailed trace logs
-  
   # Time format for log timestamps (Go time format)
   timeFormat: "15:04"
   

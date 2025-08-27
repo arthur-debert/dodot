@@ -87,8 +87,6 @@ type LinkPaths struct {
 
 // LoggingConfig holds logging-related configuration
 type LoggingConfig struct {
-	// VerbosityLevels maps verbosity flags to log levels
-	VerbosityLevels map[int]string `koanf:"verbosity_levels"`
 	// DefaultLevel is the default log level
 	DefaultLevel string `koanf:"default_level"`
 	// TimeFormat is the time format for console output
@@ -200,12 +198,6 @@ end`,
 			},
 		},
 		Logging: LoggingConfig{
-			VerbosityLevels: map[int]string{
-				0: "warn",
-				1: "info",
-				2: "debug",
-				3: "trace",
-			},
 			DefaultLevel:            "warn",
 			TimeFormat:              "15:04",
 			EnableColor:             true,

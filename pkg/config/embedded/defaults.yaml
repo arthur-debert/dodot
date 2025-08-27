@@ -3,11 +3,6 @@
 
 logging:
   default_level: warn
-  verbosity_levels:
-    0: warn
-    1: info
-    2: debug
-    3: trace
   time_format: "15:04"
   enable_color: true
   enable_caller_at_verbosity: 2
