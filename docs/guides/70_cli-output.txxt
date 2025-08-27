@@ -1,0 +1,162 @@
+==========
+CLI Output
+==========
+
+This guide explains dodot's unified output system and how it provides consistent, predictable output across all commands.
+
+Core Concept: Pack Status Representation
+========================================
+
+The fundamental unit of dodot's output is the **pack status representation**. This shows:
+
+- Pack name and overall status
+- All files managed by the pack
+- Each file's handler type and current state
+- Special files (.dodot.toml, .dodotignore)
+
+Every command that interacts with packs displays this same representation, ensuring users always see the current state of their dotfiles.
+
+Unified Output Format
+====================
+
+All pack-related commands follow this format::
+
+    <Optional Message>
+    
+    <Pack Status Representation>
+
+The message describes what action was taken, while the pack status shows the resulting state.
+
+Example Output
+==============
+
+After running ``dodot link vim``::
+
+    The pack vim has been linked.
+
+    vim:
+      ➞ .vimrc → ~/.vimrc [linked]
+      ➞ .vim/colors/theme.vim → ~/.vim/colors/theme.vim [linked]
+
+Output Formats
+=============
+
+dodot supports three output formats via the ``--format`` flag:
+
+terminal (default)
+    Rich output with colors and styling, automatically detected based on terminal capabilities
+
+text
+    Plain text without styling, used when piping output or when NO_COLOR is set
+
+json
+    Machine-readable JSON for programmatic access
+
+Format Selection
+---------------
+
+The format is determined by:
+
+1. Explicit ``--format`` flag
+2. NO_COLOR environment variable (forces text)
+3. Terminal capability detection (falls back to text if no color support)
+4. Pipe detection (uses text when output is piped)
+
+Architecture
+============
+
+The output system consists of:
+
+``pkg/types/results.go``
+    Defines CommandResult and DisplayResult types
+
+``pkg/ui/ui.go``
+    Renderer interface and factory
+
+``pkg/ui/terminal/``, ``pkg/ui/text/``, ``pkg/ui/json/``
+    Format-specific renderer implementations
+
+Command Integration
+==================
+
+Commands create a CommandResult with:
+
+1. An optional message describing the action
+2. The current pack status from the status command
+
+Example from the link command::
+
+    // Get pack status after linking
+    statusResult, err := commands.StatusPacks(...)
+    
+    // Create result with message
+    cmdResult := &types.CommandResult{
+        Message: types.FormatCommandMessage("linked", packNames),
+        Result:  statusResult,
+    }
+    
+    // Render through unified system
+    renderer.RenderResult(cmdResult)
+
+Message Formatting
+==================
+
+The ``FormatCommandMessage`` helper provides consistent messaging:
+
+- Single pack: "The pack vim has been linked."
+- Multiple packs: "The packs vim and git have been linked."
+- Empty result: No message shown
+
+Commands and Their Messages
+==========================
+
+Pack-altering commands::
+
+    link       - "The pack(s) X have been linked."
+    provision  - "The pack(s) X have been provisioned."
+    unlink     - "The pack(s) X have been unlinked."
+    on         - "The pack(s) X have been turned on."
+    off        - "The pack(s) X have been turned off."
+    deprovision - "The pack(s) X have been deprovisioned."
+
+Pack creation/modification::
+
+    init       - "The pack X has been initialized with N files."
+    fill       - "The pack X has been filled with N placeholder files."
+    adopt      - "N files have been adopted into the pack X."
+    add-ignore - "A .dodotignore file has been added to the pack X."
+
+Information commands::
+
+    list       - No message, shows all pack statuses
+    status     - No message, shows requested pack statuses
+
+Special Commands
+================
+
+The ``snippet`` command supports the output system but behaves differently:
+
+- In text/terminal mode: outputs the shell snippet directly
+- In JSON mode: returns structured data with shell type, snippet content, and metadata
+
+Implementation Guidelines
+========================
+
+When adding new commands:
+
+1. Always show pack status for pack-related operations
+2. Use CommandResult to combine message and status
+3. Run StatusPacks to get current state after operations
+4. Use FormatCommandMessage for consistent messaging
+5. Let the renderer handle format-specific output
+
+Benefits
+========
+
+This unified approach provides:
+
+- **Consistency** - Same pack representation everywhere
+- **Predictability** - Users know what to expect
+- **Flexibility** - Multiple output formats for different use cases
+- **Simplicity** - Commands focus on logic, not formatting
+- **Testability** - Output rendering is isolated and testable

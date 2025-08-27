@@ -168,16 +168,18 @@ Colors are applied selectively to maintain readability:
 Implementation Notes
 --------------------
 
-The display system is implemented as a presentation layer that:
+The display system provides:
 
-1. Accepts structured data from command implementations
-2. Applies consistent formatting rules
-3. Handles terminal capability detection (color support)
-4. Provides both rich (styled) and plain text renderers
+1. Structured data types (DisplayResult, CommandResult) for consistent output
+2. Multiple renderer implementations (terminal, text, JSON)
+3. Automatic format detection based on terminal capabilities
+4. Unified output across all pack-related commands
 
 The design prioritizes:
 - Consistency across commands
-- Clear visual hierarchy
+- Clear visual hierarchy  
 - Scannable output format
 - Accessible color choices
-- Graceful degradation for non-color terminals
+- Multiple output formats for different use cases
+
+See docs/guides/70_cli-output.txxt for implementation details.

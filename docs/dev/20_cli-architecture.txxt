@@ -104,39 +104,33 @@ func Execute(packs []string, opts Options) (*Result, error) {
 Output Formatting
 -----------------
 
-The output rendering pipeline uses a declarative, template-based approach:
+dodot uses a unified output system that provides consistent rendering across all commands:
 
 Architecture:
-• **Structured Data**: Commands return typed results (DisplayResult, ExecutionContext)
-• **Template Engine**: Go templates define layout (pkg/output/templates/)
-• **Style Registry**: Centralized style definitions with adaptive colors (pkg/output/styles/)
-• **Lipbalm Renderer**: Applies lipgloss styles via XML-like tags (pkg/lipbalm/)
-
-Pipeline Flow:
-1. Command executes and returns structured data
-2. Data is transformed to DisplayResult if needed
-3. Template engine processes the data with Go templates
-4. Lipbalm expands style tags to ANSI codes (or strips for NO_COLOR)
-5. Formatted output is written to stdout
+• **Structured Data**: Commands return CommandResult with optional message and pack status
+• **Renderer Interface**: Common interface implemented by format-specific renderers
+• **Multiple Formats**: Terminal (rich), text (plain), and JSON output supported
+• **Format Detection**: Automatic selection based on terminal capabilities and environment
 
 Key Components:
-• **pkg/output/renderer.go**: Main renderer that orchestrates the pipeline
-• **pkg/output/styles/styles.go**: Semantic style definitions with light/dark support
-• **pkg/output/templates/**: External template files for each output type
-• **pkg/lipbalm/**: Template tag expansion and style application
+• **pkg/types/results.go**: Core data types (CommandResult, DisplayResult)
+• **pkg/ui/ui.go**: Renderer interface and factory
+• **pkg/ui/terminal/**: Rich terminal output with colors
+• **pkg/ui/text/**: Plain text output for pipes/non-terminals
+• **pkg/ui/json/**: Structured JSON for programmatic access
+
+Unified Pack Representation:
+All pack-related commands show the same status format:
+1. Optional message describing the action taken
+2. Pack status showing all managed files and their states
 
 Benefits:
-• UI changes require only template edits, no Go code changes
-• Automatic light/dark mode via adaptive colors
-• Clean separation of data, structure, and presentation
-• Consistent theming across all commands
+• Consistent output format across all commands
+• Predictable user experience
+• Support for different output contexts (terminal, pipe, automation)
+• Clean separation of command logic from presentation
 
-For implementation details, see the package documentation:
-• pkg/output/doc.go - Complete rendering pipeline documentation
-• pkg/lipbalm/doc.go - Template tag processing details
-• pkg/output/styles/styles.go - Available style definitions
-
-See specs/pack-output.txxt for display specifications.
+See docs/guides/70_cli-output.txxt for detailed implementation guide.
 
 Testing the CLI
 ---------------
