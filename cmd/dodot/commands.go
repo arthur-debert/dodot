@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/arthur-debert/dodot/internal/version"
@@ -1100,39 +1101,67 @@ func newOnCmd() *cobra.Command {
 				return fmt.Errorf("failed to turn on packs: %w", err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
+			// After on operation, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect on action
+			statusResult.Command = "on"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			// For on command, we want to list packs that were actually processed
+			packNames := make([]string, 0)
+			processedPacks := make(map[string]bool)
+
+			if result.LinkResult != nil {
+				for packName := range result.LinkResult.PackResults {
+					processedPacks[packName] = true
+				}
+			}
+			if result.ProvisionResult != nil {
+				for packName := range result.ProvisionResult.PackResults {
+					processedPacks[packName] = true
+				}
+			}
+
+			for packName := range processedPacks {
+				packNames = append(packNames, packName)
+			}
+
+			// Sort pack names for consistent output
+			sort.Strings(packNames)
+
+			// Create CommandResult with appropriate message
+			var message string
 			if result.TotalDeployed == 0 {
-				fmt.Println("No packs to turn on")
+				message = "" // No message if nothing was deployed
 			} else {
-				// Create renderer for displaying results
-				renderer, err := createRenderer(cmd)
-				if err != nil {
-					return err
-				}
-
-				// Display link results
-				if result.LinkResult != nil {
-					fmt.Printf("\nLink Results:\n")
-					if err := renderer.RenderResult(result.LinkResult); err != nil {
-						log.Error().Err(err).Msg("Failed to render link results")
-					}
-				}
-
-				// Display provision results
-				if result.ProvisionResult != nil && result.ProvisionResult.CompletedActions > 0 {
-					fmt.Printf("\nProvision Results:\n")
-					if err := renderer.RenderResult(result.ProvisionResult); err != nil {
-						log.Error().Err(err).Msg("Failed to render provision results")
-					}
-				}
-
-				fmt.Printf("\nTotal items deployed: %d\n", result.TotalDeployed)
+				message = types.FormatCommandMessage("turned on", packNames)
 			}
 
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			// Display any errors encountered
 			if len(result.Errors) > 0 {
 				fmt.Println("\nErrors encountered:")
 				for _, err := range result.Errors {
