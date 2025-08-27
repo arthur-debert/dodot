@@ -98,20 +98,6 @@ shellIntegration:
         source "$HOME/.local/share/dodot/shell/dodot-init.fish"
     end
 
-# Logging configuration
-logging:
-  # Default log level when no -v flags are provided
-  defaultLevel: warn
-  
-  # Time format for log timestamps (Go time format)
-  timeFormat: "15:04"
-  
-  # Whether to use colored output in the terminal
-  enableColor: true
-  
-  # Show source file and line numbers at this verbosity level and above
-  enableCallerAtVerbosity: 2
-
 # Matchers define patterns that map files to handlers
 # These are the built-in matchers that dodot uses
 matchers:

@@ -16,8 +16,8 @@ func TestLoadConfiguration_EdgeCases(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
 
 		invalidConfig := `
-[logging]
-default_level = "debug"
+[patterns]
+pack_ignore = ["test"]
 this is not valid toml
 [pack
 ignore = [.cache
@@ -43,7 +43,7 @@ ignore = [.cache
 		require.NoError(t, err)
 		assert.NotNil(t, cfg)
 		// Should use defaults
-		assert.Equal(t, "warn", cfg.Logging.DefaultLevel)
+		assert.Equal(t, 100, cfg.Priorities.Triggers["filename"])
 	})
 
 	// Test removed - permission error handling needs refinement
@@ -199,7 +199,7 @@ func TestConcurrency(t *testing.T) {
 				case 3:
 					_ = GetMatchers()
 				case 4:
-					_ = GetLogging()
+					_ = GetShellIntegration()
 				}
 				done <- true
 			}(i)

@@ -6,6 +6,8 @@ import (
 
 // Security holds security-related configuration
 type Security struct {
+	// ProtectedPaths defines paths that should not be symlinked for security reasons
+	// TODO: Implement in pkg/handlers/symlink/symlink.go ProcessLinking()
 	ProtectedPaths map[string]bool `koanf:"protected_paths"`
 }
 
@@ -85,18 +87,6 @@ type LinkPaths struct {
 	CoreUnixExceptions map[string]bool `koanf:"force_home"`
 }
 
-// LoggingConfig holds logging-related configuration
-type LoggingConfig struct {
-	// DefaultLevel is the default log level
-	DefaultLevel string `koanf:"default_level"`
-	// TimeFormat is the time format for console output
-	TimeFormat string `koanf:"time_format"`
-	// EnableColor enables color output in console
-	EnableColor bool `koanf:"enable_color"`
-	// EnableCaller enables caller information for debug and trace levels
-	EnableCallerAtVerbosity int `koanf:"enable_caller_at_verbosity"`
-}
-
 // Config is the main configuration structure
 type Config struct {
 	Security         Security         `koanf:"security"`
@@ -107,7 +97,6 @@ type Config struct {
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
 	Paths            Paths            `koanf:"paths"`
 	LinkPaths        LinkPaths        `koanf:"link_paths"`
-	Logging          LoggingConfig    `koanf:"logging"`
 }
 
 // Default returns the default configuration
@@ -196,12 +185,6 @@ end`,
 				"zshrc":     true, // .zshrc - shell expects in $HOME
 				"profile":   true, // .profile - shell expects in $HOME
 			},
-		},
-		Logging: LoggingConfig{
-			DefaultLevel:            "warn",
-			TimeFormat:              "15:04",
-			EnableColor:             true,
-			EnableCallerAtVerbosity: 2,
 		},
 	}
 

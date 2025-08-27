@@ -13,10 +13,10 @@ func TestLoadConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotNil(t, cfg)
 
-		// Check value from system defaults
-		assert.Equal(t, "warn", cfg.Logging.DefaultLevel)
 		// Check that we have matchers
 		assert.NotEmpty(t, cfg.Matchers)
+		// Check a value from system defaults
+		assert.Equal(t, 100, cfg.Priorities.Triggers["filename"])
 	})
 
 	// Note: Additional tests for user config override and environment variable

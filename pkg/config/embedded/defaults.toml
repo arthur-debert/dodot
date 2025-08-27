@@ -1,12 +1,6 @@
 # Internal dodot system defaults
 # These are embedded in the binary and provide the base configuration
 
-[logging]
-default_level = "warn"
-time_format = "15:04"
-enable_color = true
-enable_caller_at_verbosity = 2
-
 [priorities.triggers]
 filename = 100
 directory = 90
