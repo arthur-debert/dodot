@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/output/styles"
+	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

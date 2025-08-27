@@ -36,6 +36,45 @@ type DisplayResult struct {
 	Timestamp time.Time     `json:"timestamp"`
 }
 
+// CommandResult wraps a DisplayResult with an optional message for unified output.
+// This is used by all commands that alter pack state (link, unlink, provision, on, off, etc.)
+// to provide a consistent output format:
+//
+//	<Optional Message>
+//	<pack status representation>
+type CommandResult struct {
+	Message string         `json:"message,omitempty"` // Optional message like "The packs vim and git have been linked."
+	Result  *DisplayResult `json:"result"`            // The pack status display
+}
+
+// FormatCommandMessage generates a standard message for command results.
+// It handles pluralization and pack name listing appropriately.
+// Returns empty string if there are no packs (message will be omitted).
+//
+// Examples:
+//   - FormatCommandMessage("linked", []string{"vim", "git"}) -> "The packs vim and git have been linked."
+//   - FormatCommandMessage("linked", []string{"vim"}) -> "The pack vim has been linked."
+//   - FormatCommandMessage("linked", []string{}) -> ""
+func FormatCommandMessage(verb string, packNames []string) string {
+	if len(packNames) == 0 {
+		return "" // No message for empty pack list
+	}
+
+	if len(packNames) == 1 {
+		return "The pack " + packNames[0] + " has been " + verb + "."
+	}
+
+	// Multiple packs
+	if len(packNames) == 2 {
+		return "The packs " + packNames[0] + " and " + packNames[1] + " have been " + verb + "."
+	}
+
+	// More than 2 packs
+	lastPack := packNames[len(packNames)-1]
+	otherPacks := strings.Join(packNames[:len(packNames)-1], ", ")
+	return "The packs " + otherPacks + ", and " + lastPack + " have been " + verb + "."
+}
+
 // DisplayPack represents a single pack for display.
 type DisplayPack struct {
 	Name      string        `json:"name"`

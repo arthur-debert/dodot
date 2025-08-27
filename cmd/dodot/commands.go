@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/arthur-debert/dodot/internal/version"
@@ -14,13 +15,30 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/on"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/output"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui"
+	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
+
+// createRenderer is a helper function to create a renderer based on the format flag
+func createRenderer(cmd *cobra.Command) (ui.Renderer, error) {
+	formatStr, _ := cmd.Root().PersistentFlags().GetString("format")
+	format, err := ui.ParseFormat(formatStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid format: %w", err)
+	}
+
+	renderer, err := ui.NewRenderer(format, os.Stdout)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create renderer: %w", err)
+	}
+
+	return renderer, nil
+}
 
 // NewRootCmd creates and returns the root command
 func NewRootCmd() *cobra.Command {
@@ -32,6 +50,7 @@ func NewRootCmd() *cobra.Command {
 		dryRun     bool
 		force      bool
 		configFile string
+		formatStr  string
 	)
 
 	rootCmd := &cobra.Command{
@@ -71,6 +90,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, MsgFlagDryRun)
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, MsgFlagForce)
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to custom styles configuration file")
+	rootCmd.PersistentFlags().StringVar(&formatStr, "format", "auto", "Output format (auto|term|text|json)")
 
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
@@ -291,14 +311,28 @@ func newLinkCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrLinkPacks, err)
 			}
 
-			// Display results using the new output renderer
-			// The renderer will automatically detect NO_COLOR environment variable
-			// through lipgloss/termenv
-			renderer, err := output.NewRenderer(os.Stdout, false)
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf("failed to create renderer: %w", err)
+				return err
 			}
-			if err := renderer.RenderExecutionContext(ctx); err != nil {
+
+			// Convert ExecutionContext to DisplayResult and wrap with CommandResult
+			displayResult := ctx.ToDisplayResult()
+
+			// Get pack names for the message
+			packNames := make([]string, 0, len(displayResult.Packs))
+			for _, pack := range displayResult.Packs {
+				packNames = append(packNames, pack.Name)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: types.FormatCommandMessage("linked", packNames),
+				Result:  displayResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
 
@@ -349,14 +383,28 @@ func newProvisionCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrProvisionPacks, err)
 			}
 
-			// Display results using the new output renderer
-			// The renderer will automatically detect NO_COLOR environment variable
-			// through lipgloss/termenv
-			renderer, err := output.NewRenderer(os.Stdout, false)
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf("failed to create renderer: %w", err)
+				return err
 			}
-			if err := renderer.RenderExecutionContext(ctx); err != nil {
+
+			// Convert ExecutionContext to DisplayResult and wrap with CommandResult
+			displayResult := ctx.ToDisplayResult()
+
+			// Get pack names for the message
+			packNames := make([]string, 0, len(displayResult.Packs))
+			for _, pack := range displayResult.Packs {
+				packNames = append(packNames, pack.Name)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: types.FormatCommandMessage("provisioned", packNames),
+				Result:  displayResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
 				return fmt.Errorf("failed to render results: %w", err)
 			}
 
@@ -381,22 +429,34 @@ func newListCmd() *cobra.Command {
 
 			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
 
-			// Use the actual ListPacks implementation
-			result, err := commands.ListPacks(commands.ListPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-			})
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf(MsgErrListPacks, err)
+				return err
 			}
 
-			// Display the packs in a simple format
-			if len(result.Packs) == 0 {
-				fmt.Println("No packs found")
-			} else {
-				fmt.Println("Available packs:")
-				for _, pack := range result.Packs {
-					fmt.Printf("  %s\n", pack.Name)
-				}
+			// Get the status of all packs (empty pack names means all packs)
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{}, // Empty means all packs
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect list action
+			statusResult.Command = "list"
+			statusResult.DryRun = false
+
+			// Create CommandResult without message (list command doesn't need one)
+			cmdResult := &types.CommandResult{
+				Message: "", // No message for list command
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -439,14 +499,13 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrStatusPacks, err)
 			}
 
-			// Display results using the new output renderer
-			// The renderer will automatically detect NO_COLOR environment variable
-			// through lipgloss/termenv
-			renderer, err := output.NewRenderer(os.Stdout, false)
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
 			if err != nil {
-				return fmt.Errorf("failed to create renderer: %w", err)
+				return err
 			}
-			if err := renderer.Render(result); err != nil {
+
+			if err := renderer.RenderResult(result); err != nil {
 				return fmt.Errorf("failed to display status: %w", err)
 			}
 
@@ -486,13 +545,37 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrInitPack, err)
 			}
 
-			// Operations are already executed by the command
-			// No need to execute them again
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
 
-			// Display results
-			fmt.Printf(MsgPackCreatedFormat, packName)
-			for _, file := range result.FilesCreated {
-				fmt.Printf(MsgOperationItem, file)
+			// Get the status of the newly created pack
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect init action
+			statusResult.Command = "init"
+			statusResult.DryRun = false
+
+			// Create message based on what was created
+			message := fmt.Sprintf("The pack %s has been initialized with %d files.", packName, len(result.FilesCreated))
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -535,17 +618,42 @@ func newFillCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrFillPack, err)
 			}
 
-			// Operations are already executed by the command
-			// No need to execute them again
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
 
-			// Display results
+			// Get the status of the filled pack
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect fill action
+			statusResult.Command = "fill"
+			statusResult.DryRun = false
+
+			// Create message based on what was created
+			var message string
 			if len(result.FilesCreated) == 0 {
-				fmt.Printf(MsgPackHasAllFiles, packName)
+				message = fmt.Sprintf("The pack %s already has all file types.", packName)
 			} else {
-				fmt.Printf(MsgPackFilledFormat, packName)
-				for _, file := range result.FilesCreated {
-					fmt.Printf(MsgOperationItem, file)
-				}
+				message = fmt.Sprintf("The pack %s has been filled with %d placeholder files.", packName, len(result.FilesCreated))
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -598,15 +706,46 @@ func newAdoptCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrAdoptFiles, err)
 			}
 
-			// Display results
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
+			// Get the status of the pack after adoption
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect adopt action
+			statusResult.Command = "adopt"
+			statusResult.DryRun = false
+
+			// Create message based on what was adopted
+			var message string
 			if len(result.AdoptedFiles) == 0 {
-				fmt.Print(MsgNoFilesAdopted)
+				message = fmt.Sprintf("No files were adopted into the pack %s.", packName)
+			} else if len(result.AdoptedFiles) == 1 {
+				message = fmt.Sprintf("The file %s has been adopted into the pack %s.",
+					filepath.Base(result.AdoptedFiles[0].OriginalPath), packName)
 			} else {
-				for _, adopted := range result.AdoptedFiles {
-					fmt.Printf(MsgFileAdopted, adopted.OriginalPath, adopted.NewPath)
-					fmt.Printf(MsgSymlinkCreated, adopted.OriginalPath, adopted.NewPath)
-				}
-				fmt.Printf(MsgAdoptSuccess, len(result.AdoptedFiles), packName)
+				message = fmt.Sprintf("%d files have been adopted into the pack %s.",
+					len(result.AdoptedFiles), packName)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -661,11 +800,42 @@ func newAddIgnoreCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrAddIgnore, err)
 			}
 
-			// Display results
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
+			// Get the status of the pack after adding ignore
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    []string{packName},
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect add-ignore action
+			statusResult.Command = "add-ignore"
+			statusResult.DryRun = false
+
+			// Create message based on the result
+			var message string
 			if result.AlreadyExisted {
-				fmt.Printf(MsgIgnoreFileExists, packName)
+				message = fmt.Sprintf("The pack %s already has a .dodotignore file.", packName)
 			} else {
-				fmt.Printf(MsgIgnoreFileCreated, packName)
+				message = fmt.Sprintf("A .dodotignore file has been added to the pack %s.", packName)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -714,21 +884,66 @@ func newSnippetCmd() *cobra.Command {
 			// Always use the actual data directory for the snippet
 			dataDir := p.DataDir()
 
+			// Create renderer for output
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
 			// Install shell scripts if requested
+			var installMessage string
 			if provision {
 				if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
 					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
-				fmt.Fprintf(os.Stderr, "Shell integration scripts installed to %s/shell/\n", dataDir)
+				installMessage = fmt.Sprintf("Shell integration scripts installed to %s/shell/", dataDir)
 			}
 
 			// Get the appropriate snippet for the shell using the actual data directory
 			snippet := types.GetShellIntegrationSnippet(shell, dataDir)
 
-			// Output the snippet with a line break and comment
-			fmt.Println()
-			fmt.Println("# Run the dodot initialization script if it exists")
-			fmt.Print(snippet)
+			// Create a result structure for the snippet
+			snippetResult := struct {
+				Shell          string `json:"shell"`
+				DataDir        string `json:"dataDir"`
+				Snippet        string `json:"snippet"`
+				Installed      bool   `json:"installed"`
+				InstallMessage string `json:"installMessage,omitempty"`
+			}{
+				Shell:          shell,
+				DataDir:        dataDir,
+				Snippet:        snippet,
+				Installed:      provision,
+				InstallMessage: installMessage,
+			}
+
+			// For text/terminal output, we want just the snippet with optional message
+			// For JSON output, we want structured data
+			format, _ := cmd.Root().PersistentFlags().GetString("format")
+			parsedFormat, _ := ui.ParseFormat(format)
+
+			if parsedFormat == ui.FormatJSON || (parsedFormat == ui.FormatAuto && ui.DetectFormat(os.Stdout) == ui.FormatJSON) {
+				// JSON format - return structured data
+				if err := renderer.RenderResult(snippetResult); err != nil {
+					return fmt.Errorf("failed to render snippet: %w", err)
+				}
+			} else {
+				// Text/Terminal format - output the snippet directly with header comment
+				if installMessage != "" {
+					if err := renderer.RenderMessage(installMessage); err != nil {
+						return err
+					}
+					if err := renderer.RenderMessage(""); err != nil { // blank line
+						return err
+					}
+				}
+
+				// Output the snippet with comment header
+				fullSnippet := "\n# Run the dodot initialization script if it exists\n" + snippet
+				if err := renderer.RenderMessage(fullSnippet); err != nil {
+					return fmt.Errorf("failed to render snippet: %w", err)
+				}
+			}
 
 			return nil
 		},
@@ -766,7 +981,7 @@ func newUnlinkCmd() *cobra.Command {
 				Bool("force", force).
 				Msg("Unlinking packs")
 
-			// Run off command
+			// Run unlink command
 			result, err := commands.UnlinkPacks(commands.UnlinkPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
 				DataDir:      p.DataDir(),
@@ -783,37 +998,42 @@ func newUnlinkCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrUnlinkPacks, err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
-			if result.TotalRemoved == 0 {
-				fmt.Println("No deployments found to remove")
-			} else {
-				for _, pack := range result.Packs {
-					if len(pack.RemovedItems) > 0 {
-						fmt.Printf("\nPack: %s\n", pack.Name)
-						for _, item := range pack.RemovedItems {
-							if item.Success {
-								fmt.Printf("  ✓ Removed %s: %s", item.Type, item.Path)
-								if item.Target != "" {
-									fmt.Printf(" -> %s", item.Target)
-								}
-								fmt.Println()
-							} else {
-								fmt.Printf("  ✗ Failed to remove %s: %s (%s)\n", item.Type, item.Path, item.Error)
-							}
-						}
-					}
-					if len(pack.Errors) > 0 {
-						fmt.Printf("  Errors:\n")
-						for _, err := range pack.Errors {
-							fmt.Printf("    - %s\n", err)
-						}
-					}
+			// After unlinking, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect unlink action
+			statusResult.Command = "unlink"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			packNames := make([]string, 0, len(result.Packs))
+			for _, pack := range result.Packs {
+				if len(pack.RemovedItems) > 0 {
+					packNames = append(packNames, pack.Name)
 				}
-				fmt.Printf("\nTotal items removed: %d\n", result.TotalRemoved)
+			}
+
+			// Create CommandResult with appropriate message
+			cmdResult := &types.CommandResult{
+				Message: types.FormatCommandMessage("unlinked", packNames),
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
 			}
 
 			return nil
@@ -859,35 +1079,62 @@ func newDeprovisionCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrDeprovisionPacks, err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
-			if result.TotalCleared == 0 {
-				fmt.Println("No provisioning state found to remove")
-			} else {
-				for _, pack := range result.Packs {
-					if len(pack.HandlersRun) > 0 {
-						fmt.Printf("\nPack: %s\n", pack.Name)
-						for _, handler := range pack.HandlersRun {
-							if handler.Error != nil {
-								fmt.Printf("  ✗ %s: %v\n", handler.HandlerName, handler.Error)
-							} else if len(handler.ClearedItems) > 0 {
-								fmt.Printf("  ✓ %s:\n", handler.HandlerName)
-								for _, item := range handler.ClearedItems {
-									fmt.Printf("    - %s: %s\n", item.Type, item.Description)
-								}
-								if handler.StateRemoved {
-									fmt.Println("    - State directory removed")
-								}
-							}
+			// After deprovisioning, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect deprovision action
+			statusResult.Command = "deprovision"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			// For deprovision command, we want to list packs that had items cleared
+			packNames := make([]string, 0)
+			for _, pack := range result.Packs {
+				if len(pack.HandlersRun) > 0 {
+					// Check if any handler actually cleared items
+					for _, handler := range pack.HandlersRun {
+						if len(handler.ClearedItems) > 0 || handler.StateRemoved {
+							packNames = append(packNames, pack.Name)
+							break
 						}
 					}
 				}
-				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
 			}
 
+			// Sort pack names for consistent output
+			sort.Strings(packNames)
+
+			// Create CommandResult with appropriate message
+			var message string
+			if result.TotalCleared == 0 {
+				message = "" // No message if nothing was cleared
+			} else {
+				message = types.FormatCommandMessage("deprovisioned", packNames)
+			}
+
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			// Display any errors encountered
 			if len(result.Errors) > 0 {
 				fmt.Println("\nErrors encountered:")
 				for _, err := range result.Errors {
@@ -946,48 +1193,71 @@ func newOffCmd() *cobra.Command {
 				return fmt.Errorf("failed to turn off packs: %w", err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
+			// After off operation, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect off action
+			statusResult.Command = "off"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			// For off command, we want to list packs that had items removed
+			packNames := make([]string, 0)
+			processedPacks := make(map[string]bool)
+
+			if result.UnlinkResult != nil {
+				for _, pack := range result.UnlinkResult.Packs {
+					if len(pack.RemovedItems) > 0 {
+						processedPacks[pack.Name] = true
+					}
+				}
+			}
+			if result.DeprovisionResult != nil {
+				for _, pack := range result.DeprovisionResult.Packs {
+					if len(pack.HandlersRun) > 0 {
+						processedPacks[pack.Name] = true
+					}
+				}
+			}
+
+			for packName := range processedPacks {
+				packNames = append(packNames, packName)
+			}
+
+			// Sort pack names for consistent output
+			sort.Strings(packNames)
+
+			// Create CommandResult with appropriate message
+			var message string
 			if result.TotalCleared == 0 {
-				fmt.Println("No deployments found to turn off")
+				message = "" // No message if nothing was cleared
 			} else {
-				// Display unlink results
-				if result.UnlinkResult != nil && result.UnlinkResult.TotalRemoved > 0 {
-					fmt.Printf("\nUnlink Results:\n")
-					for _, pack := range result.UnlinkResult.Packs {
-						fmt.Printf("  Pack: %s\n", pack.Name)
-						for _, item := range pack.RemovedItems {
-							if item.Success {
-								fmt.Printf("    - %s: %s\n", item.Type, item.Path)
-							} else {
-								fmt.Printf("    ✗ %s: %s (error: %s)\n", item.Type, item.Path, item.Error)
-							}
-						}
-					}
-				}
-
-				// Display deprovision results
-				if result.DeprovisionResult != nil && result.DeprovisionResult.TotalCleared > 0 {
-					fmt.Printf("\nDeprovision Results:\n")
-					for _, pack := range result.DeprovisionResult.Packs {
-						fmt.Printf("  Pack: %s\n", pack.Name)
-						for _, handler := range pack.HandlersRun {
-							if len(handler.ClearedItems) > 0 {
-								fmt.Printf("    %s:\n", handler.HandlerName)
-								for _, item := range handler.ClearedItems {
-									fmt.Printf("      - %s\n", item.Description)
-								}
-							}
-						}
-					}
-				}
-
-				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
+				message = types.FormatCommandMessage("turned off", packNames)
 			}
 
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			// Display any errors encountered
 			if len(result.Errors) > 0 {
 				fmt.Println("\nErrors encountered:")
 				for _, err := range result.Errors {
@@ -1049,35 +1319,67 @@ func newOnCmd() *cobra.Command {
 				return fmt.Errorf("failed to turn on packs: %w", err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
+			// After on operation, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect on action
+			statusResult.Command = "on"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			// For on command, we want to list packs that were actually processed
+			packNames := make([]string, 0)
+			processedPacks := make(map[string]bool)
+
+			if result.LinkResult != nil {
+				for packName := range result.LinkResult.PackResults {
+					processedPacks[packName] = true
+				}
+			}
+			if result.ProvisionResult != nil {
+				for packName := range result.ProvisionResult.PackResults {
+					processedPacks[packName] = true
+				}
+			}
+
+			for packName := range processedPacks {
+				packNames = append(packNames, packName)
+			}
+
+			// Sort pack names for consistent output
+			sort.Strings(packNames)
+
+			// Create CommandResult with appropriate message
+			var message string
 			if result.TotalDeployed == 0 {
-				fmt.Println("No packs to turn on")
+				message = "" // No message if nothing was deployed
 			} else {
-				// Display link results
-				if result.LinkResult != nil {
-					fmt.Printf("\nLink Results:\n")
-					renderer, err := output.NewRenderer(os.Stdout, false)
-					if err == nil {
-						_ = renderer.RenderExecutionContext(result.LinkResult)
-					}
-				}
-
-				// Display provision results
-				if result.ProvisionResult != nil && result.ProvisionResult.CompletedActions > 0 {
-					fmt.Printf("\nProvision Results:\n")
-					renderer, err := output.NewRenderer(os.Stdout, false)
-					if err == nil {
-						_ = renderer.RenderExecutionContext(result.ProvisionResult)
-					}
-				}
-
-				fmt.Printf("\nTotal items deployed: %d\n", result.TotalDeployed)
+				message = types.FormatCommandMessage("turned on", packNames)
 			}
 
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			// Display any errors encountered
 			if len(result.Errors) > 0 {
 				fmt.Println("\nErrors encountered:")
 				for _, err := range result.Errors {
