@@ -1,0 +1,382 @@
+Configuration System Guide
+=========================
+
+dodot's configuration system provides flexible, multi-layered configuration management that allows you to customize behavior at the global, user, and repository levels.
+
+## Overview
+
+The configuration system follows a hierarchical loading approach:
+
+1. **System Defaults** - Embedded base configuration
+2. **User Defaults** - User-friendly defaults with automatic transformation
+3. **User Configuration** - Your custom settings from multiple locations
+4. **Environment Variables** - Runtime overrides
+
+Each layer builds upon and can override the previous one, giving you fine-grained control over dodot's behavior.
+
+## Configuration File Locations
+
+dodot looks for configuration files in these locations (in order of precedence):
+
+1. `$DOTFILES_ROOT/.dodot/config.yaml` - Repository-specific configuration
+2. `$XDG_CONFIG_HOME/dodot/config.yaml` - User configuration (XDG standard)
+3. `$HOME/.config/dodot/config.yaml` - User configuration (fallback)
+
+The first file found is used; multiple files are not merged.
+
+## Configuration Format
+
+dodot supports two configuration formats:
+
+### User-Friendly Format (Recommended)
+
+This simplified format is designed for ease of use:
+
+```yaml
+# User-friendly configuration format
+pack:
+  ignore:
+    - .git
+    - node_modules
+    - "*.swp"
+    - .DS_Store
+
+symlink:
+  force_home:
+    - ssh        # .ssh directory
+    - gitconfig  # .gitconfig file
+    - bashrc     # .bashrc file
+  
+  protected_paths:
+    - .ssh/authorized_keys
+    - .ssh/id_rsa
+    - .aws/credentials
+
+logging:
+  level: info        # Options: trace, debug, info, warn, error
+  color: true
+  caller_info: false
+
+shell:
+  bash_snippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
+  fish_snippet: |
+    if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+        source "$HOME/.local/share/dodot/shell/dodot-init.fish"
+    end
+```
+
+### Internal Format
+
+The internal format provides full control over all configuration options:
+
+```yaml
+# Internal configuration format
+security:
+  protected_paths:
+    - .ssh/authorized_keys
+    - .ssh/id_rsa
+    - .gnupg
+
+patterns:
+  pack_ignore:
+    - .git
+    - node_modules
+  
+  special_files:
+    pack_config: .dodot.toml
+    ignore_file: .dodotignore
+
+priorities:
+  triggers:
+    filename: 100
+    catchall: 0
+  
+  handlers:
+    symlink: 100
+    path: 90
+
+logging:
+  default_level: warn
+  verbosity_levels:
+    0: warn
+    1: info
+    2: debug
+    3: trace
+  enable_color: true
+  enable_caller_at_verbosity: 2
+```
+
+## Configuration Sections
+
+### Pack Configuration
+
+Controls how dodot processes pack directories:
+
+```yaml
+pack:
+  ignore:
+    - .git           # Version control
+    - node_modules   # Dependencies
+    - "*.swp"        # Editor files
+    - .DS_Store      # macOS metadata
+```
+
+### Symlink Configuration
+
+Manages symlink behavior and security:
+
+```yaml
+symlink:
+  # Files that must be linked to $HOME (not XDG directories)
+  force_home:
+    - ssh        # Security-critical SSH config
+    - gnupg      # GPG configuration
+    - aws        # AWS credentials
+    - docker     # Docker config
+    - gitconfig  # Git expects this in $HOME
+    - bashrc     # Shell files
+    - zshrc
+    - profile
+  
+  # Files that should never be symlinked
+  protected_paths:
+    - .ssh/authorized_keys   # Security risk
+    - .ssh/id_*              # Private keys
+    - .gnupg/*               # GPG keys
+    - .aws/credentials       # Cloud credentials
+```
+
+### Logging Configuration
+
+Controls output verbosity and formatting:
+
+```yaml
+logging:
+  level: info        # Default log level
+  color: true        # Enable colored output
+  caller_info: false # Show file:line in debug mode
+  time_format: "15:04"  # Time format for logs
+```
+
+Log levels:
+- `trace` - Very detailed debugging information
+- `debug` - Debugging information
+- `info` - Informational messages
+- `warn` - Warning messages (default)
+- `error` - Error messages only
+
+### Shell Integration
+
+Customizes shell initialization snippets:
+
+```yaml
+shell:
+  # Bash/Zsh integration
+  bash_snippet: '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
+  
+  # Fish shell integration
+  fish_snippet: |
+    if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
+        source "$HOME/.local/share/dodot/shell/dodot-init.fish"
+    end
+```
+
+## Environment Variables
+
+All configuration options can be overridden using environment variables with the `DODOT_` prefix:
+
+```bash
+# Set log level
+export DODOT_LOGGING_DEFAULT_LEVEL=debug
+
+# Disable colored output
+export DODOT_LOGGING_ENABLE_COLOR=false
+
+# Add protected paths (comma-separated)
+export DODOT_SECURITY_PROTECTED_PATHS=".ssh/id_rsa,.aws/credentials"
+```
+
+Environment variables follow the pattern: `DODOT_<SECTION>_<KEY>`
+
+## Custom Matchers
+
+You can define custom matchers to handle specific file patterns:
+
+```yaml
+# Add to your config.yaml
+matchers:
+  # Python virtual environment activation
+  - name: python-venv
+    priority: 85
+    trigger:
+      type: directory
+      data:
+        pattern: venv
+    handler:
+      type: shell
+      data:
+        placement: environment
+        template: |
+          # Activate Python virtual environment
+          [ -d "$PACK_DIR/venv" ] && source "$PACK_DIR/venv/bin/activate"
+  
+  # Custom dotfile handler
+  - name: special-configs
+    priority: 90
+    trigger:
+      type: filename
+      data:
+        pattern: "*.special"
+    handler:
+      type: symlink
+      data:
+        target_dir: "$HOME/.config/myapp"
+```
+
+## Repository-Specific Configuration
+
+Place a `.dodot/config.yaml` file in your dotfiles repository for repo-specific settings:
+
+```yaml
+# $DOTFILES_ROOT/.dodot/config.yaml
+
+# Additional files to force to $HOME for this repo
+symlink:
+  force_home:
+    - my-app-config
+    - company-settings
+
+# Repository-specific ignore patterns
+pack:
+  ignore:
+    - work-secrets
+    - "*.private"
+```
+
+## Pack-Level Configuration
+
+Individual packs can have `.dodot.toml` files for fine-grained control:
+
+```toml
+# mypack/.dodot.toml
+
+[dodot]
+# Ignore additional files in this pack
+ignore = ["temp", "*.log"]
+
+# Override handler for specific files
+[overrides."config.json"]
+handler = "template"
+target = "$HOME/.config/myapp/config.json"
+
+# Custom path mappings
+[mappings]
+"old-name.conf" = "new-name.conf"
+```
+
+## Configuration Merging
+
+When multiple configuration sources exist, they are merged using these rules:
+
+1. **Maps/Objects**: Deeply merged (nested values combined)
+2. **Arrays/Lists**: Appended (values from all sources combined)
+3. **Scalars**: Overwritten (last value wins)
+
+Example:
+```yaml
+# System default
+symlink:
+  protected_paths:
+    - .ssh/authorized_keys
+
+# User config
+symlink:
+  protected_paths:
+    - .aws/credentials
+
+# Result: Both paths are protected
+symlink:
+  protected_paths:
+    - .ssh/authorized_keys
+    - .aws/credentials
+```
+
+## Best Practices
+
+1. **Start Simple**: Use the user-friendly format with minimal configuration
+2. **Repository Config**: Keep repository-specific settings in `$DOTFILES_ROOT/.dodot/config.yaml`
+3. **Security First**: Always protect sensitive files using `protected_paths`
+4. **Test Changes**: Use `dodot status` to verify configuration changes
+5. **Version Control**: Commit your `.dodot/config.yaml` to share repo settings
+
+## Common Use Cases
+
+### Development Environment
+
+```yaml
+pack:
+  ignore:
+    - node_modules
+    - venv
+    - __pycache__
+    - .pytest_cache
+    - target      # Rust/Java
+    - dist        # Build output
+
+logging:
+  level: info     # More verbose for development
+```
+
+### Security-Conscious Setup
+
+```yaml
+symlink:
+  protected_paths:
+    - .ssh/*
+    - .gnupg/*
+    - .aws/*
+    - .kube/*
+    - .docker/config.json
+    - .netrc
+    - .npmrc
+    - .pypirc
+```
+
+### Minimal Configuration
+
+```yaml
+# Just protect sensitive files and set log level
+symlink:
+  protected_paths:
+    - .ssh/authorized_keys
+
+logging:
+  level: info
+```
+
+## Troubleshooting
+
+### Configuration Not Loading
+
+1. Check file location - run `dodot status` to see which config file is loaded
+2. Verify YAML syntax - use a YAML validator
+3. Check environment variables - they override file settings
+
+### Unexpected Behavior
+
+1. Use `dodot -vv status` to see detailed configuration loading
+2. Check precedence - environment variables override files
+3. Verify no typos in configuration keys
+
+### Debug Configuration
+
+```bash
+# See which configuration file is loaded
+dodot status
+
+# View configuration loading process
+dodot -vv status
+
+# Test with different log level
+DODOT_LOGGING_DEFAULT_LEVEL=debug dodot status
+```
