@@ -998,48 +998,71 @@ func newOffCmd() *cobra.Command {
 				return fmt.Errorf("failed to turn off packs: %w", err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
+			// After off operation, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect off action
+			statusResult.Command = "off"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			// For off command, we want to list packs that had items removed
+			packNames := make([]string, 0)
+			processedPacks := make(map[string]bool)
+
+			if result.UnlinkResult != nil {
+				for _, pack := range result.UnlinkResult.Packs {
+					if len(pack.RemovedItems) > 0 {
+						processedPacks[pack.Name] = true
+					}
+				}
+			}
+			if result.DeprovisionResult != nil {
+				for _, pack := range result.DeprovisionResult.Packs {
+					if len(pack.HandlersRun) > 0 {
+						processedPacks[pack.Name] = true
+					}
+				}
+			}
+
+			for packName := range processedPacks {
+				packNames = append(packNames, packName)
+			}
+
+			// Sort pack names for consistent output
+			sort.Strings(packNames)
+
+			// Create CommandResult with appropriate message
+			var message string
 			if result.TotalCleared == 0 {
-				fmt.Println("No deployments found to turn off")
+				message = "" // No message if nothing was cleared
 			} else {
-				// Display unlink results
-				if result.UnlinkResult != nil && result.UnlinkResult.TotalRemoved > 0 {
-					fmt.Printf("\nUnlink Results:\n")
-					for _, pack := range result.UnlinkResult.Packs {
-						fmt.Printf("  Pack: %s\n", pack.Name)
-						for _, item := range pack.RemovedItems {
-							if item.Success {
-								fmt.Printf("    - %s: %s\n", item.Type, item.Path)
-							} else {
-								fmt.Printf("    ✗ %s: %s (error: %s)\n", item.Type, item.Path, item.Error)
-							}
-						}
-					}
-				}
-
-				// Display deprovision results
-				if result.DeprovisionResult != nil && result.DeprovisionResult.TotalCleared > 0 {
-					fmt.Printf("\nDeprovision Results:\n")
-					for _, pack := range result.DeprovisionResult.Packs {
-						fmt.Printf("  Pack: %s\n", pack.Name)
-						for _, handler := range pack.HandlersRun {
-							if len(handler.ClearedItems) > 0 {
-								fmt.Printf("    %s:\n", handler.HandlerName)
-								for _, item := range handler.ClearedItems {
-									fmt.Printf("      - %s\n", item.Description)
-								}
-							}
-						}
-					}
-				}
-
-				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
+				message = types.FormatCommandMessage("turned off", packNames)
 			}
 
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			// Display any errors encountered
 			if len(result.Errors) > 0 {
 				fmt.Println("\nErrors encountered:")
 				for _, err := range result.Errors {
