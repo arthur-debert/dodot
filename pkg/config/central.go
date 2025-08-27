@@ -1,7 +1,9 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 )
 
 // Security holds security-related configuration
@@ -87,6 +89,18 @@ type LinkPaths struct {
 	CoreUnixExceptions map[string]bool `koanf:"force_home"`
 }
 
+// FileMapping holds file name to handler mappings
+type FileMapping struct {
+	// Path specifies directory names that should be added to PATH
+	Path string `koanf:"path"`
+	// Install specifies the filename pattern for install scripts
+	Install string `koanf:"install"`
+	// Shell specifies filename patterns for shell scripts
+	Shell []string `koanf:"shell"`
+	// Homebrew specifies the filename pattern for Homebrew files
+	Homebrew string `koanf:"homebrew"`
+}
+
 // Config is the main configuration structure
 type Config struct {
 	Security         Security         `koanf:"security"`
@@ -97,6 +111,7 @@ type Config struct {
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
 	Paths            Paths            `koanf:"paths"`
 	LinkPaths        LinkPaths        `koanf:"link_paths"`
+	FileMapping      FileMapping      `koanf:"file_mapping"`
 }
 
 // Default returns the default configuration
@@ -328,4 +343,92 @@ func defaultMatchers() []MatcherConfig {
 			},
 		},
 	}
+}
+
+// GenerateMatchersFromMapping creates matchers based on file_mapping configuration
+func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
+	var matchers []MatcherConfig
+
+	// Path matcher for bin directories
+	if c.FileMapping.Path != "" {
+		matchers = append(matchers, MatcherConfig{
+			Name:     "mapped-path",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": c.FileMapping.Path,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "path",
+				Data: map[string]interface{}{},
+			},
+		})
+	}
+
+	// Install script matcher
+	if c.FileMapping.Install != "" {
+		matchers = append(matchers, MatcherConfig{
+			Name:     "mapped-install",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": c.FileMapping.Install,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "install",
+				Data: map[string]interface{}{},
+			},
+		})
+	}
+
+	// Shell script matchers
+	for i, pattern := range c.FileMapping.Shell {
+		placement := "environment" // Default placement
+		if strings.Contains(pattern, "aliases") {
+			placement = "aliases"
+		} else if strings.Contains(pattern, "login") {
+			placement = "login"
+		}
+
+		matchers = append(matchers, MatcherConfig{
+			Name:     fmt.Sprintf("mapped-shell-%d", i),
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": pattern,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "shell",
+				Data: map[string]interface{}{
+					"placement": placement,
+				},
+			},
+		})
+	}
+
+	// Homebrew matcher
+	if c.FileMapping.Homebrew != "" {
+		matchers = append(matchers, MatcherConfig{
+			Name:     "mapped-homebrew",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": c.FileMapping.Homebrew,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "homebrew",
+				Data: map[string]interface{}{},
+			},
+		})
+	}
+
+	return matchers
 }

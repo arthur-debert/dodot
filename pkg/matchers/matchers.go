@@ -29,12 +29,11 @@ func RegisterDefaultMatcher(name string, matcher types.Matcher) {
 	defaultMatchers[name] = matcher
 }
 
-// DefaultMatchers returns a set of common matchers for typical dotfiles
-func DefaultMatchers() []types.Matcher {
-	cfg := config.Default()
-	matchers := make([]types.Matcher, len(cfg.Matchers))
+// ConvertConfigMatchers converts config.MatcherConfig to types.Matcher
+func ConvertConfigMatchers(configMatchers []config.MatcherConfig) []types.Matcher {
+	matchers := make([]types.Matcher, len(configMatchers))
 
-	for i, mc := range cfg.Matchers {
+	for i, mc := range configMatchers {
 		matchers[i] = types.Matcher{
 			Name:           mc.Name,
 			TriggerName:    mc.Trigger.Type,
@@ -45,6 +44,14 @@ func DefaultMatchers() []types.Matcher {
 			Enabled:        true,
 		}
 	}
+
+	return matchers
+}
+
+// DefaultMatchers returns a set of common matchers for typical dotfiles
+func DefaultMatchers() []types.Matcher {
+	cfg := config.Default()
+	matchers := ConvertConfigMatchers(cfg.Matchers)
 
 	// Add any dynamically registered matchers
 	for _, matcher := range defaultMatchers {

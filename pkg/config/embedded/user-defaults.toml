@@ -15,10 +15,6 @@ ignore = [
     ".terraform/"
 ]
 
-[dodot]
-config = ".dodot.toml"
-ignore = ".dodotignore"
-
 [symlink]
 force_home = [
     "ssh",        # .ssh/ - security critical
