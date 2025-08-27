@@ -15,14 +15,14 @@ func TestLoadConfiguration_EdgeCases(t *testing.T) {
 		configPath := filepath.Join(tempDir, "dodot", "config.yaml")
 		require.NoError(t, os.MkdirAll(filepath.Dir(configPath), 0755))
 
-		invalidYAML := `
+		invalidConfig := `
 logging:
   default_level: debug
   this is not valid yaml
 pack
   ignore: [.cache
 `
-		err := os.WriteFile(configPath, []byte(invalidYAML), 0644)
+		err := os.WriteFile(configPath, []byte(invalidConfig), 0644)
 		require.NoError(t, err)
 
 		t.Setenv("XDG_CONFIG_HOME", tempDir)

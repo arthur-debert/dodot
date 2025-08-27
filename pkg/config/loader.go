@@ -18,10 +18,10 @@ import (
 )
 
 //go:embed embedded/defaults.yaml
-var defaultConfigYAML []byte
+var defaultConfig []byte
 
 //go:embed embedded/user-defaults.yaml
-var userDefaultsYAML []byte
+var userDefaultConfig []byte
 
 type rawBytesProvider struct{ bytes []byte }
 
@@ -160,7 +160,7 @@ func getUserConfigPaths() []string {
 
 func getSystemDefaults() map[string]interface{} {
 	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: defaultConfigYAML}, yaml.Parser()); err != nil {
+	if err := k.Load(&rawBytesProvider{bytes: defaultConfig}, yaml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
 	return k.All()
@@ -168,7 +168,7 @@ func getSystemDefaults() map[string]interface{} {
 
 func parseUserDefaults() map[string]interface{} {
 	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: userDefaultsYAML}, yaml.Parser()); err != nil {
+	if err := k.Load(&rawBytesProvider{bytes: userDefaultConfig}, yaml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
 	return transformUserToInternal(k.All())
