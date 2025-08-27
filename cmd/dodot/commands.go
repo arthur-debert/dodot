@@ -884,21 +884,66 @@ func newSnippetCmd() *cobra.Command {
 			// Always use the actual data directory for the snippet
 			dataDir := p.DataDir()
 
+			// Create renderer for output
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
 			// Install shell scripts if requested
+			var installMessage string
 			if provision {
 				if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
 					return fmt.Errorf("failed to install shell integration: %w", err)
 				}
-				fmt.Fprintf(os.Stderr, "Shell integration scripts installed to %s/shell/\n", dataDir)
+				installMessage = fmt.Sprintf("Shell integration scripts installed to %s/shell/", dataDir)
 			}
 
 			// Get the appropriate snippet for the shell using the actual data directory
 			snippet := types.GetShellIntegrationSnippet(shell, dataDir)
 
-			// Output the snippet with a line break and comment
-			fmt.Println()
-			fmt.Println("# Run the dodot initialization script if it exists")
-			fmt.Print(snippet)
+			// Create a result structure for the snippet
+			snippetResult := struct {
+				Shell          string `json:"shell"`
+				DataDir        string `json:"dataDir"`
+				Snippet        string `json:"snippet"`
+				Installed      bool   `json:"installed"`
+				InstallMessage string `json:"installMessage,omitempty"`
+			}{
+				Shell:          shell,
+				DataDir:        dataDir,
+				Snippet:        snippet,
+				Installed:      provision,
+				InstallMessage: installMessage,
+			}
+
+			// For text/terminal output, we want just the snippet with optional message
+			// For JSON output, we want structured data
+			format, _ := cmd.Root().PersistentFlags().GetString("format")
+			parsedFormat, _ := ui.ParseFormat(format)
+
+			if parsedFormat == ui.FormatJSON || (parsedFormat == ui.FormatAuto && ui.DetectFormat(os.Stdout) == ui.FormatJSON) {
+				// JSON format - return structured data
+				if err := renderer.RenderResult(snippetResult); err != nil {
+					return fmt.Errorf("failed to render snippet: %w", err)
+				}
+			} else {
+				// Text/Terminal format - output the snippet directly with header comment
+				if installMessage != "" {
+					if err := renderer.RenderMessage(installMessage); err != nil {
+						return err
+					}
+					if err := renderer.RenderMessage(""); err != nil { // blank line
+						return err
+					}
+				}
+
+				// Output the snippet with comment header
+				fullSnippet := "\n# Run the dodot initialization script if it exists\n" + snippet
+				if err := renderer.RenderMessage(fullSnippet); err != nil {
+					return fmt.Errorf("failed to render snippet: %w", err)
+				}
+			}
 
 			return nil
 		},
