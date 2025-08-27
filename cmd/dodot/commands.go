@@ -1034,35 +1034,62 @@ func newDeprovisionCmd() *cobra.Command {
 				return fmt.Errorf(MsgErrDeprovisionPacks, err)
 			}
 
-			// Display results
-			if result.DryRun {
-				fmt.Println("DRY RUN - No changes made")
+			// Create renderer and display results
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
 			}
 
-			if result.TotalCleared == 0 {
-				fmt.Println("No provisioning state found to remove")
-			} else {
-				for _, pack := range result.Packs {
-					if len(pack.HandlersRun) > 0 {
-						fmt.Printf("\nPack: %s\n", pack.Name)
-						for _, handler := range pack.HandlersRun {
-							if handler.Error != nil {
-								fmt.Printf("  ✗ %s: %v\n", handler.HandlerName, handler.Error)
-							} else if len(handler.ClearedItems) > 0 {
-								fmt.Printf("  ✓ %s:\n", handler.HandlerName)
-								for _, item := range handler.ClearedItems {
-									fmt.Printf("    - %s: %s\n", item.Type, item.Description)
-								}
-								if handler.StateRemoved {
-									fmt.Println("    - State directory removed")
-								}
-							}
+			// After deprovisioning, run status to get the current state
+			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				Paths:        p,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to get pack status: %w", err)
+			}
+
+			// Update command name to reflect deprovision action
+			statusResult.Command = "deprovision"
+			statusResult.DryRun = dryRun
+
+			// Get pack names for the message
+			// For deprovision command, we want to list packs that had items cleared
+			packNames := make([]string, 0)
+			for _, pack := range result.Packs {
+				if len(pack.HandlersRun) > 0 {
+					// Check if any handler actually cleared items
+					for _, handler := range pack.HandlersRun {
+						if len(handler.ClearedItems) > 0 || handler.StateRemoved {
+							packNames = append(packNames, pack.Name)
+							break
 						}
 					}
 				}
-				fmt.Printf("\nTotal items cleared: %d\n", result.TotalCleared)
 			}
 
+			// Sort pack names for consistent output
+			sort.Strings(packNames)
+
+			// Create CommandResult with appropriate message
+			var message string
+			if result.TotalCleared == 0 {
+				message = "" // No message if nothing was cleared
+			} else {
+				message = types.FormatCommandMessage("deprovisioned", packNames)
+			}
+
+			cmdResult := &types.CommandResult{
+				Message: message,
+				Result:  statusResult,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			// Display any errors encountered
 			if len(result.Errors) > 0 {
 				fmt.Println("\nErrors encountered:")
 				for _, err := range result.Errors {
