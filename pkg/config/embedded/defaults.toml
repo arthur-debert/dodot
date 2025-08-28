@@ -1,11 +1,6 @@
 # Internal dodot system defaults
 # These are embedded in the binary and provide the base configuration
 
-[priorities.triggers]
-filename = 100
-directory = 90
-catchall = 0
-
 [priorities.handlers]
 symlink = 100
 path = 90

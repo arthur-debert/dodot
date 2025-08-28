@@ -27,9 +27,7 @@ type SpecialFiles struct {
 
 // Priorities holds component priority settings
 type Priorities struct {
-	Triggers map[string]int `koanf:"triggers"`
 	Handlers map[string]int `koanf:"handlers"`
-	Matchers map[string]int `koanf:"matchers"`
 }
 
 // Rule defines a pattern-to-handler mapping
@@ -135,26 +133,13 @@ func Default() *Config {
 			},
 		},
 		Priorities: Priorities{
-			Triggers: map[string]int{
-				"filename": 100,
-				"catchall": 0,
-			},
 			Handlers: map[string]int{
 				"symlink":  100,
 				"path":     90,
+				"install":  90,
+				"homebrew": 90,
+				"shell":    80,
 				"template": 70,
-			},
-			Matchers: map[string]int{
-				"install-script":   90,
-				"brewfile":         90,
-				"shell-aliases":    80,
-				"shell-profile":    80,
-				"bin-dir":          90,
-				"bin-path":         80,
-				"local-bin-dir":    90,
-				"local-bin-path":   80,
-				"template":         70,
-				"symlink-catchall": 0,
 			},
 		},
 		Rules: defaultRules(),

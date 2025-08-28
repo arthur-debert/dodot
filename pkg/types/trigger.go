@@ -1,41 +1,9 @@
 package types
 
-import "io/fs"
-
-// TriggerType represents the type of trigger - specific or catchall
-type TriggerType int
-
-const (
-	// TriggerTypeSpecific is for triggers that match specific patterns
-	TriggerTypeSpecific TriggerType = iota
-	// TriggerTypeCatchall is for triggers that match everything not already matched
-	TriggerTypeCatchall
-)
-
-// Trigger is an interface for pattern-matching engines that scan files
-// and directories within packs. When a trigger finds a match, it returns
-// metadata about what was found.
-type Trigger interface {
-	// Name returns the unique name of this trigger
-	Name() string
-
-	// Description returns a human-readable description of what this trigger matches
-	Description() string
-
-	// Match checks if the given file or directory matches this trigger's pattern
-	// It returns true if the file matches, along with any extracted metadata
-	Match(path string, info fs.FileInfo) (bool, map[string]interface{})
-
-	// Priority returns the priority of this trigger (higher = evaluated first)
-	Priority() int
-
-	// Type returns whether this is a specific or catchall trigger
-	Type() TriggerType
-}
-
-// TriggerMatch represents a successful trigger match on a file or directory
+// TriggerMatch represents a successful rule match on a file or directory
+// This is the output from the rules system that gets passed to handlers
 type TriggerMatch struct {
-	// TriggerName is the name of the trigger that matched
+	// TriggerName is the name of the trigger that matched (for legacy compatibility)
 	TriggerName string
 
 	// Pack is the name of the pack containing the matched file
@@ -47,7 +15,7 @@ type TriggerMatch struct {
 	// AbsolutePath is the absolute path to the file
 	AbsolutePath string
 
-	// Metadata contains any additional data extracted by the trigger
+	// Metadata contains any additional data extracted by the rule
 	Metadata map[string]interface{}
 
 	// HandlerName is the name of the handler that should process this match
@@ -59,6 +27,3 @@ type TriggerMatch struct {
 	// Priority determines the order of processing (higher = processed first)
 	Priority int
 }
-
-// TriggerFactory creates a new Trigger instance with the given options
-type TriggerFactory func(options map[string]interface{}) (Trigger, error)

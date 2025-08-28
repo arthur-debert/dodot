@@ -383,9 +383,7 @@ func configToMap(cfg *Config) map[string]interface{} {
 
 	// Build the rest of the config
 	m["priorities"] = map[string]interface{}{
-		"triggers": cfg.Priorities.Triggers,
 		"handlers": cfg.Priorities.Handlers,
-		"matchers": cfg.Priorities.Matchers,
 	}
 	m["file_permissions"] = map[string]interface{}{
 		"directory":  cfg.FilePermissions.Directory,

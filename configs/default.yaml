@@ -43,10 +43,6 @@ patterns:
 # Priorities determine the order in which components are processed
 # Higher numbers = processed first
 priorities:
-  # Trigger priorities (how files are matched)
-  triggers:
-    filename: 100  # Exact filename matches (highest priority)
-    catchall: 0    # Catches everything else (lowest priority)
   
   # Handler priorities (what actions are taken)
   handlers:
