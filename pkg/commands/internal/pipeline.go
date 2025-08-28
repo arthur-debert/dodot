@@ -21,6 +21,7 @@ type PipelineOptions struct {
 	RunMode            types.RunMode
 	Force              bool
 	EnableHomeSymlinks bool
+	UseSimplifiedRules bool // Use new rule-based system instead of matchers
 }
 
 // RunPipeline executes the core pipeline: GetPacks -> GetTriggers -> GetActions -> Execute
@@ -69,7 +70,13 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Msg("Packs selected")
 
 	// 4. Get firing triggers for the packs
-	matches, err := core.GetMatches(selectedPacks)
+	var matches []types.TriggerMatch
+	if opts.UseSimplifiedRules {
+		logger.Info().Msg("Using simplified rule-based matching")
+		matches, err = core.GetMatchesSimplified(selectedPacks)
+	} else {
+		matches, err = core.GetMatches(selectedPacks)
+	}
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get firing triggers")
 	}
