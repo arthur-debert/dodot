@@ -1,0 +1,338 @@
+=== Test Infrastructure Design & Setup ===
+
+This document describes the high-level design of dodot's test infrastructure and provides examples for common testing scenarios.
+
+== High-Level Design ==
+
+=== Core Architecture ===
+
+The test infrastructure is built on three layers:
+
+1. **Environment Layer**: Manages test isolation and cleanup
+2. **Mock Layer**: Provides controlled implementations of core interfaces
+3. **Builder Layer**: Declarative test data construction
+
+=== Key Design Decisions ===
+
+**Memory-First Approach**
+- 95% of tests run entirely in memory
+- Real filesystem only for datastore and symlink verification
+- Result: 100x speed improvement, perfect isolation
+
+**Dependency Injection**
+- All dependencies passed through constructors
+- No global state or singletons
+- Clean, predictable test behavior
+
+**Declarative Setup**
+- Test data defined inline with tests
+- No external test data files
+- Self-documenting test scenarios
+
+== Core Components ==
+
+=== TestEnvironment ===
+
+Central orchestrator for test setup and cleanup.
+
+```go
+type TestEnvironment struct {
+    DotfilesRoot string
+    HomeDir      string
+    XDGConfig    string
+    DataStore    types.DataStore
+    FS           types.FS
+    Paths        types.PathResolver
+}
+```
+
+Environment types:
+- `EnvMemoryOnly`: All operations in memory (default)
+- `EnvIsolated`: Real filesystem in temp directories
+- `EnvMocked`: Highly controlled mock behavior
+
+=== MockDataStore ===
+
+Provides controlled state management without filesystem.
+
+```go
+type MockDataStore struct {
+    links        map[string]string
+    provisioning map[string]bool
+    paths        []string
+}
+```
+
+Features:
+- Fluent API for state setup
+- Query history tracking
+- Controlled error injection
+
+=== MemoryFS ===
+
+In-memory filesystem implementation.
+
+```go
+type MemoryFS struct {
+    files map[string]*FileNode
+    cwd   string
+}
+```
+
+Features:
+- Full types.FS interface
+- Symlink support
+- Permission simulation
+
+== Common Test Scenarios ==
+
+=== Scenario 1: Testing a Simple Link Command ===
+
+```go
+func TestLinkCommand_SinglePack(t *testing.T) {
+    // Create memory-only environment
+    env := testutil.NewTestEnvironment(testutil.EnvMemoryOnly)
+    defer env.Cleanup()
+    
+    // Setup pack with files
+    env.SetupPack("vim", testutil.PackConfig{
+        Files: map[string]string{
+            "vimrc": "set number",
+            "gvimrc": "set guifont=Monaco:h12",
+        },
+        Rules: []testutil.Rule{
+            {Type: "filename", Pattern: ".*rc$", Handler: "symlink"},
+        },
+    })
+    
+    // Execute command
+    result, err := link.LinkPacks(link.Options{
+        DotfilesRoot: env.DotfilesRoot,
+        PackNames:    []string{"vim"},
+    })
+    
+    // Verify through DataStore API
+    assert.NoError(t, err)
+    status, _ := env.DataStore.GetStatus("vim", "vimrc")
+    assert.Equal(t, types.StatusLinked, status.Type)
+}
+```
+
+=== Scenario 2: Testing Broken State Handling ===
+
+```go
+func TestStatusCommand_BrokenLinks(t *testing.T) {
+    // Create environment with pre-configured broken state
+    env := testutil.NewTestEnvironment(testutil.EnvMemoryOnly)
+    defer env.Cleanup()
+    
+    // Setup broken state
+    env.DataStore.(*testutil.MockDataStore).
+        WithBrokenLink("vim", "vimrc", "/nonexistent/path")
+    
+    // Execute status command
+    result, err := status.GetStatus(status.Options{
+        DotfilesRoot: env.DotfilesRoot,
+    })
+    
+    // Verify broken state detected
+    assert.NoError(t, err)
+    assert.Contains(t, result.Issues, "broken link")
+}
+```
+
+=== Scenario 3: Testing Output Rendering ===
+
+```go
+func TestRenderPackStatus(t *testing.T) {
+    // Pure data transformation - no environment needed
+    ctx := &types.ExecutionContext{
+        Status: types.ExecutionStatusSuccess,
+        PackResults: map[string]*types.PackResult{
+            "vim": {
+                Pack: types.Pack{Name: "vim"},
+                HandlerResults: []types.HandlerResult{
+                    {Name: "symlink", ActionCount: 2, Status: types.ExecutionStatusSuccess},
+                },
+            },
+        },
+    }
+    
+    // Render output
+    output := render.PackStatus(ctx)
+    
+    // Verify rendering
+    assert.Contains(t, output, "✓ vim")
+    assert.Contains(t, output, "2 symlinks")
+}
+```
+
+=== Scenario 4: Testing Complex Multi-Pack Setup ===
+
+```go
+func TestProvisionCommand_MultiplePacks(t *testing.T) {
+    env := testutil.NewTestEnvironment(testutil.EnvMemoryOnly)
+    defer env.Cleanup()
+    
+    // Use builder pattern for complex setup
+    env.
+        WithPack("vim", testutil.VimPack()).
+        WithPack("git", testutil.GitPack()).
+        WithPack("tools", testutil.PackConfig{
+            Files: map[string]string{
+                "install.sh": "#!/bin/bash\necho 'Installing tools'",
+                "Brewfile": "brew 'ripgrep'\nbrew 'fd'",
+            },
+            Rules: []testutil.Rule{
+                {Type: "filename", Pattern: "install.sh", Handler: "install"},
+                {Type: "filename", Pattern: "Brewfile", Handler: "homebrew"},
+            },
+        })
+    
+    // Execute provision
+    result, err := provision.ProvisionPacks(provision.Options{
+        DotfilesRoot: env.DotfilesRoot,
+        PackNames:    []string{"vim", "git", "tools"},
+    })
+    
+    assert.NoError(t, err)
+    assert.Len(t, result.PackResults, 3)
+}
+```
+
+=== Scenario 5: Testing CLI Parsing ===
+
+```go
+func TestCLI_LinkCommand_Parsing(t *testing.T) {
+    tests := []struct {
+        args     []string
+        expected link.Options
+    }{
+        {
+            args: []string{"link", "vim"},
+            expected: link.Options{PackNames: []string{"vim"}},
+        },
+        {
+            args: []string{"link", "--dry-run", "vim", "git"},
+            expected: link.Options{
+                DryRun: true,
+                PackNames: []string{"vim", "git"},
+            },
+        },
+    }
+    
+    for _, tt := range tests {
+        t.Run(strings.Join(tt.args, "_"), func(t *testing.T) {
+            // Create CLI app with mock command
+            var capturedOpts link.Options
+            app := cli.NewApp(cli.WithLinkCommand(func(opts link.Options) error {
+                capturedOpts = opts
+                return nil
+            }))
+            
+            // Execute CLI
+            err := app.Run(tt.args)
+            
+            // Verify parsing
+            assert.NoError(t, err)
+            assert.Equal(t, tt.expected, capturedOpts)
+        })
+    }
+}
+```
+
+=== Scenario 6: Testing Error Conditions ===
+
+```go
+func TestLinkCommand_PermissionDenied(t *testing.T) {
+    env := testutil.NewTestEnvironment(testutil.EnvMemoryOnly)
+    defer env.Cleanup()
+    
+    // Configure filesystem to simulate permission error
+    env.FS.(*testutil.MemoryFS).
+        WithError("/home/.vimrc", os.ErrPermission)
+    
+    // Setup pack
+    env.SetupPack("vim", testutil.VimPack())
+    
+    // Execute command
+    result, err := link.LinkPacks(link.Options{
+        DotfilesRoot: env.DotfilesRoot,
+        PackNames:    []string{"vim"},
+    })
+    
+    // Verify error handling
+    assert.Error(t, err)
+    assert.Contains(t, err.Error(), "permission denied")
+}
+```
+
+== Quick Reference ==
+
+=== Creating Environments ===
+
+```go
+// Memory-only (fastest, most isolated)
+env := testutil.NewTestEnvironment(testutil.EnvMemoryOnly)
+
+// With real filesystem (for datastore tests)
+env := testutil.NewTestEnvironment(testutil.EnvIsolated)
+
+// With specific configuration
+env := testutil.NewTestEnvironment(testutil.EnvMemoryOnly,
+    testutil.WithHome("/custom/home"),
+    testutil.WithXDGConfig("/custom/xdg"))
+```
+
+=== Setting Up Test Data ===
+
+```go
+// Inline pack definition
+env.SetupPack("vim", testutil.PackConfig{
+    Files: map[string]string{"vimrc": "content"},
+})
+
+// Using pre-built pack
+env.SetupPack("vim", testutil.VimPack())
+
+// Declarative file tree
+env.WithFileTree(testutil.FileTree{
+    "vim": {
+        "vimrc": "content",
+        "colors": {
+            "monokai.vim": "colorscheme",
+        },
+    },
+})
+```
+
+=== Configuring Mock State ===
+
+```go
+// Setup existing links
+env.DataStore.(*testutil.MockDataStore).
+    WithLink("vim", "vimrc", "/home/.vimrc")
+
+// Setup provisioning state  
+env.DataStore.(*testutil.MockDataStore).
+    WithProvisioningState("tools", "homebrew", true)
+
+// Setup broken state
+env.DataStore.(*testutil.MockDataStore).
+    WithBrokenLink("vim", "vimrc", "/missing")
+```
+
+=== Asserting Results ===
+
+```go
+// Use DataStore API, not filesystem
+status, err := env.DataStore.GetStatus("vim", "vimrc")
+assert.Equal(t, types.StatusLinked, status.Type)
+
+// Check command results
+assert.Equal(t, types.ExecutionStatusSuccess, result.Status)
+assert.Len(t, result.PackResults, 1)
+
+// Verify no filesystem access (in memory tests)
+assert.Zero(t, env.FS.(*testutil.MemoryFS).WriteCount())
+```

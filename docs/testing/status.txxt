@@ -1,0 +1,116 @@
+=== Testing Infrastructure & Migration Status ===
+
+This document tracks the implementation status of the new testing infrastructure and the migration progress for each package.
+
+All work is to be done on branch tests/revamp. 
+
+== Testing Infrastructure Status ==
+
+| Component | Description | Path | Status |
+|-----------|-------------|------|--------|
+| TestEnvironment | Core test orchestrator with isolation/cleanup | pkg/testutil/environment.go | planned |
+| MemoryFS | In-memory filesystem implementation | pkg/testutil/memoryfs.go | planned |
+| MockDataStore | Mock state management without filesystem | pkg/testutil/mock_datastore.go | planned |
+| PackBuilder | Declarative pack setup builder | pkg/testutil/pack_builder.go | planned |
+| FileTree | Declarative file structure definition | pkg/testutil/filetree.go | planned |
+| MockPathResolver | Mock XDG/home path resolution | pkg/testutil/mock_paths.go | planned |
+| TestScenarios | Pre-built complex test scenarios | pkg/testutil/scenarios.go | planned |
+| CLITestHelper | CLI parsing test utilities | pkg/testutil/cli_helper.go | planned |
+| OutputMatcher | Flexible output assertion helpers | pkg/testutil/output_matcher.go | planned |
+| ErrorSimulator | Controlled error injection | pkg/testutil/error_simulator.go | planned |
+
+== Package Migration Status ==
+
+Note: Current test files will be renamed to *_toremove_test.go before migration begins.
+
+| Package | Test Type | Current Files | Migration Status | Notes |
+|---------|-----------|---------------|------------------|-------|
+| pkg/actions | Unit | actions_test.go | planned | Pure logic tests |
+| pkg/cobrax/topics | Unit | topics_test.go | planned | Template tests |
+| pkg/commands/addignore | Business Logic | addignore_test.go | planned | Command orchestration |
+| pkg/commands/adopt | Business Logic | adopt_test.go | planned | Complex FS operations |
+| pkg/commands/deprovision | Business Logic | deprovision_test.go | planned | State manipulation |
+| pkg/commands/fill | Business Logic | - | planned | Missing tests |
+| pkg/commands/genconfig | Business Logic | genconfig_test.go | planned | Config generation |
+| pkg/commands/initialize | Business Logic | initialize_test.go | planned | Setup operations |
+| pkg/commands/internal | Business Logic | pipeline_test.go | planned | Core pipeline |
+| pkg/commands/link | Business Logic | link_test.go | planned | Primary use case |
+| pkg/commands/list | Business Logic | list_test.go | planned | Query operations |
+| pkg/commands/off | Business Logic | off_test.go | planned | Handler disabling |
+| pkg/commands/on | Business Logic | on_test.go | planned | Handler enabling |
+| pkg/commands/provision | Business Logic | provision_test.go | planned | Multi-phase command |
+| pkg/commands/status | Business Logic | status_test.go | planned | State inspection |
+| pkg/commands/unlink | Business Logic | unlink_test.go | planned | Cleanup operations |
+| pkg/config | Unit | config_test.go | planned | Configuration logic |
+| pkg/core | Integration | match_test.go, actions_test.go | planned | Pipeline integration |
+| pkg/datastore | DataStore | datastore_test.go | planned | REAL FS ALLOWED |
+| pkg/errors | Unit | errors_test.go | planned | Error handling |
+| pkg/executor | Integration | executor_test.go, clear_test.go | planned | Action execution |
+| pkg/filesystem | Unit | filesystem_test.go | planned | FS abstraction |
+| pkg/handlers/homebrew | Unit/Integration | homebrew_test.go | planned | Handler logic |
+| pkg/handlers/install | Unit/Integration | install_test.go | planned | Handler logic |
+| pkg/handlers/path | Unit/Integration | path_test.go | planned | Handler logic |
+| pkg/handlers/shell | Unit/Integration | shell_test.go | planned | Handler logic |
+| pkg/handlers/symlink | Unit/Integration | symlink_test.go | planned | REAL FS for symlinks |
+| pkg/internal/hashutil | Unit | hash_test.go | planned | Hashing utilities |
+| pkg/logging | Unit | logging_test.go | planned | Logging setup |
+| pkg/packs | Unit | packs_test.go | planned | Pack operations |
+| pkg/paths | Unit | paths_test.go, validation_test.go | planned | Path logic |
+| pkg/rules | Unit | rules_test.go | planned | Rule matching |
+| pkg/shell | Unit | shell_test.go | planned | Shell detection |
+| pkg/testutil | Meta | - | planned | Test utilities |
+| pkg/types | Unit | types_test.go | planned | Type definitions |
+| pkg/ui/display | Output | display_test.go | planned | Display logic |
+| pkg/ui/lipbalm | Output | lipbalm_test.go | planned | Terminal UI |
+| pkg/ui/output | Output | output_test.go | planned | Output rendering |
+| pkg/ui/output/styles | Output | styles_test.go | planned | Style definitions |
+
+== Migration Phases ==
+
+=== Phase 1: Infrastructure (Current) ===
+- [ ] Implement TestEnvironment
+- [ ] Implement MemoryFS
+- [ ] Implement MockDataStore
+- [ ] Implement builders and helpers
+- [ ] Create example migrations
+
+=== Phase 2: Unit Tests ===
+- [ ] Migrate pure unit tests first
+- [ ] pkg/handlers/* (logic only)
+- [ ] pkg/types, pkg/errors, pkg/config
+- [ ] Establish patterns
+
+=== Phase 3: Business Logic ===
+- [ ] Migrate pkg/commands/*
+- [ ] Focus on command orchestration
+- [ ] Remove FS dependencies
+
+=== Phase 4: Integration Tests ===
+- [ ] Migrate pkg/core
+- [ ] Migrate pkg/executor
+- [ ] Complex pipeline tests
+
+=== Phase 5: Special Cases ===
+- [ ] pkg/datastore (real FS)
+- [ ] pkg/handlers/symlink (symlink verification)
+- [ ] End-to-end smoke tests
+
+=== Phase 6: Cleanup ===
+- [ ] Remove all *_toremove_test.go files
+- [ ] Update CI configuration
+- [ ] Performance validation (<2s target)
+
+== Success Metrics ==
+
+- **Performance**: <2s total test time (from 15s)
+- **Isolation**: Zero flaky tests
+- **Clarity**: Each test has single purpose
+- **Coverage**: Maintain >80% coverage
+- **Maintainability**: <5 test failures per feature change
+
+== Notes ==
+
+- Tests marked "REAL FS ALLOWED" can use actual filesystem
+- All other tests must use memory/mocks
+- Update status as components are implemented
+- Track specific issues/blockers in Notes column
