@@ -42,10 +42,8 @@ executable = 493 # 0755 in decimal
 # Link path configuration - these always go to $HOME
 [link_paths.force_home]
 ssh = true
-gnupg = true
 aws = true
 kube = true
-docker = true
 gitconfig = true
 bashrc = true
 zshrc = true
