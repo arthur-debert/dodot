@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -81,15 +82,16 @@ func (m *MockDataStore) GetStatus(pack, sourceFile string) (types.Status, error)
 	}
 	
 	key := fmt.Sprintf("%s:%s", pack, sourceFile)
-	if target, exists := m.links[key]; exists {
+	if _, exists := m.links[key]; exists {
 		return types.Status{
-			Type:   types.StatusLinked,
-			Target: target,
+			State:   types.StatusStateReady,
+			Message: "Linked",
 		}, nil
 	}
 	
 	return types.Status{
-		Type: types.StatusNotLinked,
+		State:   types.StatusStateMissing,
+		Message: "Not linked",
 	}, nil
 }
 
@@ -197,6 +199,197 @@ func (m *MockDataStore) GetCalls() []string {
 	calls := make([]string, len(m.calls))
 	copy(calls, m.calls)
 	return calls
+}
+
+// AddToShellProfile adds a script to the shell profile
+func (m *MockDataStore) AddToShellProfile(pack, scriptPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("AddToShellProfile(%s,%s)", pack, scriptPath))
+	
+	if m.errorOn == "AddToShellProfile" {
+		return m.errorToReturn
+	}
+	
+	key := fmt.Sprintf("%s:%s", pack, scriptPath)
+	m.shellProfiles[key] = "added"
+	return nil
+}
+
+// GetSymlinkStatus returns symlink-specific status
+func (m *MockDataStore) GetSymlinkStatus(pack, sourceFile string) (types.Status, error) {
+	return m.GetStatus(pack, sourceFile)
+}
+
+// GetPathStatus returns path-specific status
+func (m *MockDataStore) GetPathStatus(pack, dirPath string) (types.Status, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("GetPathStatus(%s,%s)", pack, dirPath))
+	
+	if m.errorOn == "GetPathStatus" {
+		return types.Status{}, m.errorToReturn
+	}
+	
+	if paths, exists := m.paths[pack]; exists {
+		for _, p := range paths {
+			if p == dirPath {
+				return types.Status{
+					State:   types.StatusStateReady,
+					Message: "In PATH",
+				}, nil
+			}
+		}
+	}
+	
+	return types.Status{
+		State:   types.StatusStateMissing,
+		Message: "Not in PATH",
+	}, nil
+}
+
+// GetShellProfileStatus returns shell profile status
+func (m *MockDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("GetShellProfileStatus(%s,%s)", pack, scriptPath))
+	
+	if m.errorOn == "GetShellProfileStatus" {
+		return types.Status{}, m.errorToReturn
+	}
+	
+	key := fmt.Sprintf("%s:%s", pack, scriptPath)
+	if _, exists := m.shellProfiles[key]; exists {
+		return types.Status{
+			State:   types.StatusStateReady,
+			Message: "Added to shell profile",
+		}, nil
+	}
+	
+	return types.Status{
+		State:   types.StatusStateMissing,
+		Message: "Not in shell profile",
+	}, nil
+}
+
+// GetProvisioningStatus returns provisioning status
+func (m *MockDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("GetProvisioningStatus(%s,%s,%s)", pack, sentinelName, currentChecksum))
+	
+	if m.errorOn == "GetProvisioningStatus" {
+		return types.Status{}, m.errorToReturn
+	}
+	
+	if packMap, exists := m.provisioning[pack]; exists {
+		if storedChecksum, exists := packMap[sentinelName]; exists {
+			if storedChecksum == currentChecksum {
+				return types.Status{
+					State:   types.StatusStateReady,
+					Message: "Provisioned",
+				}, nil
+			}
+			return types.Status{
+				State:   types.StatusStateError,
+				Message: "Checksum mismatch",
+			}, nil
+		}
+	}
+	
+	return types.Status{
+		State:   types.StatusStateMissing,
+		Message: "Not provisioned",
+	}, nil
+}
+
+// GetBrewStatus returns Homebrew status
+func (m *MockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error) {
+	// For mock purposes, treat it like provisioning
+	return m.GetProvisioningStatus(pack, brewfilePath+".sentinel", currentChecksum)
+}
+
+// DeleteProvisioningState removes provisioning state for a handler
+func (m *MockDataStore) DeleteProvisioningState(packName, handlerName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("DeleteProvisioningState(%s,%s)", packName, handlerName))
+	
+	if m.errorOn == "DeleteProvisioningState" {
+		return m.errorToReturn
+	}
+	
+	// For mock, we'll just clear all provisioning for the pack/handler combination
+	if packMap, exists := m.provisioning[packName]; exists {
+		for sentinel := range packMap {
+			if sentinel == handlerName || sentinel == handlerName+".sentinel" {
+				delete(packMap, sentinel)
+			}
+		}
+	}
+	
+	return nil
+}
+
+// GetProvisioningHandlers returns handlers that have provisioning state
+func (m *MockDataStore) GetProvisioningHandlers(packName string) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("GetProvisioningHandlers(%s)", packName))
+	
+	if m.errorOn == "GetProvisioningHandlers" {
+		return nil, m.errorToReturn
+	}
+	
+	handlers := []string{}
+	if packMap, exists := m.provisioning[packName]; exists {
+		handlerSet := make(map[string]bool)
+		for sentinel := range packMap {
+			// Extract handler name from sentinel
+			handler := sentinel
+			if idx := strings.Index(handler, "."); idx > 0 {
+				handler = handler[:idx]
+			}
+			handlerSet[handler] = true
+		}
+		
+		for handler := range handlerSet {
+			handlers = append(handlers, handler)
+		}
+	}
+	
+	return handlers, nil
+}
+
+// ListProvisioningState returns all provisioning state
+func (m *MockDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	m.calls = append(m.calls, fmt.Sprintf("ListProvisioningState(%s)", packName))
+	
+	if m.errorOn == "ListProvisioningState" {
+		return nil, m.errorToReturn
+	}
+	
+	result := make(map[string][]string)
+	if packMap, exists := m.provisioning[packName]; exists {
+		for sentinel := range packMap {
+			handler := sentinel
+			if idx := strings.Index(handler, "."); idx > 0 {
+				handler = handler[:idx]
+			}
+			result[handler] = append(result[handler], sentinel)
+		}
+	}
+	
+	return result, nil
 }
 
 // Reset clears all state and call history
