@@ -54,7 +54,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/handlers/path | Unit/Integration | path_test.go | migrated | 97.62% | 97.62% | Handler logic |
 | pkg/handlers/shell | Unit/Integration | shell_test.go | planned | 77.78% | 0% | Handler logic |
 | pkg/handlers/symlink | Unit/Integration | symlink_test.go | migrated | 81.91% | 81.91% | Handler logic, memory FS |
-| pkg/internal/hashutil | Unit | hash_test.go | planned | 88.89% | 0% | Hashing utilities |
+| pkg/internal/hashutil | Unit | hash_test.go | migrated | 88.89% | 100.00% | Hashing utilities |
 | pkg/logging | Unit | logging_test.go | planned | 82.22% | 0% | Logging setup |
 | pkg/packs | Unit | packs_test.go | planned | 64.79% | 0% | Pack operations |
 | pkg/paths | Unit | paths_test.go, validation_test.go | planned | 75.00% | 0% | Path logic |
