@@ -34,7 +34,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/genconfig | Business Logic | genconfig_test.go | planned | Config generation |
 | pkg/commands/initialize | Business Logic | initialize_test.go | planned | Setup operations |
 | pkg/commands/internal | Business Logic | pipeline_test.go | planned | Core pipeline |
-| pkg/commands/link | Business Logic | link_test.go | planned | Primary use case |
+| pkg/commands/link | Business Logic | link_test.go | migrated | Primary use case |
 | pkg/commands/list | Business Logic | list_test.go | planned | Query operations |
 | pkg/commands/off | Business Logic | off_test.go | planned | Handler disabling |
 | pkg/commands/on | Business Logic | on_test.go | planned | Handler enabling |
@@ -44,14 +44,14 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/config | Unit | config_test.go | planned | Configuration logic |
 | pkg/core | Integration | match_test.go, actions_test.go | planned | Pipeline integration |
 | pkg/datastore | DataStore | datastore_test.go | planned | REAL FS ALLOWED |
-| pkg/errors | Unit | errors_test.go | planned | Error handling |
+| pkg/errors | Unit | errors_test.go | migrated | Error handling |
 | pkg/executor | Integration | executor_test.go, clear_test.go | planned | Action execution |
 | pkg/filesystem | Unit | filesystem_test.go | planned | FS abstraction |
 | pkg/handlers/homebrew | Unit/Integration | homebrew_test.go | planned | Handler logic |
 | pkg/handlers/install | Unit/Integration | install_test.go | planned | Handler logic |
 | pkg/handlers/path | Unit/Integration | path_test.go | planned | Handler logic |
 | pkg/handlers/shell | Unit/Integration | shell_test.go | planned | Handler logic |
-| pkg/handlers/symlink | Unit/Integration | symlink_test.go | planned | REAL FS for symlinks |
+| pkg/handlers/symlink | Unit/Integration | symlink_test.go | migrated | Handler logic, memory FS |
 | pkg/internal/hashutil | Unit | hash_test.go | planned | Hashing utilities |
 | pkg/logging | Unit | logging_test.go | planned | Logging setup |
 | pkg/packs | Unit | packs_test.go | planned | Pack operations |
@@ -62,17 +62,17 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/types | Unit | types_test.go | planned | Type definitions |
 | pkg/ui/display | Output | display_test.go | planned | Display logic |
 | pkg/ui/lipbalm | Output | lipbalm_test.go | planned | Terminal UI |
-| pkg/ui/output | Output | output_test.go | planned | Output rendering |
+| pkg/ui/output | Output | renderer_test.go | migrated | Output rendering |
 | pkg/ui/output/styles | Output | styles_test.go | planned | Style definitions |
 
 == Migration Phases ==
 
-=== Phase 1: Infrastructure (Current) ===
-- [ ] Implement TestEnvironment
-- [ ] Implement MemoryFS
-- [ ] Implement MockDataStore
-- [ ] Implement builders and helpers
-- [ ] Create example migrations
+=== Phase 1: Infrastructure (COMPLETED) ===
+- [x] Implement TestEnvironment
+- [x] Implement MemoryFS
+- [x] Implement MockDataStore
+- [x] Implement builders and helpers
+- [x] Create example migrations
 
 === Phase 2: Unit Tests ===
 - [ ] Migrate pure unit tests first
@@ -108,9 +108,32 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 - **Coverage**: Maintain >80% coverage
 - **Maintainability**: <5 test failures per feature change
 
+== Example Migrations Created ==
+
+1. **Unit Test**: pkg/errors/errors_test.go
+   - Pure logic testing with no dependencies
+   - Tests error creation, wrapping, and utilities
+   - Clear test naming and structure
+
+2. **Handler Test**: pkg/handlers/symlink/symlink_test.go  
+   - Mix of unit and integration testing
+   - Uses MockDataStore and MemoryFS
+   - Tests action creation, status checking, and clearing
+
+3. **Command Test**: pkg/commands/link/link_test.go
+   - Business logic integration testing
+   - Full command orchestration with mocks
+   - Tests multiple scenarios including conflicts
+
+4. **Output Test**: pkg/ui/output/renderer_test.go
+   - Pure data transformation testing
+   - No filesystem or external dependencies
+   - Tests different rendering scenarios
+
 == Notes ==
 
 - Tests marked "REAL FS ALLOWED" can use actual filesystem
 - All other tests must use memory/mocks
 - Update status as components are implemented
 - Track specific issues/blockers in Notes column
+- Example migrations demonstrate all major test patterns
