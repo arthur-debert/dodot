@@ -166,13 +166,13 @@ renderer := output.NewTextRenderer()
 
 ### Separation of Concerns
 Each component has a single responsibility:
-- Triggers: Detect files
+- Rules: Match files to handlers
 - Handlers: Generate actions
 - Actions: Execute operations
 - DataStore: Manage state
 
 ### Pure Functions
-Handlers and triggers are stateless:
+Handlers and rules are stateless:
 - Easy to test
 - No side effects
 - Predictable behavior

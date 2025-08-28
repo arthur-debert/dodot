@@ -88,7 +88,7 @@
                 homebrew = "Brewfile"
             -- toml
         
-        This creates matchers that:
+        This creates rules that:
             - Link files in "bin/" to user's PATH
             - Run "install.sh" for provisioning
             - Source shell files in profiles
@@ -137,25 +137,23 @@
         Arrays append, scalars override at each level.
 
 
-6. Custom Matchers
+6. Custom Rules
 
-    Advanced users can define custom matchers in configuration:
+    Advanced users can define custom rules in configuration:
     
         -- 
-            [[matchers]]
-            name = "python-venv"
+            [[rules]]
+            pattern = "venv/"
+            handler = "install"
             priority = 85
             
-            [matchers.trigger]
-            type = "directory"
-            data.pattern = "venv"
-            
-            [matchers.handler]
-            type = "provision"
-            data.sentinel = ".venv-provisioned"
+            [[rules]]
+            pattern = "*.py"
+            handler = "symlink"
+            priority = 70
         -- toml
     
-    Matchers from configuration are added to the default matcher set.
+    Rules from configuration are added to the default rule set.
 
 
 Common Use Cases
