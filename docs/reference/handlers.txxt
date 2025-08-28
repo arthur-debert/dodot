@@ -72,7 +72,7 @@ Each handler's doc.go file contains:
 
 1. **Overview**: What the handler does
 2. **When It Runs**: Link vs Provision mode
-3. **Standard Configuration**: Example matcher configs
+3. **Standard Configuration**: Example rule configs
 4. **File Selection Process**: How files are matched
 5. **Execution Strategy**: How it works internally
 6. **Storage Locations**: Where files are stored
@@ -88,9 +88,9 @@ Each handler's doc.go file contains:
 While dodot includes comprehensive built-in handlers, you can create custom ones:
 
 1. Implement the `Handler` interface
-2. Register with the handler registry
+2. Add handler creation in `pkg/rules/integration.go`
 3. Define the action type and execution
-4. Add to your configuration
+4. Add rules to your configuration
 
 See `pkg/types/handler.go` for the interface definition.
 
@@ -105,7 +105,7 @@ See `pkg/types/handler.go` for the interface definition.
 
 ## Troubleshooting
 
-- **Not running?** Check matcher configuration and priorities
+- **Not running?** Check rule patterns and priorities
 - **Errors?** Each doc.go lists common error codes
 - **Wrong phase?** Verify RunModeOnce vs RunModeMany
 - **Conflicts?** Use --force flag when appropriate

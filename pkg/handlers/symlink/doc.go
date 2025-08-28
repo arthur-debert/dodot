@@ -118,7 +118,7 @@
 //
 // 1. dodot finds ~/dotfiles/vim/ pack
 // 2. FileNameTrigger matches .vimrc against pattern ".vimrc"
-// 3. Creates TriggerMatch{PackName: "vim", FilePath: "~/dotfiles/vim/.vimrc"}
+// 3. Creates RuleMatch{PackName: "vim", FilePath: "~/dotfiles/vim/.vimrc"}
 // 4. SymlinkHandler.Process() receives the match
 // 5. Generates Action{Type: "link", Source: "~/dotfiles/vim/.vimrc", Target: "~/.vimrc"}
 // 6. DirectExecutor creates intermediate symlink in ~/.local/share/dodot/deployed/symlink/

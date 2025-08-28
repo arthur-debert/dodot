@@ -1,17 +1,18 @@
 package config
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGenerateMatchersFromMapping(t *testing.T) {
+func TestGenerateRulesFromMapping(t *testing.T) {
 	tests := []struct {
 		name     string
 		mappings Mappings
-		expected int // expected number of matchers
-		validate func(t *testing.T, matchers []MatcherConfig)
+		expected int // expected number of rules
+		validate func(t *testing.T, rules []Rule)
 	}{
 		{
 			name:     "empty file mapping",
@@ -24,12 +25,9 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 				Path: "bin",
 			},
 			expected: 1,
-			validate: func(t *testing.T, matchers []MatcherConfig) {
-				assert.Equal(t, "mapped-path", matchers[0].Name)
-				assert.Equal(t, "directory", matchers[0].Trigger.Type)
-				assert.Equal(t, "bin", matchers[0].Trigger.Data["pattern"])
-				assert.Equal(t, "path", matchers[0].Handler.Type)
-				assert.Equal(t, 90, matchers[0].Priority)
+			validate: func(t *testing.T, rules []Rule) {
+				assert.Equal(t, "bin/", rules[0].Pattern)
+				assert.Equal(t, "path", rules[0].Handler)
 			},
 		},
 		{
@@ -38,95 +36,65 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 				Install: "setup.sh",
 			},
 			expected: 1,
-			validate: func(t *testing.T, matchers []MatcherConfig) {
-				assert.Equal(t, "mapped-install", matchers[0].Name)
-				assert.Equal(t, "filename", matchers[0].Trigger.Type)
-				assert.Equal(t, "setup.sh", matchers[0].Trigger.Data["pattern"])
-				assert.Equal(t, "install", matchers[0].Handler.Type)
-				assert.Equal(t, 90, matchers[0].Priority)
+			validate: func(t *testing.T, rules []Rule) {
+				assert.Equal(t, "setup.sh", rules[0].Pattern)
+				assert.Equal(t, "install", rules[0].Handler)
 			},
 		},
 		{
 			name: "shell mappings with placement detection",
 			mappings: Mappings{
-				Shell: []string{"aliases.sh", "profile.sh", "login.sh", "custom.sh"},
+				Shell: []string{"*.sh", "*aliases.sh", "login.sh"},
 			},
-			expected: 4,
-			validate: func(t *testing.T, matchers []MatcherConfig) {
-				// Check aliases placement
-				assert.Equal(t, "mapped-shell-0", matchers[0].Name)
-				assert.Equal(t, "aliases.sh", matchers[0].Trigger.Data["pattern"])
-				assert.Equal(t, "aliases", matchers[0].Handler.Data["placement"])
+			expected: 3,
+			validate: func(t *testing.T, rules []Rule) {
+				assert.Equal(t, "*.sh", rules[0].Pattern)
+				assert.Equal(t, "shell", rules[0].Handler)
+				assert.Equal(t, "environment", rules[0].Options["placement"])
 
-				// Check profile placement (defaults to environment)
-				assert.Equal(t, "mapped-shell-1", matchers[1].Name)
-				assert.Equal(t, "profile.sh", matchers[1].Trigger.Data["pattern"])
-				assert.Equal(t, "environment", matchers[1].Handler.Data["placement"])
+				assert.Equal(t, "*aliases.sh", rules[1].Pattern)
+				assert.Equal(t, "shell", rules[1].Handler)
+				assert.Equal(t, "aliases", rules[1].Options["placement"])
 
-				// Check login placement
-				assert.Equal(t, "mapped-shell-2", matchers[2].Name)
-				assert.Equal(t, "login.sh", matchers[2].Trigger.Data["pattern"])
-				assert.Equal(t, "login", matchers[2].Handler.Data["placement"])
-
-				// Check custom placement (defaults to environment)
-				assert.Equal(t, "mapped-shell-3", matchers[3].Name)
-				assert.Equal(t, "custom.sh", matchers[3].Trigger.Data["pattern"])
-				assert.Equal(t, "environment", matchers[3].Handler.Data["placement"])
-
-				// All should have shell handler and priority 80
-				for _, m := range matchers {
-					assert.Equal(t, "filename", m.Trigger.Type)
-					assert.Equal(t, "shell", m.Handler.Type)
-					assert.Equal(t, 80, m.Priority)
-				}
+				assert.Equal(t, "login.sh", rules[2].Pattern)
+				assert.Equal(t, "shell", rules[2].Handler)
+				assert.Equal(t, "login", rules[2].Options["placement"])
 			},
 		},
 		{
 			name: "homebrew mapping only",
 			mappings: Mappings{
-				Homebrew: "Brewfile.local",
+				Homebrew: "Brewfile",
 			},
 			expected: 1,
-			validate: func(t *testing.T, matchers []MatcherConfig) {
-				assert.Equal(t, "mapped-homebrew", matchers[0].Name)
-				assert.Equal(t, "filename", matchers[0].Trigger.Type)
-				assert.Equal(t, "Brewfile.local", matchers[0].Trigger.Data["pattern"])
-				assert.Equal(t, "homebrew", matchers[0].Handler.Type)
-				assert.Equal(t, 90, matchers[0].Priority)
+			validate: func(t *testing.T, rules []Rule) {
+				assert.Equal(t, "Brewfile", rules[0].Pattern)
+				assert.Equal(t, "homebrew", rules[0].Handler)
 			},
 		},
 		{
-			name: "complete file mapping",
+			name: "all mappings",
 			mappings: Mappings{
-				Path:     "scripts",
+				Path:     "bin",
 				Install:  "install.sh",
-				Shell:    []string{"env.sh"},
+				Shell:    []string{"*.sh"},
 				Homebrew: "Brewfile",
 			},
 			expected: 4,
-			validate: func(t *testing.T, matchers []MatcherConfig) {
-				// Should have one of each type
-				var foundPath, foundInstall, foundShell, foundHomebrew bool
-				for _, m := range matchers {
-					switch m.Name {
-					case "mapped-path":
-						foundPath = true
-						assert.Equal(t, "scripts", m.Trigger.Data["pattern"])
-					case "mapped-install":
-						foundInstall = true
-						assert.Equal(t, "install.sh", m.Trigger.Data["pattern"])
-					case "mapped-shell-0":
-						foundShell = true
-						assert.Equal(t, "env.sh", m.Trigger.Data["pattern"])
-					case "mapped-homebrew":
-						foundHomebrew = true
-						assert.Equal(t, "Brewfile", m.Trigger.Data["pattern"])
-					}
-				}
-				assert.True(t, foundPath, "path matcher not found")
-				assert.True(t, foundInstall, "install matcher not found")
-				assert.True(t, foundShell, "shell matcher not found")
-				assert.True(t, foundHomebrew, "homebrew matcher not found")
+			validate: func(t *testing.T, rules []Rule) {
+				assert.Equal(t, 4, len(rules))
+				// Check path rule
+				assert.Equal(t, "bin/", rules[0].Pattern)
+				assert.Equal(t, "path", rules[0].Handler)
+				// Check install rule
+				assert.Equal(t, "install.sh", rules[1].Pattern)
+				assert.Equal(t, "install", rules[1].Handler)
+				// Check shell rule
+				assert.Equal(t, "*.sh", rules[2].Pattern)
+				assert.Equal(t, "shell", rules[2].Handler)
+				// Check homebrew rule
+				assert.Equal(t, "Brewfile", rules[3].Pattern)
+				assert.Equal(t, "homebrew", rules[3].Handler)
 			},
 		},
 	}
@@ -136,112 +104,71 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 			cfg := &Config{
 				Mappings: tt.mappings,
 			}
-			matchers := cfg.GenerateMatchersFromMapping()
-			assert.Len(t, matchers, tt.expected)
+			rules := cfg.GenerateRulesFromMapping()
+
+			assert.Len(t, rules, tt.expected, "expected %d rules, got %d", tt.expected, len(rules))
+
 			if tt.validate != nil {
-				tt.validate(t, matchers)
+				tt.validate(t, rules)
 			}
 		})
 	}
 }
 
-func TestPostProcessConfig(t *testing.T) {
-	t.Run("adds catchall exclude from special files", func(t *testing.T) {
-		cfg := &Config{
-			Patterns: Patterns{
-				SpecialFiles: SpecialFiles{
-					PackConfig: ".dodot.toml",
-					IgnoreFile: ".dodotignore",
-				},
-			},
+func TestDefaultRules(t *testing.T) {
+	rules := defaultRules()
+
+	// Check we have rules
+	assert.NotEmpty(t, rules)
+
+	// Count exclusion rules
+	exclusionCount := 0
+	for _, r := range rules {
+		if len(r.Pattern) > 0 && r.Pattern[0] == '!' {
+			exclusionCount++
 		}
+	}
+	assert.Greater(t, exclusionCount, 0, "Should have exclusion rules")
 
-		err := postProcessConfig(cfg)
-		assert.NoError(t, err)
-		assert.Equal(t, []string{".dodot.toml", ".dodotignore"}, cfg.Patterns.CatchallExclude)
-	})
-
-	t.Run("combines default and mappings matchers", func(t *testing.T) {
-		cfg := &Config{
-			Mappings: Mappings{
-				Path:    "custom-bin",
-				Install: "custom-install.sh",
-			},
-			Patterns: Patterns{
-				SpecialFiles: SpecialFiles{
-					PackConfig: ".dodot.toml",
-					IgnoreFile: ".dodotignore",
-				},
-			},
+	// Check for essential rules
+	patterns := make(map[string]string)
+	for _, r := range rules {
+		if r.Handler != "" {
+			patterns[r.Pattern] = r.Handler
 		}
+	}
 
-		err := postProcessConfig(cfg)
-		assert.NoError(t, err)
+	assert.Equal(t, "install", patterns["install.sh"])
+	assert.Equal(t, "homebrew", patterns["Brewfile"])
+	assert.Equal(t, "symlink", patterns["*"])
+	assert.Equal(t, "path", patterns["bin/"])
+}
 
-		// Should have default matchers + 2 from mappings
-		assert.Greater(t, len(cfg.Matchers), 2)
+func TestDefault(t *testing.T) {
+	cfg := Default()
 
-		// Check that mappings matchers were added
-		var foundCustomPath, foundCustomInstall bool
-		for _, m := range cfg.Matchers {
-			if m.Name == "mapped-path" && m.Trigger.Data["pattern"] == "custom-bin" {
-				foundCustomPath = true
-			}
-			if m.Name == "mapped-install" && m.Trigger.Data["pattern"] == "custom-install.sh" {
-				foundCustomInstall = true
-			}
-		}
-		assert.True(t, foundCustomPath, "custom path matcher not found")
-		assert.True(t, foundCustomInstall, "custom install matcher not found")
+	// Test Security
+	assert.NotNil(t, cfg.Security.ProtectedPaths)
+	assert.True(t, cfg.Security.ProtectedPaths[".ssh/authorized_keys"])
 
-		// Check that default matchers are still there
-		var foundDefaultInstall bool
-		for _, m := range cfg.Matchers {
-			if m.Name == "install-script" && m.Trigger.Data["pattern"] == "install.sh" {
-				foundDefaultInstall = true
-			}
-		}
-		assert.True(t, foundDefaultInstall, "default install matcher not found")
-	})
+	// Test Rules
+	assert.NotEmpty(t, cfg.Rules)
 
-	t.Run("preserves existing matchers and adds mappings", func(t *testing.T) {
-		cfg := &Config{
-			Matchers: []MatcherConfig{
-				{
-					Name:     "custom-matcher",
-					Priority: 100,
-					Trigger:  TriggerConfig{Type: "filename", Data: map[string]interface{}{"pattern": "custom.txt"}},
-					Handler:  HandlerConfig{Type: "symlink"},
-				},
-			},
-			Mappings: Mappings{
-				Path: "bin",
-			},
-			Patterns: Patterns{
-				SpecialFiles: SpecialFiles{
-					PackConfig: ".dodot.toml",
-					IgnoreFile: ".dodotignore",
-				},
-			},
-		}
+	// Test Patterns
+	assert.NotEmpty(t, cfg.Patterns.PackIgnore)
+	assert.Equal(t, ".dodot.toml", cfg.Patterns.SpecialFiles.PackConfig)
+	assert.Equal(t, ".dodotignore", cfg.Patterns.SpecialFiles.IgnoreFile)
 
-		err := postProcessConfig(cfg)
-		assert.NoError(t, err)
+	// Test FilePermissions
+	assert.Equal(t, os.FileMode(0755), cfg.FilePermissions.Directory)
+	assert.Equal(t, os.FileMode(0644), cfg.FilePermissions.File)
+	assert.Equal(t, os.FileMode(0755), cfg.FilePermissions.Executable)
 
-		// Should have the custom matcher + mappings matcher
-		assert.GreaterOrEqual(t, len(cfg.Matchers), 2)
+	// Test ShellIntegration
+	assert.NotEmpty(t, cfg.ShellIntegration.BashZshSnippet)
+	assert.NotEmpty(t, cfg.ShellIntegration.FishSnippet)
 
-		// Check custom matcher is preserved
-		assert.Equal(t, "custom-matcher", cfg.Matchers[0].Name)
-
-		// Check mappings matcher was added
-		found := false
-		for _, m := range cfg.Matchers {
-			if m.Name == "mapped-path" {
-				found = true
-				break
-			}
-		}
-		assert.True(t, found, "mapped-path matcher not found")
-	})
+	// Test LinkPaths
+	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["ssh"])
+	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["gitconfig"])
 }

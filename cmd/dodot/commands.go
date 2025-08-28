@@ -11,8 +11,10 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
+	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/on"
+	"github.com/arthur-debert/dodot/pkg/commands/provision"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -46,11 +48,12 @@ func NewRootCmd() *cobra.Command {
 	initTemplateFormatting()
 
 	var (
-		verbosity  int
-		dryRun     bool
-		force      bool
-		configFile string
-		formatStr  string
+		verbosity         int
+		dryRun            bool
+		force             bool
+		configFile        string
+		formatStr         string
+		useSimplifiedRules bool
 	)
 
 	rootCmd := &cobra.Command{
@@ -91,6 +94,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, MsgFlagForce)
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to custom styles configuration file")
 	rootCmd.PersistentFlags().StringVar(&formatStr, "format", "auto", "Output format (auto|term|text|json)")
+	rootCmd.PersistentFlags().BoolVar(&useSimplifiedRules, "use-simplified-rules", false, "Use new simplified rule-based matching (experimental)")
 
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
@@ -290,19 +294,27 @@ func newLinkCmd() *cobra.Command {
 
 			// Get dry-run flag value (it's a persistent flag)
 			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
+			useSimplified, _ := cmd.Root().PersistentFlags().GetBool("use-simplified-rules")
 
 			log.Info().
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Bool("dry_run", dryRun).
+				Bool("use_simplified_rules", useSimplified).
 				Msg("Linking from dotfiles root")
 
 			// Link packs using the new implementation
-			ctx, err := commands.LinkPacks(commands.LinkPacksOptions{
+			var ctx *types.ExecutionContext
+			opts := link.LinkPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
 				EnableHomeSymlinks: true,
-			})
+			}
+			if useSimplified {
+				ctx, err = link.LinkPacksSimplified(opts)
+			} else {
+				ctx, err = commands.LinkPacks(opts)
+			}
 			if err != nil {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError
@@ -360,21 +372,34 @@ func newProvisionCmd() *cobra.Command {
 			// Get flags (they're persistent flags)
 			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
 			force, _ := cmd.Root().PersistentFlags().GetBool("force")
+			useSimplified, _ := cmd.Root().PersistentFlags().GetBool("use-simplified-rules")
 
 			log.Info().
 				Str("dotfiles_root", p.DotfilesRoot()).
 				Bool("dry_run", dryRun).
 				Bool("force", force).
+				Bool("use_simplified_rules", useSimplified).
 				Msg("Provisioning from dotfiles root")
 
 			// Provision packs using the new implementation
-			ctx, err := commands.ProvisionPacks(commands.ProvisionPacksOptions{
+			var ctx *types.ExecutionContext
+			opts := provision.ProvisionPacksOptions{
 				DotfilesRoot:       p.DotfilesRoot(),
 				PackNames:          args,
 				DryRun:             dryRun,
 				Force:              force,
-				EnableHomeSymlinks: true,
-			})
+			}
+			if useSimplified {
+				ctx, err = provision.ProvisionPacksSimplified(opts)
+			} else {
+				ctx, err = commands.ProvisionPacks(commands.ProvisionPacksOptions{
+					DotfilesRoot:       p.DotfilesRoot(),
+					PackNames:          args,
+					DryRun:             dryRun,
+					Force:              force,
+					EnableHomeSymlinks: true,
+				})
+			}
 			if err != nil {
 				// Check if this is a pack not found error and provide detailed help
 				var dodotErr *doerrors.DodotError

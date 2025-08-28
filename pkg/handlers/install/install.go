@@ -9,7 +9,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -67,7 +66,7 @@ func (h *InstallHandler) RunMode() types.RunMode {
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
-func (h *InstallHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+func (h *InstallHandler) ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error) {
 	result, err := h.ProcessProvisioningWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -85,7 +84,7 @@ func (h *InstallHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]ty
 }
 
 // ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
-func (h *InstallHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *InstallHandler) ProcessProvisioningWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.install")
 	actions := make([]types.Action, 0, len(matches))
 
@@ -220,21 +219,21 @@ func (h *InstallHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, err
 }
 
 // init registers the install handler factory
-func init() {
-	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-	registry.MustRegister(handlerFactoryRegistry, InstallHandlerName, func(options map[string]interface{}) (interface{}, error) {
-		handler := NewInstallHandler()
-
-		// Apply options if provided
-		if options != nil {
-			if err := handler.ValidateOptions(options); err != nil {
-				return nil, err
-			}
-		}
-
-		return handler, nil
-	})
-}
+// func init() {
+// 	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+// 	registry.MustRegister(handlerFactoryRegistry, InstallHandlerName, func(options map[string]interface{}) (interface{}, error) {
+// 		handler := NewInstallHandler()
+//
+// 		// Apply options if provided
+// 		if options != nil {
+// 			if err := handler.ValidateOptions(options); err != nil {
+// 				return nil, err
+// 			}
+// 		}
+//
+// 		return handler, nil
+// 	})
+// }
 
 // Verify interface compliance
 var _ handlers.ProvisioningHandler = (*InstallHandler)(nil)

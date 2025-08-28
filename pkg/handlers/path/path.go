@@ -5,7 +5,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -37,7 +36,7 @@ func (h *PathHandler) RunMode() types.RunMode {
 }
 
 // ProcessLinking takes directories and creates AddToPathAction instances
-func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *PathHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -55,7 +54,7 @@ func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.Link
 }
 
 // ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
-func (h *PathHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *PathHandler) ProcessLinkingWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.path")
 	actions := make([]types.Action, 0, len(matches))
 
@@ -163,21 +162,21 @@ func (h *PathHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error)
 }
 
 // init registers the path handler factory
-func init() {
-	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-	registry.MustRegister(handlerFactoryRegistry, PathHandlerName, func(options map[string]interface{}) (interface{}, error) {
-		handler := NewPathHandler()
-
-		// Apply options if provided
-		if options != nil {
-			if err := handler.ValidateOptions(options); err != nil {
-				return nil, err
-			}
-		}
-
-		return handler, nil
-	})
-}
+// func init() {
+// 	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+// 	registry.MustRegister(handlerFactoryRegistry, PathHandlerName, func(options map[string]interface{}) (interface{}, error) {
+// 		handler := NewPathHandler()
+//
+// 		// Apply options if provided
+// 		if options != nil {
+// 			if err := handler.ValidateOptions(options); err != nil {
+// 				return nil, err
+// 			}
+// 		}
+//
+// 		return handler, nil
+// 	})
+// }
 
 // Verify interface compliance
 var _ handlers.LinkingHandler = (*PathHandler)(nil)

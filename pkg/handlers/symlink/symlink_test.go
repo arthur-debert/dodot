@@ -11,19 +11,19 @@ import (
 func TestSymlinkHandler_ProcessLinking(t *testing.T) {
 	tests := []struct {
 		name          string
-		matches       []types.TriggerMatch
+		matches       []types.RuleMatch
 		expectedCount int
 		expectedError bool
 		checkActions  func(t *testing.T, actions []types.LinkingAction)
 	}{
 		{
 			name: "single file symlink",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         ".vimrc",
 					AbsolutePath: "/dotfiles/vim/.vimrc",
 					Pack:         "vim",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 1,
@@ -38,18 +38,18 @@ func TestSymlinkHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "multiple files from same pack",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         ".bashrc",
 					AbsolutePath: "/dotfiles/bash/.bashrc",
 					Pack:         "bash",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 				{
 					Path:         ".bash_profile",
 					AbsolutePath: "/dotfiles/bash/.bash_profile",
 					Pack:         "bash",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 2,
@@ -72,12 +72,12 @@ func TestSymlinkHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "custom target directory",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "config.json",
 					AbsolutePath: "/dotfiles/app/config.json",
 					Pack:         "app",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 					HandlerOptions: map[string]interface{}{
 						"target": "/etc/app",
 					},
@@ -93,18 +93,18 @@ func TestSymlinkHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "conflict detection",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         ".config",
 					AbsolutePath: "/dotfiles/app1/.config",
 					Pack:         "app1",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 				{
 					Path:         ".config",
 					AbsolutePath: "/dotfiles/app2/.config",
 					Pack:         "app2",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 0,
@@ -112,12 +112,12 @@ func TestSymlinkHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "nested path",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         ".config/nvim/init.vim",
 					AbsolutePath: "/dotfiles/neovim/.config/nvim/init.vim",
 					Pack:         "neovim",
-					TriggerName:  "glob",
+					RuleName:     "glob",
 				},
 			},
 			expectedCount: 1,
@@ -227,12 +227,12 @@ func TestSymlinkHandler_EnvironmentVariableExpansion(t *testing.T) {
 	// Create handler after setting environment
 	handler := NewSymlinkHandler()
 
-	matches := []types.TriggerMatch{
+	matches := []types.RuleMatch{
 		{
 			Path:         "config.yaml",
 			AbsolutePath: "/dotfiles/app/config.yaml",
 			Pack:         "app",
-			TriggerName:  "filename",
+			RuleName:     "filename",
 			HandlerOptions: map[string]interface{}{
 				"target": "$CONFIG_DIR",
 			},

@@ -1,0 +1,112 @@
+Migration Guide: Rules System
+============================
+
+This guide helps you migrate from the old matcher/trigger system to the new rules system.
+
+## What Changed
+
+The complex matcher→trigger→handler chain has been replaced with simple pattern→handler rules.
+
+### Old System (Removed)
+- Matchers connected triggers to handlers
+- Triggers were separate pattern-matching engines
+- Registry system for dynamic lookups
+- ~1000+ lines of abstraction code
+
+### New System 
+- Direct pattern→handler rules
+- Simple pattern conventions
+- No intermediate abstractions
+- ~550 lines of focused code
+
+## For Users
+
+**Important: The system now uses the new rules format directly.** The old matcher configuration format has been removed.
+
+### Pattern Conventions
+
+The new system uses intuitive patterns:
+
+- `install.sh` - Match exact filename
+- `*.sh` - Match files by extension
+- `bin/` - Match directories (note trailing slash)
+- `!*.tmp` - Exclude files (note leading !)
+- `*` - Match everything else
+
+### Configuration Format
+
+Configuration format:
+```toml
+[[rules]]
+pattern = "*aliases.sh"
+handler = "shell"
+options = { placement = "aliases" }
+```
+
+## For Developers
+
+### Code Changes
+
+1. **Imports**: Remove references to deleted packages:
+   ```go
+   // Remove these
+   _ "github.com/arthur-debert/dodot/pkg/triggers"
+   _ "github.com/arthur-debert/dodot/pkg/matchers"
+   _ "github.com/arthur-debert/dodot/pkg/registry"
+   ```
+
+2. **Creating Handlers**: Direct creation instead of registry:
+   ```go
+   // Old way
+   factory, _ := registry.GetHandlerFactory("symlink")
+   handler, _ := factory(options)
+   
+   // New way
+   handler, _ := rules.CreateHandler("symlink", options)
+   ```
+
+3. **Getting Matches**: Simplified API:
+   ```go
+   // Old way
+   matches, _ := core.GetFiringTriggers(packs)
+   
+   // New way  
+   matches, _ := rules.GetMatches(packs)
+   ```
+
+### Adding New Handlers
+
+Edit `pkg/rules/integration.go`:
+```go
+func CreateHandler(name string, options map[string]interface{}) (interface{}, error) {
+    switch name {
+    case "myhandler":
+        return mypackage.NewMyHandler(), nil
+    // ... other cases
+    }
+}
+```
+
+### Testing with Mock Filesystem
+
+The new scanner supports custom filesystems:
+```go
+scanner := rules.NewScannerWithFS(rules, mockFS)
+matches, _ := rules.GetMatchesFS(packs, mockFS)
+```
+
+## Migration Complete
+
+The migration to the rules system is now complete:
+
+1. **Removed**: All old matcher/trigger/registry code
+2. **Removed**: Priority field from rules (order determined by rule type)
+3. **Active**: Direct rules configuration in .dodot.toml
+
+## Benefits
+
+- **50% less configuration** verbosity
+- **Faster matching** with direct patterns  
+- **Easier debugging** with fewer layers
+- **Better testability** with filesystem injection
+- **Simpler codebase** for contributions

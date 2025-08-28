@@ -16,24 +16,21 @@
 //
 // In your global dodot configuration (~/.config/dodot/config.toml):
 //
-//	[matchers.brewfiles]
-//	trigger = "filename"
-//	patterns = ["Brewfile"]
-//	handler = "brew"
-//	priority = 95
+//	[[rules]]
+//	pattern = "Brewfile"
+//	handler = "homebrew"
 //
-// Or in a pack-specific .dodot.toml:
+// Or to match multiple Brewfile variants:
 //
-//	[[matchers]]
-//	trigger = "filename"
-//	patterns = ["Brewfile", "Brewfile.local"]
-//	handler = "brew"
+//	[[rules]]
+//	pattern = "Brewfile*"
+//	handler = "homebrew"
 //
 // # File Selection Process
 //
 // 1. **Pack Discovery**: dodot finds all subdirectories in $DOTFILES_ROOT
 // 2. **File Walking**: Recursively walks each pack directory
-// 3. **Trigger Matching**: FileNameTrigger matches files named "Brewfile"
+// 3. **Rule Matching**: Rules match files named "Brewfile"
 // 4. **Handler Invocation**: Matched files are passed to BrewHandler.Process()
 //
 // Example file structure:
@@ -138,7 +135,7 @@
 // User runs: `dodot install`
 //
 // 1. dodot finds ~/dotfiles/dev/Brewfile
-// 2. FileNameTrigger matches "Brewfile" pattern
+// 2. Rule matches "Brewfile" pattern
 // 3. BrewHandler checks sentinel file at ~/.local/share/dodot/homebrew/dev
 // 4. No sentinel or checksum mismatch: proceeds with execution
 // 5. Generates action with command: `brew bundle --file="~/dotfiles/dev/Brewfile"`

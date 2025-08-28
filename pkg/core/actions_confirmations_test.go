@@ -27,7 +27,7 @@ func TestActionGenerationResult_HasConfirmations(t *testing.T) {
 
 func TestGetActions_BackwardCompatibility(t *testing.T) {
 	// Test that the old GetActions function still works even with no matches
-	matches := []types.TriggerMatch{}
+	matches := []types.RuleMatch{}
 
 	// Test the function
 	actions, err := GetActions(matches)
@@ -37,7 +37,7 @@ func TestGetActions_BackwardCompatibility(t *testing.T) {
 
 func TestGetActionsWithConfirmations_EmptyMatches(t *testing.T) {
 	// Test with empty matches
-	matches := []types.TriggerMatch{}
+	matches := []types.RuleMatch{}
 
 	result, err := GetActionsWithConfirmations(matches)
 	assert.NoError(t, err)

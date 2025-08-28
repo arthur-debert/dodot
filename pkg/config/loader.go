@@ -342,16 +342,16 @@ func postProcessConfig(cfg *Config) error {
 		}
 	}
 
-	// Combine default matchers with mappings generated matchers
-	defaultMatchers := defaultMatchers()
-	mappingMatchers := cfg.GenerateMatchersFromMapping()
+	// Combine default rules with mappings generated rules
+	defaultRules := defaultRules()
+	mappingRules := cfg.GenerateRulesFromMapping()
 
-	// If no matchers are defined, use defaults + mapping
-	if len(cfg.Matchers) == 0 {
-		cfg.Matchers = append(defaultMatchers, mappingMatchers...)
+	// If no rules are defined, use defaults + mapping
+	if len(cfg.Rules) == 0 {
+		cfg.Rules = append(defaultRules, mappingRules...)
 	} else {
-		// Otherwise append mapping matchers to existing
-		cfg.Matchers = append(cfg.Matchers, mappingMatchers...)
+		// Otherwise append mapping rules to existing
+		cfg.Rules = append(cfg.Rules, mappingRules...)
 	}
 
 	return nil
@@ -382,11 +382,6 @@ func configToMap(cfg *Config) map[string]interface{} {
 	m["patterns"] = patterns
 
 	// Build the rest of the config
-	m["priorities"] = map[string]interface{}{
-		"triggers": cfg.Priorities.Triggers,
-		"handlers": cfg.Priorities.Handlers,
-		"matchers": cfg.Priorities.Matchers,
-	}
 	m["file_permissions"] = map[string]interface{}{
 		"directory":  cfg.FilePermissions.Directory,
 		"file":       cfg.FilePermissions.File,
@@ -411,24 +406,17 @@ func configToMap(cfg *Config) map[string]interface{} {
 	}
 	m["mappings"] = mappings
 
-	// Convert matchers
-	if len(cfg.Matchers) > 0 {
-		matchers := make([]interface{}, len(cfg.Matchers))
-		for i, mc := range cfg.Matchers {
-			matchers[i] = map[string]interface{}{
-				"name":     mc.Name,
-				"priority": mc.Priority,
-				"trigger": map[string]interface{}{
-					"type": mc.Trigger.Type,
-					"data": mc.Trigger.Data,
-				},
-				"handler": map[string]interface{}{
-					"type": mc.Handler.Type,
-					"data": mc.Handler.Data,
-				},
+	// Convert rules
+	if len(cfg.Rules) > 0 {
+		rules := make([]interface{}, len(cfg.Rules))
+		for i, r := range cfg.Rules {
+			rules[i] = map[string]interface{}{
+				"pattern": r.Pattern,
+				"handler": r.Handler,
+				"options": r.Options,
 			}
 		}
-		m["matchers"] = matchers
+		m["rules"] = rules
 	}
 
 	return m

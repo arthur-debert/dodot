@@ -8,7 +8,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -71,7 +70,7 @@ func (h *SymlinkHandler) RunMode() types.RunMode {
 }
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
-func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *SymlinkHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -89,7 +88,7 @@ func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.L
 }
 
 // ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
-func (h *SymlinkHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *SymlinkHandler) ProcessLinkingWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.symlink")
 	actions := make([]types.Action, 0, len(matches))
 
@@ -291,23 +290,23 @@ func (h *SymlinkHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, err
 }
 
 // init registers the symlink handler factory
-func init() {
-	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-	registry.MustRegister(handlerFactoryRegistry, SymlinkHandlerName, func(options map[string]interface{}) (interface{}, error) {
-		handler := NewSymlinkHandler()
-
-		// Apply options if provided
-		if options != nil {
-			if err := handler.ValidateOptions(options); err != nil {
-				return nil, err
-			}
-			// For symlink handler, options typically include target directory
-			// The specific options are applied during ProcessLinking
-		}
-
-		return handler, nil
-	})
-}
+// func init() {
+// 	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+// 	registry.MustRegister(handlerFactoryRegistry, SymlinkHandlerName, func(options map[string]interface{}) (interface{}, error) {
+// 		handler := NewSymlinkHandler()
+//
+// 		// Apply options if provided
+// 		if options != nil {
+// 			if err := handler.ValidateOptions(options); err != nil {
+// 				return nil, err
+// 			}
+// 			// For symlink handler, options typically include target directory
+// 			// The specific options are applied during ProcessLinking
+// 		}
+//
+// 		return handler, nil
+// 	})
+// }
 
 // Verify interface compliance
 var _ handlers.LinkingHandler = (*SymlinkHandler)(nil)

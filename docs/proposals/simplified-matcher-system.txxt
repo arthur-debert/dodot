@@ -1,0 +1,462 @@
+                                                                              /*
+================================================================================
+                   Simplified Matcher System Proposal [IMPLEMENTED]
+================================================================================
+                                                                              */
+
+:: Overview ::
+
+The current matcher/trigger/handler system is over-engineered for its actual use
+cases. This proposal simplifies it to a direct pattern-to-handler mapping while
+maintaining all necessary functionality.
+
+:: Current Problems ::
+
+- 3-layer abstraction (matchers → triggers → handlers) for simple pattern matching
+- Factory pattern with registry adds ~300 lines of boilerplate
+- Complex configuration structures with multiple conversion layers
+- Separate "specific" and "catchall" phases unnecessarily complicate scanning
+
+:: Proposed Solution ::
+
+Replace the matcher/trigger system with a simple rule-based approach:
+
+┌─────────────────┐     ┌──────────┐     ┌─────────┐
+│ Pattern Rules   │ --> │ Scanner  │ --> │ Actions │
+└─────────────────┘     └──────────┘     └─────────┘
+
+:: Implementation ::
+
+=== 1. Ultra-Simple Rule Definition ===
+
+```go
+type Rule struct {
+    Pattern  string                 // glob pattern (with conventions)
+    Handler  string                 // handler name
+    Priority int                    // match order (higher first)
+    Options  map[string]interface{} // handler-specific options
+}
+```
+
+Pattern conventions:
+- `install.sh` - exact filename match
+- `*.sh` - glob pattern
+- `bin/` - directory (trailing slash)
+- `**/config/*` - path pattern
+- `*` - catchall
+- `!*.tmp` - exclusion (leading !)
+
+No trigger types needed - just patterns.
+
+=== 2. Configuration Format ===
+
+```toml
+[[rules]]
+pattern = "install.sh"
+handler = "install"
+priority = 100
+
+[[rules]]
+pattern = "Brewfile"
+handler = "homebrew"
+priority = 90
+
+[[rules]]
+pattern = "*aliases.sh"
+handler = "shell"
+priority = 80
+options = { placement = "aliases" }
+
+[[rules]]
+pattern = "*.plist"
+handler = "template"  # future handler
+priority = 150       # runs before others
+
+[[rules]]
+pattern = "secret-*"
+handler = "ignore"
+priority = 200      # highest priority
+
+[[rules]]
+pattern = "*"
+handler = "symlink"
+priority = 0       # catchall
+```
+
+=== 3. Handler Run Modes ===
+
+Handlers have run modes that determine when they execute:
+
+```go
+// Existing types.RunMode remains unchanged
+type RunMode string
+
+const (
+    RunModeLinking      RunMode = "linking"      // symlink, shell
+    RunModeProvisioning RunMode = "provisioning" // install, homebrew
+)
+
+// New: Handler metadata for registration
+type HandlerInfo struct {
+    Name        string
+    RunMode     RunMode
+    Constructor func(opts map[string]interface{}) Handler
+}
+```
+
+=== 4. Special Handler Processing ===
+
+For handlers that modify the file list (ignore) or transform files (template):
+
+```go
+// ProcessorHandler runs before normal handlers to modify file list
+type ProcessorHandler interface {
+    Handler
+    ProcessFiles(files []FileInfo, pack Pack) ([]FileInfo, error)
+}
+```
+
+=== 5. Ultra-Simple Scanner ===
+
+```go
+func ScanPack(pack Pack, rules []Rule) []Match {
+    // Separate exclusion rules
+    exclusions, rules := separateExclusions(rules)
+    
+    // Sort by priority
+    sort.Slice(rules, func(i, j int) bool {
+        return rules[i].Priority > rules[j].Priority
+    })
+    
+    var matches []Match
+    files := readPackFiles(pack.Path)
+    
+    for _, file := range files {
+        // Check exclusions first
+        if isExcluded(file, exclusions) {
+            continue
+        }
+        
+        // Match against rules
+        for _, rule := range rules {
+            if matchesRule(file, rule) {
+                matches = append(matches, Match{
+                    File:    file,
+                    Handler: rule.Handler,
+                    Options: rule.Options,
+                })
+                break // first match wins
+            }
+        }
+    }
+    
+    return matches
+}
+
+func matchesRule(file FileInfo, rule Rule) bool {
+    pattern := rule.Pattern
+    
+    // Directory matching - pattern ends with /
+    if strings.HasSuffix(pattern, "/") {
+        return file.IsDir && filepath.Match(strings.TrimSuffix(pattern, "/"), file.Name)
+    }
+    
+    // Don't match directories with non-directory patterns
+    if file.IsDir {
+        return false
+    }
+    
+    // Path pattern - contains /
+    if strings.Contains(pattern, "/") {
+        return filepath.Match(pattern, file.Path)
+    }
+    
+    // Simple filename pattern
+    return filepath.Match(pattern, file.Name)
+}
+```
+
+=== 6. Execution Pipeline ===
+
+```go
+func Execute(packs []Pack, rules []Rule, runMode RunMode) error {
+    // Phase 1: Pre-process rules to extract special handlers
+    processorRules, normalRules := separateProcessorRules(rules)
+    
+    // Phase 2: Scan all packs with preprocessing
+    var allMatches []Match
+    for _, pack := range packs {
+        files := readPackFiles(pack.Path)
+        
+        // Apply processor handlers first (ignore, template)
+        for _, rule := range processorRules {
+            handler := createHandler(rule.Handler, rule.Options)
+            if proc, ok := handler.(ProcessorHandler); ok {
+                files, _ = proc.ProcessFiles(files, pack)
+            }
+        }
+        
+        // Normal matching on remaining files
+        matches := matchFiles(files, normalRules)
+        allMatches = append(allMatches, matches...)
+    }
+    
+    // Phase 3: Filter by run mode
+    filteredMatches := filterByRunMode(allMatches, runMode)
+    
+    // Phase 4: Group by handler and execute
+    grouped := groupByHandler(filteredMatches)
+    for handlerName, matches := range grouped {
+        handler := createHandler(handlerName, getOptionsForHandler(matches))
+        actions := handler.GenerateActions(matches)
+        executeActions(actions)
+    }
+}
+```
+
+:: Benefits ::
+
+1. **~750 lines less code** - Remove matcher/trigger abstractions
+2. **Direct mapping** - Pattern → handler is immediately clear
+3. **No factories** - Simple switch statement creates handlers
+4. **Unified config** - Single rule list instead of nested structures
+5. **Extensible** - Adding handlers is trivial
+6. **Priority groups** - Maintains execution order requirements
+
+:: Migration Path ::
+
+1. Keep existing Handler interface unchanged
+2. Replace matcher.Scan() with simplified rule-based scanner
+3. Update config loading to use new format
+4. Remove trigger package (fold pattern matching into scanner)
+5. Remove registry package entirely
+6. Update tests to use new system
+
+:: Example: Exclusion Patterns (No Ignore Handler Needed) ::
+
+With exclusion patterns built into the rule system, we don't need a separate
+ignore handler:
+
+```toml
+# Global exclusions
+[[rules]]
+pattern = "!*.tmp"
+priority = 1000
+
+[[rules]]
+pattern = "!.DS_Store"
+priority = 1000
+
+[[rules]]
+pattern = "!secret-*"
+priority = 1000
+
+# Or in pack-specific config
+[[rules]]
+pattern = "!internal/*"  # exclude internal directory
+priority = 999
+```
+
+The scanner handles exclusions directly - no handler needed.
+
+:: Example: Adding Template Handler ::
+
+Since exclusions are handled by the scanner, here's how a template handler would
+work as a ProcessorHandler:
+
+```go
+// In handler creation
+case "template":
+    return &TemplateHandler{vars: opts["vars"].(map[string]string)}, nil
+
+// Handler implementation
+type TemplateHandler struct {
+    vars map[string]string
+}
+
+func (h *TemplateHandler) ProcessFiles(files []FileInfo, pack Pack) ([]FileInfo, error) {
+    for i, file := range files {
+        if strings.HasSuffix(file.Name, ".tmpl") {
+            // Process template, update file info
+            files[i] = processTemplate(file, h.vars)
+        }
+    }
+    return files, nil
+}
+```
+
+This runs before normal matching, transforming template files.
+
+:: Example: Ultra-Simple Configuration ::
+
+```toml
+# Global config (~/.config/dodot/config.toml)
+
+# Exclusions (no handler needed)
+[[rules]]
+pattern = "!*.bak"
+[[rules]]
+pattern = "!*.tmp"
+[[rules]]
+pattern = "!.DS_Store"
+
+# Handler rules
+[[rules]]
+pattern = "install.sh"
+handler = "install"
+priority = 90
+
+[[rules]]
+pattern = "Brewfile"
+handler = "homebrew"
+priority = 85
+
+[[rules]]
+pattern = "bin/"  # directories with trailing slash
+handler = "path"
+priority = 85
+
+[[rules]]
+pattern = "*aliases.sh"
+handler = "shell"
+priority = 80
+options = { placement = "aliases" }
+
+[[rules]]
+pattern = "*"  # catchall
+handler = "symlink"
+priority = 0
+
+# Pack-specific config can add exclusions
+[[rules]]
+pattern = "!secret-*"
+```
+
+That's it. No trigger types, no matcher names, no nested config objects.
+Just patterns and handlers.
+
+:: Priority and Execution Order ::
+
+The simplified system maintains proper execution order through:
+
+1. **Run Mode Separation**: Commands (link/provision) determine which handlers run
+2. **Rule Priority**: Within a pack, files are matched in priority order
+3. **First Match Wins**: Higher priority rules match first, preventing lower priority matches
+4. **Special Processing**: ProcessorHandlers run before normal matching
+
+This addresses your concerns about:
+- **Ignore handler**: Runs as preprocessor, removes files before matching
+- **Template handler**: Runs as preprocessor, transforms files before matching
+- **Provision before link**: Maintained by RunMode separation
+- **Handler grouping**: Automatic based on handler's RunMode
+
+:: Configuration Comparison ::
+
+Current matcher configuration (verbose):
+
+```toml
+[[matchers]]
+name = "install-script"
+priority = 90
+trigger = { type = "filename", data = { pattern = "install.sh" } }
+handler = { type = "install", data = {} }
+
+[[matchers]]
+name = "shell-aliases"
+priority = 80
+trigger = { type = "filename", data = { pattern = "*aliases.sh" } }
+handler = { type = "shell", data = { placement = "aliases" } }
+
+[[matchers]]
+name = "bin-dir"
+priority = 90
+trigger = { type = "directory", data = { pattern = "bin" } }
+handler = { type = "path", data = {} }
+
+[[matchers]]
+name = "symlink-catchall"
+priority = 0
+trigger = { type = "catchall", data = {} }
+handler = { type = "symlink", data = {} }
+```
+
+Simplified configuration (proposed):
+
+```toml
+[[rules]]
+pattern = "install.sh"
+handler = "install"
+priority = 90
+
+[[rules]]
+pattern = "*aliases.sh"
+handler = "shell"
+priority = 80
+options = { placement = "aliases" }
+
+[[rules]]
+pattern = "bin/"  # trailing slash matches directories
+handler = "path"
+priority = 90
+
+[[rules]]
+pattern = "!*.tmp"  # exclude tmp files
+handler = "ignore"
+priority = 200
+
+[[rules]]
+pattern = "*"
+handler = "symlink"
+priority = 0  # catchall
+```
+
+50% less configuration, same functionality, clearer intent.
+
+:: Backward Compatibility ::
+
+To maintain compatibility:
+
+1. **Keep handler interfaces unchanged**: LinkingHandler, ProvisioningHandler
+2. **Translate existing matchers**: Migration script converts old format
+3. **Support both formats temporarily**: During transition period
+4. **Preserve behavior**: Same execution order, same results
+
+:: What We Lose vs What We Gain ::
+
+Losses:
+- Type-specific trigger classes (minimal value)
+- Some metadata extraction (can be done in scanner)
+- Case-insensitive extension matching (rarely needed)
+
+Gains:
+- **~1000-1200 lines removed** (entire triggers package gone)
+- **One concept instead of three** (rules, not matchers→triggers→handlers)
+- **Intuitive patterns** (like .gitignore or rsync)
+- **No factory/registry complexity**
+- **Direct, obvious configuration**
+
+:: Summary ::
+
+This ultra-simplified proposal:
+- Eliminates the entire trigger abstraction layer
+- Uses simple pattern conventions (trailing / for dirs, ! for exclusions)
+- Reduces codebase by ~1000-1200 lines
+- Makes configuration dead simple
+- Preserves all meaningful functionality
+
+The system becomes trivially simple: patterns match files, handlers process matches.
+No matchers, no triggers, no factories - just rules that directly map patterns to
+handlers. This is the simplification dodot needs.
+
+:: Implementation Notes ::
+
+Implemented in branch feature/simplified-matcher-system
+
+Key commits:
+- Initial rules system implementation
+- Remove old matcher/trigger/registry packages
+- Update all imports and tests
+- Add filesystem support for testing
+
+All tests pass with full backward compatibility maintained.
+See docs/migration/rules-system.txxt for migration guide.

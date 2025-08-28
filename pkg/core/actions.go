@@ -5,7 +5,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -21,7 +21,7 @@ func (r ActionGenerationResult) HasConfirmations() bool {
 }
 
 // GetActions takes trigger matches grouped by handler and calls the appropriate handler methods (backward compatibility)
-func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
+func GetActions(matches []types.RuleMatch) ([]types.Action, error) {
 	result, err := GetActionsWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func GetActions(matches []types.TriggerMatch) ([]types.Action, error) {
 }
 
 // GetActionsWithConfirmations takes trigger matches and returns both actions and confirmation requests
-func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGenerationResult, error) {
+func GetActionsWithConfirmations(matches []types.RuleMatch) (ActionGenerationResult, error) {
 	logger := logging.GetLogger("core.actions")
 
 	// Group matches by handler
@@ -45,18 +45,8 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 			Int("matches", len(handlerMatches)).
 			Msg("Processing matches for handler")
 
-		// Get handler factory and create instance
-		factory, err := registry.GetHandlerFactory(handlerName)
-		if err != nil {
-			logger.Warn().
-				Str("handler", handlerName).
-				Err(err).
-				Msg("No handler factory found, skipping")
-			continue
-		}
-
-		// Create handler instance with no options (using defaults)
-		handler, err := factory(nil)
+		// Create handler instance using the rules system
+		handler, err := rules.CreateHandler(handlerName, nil)
 		if err != nil {
 			logger.Error().
 				Str("handler", handlerName).
@@ -126,8 +116,8 @@ func GetActionsWithConfirmations(matches []types.TriggerMatch) (ActionGeneration
 }
 
 // groupMatchesByHandler groups trigger matches by their handler name
-func groupMatchesByHandler(matches []types.TriggerMatch) map[string][]types.TriggerMatch {
-	groups := make(map[string][]types.TriggerMatch)
+func groupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMatch {
+	groups := make(map[string][]types.RuleMatch)
 
 	for _, match := range matches {
 		if match.HandlerName != "" {

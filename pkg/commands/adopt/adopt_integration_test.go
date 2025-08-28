@@ -5,7 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "github.com/arthur-debert/dodot/pkg/matchers" // register default matchers
+	// Import handler packages to register their factories
+	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

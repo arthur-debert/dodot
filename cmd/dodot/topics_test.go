@@ -7,9 +7,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	// Import to register triggers and handlers
-	_ "github.com/arthur-debert/dodot/pkg/handlers"
-	_ "github.com/arthur-debert/dodot/pkg/triggers"
+	// Import handler packages to register their factories
+	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )
 
 func TestTopicsCommand(t *testing.T) {

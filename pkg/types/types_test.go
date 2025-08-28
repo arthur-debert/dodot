@@ -30,30 +30,11 @@ func TestPackStructure(t *testing.T) {
 	}
 }
 
-func TestMatcherStructure(t *testing.T) {
-	matcher := Matcher{
-		Name:        "test-matcher",
-		TriggerName: "filename",
-		HandlerName: "symlink",
-		Priority:    10,
-		TriggerOptions: map[string]interface{}{
-			"pattern": "*.sh",
-		},
-		HandlerOptions: map[string]interface{}{
-			"target": "~/bin",
-		},
-	}
-
-	if matcher.Name != "test-matcher" {
-		t.Errorf("Expected matcher name 'test-matcher', got '%s'", matcher.Name)
-	}
-}
-
-func TestTriggerMatchStructure(t *testing.T) {
+func TestRuleMatchStructure(t *testing.T) {
 	pack := Pack{Name: "test-pack", Path: "/test"}
 
-	match := TriggerMatch{
-		TriggerName:  "filename",
+	match := RuleMatch{
+		RuleName:     "filename",
 		Pack:         pack.Name,
 		Path:         "file.txt",
 		AbsolutePath: "/test/file.txt",

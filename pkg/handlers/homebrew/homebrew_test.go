@@ -36,19 +36,19 @@ brew 'ripgrep'
 
 	tests := []struct {
 		name          string
-		matches       []types.TriggerMatch
+		matches       []types.RuleMatch
 		expectedCount int
 		expectedError bool
 		checkActions  func(t *testing.T, actions []types.ProvisioningAction)
 	}{
 		{
 			name: "single Brewfile",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "Brewfile",
 					AbsolutePath: brewfile1Path,
 					Pack:         "pack1",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 1,
@@ -64,18 +64,18 @@ brew 'ripgrep'
 		},
 		{
 			name: "multiple Brewfiles",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "Brewfile",
 					AbsolutePath: brewfile1Path,
 					Pack:         "pack1",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 				{
 					Path:         "Brewfile",
 					AbsolutePath: brewfile2Path,
 					Pack:         "pack2",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 2,
@@ -99,18 +99,18 @@ brew 'ripgrep'
 		},
 		{
 			name:          "empty matches",
-			matches:       []types.TriggerMatch{},
+			matches:       []types.RuleMatch{},
 			expectedCount: 0,
 			expectedError: false,
 		},
 		{
 			name: "non-existent Brewfile",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "Brewfile",
 					AbsolutePath: "/non/existent/path/Brewfile",
 					Pack:         "missing",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 0,
@@ -118,12 +118,12 @@ brew 'ripgrep'
 		},
 		{
 			name: "Brewfile with custom name",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "Brewfile.custom",
 					AbsolutePath: brewfile1Path,
 					Pack:         "custom",
-					TriggerName:  "glob",
+					RuleName:     "glob",
 				},
 			},
 			expectedCount: 1,

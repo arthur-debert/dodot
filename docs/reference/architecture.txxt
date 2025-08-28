@@ -7,9 +7,8 @@ This document describes dodot's technical architecture and implementation detail
 
 - **Dotfiles Root**: Base directory containing all dotfile packs (defaults to ~/dotfiles)
 - **Pack**: A directory containing related dotfiles (vim/, git/, zsh/)
-- **Trigger**: Pattern matcher that identifies files (filename, directory, extension)
+- **Rule**: Pattern-to-handler mapping with priority (replaces triggers/matchers)
 - **Handler**: Action generator that processes matched files (symlink, provision, brew, shell)
-- **Matcher**: Configuration binding triggers to handlers
 - **Action**: Self-contained operation to be executed
 - **DataStore**: Centralized state store for tracking operations
 
@@ -26,13 +25,13 @@ dodot follows a predictable four-stage pipeline:
 - Applies ignore patterns from configuration
 - Returns ordered list of packs with metadata
 
-### Stage 2: Matching (GetFiringTriggers)
-- For each pack, evaluates all triggers
-- Triggers check files against their patterns
-- Returns map of trigger → matched files
+### Stage 2: Matching (GetMatches)
+- For each pack, scans files against rules
+- Rules use simple patterns: *.sh, bin/, !*.tmp
+- Returns list of matches with handler assignments
 
 ### Stage 3: Generation (GetActions)
-- Firing triggers invoke their handlers
+- Matched files invoke their assigned handlers
 - Handlers generate actions for matched files
 - Actions are self-contained with all needed data
 
@@ -64,20 +63,21 @@ This provides:
 pkg/
 ├── core/          # Pipeline functions (GetPacks, etc.)
 ├── types/         # Type definitions and interfaces
-├── triggers/      # Trigger implementations
+├── rules/         # Rule-based matching system
 ├── handlers/      # Handler implementations
-├── matchers/      # Matcher system
 ├── actions/       # Action types
 ├── datastore/     # State management
-├── registry/      # Extensibility system
 └── config/        # Configuration management
 ```
 
-### Key Interfaces
+### Key Types
 
 ```go
-type Trigger interface {
-    Fires(fs synthfs.FS, pack Pack) ([]string, error)
+type Rule struct {
+    Pattern  string                 // e.g., "*.sh", "bin/", "!*.tmp"
+    Handler  string                 // handler name
+    Priority int                    // higher priority matches first
+    Options  map[string]interface{} // handler-specific options
 }
 
 type Handler interface {
@@ -90,35 +90,42 @@ type Action interface {
 }
 ```
 
-## Registry System
+## Rules System
 
-The registry provides extensibility without plugins:
+The rules system provides simple, declarative file matching:
 
-### Three Core Registries
+### Pattern Conventions
 
-1. **Trigger Registry** - All available triggers
-2. **Handler Registry** - All available handlers  
-3. **Matcher Registry** - Pre-configured matchers
+- `install.sh` - Exact filename match
+- `*.sh` - Glob pattern match
+- `bin/` - Directory match (trailing slash)
+- `!*.tmp` - Exclusion rule (leading !)
+- `*` - Catchall pattern
 
-### Registration Flow
+### Rule Processing
 
-```go
-// At initialization
-registry.RegisterTrigger("filename", NewFilenameTrigger)
-registry.RegisterHandler("symlink", NewSymlinkHandler)
+1. **Exclusions first** - Files matching !patterns are skipped
+2. **Priority order** - Higher priority rules match first
+3. **First match wins** - Once matched, no further rules apply
 
-// At runtime
-trigger := registry.GetTrigger("filename", config)
-handler := registry.GetHandler("symlink", config)
+### Example Configuration
+
+```toml
+[[rules]]
+pattern = "install.sh"
+handler = "install"
+priority = 90
+
+[[rules]]
+pattern = "*.sh"
+handler = "shell"
+priority = 80
+
+[[rules]]
+pattern = "*"
+handler = "symlink"
+priority = 0
 ```
-
-### Extensibility Benefits
-
-- **Type Safety**: Compile-time checking
-- **Simplicity**: No plugin complexity
-- **Performance**: Zero runtime overhead
-- **Testability**: Easy to mock registries
-- **Composition**: Layer configurations
 
 ## CLI Architecture
 
@@ -159,13 +166,13 @@ renderer := output.NewTextRenderer()
 
 ### Separation of Concerns
 Each component has a single responsibility:
-- Triggers: Detect files
+- Rules: Match files to handlers
 - Handlers: Generate actions
 - Actions: Execute operations
 - DataStore: Manage state
 
 ### Pure Functions
-Handlers and triggers are stateless:
+Handlers and rules are stateless:
 - Easy to test
 - No side effects
 - Predictable behavior

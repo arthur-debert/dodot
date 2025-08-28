@@ -24,7 +24,7 @@ cask "visual-studio-code"`
 
 	require.NoError(t, os.WriteFile(brewfilePath, []byte(brewfileContent), 0644))
 
-	matches := []types.TriggerMatch{
+	matches := []types.RuleMatch{
 		{
 			Pack:         "test-pack",
 			Path:         "Brewfile",
@@ -58,7 +58,7 @@ func TestHomebrewHandler_ProcessProvisioning_BackwardCompatibility(t *testing.T)
 
 	require.NoError(t, os.WriteFile(brewfilePath, []byte(brewfileContent), 0644))
 
-	matches := []types.TriggerMatch{
+	matches := []types.RuleMatch{
 		{
 			Pack:         "test-pack",
 			Path:         "Brewfile",
@@ -261,7 +261,7 @@ func TestHomebrewHandler_ProcessProvisioningWithConfirmations_MultipleMatches(t 
 	require.NoError(t, os.MkdirAll(filepath.Dir(brewfile2Path), 0755))
 	require.NoError(t, os.WriteFile(brewfile2Path, []byte(`cask "visual-studio-code"`), 0644))
 
-	matches := []types.TriggerMatch{
+	matches := []types.RuleMatch{
 		{Pack: "pack1", Path: "Brewfile", AbsolutePath: brewfile1Path},
 		{Pack: "pack2", Path: "Brewfile.dev", AbsolutePath: brewfile2Path},
 	}

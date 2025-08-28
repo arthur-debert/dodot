@@ -48,7 +48,7 @@ You can override these, but the defaults handle 90% of cases.
 
 ### Separation of Concerns
 
-1. **Triggers** match files (detect)
+1. **Rules** match files to handlers
 2. **Handlers** generate actions (plan)
 3. **Actions** execute operations (do)
 
@@ -59,7 +59,7 @@ Each layer is independent and testable.
 Every dodot command follows the same pipeline:
 
 ```
-Discover Packs → Fire Triggers → Generate Actions → Execute Actions
+Discover Packs → Match Rules → Generate Actions → Execute Actions
 ```
 
 This predictability means:

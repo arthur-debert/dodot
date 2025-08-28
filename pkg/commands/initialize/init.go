@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -23,6 +22,44 @@ type InitPackOptions struct {
 }
 
 // InitPack creates a new pack directory with template files and configuration.
+// templateFile holds basic template information
+type templateFile struct {
+	filename    string
+	content     string
+	mode        uint32
+	handlerName string
+}
+
+// getBasicTemplates returns basic template files for pack initialization
+func getBasicTemplates(packName string) []templateFile {
+	return []templateFile{
+		{
+			filename:    "aliases.sh",
+			content:     "# Shell aliases for " + packName + " pack\n# Add your aliases below\n\n# Example:\n# alias ll='ls -la'\n",
+			mode:        0644,
+			handlerName: "shell",
+		},
+		{
+			filename:    "install.sh",
+			content:     "#!/usr/bin/env bash\n# Installation script for " + packName + " pack\n# This script runs once during 'dodot install'\n\necho \"Installing " + packName + " pack...\"\n\n# Add your installation commands here\n",
+			mode:        0755,
+			handlerName: "provision",
+		},
+		{
+			filename:    "Brewfile",
+			content:     "# Homebrew dependencies for " + packName + " pack\n# This file is processed during 'dodot install'\n\n# Add your brew dependencies:\n# brew \"git\"\n# cask \"visual-studio-code\"\n",
+			mode:        0644,
+			handlerName: "homebrew",
+		},
+		{
+			filename:    "path.sh",
+			content:     "# PATH modifications for " + packName + " pack\n# Add directories to PATH below\n\n# Example:\n# export PATH=\"$HOME/.local/bin:$PATH\"\n",
+			mode:        0644,
+			handlerName: "path",
+		},
+	}
+}
+
 func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	log := logging.GetLogger("core.commands")
 	log.Debug().Str("command", "InitPack").Str("pack", opts.PackName).Msg("Executing command")
@@ -116,20 +153,19 @@ For more information, see: https://github.com/arthur-debert/dodot
 	}
 	filesCreated = append(filesCreated, "README.txt")
 
-	// 7. Get all template files for the pack using the existing template system
-	templates, err := core.GetCompletePackTemplate(opts.PackName)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get pack templates")
-	}
+	// 7. Get all template files for the pack
+	// TODO: Re-implement using rules system
+	// For now, create basic template files manually
+	templates := getBasicTemplates(opts.PackName)
 
 	// 8. Create each template file
 	for _, template := range templates {
-		templatePath := filepath.Join(packPath, template.Filename)
-		log.Info().Str("file", template.Filename).Str("handler", template.HandlerName).Msg("Creating template file")
-		if err := fs.WriteFile(templatePath, []byte(template.Content), os.FileMode(template.Mode)); err != nil {
-			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create template file %s", template.Filename)
+		templatePath := filepath.Join(packPath, template.filename)
+		log.Info().Str("file", template.filename).Str("handler", template.handlerName).Msg("Creating template file")
+		if err := fs.WriteFile(templatePath, []byte(template.content), os.FileMode(template.mode)); err != nil {
+			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create template file %s", template.filename)
 		}
-		filesCreated = append(filesCreated, template.Filename)
+		filesCreated = append(filesCreated, template.filename)
 	}
 
 	// 9. Return result

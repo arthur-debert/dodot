@@ -29,19 +29,19 @@ func TestInstallHandler_ProcessProvisioning(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		matches       []types.TriggerMatch
+		matches       []types.RuleMatch
 		expectedCount int
 		expectedError bool
 		checkActions  func(t *testing.T, actions []types.ProvisioningAction)
 	}{
 		{
 			name: "single install script",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "install.sh",
 					AbsolutePath: script1Path,
 					Pack:         "pack1",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 1,
@@ -58,18 +58,18 @@ func TestInstallHandler_ProcessProvisioning(t *testing.T) {
 		},
 		{
 			name: "multiple provision scripts",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "install.sh",
 					AbsolutePath: script1Path,
 					Pack:         "pack1",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 				{
 					Path:         "provision.sh",
 					AbsolutePath: script2Path,
 					Pack:         "pack2",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 2,
@@ -95,18 +95,18 @@ func TestInstallHandler_ProcessProvisioning(t *testing.T) {
 		},
 		{
 			name:          "empty matches",
-			matches:       []types.TriggerMatch{},
+			matches:       []types.RuleMatch{},
 			expectedCount: 0,
 			expectedError: false,
 		},
 		{
 			name: "non-existent script",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "missing.sh",
 					AbsolutePath: "/non/existent/path/missing.sh",
 					Pack:         "missing",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 0,
@@ -114,12 +114,12 @@ func TestInstallHandler_ProcessProvisioning(t *testing.T) {
 		},
 		{
 			name: "nested provision script",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "scripts/setup.sh",
 					AbsolutePath: script1Path,
 					Pack:         "complex",
-					TriggerName:  "glob",
+					RuleName:     "glob",
 				},
 			},
 			expectedCount: 1,

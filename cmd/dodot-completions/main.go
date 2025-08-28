@@ -8,7 +8,6 @@ import (
 
 	// Import packages to ensure their init() functions are called for registration
 	_ "github.com/arthur-debert/dodot/pkg/handlers"
-	_ "github.com/arthur-debert/dodot/pkg/triggers"
 )
 
 func main() {

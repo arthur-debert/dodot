@@ -37,7 +37,7 @@ const (
 	// Trigger errors
 	ErrTriggerNotFound ErrorCode = "TRIGGER_NOT_FOUND"
 	ErrTriggerInvalid  ErrorCode = "TRIGGER_INVALID"
-	ErrTriggerMatch    ErrorCode = "TRIGGER_MATCH"
+	ErrRuleMatch       ErrorCode = "TRIGGER_MATCH"
 	ErrTriggerExecute  ErrorCode = "TRIGGER_EXECUTE"
 
 	// Handler errors
