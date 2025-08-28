@@ -8,11 +8,11 @@ All work is to be done on branch tests/revamp.
 
 | Component | Description | Path | Status |
 |-----------|-------------|------|--------|
-| TestEnvironment | Core test orchestrator with isolation/cleanup | pkg/testutil/environment.go | in_progress |
+| TestEnvironment | Core test orchestrator with isolation/cleanup | pkg/testutil/environment.go | done |
 | MemoryFS | In-memory filesystem implementation | pkg/testutil/memoryfs.go | done |
 | MockDataStore | Mock state management without filesystem | pkg/testutil/mock_datastore.go | done |
 | PackBuilder | Declarative pack setup builder | pkg/testutil/pack_builder.go | planned |
-| FileTree | Declarative file structure definition | pkg/testutil/filetree.go | planned |
+| FileTree | Declarative file structure definition | pkg/testutil/types.go | done |
 | MockPathResolver | Mock XDG/home path resolution | pkg/testutil/mock_paths.go | done |
 | TestScenarios | Pre-built complex test scenarios | pkg/testutil/scenarios.go | planned |
 | CLITestHelper | CLI parsing test utilities | pkg/testutil/cli_helper.go | planned |
