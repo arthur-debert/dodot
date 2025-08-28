@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -72,10 +73,17 @@ func DiscoverAndSelectPacksFS(dotfilesRoot string, packNames []string, filesyste
 // Returns an error if the pack is not found.
 // Pack name is normalized to handle trailing slashes from shell completion.
 func FindPack(dotfilesRoot string, packName string) (*types.Pack, error) {
+	return FindPackFS(dotfilesRoot, packName, filesystem.NewOS())
+}
+
+// FindPackFS discovers all packs using the given filesystem and returns the one with the specified name.
+// Returns an error if the pack is not found.
+// Pack name is normalized to handle trailing slashes from shell completion.
+func FindPackFS(dotfilesRoot string, packName string, fs types.FS) (*types.Pack, error) {
 	// Normalize pack name
 	normalized := packs.NormalizePackName(packName)
 
-	allPacks, err := DiscoverAndSelectPacks(dotfilesRoot, []string{normalized})
+	allPacks, err := DiscoverAndSelectPacksFS(dotfilesRoot, []string{normalized}, fs)
 	if err != nil {
 		return nil, err
 	}
