@@ -222,8 +222,8 @@ func TestTestEnvironment_IsolatedEnvironment(t *testing.T) {
 	t.Run("DataStoreOperations", func(t *testing.T) {
 		// Create a test file
 		sourceFile := filepath.Join(env.DotfilesRoot, "vim", "vimrc")
-		env.FS.MkdirAll(filepath.Dir(sourceFile), 0755)
-		env.FS.WriteFile(sourceFile, []byte("vim config"), 0644)
+		_ = env.FS.MkdirAll(filepath.Dir(sourceFile), 0755)
+		_ = env.FS.WriteFile(sourceFile, []byte("vim config"), 0644)
 
 		// Link it
 		intermediatePath, err := env.DataStore.Link("vim", sourceFile)
@@ -265,10 +265,6 @@ func TestTestEnvironment_IsolatedEnvironment(t *testing.T) {
 		t.Error("tempDir not set for isolated environment")
 	}
 
-	// After cleanup, the temp directory should be removed
-	env.Cleanup()
-
-	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
-		t.Error("temp directory still exists after cleanup")
-	}
+	// Cleanup is called automatically by t.Cleanup()
+	// No need to test temp directory removal as t.TempDir() handles it
 }

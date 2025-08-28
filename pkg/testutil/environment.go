@@ -3,6 +3,7 @@ package testutil
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -132,10 +133,10 @@ func (e *TestEnvironment) setupMemoryEnvironment() {
 	e.FS = memFS
 
 	// Create directories in memory
-	memFS.MkdirAll(e.DotfilesRoot, 0755)
-	memFS.MkdirAll(e.HomeDir, 0755)
-	memFS.MkdirAll(e.XDGConfig, 0755)
-	memFS.MkdirAll(filepath.Join(e.XDGData, "dodot"), 0755)
+	_ = memFS.MkdirAll(e.DotfilesRoot, 0755)
+	_ = memFS.MkdirAll(e.HomeDir, 0755)
+	_ = memFS.MkdirAll(e.XDGConfig, 0755)
+	_ = memFS.MkdirAll(filepath.Join(e.XDGData, "dodot"), 0755)
 
 	// Create mock datastore
 	e.DataStore = NewMockDataStore()
@@ -146,17 +147,8 @@ func (e *TestEnvironment) setupMemoryEnvironment() {
 
 // setupIsolatedEnvironment configures a real filesystem in temp directories
 func (e *TestEnvironment) setupIsolatedEnvironment() {
-	// Import needed packages
-	var filesystem = func() types.FS {
-		// Lazy load to avoid import cycle
-		type osFS struct{}
-
-		fs := &osFS{}
-
-		// Implement minimal FS interface using os package
-		e.realFS = &realFilesystem{}
-		return e.realFS
-	}
+	// Create real filesystem implementation
+	realFS := &realFilesystem{}
 
 	// Create temp directory
 	e.tempDir = e.t.TempDir()
@@ -168,13 +160,13 @@ func (e *TestEnvironment) setupIsolatedEnvironment() {
 	e.XDGData = filepath.Join(e.tempDir, "home", ".local", "share")
 
 	// Create directories using os package directly
-	os.MkdirAll(e.DotfilesRoot, 0755)
-	os.MkdirAll(e.HomeDir, 0755)
-	os.MkdirAll(e.XDGConfig, 0755)
-	os.MkdirAll(filepath.Join(e.XDGData, "dodot"), 0755)
+	_ = os.MkdirAll(e.DotfilesRoot, 0755)
+	_ = os.MkdirAll(e.HomeDir, 0755)
+	_ = os.MkdirAll(e.XDGConfig, 0755)
+	_ = os.MkdirAll(filepath.Join(e.XDGData, "dodot"), 0755)
 
 	// Use real filesystem operations
-	e.FS = filesystem()
+	e.FS = realFS
 
 	// Create real paths instance
 	pathsInstance, err := func() (types.PathResolver, error) {
@@ -232,12 +224,12 @@ func (e *TestEnvironment) setupEnvironmentVariables() {
 
 	// Register cleanup to restore
 	e.cleanup = append(e.cleanup, func() {
-		os.Setenv("HOME", oldHome)
-		os.Setenv("DOTFILES_ROOT", oldDotfiles)
-		os.Setenv("XDG_CONFIG_HOME", oldXDGConfig)
-		os.Setenv("XDG_DATA_HOME", oldXDGData)
-		os.Setenv("DODOT_DATA_DIR", oldDodotData)
-		os.Unsetenv("DODOT_TEST_MODE")
+		_ = os.Setenv("HOME", oldHome)
+		_ = os.Setenv("DOTFILES_ROOT", oldDotfiles)
+		_ = os.Setenv("XDG_CONFIG_HOME", oldXDGConfig)
+		_ = os.Setenv("XDG_DATA_HOME", oldXDGData)
+		_ = os.Setenv("DODOT_DATA_DIR", oldDodotData)
+		_ = os.Unsetenv("DODOT_TEST_MODE")
 	})
 }
 

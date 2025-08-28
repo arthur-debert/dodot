@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/testutil"
+	testutil "github.com/arthur-debert/dodot/pkg/testutil_old"
 )
 
 func TestDeployCmd(t *testing.T) {

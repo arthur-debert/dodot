@@ -123,7 +123,7 @@ func TestSymlinkHandler_ProcessLinkingWithConfirmations(t *testing.T) {
 	t.Setenv("HOME", "/home/testuser")
 
 	handler := symlink.NewSymlinkHandler()
-	
+
 	matches := []types.RuleMatch{
 		{
 			Path:         ".vimrc",
@@ -168,7 +168,7 @@ func TestSymlinkHandler_ConflictDetection(t *testing.T) {
 	t.Setenv("HOME", "/home/testuser")
 
 	handler := symlink.NewSymlinkHandler()
-	
+
 	// Two files targeting the same location
 	matches := []types.RuleMatch{
 		{
@@ -185,18 +185,14 @@ func TestSymlinkHandler_ConflictDetection(t *testing.T) {
 		},
 	}
 
-	result, err := handler.ProcessLinkingWithConfirmations(matches)
-	if err != nil {
-		t.Fatalf("ProcessLinkingWithConfirmations failed: %v", err)
+	_, err := handler.ProcessLinkingWithConfirmations(matches)
+	if err == nil {
+		t.Fatal("expected conflict error, got nil")
 	}
 
-	// Should have detected the conflict and created a confirmation
-	if len(result.Confirmations) == 0 {
-		t.Error("expected conflict confirmation, got none")
-	}
-
-	// Should have 2 actions
-	if len(result.Actions) != 2 {
-		t.Errorf("expected 2 actions, got %d", len(result.Actions))
+	// Should have detected the conflict and returned an error
+	expectedError := "symlink conflict: both /dotfiles/app1/.config and /dotfiles/app2/.config want to link to /home/testuser/.config"
+	if err.Error() != expectedError {
+		t.Errorf("expected error %q, got %q", expectedError, err.Error())
 	}
 }

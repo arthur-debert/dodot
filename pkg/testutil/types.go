@@ -13,10 +13,10 @@ type FileTree map[string]interface{}
 type PackConfig struct {
 	// Files maps relative paths to file contents
 	Files map[string]string
-	
+
 	// Rules defines the dodot rules for this pack
 	Rules []Rule
-	
+
 	// Directories to create (without files)
 	Dirs []string
 }
@@ -32,19 +32,19 @@ type Rule struct {
 // String converts a Rule to TOML format
 func (r Rule) String() string {
 	parts := []string{
-		fmt.Sprintf("[[rules]]"),
+		"[[rules]]",
 		fmt.Sprintf("type = %q", r.Type),
 		fmt.Sprintf("pattern = %q", r.Pattern),
 		fmt.Sprintf("handler = %q", r.Handler),
 	}
-	
+
 	if len(r.Options) > 0 {
 		parts = append(parts, "[rules.options]")
 		for k, v := range r.Options {
 			parts = append(parts, fmt.Sprintf("%s = %q", k, v))
 		}
 	}
-	
+
 	return strings.Join(parts, "\n")
 }
 
@@ -59,39 +59,39 @@ type TestPack struct {
 func (p *TestPack) AddFile(path, content string) *TestPack {
 	fullPath := filepath.Join(p.Path, path)
 	dir := filepath.Dir(fullPath)
-	
+
 	// Create parent directories
 	if err := p.env.FS.MkdirAll(dir, 0755); err != nil {
 		p.env.t.Fatalf("failed to create directory %s: %v", dir, err)
 	}
-	
+
 	// Write file
 	if err := p.env.FS.WriteFile(fullPath, []byte(content), 0644); err != nil {
 		p.env.t.Fatalf("failed to write file %s: %v", fullPath, err)
 	}
-	
+
 	return p
 }
 
 // AddSymlink adds a symlink to the test pack
 func (p *TestPack) AddSymlink(source, target string) *TestPack {
 	sourcePath := filepath.Join(p.Path, source)
-	
+
 	if err := p.env.FS.Symlink(target, sourcePath); err != nil {
 		p.env.t.Fatalf("failed to create symlink %s -> %s: %v", sourcePath, target, err)
 	}
-	
+
 	return p
 }
 
 // AddDirectory creates a directory in the test pack
 func (p *TestPack) AddDirectory(path string) *TestPack {
 	dirPath := filepath.Join(p.Path, path)
-	
+
 	if err := p.env.FS.MkdirAll(dirPath, 0755); err != nil {
 		p.env.t.Fatalf("failed to create directory %s: %v", dirPath, err)
 	}
-	
+
 	return p
 }
 
@@ -101,8 +101,8 @@ func (p *TestPack) AddDirectory(path string) *TestPack {
 func VimPack() PackConfig {
 	return PackConfig{
 		Files: map[string]string{
-			"vimrc":           "\" Standard vimrc\nset number\nset expandtab",
-			"gvimrc":          "\" GUI vim config\nset guifont=Monaco:h12",
+			"vimrc":              "\" Standard vimrc\nset number\nset expandtab",
+			"gvimrc":             "\" GUI vim config\nset guifont=Monaco:h12",
 			"colors/monokai.vim": "\" Monokai color scheme",
 		},
 		Rules: []Rule{
@@ -148,7 +148,7 @@ func ToolsPack() PackConfig {
 	return PackConfig{
 		Files: map[string]string{
 			"install.sh": "#!/bin/bash\necho 'Installing tools'\nexit 0",
-			"Brewfile": "brew 'ripgrep'\nbrew 'fd'\ncask 'visual-studio-code'",
+			"Brewfile":   "brew 'ripgrep'\nbrew 'fd'\ncask 'visual-studio-code'",
 		},
 		Rules: []Rule{
 			{Type: "filename", Pattern: "install.sh", Handler: "install"},
