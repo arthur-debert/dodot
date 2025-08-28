@@ -304,45 +304,170 @@ install = "setup.sh"
 		// Shell wasn't specified in pack config, so should keep base value
 		assert.Equal(t, []string{"base.sh"}, result.FileMapping.Shell)
 	})
+
+	t.Run("invalid toml in pack config", func(t *testing.T) {
+		baseConfig := &Config{}
+		packPath := filepath.Join(tmpDir, "pack3")
+		require.NoError(t, os.MkdirAll(packPath, 0755))
+
+		// Create pack config with invalid TOML
+		packConfigPath := filepath.Join(packPath, ".dodot.toml")
+		require.NoError(t, os.WriteFile(packConfigPath, []byte("[invalid toml"), 0644))
+
+		result, err := LoadPackConfiguration(baseConfig, packPath)
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "failed to load pack config")
+	})
+
+	t.Run("stat error on pack config", func(t *testing.T) {
+		baseConfig := &Config{}
+		// Use a path that will cause stat to fail (not just file not found)
+		packPath := filepath.Join(tmpDir, "nonexistent", "nested", "path")
+
+		result, err := LoadPackConfiguration(baseConfig, packPath)
+		// This should succeed because the parent directory doesn't exist,
+		// which is treated as "no config file"
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Equal(t, baseConfig, result)
+	})
 }
 
 func TestConfigToMap(t *testing.T) {
-	cfg := &Config{
-		Security: Security{
-			ProtectedPaths: map[string]bool{
-				".ssh/id_rsa": true,
-				".gnupg":      true,
+	t.Run("basic config conversion", func(t *testing.T) {
+		cfg := &Config{
+			Security: Security{
+				ProtectedPaths: map[string]bool{
+					".ssh/id_rsa": true,
+					".gnupg":      true,
+				},
 			},
-		},
-		Patterns: Patterns{
-			PackIgnore: []string{".git", "node_modules"},
-		},
-		FileMapping: FileMapping{
-			Path:     "bin",
-			Install:  "install.sh",
-			Shell:    []string{"aliases.sh"},
-			Homebrew: "Brewfile",
-		},
-	}
+			Patterns: Patterns{
+				PackIgnore:      []string{".git", "node_modules"},
+				CatchallExclude: []string{".dodot.toml", ".dodotignore"},
+			},
+			FileMapping: FileMapping{
+				Path:     "bin",
+				Install:  "install.sh",
+				Shell:    []string{"aliases.sh"},
+				Homebrew: "Brewfile",
+			},
+		}
 
-	result := configToMap(cfg)
+		result := configToMap(cfg)
 
-	// Check that the conversion worked
-	security, ok := result["security"].(map[string]interface{})
-	require.True(t, ok)
-	protectedPaths, ok := security["protected_paths"].(map[string]bool)
-	require.True(t, ok)
-	assert.True(t, protectedPaths[".ssh/id_rsa"])
-	assert.True(t, protectedPaths[".gnupg"])
+		// Check that the conversion worked
+		security, ok := result["security"].(map[string]interface{})
+		require.True(t, ok)
+		protectedPaths, ok := security["protected_paths"].(map[string]bool)
+		require.True(t, ok)
+		assert.True(t, protectedPaths[".ssh/id_rsa"])
+		assert.True(t, protectedPaths[".gnupg"])
 
-	patterns, ok := result["patterns"].(map[string]interface{})
-	require.True(t, ok)
-	packIgnore, ok := patterns["pack_ignore"].([]string)
-	require.True(t, ok)
-	assert.Equal(t, []string{".git", "node_modules"}, packIgnore)
+		patterns, ok := result["patterns"].(map[string]interface{})
+		require.True(t, ok)
+		packIgnore, ok := patterns["pack_ignore"].([]string)
+		require.True(t, ok)
+		assert.Equal(t, []string{".git", "node_modules"}, packIgnore)
 
-	fileMapping, ok := result["file_mapping"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Equal(t, "bin", fileMapping["path"])
-	assert.Equal(t, "install.sh", fileMapping["install"])
+		catchallExclude, ok := patterns["catchall_exclude"].([]string)
+		require.True(t, ok)
+		assert.Equal(t, []string{".dodot.toml", ".dodotignore"}, catchallExclude)
+
+		fileMapping, ok := result["file_mapping"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "bin", fileMapping["path"])
+		assert.Equal(t, "install.sh", fileMapping["install"])
+	})
+
+	t.Run("config with matchers", func(t *testing.T) {
+		cfg := &Config{
+			Security: Security{
+				ProtectedPaths: map[string]bool{},
+			},
+			Matchers: []MatcherConfig{
+				{
+					Name:     "test-matcher",
+					Priority: 50,
+					Trigger: TriggerConfig{
+						Type: "file",
+						Data: map[string]interface{}{
+							"pattern": "*.sh",
+						},
+					},
+					Handler: HandlerConfig{
+						Type: "symlink",
+						Data: map[string]interface{}{
+							"destination": "$HOME/bin",
+						},
+					},
+				},
+			},
+		}
+
+		result := configToMap(cfg)
+
+		// Check matchers conversion
+		matchers, ok := result["matchers"].([]interface{})
+		require.True(t, ok)
+		require.Len(t, matchers, 1)
+
+		matcher, ok := matchers[0].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "test-matcher", matcher["name"])
+		assert.Equal(t, 50, matcher["priority"])
+
+		trigger, ok := matcher["trigger"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "file", trigger["type"])
+
+		handler, ok := matcher["handler"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Equal(t, "symlink", handler["type"])
+	})
+}
+
+func TestSliceHelpers(t *testing.T) {
+	t.Run("isSlice", func(t *testing.T) {
+		assert.True(t, isSlice([]interface{}{"a", "b"}))
+		assert.True(t, isSlice([]string{"a", "b"}))
+		assert.False(t, isSlice("not a slice"))
+		assert.False(t, isSlice(123))
+		assert.False(t, isSlice(map[string]interface{}{}))
+	})
+
+	t.Run("toInterfaceSlice", func(t *testing.T) {
+		// Test with []interface{}
+		interfaceSlice := []interface{}{"a", "b", "c"}
+		result := toInterfaceSlice(interfaceSlice)
+		assert.Equal(t, interfaceSlice, result)
+
+		// Test with []string
+		stringSlice := []string{"x", "y", "z"}
+		result = toInterfaceSlice(stringSlice)
+		assert.Equal(t, []interface{}{"x", "y", "z"}, result)
+
+		// Test with non-slice
+		result = toInterfaceSlice("not a slice")
+		assert.Equal(t, []interface{}{}, result)
+	})
+
+	t.Run("appendSlices", func(t *testing.T) {
+		// Test []interface{} + []interface{}
+		dest := []interface{}{"a", "b"}
+		src := []interface{}{"c", "d"}
+		result := appendSlices(dest, src)
+		assert.Equal(t, []interface{}{"a", "b", "c", "d"}, result)
+
+		// Test []string + []string
+		destStr := []string{"1", "2"}
+		srcStr := []string{"3", "4"}
+		result = appendSlices(destStr, srcStr)
+		assert.Equal(t, []interface{}{"1", "2", "3", "4"}, result)
+
+		// Test mixed types
+		result = appendSlices(destStr, src)
+		assert.Equal(t, []interface{}{"1", "2", "c", "d"}, result)
+	})
 }
