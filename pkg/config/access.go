@@ -41,11 +41,6 @@ func GetPatterns() Patterns {
 	return Get().Patterns
 }
 
-// GetPriorities returns priority configuration
-func GetPriorities() Priorities {
-	return Get().Priorities
-}
-
 // GetFilePermissions returns file permission configuration
 func GetFilePermissions() FilePermissions {
 	return Get().FilePermissions

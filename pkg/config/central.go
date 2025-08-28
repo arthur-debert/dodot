@@ -25,11 +25,6 @@ type SpecialFiles struct {
 	IgnoreFile string `koanf:"ignore_file"`
 }
 
-// Priorities holds component priority settings
-type Priorities struct {
-	Handlers map[string]int `koanf:"handlers"`
-}
-
 // Rule defines a pattern-to-handler mapping
 type Rule struct {
 	Pattern string                 `koanf:"pattern" yaml:"pattern" json:"pattern"`
@@ -89,7 +84,6 @@ type Mappings struct {
 type Config struct {
 	Security         Security         `koanf:"security"`
 	Patterns         Patterns         `koanf:"patterns"`
-	Priorities       Priorities       `koanf:"priorities"`
 	Rules            []Rule           `koanf:"rules"`
 	FilePermissions  FilePermissions  `koanf:"file_permissions"`
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
@@ -130,16 +124,6 @@ func Default() *Config {
 			SpecialFiles: SpecialFiles{
 				PackConfig: ".dodot.toml",
 				IgnoreFile: ".dodotignore",
-			},
-		},
-		Priorities: Priorities{
-			Handlers: map[string]int{
-				"symlink":  100,
-				"path":     90,
-				"install":  90,
-				"homebrew": 90,
-				"shell":    80,
-				"template": 70,
 			},
 		},
 		Rules: defaultRules(),

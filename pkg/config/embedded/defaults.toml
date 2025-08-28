@@ -1,14 +1,6 @@
 # Internal dodot system defaults
 # These are embedded in the binary and provide the base configuration
 
-[priorities.handlers]
-symlink = 100
-path = 90
-install = 90
-shell = 80
-homebrew = 90
-template = 70
-
 [shell_integration]
 bash_zsh_snippet = '[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"'
 bash_zsh_snippet_with_custom = '[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"'
@@ -63,51 +55,3 @@ pack_ignore = [
 pack_config = ".dodot.toml"
 ignore_file = ".dodotignore"
 
-# Default matchers - these define how files are processed
-[[matchers]]
-name = "install-script"
-priority = 90
-trigger = { type = "filename", data = { pattern = "install.sh" } }
-handler = { type = "install", data = {} }
-
-[[matchers]]
-name = "brewfile"
-priority = 90
-trigger = { type = "filename", data = { pattern = "Brewfile" } }
-handler = { type = "homebrew", data = {} }
-
-[[matchers]]
-name = "shell-aliases"
-priority = 80
-trigger = { type = "filename", data = { pattern = "*aliases.sh" } }
-handler = { type = "shell", data = { placement = "aliases" } }
-
-[[matchers]]
-name = "shell-profile"
-priority = 80
-trigger = { type = "filename", data = { pattern = "profile.sh" } }
-handler = { type = "shell", data = { placement = "environment" } }
-
-[[matchers]]
-name = "shell-login"
-priority = 80
-trigger = { type = "filename", data = { pattern = "login.sh" } }
-handler = { type = "shell", data = { placement = "login" } }
-
-[[matchers]]
-name = "bin-dir"
-priority = 90
-trigger = { type = "directory", data = { pattern = "bin" } }
-handler = { type = "path", data = {} }
-
-[[matchers]]
-name = "local-bin-dir"
-priority = 90
-trigger = { type = "directory", data = { pattern = ".local/bin" } }
-handler = { type = "path", data = {} }
-
-[[matchers]]
-name = "symlink-catchall"
-priority = 0
-trigger = { type = "catchall", data = {} }
-handler = { type = "symlink", data = {} }
