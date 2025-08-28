@@ -26,7 +26,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | Package | Test Type | Current Files | Migration Status | Old Coverage | New Coverage | Notes |
 |---------|-----------|---------------|------------------|--------------|--------------|-------|
 | cmd/dodot | CLI | commands_test.go, root_test.go, topics_test.go | migrated | 20.26% | 20.26% | CLI commands |
-| pkg/actions | Unit | actions_test.go | planned | 94.29% | 0% | Pure logic tests |
+| pkg/actions | Unit | actions_test.go | migrated | 94.29% | 94.29% | Pure logic tests |
 | pkg/cobrax/topics | Unit | topics_test.go | planned | 40.00% | 0% | Template tests |
 | pkg/commands/addignore | Business Logic | addignore_test.go | planned | 84.62% | 0% | Command orchestration |
 | pkg/commands/adopt | Business Logic | adopt_test.go | planned | 82.86% | 0% | Complex FS operations |
@@ -51,7 +51,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/handlers | Unit | - | planned | 100.00% | 0% | Handler registry |
 | pkg/handlers/homebrew | Unit/Integration | homebrew_test.go | planned | 64.68% | 0% | Handler logic |
 | pkg/handlers/install | Unit/Integration | install_test.go | planned | 50.00% | 0% | Handler logic |
-| pkg/handlers/path | Unit/Integration | path_test.go | planned | 97.62% | 0% | Handler logic |
+| pkg/handlers/path | Unit/Integration | path_test.go | migrated | 97.62% | 97.62% | Handler logic |
 | pkg/handlers/shell | Unit/Integration | shell_test.go | planned | 77.78% | 0% | Handler logic |
 | pkg/handlers/symlink | Unit/Integration | symlink_test.go | migrated | 81.91% | 81.91% | Handler logic, memory FS |
 | pkg/internal/hashutil | Unit | hash_test.go | planned | 88.89% | 0% | Hashing utilities |
