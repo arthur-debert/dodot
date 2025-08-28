@@ -38,7 +38,7 @@ func (h *ShellHandler) RunMode() types.RunMode {
 }
 
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
-func (h *ShellHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *ShellHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -56,7 +56,7 @@ func (h *ShellHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.Lin
 }
 
 // ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
-func (h *ShellHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *ShellHandler) ProcessLinkingWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.shell")
 	actions := make([]types.Action, 0, len(matches))
 

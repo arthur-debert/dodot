@@ -7,6 +7,6 @@ import (
 
 // GetMatchesSimplified uses the new rule-based system to find matches
 // This will eventually replace the existing GetMatches function
-func GetMatchesSimplified(packs []types.Pack) ([]types.TriggerMatch, error) {
+func GetMatchesSimplified(packs []types.Pack) ([]types.RuleMatch, error) {
 	return rules.GetMatches(packs)
 }

@@ -1,10 +1,10 @@
 package types
 
-// TriggerMatch represents a successful rule match on a file or directory
+// RuleMatch represents a successful rule match on a file or directory
 // This is the output from the rules system that gets passed to handlers
-type TriggerMatch struct {
-	// TriggerName is the name of the trigger that matched (for legacy compatibility)
-	TriggerName string
+type RuleMatch struct {
+	// RuleName is the pattern that matched this file
+	RuleName string
 
 	// Pack is the name of the pack containing the matched file
 	Pack string
@@ -15,7 +15,7 @@ type TriggerMatch struct {
 	// AbsolutePath is the absolute path to the file
 	AbsolutePath string
 
-	// Metadata contains any additional data extracted by the rule
+	// Metadata contains any additional data about the matched file
 	Metadata map[string]interface{}
 
 	// HandlerName is the name of the handler that should process this match

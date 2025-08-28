@@ -43,7 +43,7 @@ func (h *HomebrewHandler) RunMode() types.RunMode {
 }
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances
-func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+func (h *HomebrewHandler) ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error) {
 	result, err := h.ProcessProvisioningWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (h *HomebrewHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]t
 }
 
 // ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
-func (h *HomebrewHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *HomebrewHandler) ProcessProvisioningWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.homebrew")
 	actions := make([]types.Action, 0, len(matches))
 

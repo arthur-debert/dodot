@@ -70,7 +70,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Msg("Packs selected")
 
 	// 4. Get firing triggers for the packs
-	var matches []types.TriggerMatch
+	var matches []types.RuleMatch
 	if opts.UseSimplifiedRules {
 		logger.Info().Msg("Using simplified rule-based matching")
 		matches, err = core.GetMatchesSimplified(selectedPacks)

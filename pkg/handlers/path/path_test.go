@@ -13,19 +13,19 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		matches       []types.TriggerMatch
+		matches       []types.RuleMatch
 		expectedCount int
 		expectedError bool
 		checkActions  func(t *testing.T, actions []types.LinkingAction)
 	}{
 		{
 			name: "single directory",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
 					AbsolutePath: "/dotfiles/tools/bin",
 					Pack:         "tools",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 			},
 			expectedCount: 1,
@@ -39,18 +39,18 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "multiple directories from same pack",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
 					AbsolutePath: "/dotfiles/dev/bin",
 					Pack:         "dev",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 				{
 					Path:         "scripts",
 					AbsolutePath: "/dotfiles/dev/scripts",
 					Pack:         "dev",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 			},
 			expectedCount: 2,
@@ -71,18 +71,18 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "duplicate directory detection",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
 					AbsolutePath: "/dotfiles/tools/bin",
 					Pack:         "tools",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 				{
 					Path:         "bin",
 					AbsolutePath: "/dotfiles/tools/bin",
 					Pack:         "tools",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 			},
 			expectedCount: 1, // Second duplicate should be skipped
@@ -97,18 +97,18 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "different packs with same directory name",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
 					AbsolutePath: "/dotfiles/tools/bin",
 					Pack:         "tools",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 				{
 					Path:         "bin",
 					AbsolutePath: "/dotfiles/dev/bin",
 					Pack:         "dev",
-					TriggerName:  "directory",
+					RuleName:     "directory",
 				},
 			},
 			expectedCount: 2, // Both should be included since they're from different packs
@@ -127,7 +127,7 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name:          "empty matches",
-			matches:       []types.TriggerMatch{},
+			matches:       []types.RuleMatch{},
 			expectedCount: 0,
 			expectedError: false,
 		},

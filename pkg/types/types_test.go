@@ -30,11 +30,11 @@ func TestPackStructure(t *testing.T) {
 	}
 }
 
-func TestTriggerMatchStructure(t *testing.T) {
+func TestRuleMatchStructure(t *testing.T) {
 	pack := Pack{Name: "test-pack", Path: "/test"}
 
-	match := TriggerMatch{
-		TriggerName:  "filename",
+	match := RuleMatch{
+		RuleName:     "filename",
 		Pack:         pack.Name,
 		Path:         "file.txt",
 		AbsolutePath: "/test/file.txt",

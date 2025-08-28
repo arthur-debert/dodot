@@ -22,7 +22,7 @@ type LinkingHandler interface {
 	GetTemplateContent() string
 
 	// ProcessLinking generates linking actions from the matched files
-	ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error)
+	ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error)
 }
 
 // ProvisioningHandler generates actions that have side effects.
@@ -45,7 +45,7 @@ type ProvisioningHandler interface {
 	GetTemplateContent() string
 
 	// ProcessProvisioning generates provisioning actions from the matched files
-	ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error)
+	ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error)
 }
 
 // DualModeHandler is a handler that can operate in both linking and provisioning modes
@@ -62,7 +62,7 @@ type LinkingHandlerWithConfirmations interface {
 
 	// ProcessLinkingWithConfirmations generates linking actions and confirmation requests
 	// from the matched files. This replaces ProcessLinking for handlers that need confirmations.
-	ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error)
+	ProcessLinkingWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error)
 }
 
 // ProvisioningHandlerWithConfirmations is an optional interface that provisioning handlers can implement
@@ -73,7 +73,7 @@ type ProvisioningHandlerWithConfirmations interface {
 
 	// ProcessProvisioningWithConfirmations generates provisioning actions and confirmation requests
 	// from the matched files. This replaces ProcessProvisioning for handlers that need confirmations.
-	ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error)
+	ProcessProvisioningWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error)
 }
 
 // Clearable represents a handler that can clean up its deployments

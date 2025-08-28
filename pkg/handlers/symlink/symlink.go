@@ -70,7 +70,7 @@ func (h *SymlinkHandler) RunMode() types.RunMode {
 }
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
-func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *SymlinkHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func (h *SymlinkHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.L
 }
 
 // ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
-func (h *SymlinkHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *SymlinkHandler) ProcessLinkingWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.symlink")
 	actions := make([]types.Action, 0, len(matches))
 

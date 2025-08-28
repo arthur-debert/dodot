@@ -16,9 +16,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// GetMatches scans packs and returns all trigger matches using the new rule system
-// This function replaces the old matcher-based GetMatches
-func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
+// GetMatches scans packs and returns all rule matches using the rule system
+func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs")
 
@@ -33,7 +32,7 @@ func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
 		Msg("Loaded global rules")
 
 	scanner := NewScanner(globalRules)
-	var allTriggerMatches []types.TriggerMatch
+	var allRuleMatches []types.RuleMatch
 
 	// Process each pack
 	for _, pack := range packs {
@@ -59,10 +58,10 @@ func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
 				"failed to scan pack %s", pack.Name)
 		}
 
-		// Convert rule matches to trigger matches for compatibility
+		// Convert rule matches to RuleMatch type
 		for _, match := range matches {
-			triggerMatch := types.TriggerMatch{
-				TriggerName:  "rule-based",
+			ruleMatch := types.RuleMatch{
+				RuleName:     "rule-based",
 				Pack:         pack.Name,
 				Path:         match.FilePath,
 				AbsolutePath: filepath.Join(pack.Path, match.FilePath),
@@ -75,20 +74,20 @@ func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
 				HandlerOptions: match.Options,
 				Priority:       0, // Priority is handled by rule order
 			}
-			allTriggerMatches = append(allTriggerMatches, triggerMatch)
+			allRuleMatches = append(allRuleMatches, ruleMatch)
 		}
 	}
 
 	logger.Info().
-		Int("totalMatches", len(allTriggerMatches)).
+		Int("totalMatches", len(allRuleMatches)).
 		Msg("Completed matching across all packs")
 
-	return allTriggerMatches, nil
+	return allRuleMatches, nil
 }
 
-// GetMatchesFS scans packs and returns all trigger matches using the new rule system with a custom filesystem
+// GetMatchesFS scans packs and returns all rule matches using the rule system with a custom filesystem
 // This function is used for testing and commands that need to use a different filesystem
-func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.TriggerMatch, error) {
+func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.RuleMatch, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs with FS")
 
@@ -99,7 +98,7 @@ func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.TriggerMatch, error)
 	}
 
 	scanner := NewScannerWithFS(globalRules, fs)
-	var allTriggerMatches []types.TriggerMatch
+	var allRuleMatches []types.RuleMatch
 
 	// Process each pack
 	for _, pack := range packs {
@@ -125,10 +124,10 @@ func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.TriggerMatch, error)
 				"failed to scan pack %s", pack.Name)
 		}
 
-		// Convert rule matches to trigger matches for compatibility
+		// Convert rule matches to RuleMatch type
 		for _, match := range matches {
-			triggerMatch := types.TriggerMatch{
-				TriggerName:  "rule-based",
+			ruleMatch := types.RuleMatch{
+				RuleName:     "rule-based",
 				Pack:         pack.Name,
 				Path:         match.FilePath,
 				AbsolutePath: filepath.Join(pack.Path, match.FilePath),
@@ -141,15 +140,15 @@ func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.TriggerMatch, error)
 				HandlerOptions: match.Options,
 				Priority:       0, // Priority is handled by rule order
 			}
-			allTriggerMatches = append(allTriggerMatches, triggerMatch)
+			allRuleMatches = append(allRuleMatches, ruleMatch)
 		}
 	}
 
 	logger.Info().
-		Int("totalMatches", len(allTriggerMatches)).
+		Int("totalMatches", len(allRuleMatches)).
 		Msg("Completed matching across all packs")
 
-	return allTriggerMatches, nil
+	return allRuleMatches, nil
 }
 
 // CreateHandler creates a handler instance by name
@@ -182,9 +181,9 @@ func CreateHandler(name string, options map[string]interface{}) (interface{}, er
 	}
 }
 
-// GroupMatchesByHandler groups trigger matches by their handler name
-func GroupMatchesByHandler(matches []types.TriggerMatch) map[string][]types.TriggerMatch {
-	grouped := make(map[string][]types.TriggerMatch)
+// GroupMatchesByHandler groups rule matches by their handler name
+func GroupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMatch {
+	grouped := make(map[string][]types.RuleMatch)
 	for _, match := range matches {
 		handler := match.HandlerName
 		grouped[handler] = append(grouped[handler], match)

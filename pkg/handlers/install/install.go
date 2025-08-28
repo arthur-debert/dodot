@@ -66,7 +66,7 @@ func (h *InstallHandler) RunMode() types.RunMode {
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
-func (h *InstallHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]types.ProvisioningAction, error) {
+func (h *InstallHandler) ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error) {
 	result, err := h.ProcessProvisioningWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -84,7 +84,7 @@ func (h *InstallHandler) ProcessProvisioning(matches []types.TriggerMatch) ([]ty
 }
 
 // ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
-func (h *InstallHandler) ProcessProvisioningWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *InstallHandler) ProcessProvisioningWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.install")
 	actions := make([]types.Action, 0, len(matches))
 

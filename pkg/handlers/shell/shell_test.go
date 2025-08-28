@@ -13,19 +13,19 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		matches       []types.TriggerMatch
+		matches       []types.RuleMatch
 		expectedCount int
 		expectedError bool
 		checkActions  func(t *testing.T, actions []types.LinkingAction)
 	}{
 		{
 			name: "single shell script",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "aliases.sh",
 					AbsolutePath: "/dotfiles/shell/aliases.sh",
 					Pack:         "shell",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 1,
@@ -39,18 +39,18 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "multiple shell scripts from same pack",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "aliases.sh",
 					AbsolutePath: "/dotfiles/bash/aliases.sh",
 					Pack:         "bash",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 				{
 					Path:         "functions.sh",
 					AbsolutePath: "/dotfiles/bash/functions.sh",
 					Pack:         "bash",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 2,
@@ -71,18 +71,18 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name: "shell scripts from different packs",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "aliases.sh",
 					AbsolutePath: "/dotfiles/zsh/aliases.sh",
 					Pack:         "zsh",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 				{
 					Path:         "aliases.sh",
 					AbsolutePath: "/dotfiles/bash/aliases.sh",
 					Pack:         "bash",
-					TriggerName:  "filename",
+					RuleName:     "filename",
 				},
 			},
 			expectedCount: 2,
@@ -101,18 +101,18 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 		},
 		{
 			name:          "empty matches",
-			matches:       []types.TriggerMatch{},
+			matches:       []types.RuleMatch{},
 			expectedCount: 0,
 			expectedError: false,
 		},
 		{
 			name: "nested shell scripts",
-			matches: []types.TriggerMatch{
+			matches: []types.RuleMatch{
 				{
 					Path:         "config/aliases.sh",
 					AbsolutePath: "/dotfiles/shell/config/aliases.sh",
 					Pack:         "shell",
-					TriggerName:  "glob",
+					RuleName:     "glob",
 				},
 			},
 			expectedCount: 1,

@@ -36,7 +36,7 @@ func (h *PathHandler) RunMode() types.RunMode {
 }
 
 // ProcessLinking takes directories and creates AddToPathAction instances
-func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.LinkingAction, error) {
+func (h *PathHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
 	if err != nil {
 		return nil, err
@@ -54,7 +54,7 @@ func (h *PathHandler) ProcessLinking(matches []types.TriggerMatch) ([]types.Link
 }
 
 // ProcessLinkingWithConfirmations implements LinkingHandlerWithConfirmations
-func (h *PathHandler) ProcessLinkingWithConfirmations(matches []types.TriggerMatch) (types.ProcessingResult, error) {
+func (h *PathHandler) ProcessLinkingWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
 	logger := logging.GetLogger("handlers.path")
 	actions := make([]types.Action, 0, len(matches))
 

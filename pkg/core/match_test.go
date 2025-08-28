@@ -12,12 +12,12 @@ func TestGetMatches_Orchestration(t *testing.T) {
 	// pack1 := types.Pack{Name: "pack1", Path: "/path1"}
 	// pack2 := types.Pack{Name: "pack2", Path: "/path2"}
 
-	// pack1Matches := []types.TriggerMatch{
+	// pack1Matches := []types.RuleMatch{
 	// 	{Pack: "pack1", Path: "file1.txt"},
 	// 	{Pack: "pack1", Path: "file2.txt"},
 	// }
 
-	// pack2Matches := []types.TriggerMatch{
+	// pack2Matches := []types.RuleMatch{
 	// 	{Pack: "pack2", Path: "file3.txt"},
 	// }
 

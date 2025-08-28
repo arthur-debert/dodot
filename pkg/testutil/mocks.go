@@ -9,7 +9,7 @@ type MockHandler struct {
 	NameFunc               func() string
 	DescriptionFunc        func() string
 	RunModeFunc            func() types.RunMode
-	ProcessFunc            func(matches []types.TriggerMatch) ([]types.Action, error)
+	ProcessFunc            func(matches []types.RuleMatch) ([]types.Action, error)
 	ValidateOptionsFunc    func(options map[string]interface{}) error
 	GetTemplateContentFunc func() string
 }
@@ -39,7 +39,7 @@ func (m *MockHandler) RunMode() types.RunMode {
 }
 
 // Process runs the mock's process function.
-func (m *MockHandler) Process(matches []types.TriggerMatch) ([]types.Action, error) {
+func (m *MockHandler) Process(matches []types.RuleMatch) ([]types.Action, error) {
 	if m.ProcessFunc != nil {
 		return m.ProcessFunc(matches)
 	}
