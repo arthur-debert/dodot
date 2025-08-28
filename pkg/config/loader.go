@@ -23,6 +23,11 @@ var defaultConfig []byte
 //go:embed embedded/user-defaults.toml
 var userDefaultConfig []byte
 
+// GetUserDefaultsContent returns the content of the user defaults configuration file
+func GetUserDefaultsContent() string {
+	return string(userDefaultConfig)
+}
+
 type rawBytesProvider struct{ bytes []byte }
 
 func (r *rawBytesProvider) ReadBytes() ([]byte, error) { return r.bytes, nil }

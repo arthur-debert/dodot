@@ -122,6 +122,7 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newAdoptCmd())
 	rootCmd.AddCommand(newSnippetCmd())
+	rootCmd.AddCommand(newGenConfigCmd())
 	rootCmd.AddCommand(newTopicsCmd())
 	// Completion command removed - use dodot-completions tool instead
 
@@ -951,6 +952,74 @@ func newSnippetCmd() *cobra.Command {
 
 	cmd.Flags().StringP("shell", "s", "bash", "Shell type (bash, zsh, fish)")
 	cmd.Flags().Bool("provision", false, "Install shell integration scripts to data directory")
+
+	return cmd
+}
+
+func newGenConfigCmd() *cobra.Command {
+	var write bool
+
+	cmd := &cobra.Command{
+		Use:     "gen-config [<pack>...]",
+		Short:   "Generate default configuration file",
+		Long:    "Output the default configuration to stdout or write it to specified packs.\n\nWith no arguments and -w flag, writes to current directory.\nWith pack names and -w flag, writes to each pack directory.",
+		Example: "  dodot gen-config                    # Output to stdout\n  dodot gen-config -w                  # Write to ./.dodot.toml\n  dodot gen-config vim git -w          # Write to vim/.dodot.toml and git/.dodot.toml",
+		GroupID: "misc",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize paths if writing to packs
+			var dotfilesRoot string
+			if write && len(args) > 0 {
+				p, err := initPaths()
+				if err != nil {
+					return err
+				}
+				dotfilesRoot = p.DotfilesRoot()
+			}
+
+			result, err := commands.GenConfig(commands.GenConfigOptions{
+				DotfilesRoot: dotfilesRoot,
+				PackNames:    args,
+				Write:        write,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to generate config: %w", err)
+			}
+
+			// If not writing, output to stdout
+			if !write {
+				fmt.Print(result.ConfigContent)
+				return nil
+			}
+
+			// Create renderer for write result
+			renderer, err := createRenderer(cmd)
+			if err != nil {
+				return err
+			}
+
+			// Create command result
+			var message string
+			if len(result.FilesWritten) == 0 {
+				message = "No configuration files were written (files may already exist)."
+			} else if len(result.FilesWritten) == 1 {
+				message = fmt.Sprintf("Configuration written to %s", result.FilesWritten[0])
+			} else {
+				message = fmt.Sprintf("Configuration written to %d files", len(result.FilesWritten))
+			}
+
+			cmdResult := &types.CommandResult{
+				Message: message,
+			}
+
+			if err := renderer.RenderResult(cmdResult); err != nil {
+				return fmt.Errorf("failed to render results: %w", err)
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVarP(&write, "write", "w", false, "Write config to file(s) instead of stdout")
 
 	return cmd
 }

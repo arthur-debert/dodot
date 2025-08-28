@@ -23,6 +23,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/adopt"
 	"github.com/arthur-debert/dodot/pkg/commands/deprovision"
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
+	"github.com/arthur-debert/dodot/pkg/commands/genconfig"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
 	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
@@ -104,4 +105,11 @@ type DeprovisionResult = deprovision.DeprovisionResult
 
 func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) {
 	return deprovision.DeprovisionPacks(opts)
+}
+
+// GenConfig outputs or writes default configuration.
+type GenConfigOptions = genconfig.GenConfigOptions
+
+func GenConfig(opts GenConfigOptions) (*types.GenConfigResult, error) {
+	return genconfig.GenConfig(opts)
 }
