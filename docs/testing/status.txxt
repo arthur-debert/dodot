@@ -43,7 +43,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/unlink | Business Logic | unlink_test.go | planned | Cleanup operations |
 | pkg/config | Unit | config_test.go | planned | Configuration logic |
 | pkg/core | Integration | match_test.go, actions_test.go | planned | Pipeline integration |
-| pkg/datastore | DataStore | datastore_test.go | planned | REAL FS ALLOWED |
+| pkg/datastore | DataStore | filesystem_test.go | migrated | REAL FS ALLOWED, coverage: 82.7% |
 | pkg/errors | Unit | errors_test.go | migrated | Error handling |
 | pkg/executor | Integration | executor_test.go, clear_test.go | planned | Action execution |
 | pkg/filesystem | Unit | filesystem_test.go | planned | FS abstraction |
