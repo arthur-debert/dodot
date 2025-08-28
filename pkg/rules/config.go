@@ -13,21 +13,13 @@ import (
 )
 
 // LoadRules loads rules from configuration
-func LoadRules(k *koanf.Koanf) ([]Rule, error) {
+func LoadRules(k *koanf.Koanf) ([]config.Rule, error) {
 	logger := logging.GetLogger("rules.config")
 
 	// First, try to load new-style rules
-	var rules []Rule
+	var rules []config.Rule
 	if err := k.Unmarshal("rules", &rules); err == nil && len(rules) > 0 {
 		logger.Info().Msg("Loaded new-style rules from configuration")
-		return validateRules(rules)
-	}
-
-	// Fall back to converting existing matchers
-	var matchers []config.MatcherConfig
-	if err := k.Unmarshal("matchers", &matchers); err == nil && len(matchers) > 0 {
-		logger.Info().Msg("Converting matchers to rules")
-		rules = adaptConfigMatchersToRules(matchers)
 		return validateRules(rules)
 	}
 
@@ -37,7 +29,7 @@ func LoadRules(k *koanf.Koanf) ([]Rule, error) {
 }
 
 // validateRules checks that rules are valid
-func validateRules(rules []Rule) ([]Rule, error) {
+func validateRules(rules []config.Rule) ([]config.Rule, error) {
 	for i, rule := range rules {
 		if rule.Pattern == "" {
 			return nil, fmt.Errorf("rule %d has empty pattern", i)
@@ -50,7 +42,7 @@ func validateRules(rules []Rule) ([]Rule, error) {
 }
 
 // LoadPackRules loads pack-specific rules from a pack's .dodot.toml
-func LoadPackRules(packPath string) ([]Rule, error) {
+func LoadPackRules(packPath string) ([]config.Rule, error) {
 	logger := logging.GetLogger("rules.config")
 
 	configPath := filepath.Join(packPath, ".dodot.toml")
@@ -69,7 +61,7 @@ func LoadPackRules(packPath string) ([]Rule, error) {
 }
 
 // LoadPackRulesFS loads pack-specific rules from a pack's .dodot.toml using the provided filesystem
-func LoadPackRulesFS(packPath string, fs types.FS) ([]Rule, error) {
+func LoadPackRulesFS(packPath string, fs types.FS) ([]config.Rule, error) {
 	logger := logging.GetLogger("rules.config")
 
 	configPath := filepath.Join(packPath, ".dodot.toml")
@@ -89,15 +81,15 @@ func LoadPackRulesFS(packPath string, fs types.FS) ([]Rule, error) {
 
 // MergeRules merges pack-specific rules with global rules
 // Pack rules are placed first to take precedence
-func MergeRules(global, packSpecific []Rule) []Rule {
+func MergeRules(global, packSpecific []config.Rule) []config.Rule {
 	// Pack rules come first, so they match before global rules
 	return append(packSpecific, global...)
 }
 
 // getDefaultRules returns the default set of rules
 // Order matters: exclusions, exact matches, globs, directories, catchall
-func getDefaultRules() []Rule {
-	return []Rule{
+func getDefaultRules() []config.Rule {
+	return []config.Rule{
 		// Exclusions (processed first)
 		{Pattern: "!*.bak"},
 		{Pattern: "!*.tmp"},
@@ -125,44 +117,4 @@ func getDefaultRules() []Rule {
 		// Catchall (last)
 		{Pattern: "*", Handler: "symlink"},
 	}
-}
-
-// adaptConfigMatchersToRules converts old matcher format from config to new rule format
-// This is temporary during the migration period
-func adaptConfigMatchersToRules(matchers []config.MatcherConfig) []Rule {
-	var rules []Rule
-
-	for _, m := range matchers {
-		// Extract pattern from trigger data
-		pattern := ""
-		if data, ok := m.Trigger.Data["pattern"].(string); ok {
-			pattern = data
-		}
-
-		// Handle special trigger types
-		if m.Trigger.Type == "catchall" {
-			pattern = "*"
-		}
-
-		// Skip if no pattern found
-		if pattern == "" {
-			continue
-		}
-
-		// Adapt directory triggers
-		if m.Trigger.Type == "directory" {
-			pattern = pattern + "/"
-		}
-
-		// Create rule from matcher
-		rule := Rule{
-			Pattern: pattern,
-			Handler: m.Handler.Type,
-			Options: m.Handler.Data,
-		}
-
-		rules = append(rules, rule)
-	}
-
-	return rules
 }

@@ -37,7 +37,7 @@ func TestGetDefaultRules(t *testing.T) {
 	assert.True(t, handlers["homebrew"], "Should have homebrew handler")
 
 	// Check catchall rule exists
-	var catchall *Rule
+	var catchall *config.Rule
 	for i, r := range rules {
 		if r.Pattern == "*" && r.Handler == "symlink" {
 			catchall = &rules[i]
@@ -46,100 +46,13 @@ func TestGetDefaultRules(t *testing.T) {
 	assert.NotNil(t, catchall, "Should have catchall rule")
 }
 
-func TestAdaptConfigMatchersToRules(t *testing.T) {
-	tests := []struct {
-		name     string
-		matcher  config.MatcherConfig
-		expected Rule
-	}{
-		{
-			name: "filename trigger",
-			matcher: config.MatcherConfig{
-				Name:     "install-script",
-				Priority: 90,
-				Trigger: config.TriggerConfig{
-					Type: "filename",
-					Data: map[string]interface{}{
-						"pattern": "install.sh",
-					},
-				},
-				Handler: config.HandlerConfig{
-					Type: "install",
-					Data: map[string]interface{}{},
-				},
-			},
-			expected: Rule{
-				Pattern: "install.sh",
-				Handler: "install",
-				Options: map[string]interface{}{},
-			},
-		},
-		{
-			name: "directory trigger gets trailing slash",
-			matcher: config.MatcherConfig{
-				Name:     "bin-dir",
-				Priority: 80,
-				Trigger: config.TriggerConfig{
-					Type: "directory",
-					Data: map[string]interface{}{
-						"pattern": "bin",
-					},
-				},
-				Handler: config.HandlerConfig{
-					Type: "path",
-					Data: map[string]interface{}{},
-				},
-			},
-			expected: Rule{
-				Pattern: "bin/",
-				Handler: "path",
-				Options: map[string]interface{}{},
-			},
-		},
-		{
-			name: "handler with options",
-			matcher: config.MatcherConfig{
-				Name:     "shell-aliases",
-				Priority: 70,
-				Trigger: config.TriggerConfig{
-					Type: "filename",
-					Data: map[string]interface{}{
-						"pattern": "*aliases.sh",
-					},
-				},
-				Handler: config.HandlerConfig{
-					Type: "shell",
-					Data: map[string]interface{}{
-						"placement": "aliases",
-					},
-				},
-			},
-			expected: Rule{
-				Pattern: "*aliases.sh",
-				Handler: "shell",
-				Options: map[string]interface{}{
-					"placement": "aliases",
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rules := adaptConfigMatchersToRules([]config.MatcherConfig{tt.matcher})
-			assert.Len(t, rules, 1)
-			assert.Equal(t, tt.expected, rules[0])
-		})
-	}
-}
-
 func TestMergeRules(t *testing.T) {
-	global := []Rule{
+	global := []config.Rule{
 		{Pattern: "*.sh", Handler: "shell"},
 		{Pattern: "*", Handler: "symlink"},
 	}
 
-	packSpecific := []Rule{
+	packSpecific := []config.Rule{
 		{Pattern: "special.sh", Handler: "install"},
 	}
 

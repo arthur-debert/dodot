@@ -22,15 +22,13 @@ func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs")
 
-	// Load global rules from matchers for now
-	matchers := config.GetMatchers()
-	globalRules := adaptConfigMatchersToRules(matchers)
+	// Load global rules
+	globalRules := config.GetRules()
 	if len(globalRules) == 0 {
 		logger.Debug().Msg("No rules from config, using defaults")
 		globalRules = getDefaultRules()
 	}
 	logger.Debug().
-		Int("matcherCount", len(matchers)).
 		Int("ruleCount", len(globalRules)).
 		Msg("Loaded global rules")
 
@@ -94,9 +92,8 @@ func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.TriggerMatch, error)
 	logger := logging.GetLogger("rules.integration")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs with FS")
 
-	// Load global rules from matchers for now
-	matchers := config.GetMatchers()
-	globalRules := adaptConfigMatchersToRules(matchers)
+	// Load global rules
+	globalRules := config.GetRules()
 	if len(globalRules) == 0 {
 		globalRules = getDefaultRules()
 	}

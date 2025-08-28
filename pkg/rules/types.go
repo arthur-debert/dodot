@@ -1,12 +1,5 @@
 package rules
 
-// Rule defines a pattern-to-handler mapping
-type Rule struct {
-	Pattern string                 // glob pattern with conventions
-	Handler string                 // handler name
-	Options map[string]interface{} // handler-specific options
-}
-
 // Match represents a file matched by a rule
 type Match struct {
 	PackName    string                 // Name of the pack

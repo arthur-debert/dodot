@@ -252,8 +252,8 @@ func TestLoadPackConfiguration(t *testing.T) {
 		result, err := LoadPackConfiguration(baseConfig, packPath)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
-		// Should have matchers from base config
-		assert.NotEmpty(t, result.Matchers)
+		// Should have rules from base config
+		assert.NotEmpty(t, result.Rules)
 	})
 
 	t.Run("pack config merges correctly", func(t *testing.T) {
@@ -381,26 +381,17 @@ func TestConfigToMap(t *testing.T) {
 		assert.Equal(t, "install.sh", fileMapping["install"])
 	})
 
-	t.Run("config with matchers", func(t *testing.T) {
+	t.Run("config with rules", func(t *testing.T) {
 		cfg := &Config{
 			Security: Security{
 				ProtectedPaths: map[string]bool{},
 			},
-			Matchers: []MatcherConfig{
+			Rules: []Rule{
 				{
-					Name:     "test-matcher",
-					Priority: 50,
-					Trigger: TriggerConfig{
-						Type: "file",
-						Data: map[string]interface{}{
-							"pattern": "*.sh",
-						},
-					},
-					Handler: HandlerConfig{
-						Type: "symlink",
-						Data: map[string]interface{}{
-							"destination": "$HOME/bin",
-						},
+					Pattern: "*.sh",
+					Handler: "symlink",
+					Options: map[string]interface{}{
+						"destination": "$HOME/bin",
 					},
 				},
 			},
@@ -408,23 +399,18 @@ func TestConfigToMap(t *testing.T) {
 
 		result := configToMap(cfg)
 
-		// Check matchers conversion
-		matchers, ok := result["matchers"].([]interface{})
+		// Check rules conversion
+		rules, ok := result["rules"].([]interface{})
 		require.True(t, ok)
-		require.Len(t, matchers, 1)
+		require.Len(t, rules, 1)
 
-		matcher, ok := matchers[0].(map[string]interface{})
+		rule, ok := rules[0].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "test-matcher", matcher["name"])
-		assert.Equal(t, 50, matcher["priority"])
-
-		trigger, ok := matcher["trigger"].(map[string]interface{})
+		assert.Equal(t, "*.sh", rule["pattern"])
+		assert.Equal(t, "symlink", rule["handler"])
+		options, ok := rule["options"].(map[string]interface{})
 		require.True(t, ok)
-		assert.Equal(t, "file", trigger["type"])
-
-		handler, ok := matcher["handler"].(map[string]interface{})
-		require.True(t, ok)
-		assert.Equal(t, "symlink", handler["type"])
+		assert.Equal(t, "$HOME/bin", options["destination"])
 	})
 }
 

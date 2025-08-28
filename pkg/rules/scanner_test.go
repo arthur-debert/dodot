@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,7 @@ func TestScanner_PatternMatching(t *testing.T) {
 	tests := []struct {
 		name     string
 		files    []FileInfo
-		rules    []Rule
+		rules    []config.Rule
 		expected map[string]string // filename -> handler
 	}{
 		{
@@ -23,7 +24,7 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "install.sh", Name: "install.sh", IsDirectory: false},
 				{Path: "README.md", Name: "README.md", IsDirectory: false},
 			},
-			rules: []Rule{
+			rules: []config.Rule{
 				{Pattern: "install.sh", Handler: "install"},
 				{Pattern: "*", Handler: "symlink"},
 			},
@@ -39,7 +40,7 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "my-aliases.sh", Name: "my-aliases.sh", IsDirectory: false},
 				{Path: "config", Name: "config", IsDirectory: false},
 			},
-			rules: []Rule{
+			rules: []config.Rule{
 				{Pattern: "*aliases.sh", Handler: "shell"},
 				{Pattern: "*", Handler: "symlink"},
 			},
@@ -56,7 +57,7 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "lib", Name: "lib", IsDirectory: true},
 				{Path: "bin.txt", Name: "bin.txt", IsDirectory: false},
 			},
-			rules: []Rule{
+			rules: []config.Rule{
 				{Pattern: "bin/", Handler: "path"},
 				{Pattern: "*", Handler: "symlink"},
 			},
@@ -72,7 +73,7 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "config.bak", Name: "config.bak", IsDirectory: false},
 				{Path: ".DS_Store", Name: ".DS_Store", IsDirectory: false},
 			},
-			rules: []Rule{
+			rules: []config.Rule{
 				{Pattern: "!*.bak"},
 				{Pattern: "!.DS_Store"},
 				{Pattern: "*", Handler: "symlink"},
@@ -87,7 +88,7 @@ func TestScanner_PatternMatching(t *testing.T) {
 			files: []FileInfo{
 				{Path: "test.sh", Name: "test.sh", IsDirectory: false},
 			},
-			rules: []Rule{
+			rules: []config.Rule{
 				{Pattern: "test.sh", Handler: "install"}, // Exact match
 				{Pattern: "*.sh", Handler: "shell"},      // Glob pattern
 				{Pattern: "*", Handler: "symlink"},       // Catchall
@@ -152,7 +153,7 @@ func TestScanner_HiddenFiles(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, f), []byte("test"), 0644))
 	}
 
-	scanner := NewScanner([]Rule{
+	scanner := NewScanner([]config.Rule{
 		{Pattern: "*", Handler: "symlink"},
 	})
 

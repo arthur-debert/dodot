@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"os"
 	"strings"
 )
@@ -33,24 +32,11 @@ type Priorities struct {
 	Matchers map[string]int `koanf:"matchers"`
 }
 
-// TriggerConfig represents trigger configuration within a matcher
-type TriggerConfig struct {
-	Type string                 `yaml:"type" json:"type"`
-	Data map[string]interface{} `yaml:"data" json:"data"`
-}
-
-// HandlerConfig represents handler configuration within a matcher
-type HandlerConfig struct {
-	Type string                 `yaml:"type" json:"type"`
-	Data map[string]interface{} `yaml:"data" json:"data"`
-}
-
-// MatcherConfig represents a matcher configuration
-type MatcherConfig struct {
-	Name     string        `yaml:"name" json:"name"`
-	Priority int           `yaml:"priority" json:"priority"`
-	Trigger  TriggerConfig `yaml:"trigger" json:"trigger"`
-	Handler  HandlerConfig `yaml:"handler" json:"handler"`
+// Rule defines a pattern-to-handler mapping
+type Rule struct {
+	Pattern string                 `koanf:"pattern" yaml:"pattern" json:"pattern"`
+	Handler string                 `koanf:"handler" yaml:"handler" json:"handler"`
+	Options map[string]interface{} `koanf:"options" yaml:"options" json:"options"`
 }
 
 // FilePermissions holds file and directory permission settings
@@ -106,7 +92,7 @@ type Config struct {
 	Security         Security         `koanf:"security"`
 	Patterns         Patterns         `koanf:"patterns"`
 	Priorities       Priorities       `koanf:"priorities"`
-	Matchers         []MatcherConfig  `koanf:"matchers"`
+	Rules            []Rule           `koanf:"rules"`
 	FilePermissions  FilePermissions  `koanf:"file_permissions"`
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
 	Paths            Paths            `koanf:"paths"`
@@ -171,7 +157,7 @@ func Default() *Config {
 				"symlink-catchall": 0,
 			},
 		},
-		Matchers: defaultMatchers(),
+		Rules: defaultRules(),
 		FilePermissions: FilePermissions{
 			Directory:  0755,
 			File:       0644,
@@ -212,181 +198,59 @@ end`,
 	return cfg
 }
 
-func defaultMatchers() []MatcherConfig {
-	return []MatcherConfig{
-		{
-			Name:     "install-script",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": "install.sh",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "install",
-				Data: map[string]interface{}{},
-			},
-		},
-		{
-			Name:     "brewfile",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": "Brewfile",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "homebrew",
-				Data: map[string]interface{}{},
-			},
-		},
-		{
-			Name:     "shell-aliases",
-			Priority: 80,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": "*aliases.sh",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "shell",
-				Data: map[string]interface{}{
-					"placement": "aliases",
-				},
-			},
-		},
-		{
-			Name:     "shell-profile",
-			Priority: 80,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": "profile.sh",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "shell",
-				Data: map[string]interface{}{
-					"placement": "environment",
-				},
-			},
-		},
-		{
-			Name:     "bin-dir",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "directory",
-				Data: map[string]interface{}{
-					"pattern": "bin",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "path",
-				Data: map[string]interface{}{},
-			},
-		},
-		{
-			Name:     "bin-path",
-			Priority: 80,
-			Trigger: TriggerConfig{
-				Type: "directory",
-				Data: map[string]interface{}{
-					"pattern": "bin",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "shell_add_path",
-				Data: map[string]interface{}{},
-			},
-		},
-		{
-			Name:     "local-bin-dir",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "directory",
-				Data: map[string]interface{}{
-					"pattern": ".local/bin",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "path",
-				Data: map[string]interface{}{},
-			},
-		},
-		{
-			Name:     "local-bin-path",
-			Priority: 80,
-			Trigger: TriggerConfig{
-				Type: "directory",
-				Data: map[string]interface{}{
-					"pattern": ".local/bin",
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "shell_add_path",
-				Data: map[string]interface{}{},
-			},
-		},
-		{
-			Name:     "symlink-catchall",
-			Priority: 0,
-			Trigger: TriggerConfig{
-				Type: "catchall",
-				Data: map[string]interface{}{},
-			},
-			Handler: HandlerConfig{
-				Type: "symlink",
-				Data: map[string]interface{}{},
-			},
-		},
+func defaultRules() []Rule {
+	return []Rule{
+		// Exclusions
+		{Pattern: "!*.bak"},
+		{Pattern: "!*.tmp"},
+		{Pattern: "!*.swp"},
+		{Pattern: "!.DS_Store"},
+		{Pattern: "!#*#"},
+		{Pattern: "!*~"},
+
+		// Exact matches
+		{Pattern: "install.sh", Handler: "install"},
+		{Pattern: "Brewfile", Handler: "homebrew"},
+		{Pattern: "profile.sh", Handler: "shell",
+			Options: map[string]interface{}{"placement": "environment"}},
+		{Pattern: "login.sh", Handler: "shell",
+			Options: map[string]interface{}{"placement": "login"}},
+
+		// Glob patterns
+		{Pattern: "*aliases.sh", Handler: "shell",
+			Options: map[string]interface{}{"placement": "aliases"}},
+
+		// Directory patterns
+		{Pattern: "bin/", Handler: "path"},
+		{Pattern: ".local/bin/", Handler: "path"},
+
+		// Catchall
+		{Pattern: "*", Handler: "symlink"},
 	}
 }
 
-// GenerateMatchersFromMapping creates matchers based on mappings configuration
-func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
-	var matchers []MatcherConfig
+// GenerateRulesFromMapping creates rules based on mappings configuration
+func (c *Config) GenerateRulesFromMapping() []Rule {
+	var rules []Rule
 
-	// Path matcher for bin directories
+	// Path rule for bin directories
 	if c.Mappings.Path != "" {
-		matchers = append(matchers, MatcherConfig{
-			Name:     "mapped-path",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "directory",
-				Data: map[string]interface{}{
-					"pattern": c.Mappings.Path,
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "path",
-				Data: map[string]interface{}{},
-			},
+		rules = append(rules, Rule{
+			Pattern: c.Mappings.Path + "/",
+			Handler: "path",
 		})
 	}
 
-	// Install script matcher
+	// Install script rule
 	if c.Mappings.Install != "" {
-		matchers = append(matchers, MatcherConfig{
-			Name:     "mapped-install",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": c.Mappings.Install,
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "install",
-				Data: map[string]interface{}{},
-			},
+		rules = append(rules, Rule{
+			Pattern: c.Mappings.Install,
+			Handler: "install",
 		})
 	}
 
-	// Shell script matchers
-	for i, pattern := range c.Mappings.Shell {
+	// Shell script rules
+	for _, pattern := range c.Mappings.Shell {
 		placement := "environment" // Default placement
 		if strings.Contains(pattern, "aliases") {
 			placement = "aliases"
@@ -394,41 +258,22 @@ func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
 			placement = "login"
 		}
 
-		matchers = append(matchers, MatcherConfig{
-			Name:     fmt.Sprintf("mapped-shell-%d", i),
-			Priority: 80,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": pattern,
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "shell",
-				Data: map[string]interface{}{
-					"placement": placement,
-				},
+		rules = append(rules, Rule{
+			Pattern: pattern,
+			Handler: "shell",
+			Options: map[string]interface{}{
+				"placement": placement,
 			},
 		})
 	}
 
-	// Homebrew matcher
+	// Homebrew rule
 	if c.Mappings.Homebrew != "" {
-		matchers = append(matchers, MatcherConfig{
-			Name:     "mapped-homebrew",
-			Priority: 90,
-			Trigger: TriggerConfig{
-				Type: "filename",
-				Data: map[string]interface{}{
-					"pattern": c.Mappings.Homebrew,
-				},
-			},
-			Handler: HandlerConfig{
-				Type: "homebrew",
-				Data: map[string]interface{}{},
-			},
+		rules = append(rules, Rule{
+			Pattern: c.Mappings.Homebrew,
+			Handler: "homebrew",
 		})
 	}
 
-	return matchers
+	return rules
 }

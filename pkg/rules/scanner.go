@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
@@ -12,13 +13,13 @@ import (
 
 // Scanner scans packs and applies rules to find matches
 type Scanner struct {
-	rules  []Rule
+	rules  []config.Rule
 	logger zerolog.Logger
 	fs     types.FS // optional filesystem implementation
 }
 
 // NewScanner creates a new scanner with the given rules
-func NewScanner(rules []Rule) *Scanner {
+func NewScanner(rules []config.Rule) *Scanner {
 	return &Scanner{
 		rules:  rules,
 		logger: logging.GetLogger("rules.scanner"),
@@ -26,7 +27,7 @@ func NewScanner(rules []Rule) *Scanner {
 }
 
 // NewScannerWithFS creates a new scanner with the given rules and filesystem
-func NewScannerWithFS(rules []Rule, fs types.FS) *Scanner {
+func NewScannerWithFS(rules []config.Rule, fs types.FS) *Scanner {
 	return &Scanner{
 		rules:  rules,
 		logger: logging.GetLogger("rules.scanner"),
@@ -154,7 +155,7 @@ func (s *Scanner) isExcluded(file FileInfo) bool {
 }
 
 // matchesRule checks if a file matches a rule's pattern
-func (s *Scanner) matchesRule(file FileInfo, rule Rule) bool {
+func (s *Scanner) matchesRule(file FileInfo, rule config.Rule) bool {
 	return s.matchesPattern(file, rule.Pattern)
 }
 

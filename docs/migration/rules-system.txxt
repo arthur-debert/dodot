@@ -17,11 +17,11 @@ The complex matcher→trigger→handler chain has been replaced with simple patt
 - Direct pattern→handler rules
 - Simple pattern conventions
 - No intermediate abstractions
-- ~400 lines of focused code
+- ~550 lines of focused code
 
 ## For Users
 
-**Good news: Your existing configuration still works!** The system automatically adapts old matcher configurations to the new rules format.
+**Important: The system now uses the new rules format directly.** The old matcher configuration format has been removed.
 
 ### Pattern Conventions
 
@@ -35,25 +35,12 @@ The new system uses intuitive patterns:
 
 ### Configuration Format
 
-Old format (still supported):
-```toml
-[[matchers]]
-name = "shell-aliases"
-priority = 80
-[matchers.trigger]
-type = "filename"
-[matchers.trigger.data]
-pattern = "*aliases.sh"
-[matchers.handler]
-type = "shell"
-```
-
-New format (optional):
+Configuration format:
 ```toml
 [[rules]]
 pattern = "*aliases.sh"
 handler = "shell"
-priority = 80
+options = { placement = "aliases" }
 ```
 
 ## For Developers
@@ -108,11 +95,13 @@ scanner := rules.NewScannerWithFS(rules, mockFS)
 matches, _ := rules.GetMatchesFS(packs, mockFS)
 ```
 
-## Migration Timeline
+## Migration Complete
 
-1. **Current**: Both systems work (old config adapted automatically)
-2. **Future**: Native rules configuration in .dodot.toml
-3. **Later**: Deprecate old matcher format (with warnings)
+The migration to the rules system is now complete:
+
+1. **Removed**: All old matcher/trigger/registry code
+2. **Removed**: Priority field from rules (order determined by rule type)
+3. **Active**: Direct rules configuration in .dodot.toml
 
 ## Benefits
 

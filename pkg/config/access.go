@@ -61,7 +61,7 @@ func GetLinkPaths() LinkPaths {
 	return Get().LinkPaths
 }
 
-// GetMatchers returns matcher configuration
-func GetMatchers() []MatcherConfig {
-	return Get().Matchers
+// GetRules returns rule configuration
+func GetRules() []Rule {
+	return Get().Rules
 }
