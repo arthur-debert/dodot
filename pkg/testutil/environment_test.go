@@ -13,7 +13,7 @@ import (
 
 func TestTestEnvironment_MemoryOnly(t *testing.T) {
 	env := NewTestEnvironment(t, EnvMemoryOnly)
-	
+
 	// Test environment paths are set
 	if env.DotfilesRoot == "" {
 		t.Error("DotfilesRoot not set")
@@ -21,23 +21,23 @@ func TestTestEnvironment_MemoryOnly(t *testing.T) {
 	if env.HomeDir == "" {
 		t.Error("HomeDir not set")
 	}
-	
+
 	// Test filesystem operations
 	testFile := filepath.Join(env.DotfilesRoot, "test.txt")
 	err := env.FS.WriteFile(testFile, []byte("test"), 0644)
 	if err != nil {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
-	
+
 	content, err := env.FS.ReadFile(testFile)
 	if err != nil {
 		t.Fatalf("ReadFile failed: %v", err)
 	}
-	
+
 	if string(content) != "test" {
 		t.Errorf("content mismatch: got %q, want %q", content, "test")
 	}
-	
+
 	// Test environment variables are set
 	if os.Getenv("DOTFILES_ROOT") != env.DotfilesRoot {
 		t.Error("DOTFILES_ROOT env var not set correctly")
@@ -49,7 +49,7 @@ func TestTestEnvironment_MemoryOnly(t *testing.T) {
 
 func TestTestEnvironment_SetupPack(t *testing.T) {
 	env := NewTestEnvironment(t, EnvMemoryOnly)
-	
+
 	// Setup a test pack
 	pack := env.SetupPack("vim", PackConfig{
 		Files: map[string]string{
@@ -60,12 +60,12 @@ func TestTestEnvironment_SetupPack(t *testing.T) {
 			{Type: "filename", Pattern: ".*rc", Handler: "symlink"},
 		},
 	})
-	
+
 	// Verify pack was created
 	if pack.Name != "vim" {
 		t.Errorf("pack name wrong: got %q, want %q", pack.Name, "vim")
 	}
-	
+
 	// Verify files exist
 	vimrcPath := filepath.Join(pack.Path, "vimrc")
 	content, err := env.FS.ReadFile(vimrcPath)
@@ -75,7 +75,7 @@ func TestTestEnvironment_SetupPack(t *testing.T) {
 	if string(content) != "set number" {
 		t.Errorf("vimrc content wrong: got %q", content)
 	}
-	
+
 	// Verify rules file exists
 	rulesPath := filepath.Join(pack.Path, ".dodot.toml")
 	rulesContent, err := env.FS.ReadFile(rulesPath)
@@ -89,7 +89,7 @@ func TestTestEnvironment_SetupPack(t *testing.T) {
 
 func TestTestEnvironment_WithFileTree(t *testing.T) {
 	env := NewTestEnvironment(t, EnvMemoryOnly)
-	
+
 	// Setup file tree
 	env.WithFileTree(FileTree{
 		"vim": FileTree{
@@ -102,7 +102,7 @@ func TestTestEnvironment_WithFileTree(t *testing.T) {
 			"gitconfig": "[user]\n  name = Test",
 		},
 	})
-	
+
 	// Verify vim files
 	vimrcPath := filepath.Join(env.DotfilesRoot, "vim", "vimrc")
 	content, err := env.FS.ReadFile(vimrcPath)
@@ -112,7 +112,7 @@ func TestTestEnvironment_WithFileTree(t *testing.T) {
 	if string(content) != "vim config" {
 		t.Errorf("vimrc content wrong: got %q", content)
 	}
-	
+
 	// Verify nested file
 	colorPath := filepath.Join(env.DotfilesRoot, "vim", "colors", "monokai.vim")
 	content, err = env.FS.ReadFile(colorPath)
@@ -122,7 +122,7 @@ func TestTestEnvironment_WithFileTree(t *testing.T) {
 	if string(content) != "color scheme" {
 		t.Errorf("color scheme content wrong: got %q", content)
 	}
-	
+
 	// Verify git files
 	gitPath := filepath.Join(env.DotfilesRoot, "git", "gitconfig")
 	content, err = env.FS.ReadFile(gitPath)
@@ -136,11 +136,11 @@ func TestTestEnvironment_WithFileTree(t *testing.T) {
 
 func TestTestEnvironment_PreBuiltPacks(t *testing.T) {
 	env := NewTestEnvironment(t, EnvMemoryOnly)
-	
+
 	// Test VimPack
 	t.Run("VimPack", func(t *testing.T) {
 		pack := env.SetupPack("vim", VimPack())
-		
+
 		// Check files
 		files := []string{"vimrc", "gvimrc", "colors/monokai.vim"}
 		for _, file := range files {
@@ -150,11 +150,11 @@ func TestTestEnvironment_PreBuiltPacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	// Test GitPack
 	t.Run("GitPack", func(t *testing.T) {
 		pack := env.SetupPack("git", GitPack())
-		
+
 		// Check files
 		files := []string{"gitconfig", "gitignore"}
 		for _, file := range files {
@@ -164,11 +164,11 @@ func TestTestEnvironment_PreBuiltPacks(t *testing.T) {
 			}
 		}
 	})
-	
+
 	// Test ToolsPack
 	t.Run("ToolsPack", func(t *testing.T) {
 		pack := env.SetupPack("tools", ToolsPack())
-		
+
 		// Check files
 		files := []string{"install.sh", "Brewfile"}
 		for _, file := range files {
@@ -178,4 +178,97 @@ func TestTestEnvironment_PreBuiltPacks(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestTestEnvironment_IsolatedEnvironment(t *testing.T) {
+	env := NewTestEnvironment(t, EnvIsolated)
+
+	// Verify real filesystem operations
+	t.Run("RealFilesystemOperations", func(t *testing.T) {
+		// Write a file
+		testFile := filepath.Join(env.DotfilesRoot, "test.txt")
+		err := env.FS.WriteFile(testFile, []byte("test content"), 0644)
+		if err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		// Read it back
+		content, err := env.FS.ReadFile(testFile)
+		if err != nil {
+			t.Fatalf("ReadFile failed: %v", err)
+		}
+		if string(content) != "test content" {
+			t.Errorf("content mismatch: got %q, want %q", content, "test content")
+		}
+
+		// Create a symlink
+		linkPath := filepath.Join(env.DotfilesRoot, "test.link")
+		err = env.FS.Symlink(testFile, linkPath)
+		if err != nil {
+			t.Fatalf("Symlink failed: %v", err)
+		}
+
+		// Read the symlink
+		target, err := env.FS.Readlink(linkPath)
+		if err != nil {
+			t.Fatalf("Readlink failed: %v", err)
+		}
+		if target != testFile {
+			t.Errorf("symlink target wrong: got %q, want %q", target, testFile)
+		}
+	})
+
+	// Verify DataStore operations
+	t.Run("DataStoreOperations", func(t *testing.T) {
+		// Create a test file
+		sourceFile := filepath.Join(env.DotfilesRoot, "vim", "vimrc")
+		env.FS.MkdirAll(filepath.Dir(sourceFile), 0755)
+		env.FS.WriteFile(sourceFile, []byte("vim config"), 0644)
+
+		// Link it
+		intermediatePath, err := env.DataStore.Link("vim", sourceFile)
+		if err != nil {
+			t.Fatalf("Link failed: %v", err)
+		}
+		if intermediatePath == "" {
+			t.Error("intermediate path is empty")
+		}
+
+		// Check status
+		status, err := env.DataStore.GetStatus("vim", sourceFile)
+		if err != nil {
+			t.Fatalf("GetStatus failed: %v", err)
+		}
+		if status.State != "ready" {
+			t.Errorf("expected ready state, got %s", status.State)
+		}
+
+		// Unlink
+		err = env.DataStore.Unlink("vim", sourceFile)
+		if err != nil {
+			t.Fatalf("Unlink failed: %v", err)
+		}
+
+		// Check status again
+		status, err = env.DataStore.GetStatus("vim", sourceFile)
+		if err != nil {
+			t.Fatalf("GetStatus failed: %v", err)
+		}
+		if status.State != "missing" {
+			t.Errorf("expected missing state after unlink, got %s", status.State)
+		}
+	})
+
+	// Verify cleanup happens
+	tempPath := env.tempDir
+	if tempPath == "" {
+		t.Error("tempDir not set for isolated environment")
+	}
+
+	// After cleanup, the temp directory should be removed
+	env.Cleanup()
+
+	if _, err := os.Stat(tempPath); !os.IsNotExist(err) {
+		t.Error("temp directory still exists after cleanup")
+	}
 }
