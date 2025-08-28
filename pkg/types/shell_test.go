@@ -1,8 +1,15 @@
-package types
+// pkg/types/shell_test.go
+// TEST TYPE: Unit Tests
+// DEPENDENCIES: None
+// PURPOSE: Test shell integration snippet generation
+
+package types_test
 
 import (
-	"strings"
 	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetShellIntegrationSnippet(t *testing.T) {
@@ -68,10 +75,8 @@ end`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetShellIntegrationSnippet(tt.shell, tt.customDataDir)
-			if result != tt.expectedResult {
-				t.Errorf("expected %q, got %q", tt.expectedResult, result)
-			}
+			result := types.GetShellIntegrationSnippet(tt.shell, tt.customDataDir)
+			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
 }
@@ -102,10 +107,8 @@ func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetShellIntegrationSnippet(tt.shell, tt.dataDir)
-			if !strings.Contains(result, tt.dataDir) {
-				t.Errorf("expected %q to contain %q", result, tt.dataDir)
-			}
+			result := types.GetShellIntegrationSnippet(tt.shell, tt.dataDir)
+			assert.Contains(t, result, tt.dataDir)
 		})
 	}
 }
@@ -117,37 +120,7 @@ func TestGetShellIntegrationSnippet_Constants(t *testing.T) {
     source "$HOME/.local/share/dodot/shell/dodot-init.fish"
 end`
 
-	if bashExpected != GetShellIntegrationSnippet("bash", "") {
-		t.Errorf("expected %q, got %q", bashExpected, GetShellIntegrationSnippet("bash", ""))
-	}
-	if bashExpected != GetShellIntegrationSnippet("zsh", "") {
-		t.Errorf("expected %q, got %q", bashExpected, GetShellIntegrationSnippet("zsh", ""))
-	}
-	if fishExpected != GetShellIntegrationSnippet("fish", "") {
-		t.Errorf("expected %q, got %q", fishExpected, GetShellIntegrationSnippet("fish", ""))
-	}
-}
-
-// Benchmark tests
-func BenchmarkGetShellIntegrationSnippet_Bash(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_ = GetShellIntegrationSnippet("bash", "/test/data")
-	}
-}
-
-func BenchmarkGetShellIntegrationSnippet_Fish(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		_ = GetShellIntegrationSnippet("fish", "/test/data")
-	}
-}
-
-func BenchmarkGetShellIntegrationSnippet_AllShells(b *testing.B) {
-	shells := []string{"bash", "zsh", "fish"}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		for _, shell := range shells {
-			_ = GetShellIntegrationSnippet(shell, "/test/data")
-		}
-	}
+	assert.Equal(t, bashExpected, types.GetShellIntegrationSnippet("bash", ""))
+	assert.Equal(t, bashExpected, types.GetShellIntegrationSnippet("zsh", ""))
+	assert.Equal(t, fishExpected, types.GetShellIntegrationSnippet("fish", ""))
 }
