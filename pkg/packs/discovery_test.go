@@ -212,14 +212,6 @@ func TestValidatePack(t *testing.T) {
 	t.Skip("ValidatePack uses os.Stat directly - needs refactoring to support FS abstraction")
 }
 
-func TestLoadPackConfig(t *testing.T) {
-	// This function delegates to config.LoadPackConfig, so we just test the delegation
-	t.Run("delegates_to_config_package", func(t *testing.T) {
-		// Since LoadPackConfig uses os.ReadFile, we skip this test
-		t.Skip("LoadPackConfig uses os.ReadFile directly - needs refactoring")
-	})
-}
-
 func TestGetPackCandidates_Deprecated(t *testing.T) {
 	t.Skip("GetPackCandidates is deprecated and uses os.Stat directly")
 }
