@@ -177,50 +177,45 @@ func TestLinkPacks_ConflictDetection(t *testing.T) {
 		},
 	})
 
-	// First pack should succeed
-	result1, err := link.LinkPacks(link.LinkPacksOptions{
-		DotfilesRoot:       env.DotfilesRoot,
-		PackNames:          []string{"app1"},
-		DryRun:             false,
-		EnableHomeSymlinks: true,
-	})
+	// Pre-configure the mock to simulate that app1's config is already linked
+	mockDS := env.DataStore.(*testutil.MockDataStore)
+	app1ConfigPath := filepath.Join(env.DotfilesRoot, "app1", "config")
+	mockDS.WithLink("app1", "config", filepath.Join(env.HomeDir, ".config"))
 
-	if err != nil {
-		t.Fatalf("First link should succeed: %v", err)
-	}
-	if result1.PackResults[0].Status != types.ExecutionStatusSuccess {
-		t.Error("First pack should link successfully")
-	}
-
-	// Create the actual symlink to simulate conflict
+	// Also create the symlink in the filesystem for consistency
 	targetPath := filepath.Join(env.HomeDir, ".config")
-	env.FS.Symlink(
-		filepath.Join(env.DotfilesRoot, "app1", "config"),
-		targetPath,
-	)
+	env.FS.Symlink(app1ConfigPath, targetPath)
 
-	// Second pack should detect conflict
-	result2, err := link.LinkPacks(link.LinkPacksOptions{
+	// Now try to link app2 - should detect conflict
+	result, err := link.LinkPacks(link.LinkPacksOptions{
 		DotfilesRoot:       env.DotfilesRoot,
 		PackNames:          []string{"app2"},
 		DryRun:             false,
 		EnableHomeSymlinks: true,
 	})
 
-	// The command might succeed but individual actions might fail
-	if err == nil && len(result2.PackResults) > 0 {
-		packResult := result2.PackResults[0]
-		// Check if any handler detected the conflict
-		hasConflict := false
-		for _, hr := range packResult.HandlerResults {
-			if hr.Status == types.StatusConflicted {
-				hasConflict = true
-				break
-			}
+	// The command should succeed but report a conflict
+	if err != nil {
+		t.Fatalf("Command failed unexpectedly: %v", err)
+	}
+
+	if len(result.PackResults) == 0 {
+		t.Fatal("Expected pack results")
+	}
+
+	packResult := result.PackResults[0]
+	
+	// Check if conflict was detected
+	hasConflict := false
+	for _, hr := range packResult.HandlerResults {
+		if hr.Status == types.StatusConflicted {
+			hasConflict = true
+			break
 		}
-		if !hasConflict {
-			t.Error("Should detect file conflict")
-		}
+	}
+	
+	if !hasConflict {
+		t.Error("Expected conflict to be detected when linking app2")
 	}
 }
 
