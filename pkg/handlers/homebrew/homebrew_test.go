@@ -199,7 +199,7 @@ func TestHomebrewHandler_Properties(t *testing.T) {
 
 	assert.Equal(t, HomebrewHandlerName, handler.Name())
 	assert.Equal(t, "Processes Brewfiles to install Homebrew packages", handler.Description())
-	assert.Equal(t, types.RunModeProvisioning, handler.RunMode())
+	assert.Equal(t, types.HandlerTypeCodeExecution, handler.Type())
 
 	// Verify template content
 	template := handler.GetTemplateContent()

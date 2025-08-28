@@ -8,7 +8,7 @@ import (
 type MockHandler struct {
 	NameFunc               func() string
 	DescriptionFunc        func() string
-	RunModeFunc            func() types.RunMode
+	TypeFunc               func() types.HandlerType
 	ProcessFunc            func(matches []types.RuleMatch) ([]types.Action, error)
 	ValidateOptionsFunc    func(options map[string]interface{}) error
 	GetTemplateContentFunc func() string
@@ -30,12 +30,12 @@ func (m *MockHandler) Description() string {
 	return "A mock handler for testing."
 }
 
-// RunMode returns the mock's run mode.
-func (m *MockHandler) RunMode() types.RunMode {
-	if m.RunModeFunc != nil {
-		return m.RunModeFunc()
+// Type returns the mock's handler type.
+func (m *MockHandler) Type() types.HandlerType {
+	if m.TypeFunc != nil {
+		return m.TypeFunc()
 	}
-	return types.RunModeLinking
+	return types.HandlerTypeConfiguration
 }
 
 // Process runs the mock's process function.

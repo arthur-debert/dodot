@@ -76,17 +76,3 @@ var HandlerRegistry = struct {
 		return true
 	},
 }
-
-// Migration helpers to ease transition from RunMode
-
-// IsLinkingHandler checks if a handler is safe for repeated execution (configuration)
-// Deprecated: Use HandlerRegistry.IsConfigurationHandler
-func IsLinkingHandler(handlerName string) bool {
-	return HandlerRegistry.IsConfigurationHandler(handlerName)
-}
-
-// IsProvisioningHandler checks if a handler executes arbitrary code
-// Deprecated: Use HandlerRegistry.IsCodeExecutionHandler
-func IsProvisioningHandler(handlerName string) bool {
-	return HandlerRegistry.IsCodeExecutionHandler(handlerName)
-}

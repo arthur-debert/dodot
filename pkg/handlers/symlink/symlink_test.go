@@ -215,7 +215,7 @@ func TestSymlinkHandler_Properties(t *testing.T) {
 
 	assert.Equal(t, SymlinkHandlerName, handler.Name())
 	assert.Equal(t, "Creates symbolic links from dotfiles to target locations", handler.Description())
-	assert.Equal(t, types.RunModeLinking, handler.RunMode())
+	assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
 	assert.Empty(t, handler.GetTemplateContent())
 }
 

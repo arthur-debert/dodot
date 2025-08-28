@@ -28,20 +28,20 @@ type ProvisionPacksOptions struct {
 }
 
 // ProvisionPacks runs the installation + deployment using the direct executor approach.
-// It executes both RunModeProvisioning actions (install scripts, brewfiles) and RunModeLinking
-// actions (symlinks, shell profiles, path) in sequence.
+// It executes both code execution handlers (install scripts, brewfiles) and configuration
+// handlers (symlinks, shell profiles, path) in sequence.
 func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("commands.provision")
 	log.Debug().Str("command", "ProvisionPacks").Msg("Executing command")
 
-	// Phase 1: Run install scripts, brewfiles, etc. (RunModeProvisioning actions)
+	// Phase 1: Run all handlers (both code execution and configuration)
 	log.Debug().Msg("Phase 1: Executing provisioning actions (install scripts, brewfiles)")
 	installCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeProvisioning, // Only install scripts, brewfiles
-		Force:              opts.Force,                // Force flag applies to provisioning actions
+		CommandMode:        internal.CommandModeAll, // Run all handler types
+		Force:              opts.Force,              // Force flag applies to provisioning actions
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 
@@ -55,14 +55,14 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning actions")
 	}
 
-	// Phase 2: Run symlinks, shell profiles, etc. (RunModeLinking actions)
+	// Phase 2: Run configuration handlers only (symlinks, profiles, etc.)
 	log.Debug().Msg("Phase 2: Executing deployment actions (symlinks, profiles)")
 	deployCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeLinking, // Only symlinks, profiles, etc.
-		Force:              false,                // Force doesn't apply to deploy actions
+		CommandMode:        internal.CommandModeConfiguration, // Only configuration handlers
+		Force:              false,                             // Force doesn't apply to deploy actions
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 

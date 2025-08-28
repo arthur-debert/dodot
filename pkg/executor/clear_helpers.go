@@ -7,15 +7,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// GetClearableHandlersByMode returns handlers that implement Clearable, grouped by run mode.
-// Deprecated: Use GetClearableConfigurationHandlers or GetClearableCodeExecutionHandlers
-func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearable, error) {
-	if mode == types.RunModeLinking {
-		return GetClearableConfigurationHandlers()
-	}
-	return GetClearableCodeExecutionHandlers()
-}
-
 // GetClearableConfigurationHandlers returns configuration handlers that implement Clearable
 func GetClearableConfigurationHandlers() (map[string]handlers.Clearable, error) {
 	logger := logging.GetLogger("executor.clear")
@@ -84,6 +75,18 @@ func GetClearableCodeExecutionHandlers() (map[string]handlers.Clearable, error) 
 		Msg("Found clearable code execution handlers")
 
 	return result, nil
+}
+
+// GetClearableHandlersByType returns handlers by type that implement Clearable
+func GetClearableHandlersByType(handlerType types.HandlerType) (map[string]handlers.Clearable, error) {
+	switch handlerType {
+	case types.HandlerTypeConfiguration:
+		return GetClearableConfigurationHandlers()
+	case types.HandlerTypeCodeExecution:
+		return GetClearableCodeExecutionHandlers()
+	default:
+		return make(map[string]handlers.Clearable), nil
+	}
 }
 
 // GetAllClearableHandlers returns all handlers that implement Clearable

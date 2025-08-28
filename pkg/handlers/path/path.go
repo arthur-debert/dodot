@@ -35,12 +35,6 @@ func (h *PathHandler) Type() types.HandlerType {
 	return types.HandlerTypeConfiguration
 }
 
-// RunMode returns when this handler should run
-// Deprecated: Use Type() instead.
-func (h *PathHandler) RunMode() types.RunMode {
-	return types.RunModeLinking
-}
-
 // ProcessLinking takes directories and creates AddToPathAction instances
 func (h *PathHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)

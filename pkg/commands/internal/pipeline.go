@@ -13,12 +13,22 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// CommandMode represents which types of handlers should be executed
+type CommandMode string
+
+const (
+	// CommandModeConfiguration runs only configuration handlers (symlinks, shell, path)
+	CommandModeConfiguration CommandMode = "configuration"
+	// CommandModeAll runs all handlers (both configuration and code execution)
+	CommandModeAll CommandMode = "all"
+)
+
 // PipelineOptions contains options for running the execution pipeline
 type PipelineOptions struct {
 	DotfilesRoot       string
 	PackNames          []string
 	DryRun             bool
-	RunMode            types.RunMode
+	CommandMode        CommandMode // Which types of handlers to execute
 	Force              bool
 	EnableHomeSymlinks bool
 	UseSimplifiedRules bool // Use new rule-based system instead of matchers
@@ -32,7 +42,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Str("dotfilesRoot", opts.DotfilesRoot).
 		Strs("packNames", opts.PackNames).
 		Bool("dryRun", opts.DryRun).
-		Str("runMode", string(opts.RunMode)).
+		Str("commandMode", string(opts.CommandMode)).
 		Bool("force", opts.Force).
 		Msg("Starting execution pipeline")
 
@@ -85,23 +95,29 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("triggerMatches", len(matches)).
 		Msg("Triggers matched")
 
-	// 5. Filter matches based on run mode before generating actions
+	// 5. Filter matches based on command mode before generating actions
 	// This prevents handlers from generating actions they shouldn't
 	filteredMatches := matches
-	switch opts.RunMode {
-	case types.RunModeLinking:
-		// Link mode: only allow configuration handlers
+	switch opts.CommandMode {
+	case CommandModeConfiguration:
+		// Configuration mode: only allow configuration handlers
 		filteredMatches = core.FilterMatchesByHandlerCategory(matches, true, false)
 		logger.Debug().
 			Int("originalMatches", len(matches)).
 			Int("filteredMatches", len(filteredMatches)).
 			Msg("Filtered matches for configuration handlers only")
-	case types.RunModeProvisioning:
-		// Provision mode: allow both configuration and code execution handlers
+	case CommandModeAll:
+		// All mode: allow both configuration and code execution handlers
 		// No filtering needed - all handlers are allowed
 		logger.Debug().
 			Int("matches", len(matches)).
-			Msg("Provision mode - allowing all handler types")
+			Msg("All mode - allowing all handler types")
+	default:
+		// Default to configuration only for safety
+		filteredMatches = core.FilterMatchesByHandlerCategory(matches, true, false)
+		logger.Warn().
+			Str("commandMode", string(opts.CommandMode)).
+			Msg("Unknown command mode, defaulting to configuration only")
 	}
 
 	// 6. Generate actions and confirmations from filtered triggers
@@ -135,7 +151,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		if confirmationContext != nil && !confirmationContext.AllApproved(getConfirmationIDs(actionResult.Confirmations)) {
 			logger.Info().Msg("User declined confirmations - cancelling execution")
 			// Return empty context to indicate cancellation
-			ctx := types.NewExecutionContext(getCommandFromRunMode(opts.RunMode), opts.DryRun)
+			ctx := types.NewExecutionContext(getCommandFromMode(opts.CommandMode), opts.DryRun)
 			ctx.Complete()
 			return ctx, nil
 		}
@@ -154,7 +170,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	filteredActions := actions
 
 	// 10. Filter provisioning actions based on --force flag
-	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
+	if opts.CommandMode == CommandModeAll && !opts.Force {
 		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, dataStore)
 		if err != nil {
 			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to filter provisioning actions")
@@ -165,7 +181,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	}
 
 	// 11. Create execution context
-	ctx := types.NewExecutionContext(getCommandFromRunMode(opts.RunMode), opts.DryRun)
+	ctx := types.NewExecutionContext(getCommandFromMode(opts.CommandMode), opts.DryRun)
 
 	// 12. If dry run, we still need to create pack results structure
 	if opts.DryRun {
@@ -225,12 +241,12 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	return ctx, nil
 }
 
-// getCommandFromRunMode returns the command name based on run mode
-func getCommandFromRunMode(mode types.RunMode) string {
+// getCommandFromMode returns the command name based on command mode
+func getCommandFromMode(mode CommandMode) string {
 	switch mode {
-	case types.RunModeProvisioning:
+	case CommandModeAll:
 		return "provision"
-	case types.RunModeLinking:
+	case CommandModeConfiguration:
 		return "link"
 	default:
 		return "execute"

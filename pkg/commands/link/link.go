@@ -19,19 +19,19 @@ type LinkPacksOptions struct {
 }
 
 // LinkPacks runs the linking logic using the direct executor approach.
-// It executes RunModeLinking actions only (symlinks, shell profiles, path) while
-// skipping RunModeProvisioning actions (install scripts, brewfiles).
+// It executes configuration handlers only (symlinks, shell profiles, path) while
+// skipping code execution handlers (install scripts, brewfiles).
 func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("commands.link")
 	log.Debug().Str("command", "LinkPacks").Msg("Executing command")
 
-	// Use the internal pipeline with RunModeLinking (link mode)
+	// Use the internal pipeline with configuration mode
 	ctx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeLinking, // Key: only run repeatable actions
-		Force:              false,                // Link doesn't use force flag
+		CommandMode:        internal.CommandModeConfiguration, // Key: only run configuration handlers
+		Force:              false,                             // Link doesn't use force flag
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 

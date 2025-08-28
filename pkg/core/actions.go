@@ -128,15 +128,6 @@ func groupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMat
 	return groups
 }
 
-// FilterActionsByRunMode filters actions based on their type
-// Deprecated: Use FilterConfigurationActions or FilterCodeExecutionActions instead
-func FilterActionsByRunMode(actions []types.Action, mode types.RunMode) []types.Action {
-	if mode == types.RunModeLinking {
-		return FilterConfigurationActions(actions)
-	}
-	return FilterCodeExecutionActions(actions)
-}
-
 // FilterConfigurationActions returns only configuration actions (safe to run repeatedly)
 func FilterConfigurationActions(actions []types.Action) []types.Action {
 	var filtered []types.Action

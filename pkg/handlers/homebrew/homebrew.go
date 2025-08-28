@@ -42,12 +42,6 @@ func (h *HomebrewHandler) Type() types.HandlerType {
 	return types.HandlerTypeCodeExecution
 }
 
-// RunMode returns whether this handler runs once or many times
-// Deprecated: Use Type() instead.
-func (h *HomebrewHandler) RunMode() types.RunMode {
-	return types.RunModeProvisioning
-}
-
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances
 func (h *HomebrewHandler) ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error) {
 	result, err := h.ProcessProvisioningWithConfirmations(matches)

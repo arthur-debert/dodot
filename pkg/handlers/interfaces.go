@@ -13,10 +13,6 @@ type Handler interface {
 
 	// Type returns the fundamental nature of this handler's operations
 	Type() types.HandlerType
-
-	// RunMode returns whether this handler runs once or many times
-	// Deprecated: Use Type() instead. This method will be removed in a future version.
-	RunMode() types.RunMode
 }
 
 // LinkingHandler generates actions that are idempotent and fast.

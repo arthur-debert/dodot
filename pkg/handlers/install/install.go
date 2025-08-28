@@ -65,12 +65,6 @@ func (h *InstallHandler) Type() types.HandlerType {
 	return types.HandlerTypeCodeExecution
 }
 
-// RunMode returns whether this handler runs once or many times
-// Deprecated: Use Type() instead.
-func (h *InstallHandler) RunMode() types.RunMode {
-	return types.RunModeProvisioning
-}
-
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances
 func (h *InstallHandler) ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error) {
 	result, err := h.ProcessProvisioningWithConfirmations(matches)

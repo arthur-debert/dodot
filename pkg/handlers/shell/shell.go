@@ -37,12 +37,6 @@ func (h *ShellHandler) Type() types.HandlerType {
 	return types.HandlerTypeConfiguration
 }
 
-// RunMode returns when this handler should run
-// Deprecated: Use Type() instead.
-func (h *ShellHandler) RunMode() types.RunMode {
-	return types.RunModeLinking
-}
-
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
 func (h *ShellHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)

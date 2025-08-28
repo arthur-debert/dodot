@@ -12,7 +12,7 @@ func ProvisionPacksSimplified(opts ProvisionPacksOptions) (*types.ExecutionConte
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeProvisioning,
+		CommandMode:        internal.CommandModeAll, // Run all handler types
 		Force:              opts.Force,
 		EnableHomeSymlinks: true,
 		UseSimplifiedRules: true,

@@ -69,12 +69,6 @@ func (h *SymlinkHandler) Type() types.HandlerType {
 	return types.HandlerTypeConfiguration
 }
 
-// RunMode returns whether this handler runs once or many times
-// Deprecated: Use Type() instead.
-func (h *SymlinkHandler) RunMode() types.RunMode {
-	return types.RunModeLinking
-}
-
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances
 func (h *SymlinkHandler) ProcessLinking(matches []types.RuleMatch) ([]types.LinkingAction, error) {
 	result, err := h.ProcessLinkingWithConfirmations(matches)
