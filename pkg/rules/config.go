@@ -88,47 +88,42 @@ func LoadPackRulesFS(packPath string, fs types.FS) ([]Rule, error) {
 }
 
 // MergeRules merges pack-specific rules with global rules
-// Pack rules take precedence (higher priority)
+// Pack rules are placed first to take precedence
 func MergeRules(global, packSpecific []Rule) []Rule {
-	// Bump pack rule priorities to ensure they override global rules
-	const packPriorityBoost = 1000
-	for i := range packSpecific {
-		packSpecific[i].Priority += packPriorityBoost
-	}
-
-	// Combine and return
+	// Pack rules come first, so they match before global rules
 	return append(packSpecific, global...)
 }
 
 // getDefaultRules returns the default set of rules
+// Order matters: exclusions, exact matches, globs, directories, catchall
 func getDefaultRules() []Rule {
 	return []Rule{
-		// Exclusions
-		{Pattern: "!*.bak", Priority: 1000},
-		{Pattern: "!*.tmp", Priority: 1000},
-		{Pattern: "!*.swp", Priority: 1000},
-		{Pattern: "!.DS_Store", Priority: 1000},
-		{Pattern: "!#*#", Priority: 1000},
-		{Pattern: "!*~", Priority: 1000},
+		// Exclusions (processed first)
+		{Pattern: "!*.bak"},
+		{Pattern: "!*.tmp"},
+		{Pattern: "!*.swp"},
+		{Pattern: "!.DS_Store"},
+		{Pattern: "!#*#"},
+		{Pattern: "!*~"},
 
-		// Provisioning
-		{Pattern: "install.sh", Handler: "install", Priority: 90},
-		{Pattern: "Brewfile", Handler: "homebrew", Priority: 90},
-
-		// Shell integration
-		{Pattern: "*aliases.sh", Handler: "shell", Priority: 80,
-			Options: map[string]interface{}{"placement": "aliases"}},
-		{Pattern: "profile.sh", Handler: "shell", Priority: 80,
+		// Exact matches
+		{Pattern: "install.sh", Handler: "install"},
+		{Pattern: "Brewfile", Handler: "homebrew"},
+		{Pattern: "profile.sh", Handler: "shell",
 			Options: map[string]interface{}{"placement": "environment"}},
-		{Pattern: "login.sh", Handler: "shell", Priority: 80,
+		{Pattern: "login.sh", Handler: "shell",
 			Options: map[string]interface{}{"placement": "login"}},
 
-		// Path directories
-		{Pattern: "bin/", Handler: "path", Priority: 90},
-		{Pattern: ".local/bin/", Handler: "path", Priority: 90},
+		// Glob patterns
+		{Pattern: "*aliases.sh", Handler: "shell",
+			Options: map[string]interface{}{"placement": "aliases"}},
 
-		// Catchall
-		{Pattern: "*", Handler: "symlink", Priority: 0},
+		// Directory patterns
+		{Pattern: "bin/", Handler: "path"},
+		{Pattern: ".local/bin/", Handler: "path"},
+
+		// Catchall (last)
+		{Pattern: "*", Handler: "symlink"},
 	}
 }
 
@@ -161,10 +156,9 @@ func adaptConfigMatchersToRules(matchers []config.MatcherConfig) []Rule {
 
 		// Create rule from matcher
 		rule := Rule{
-			Pattern:  pattern,
-			Handler:  m.Handler.Type,
-			Priority: m.Priority,
-			Options:  m.Handler.Data,
+			Pattern: pattern,
+			Handler: m.Handler.Type,
+			Options: m.Handler.Data,
 		}
 
 		rules = append(rules, rule)

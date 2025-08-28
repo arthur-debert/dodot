@@ -24,8 +24,8 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "README.md", Name: "README.md", IsDirectory: false},
 			},
 			rules: []Rule{
-				{Pattern: "install.sh", Handler: "install", Priority: 10},
-				{Pattern: "*", Handler: "symlink", Priority: 0},
+				{Pattern: "install.sh", Handler: "install"},
+				{Pattern: "*", Handler: "symlink"},
 			},
 			expected: map[string]string{
 				"install.sh": "install",
@@ -40,8 +40,8 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "config", Name: "config", IsDirectory: false},
 			},
 			rules: []Rule{
-				{Pattern: "*aliases.sh", Handler: "shell", Priority: 10},
-				{Pattern: "*", Handler: "symlink", Priority: 0},
+				{Pattern: "*aliases.sh", Handler: "shell"},
+				{Pattern: "*", Handler: "symlink"},
 			},
 			expected: map[string]string{
 				"aliases.sh":    "shell",
@@ -57,8 +57,8 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: "bin.txt", Name: "bin.txt", IsDirectory: false},
 			},
 			rules: []Rule{
-				{Pattern: "bin/", Handler: "path", Priority: 10},
-				{Pattern: "*", Handler: "symlink", Priority: 0},
+				{Pattern: "bin/", Handler: "path"},
+				{Pattern: "*", Handler: "symlink"},
 			},
 			expected: map[string]string{
 				"bin":     "path",
@@ -73,9 +73,9 @@ func TestScanner_PatternMatching(t *testing.T) {
 				{Path: ".DS_Store", Name: ".DS_Store", IsDirectory: false},
 			},
 			rules: []Rule{
-				{Pattern: "!*.bak", Priority: 100},
-				{Pattern: "!.DS_Store", Priority: 100},
-				{Pattern: "*", Handler: "symlink", Priority: 0},
+				{Pattern: "!*.bak"},
+				{Pattern: "!.DS_Store"},
+				{Pattern: "*", Handler: "symlink"},
 			},
 			expected: map[string]string{
 				"config": "symlink",
@@ -83,17 +83,17 @@ func TestScanner_PatternMatching(t *testing.T) {
 			},
 		},
 		{
-			name: "priority order - first match wins",
+			name: "matching order - exact before glob",
 			files: []FileInfo{
 				{Path: "test.sh", Name: "test.sh", IsDirectory: false},
 			},
 			rules: []Rule{
-				{Pattern: "*.sh", Handler: "shell", Priority: 20},
-				{Pattern: "test.sh", Handler: "install", Priority: 10},
-				{Pattern: "*", Handler: "symlink", Priority: 0},
+				{Pattern: "test.sh", Handler: "install"}, // Exact match
+				{Pattern: "*.sh", Handler: "shell"},      // Glob pattern
+				{Pattern: "*", Handler: "symlink"},       // Catchall
 			},
 			expected: map[string]string{
-				"test.sh": "shell", // Higher priority wins
+				"test.sh": "install", // Exact match wins over glob
 			},
 		},
 	}
@@ -153,7 +153,7 @@ func TestScanner_HiddenFiles(t *testing.T) {
 	}
 
 	scanner := NewScanner([]Rule{
-		{Pattern: "*", Handler: "symlink", Priority: 0},
+		{Pattern: "*", Handler: "symlink"},
 	})
 
 	matches, err := scanner.ScanPack(pack)

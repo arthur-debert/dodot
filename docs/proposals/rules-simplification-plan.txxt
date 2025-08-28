@@ -1,0 +1,108 @@
+Rules System Simplification Plan
+================================
+
+This document outlines the work needed to complete the rules system migration.
+
+## Phase 1: Simplify Rules (Remove Priority) ✓ COMPLETED
+
+### Rationale
+- Priority adds complexity for minimal benefit
+- Most patterns are mutually exclusive anyway
+- Execution order is handled by handler RunMode
+
+### Changes Needed
+
+1. **Remove Priority from Rule struct**
+   - Update `pkg/rules/types.go`
+   - Remove Priority field
+
+2. **Update pattern matching logic**
+   - Remove priority sorting in scanner
+   - Define fixed matching order:
+     1. Exclusions (!) always first
+     2. Exact matches (install.sh)
+     3. Glob patterns (*.sh) 
+     4. Directory patterns (bin/)
+     5. Catchall (*) last
+
+3. **Update default rules**
+   - Remove Priority from getDefaultRules()
+   - Ensure rules are ordered correctly in slice
+
+4. **Update tests**
+   - Fix tests that check priority
+   - Ensure matching order is tested
+
+### Benefits
+- Simpler mental model
+- Less configuration
+- Predictable matching behavior
+
+## Phase 2: Remove Compatibility Layers
+
+### Changes Needed
+
+1. **Update default configuration**
+   - Change `defaultMatchers()` to `defaultRules()` in central.go
+   - Return Rule structs directly
+   - Remove MatcherConfig type entirely
+
+2. **Remove adaptation layer**
+   - Delete `adaptConfigMatchersToRules()` function
+   - Update GetMatches to use rules directly
+   - Remove config.GetMatchers() calls
+
+3. **Update config types**
+   - Remove MatcherConfig, TriggerConfig, HandlerConfig types
+   - Add RuleConfig type if needed
+   - Update Config struct to have Rules []Rule
+
+4. **Update mappings processor**
+   - Change GenerateMatchersFromMapping to GenerateRulesFromMapping
+   - Generate Rule structs directly from [mappings]
+
+5. **Update all tests**
+   - Remove tests for old config format
+   - Update test helpers to create rules
+   - Fix integration tests
+
+6. **Update embedded config**
+   - No change needed - [mappings] stays the same
+   - This is the user-facing format
+
+### Benefits
+- Cleaner codebase
+- Single way to configure
+- No confusion about formats
+
+## Recommended Order: Simplify First
+
+Doing Phase 1 first is better because:
+
+1. **Less to adapt**: Simpler Rule struct means less fields to map
+2. **Clearer target**: We know exactly what the final format is
+3. **Easier testing**: Can test the simple version directly
+4. **Smaller changes**: Each phase is more focused
+
+## Migration Impact
+
+### For Users
+- No change! Still use [mappings] in config
+- Everything works the same
+
+### For Developers  
+- Cleaner API
+- Simpler types
+- Less abstraction
+
+## Estimated Effort
+
+Phase 1 (Simplify): ~1-2 hours
+- Mostly mechanical changes
+- Tests might need more attention
+
+Phase 2 (Remove Compatibility): ~2-3 hours  
+- More extensive changes
+- Need to be careful not to break configs
+
+Total: ~4-5 hours of focused work

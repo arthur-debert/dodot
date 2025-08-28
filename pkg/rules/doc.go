@@ -14,11 +14,15 @@
 //   - `*` - Catchall pattern
 //   - `!*.tmp` - Exclusion pattern (leading !)
 //
-// # Rule Priority
+// # Rule Matching
 //
-// Rules are evaluated in priority order (higher values first). The first
-// matching rule wins. Exclusion rules should have the highest priority to
-// ensure files are properly excluded before other rules are evaluated.
+// Rules are evaluated in the order they appear in the configuration.
+// The first matching rule wins. Exclusion patterns (!) are always
+// checked first to ensure files are properly excluded.
+//
+// Handler execution order is controlled by the handler's RunMode:
+//   - Provisioning handlers run before linking handlers
+//   - Within each mode, handlers run in the order matches were found
 //
 // # Configuration
 //
@@ -27,19 +31,16 @@
 //	[[rules]]
 //	pattern = "install.sh"
 //	handler = "install"
-//	priority = 90
 //
 //	[[rules]]
 //	pattern = "*.sh"
 //	handler = "shell"
-//	priority = 80
 //	options = { placement = "aliases" }
 //
 //	[[rules]]
 //	pattern = "*"
 //	handler = "symlink"
-//	priority = 0
 //
-// Pack-specific rules automatically receive a priority boost to ensure they
-// override global rules.
+// Pack-specific rules are prepended to global rules to ensure they
+// match first.
 package rules

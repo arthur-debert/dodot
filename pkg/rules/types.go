@@ -1,11 +1,10 @@
 package rules
 
-// Rule defines a pattern-to-handler mapping with priority
+// Rule defines a pattern-to-handler mapping
 type Rule struct {
-	Pattern  string                 // glob pattern with conventions
-	Handler  string                 // handler name
-	Priority int                    // match order (higher first)
-	Options  map[string]interface{} // handler-specific options
+	Pattern string                 // glob pattern with conventions
+	Handler string                 // handler name
+	Options map[string]interface{} // handler-specific options
 }
 
 // Match represents a file matched by a rule

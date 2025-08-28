@@ -36,7 +36,7 @@ func TestGetDefaultRules(t *testing.T) {
 	assert.True(t, handlers["path"], "Should have path handler")
 	assert.True(t, handlers["homebrew"], "Should have homebrew handler")
 
-	// Check catchall rule exists with lowest priority
+	// Check catchall rule exists
 	var catchall *Rule
 	for i, r := range rules {
 		if r.Pattern == "*" && r.Handler == "symlink" {
@@ -44,7 +44,6 @@ func TestGetDefaultRules(t *testing.T) {
 		}
 	}
 	assert.NotNil(t, catchall, "Should have catchall rule")
-	assert.Equal(t, 0, catchall.Priority, "Catchall should have priority 0")
 }
 
 func TestAdaptConfigMatchersToRules(t *testing.T) {
@@ -70,10 +69,9 @@ func TestAdaptConfigMatchersToRules(t *testing.T) {
 				},
 			},
 			expected: Rule{
-				Pattern:  "install.sh",
-				Handler:  "install",
-				Priority: 90,
-				Options:  map[string]interface{}{},
+				Pattern: "install.sh",
+				Handler: "install",
+				Options: map[string]interface{}{},
 			},
 		},
 		{
@@ -93,10 +91,9 @@ func TestAdaptConfigMatchersToRules(t *testing.T) {
 				},
 			},
 			expected: Rule{
-				Pattern:  "bin/",
-				Handler:  "path",
-				Priority: 80,
-				Options:  map[string]interface{}{},
+				Pattern: "bin/",
+				Handler: "path",
+				Options: map[string]interface{}{},
 			},
 		},
 		{
@@ -118,9 +115,8 @@ func TestAdaptConfigMatchersToRules(t *testing.T) {
 				},
 			},
 			expected: Rule{
-				Pattern:  "*aliases.sh",
-				Handler:  "shell",
-				Priority: 70,
+				Pattern: "*aliases.sh",
+				Handler: "shell",
 				Options: map[string]interface{}{
 					"placement": "aliases",
 				},
@@ -139,18 +135,19 @@ func TestAdaptConfigMatchersToRules(t *testing.T) {
 
 func TestMergeRules(t *testing.T) {
 	global := []Rule{
-		{Pattern: "*.sh", Handler: "shell", Priority: 50},
-		{Pattern: "*", Handler: "symlink", Priority: 0},
+		{Pattern: "*.sh", Handler: "shell"},
+		{Pattern: "*", Handler: "symlink"},
 	}
 
 	packSpecific := []Rule{
-		{Pattern: "special.sh", Handler: "install", Priority: 60},
+		{Pattern: "special.sh", Handler: "install"},
 	}
 
 	merged := MergeRules(global, packSpecific)
 
-	// Pack rules should be boosted
-	assert.Equal(t, 1060, merged[0].Priority, "Pack rule priority should be boosted")
+	// Pack rules should come first
+	assert.Equal(t, "special.sh", merged[0].Pattern)
+	assert.Equal(t, "install", merged[0].Handler)
 
 	// All rules should be present
 	assert.Len(t, merged, 3)

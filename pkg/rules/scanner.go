@@ -3,7 +3,6 @@ package rules
 import (
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -48,19 +47,10 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 		return nil, err
 	}
 
-	// Separate exclusion rules from normal rules
-	exclusions, rules := s.separateRules()
-
-	// Sort rules by priority (higher first)
-	sort.Slice(rules, func(i, j int) bool {
-		return rules[i].Priority > rules[j].Priority
-	})
-
 	s.logger.Debug().
 		Int("fileCount", len(files)).
-		Int("ruleCount", len(rules)).
-		Int("exclusionCount", len(exclusions)).
-		Msg("Starting pack scan with files and rules")
+		Int("ruleCount", len(s.rules)).
+		Msg("Starting pack scan")
 
 	// Log files found for debugging
 	for _, f := range files {
@@ -73,16 +63,18 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 	// Match files against rules
 	var matches []Match
 	for _, file := range files {
-		// Check exclusions first
-		if s.isExcluded(file, exclusions) {
-			s.logger.Debug().
-				Str("file", file.Path).
-				Msg("File excluded by rule")
+		// Check if file should be excluded
+		if s.isExcluded(file) {
 			continue
 		}
 
-		// Try to match against each rule
-		for _, rule := range rules {
+		// Find the first matching rule
+		for _, rule := range s.rules {
+			// Skip exclusion rules (already handled above)
+			if strings.HasPrefix(rule.Pattern, "!") {
+				continue
+			}
+
 			if s.matchesRule(file, rule) {
 				s.logger.Debug().
 					Str("file", file.Path).
@@ -97,7 +89,7 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 					Handler:     rule.Handler,
 					Options:     rule.Options,
 				})
-				break // first match wins
+				break // First match wins
 			}
 		}
 	}
@@ -147,25 +139,15 @@ func (s *Scanner) readPackFiles(packPath string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// separateRules separates exclusion rules (starting with !) from normal rules
-func (s *Scanner) separateRules() (exclusions []Rule, normal []Rule) {
+// isExcluded checks if a file matches any exclusion rule
+func (s *Scanner) isExcluded(file FileInfo) bool {
 	for _, rule := range s.rules {
 		if strings.HasPrefix(rule.Pattern, "!") {
-			exclusions = append(exclusions, rule)
-		} else {
-			normal = append(normal, rule)
-		}
-	}
-	return
-}
-
-// isExcluded checks if a file matches any exclusion rule
-func (s *Scanner) isExcluded(file FileInfo, exclusions []Rule) bool {
-	for _, rule := range exclusions {
-		// Remove the ! prefix for matching
-		pattern := strings.TrimPrefix(rule.Pattern, "!")
-		if s.matchesPattern(file, pattern) {
-			return true
+			// Remove the ! prefix for matching
+			pattern := strings.TrimPrefix(rule.Pattern, "!")
+			if s.matchesPattern(file, pattern) {
+				return true
+			}
 		}
 	}
 	return false
