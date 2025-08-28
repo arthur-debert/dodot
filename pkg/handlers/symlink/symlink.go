@@ -64,7 +64,13 @@ func (h *SymlinkHandler) Description() string {
 	return "Creates symbolic links from dotfiles to target locations"
 }
 
+// Type returns the fundamental nature of this handler's operations
+func (h *SymlinkHandler) Type() types.HandlerType {
+	return types.HandlerTypeConfiguration
+}
+
 // RunMode returns whether this handler runs once or many times
+// Deprecated: Use Type() instead.
 func (h *SymlinkHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }

@@ -159,7 +159,6 @@ func TestLinkPacks_AllPacks(t *testing.T) {
 }
 
 func TestLinkPacks_SkipInstallScripts(t *testing.T) {
-	t.Skip("TODO: Phase 2 - Fix handler filtering to prevent install scripts from executing in link mode")
 	// Create test environment
 	tempDir := testutil.TempDir(t, "deploy-skip-install")
 	dotfilesDir := filepath.Join(tempDir, "dotfiles")

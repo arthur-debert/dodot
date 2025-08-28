@@ -30,7 +30,13 @@ func (h *PathHandler) Description() string {
 	return "Adds directories to PATH"
 }
 
+// Type returns the fundamental nature of this handler's operations
+func (h *PathHandler) Type() types.HandlerType {
+	return types.HandlerTypeConfiguration
+}
+
 // RunMode returns when this handler should run
+// Deprecated: Use Type() instead.
 func (h *PathHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }

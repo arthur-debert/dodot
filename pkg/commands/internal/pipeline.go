@@ -85,8 +85,27 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("triggerMatches", len(matches)).
 		Msg("Triggers matched")
 
-	// 5. Generate actions and confirmations from triggers
-	actionResult, err := core.GetActionsWithConfirmations(matches)
+	// 5. Filter matches based on run mode before generating actions
+	// This prevents handlers from generating actions they shouldn't
+	filteredMatches := matches
+	switch opts.RunMode {
+	case types.RunModeLinking:
+		// Link mode: only allow configuration handlers
+		filteredMatches = core.FilterMatchesByHandlerCategory(matches, true, false)
+		logger.Debug().
+			Int("originalMatches", len(matches)).
+			Int("filteredMatches", len(filteredMatches)).
+			Msg("Filtered matches for configuration handlers only")
+	case types.RunModeProvisioning:
+		// Provision mode: allow both configuration and code execution handlers
+		// No filtering needed - all handlers are allowed
+		logger.Debug().
+			Int("matches", len(matches)).
+			Msg("Provision mode - allowing all handler types")
+	}
+
+	// 6. Generate actions and confirmations from filtered triggers
+	actionResult, err := core.GetActionsWithConfirmations(filteredMatches)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to generate actions")
 	}
@@ -96,7 +115,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		Int("totalConfirmations", len(actionResult.Confirmations)).
 		Msg("Actions and confirmations generated")
 
-	// 6. Handle confirmations if present
+	// 7. Handle confirmations if present
 	var confirmationContext *types.ConfirmationContext
 	if actionResult.HasConfirmations() {
 		logger.Info().
@@ -127,19 +146,14 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 	// Use the generated actions
 	actions := actionResult.Actions
 
-	// 7. Create datastore for the new executor
+	// 8. Create datastore for the new executor
 	fs := filesystem.NewOS()
 	dataStore := datastore.New(fs, pathsInstance)
 
-	// 8. Filter actions by run mode
-	filteredActions := core.FilterActionsByRunMode(actions, opts.RunMode)
+	// 9. Actions are already filtered at match level, no need for additional filtering
+	filteredActions := actions
 
-	logger.Debug().
-		Int("filteredActions", len(filteredActions)).
-		Str("runMode", string(opts.RunMode)).
-		Msg("Actions filtered by run mode")
-
-	// 9. Filter provisioning actions based on --force flag
+	// 10. Filter provisioning actions based on --force flag
 	if opts.RunMode == types.RunModeProvisioning && !opts.Force {
 		filteredActions, err = core.FilterProvisioningActions(filteredActions, opts.Force, dataStore)
 		if err != nil {
@@ -150,10 +164,10 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 			Msg("Provisioning actions filtered")
 	}
 
-	// 10. Create execution context
+	// 11. Create execution context
 	ctx := types.NewExecutionContext(getCommandFromRunMode(opts.RunMode), opts.DryRun)
 
-	// 11. If dry run, we still need to create pack results structure
+	// 12. If dry run, we still need to create pack results structure
 	if opts.DryRun {
 		logger.Info().Msg("Dry run mode - creating planned results")
 		// Group actions by pack and create pack results
@@ -165,7 +179,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		return ctx, nil
 	}
 
-	// 12. Create and configure new Executor
+	// 13. Create and configure new Executor
 	executorOpts := executor.Options{
 		DataStore: dataStore,
 		DryRun:    opts.DryRun,
@@ -174,7 +188,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 
 	exec := executor.New(executorOpts)
 
-	// 13. Execute actions
+	// 14. Execute actions
 	logger.Info().
 		Int("actionCount", len(filteredActions)).
 		Msg("Executing actions")
@@ -190,7 +204,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 		}
 	}
 
-	// 14. Process results into execution context
+	// 15. Process results into execution context
 	packResultsMap := convertActionResultsToPackResults(results, selectedPacks)
 	for packName, packResult := range packResultsMap {
 		ctx.AddPackResult(packName, packResult)

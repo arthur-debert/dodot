@@ -60,7 +60,13 @@ func (h *InstallHandler) Description() string {
 	return "Runs install.sh scripts for initial setup"
 }
 
+// Type returns the fundamental nature of this handler's operations
+func (h *InstallHandler) Type() types.HandlerType {
+	return types.HandlerTypeCodeExecution
+}
+
 // RunMode returns whether this handler runs once or many times
+// Deprecated: Use Type() instead.
 func (h *InstallHandler) RunMode() types.RunMode {
 	return types.RunModeProvisioning
 }

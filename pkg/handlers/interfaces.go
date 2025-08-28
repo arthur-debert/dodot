@@ -2,17 +2,27 @@ package handlers
 
 import "github.com/arthur-debert/dodot/pkg/types"
 
-// LinkingHandler generates actions that are idempotent and fast.
-// These handlers create configuration links that can be safely run multiple times.
-type LinkingHandler interface {
+// Handler is the base interface that all handlers must implement.
+// It provides common methods for identifying and describing handlers.
+type Handler interface {
 	// Name returns the unique name of this handler
 	Name() string
 
 	// Description returns a human-readable description of what this handler does
 	Description() string
 
+	// Type returns the fundamental nature of this handler's operations
+	Type() types.HandlerType
+
 	// RunMode returns whether this handler runs once or many times
+	// Deprecated: Use Type() instead. This method will be removed in a future version.
 	RunMode() types.RunMode
+}
+
+// LinkingHandler generates actions that are idempotent and fast.
+// These handlers create configuration links that can be safely run multiple times.
+type LinkingHandler interface {
+	Handler
 
 	// ValidateOptions checks if the provided options are valid for this handler
 	ValidateOptions(options map[string]interface{}) error
@@ -28,14 +38,7 @@ type LinkingHandler interface {
 // ProvisioningHandler generates actions that have side effects.
 // These handlers typically run once to install software or perform system changes.
 type ProvisioningHandler interface {
-	// Name returns the unique name of this handler
-	Name() string
-
-	// Description returns a human-readable description of what this handler does
-	Description() string
-
-	// RunMode returns whether this handler runs once or many times
-	RunMode() types.RunMode
+	Handler
 
 	// ValidateOptions checks if the provided options are valid for this handler
 	ValidateOptions(options map[string]interface{}) error

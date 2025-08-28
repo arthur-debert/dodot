@@ -2,6 +2,7 @@ package core
 
 import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -16,4 +17,22 @@ func GetMatchesFS(packs []types.Pack, filesystem types.FS) ([]types.RuleMatch, e
 	// For now, ignore the filesystem parameter and use the rules system
 	// TODO: Update rules system to support custom filesystem
 	return rules.GetMatches(packs)
+}
+
+// FilterMatchesByHandlerCategory filters rule matches based on handler category
+func FilterMatchesByHandlerCategory(matches []types.RuleMatch, allowConfiguration, allowCodeExecution bool) []types.RuleMatch {
+	var filtered []types.RuleMatch
+
+	for _, match := range matches {
+		// Check if handler is configuration type
+		if allowConfiguration && handlers.HandlerRegistry.IsConfigurationHandler(match.HandlerName) {
+			filtered = append(filtered, match)
+		}
+		// Check if handler is code execution type
+		if allowCodeExecution && handlers.HandlerRegistry.IsCodeExecutionHandler(match.HandlerName) {
+			filtered = append(filtered, match)
+		}
+	}
+
+	return filtered
 }

@@ -215,8 +215,9 @@ func TestProvisionPacks_OnlySymlinks(t *testing.T) {
 	testutil.AssertTrue(t, ok, "Should have vim pack result")
 
 	// Handlers use generic "handler" name
-	// In provisioning mode with symlinks only, we should only have 1 handler result
-	testutil.AssertEqual(t, 1, len(packResult.HandlerResults), "Should have exactly one handler result for symlink")
+	// In provisioning mode with symlinks only, we get 2 handler results (Phase 1 + Phase 2)
+	// because provision command runs all handlers in Phase 1 and configuration handlers in Phase 2
+	testutil.AssertEqual(t, 2, len(packResult.HandlerResults), "Should have two handler results for symlink (one per phase)")
 
 	// Verify symlink was created (Layer 1: top-level files get dot prefix)
 	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")

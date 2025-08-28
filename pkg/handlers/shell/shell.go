@@ -32,7 +32,13 @@ func (h *ShellHandler) Description() string {
 	return "Manages shell profile modifications (e.g., sourcing aliases)"
 }
 
+// Type returns the fundamental nature of this handler's operations
+func (h *ShellHandler) Type() types.HandlerType {
+	return types.HandlerTypeConfiguration
+}
+
 // RunMode returns when this handler should run
+// Deprecated: Use Type() instead.
 func (h *ShellHandler) RunMode() types.RunMode {
 	return types.RunModeLinking
 }
