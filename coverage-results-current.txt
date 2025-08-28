@@ -1,0 +1,60 @@
+Generating coverage for new tests...
+Running: go test -coverprofile coverage_new.out ./cmd/dodot ./pkg/datastore ./pkg/errors ./pkg/handlers/symlink ./pkg/testutil ./pkg/types ./pkg/ui/output
+Coverage data written to coverage_new.out
+Generating coverage for old tests...
+Running: go test -coverprofile coverage_old.out ./pkg/actions ./pkg/cobrax/topics ./pkg/commands/addignore ./pkg/commands/adopt ./pkg/commands/deprovision ./pkg/commands/fill ./pkg/commands/genconfig ./pkg/commands/initialize ./pkg/commands/internal ./pkg/commands/link ./pkg/commands/list ./pkg/commands/off ./pkg/commands/on ./pkg/commands/provision ./pkg/commands/status ./pkg/commands/unlink ./pkg/config ./pkg/core ./pkg/errors ./pkg/executor ./pkg/filesystem ./pkg/handlers ./pkg/handlers/homebrew ./pkg/handlers/install ./pkg/handlers/path ./pkg/handlers/shell ./pkg/handlers/symlink ./pkg/internal/hashutil ./pkg/logging ./pkg/packs ./pkg/paths ./pkg/rules ./pkg/shell ./pkg/testutil_old ./pkg/ui ./pkg/ui/display ./pkg/ui/lipbalm ./pkg/ui/output ./pkg/ui/output/styles
+Coverage data written to coverage_old.out
+
+========================================================================================================================
+Package                                                       Old Tests            New Tests           Difference
+========================================================================================================================
+github.com/arthur-debert/dodot/cmd/dodot                       No tests     20.26% (111/548)         New coverage
+github.com/arthur-debert/dodot/pkg/actions               94.29% (33/35)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/cobrax/topics        40.00% (66/165)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/addignore       84.62% (33/39)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/adopt        82.86% (58/70)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/deprovision       88.89% (32/36)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/fill           0.00% (0/17)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/genconfig       95.24% (40/42)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/initialize       85.71% (36/42)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/internal     70.00% (126/180)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/link           66.67% (6/9)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/list        100.00% (10/10)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/off          95.65% (22/23)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/on           92.59% (25/27)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/provision       68.92% (51/74)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/status       80.90% (72/89)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/commands/unlink       80.49% (33/41)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/config              76.11% (172/226)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/core                49.32% (108/219)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/datastore                   No tests     82.72% (158/191)         New coverage
+github.com/arthur-debert/dodot/pkg/errors                91.89% (34/37)       91.89% (34/37)               +0.00%
+github.com/arthur-debert/dodot/pkg/executor            73.77% (135/183)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/filesystem             19.44% (7/36)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/handlers             100.00% (13/13)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/handlers/homebrew     64.68% (163/252)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/handlers/install       50.00% (26/52)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/handlers/path         97.62% (41/42)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/handlers/shell        77.78% (21/27)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/handlers/symlink       81.91% (77/94)       81.91% (77/94)               +0.00%
+github.com/arthur-debert/dodot/pkg/internal/hashutil         88.89% (8/9)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/logging               82.22% (37/45)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/packs               64.79% (138/213)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/paths               75.00% (261/348)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/rules                32.32% (53/164)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/shell                   0.00% (0/26)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/testutil                    No tests     40.59% (235/579)         New coverage
+github.com/arthur-debert/dodot/pkg/testutil_old        42.19% (154/365)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/types                       No tests      31.46% (84/267)         New coverage
+github.com/arthur-debert/dodot/pkg/ui                    75.86% (22/29)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/ui/display            81.25% (52/64)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/ui/lipbalm            97.78% (44/45)             No tests        Tests removed
+github.com/arthur-debert/dodot/pkg/ui/output             89.47% (51/57)       89.47% (51/57)               +0.00%
+github.com/arthur-debert/dodot/pkg/ui/output/styles       73.33% (55/75)             No tests        Tests removed
+========================================================================================================================
+TOTAL                                                65.77% (2315/3520)    42.30% (750/1773)              -23.47%
+========================================================================================================================
+
+Test Migration Summary:
+New test files (_test.go): 16
+Old test files (_toremove_test.go): 81
