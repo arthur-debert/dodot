@@ -30,9 +30,9 @@ func (h *PathHandler) Description() string {
 	return "Adds directories to PATH"
 }
 
-// RunMode returns when this handler should run
-func (h *PathHandler) RunMode() types.RunMode {
-	return types.RunModeLinking
+// Type returns the fundamental nature of this handler's operations
+func (h *PathHandler) Type() types.HandlerType {
+	return types.HandlerTypeConfiguration
 }
 
 // ProcessLinking takes directories and creates AddToPathAction instances

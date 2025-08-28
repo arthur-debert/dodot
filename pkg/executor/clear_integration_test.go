@@ -21,31 +21,36 @@ func TestClearInfrastructure_Integration(t *testing.T) {
 		name        string
 		handlerName string
 		handler     handlers.Clearable
-		runMode     types.RunMode
+		handlerType types.HandlerType
+		fullHandler handlers.Handler // Store the full handler to access Type()
 	}{
 		{
 			name:        "symlink handler",
 			handlerName: symlink.SymlinkHandlerName,
 			handler:     symlink.NewSymlinkHandler(),
-			runMode:     types.RunModeLinking,
+			handlerType: types.HandlerTypeConfiguration,
+			fullHandler: symlink.NewSymlinkHandler(),
 		},
 		{
 			name:        "path handler",
 			handlerName: path.PathHandlerName,
 			handler:     path.NewPathHandler(),
-			runMode:     types.RunModeLinking,
+			handlerType: types.HandlerTypeConfiguration,
+			fullHandler: path.NewPathHandler(),
 		},
 		{
 			name:        "homebrew handler",
 			handlerName: homebrew.HomebrewHandlerName,
 			handler:     homebrew.NewHomebrewHandler(),
-			runMode:     types.RunModeProvisioning,
+			handlerType: types.HandlerTypeCodeExecution,
+			fullHandler: homebrew.NewHomebrewHandler(),
 		},
 		{
 			name:        "install handler",
 			handlerName: install.InstallHandlerName,
 			handler:     install.NewInstallHandler(),
-			runMode:     types.RunModeProvisioning,
+			handlerType: types.HandlerTypeCodeExecution,
+			fullHandler: install.NewInstallHandler(),
 		},
 	}
 
@@ -54,17 +59,9 @@ func TestClearInfrastructure_Integration(t *testing.T) {
 			// Handler is already types.Clearable in the test struct
 			clearable := tt.handler
 
-			// Verify handler has the correct run mode
-			var actualMode types.RunMode
-			switch h := tt.handler.(type) {
-			case handlers.LinkingHandler:
-				actualMode = h.RunMode()
-			case handlers.ProvisioningHandler:
-				actualMode = h.RunMode()
-			default:
-				t.Fatalf("Handler %s doesn't implement LinkingHandler or ProvisioningHandler", tt.handlerName)
-			}
-			assert.Equal(t, tt.runMode, actualMode, "%s should have correct run mode", tt.handlerName)
+			// Verify handler has the correct type
+			actualType := tt.fullHandler.Type()
+			assert.Equal(t, tt.handlerType, actualType, "%s should have correct handler type", tt.handlerName)
 
 			// Create a simple context to test Clear doesn't panic
 			ctx := types.ClearContext{
@@ -90,8 +87,8 @@ func TestClearInfrastructure_Integration(t *testing.T) {
 func TestClearHelpers_WithRealHandlers(t *testing.T) {
 	// Test GetClearableHandlersByMode with real handler setup
 
-	// Test linking mode
-	linkingHandlers, err := executor.GetClearableHandlersByMode(types.RunModeLinking)
+	// Test configuration handlers
+	linkingHandlers, err := executor.GetClearableHandlersByType(types.HandlerTypeConfiguration)
 	require.NoError(t, err)
 
 	// We expect at least symlink and path handlers
@@ -104,8 +101,8 @@ func TestClearHelpers_WithRealHandlers(t *testing.T) {
 	_, hasPath := linkingHandlers[path.PathHandlerName]
 	assert.True(t, hasPath, "Should have path handler")
 
-	// Test provisioning mode
-	provisioningHandlers, err := executor.GetClearableHandlersByMode(types.RunModeProvisioning)
+	// Test code execution handlers
+	provisioningHandlers, err := executor.GetClearableHandlersByType(types.HandlerTypeCodeExecution)
 	require.NoError(t, err)
 
 	// We expect at least homebrew and provision handlers

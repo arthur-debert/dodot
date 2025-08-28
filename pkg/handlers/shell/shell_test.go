@@ -188,7 +188,7 @@ func TestShellHandler_Properties(t *testing.T) {
 
 	assert.Equal(t, ShellHandlerName, handler.Name())
 	assert.Equal(t, "Manages shell profile modifications (e.g., sourcing aliases)", handler.Description())
-	assert.Equal(t, types.RunModeLinking, handler.RunMode())
+	assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
 
 	// Verify template content
 	template := handler.GetTemplateContent()

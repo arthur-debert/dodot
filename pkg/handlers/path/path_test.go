@@ -210,6 +210,6 @@ func TestPathHandler_Properties(t *testing.T) {
 
 	assert.Equal(t, PathHandlerName, handler.Name())
 	assert.Equal(t, "Adds directories to PATH", handler.Description())
-	assert.Equal(t, types.RunModeLinking, handler.RunMode())
+	assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
 	assert.Empty(t, handler.GetTemplateContent())
 }

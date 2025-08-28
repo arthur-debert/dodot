@@ -128,23 +128,39 @@ func groupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMat
 	return groups
 }
 
-// FilterActionsByRunMode filters actions based on their type
-func FilterActionsByRunMode(actions []types.Action, mode types.RunMode) []types.Action {
+// FilterConfigurationActions returns only configuration actions (safe to run repeatedly)
+func FilterConfigurationActions(actions []types.Action) []types.Action {
 	var filtered []types.Action
 
 	for _, action := range actions {
-		// Check if action is a linking or provisioning type
+		// Only include linking actions and unknown types
 		switch action.(type) {
 		case types.LinkingAction:
-			if mode == types.RunModeLinking {
-				filtered = append(filtered, action)
-			}
+			filtered = append(filtered, action)
 		case types.ProvisioningAction:
-			if mode == types.RunModeProvisioning {
-				filtered = append(filtered, action)
-			}
+			// Skip provisioning actions
 		default:
-			// Include unknown action types in all modes
+			// Include unknown action types
+			filtered = append(filtered, action)
+		}
+	}
+
+	return filtered
+}
+
+// FilterCodeExecutionActions returns only code execution actions (require user consent)
+func FilterCodeExecutionActions(actions []types.Action) []types.Action {
+	var filtered []types.Action
+
+	for _, action := range actions {
+		// Only include provisioning actions and unknown types
+		switch action.(type) {
+		case types.ProvisioningAction:
+			filtered = append(filtered, action)
+		case types.LinkingAction:
+			// Skip linking actions
+		default:
+			// Include unknown action types
 			filtered = append(filtered, action)
 		}
 	}

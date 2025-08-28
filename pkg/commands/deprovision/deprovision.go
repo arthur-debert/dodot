@@ -75,15 +75,15 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 		return nil, fmt.Errorf("failed to discover packs: %w", err)
 	}
 
-	// Get provisioning handlers
-	provisioningHandlers, err := executor.GetClearableHandlersByMode(types.RunModeProvisioning)
+	// Get code execution handlers (require user consent)
+	codeExecHandlers, err := executor.GetClearableCodeExecutionHandlers()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get provisioning handlers: %w", err)
+		return nil, fmt.Errorf("failed to get code execution handlers: %w", err)
 	}
 
 	logger.Debug().
 		Int("packCount", len(packs)).
-		Int("handlerCount", len(provisioningHandlers)).
+		Int("handlerCount", len(codeExecHandlers)).
 		Msg("Discovered packs and handlers")
 
 	// Process each pack
@@ -106,7 +106,7 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 		}
 
 		// Filter handlers to only those with state
-		handlersWithState := executor.FilterHandlersByState(ctx, provisioningHandlers)
+		handlersWithState := executor.FilterHandlersByState(ctx, codeExecHandlers)
 
 		logger.Debug().
 			Str("pack", pack.Name).

@@ -1,0 +1,66 @@
+Handler Types - Executive Summary
+=================================
+
+## The Problem
+
+RunMode (linking vs provisioning) is the wrong abstraction. It pretends to be
+about execution frequency but is really about the fundamental nature of what
+handlers do.
+
+## The Solution
+
+Replace RunMode with explicit handler types that clearly indicate their purpose:
+
+1. **Configuration**: Creates/updates config (symlink, shell, path)
+   - Safe to run repeatedly
+   - No side effects beyond config files
+
+2. **CodeExecution**: Runs arbitrary code (install, homebrew)  
+   - Requires user consent for re-execution
+   - Has system-wide side effects
+
+3. **Transformation**: Preprocesses files (template, decrypt)
+   - Modifies file list before other handlers
+   - Part of the processing pipeline
+
+4. **Filter**: Excludes files (ignore)
+   - Determines what gets processed
+   - Replaces ad-hoc ignore handling
+
+## Key Benefits
+
+- **Clarity**: Handler type = what it does, not when it runs
+- **Pipeline**: Natural ordering: Filter → Transform → Configure/Provision
+- **Extensibility**: Add new types without breaking existing code
+- **Simplicity**: One base Handler interface, type-specific extensions
+
+## Migration Strategy
+
+**Phase 1: Minimal API** (Immediate)
+```go
+// pkg/handlers/api.go
+var HandlerRegistry = struct {
+    IsConfigurationHandler func(name string) bool
+    IsCodeExecutionHandler func(name string) bool
+    GetHandlerCategory func(name string) HandlerCategory
+    // ... other helpers
+}
+```
+Replace RunMode checks with registry lookups throughout codebase.
+
+**Phase 2: Interface Evolution** (Later)
+```go
+type Handler interface {
+    Name() string
+    Type() HandlerType  // Replaces RunMode()
+    // ... common methods
+}
+```
+
+## Next Steps
+
+1. Design approved?
+2. Implement base interfaces
+3. Migrate existing handlers
+4. Add transformation pipeline
+5. Implement template/ignore as proof of concept

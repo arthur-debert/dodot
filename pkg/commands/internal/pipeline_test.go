@@ -29,12 +29,12 @@ func TestRunPipeline_Deploy(t *testing.T) {
 	testutil.CreateFile(t, dotfilesDir, "vim/vimrc", "\" Test vimrc")
 	testutil.CreateFile(t, dotfilesDir, "vim/gvimrc", "\" Test gvimrc")
 
-	// Run pipeline in deploy mode (RunModeLinking)
+	// Run pipeline in deploy mode (configuration handlers)
 	opts := PipelineOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"vim"},
 		DryRun:             false,
-		RunMode:            types.RunModeLinking,
+		CommandMode:        CommandModeConfiguration,
 		Force:              false,
 		EnableHomeSymlinks: true,
 	}
@@ -82,7 +82,7 @@ func TestRunPipeline_DryRun(t *testing.T) {
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{}, // All packs
 		DryRun:             true,
-		RunMode:            types.RunModeLinking,
+		CommandMode:        CommandModeConfiguration,
 		Force:              false,
 		EnableHomeSymlinks: true,
 	}
@@ -126,12 +126,12 @@ echo "Installing tools"
 	err := os.Chmod(filepath.Join(dotfilesDir, "tools/install.sh"), 0755)
 	testutil.AssertNoError(t, err)
 
-	// Run pipeline in install mode (RunModeProvisioning)
+	// Run pipeline in install mode (code execution handlers)
 	opts := PipelineOptions{
 		DotfilesRoot:       dotfilesDir,
 		PackNames:          []string{"tools"},
 		DryRun:             false,
-		RunMode:            types.RunModeProvisioning,
+		CommandMode:        CommandModeAll,
 		Force:              false,
 		EnableHomeSymlinks: true,
 	}
@@ -167,7 +167,7 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 		DotfilesRoot: dotfilesDir,
 		PackNames:    []string{"nonexistent"},
 		DryRun:       false,
-		RunMode:      types.RunModeLinking,
+		CommandMode:  CommandModeConfiguration,
 		Force:        false,
 	}
 
@@ -184,5 +184,5 @@ func TestRunPipeline_InvalidPack(t *testing.T) {
 	}
 }
 
-// TestFilterActionsByRunMode is now tested in pkg/core/actions_test.go
+// TestFilterActionsByHandlerType is now tested in pkg/core/actions_test.go
 // since the functionality moved there with the actions

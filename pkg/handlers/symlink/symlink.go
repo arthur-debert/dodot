@@ -64,9 +64,9 @@ func (h *SymlinkHandler) Description() string {
 	return "Creates symbolic links from dotfiles to target locations"
 }
 
-// RunMode returns whether this handler runs once or many times
-func (h *SymlinkHandler) RunMode() types.RunMode {
-	return types.RunModeLinking
+// Type returns the fundamental nature of this handler's operations
+func (h *SymlinkHandler) Type() types.HandlerType {
+	return types.HandlerTypeConfiguration
 }
 
 // ProcessLinking takes a group of trigger matches and generates LinkAction instances

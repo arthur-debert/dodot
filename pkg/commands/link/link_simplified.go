@@ -12,7 +12,7 @@ func LinkPacksSimplified(opts LinkPacksOptions) (*types.ExecutionContext, error)
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
-		RunMode:            types.RunModeLinking,
+		CommandMode:        internal.CommandModeConfiguration, // Only configuration handlers
 		Force:              false,
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 		UseSimplifiedRules: true,

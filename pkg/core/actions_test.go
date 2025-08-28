@@ -8,40 +8,35 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFilterActionsByRunMode(t *testing.T) {
+func TestFilterConfigurationActions(t *testing.T) {
 	tests := []struct {
 		name          string
 		actions       []types.Action
-		mode          types.RunMode
 		expectedCount int
 		expectedTypes []string
 	}{
 		{
-			name: "filter linking actions",
+			name: "filter configuration actions",
 			actions: []types.Action{
 				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 				&types.AddToPathAction{PackName: "test", DirPath: "/path"},
 				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
 			},
-			mode:          types.RunModeLinking,
 			expectedCount: 2,
 			expectedTypes: []string{"*types.LinkAction", "*types.AddToPathAction"},
 		},
 		{
-			name: "filter provisioning actions",
+			name: "all provisioning actions",
 			actions: []types.Action{
-				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
 				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
 				&types.BrewAction{PackName: "test", BrewfilePath: "Brewfile"},
 			},
-			mode:          types.RunModeProvisioning,
-			expectedCount: 2,
-			expectedTypes: []string{"*types.RunScriptAction", "*types.BrewAction"},
+			expectedCount: 0,
+			expectedTypes: []string{},
 		},
 		{
 			name:          "empty actions",
 			actions:       []types.Action{},
-			mode:          types.RunModeLinking,
 			expectedCount: 0,
 			expectedTypes: []string{},
 		},
@@ -49,7 +44,57 @@ func TestFilterActionsByRunMode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filtered := FilterActionsByRunMode(tt.actions, tt.mode)
+			filtered := FilterConfigurationActions(tt.actions)
+
+			assert.Equal(t, tt.expectedCount, len(filtered))
+
+			// Check that we got the expected types
+			for i, action := range filtered {
+				if i < len(tt.expectedTypes) {
+					assert.Equal(t, tt.expectedTypes[i], typeString(action))
+				}
+			}
+		})
+	}
+}
+
+func TestFilterCodeExecutionActions(t *testing.T) {
+	tests := []struct {
+		name          string
+		actions       []types.Action
+		expectedCount int
+		expectedTypes []string
+	}{
+		{
+			name: "filter code execution actions",
+			actions: []types.Action{
+				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
+				&types.RunScriptAction{PackName: "test", ScriptPath: "script.sh"},
+				&types.BrewAction{PackName: "test", BrewfilePath: "Brewfile"},
+			},
+			expectedCount: 2,
+			expectedTypes: []string{"*types.RunScriptAction", "*types.BrewAction"},
+		},
+		{
+			name: "all configuration actions",
+			actions: []types.Action{
+				&types.LinkAction{PackName: "test", SourceFile: "src", TargetFile: "target"},
+				&types.AddToPathAction{PackName: "test", DirPath: "/path"},
+			},
+			expectedCount: 0,
+			expectedTypes: []string{},
+		},
+		{
+			name:          "empty actions",
+			actions:       []types.Action{},
+			expectedCount: 0,
+			expectedTypes: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			filtered := FilterCodeExecutionActions(tt.actions)
 
 			assert.Equal(t, tt.expectedCount, len(filtered))
 

@@ -37,9 +37,9 @@ func (h *HomebrewHandler) Description() string {
 	return "Processes Brewfiles to install Homebrew packages"
 }
 
-// RunMode returns whether this handler runs once or many times
-func (h *HomebrewHandler) RunMode() types.RunMode {
-	return types.RunModeProvisioning
+// Type returns the fundamental nature of this handler's operations
+func (h *HomebrewHandler) Type() types.HandlerType {
+	return types.HandlerTypeCodeExecution
 }
 
 // ProcessProvisioning takes Brewfile matches and generates RunScriptAction instances

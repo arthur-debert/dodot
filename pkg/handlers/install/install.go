@@ -60,9 +60,9 @@ func (h *InstallHandler) Description() string {
 	return "Runs install.sh scripts for initial setup"
 }
 
-// RunMode returns whether this handler runs once or many times
-func (h *InstallHandler) RunMode() types.RunMode {
-	return types.RunModeProvisioning
+// Type returns the fundamental nature of this handler's operations
+func (h *InstallHandler) Type() types.HandlerType {
+	return types.HandlerTypeCodeExecution
 }
 
 // ProcessProvisioning takes install script matches and generates RunScriptAction instances

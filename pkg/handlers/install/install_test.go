@@ -196,7 +196,7 @@ func TestInstallHandler_Properties(t *testing.T) {
 
 	assert.Equal(t, InstallHandlerName, handler.Name())
 	assert.Equal(t, "Runs install.sh scripts for initial setup", handler.Description())
-	assert.Equal(t, types.RunModeProvisioning, handler.RunMode())
+	assert.Equal(t, types.HandlerTypeCodeExecution, handler.Type())
 
 	// Verify template content
 	template := handler.GetTemplateContent()

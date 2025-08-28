@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
@@ -192,48 +193,39 @@ func GroupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMat
 }
 
 // GetHandlerExecutionOrder returns handlers in the order they should be executed
-// based on their RunMode (provisioning before linking)
+// Code execution handlers run before configuration handlers
 func GetHandlerExecutionOrder(handlerNames []string) []string {
 	type handlerInfo struct {
-		name    string
-		runMode types.RunMode
+		name     string
+		category handlers.HandlerCategory
 	}
 
-	var handlers []handlerInfo
+	var handlerList []handlerInfo
 	for _, name := range handlerNames {
-		// Create a temporary instance to get its run mode
+		// Validate handler exists
 		_, err := CreateHandler(name, nil)
 		if err != nil {
 			continue
 		}
 
-		// Determine run mode based on handler type
-		var runMode types.RunMode
-		switch name {
-		case "install", "homebrew":
-			runMode = types.RunModeProvisioning
-		default:
-			runMode = types.RunModeLinking
-		}
-
-		handlers = append(handlers, handlerInfo{
-			name:    name,
-			runMode: runMode,
+		handlerList = append(handlerList, handlerInfo{
+			name:     name,
+			category: handlers.HandlerRegistry.GetHandlerCategory(name),
 		})
 	}
 
-	// Sort: provisioning handlers first, then linking handlers
-	sort.Slice(handlers, func(i, j int) bool {
-		if handlers[i].runMode == handlers[j].runMode {
-			return handlers[i].name < handlers[j].name // alphabetical within same mode
+	// Sort: code execution handlers first, then configuration handlers
+	sort.Slice(handlerList, func(i, j int) bool {
+		if handlerList[i].category == handlerList[j].category {
+			return handlerList[i].name < handlerList[j].name // alphabetical within same category
 		}
-		// Provisioning comes before linking
-		return handlers[i].runMode == types.RunModeProvisioning
+		// Code execution comes before configuration
+		return handlerList[i].category == handlers.CategoryCodeExecution
 	})
 
 	// Extract sorted names
-	sorted := make([]string, len(handlers))
-	for i, h := range handlers {
+	sorted := make([]string, len(handlerList))
+	for i, h := range handlerList {
 		sorted[i] = h.name
 	}
 

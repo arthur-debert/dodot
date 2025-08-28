@@ -32,9 +32,9 @@ func (h *ShellHandler) Description() string {
 	return "Manages shell profile modifications (e.g., sourcing aliases)"
 }
 
-// RunMode returns when this handler should run
-func (h *ShellHandler) RunMode() types.RunMode {
-	return types.RunModeLinking
+// Type returns the fundamental nature of this handler's operations
+func (h *ShellHandler) Type() types.HandlerType {
+	return types.HandlerTypeConfiguration
 }
 
 // ProcessLinking takes shell script files and creates AddToShellProfileAction instances
