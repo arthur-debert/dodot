@@ -25,7 +25,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 
 | Package | Test Type | Current Files | Migration Status | Old Coverage | New Coverage | Notes |
 |---------|-----------|---------------|------------------|--------------|--------------|-------|
-| cmd/dodot | CLI | commands_test.go, root_test.go, topics_test.go | migrated | 0% | 20.26% | CLI commands |
+| cmd/dodot | CLI | commands_test.go, root_test.go, topics_test.go | migrated | 20.26% | 20.26% | CLI commands |
 | pkg/actions | Unit | actions_test.go | planned | 94.29% | 0% | Pure logic tests |
 | pkg/cobrax/topics | Unit | topics_test.go | planned | 40.00% | 0% | Template tests |
 | pkg/commands/addignore | Business Logic | addignore_test.go | planned | 84.62% | 0% | Command orchestration |
@@ -44,7 +44,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/unlink | Business Logic | unlink_test.go | planned | 80.49% | 0% | Cleanup operations |
 | pkg/config | Unit | config_test.go | planned | 76.11% | 0% | Configuration logic |
 | pkg/core | Integration | match_test.go, actions_test.go | planned | 49.32% | 0% | Pipeline integration |
-| pkg/datastore | DataStore | filesystem_test.go | migrated | 0% | 82.72% | REAL FS ALLOWED |
+| pkg/datastore | DataStore | filesystem_test.go | migrated | 53.93% | 82.72% | REAL FS ALLOWED |
 | pkg/errors | Unit | errors_test.go | migrated | 91.89% | 91.89% | Error handling |
 | pkg/executor | Integration | executor_test.go, clear_test.go | planned | 73.77% | 0% | Action execution |
 | pkg/filesystem | Unit | filesystem_test.go | planned | 19.44% | 0% | FS abstraction |
@@ -60,22 +60,25 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/paths | Unit | paths_test.go, validation_test.go | planned | 75.00% | 0% | Path logic |
 | pkg/rules | Unit | rules_test.go | planned | 32.32% | 0% | Rule matching |
 | pkg/shell | Unit | shell_test.go | planned | 0% | 0% | Shell detection |
-| pkg/testutil | Meta | - | migrated | 0% | 40.59% | Test utilities |
-| pkg/types | Unit | types_test.go | migrated | 0% | 31.46% | Type definitions |
+| pkg/testutil | Meta | - | migrated | 42.19% | 40.59% | Test utilities |
+| pkg/types | Unit | types_test.go | migrated | 87.27% | 31.46% | Type definitions |
 | pkg/ui | Unit | ui_test.go | planned | 75.86% | 0% | UI utilities |
 | pkg/ui/display | Output | display_test.go | planned | 81.25% | 0% | Display logic |
 | pkg/ui/lipbalm | Output | lipbalm_test.go | planned | 97.78% | 0% | Terminal UI |
-| pkg/ui/output | Output | renderer_test.go | migrated | 89.47% | 89.47% | Output rendering |
+| pkg/ui/output | Output | renderer_test.go | migrated | 85.96% | 89.47% | Output rendering |
 | pkg/ui/output/styles | Output | styles_test.go | planned | 73.33% | 0% | Style definitions |
 
 == Coverage Summary ==
 
 Total Coverage:
-- Old Tests: 65.77% (2315/3520 statements)
-- New Tests: 42.30% (750/1773 statements)
+- Old Tests (main branch): 58.75% (2760/4698 statements)
+- New Tests (tests/revamp): 42.30% (750/1773 statements)
 - Migration Progress: 16.5% of test files migrated (16 out of 97)
 
-Note: Some packages show 0% old test coverage because tests have already been migrated to new test infrastructure.
+Coverage Comparison Notes:
+- Several packages show improved coverage after migration (e.g., datastore: 53.93% → 82.72%)
+- Some packages show decreased coverage due to partial migration (e.g., types: 87.27% → 31.46%)
+- Packages with 0% old coverage in tests/revamp have already been fully migrated
 
 == Migration Phases ==
 
