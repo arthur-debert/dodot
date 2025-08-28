@@ -11,9 +11,10 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
-	"github.com/arthur-debert/dodot/pkg/commands/internal"
+	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/on"
+	"github.com/arthur-debert/dodot/pkg/commands/provision"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -303,23 +304,16 @@ func newLinkCmd() *cobra.Command {
 
 			// Link packs using the new implementation
 			var ctx *types.ExecutionContext
+			opts := link.LinkPacksOptions{
+				DotfilesRoot:       p.DotfilesRoot(),
+				PackNames:          args,
+				DryRun:             dryRun,
+				EnableHomeSymlinks: true,
+			}
 			if useSimplified {
-				ctx, err = internal.RunSimplifiedPipeline(internal.PipelineOptions{
-					DotfilesRoot:       p.DotfilesRoot(),
-					PackNames:          args,
-					DryRun:             dryRun,
-					RunMode:            types.RunModeLinking,
-					Force:              false,
-					EnableHomeSymlinks: true,
-					UseSimplifiedRules: true,
-				})
+				ctx, err = link.LinkPacksSimplified(opts)
 			} else {
-				ctx, err = commands.LinkPacks(commands.LinkPacksOptions{
-					DotfilesRoot:       p.DotfilesRoot(),
-					PackNames:          args,
-					DryRun:             dryRun,
-					EnableHomeSymlinks: true,
-				})
+				ctx, err = commands.LinkPacks(opts)
 			}
 			if err != nil {
 				// Check if this is a pack not found error and provide detailed help
@@ -389,16 +383,14 @@ func newProvisionCmd() *cobra.Command {
 
 			// Provision packs using the new implementation
 			var ctx *types.ExecutionContext
+			opts := provision.ProvisionPacksOptions{
+				DotfilesRoot:       p.DotfilesRoot(),
+				PackNames:          args,
+				DryRun:             dryRun,
+				Force:              force,
+			}
 			if useSimplified {
-				ctx, err = internal.RunSimplifiedPipeline(internal.PipelineOptions{
-					DotfilesRoot:       p.DotfilesRoot(),
-					PackNames:          args,
-					DryRun:             dryRun,
-					RunMode:            types.RunModeProvisioning,
-					Force:              force,
-					EnableHomeSymlinks: true,
-					UseSimplifiedRules: true,
-				})
+				ctx, err = provision.ProvisionPacksSimplified(opts)
 			} else {
 				ctx, err = commands.ProvisionPacks(commands.ProvisionPacksOptions{
 					DotfilesRoot:       p.DotfilesRoot(),

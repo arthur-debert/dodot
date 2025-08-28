@@ -134,7 +134,7 @@ func GetHandlerExecutionOrder(handlerNames []string) []string {
 	var handlers []handlerInfo
 	for _, name := range handlerNames {
 		// Create a temporary instance to get its run mode
-		handler, err := CreateHandler(name, nil)
+		_, err := CreateHandler(name, nil)
 		if err != nil {
 			continue
 		}
