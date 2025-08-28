@@ -42,7 +42,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/provision | Business Logic | provision_test.go | planned | 68.92% | 0% | Multi-phase command |
 | pkg/commands/status | Business Logic | status_test.go | planned | 80.90% | 0% | State inspection |
 | pkg/commands/unlink | Business Logic | unlink_test.go | planned | 80.49% | 0% | Cleanup operations |
-| pkg/config | Unit | config_test.go | planned | 76.11% | 0% | Configuration logic |
+| pkg/config | Unit | config_test.go | migrated | 76.11% | 88.9% | Configuration logic |
 | pkg/core | Integration | match_test.go, actions_test.go | planned | 49.32% | 0% | Pipeline integration |
 | pkg/datastore | DataStore | filesystem_test.go | migrated | 53.93% | 82.72% | REAL FS ALLOWED |
 | pkg/errors | Unit | errors_test.go | migrated | 91.89% | 91.89% | Error handling |
