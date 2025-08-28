@@ -10,18 +10,23 @@ import (
 	"strings"
 
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/parsers/toml"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
 
-//go:embed embedded/defaults.yaml
-var defaultConfigYAML []byte
+//go:embed embedded/defaults.toml
+var defaultConfig []byte
 
-//go:embed embedded/user-defaults.yaml
-var userDefaultsYAML []byte
+//go:embed embedded/user-defaults.toml
+var userDefaultConfig []byte
+
+// GetUserDefaultsContent returns the content of the user defaults configuration file
+func GetUserDefaultsContent() string {
+	return string(userDefaultConfig)
+}
 
 type rawBytesProvider struct{ bytes []byte }
 
@@ -42,18 +47,16 @@ func LoadConfiguration() (*Config, error) {
 		return nil, fmt.Errorf("failed to load base config: %w", err)
 	}
 
-	// 2. Load user files (will be merged by koanf)
-	for _, configPath := range getUserConfigPaths() {
-		if _, err := os.Stat(configPath); err == nil {
-			// Here we must tell koanf to merge, not just load.
-			// Since WithMerge doesn't exist, we can load into a temp koanf and merge manually.
-			tempK := koanf.New(".")
-			if err := tempK.Load(file.Provider(configPath), yaml.Parser()); err != nil {
-				return nil, fmt.Errorf("failed to load user config from %s: %w", configPath, err)
-			}
-			mergeMaps(k.All(), tempK.All())
-			break
+	// 2. Load root config if it exists
+	rootConfigPath := getRootConfigPath()
+	if _, err := os.Stat(rootConfigPath); err == nil {
+		tempK := koanf.New(".")
+		if err := tempK.Load(file.Provider(rootConfigPath), toml.Parser()); err != nil {
+			return nil, fmt.Errorf("failed to load root config from %s: %w", rootConfigPath, err)
 		}
+		// Transform user format to internal format
+		userConfig := transformUserToInternal(tempK.All())
+		mergeMaps(k.All(), userConfig)
 	}
 
 	// 3. Load env vars
@@ -92,6 +95,69 @@ func LoadConfiguration() (*Config, error) {
 	return &cfg, nil
 }
 
+// LoadPackConfiguration loads a pack-specific config and merges it with the base config
+func LoadPackConfiguration(baseConfig *Config, packPath string) (*Config, error) {
+	packConfigPath := filepath.Join(packPath, ".dodot.toml")
+
+	// If no pack config exists, return the base config as-is
+	if _, err := os.Stat(packConfigPath); err != nil {
+		if os.IsNotExist(err) {
+			return baseConfig, nil
+		}
+		return nil, fmt.Errorf("failed to stat pack config: %w", err)
+	}
+
+	// Convert base config to map for merging
+	baseMap := configToMap(baseConfig)
+
+	// Load pack config
+	tempK := koanf.New(".")
+	if err := tempK.Load(file.Provider(packConfigPath), toml.Parser()); err != nil {
+		return nil, fmt.Errorf("failed to load pack config from %s: %w", packConfigPath, err)
+	}
+
+	// Transform user format to internal format and merge
+	packRaw := tempK.All()
+	packConfig := transformUserToInternal(packRaw)
+
+	// Merge pack config into base map
+	mergeMaps(baseMap, packConfig)
+
+	// Load the merged data into koanf
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(baseMap, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to load merged config: %w", err)
+	}
+
+	// Unmarshal merged config
+	var cfg Config
+	unmarshalConf := koanf.UnmarshalConf{
+		Tag: "koanf",
+		DecoderConfig: &mapstructure.DecoderConfig{
+			Result:           &cfg,
+			WeaklyTypedInput: true,
+			DecodeHook: mapstructure.ComposeDecodeHookFunc(
+				mapstructure.StringToTimeDurationHookFunc(),
+				mapstructure.StringToSliceHookFunc(","),
+				mapToBoolMapHookFunc(),
+			),
+		},
+	}
+	if err := k.UnmarshalWithConf("", &cfg, unmarshalConf); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal pack configuration: %w", err)
+	}
+
+	// Post-process - but don't regenerate matchers here since they were already merged
+	if cfg.Patterns.SpecialFiles.PackConfig != "" && cfg.Patterns.SpecialFiles.IgnoreFile != "" {
+		cfg.Patterns.CatchallExclude = []string{
+			cfg.Patterns.SpecialFiles.PackConfig,
+			cfg.Patterns.SpecialFiles.IgnoreFile,
+		}
+	}
+
+	return &cfg, nil
+}
+
 func mergeMaps(dest, src map[string]interface{}) {
 	for key, srcVal := range src {
 		destVal, destOk := dest[key]
@@ -108,18 +174,10 @@ func mergeMaps(dest, src map[string]interface{}) {
 			}
 		}
 
-		// Append slices
-		if srcSlice, srcOk := srcVal.([]interface{}); srcOk {
-			if destSlice, destOk := destVal.([]interface{}); destOk {
-				dest[key] = append(destSlice, srcSlice...)
-				continue
-			}
-		}
-		if srcSlice, srcOk := srcVal.([]string); srcOk {
-			if destSlice, destOk := destVal.([]string); destOk {
-				dest[key] = append(destSlice, srcSlice...)
-				continue
-			}
+		// Append slices - handle various type combinations
+		if isSlice(srcVal) && isSlice(destVal) {
+			dest[key] = appendSlices(destVal, srcVal)
+			continue
 		}
 
 		// Otherwise, overwrite
@@ -144,44 +202,48 @@ func mapToBoolMapHookFunc() mapstructure.DecodeHookFunc {
 	}
 }
 
-func getUserConfigPaths() []string {
-	var paths []string
+func getRootConfigPath() string {
+	// Look for config in dotfiles root
 	if dotfilesRoot := os.Getenv("DOTFILES_ROOT"); dotfilesRoot != "" {
-		paths = append(paths, filepath.Join(dotfilesRoot, ".dodot", "config.yaml"))
+		return filepath.Join(dotfilesRoot, ".dodot.toml")
 	}
-	if xdgConfigHome := os.Getenv("XDG_CONFIG_HOME"); xdgConfigHome != "" {
-		paths = append(paths, filepath.Join(xdgConfigHome, "dodot", "config.yaml"))
-	}
-	if homeDir, ok := os.LookupEnv("HOME"); ok {
-		paths = append(paths, filepath.Join(homeDir, ".config", "dodot", "config.yaml"))
-	}
-	return paths
+	// Fall back to current directory
+	return ".dodot.toml"
 }
 
 func getSystemDefaults() map[string]interface{} {
 	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: defaultConfigYAML}, yaml.Parser()); err != nil {
+	if err := k.Load(&rawBytesProvider{bytes: defaultConfig}, toml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
 	return k.All()
 }
 
 func parseUserDefaults() map[string]interface{} {
-	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: userDefaultsYAML}, yaml.Parser()); err != nil {
+	if len(userDefaultConfig) == 0 {
+		// If embedded is empty for some reason, return empty map
 		return map[string]interface{}{}
 	}
+
+	k := koanf.New(".")
+	if err := k.Load(&rawBytesProvider{bytes: userDefaultConfig}, toml.Parser()); err != nil {
+		return map[string]interface{}{}
+	}
+
 	return transformUserToInternal(k.All())
 }
 
 func transformUserToInternal(userConfig map[string]interface{}) map[string]interface{} {
+	// First unflatten the map if it's flattened
+	unflattened := unflattenMap(userConfig)
+
 	internal := make(map[string]interface{})
-	if pack, ok := userConfig["pack"].(map[string]interface{}); ok {
+	if pack, ok := unflattened["pack"].(map[string]interface{}); ok {
 		if ignore, ok := pack["ignore"]; ok {
 			internal = setInMap(internal, []string{"patterns", "pack_ignore"}, ignore)
 		}
 	}
-	if symlink, ok := userConfig["symlink"].(map[string]interface{}); ok {
+	if symlink, ok := unflattened["symlink"].(map[string]interface{}); ok {
 		if protected, ok := symlink["protected_paths"].([]interface{}); ok {
 			internal = setInMap(internal, []string{"security", "protected_paths"}, toBoolMap(protected))
 		}
@@ -189,7 +251,62 @@ func transformUserToInternal(userConfig map[string]interface{}) map[string]inter
 			internal = setInMap(internal, []string{"link_paths", "force_home"}, toBoolMap(forceHome))
 		}
 	}
+	// Pass through mappings as-is since it already uses the internal format
+	if mappings, ok := unflattened["mappings"]; ok {
+		internal = setInMap(internal, []string{"mappings"}, mappings)
+	}
 	return internal
+}
+
+func unflattenMap(flat map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+
+	for key, value := range flat {
+		parts := strings.Split(key, ".")
+		curr := result
+
+		for i := 0; i < len(parts)-1; i++ {
+			if _, ok := curr[parts[i]]; !ok {
+				curr[parts[i]] = make(map[string]interface{})
+			}
+			curr = curr[parts[i]].(map[string]interface{})
+		}
+
+		curr[parts[len(parts)-1]] = value
+	}
+
+	return result
+}
+
+func isSlice(v interface{}) bool {
+	switch v.(type) {
+	case []interface{}, []string:
+		return true
+	default:
+		return false
+	}
+}
+
+func appendSlices(dest, src interface{}) interface{} {
+	// Convert both to []interface{} for uniform handling
+	destSlice := toInterfaceSlice(dest)
+	srcSlice := toInterfaceSlice(src)
+	return append(destSlice, srcSlice...)
+}
+
+func toInterfaceSlice(v interface{}) []interface{} {
+	switch s := v.(type) {
+	case []interface{}:
+		return s
+	case []string:
+		result := make([]interface{}, len(s))
+		for i, v := range s {
+			result[i] = v
+		}
+		return result
+	default:
+		return []interface{}{}
+	}
 }
 
 func toBoolMap(s []interface{}) map[string]bool {
@@ -224,8 +341,95 @@ func postProcessConfig(cfg *Config) error {
 			cfg.Patterns.SpecialFiles.IgnoreFile,
 		}
 	}
+
+	// Combine default matchers with mappings generated matchers
+	defaultMatchers := defaultMatchers()
+	mappingMatchers := cfg.GenerateMatchersFromMapping()
+
+	// If no matchers are defined, use defaults + mapping
 	if len(cfg.Matchers) == 0 {
-		cfg.Matchers = defaultMatchers()
+		cfg.Matchers = append(defaultMatchers, mappingMatchers...)
+	} else {
+		// Otherwise append mapping matchers to existing
+		cfg.Matchers = append(cfg.Matchers, mappingMatchers...)
 	}
+
 	return nil
+}
+
+// configToMap converts a Config struct to a map for koanf merging
+func configToMap(cfg *Config) map[string]interface{} {
+	// Create a proper map representation
+	m := map[string]interface{}{
+		"security": map[string]interface{}{
+			"protected_paths": cfg.Security.ProtectedPaths,
+		},
+	}
+
+	// Build patterns map
+	patterns := map[string]interface{}{
+		"special_files": map[string]interface{}{
+			"pack_config": cfg.Patterns.SpecialFiles.PackConfig,
+			"ignore_file": cfg.Patterns.SpecialFiles.IgnoreFile,
+		},
+	}
+	if cfg.Patterns.PackIgnore != nil {
+		patterns["pack_ignore"] = cfg.Patterns.PackIgnore
+	}
+	if cfg.Patterns.CatchallExclude != nil {
+		patterns["catchall_exclude"] = cfg.Patterns.CatchallExclude
+	}
+	m["patterns"] = patterns
+
+	// Build the rest of the config
+	m["priorities"] = map[string]interface{}{
+		"triggers": cfg.Priorities.Triggers,
+		"handlers": cfg.Priorities.Handlers,
+		"matchers": cfg.Priorities.Matchers,
+	}
+	m["file_permissions"] = map[string]interface{}{
+		"directory":  cfg.FilePermissions.Directory,
+		"file":       cfg.FilePermissions.File,
+		"executable": cfg.FilePermissions.Executable,
+	}
+	m["shell_integration"] = map[string]interface{}{
+		"bash_zsh_snippet":             cfg.ShellIntegration.BashZshSnippet,
+		"bash_zsh_snippet_with_custom": cfg.ShellIntegration.BashZshSnippetWithCustom,
+		"fish_snippet":                 cfg.ShellIntegration.FishSnippet,
+	}
+	m["link_paths"] = map[string]interface{}{
+		"force_home": cfg.LinkPaths.CoreUnixExceptions,
+	}
+
+	// Always include mappings to ensure proper merging
+	mappings := make(map[string]interface{})
+	mappings["path"] = cfg.Mappings.Path
+	mappings["install"] = cfg.Mappings.Install
+	mappings["homebrew"] = cfg.Mappings.Homebrew
+	if cfg.Mappings.Shell != nil {
+		mappings["shell"] = cfg.Mappings.Shell
+	}
+	m["mappings"] = mappings
+
+	// Convert matchers
+	if len(cfg.Matchers) > 0 {
+		matchers := make([]interface{}, len(cfg.Matchers))
+		for i, mc := range cfg.Matchers {
+			matchers[i] = map[string]interface{}{
+				"name":     mc.Name,
+				"priority": mc.Priority,
+				"trigger": map[string]interface{}{
+					"type": mc.Trigger.Type,
+					"data": mc.Trigger.Data,
+				},
+				"handler": map[string]interface{}{
+					"type": mc.Handler.Type,
+					"data": mc.Handler.Data,
+				},
+			}
+		}
+		m["matchers"] = matchers
+	}
+
+	return m
 }

@@ -40,16 +40,10 @@ In Phase 1, we've centralized the following configurations:
 - Reserved for future user-configurable paths
 - Internal datastore paths remain in pkg/paths/paths.go (not user-configurable)
 
-### 8. Logging Configuration
-- Verbosity level mappings
-- Time format
-- Color settings
-- Caller information settings
-
-### 9. Default Matchers
+### 8. Default Matchers
 - Pre-configured matchers for common dotfile patterns
 
-### 10. Pack Configuration (PackConfig)
+### 9. Pack Configuration (PackConfig)
 - Pack-specific configuration from .dodot.toml files
 - Ignore rules, override rules, and path mappings
 - Moved from pkg/types to pkg/config to break import cycles

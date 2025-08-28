@@ -23,6 +23,13 @@ import (
 // 4. Applies matchers in priority order (specific then catchall)
 // 5. Returns all matches found
 func ScanPack(pack types.Pack, filesystem types.FS) ([]types.TriggerMatch, error) {
+	// Use default matchers for backward compatibility
+	return ScanPackWithMatchers(pack, filesystem, DefaultMatchers())
+}
+
+// ScanPackWithMatchers applies specific matchers to files in a pack and returns matches.
+// This allows for pack-specific matcher configurations.
+func ScanPackWithMatchers(pack types.Pack, filesystem types.FS, packMatchers []types.Matcher) ([]types.TriggerMatch, error) {
 	logger := logging.GetLogger("matchers.scanner").With().
 		Str("pack", pack.Name).
 		Logger()
@@ -32,8 +39,7 @@ func ScanPack(pack types.Pack, filesystem types.FS) ([]types.TriggerMatch, error
 	// Get config
 	cfg := config.Default()
 
-	// Get matchers for this pack
-	packMatchers := DefaultMatchers()
+	// Check if we have matchers
 	if len(packMatchers) == 0 {
 		logger.Debug().Msg("No matchers configured for pack")
 		return []types.TriggerMatch{}, nil

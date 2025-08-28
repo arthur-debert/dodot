@@ -163,6 +163,12 @@ type AddIgnoreResult struct {
 	AlreadyExisted bool   `json:"alreadyExisted"`
 }
 
+// GenConfigResult holds the result of the 'gen-config' command.
+type GenConfigResult struct {
+	ConfigContent string   `json:"configContent"`
+	FilesWritten  []string `json:"filesWritten"`
+}
+
 // AdoptResult holds the result of the 'adopt' command.
 type AdoptResult struct {
 	PackName     string        `json:"packName"`

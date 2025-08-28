@@ -1,122 +1,195 @@
-Configuration System
-===================
+                        CONFIGURATION SYSTEM
+                        
 
-dodot uses koanf for flexible configuration management with multiple sources and formats.
 
-## How It Works
+1. Overview
 
-### Loading Order
+    dodot uses a hierarchical configuration system that allows customization
+    at multiple levels. Configuration files use TOML format and support both
+    user-friendly and internal representations.
 
-Configuration is loaded and merged in this order:
 
-1. **System defaults** (embedded in binary)
-2. **User defaults** (embedded, user-friendly format)
-3. **User config file** (first found):
-   - `$DOTFILES_ROOT/.dodot/config.yaml`
-   - `$XDG_CONFIG_HOME/dodot/config.yaml`
-   - `$HOME/.config/dodot/config.yaml`
-4. **Environment variables** (`DODOT_*` prefix)
+2. Configuration Hierarchy
 
-Each layer merges with the previous, with later sources taking precedence.
+    Configuration is loaded and merged in this order (later sources override earlier):
+    
+        1. *Base defaults* - embedded defaults.toml 
+        2. *User defaults* - embedded user-defaults.toml
+        3. *Root config* - $DOTFILES_ROOT/.dodot.toml
+        4. *Pack config* - $DOTFILES_ROOT/<pack>/.dodot.toml
+        5. *Environment* - DODOT_* variables
+    
+    
+    2.1 Merge Rules
+    
+        Values are merged according to their type:
+        
+            - *Arrays*: Append (values accumulate)
+            - *Scalars*: Override (last value wins)
+            - *Maps*: Deep merge recursively
+        
+        Example of array merging:
+        
+            -- Base config
+                [pack]
+                ignore = ["node_modules", ".git"]
+            -- toml
+            
+            -- Pack config
+                [pack]
+                ignore = ["*.log", "temp/"]
+            -- toml
+            
+            -- Result
+                pack.ignore = ["node_modules", ".git", "*.log", "temp/"]
+            --
 
-### Two Configuration Styles
 
-dodot supports two YAML formats that are automatically transformed:
+3. Configuration Files
 
-**User-Friendly Format** (what you write):
-```yaml
-pack:
-  ignore: [.git, node_modules]
-symlink:
-  force_home: [ssh, gitconfig]
-  protected_paths: [.ssh/id_rsa]
-logging:
-  level: info
-```
+    All configuration files use the same TOML format with these sections:
+    
+    
+    3.1 Pack Settings
+    
+        Controls pack-level behavior:
+        
+            -- 
+                [pack]
+                ignore = [".git", "node_modules", "*.log"]
+            -- toml
+        
+        The ignore patterns apply to the current pack directory.
+    
+    
+    3.2 Symlink Settings
+    
+        Controls symlink creation behavior:
+        
+            -- 
+                [symlink]
+                protected_paths = [".ssh/id_rsa", ".gnupg"]
+                force_home = ["ssh", "gitconfig"]
+            -- toml
+        
+            - *protected_paths*: Files that should never be symlinked
+            - *force_home*: Files that link to $HOME instead of XDG paths
+    
+    
+    3.3 File Mapping
+    
+        Maps file patterns to specific handlers:
+        
+            -- 
+                [mappings]
+                path = "bin"
+                install = "install.sh"
+                shell = ["aliases.sh", "profile.sh"]
+                homebrew = "Brewfile"
+            -- toml
+        
+        This creates matchers that:
+            - Link files in "bin/" to user's PATH
+            - Run "install.sh" for provisioning
+            - Source shell files in profiles
+            - Process "Brewfile" with homebrew
 
-**Internal Format** (how dodot sees it):
-```yaml
-patterns:
-  pack_ignore: [.git, node_modules]
-link_paths:
-  core_unix_exceptions: [ssh, gitconfig]
-security:
-  protected_paths: [.ssh/id_rsa]
-logging:
-  default_level: info
-```
 
-The transformation happens automatically - use whichever format you prefer.
+4. Environment Variables
 
-### Merge Strategy
+    Any configuration value can be overridden via environment:
+    
+        -- bash
+            export DODOT_PACK_IGNORE=".git,node_modules,temp"
+            export DODOT_SYMLINK_PROTECTED_PATHS=".ssh/id_rsa"
+        --
+    
+    Pattern: DODOT_<SECTION>_<KEY> (use underscores for nesting)
 
-koanf merges configurations using these rules:
 
-- **Maps/Objects**: Deep merge (nested values combined)
-- **Arrays/Lists**: Append (all values kept)
-- **Scalars**: Override (last value wins)
+5. Per-Pack Configuration
 
-Example:
-```yaml
-# Base config
-symlink:
-  protected_paths: [.ssh/authorized_keys]
+    Each pack can have its own .dodot.toml file that extends the base configuration:
+    
+    
+    5.1 Example Pack Config
+    
+        A vim pack might have:
+        
+            -- $DOTFILES_ROOT/vim/.dodot.toml
+                [pack]
+                ignore = ["*.swp", "*.swo", ".netrwhist"]
+                
+                [mappings]
+                path = "after/plugin"
+                shell = ["keybindings.vim"]
+            -- toml
+    
+    
+    5.2 Config Precedence
+    
+        When processing a pack, configurations merge in order:
+        
+            1. Global defaults
+            2. Root .dodot.toml 
+            3. Pack-specific .dodot.toml
+        
+        Arrays append, scalars override at each level.
 
-# User config
-symlink:
-  protected_paths: [.aws/credentials]
 
-# Result: Both paths are protected
-protected_paths: [.ssh/authorized_keys, .aws/credentials]
-```
+6. Custom Matchers
 
-### Environment Variables
+    Advanced users can define custom matchers in configuration:
+    
+        -- 
+            [[matchers]]
+            name = "python-venv"
+            priority = 85
+            
+            [matchers.trigger]
+            type = "directory"
+            data.pattern = "venv"
+            
+            [matchers.handler]
+            type = "provision"
+            data.sentinel = ".venv-provisioned"
+        -- toml
+    
+    Matchers from configuration are added to the default matcher set.
 
-Any config value can be overridden via environment:
 
-```bash
-DODOT_LOGGING_DEFAULT_LEVEL=debug
-DODOT_SECURITY_PROTECTED_PATHS=".ssh/id_rsa,.gnupg"
-```
+Common Use Cases
 
-Pattern: `DODOT_<SECTION>_<KEY>` (nested keys use underscores)
-
-## Configuration Sections
-
-Key configuration areas:
-
-- **Security**: Protected paths that shouldn't be symlinked
-- **Patterns**: Files to ignore, special filenames
-- **Logging**: Verbosity levels, formatting
-- **LinkPaths**: Force certain files to $HOME instead of XDG
-- **Matchers**: Define custom file handling rules
-
-## Custom Matchers
-
-Add your own file handling rules:
-
-```yaml
-matchers:
-  - name: python-venv
-    priority: 85
-    trigger:
-      type: directory
-      data:
-        pattern: venv
-    handler:
-      type: shell
-      data:
-        placement: environment
-```
-
-## Pack Configuration
-
-Individual packs can have `.dodot.toml` files:
-
-```toml
-[dodot]
-ignore = ["temp", "*.log"]
-
-[overrides."specific-file.conf"]
-handler = "template"
-```
+    
+    Excluding Development Files
+    
+        Add to root config:
+        
+            -- 
+                [pack]
+                ignore = ["node_modules", "vendor", "target", ".tox"]
+            -- toml
+    
+    
+    Protecting Sensitive Files
+    
+        Never symlink private keys or credentials:
+        
+            -- 
+                [symlink]
+                protected_paths = [
+                    ".ssh/id_*",
+                    ".aws/credentials",
+                    ".gnupg/private-keys*"
+                ]
+            -- toml
+    
+    
+    Custom Shell Integration
+    
+        Map shell files in your packs:
+        
+            -- 
+                [mappings]
+                shell = ["functions.sh", "aliases.sh", "exports.sh"]
+            -- toml

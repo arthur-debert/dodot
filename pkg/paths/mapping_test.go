@@ -250,6 +250,9 @@ func TestLayer2ExceptionList(t *testing.T) {
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
+
 	p, err := New("")
 	require.NoError(t, err)
 
@@ -294,9 +297,9 @@ func TestLayer2ExceptionList(t *testing.T) {
 			expected: filepath.Join(testHome, ".profile"),
 		},
 		{
-			name:     "docker directory goes to HOME",
+			name:     "docker directory goes to XDG",
 			relPath:  "docker/config.json",
-			expected: filepath.Join(testHome, ".docker/config.json"),
+			expected: filepath.Join(testHome, ".config/docker/config.json"),
 		},
 		{
 			name:     "kube directory goes to HOME",
@@ -304,9 +307,9 @@ func TestLayer2ExceptionList(t *testing.T) {
 			expected: filepath.Join(testHome, ".kube/config"),
 		},
 		{
-			name:     "gnupg directory goes to HOME",
+			name:     "gnupg directory goes to XDG",
 			relPath:  "gnupg/pubring.kbx",
-			expected: filepath.Join(testHome, ".gnupg/pubring.kbx"),
+			expected: filepath.Join(testHome, ".config/gnupg/pubring.kbx"),
 		},
 		{
 			name:     "non-exception still goes to XDG",
@@ -346,6 +349,9 @@ func TestLayer2ExceptionListReverse(t *testing.T) {
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
+
 	p, err := New("")
 	require.NoError(t, err)
 
@@ -373,11 +379,6 @@ func TestLayer2ExceptionListReverse(t *testing.T) {
 			name:       "aws credentials from HOME",
 			systemPath: filepath.Join(testHome, ".aws/credentials"),
 			expected:   "/dotfiles/test/aws/credentials",
-		},
-		{
-			name:       "docker config from HOME",
-			systemPath: filepath.Join(testHome, ".docker/config.json"),
-			expected:   "/dotfiles/test/docker/config.json",
 		},
 		{
 			name:       "non-exception from XDG",
@@ -412,6 +413,9 @@ func TestLayerPrecedence(t *testing.T) {
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
+
 	p, err := New("")
 	require.NoError(t, err)
 
@@ -433,10 +437,10 @@ func TestLayerPrecedence(t *testing.T) {
 			reason:   "Layer 2 exception list should override Layer 1's subdirectory->XDG rule",
 		},
 		{
-			name:     "docker/ is exception even though it's a directory",
+			name:     "docker/ is no longer exception, goes to XDG",
 			relPath:  "docker/config.json",
-			expected: filepath.Join(testHome, ".docker/config.json"),
-			reason:   "Layer 2 exception list should override Layer 1's subdirectory->XDG rule",
+			expected: filepath.Join(testHome, ".config/docker/config.json"),
+			reason:   "Docker directory now follows standard XDG pattern",
 		},
 		{
 			name:     "non-exception directory still goes to XDG",
@@ -532,6 +536,9 @@ func TestLayer3ExplicitOverrides(t *testing.T) {
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
+
 	p, err := New("")
 	require.NoError(t, err)
 
@@ -602,6 +609,9 @@ func TestLayer3Precedence(t *testing.T) {
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
 
 	p, err := New("")
 	require.NoError(t, err)
@@ -739,6 +749,9 @@ func TestLayer4CustomMappings(t *testing.T) {
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
 
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
+
 	p, err := New("")
 	require.NoError(t, err)
 
@@ -812,6 +825,9 @@ func TestLayer4Precedence(t *testing.T) {
 	testHome := "/home/testuser"
 	require.NoError(t, os.Setenv("HOME", testHome))
 	require.NoError(t, os.Unsetenv("XDG_CONFIG_HOME"))
+
+	// Initialize config to ensure we have the proper force_home exceptions
+	config.Initialize(nil)
 
 	p, err := New("")
 	require.NoError(t, err)

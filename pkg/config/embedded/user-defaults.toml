@@ -1,0 +1,57 @@
+# This is the config file for dodot, at their default values.
+# These can be used in $DOTFILES_ROOT, in which case will be applied to all packs.
+# Or inside packs in which case will be applied only to that pack.
+# When both are present, the pack config will override the root config for 
+# shared keys
+
+# These filenames will be ignored, that is not symlinked or processed
+# unless explicitly included in the mapping section.
+[pack]
+ignore = [
+    ".git",
+    ".svn",
+    ".hg",
+    "node_modules",
+    ".DS_Store",
+    "*.swp",
+    "*~",
+    "#*#",
+    ".env*",
+    ".terraform/"
+]
+
+# dodot respects the users XDG CONFIG_HOME. However, these software bellow do not
+# config files for these (as in .ssh , .gnupg, .aws, etc) will be symlinked to $HOME
+[symlink]
+force_home = [
+    "ssh",        # .ssh/ - security critical
+    "aws",        # .aws/ - credentials
+    "kube",       # .kube/ - kubernetes config
+    "bashrc",     # .bashrc - shell expects in $HOME
+    "zshrc",      # .zshrc - shell expects in $HOME
+    "profile"     # .profile - shell expects in $HOME
+]
+
+# These are files that won't be symlink as often they are present by mistake, 
+# for security reeasons. You can remove them from this list if you want 
+# to symlink them.
+protected_paths = [
+    ".ssh/authorized_keys",
+    ".ssh/id_rsa",
+    ".ssh/id_ed25519",
+    ".gnupg",
+    ".password-store",
+    ".config/gh/hosts.yml",
+    ".aws/credentials",
+    ".kube/config",
+    ".docker/config.json"
+]
+
+# These are the file name mappings inside packs. Thse will overwrite dodot's 
+# default mappings. They are valid for both directories and files and * patterns 
+# are supported. Can be an array of strings or a single string.
+[mappings]
+path = "bin"
+install = "install.sh"
+shell = ["aliases.sh", "profile.sh", "login.sh"]
+homebrew = "Brewfile"

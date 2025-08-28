@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/triggers"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -161,6 +162,71 @@ func TestTestMatcher(t *testing.T) {
 	assert.Equal(t, 50, match.Priority)
 	assert.Equal(t, map[string]interface{}{"key": "value"}, match.Metadata)
 	assert.Equal(t, map[string]interface{}{"option": "test"}, match.HandlerOptions)
+}
+
+func TestScanPackWithMatchersAndOverrides(t *testing.T) {
+	// Manually register triggers needed for the test
+	registry.GetRegistry[types.TriggerFactory]().Clear()
+	require.NoError(t, registry.RegisterTriggerFactory("filename", func(o map[string]interface{}) (types.Trigger, error) {
+		pattern, _ := o["pattern"].(string)
+		return triggers.NewFileNameTrigger(pattern), nil
+	}))
+	require.NoError(t, registry.RegisterTriggerFactory("directory", func(o map[string]interface{}) (types.Trigger, error) { return triggers.NewDirectoryTrigger(o) }))
+	require.NoError(t, registry.RegisterTriggerFactory("catchall", func(o map[string]interface{}) (types.Trigger, error) { return triggers.NewCatchallTrigger(o) }))
+
+	// 1. Define mock filesystem
+	fs := newMockFS()
+	fs.addFile("/packs/pack1", "bin", true)
+	fs.addFile("/packs/pack1", "install.sh", false)
+	fs.addFile("/packs/pack1", "aliases.sh", false)
+	fs.addFile("/packs/pack1", "ignored.log", false)
+	fs.addFile("/packs/pack1", "catchall-file.txt", false)
+
+	// 2. Create base config with mappings
+	baseConfig := config.Default()
+	baseConfig.Mappings = config.Mappings{
+		Path:     "bin",
+		Install:  "install.sh",
+		Shell:    []string{"aliases.sh"},
+		Homebrew: "Brewfile",
+	}
+	baseMatchers := ConvertConfigMatchers(baseConfig.Matchers)
+
+	mappingMatchersConfig := baseConfig.GenerateMatchersFromMapping()
+	mappingMatchers := ConvertConfigMatchers(mappingMatchersConfig)
+
+	allMatchers := append(baseMatchers, mappingMatchers...)
+
+	// 3. Create pack with an overriding config
+	pack := types.Pack{
+		Name: "pack1",
+		Path: "/packs/pack1",
+		Config: config.PackConfig{
+			Ignore: []config.IgnoreRule{{Path: "*.log"}},
+		},
+	}
+
+	// 4. Scan the pack
+	matches, err := ScanPackWithMatchers(pack, fs, allMatchers)
+	require.NoError(t, err)
+
+	// 5. Assertions
+	expectedMatches := map[string]string{
+		"bin":               "path",
+		"install.sh":        "install",
+		"aliases.sh":        "shell",
+		"catchall-file.txt": "symlink", // From default catch-all
+	}
+	assert.Len(t, matches, len(expectedMatches), "should have the correct number of matches")
+
+	for _, match := range matches {
+		// Check that the ignored file is not in the matches
+		assert.NotEqual(t, "ignored.log", match.Path)
+
+		expectedHandler, ok := expectedMatches[match.Path]
+		assert.True(t, ok, "unexpected match for path: %s", match.Path)
+		assert.Equal(t, expectedHandler, match.HandlerName, "incorrect handler for path: %s", match.Path)
+	}
 }
 
 // Helper types from the original test file

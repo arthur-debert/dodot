@@ -1,11 +1,15 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"strings"
 )
 
 // Security holds security-related configuration
 type Security struct {
+	// ProtectedPaths defines paths that should not be symlinked for security reasons
+	// TODO: Implement in pkg/handlers/symlink/symlink.go ProcessLinking()
 	ProtectedPaths map[string]bool `koanf:"protected_paths"`
 }
 
@@ -85,18 +89,16 @@ type LinkPaths struct {
 	CoreUnixExceptions map[string]bool `koanf:"force_home"`
 }
 
-// LoggingConfig holds logging-related configuration
-type LoggingConfig struct {
-	// VerbosityLevels maps verbosity flags to log levels
-	VerbosityLevels map[int]string `koanf:"verbosity_levels"`
-	// DefaultLevel is the default log level
-	DefaultLevel string `koanf:"default_level"`
-	// TimeFormat is the time format for console output
-	TimeFormat string `koanf:"time_format"`
-	// EnableColor enables color output in console
-	EnableColor bool `koanf:"enable_color"`
-	// EnableCaller enables caller information for debug and trace levels
-	EnableCallerAtVerbosity int `koanf:"enable_caller_at_verbosity"`
+// Mappings holds file name to handler mappings
+type Mappings struct {
+	// Path specifies directory names that should be added to PATH
+	Path string `koanf:"path"`
+	// Install specifies the filename pattern for install scripts
+	Install string `koanf:"install"`
+	// Shell specifies filename patterns for shell scripts
+	Shell []string `koanf:"shell"`
+	// Homebrew specifies the filename pattern for Homebrew files
+	Homebrew string `koanf:"homebrew"`
 }
 
 // Config is the main configuration structure
@@ -109,7 +111,7 @@ type Config struct {
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
 	Paths            Paths            `koanf:"paths"`
 	LinkPaths        LinkPaths        `koanf:"link_paths"`
-	Logging          LoggingConfig    `koanf:"logging"`
+	Mappings         Mappings         `koanf:"mappings"`
 }
 
 // Default returns the default configuration
@@ -198,18 +200,6 @@ end`,
 				"zshrc":     true, // .zshrc - shell expects in $HOME
 				"profile":   true, // .profile - shell expects in $HOME
 			},
-		},
-		Logging: LoggingConfig{
-			VerbosityLevels: map[int]string{
-				0: "warn",
-				1: "info",
-				2: "debug",
-				3: "trace",
-			},
-			DefaultLevel:            "warn",
-			TimeFormat:              "15:04",
-			EnableColor:             true,
-			EnableCallerAtVerbosity: 2,
 		},
 	}
 
@@ -353,4 +343,92 @@ func defaultMatchers() []MatcherConfig {
 			},
 		},
 	}
+}
+
+// GenerateMatchersFromMapping creates matchers based on mappings configuration
+func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
+	var matchers []MatcherConfig
+
+	// Path matcher for bin directories
+	if c.Mappings.Path != "" {
+		matchers = append(matchers, MatcherConfig{
+			Name:     "mapped-path",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "directory",
+				Data: map[string]interface{}{
+					"pattern": c.Mappings.Path,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "path",
+				Data: map[string]interface{}{},
+			},
+		})
+	}
+
+	// Install script matcher
+	if c.Mappings.Install != "" {
+		matchers = append(matchers, MatcherConfig{
+			Name:     "mapped-install",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": c.Mappings.Install,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "install",
+				Data: map[string]interface{}{},
+			},
+		})
+	}
+
+	// Shell script matchers
+	for i, pattern := range c.Mappings.Shell {
+		placement := "environment" // Default placement
+		if strings.Contains(pattern, "aliases") {
+			placement = "aliases"
+		} else if strings.Contains(pattern, "login") {
+			placement = "login"
+		}
+
+		matchers = append(matchers, MatcherConfig{
+			Name:     fmt.Sprintf("mapped-shell-%d", i),
+			Priority: 80,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": pattern,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "shell",
+				Data: map[string]interface{}{
+					"placement": placement,
+				},
+			},
+		})
+	}
+
+	// Homebrew matcher
+	if c.Mappings.Homebrew != "" {
+		matchers = append(matchers, MatcherConfig{
+			Name:     "mapped-homebrew",
+			Priority: 90,
+			Trigger: TriggerConfig{
+				Type: "filename",
+				Data: map[string]interface{}{
+					"pattern": c.Mappings.Homebrew,
+				},
+			},
+			Handler: HandlerConfig{
+				Type: "homebrew",
+				Data: map[string]interface{}{},
+			},
+		})
+	}
+
+	return matchers
 }
