@@ -8,19 +8,19 @@ import (
 
 func TestGenerateMatchersFromMapping(t *testing.T) {
 	tests := []struct {
-		name        string
-		fileMapping FileMapping
-		expected    int // expected number of matchers
-		validate    func(t *testing.T, matchers []MatcherConfig)
+		name     string
+		mappings Mappings
+		expected int // expected number of matchers
+		validate func(t *testing.T, matchers []MatcherConfig)
 	}{
 		{
-			name:        "empty file mapping",
-			fileMapping: FileMapping{},
-			expected:    0,
+			name:     "empty file mapping",
+			mappings: Mappings{},
+			expected: 0,
 		},
 		{
 			name: "path mapping only",
-			fileMapping: FileMapping{
+			mappings: Mappings{
 				Path: "bin",
 			},
 			expected: 1,
@@ -34,7 +34,7 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 		},
 		{
 			name: "install mapping only",
-			fileMapping: FileMapping{
+			mappings: Mappings{
 				Install: "setup.sh",
 			},
 			expected: 1,
@@ -48,7 +48,7 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 		},
 		{
 			name: "shell mappings with placement detection",
-			fileMapping: FileMapping{
+			mappings: Mappings{
 				Shell: []string{"aliases.sh", "profile.sh", "login.sh", "custom.sh"},
 			},
 			expected: 4,
@@ -83,7 +83,7 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 		},
 		{
 			name: "homebrew mapping only",
-			fileMapping: FileMapping{
+			mappings: Mappings{
 				Homebrew: "Brewfile.local",
 			},
 			expected: 1,
@@ -97,7 +97,7 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 		},
 		{
 			name: "complete file mapping",
-			fileMapping: FileMapping{
+			mappings: Mappings{
 				Path:     "scripts",
 				Install:  "install.sh",
 				Shell:    []string{"env.sh"},
@@ -134,7 +134,7 @@ func TestGenerateMatchersFromMapping(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &Config{
-				FileMapping: tt.fileMapping,
+				Mappings: tt.mappings,
 			}
 			matchers := cfg.GenerateMatchersFromMapping()
 			assert.Len(t, matchers, tt.expected)
@@ -161,9 +161,9 @@ func TestPostProcessConfig(t *testing.T) {
 		assert.Equal(t, []string{".dodot.toml", ".dodotignore"}, cfg.Patterns.CatchallExclude)
 	})
 
-	t.Run("combines default and file_mapping matchers", func(t *testing.T) {
+	t.Run("combines default and mappings matchers", func(t *testing.T) {
 		cfg := &Config{
-			FileMapping: FileMapping{
+			Mappings: Mappings{
 				Path:    "custom-bin",
 				Install: "custom-install.sh",
 			},
@@ -178,10 +178,10 @@ func TestPostProcessConfig(t *testing.T) {
 		err := postProcessConfig(cfg)
 		assert.NoError(t, err)
 
-		// Should have default matchers + 2 from file_mapping
+		// Should have default matchers + 2 from mappings
 		assert.Greater(t, len(cfg.Matchers), 2)
 
-		// Check that file_mapping matchers were added
+		// Check that mappings matchers were added
 		var foundCustomPath, foundCustomInstall bool
 		for _, m := range cfg.Matchers {
 			if m.Name == "mapped-path" && m.Trigger.Data["pattern"] == "custom-bin" {
@@ -204,7 +204,7 @@ func TestPostProcessConfig(t *testing.T) {
 		assert.True(t, foundDefaultInstall, "default install matcher not found")
 	})
 
-	t.Run("preserves existing matchers and adds file_mapping", func(t *testing.T) {
+	t.Run("preserves existing matchers and adds mappings", func(t *testing.T) {
 		cfg := &Config{
 			Matchers: []MatcherConfig{
 				{
@@ -214,7 +214,7 @@ func TestPostProcessConfig(t *testing.T) {
 					Handler:  HandlerConfig{Type: "symlink"},
 				},
 			},
-			FileMapping: FileMapping{
+			Mappings: Mappings{
 				Path: "bin",
 			},
 			Patterns: Patterns{
@@ -228,13 +228,13 @@ func TestPostProcessConfig(t *testing.T) {
 		err := postProcessConfig(cfg)
 		assert.NoError(t, err)
 
-		// Should have the custom matcher + file_mapping matcher
+		// Should have the custom matcher + mappings matcher
 		assert.GreaterOrEqual(t, len(cfg.Matchers), 2)
 
 		// Check custom matcher is preserved
 		assert.Equal(t, "custom-matcher", cfg.Matchers[0].Name)
 
-		// Check file_mapping matcher was added
+		// Check mappings matcher was added
 		found := false
 		for _, m := range cfg.Matchers {
 			if m.Name == "mapped-path" {

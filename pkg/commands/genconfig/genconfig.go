@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -24,8 +25,11 @@ func GenConfig(opts GenConfigOptions) (*types.GenConfigResult, error) {
 	// Get the user defaults content from the config package
 	userDefaultsContent := config.GetUserDefaultsContent()
 
+	// Comment out the configuration values
+	commentedContent := commentOutConfigValues(userDefaultsContent)
+
 	result := &types.GenConfigResult{
-		ConfigContent: userDefaultsContent,
+		ConfigContent: commentedContent,
 		FilesWritten:  []string{},
 	}
 
@@ -68,7 +72,7 @@ func GenConfig(opts GenConfigOptions) (*types.GenConfigResult, error) {
 		}
 
 		// Write the file
-		if err := os.WriteFile(targetPath, []byte(userDefaultsContent), 0644); err != nil {
+		if err := os.WriteFile(targetPath, []byte(result.ConfigContent), 0644); err != nil {
 			return result, fmt.Errorf("failed to write config to %s: %w", targetPath, err)
 		}
 
@@ -77,4 +81,38 @@ func GenConfig(opts GenConfigOptions) (*types.GenConfigResult, error) {
 	}
 
 	return result, nil
+}
+
+// commentOutConfigValues takes the TOML content and comments out all non-comment, non-blank lines
+// that contain configuration values (assignments)
+func commentOutConfigValues(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Keep blank lines as-is
+		if trimmed == "" {
+			result = append(result, line)
+			continue
+		}
+
+		// Keep lines that are already comments
+		if strings.HasPrefix(trimmed, "#") {
+			result = append(result, line)
+			continue
+		}
+
+		// Keep section headers (e.g., [pack], [symlink]) as-is
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			result = append(result, line)
+			continue
+		}
+
+		// Comment out configuration value lines
+		result = append(result, "# "+line)
+	}
+
+	return strings.Join(result, "\n")
 }

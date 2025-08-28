@@ -89,8 +89,8 @@ type LinkPaths struct {
 	CoreUnixExceptions map[string]bool `koanf:"force_home"`
 }
 
-// FileMapping holds file name to handler mappings
-type FileMapping struct {
+// Mappings holds file name to handler mappings
+type Mappings struct {
 	// Path specifies directory names that should be added to PATH
 	Path string `koanf:"path"`
 	// Install specifies the filename pattern for install scripts
@@ -111,7 +111,7 @@ type Config struct {
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
 	Paths            Paths            `koanf:"paths"`
 	LinkPaths        LinkPaths        `koanf:"link_paths"`
-	FileMapping      FileMapping      `koanf:"file_mapping"`
+	Mappings         Mappings         `koanf:"mappings"`
 }
 
 // Default returns the default configuration
@@ -345,19 +345,19 @@ func defaultMatchers() []MatcherConfig {
 	}
 }
 
-// GenerateMatchersFromMapping creates matchers based on file_mapping configuration
+// GenerateMatchersFromMapping creates matchers based on mappings configuration
 func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
 	var matchers []MatcherConfig
 
 	// Path matcher for bin directories
-	if c.FileMapping.Path != "" {
+	if c.Mappings.Path != "" {
 		matchers = append(matchers, MatcherConfig{
 			Name:     "mapped-path",
 			Priority: 90,
 			Trigger: TriggerConfig{
 				Type: "directory",
 				Data: map[string]interface{}{
-					"pattern": c.FileMapping.Path,
+					"pattern": c.Mappings.Path,
 				},
 			},
 			Handler: HandlerConfig{
@@ -368,14 +368,14 @@ func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
 	}
 
 	// Install script matcher
-	if c.FileMapping.Install != "" {
+	if c.Mappings.Install != "" {
 		matchers = append(matchers, MatcherConfig{
 			Name:     "mapped-install",
 			Priority: 90,
 			Trigger: TriggerConfig{
 				Type: "filename",
 				Data: map[string]interface{}{
-					"pattern": c.FileMapping.Install,
+					"pattern": c.Mappings.Install,
 				},
 			},
 			Handler: HandlerConfig{
@@ -386,7 +386,7 @@ func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
 	}
 
 	// Shell script matchers
-	for i, pattern := range c.FileMapping.Shell {
+	for i, pattern := range c.Mappings.Shell {
 		placement := "environment" // Default placement
 		if strings.Contains(pattern, "aliases") {
 			placement = "aliases"
@@ -413,14 +413,14 @@ func (c *Config) GenerateMatchersFromMapping() []MatcherConfig {
 	}
 
 	// Homebrew matcher
-	if c.FileMapping.Homebrew != "" {
+	if c.Mappings.Homebrew != "" {
 		matchers = append(matchers, MatcherConfig{
 			Name:     "mapped-homebrew",
 			Priority: 90,
 			Trigger: TriggerConfig{
 				Type: "filename",
 				Data: map[string]interface{}{
-					"pattern": c.FileMapping.Homebrew,
+					"pattern": c.Mappings.Homebrew,
 				},
 			},
 			Handler: HandlerConfig{

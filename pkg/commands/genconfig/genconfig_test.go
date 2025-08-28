@@ -3,6 +3,7 @@ package genconfig
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,8 +19,30 @@ func TestGenConfig(t *testing.T) {
 		assert.NotEmpty(t, result.ConfigContent)
 		assert.Contains(t, result.ConfigContent, "[pack]")
 		assert.Contains(t, result.ConfigContent, "[symlink]")
-		assert.Contains(t, result.ConfigContent, "[file_mapping]")
+		assert.Contains(t, result.ConfigContent, "[mappings]")
 		assert.Empty(t, result.FilesWritten)
+
+		// Verify that configuration values are commented out
+		lines := strings.Split(result.ConfigContent, "\n")
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") ||
+				(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+				continue
+			}
+			assert.Fail(t, "Found uncommented configuration line", "Line: %s", line)
+		}
+
+		// Verify specific commented values
+		assert.Contains(t, result.ConfigContent, "# ignore = [")
+		assert.Contains(t, result.ConfigContent, "# force_home = [")
+		assert.Contains(t, result.ConfigContent, "# protected_paths = [")
+		assert.Contains(t, result.ConfigContent, "# path = \"bin\"")
+		assert.Contains(t, result.ConfigContent, "# install = \"install.sh\"")
+
+		// Verify comments are preserved
+		assert.Contains(t, result.ConfigContent, "# This is the config file for dodot")
+		assert.Contains(t, result.ConfigContent, "# .ssh/ - security critical")
 	})
 
 	t.Run("write to current directory", func(t *testing.T) {
@@ -102,4 +125,66 @@ func TestGenConfig(t *testing.T) {
 		_, err = os.Stat(filepath.Join(tmpDir, "newpack", ".dodot.toml"))
 		assert.NoError(t, err)
 	})
+}
+
+func TestCommentOutConfigValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name: "simple config",
+			input: `[section]
+key = "value"`,
+			expected: `[section]
+# key = "value"`,
+		},
+		{
+			name: "preserves comments",
+			input: `# This is a comment
+[section]
+key = "value"
+# Another comment
+key2 = "value2"`,
+			expected: `# This is a comment
+[section]
+# key = "value"
+# Another comment
+# key2 = "value2"`,
+		},
+		{
+			name: "preserves blank lines",
+			input: `[section]
+
+key = "value"
+
+[section2]`,
+			expected: `[section]
+
+# key = "value"
+
+[section2]`,
+		},
+		{
+			name: "handles arrays",
+			input: `[section]
+array = [
+    "item1",
+    "item2"
+]`,
+			expected: `[section]
+# array = [
+#     "item1",
+#     "item2"
+# ]`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := commentOutConfigValues(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }

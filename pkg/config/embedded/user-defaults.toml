@@ -50,7 +50,7 @@ protected_paths = [
 # These are the file name mappings inside packs. Thse will overwrite dodot's 
 # default mappings. They are valid for both directories and files and * patterns 
 # are supported. Can be an array of strings or a single string.
-[file_mapping]
+[mappings]
 path = "bin"
 install = "install.sh"
 shell = ["aliases.sh", "profile.sh", "login.sh"]

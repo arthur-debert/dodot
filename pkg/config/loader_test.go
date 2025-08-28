@@ -61,9 +61,9 @@ func TestTransformUserToInternal(t *testing.T) {
 			},
 		},
 		{
-			name: "file_mapping pass-through",
+			name: "mappings pass-through",
 			input: map[string]interface{}{
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path":     "bin",
 					"install":  "install.sh",
 					"shell":    []interface{}{"aliases.sh", "profile.sh"},
@@ -71,7 +71,7 @@ func TestTransformUserToInternal(t *testing.T) {
 				},
 			},
 			expected: map[string]interface{}{
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path":     "bin",
 					"install":  "install.sh",
 					"shell":    []interface{}{"aliases.sh", "profile.sh"},
@@ -89,7 +89,7 @@ func TestTransformUserToInternal(t *testing.T) {
 					"protected_paths": []interface{}{".ssh/id_rsa"},
 					"force_home":      []interface{}{"ssh"},
 				},
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "bin",
 				},
 			},
@@ -107,7 +107,7 @@ func TestTransformUserToInternal(t *testing.T) {
 						"ssh": true,
 					},
 				},
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "bin",
 				},
 			},
@@ -150,17 +150,17 @@ func TestMergeMaps(t *testing.T) {
 		{
 			name: "override scalars",
 			dest: map[string]interface{}{
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "bin",
 				},
 			},
 			src: map[string]interface{}{
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "scripts",
 				},
 			},
 			expected: map[string]interface{}{
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "scripts",
 				},
 			},
@@ -192,7 +192,7 @@ func TestMergeMaps(t *testing.T) {
 				},
 			},
 			src: map[string]interface{}{
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "bin",
 				},
 			},
@@ -200,7 +200,7 @@ func TestMergeMaps(t *testing.T) {
 				"security": map[string]interface{}{
 					"protected_paths": map[string]bool{".ssh/id_rsa": true},
 				},
-				"file_mapping": map[string]interface{}{
+				"mappings": map[string]interface{}{
 					"path": "bin",
 				},
 			},
@@ -266,7 +266,7 @@ func TestLoadPackConfiguration(t *testing.T) {
 					IgnoreFile: ".dodotignore",
 				},
 			},
-			FileMapping: FileMapping{
+			Mappings: Mappings{
 				Path:    "bin",
 				Install: "install.sh",
 				Shell:   []string{"base.sh"},
@@ -281,7 +281,7 @@ func TestLoadPackConfiguration(t *testing.T) {
 [pack]
 ignore = ["pack1", "pack2"]
 
-[file_mapping]
+[mappings]
 path = "scripts"
 install = "setup.sh"
 `
@@ -293,16 +293,16 @@ install = "setup.sh"
 
 		// Debug
 		t.Logf("Result patterns: %+v", result.Patterns)
-		t.Logf("Result file mapping: %+v", result.FileMapping)
+		t.Logf("Result file mapping: %+v", result.Mappings)
 
 		// Check that pack ignore was appended
 		assert.ElementsMatch(t, result.Patterns.PackIgnore, []string{"base1", "base2", "pack1", "pack2"})
 
-		// Check that file_mapping scalars were overridden
-		assert.Equal(t, "scripts", result.FileMapping.Path)
-		assert.Equal(t, "setup.sh", result.FileMapping.Install)
+		// Check that mappings scalars were overridden
+		assert.Equal(t, "scripts", result.Mappings.Path)
+		assert.Equal(t, "setup.sh", result.Mappings.Install)
 		// Shell wasn't specified in pack config, so should keep base value
-		assert.Equal(t, []string{"base.sh"}, result.FileMapping.Shell)
+		assert.Equal(t, []string{"base.sh"}, result.Mappings.Shell)
 	})
 
 	t.Run("invalid toml in pack config", func(t *testing.T) {
@@ -347,7 +347,7 @@ func TestConfigToMap(t *testing.T) {
 				PackIgnore:      []string{".git", "node_modules"},
 				CatchallExclude: []string{".dodot.toml", ".dodotignore"},
 			},
-			FileMapping: FileMapping{
+			Mappings: Mappings{
 				Path:     "bin",
 				Install:  "install.sh",
 				Shell:    []string{"aliases.sh"},
@@ -375,7 +375,7 @@ func TestConfigToMap(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, []string{".dodot.toml", ".dodotignore"}, catchallExclude)
 
-		fileMapping, ok := result["file_mapping"].(map[string]interface{})
+		fileMapping, ok := result["mappings"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Equal(t, "bin", fileMapping["path"])
 		assert.Equal(t, "install.sh", fileMapping["install"])

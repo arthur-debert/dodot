@@ -81,7 +81,7 @@
         Maps file patterns to specific handlers:
         
             -- 
-                [file_mapping]
+                [mappings]
                 path = "bin"
                 install = "install.sh"
                 shell = ["aliases.sh", "profile.sh"]
@@ -120,7 +120,7 @@
                 [pack]
                 ignore = ["*.swp", "*.swo", ".netrwhist"]
                 
-                [file_mapping]
+                [mappings]
                 path = "after/plugin"
                 shell = ["keybindings.vim"]
             -- toml
@@ -190,6 +190,6 @@ Common Use Cases
         Map shell files in your packs:
         
             -- 
-                [file_mapping]
+                [mappings]
                 shell = ["functions.sh", "aliases.sh", "exports.sh"]
             -- toml

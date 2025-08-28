@@ -40,7 +40,7 @@ func GetMatchesFS(packs []types.Pack, filesystem types.FS) ([]types.TriggerMatch
 			return nil, err
 		}
 
-		// Get matchers for this pack (includes defaults + file_mapping)
+		// Get matchers for this pack (includes defaults + mappings)
 		packMatchers := matchers.ConvertConfigMatchers(packConfig.Matchers)
 
 		// Scan pack with its specific matchers

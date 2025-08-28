@@ -182,9 +182,9 @@ func TestScanPackWithMatchersAndOverrides(t *testing.T) {
 	fs.addFile("/packs/pack1", "ignored.log", false)
 	fs.addFile("/packs/pack1", "catchall-file.txt", false)
 
-	// 2. Create base config with file_mapping
+	// 2. Create base config with mappings
 	baseConfig := config.Default()
-	baseConfig.FileMapping = config.FileMapping{
+	baseConfig.Mappings = config.Mappings{
 		Path:     "bin",
 		Install:  "install.sh",
 		Shell:    []string{"aliases.sh"},

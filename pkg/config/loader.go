@@ -251,9 +251,9 @@ func transformUserToInternal(userConfig map[string]interface{}) map[string]inter
 			internal = setInMap(internal, []string{"link_paths", "force_home"}, toBoolMap(forceHome))
 		}
 	}
-	// Pass through file_mapping as-is since it already uses the internal format
-	if fileMapping, ok := unflattened["file_mapping"]; ok {
-		internal = setInMap(internal, []string{"file_mapping"}, fileMapping)
+	// Pass through mappings as-is since it already uses the internal format
+	if mappings, ok := unflattened["mappings"]; ok {
+		internal = setInMap(internal, []string{"mappings"}, mappings)
 	}
 	return internal
 }
@@ -342,7 +342,7 @@ func postProcessConfig(cfg *Config) error {
 		}
 	}
 
-	// Combine default matchers with file_mapping generated matchers
+	// Combine default matchers with mappings generated matchers
 	defaultMatchers := defaultMatchers()
 	mappingMatchers := cfg.GenerateMatchersFromMapping()
 
@@ -401,15 +401,15 @@ func configToMap(cfg *Config) map[string]interface{} {
 		"force_home": cfg.LinkPaths.CoreUnixExceptions,
 	}
 
-	// Always include file_mapping to ensure proper merging
-	fileMapping := make(map[string]interface{})
-	fileMapping["path"] = cfg.FileMapping.Path
-	fileMapping["install"] = cfg.FileMapping.Install
-	fileMapping["homebrew"] = cfg.FileMapping.Homebrew
-	if cfg.FileMapping.Shell != nil {
-		fileMapping["shell"] = cfg.FileMapping.Shell
+	// Always include mappings to ensure proper merging
+	mappings := make(map[string]interface{})
+	mappings["path"] = cfg.Mappings.Path
+	mappings["install"] = cfg.Mappings.Install
+	mappings["homebrew"] = cfg.Mappings.Homebrew
+	if cfg.Mappings.Shell != nil {
+		mappings["shell"] = cfg.Mappings.Shell
 	}
-	m["file_mapping"] = fileMapping
+	m["mappings"] = mappings
 
 	// Convert matchers
 	if len(cfg.Matchers) > 0 {
