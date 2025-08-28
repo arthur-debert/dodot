@@ -5,7 +5,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -128,21 +127,21 @@ func (h *ShellHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error
 }
 
 // init registers the shell handler factory
-func init() {
-	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-	registry.MustRegister(handlerFactoryRegistry, ShellHandlerName, func(options map[string]interface{}) (interface{}, error) {
-		handler := NewShellHandler()
-
-		// Apply options if provided
-		if options != nil {
-			if err := handler.ValidateOptions(options); err != nil {
-				return nil, err
-			}
-		}
-
-		return handler, nil
-	})
-}
+// func init() {
+// 	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+// 	registry.MustRegister(handlerFactoryRegistry, ShellHandlerName, func(options map[string]interface{}) (interface{}, error) {
+// 		handler := NewShellHandler()
+//
+// 		// Apply options if provided
+// 		if options != nil {
+// 			if err := handler.ValidateOptions(options); err != nil {
+// 				return nil, err
+// 			}
+// 		}
+//
+// 		return handler, nil
+// 	})
+// }
 
 // Verify interface compliance
 var _ handlers.LinkingHandler = (*ShellHandler)(nil)

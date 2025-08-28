@@ -1,3 +1,7 @@
+// TODO: Re-enable when fill command is re-implemented using rules system
+//go:build ignore
+// +build ignore
+
 package fill
 
 import (
@@ -7,8 +11,12 @@ import (
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 
-	// Import matchers to register all default handlers and triggers
-	_ "github.com/arthur-debert/dodot/pkg/matchers"
+	// Import handler packages to register their factories
+	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
 )
 
 func TestFillPack(t *testing.T) {

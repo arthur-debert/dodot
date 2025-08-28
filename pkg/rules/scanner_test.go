@@ -159,8 +159,8 @@ func TestScanner_HiddenFiles(t *testing.T) {
 	matches, err := scanner.ScanPack(pack)
 	require.NoError(t, err)
 
-	// Should only match normal.txt and .config
-	assert.Len(t, matches, 2)
+	// Should match normal.txt, .hidden, and .config but not .gitignore (which is skipped)
+	assert.Len(t, matches, 3)
 
 	matchedFiles := make(map[string]bool)
 	for _, m := range matches {
@@ -169,6 +169,6 @@ func TestScanner_HiddenFiles(t *testing.T) {
 
 	assert.True(t, matchedFiles["normal.txt"])
 	assert.True(t, matchedFiles[".config"])
-	assert.False(t, matchedFiles[".hidden"])
-	assert.False(t, matchedFiles[".gitignore"])
+	assert.True(t, matchedFiles[".hidden"])     // Regular hidden files are included
+	assert.False(t, matchedFiles[".gitignore"]) // Special files are excluded
 }

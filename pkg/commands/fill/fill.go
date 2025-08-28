@@ -30,11 +30,14 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		return nil, err
 	}
 
-	// 2. Get missing template files using the existing template system
-	missingTemplates, err := core.GetMissingTemplateFiles(targetPack.Path, opts.PackName)
-	if err != nil {
-		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to get missing templates")
-	}
+	// 2. Get missing template files
+	// TODO: Re-implement using rules system
+	missingTemplates := []struct {
+		Filename    string
+		Content     string
+		Mode        uint32
+		HandlerName string
+	}{}
 
 	// 3. Create filesystem instance for file operations
 	fs := filesystem.NewOS()

@@ -26,8 +26,13 @@ func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
 	matchers := config.GetMatchers()
 	globalRules := adaptConfigMatchersToRules(matchers)
 	if len(globalRules) == 0 {
+		logger.Debug().Msg("No rules from config, using defaults")
 		globalRules = getDefaultRules()
 	}
+	logger.Debug().
+		Int("matcherCount", len(matchers)).
+		Int("ruleCount", len(globalRules)).
+		Msg("Loaded global rules")
 
 	scanner := NewScanner(globalRules)
 	var allTriggerMatches []types.TriggerMatch
@@ -38,6 +43,73 @@ func GetMatches(packs []types.Pack) ([]types.TriggerMatch, error) {
 
 		// Load pack-specific rules
 		packRules, err := LoadPackRules(pack.Path)
+		if err != nil {
+			logger.Warn().
+				Err(err).
+				Str("pack", pack.Name).
+				Msg("Failed to load pack rules, using global rules only")
+		}
+
+		// Merge rules (pack rules have higher priority)
+		effectiveRules := MergeRules(globalRules, packRules)
+		scanner.rules = effectiveRules
+
+		// Scan the pack
+		matches, err := scanner.ScanPack(pack)
+		if err != nil {
+			return nil, errors.Wrapf(err, errors.ErrInternal,
+				"failed to scan pack %s", pack.Name)
+		}
+
+		// Convert rule matches to trigger matches for compatibility
+		for _, match := range matches {
+			triggerMatch := types.TriggerMatch{
+				TriggerName:  "rule-based",
+				Pack:         pack.Name,
+				Path:         match.FilePath,
+				AbsolutePath: filepath.Join(pack.Path, match.FilePath),
+				Metadata: map[string]interface{}{
+					"filename":     match.FileName,
+					"is_directory": match.IsDirectory,
+					"pattern":      "rule-based", // Indicate this came from rules
+				},
+				HandlerName:    match.Handler,
+				HandlerOptions: match.Options,
+				Priority:       0, // Priority is handled by rule order
+			}
+			allTriggerMatches = append(allTriggerMatches, triggerMatch)
+		}
+	}
+
+	logger.Info().
+		Int("totalMatches", len(allTriggerMatches)).
+		Msg("Completed matching across all packs")
+
+	return allTriggerMatches, nil
+}
+
+// GetMatchesFS scans packs and returns all trigger matches using the new rule system with a custom filesystem
+// This function is used for testing and commands that need to use a different filesystem
+func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.TriggerMatch, error) {
+	logger := logging.GetLogger("rules.integration")
+	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs with FS")
+
+	// Load global rules from matchers for now
+	matchers := config.GetMatchers()
+	globalRules := adaptConfigMatchersToRules(matchers)
+	if len(globalRules) == 0 {
+		globalRules = getDefaultRules()
+	}
+
+	scanner := NewScannerWithFS(globalRules, fs)
+	var allTriggerMatches []types.TriggerMatch
+
+	// Process each pack
+	for _, pack := range packs {
+		logger.Debug().Str("pack", pack.Name).Msg("Processing pack")
+
+		// Load pack-specific rules
+		packRules, err := LoadPackRulesFS(pack.Path, fs)
 		if err != nil {
 			logger.Warn().
 				Err(err).

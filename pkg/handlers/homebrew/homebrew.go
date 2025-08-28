@@ -10,7 +10,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/registry"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -315,21 +314,21 @@ func (h *HomebrewHandler) ClearWithConfirmations(ctx types.ClearContext, confirm
 }
 
 // init registers the homebrew handler factory
-func init() {
-	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-	registry.MustRegister(handlerFactoryRegistry, HomebrewHandlerName, func(options map[string]interface{}) (interface{}, error) {
-		handler := NewHomebrewHandler()
-
-		// Apply options if provided
-		if options != nil {
-			if err := handler.ValidateOptions(options); err != nil {
-				return nil, err
-			}
-		}
-
-		return handler, nil
-	})
-}
+// func init() {
+// 	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
+// 	registry.MustRegister(handlerFactoryRegistry, HomebrewHandlerName, func(options map[string]interface{}) (interface{}, error) {
+// 		handler := NewHomebrewHandler()
+//
+// 		// Apply options if provided
+// 		if options != nil {
+// 			if err := handler.ValidateOptions(options); err != nil {
+// 				return nil, err
+// 			}
+// 		}
+//
+// 		return handler, nil
+// 	})
+// }
 
 // Verify interface compliance
 var _ handlers.ProvisioningHandler = (*HomebrewHandler)(nil)

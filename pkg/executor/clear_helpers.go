@@ -3,7 +3,7 @@ package executor
 import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/registry"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -13,12 +13,11 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 	logger := logging.GetLogger("executor.clear")
 	result := make(map[string]handlers.Clearable)
 
-	// Get all registered handler names
-	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-	handlerNames := handlerFactoryRegistry.List()
+	// Get handler names from known set
+	handlerNames := []string{"symlink", "shell", "path", "homebrew", "install"}
 
 	for _, name := range handlerNames {
-		factory, err := registry.GetHandlerFactory(name)
+		handler, err := rules.CreateHandler(name, nil)
 		if err != nil {
 			logger.Warn().
 				Str("handler", name).
@@ -26,8 +25,6 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 				Msg("Failed to get handler factory")
 			continue
 		}
-
-		handler, err := factory(nil)
 		if err != nil {
 			logger.Warn().
 				Str("handler", name).
@@ -111,18 +108,18 @@ func FilterHandlersByState(ctx types.ClearContext, handlersMap map[string]handle
 	for name, handler := range handlersMap {
 		// The handler knows its own state directory structure
 		// We check if any state exists for this handler/pack combination
-		
+
 		// For now, we check the standard locations. In the future,
 		// handlers could expose a method to check for state existence.
 		var stateDirName string
-		
+
 		// Historical convention: symlink handler uses "symlinks" directory
 		if name == "symlink" {
 			stateDirName = "symlinks"
 		} else {
 			stateDirName = name
 		}
-		
+
 		handlerDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, stateDirName)
 		if _, err := ctx.FS.Stat(handlerDir); err == nil {
 			filtered[name] = handler

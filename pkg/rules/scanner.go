@@ -15,6 +15,7 @@ import (
 type Scanner struct {
 	rules  []Rule
 	logger zerolog.Logger
+	fs     types.FS // optional filesystem implementation
 }
 
 // NewScanner creates a new scanner with the given rules
@@ -22,6 +23,15 @@ func NewScanner(rules []Rule) *Scanner {
 	return &Scanner{
 		rules:  rules,
 		logger: logging.GetLogger("rules.scanner"),
+	}
+}
+
+// NewScannerWithFS creates a new scanner with the given rules and filesystem
+func NewScannerWithFS(rules []Rule, fs types.FS) *Scanner {
+	return &Scanner{
+		rules:  rules,
+		logger: logging.GetLogger("rules.scanner"),
+		fs:     fs,
 	}
 }
 
@@ -46,6 +56,20 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 		return rules[i].Priority > rules[j].Priority
 	})
 
+	s.logger.Debug().
+		Int("fileCount", len(files)).
+		Int("ruleCount", len(rules)).
+		Int("exclusionCount", len(exclusions)).
+		Msg("Starting pack scan with files and rules")
+
+	// Log files found for debugging
+	for _, f := range files {
+		s.logger.Debug().
+			Str("file", f.Path).
+			Bool("isDir", f.IsDirectory).
+			Msg("Found file in pack")
+	}
+
 	// Match files against rules
 	var matches []Match
 	for _, file := range files {
@@ -60,6 +84,11 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 		// Try to match against each rule
 		for _, rule := range rules {
 			if s.matchesRule(file, rule) {
+				s.logger.Debug().
+					Str("file", file.Path).
+					Str("pattern", rule.Pattern).
+					Str("handler", rule.Handler).
+					Msg("File matched rule")
 				matches = append(matches, Match{
 					PackName:    pack.Name,
 					FilePath:    file.Path,
@@ -68,11 +97,6 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 					Handler:     rule.Handler,
 					Options:     rule.Options,
 				})
-				s.logger.Debug().
-					Str("file", file.Path).
-					Str("pattern", rule.Pattern).
-					Str("handler", rule.Handler).
-					Msg("File matched rule")
 				break // first match wins
 			}
 		}
@@ -88,16 +112,29 @@ func (s *Scanner) ScanPack(pack types.Pack) ([]Match, error) {
 
 // readPackFiles reads all files in a pack directory (non-recursive)
 func (s *Scanner) readPackFiles(packPath string) ([]FileInfo, error) {
-	entries, err := os.ReadDir(packPath)
+	var entries []os.DirEntry
+	var err error
+
+	if s.fs != nil {
+		entries, err = s.fs.ReadDir(packPath)
+	} else {
+		entries, err = os.ReadDir(packPath)
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	var files []FileInfo
 	for _, entry := range entries {
-		// Skip hidden files starting with .
-		if strings.HasPrefix(entry.Name(), ".") && entry.Name() != ".config" {
-			continue
+		// Skip certain hidden files but allow dotfiles that should be linked
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			// Skip special dodot files and common temp/system files
+			if name == ".dodot.toml" || name == ".dodotignore" ||
+				name == ".DS_Store" || name == ".git" || name == ".gitignore" {
+				continue
+			}
+			// Allow other dotfiles like .vimrc, .bashrc, etc.
 		}
 
 		files = append(files, FileInfo{

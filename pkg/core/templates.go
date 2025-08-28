@@ -1,3 +1,8 @@
+// Package core templates functionality temporarily disabled during migration to rules system
+// TODO: Re-implement templates using the new rules system
+//go:build ignore
+// +build ignore
+
 package core
 
 import (

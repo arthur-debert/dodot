@@ -8,6 +8,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/knadh/koanf/v2"
 )
 
@@ -54,6 +55,25 @@ func LoadPackRules(packPath string) ([]Rule, error) {
 
 	configPath := filepath.Join(packPath, ".dodot.toml")
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// No pack config is fine, just return empty rules
+		return nil, nil
+	}
+
+	// For now, we'll just return empty rules until we migrate pack configs
+	// In the future, we'll load rules directly from the pack config
+	logger.Debug().
+		Str("pack", packPath).
+		Msg("Pack config exists but rules loading not yet implemented")
+
+	return nil, nil
+}
+
+// LoadPackRulesFS loads pack-specific rules from a pack's .dodot.toml using the provided filesystem
+func LoadPackRulesFS(packPath string, fs types.FS) ([]Rule, error) {
+	logger := logging.GetLogger("rules.config")
+
+	configPath := filepath.Join(packPath, ".dodot.toml")
+	if _, err := fs.Stat(configPath); err != nil {
 		// No pack config is fine, just return empty rules
 		return nil, nil
 	}
@@ -122,6 +142,11 @@ func adaptConfigMatchersToRules(matchers []config.MatcherConfig) []Rule {
 		pattern := ""
 		if data, ok := m.Trigger.Data["pattern"].(string); ok {
 			pattern = data
+		}
+
+		// Handle special trigger types
+		if m.Trigger.Type == "catchall" {
+			pattern = "*"
 		}
 
 		// Skip if no pattern found
