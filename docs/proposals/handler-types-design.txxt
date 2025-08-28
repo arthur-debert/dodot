@@ -1,0 +1,240 @@
+Handler Types Design Overview
+============================
+
+This document proposes a new handler abstraction that replaces RunMode with
+explicit handler types, providing better clarity and extensibility for future
+handler categories.
+
+## Background
+
+The evolution of dodot's handler system:
+
+1. **Initial State**: All handlers were equal, no distinction
+2. **RunMode Introduction**: Recognized that some handlers (provisioning) should
+   not run multiple times without user consent
+3. **Current Realization**: The handler type itself determines execution
+   characteristics, not an arbitrary "run mode"
+
+## Current Problems
+
+1. **Misleading Abstraction**: RunMode suggests frequency of execution, but
+   it's really about the nature of the operation
+2. **Limited Extensibility**: Binary choice between "linking" and "provisioning"
+   doesn't accommodate preprocessing handlers or transformations
+3. **Interface Duplication**: Separate LinkingHandler and ProvisioningHandler
+   interfaces with nearly identical method signatures
+
+## Proposed Handler Type System
+
+### Core Handler Types
+
+Instead of RunMode, handlers are categorized by their operational
+characteristics:
+
+```go
+type HandlerType string
+
+const (
+    // ConfigurationHandler creates or updates configuration links/files
+    // These are idempotent and safe to run repeatedly
+    HandlerTypeConfiguration HandlerType = "configuration"
+    
+    // CodeExecutionHandler executes arbitrary code with side effects
+    // These require user consent for repeated execution
+    HandlerTypeCodeExecution HandlerType = "code_execution"
+    
+    // TransformationHandler preprocesses files before other handlers
+    // These modify the file list or file contents
+    HandlerTypeTransformation HandlerType = "transformation"
+    
+    // FilterHandler removes files from processing
+    // These act as exclusion filters (replacing ignore handler concept)
+    HandlerTypeFilter HandlerType = "filter"
+)
+```
+
+### Unified Handler Interface
+
+A single base interface for all handlers:
+
+```go
+type Handler interface {
+    // Core identification
+    Name() string
+    Description() string
+    Type() HandlerType
+    
+    // Configuration
+    ValidateOptions(options map[string]interface{}) error
+    GetTemplateContent() string
+}
+```
+
+### Type-Specific Processing Interfaces
+
+Each handler type has its own processing interface:
+
+```go
+// ConfigurationHandler processes files into configuration actions
+type ConfigurationHandler interface {
+    Handler
+    ProcessConfiguration(matches []types.RuleMatch) ([]types.ConfigurationAction, error)
+}
+
+// CodeExecutionHandler processes files into code execution actions
+type CodeExecutionHandler interface {
+    Handler
+    ProcessCodeExecution(matches []types.RuleMatch) ([]types.CodeExecutionAction, error)
+}
+
+// TransformationHandler modifies files before other processing
+type TransformationHandler interface {
+    Handler
+    Transform(files []FileInfo, packPath string) ([]FileInfo, error)
+}
+
+// FilterHandler determines which files to exclude
+type FilterHandler interface {
+    Handler
+    ShouldExclude(file FileInfo, packPath string) bool
+}
+```
+
+### Optional Interfaces
+
+These can be implemented by any handler type:
+
+```go
+// WithConfirmations allows handlers to request user confirmation
+type WithConfirmations interface {
+    GetConfirmations(matches []types.RuleMatch) ([]types.ConfirmationRequest, error)
+}
+
+// Clearable allows handlers to clean up their deployments
+type Clearable interface {
+    Clear(ctx types.ClearContext) ([]types.ClearedItem, error)
+}
+```
+
+## Handler Mapping
+
+Current handlers map to new types:
+
+| Handler | Current Type | New Type | Rationale |
+|---------|-------------|----------|-----------|
+| symlink | LinkingHandler | ConfigurationHandler | Creates config symlinks |
+| shell | LinkingHandler | ConfigurationHandler | Updates shell profiles |
+| path | LinkingHandler | ConfigurationHandler | Modifies PATH config |
+| homebrew | ProvisioningHandler | CodeExecutionHandler | Installs software |
+| install | ProvisioningHandler | CodeExecutionHandler | Runs scripts |
+| template* | N/A | TransformationHandler | Transforms .tmpl files |
+| ignore* | N/A | FilterHandler | Excludes files |
+
+*Future handlers
+
+## Execution Pipeline
+
+The new pipeline processes handlers in this order:
+
+1. **Filter Phase**: FilterHandlers exclude files from processing
+2. **Transformation Phase**: TransformationHandlers modify file list/contents
+3. **Action Generation Phase**: Configuration and Provisioning handlers
+   generate actions
+4. **Execution Phase**: Actions are executed with appropriate safety checks
+
+```
+Files → Filters → Transformations → Action Generation → Execution
+```
+
+## Benefits
+
+1. **Clarity**: Handler type directly indicates its purpose and behavior
+2. **Extensibility**: Easy to add new handler types without breaking existing code
+3. **Unified Interface**: Single base interface reduces duplication
+4. **Pipeline Support**: Natural ordering for preprocessing handlers
+5. **Type Safety**: Each handler type returns appropriate action types
+
+## Migration Path
+
+### Phase 1: Minimal API Introduction
+1. Create `pkg/handlers/api.go` with HandlerRegistry
+2. Replace RunMode checks with HandlerRegistry calls
+3. Keep existing interfaces unchanged
+
+### Phase 2: Gradual Interface Migration
+1. Deprecate RunMode() method in favor of Type()
+2. Create unified Handler interface with type-specific extensions
+3. Update handlers one by one to new interface
+4. Maintain backward compatibility during transition
+
+### Phase 3: Pipeline Enhancement
+1. Implement pipeline phases in rules/integration.go
+2. Add transformation and filter handler support
+3. Remove deprecated interfaces
+
+### Key Insight: Legitimate RunMode Uses
+
+Analysis shows RunMode is used for:
+1. **Command filtering**: Which handlers to run (link vs provision)
+2. **Execution ordering**: Code execution before configuration
+3. **Action filtering**: Separating actions by type
+4. **Clear operations**: Filtering clearable handlers by type
+
+All these can be replaced with simple registry lookups instead of
+method calls on handler instances.
+
+## Example: Template Handler
+
+```go
+type TemplateHandler struct {
+    name string
+}
+
+func (h *TemplateHandler) Name() string { return h.name }
+func (h *TemplateHandler) Type() HandlerType { return HandlerTypeTransformation }
+func (h *TemplateHandler) Description() string { 
+    return "Renders template files with environment variables"
+}
+
+func (h *TemplateHandler) Transform(files []FileInfo, packPath string) ([]FileInfo, error) {
+    var transformed []FileInfo
+    for _, file := range files {
+        if strings.HasSuffix(file.Name, ".tmpl") {
+            // Render template and add rendered file
+            rendered := renderTemplate(file)
+            transformed = append(transformed, rendered)
+        } else {
+            transformed = append(transformed, file)
+        }
+    }
+    return transformed, nil
+}
+```
+
+## Example: Ignore Handler as Filter
+
+```go
+type IgnoreHandler struct {
+    patterns []string
+}
+
+func (h *IgnoreHandler) Name() string { return "ignore" }
+func (h *IgnoreHandler) Type() HandlerType { return HandlerTypeFilter }
+
+func (h *IgnoreHandler) ShouldExclude(file FileInfo, packPath string) bool {
+    for _, pattern := range h.patterns {
+        if matched, _ := filepath.Match(pattern, file.Name); matched {
+            return true
+        }
+    }
+    return false
+}
+```
+
+## Conclusion
+
+This design provides a cleaner, more extensible abstraction that:
+- Better represents the true nature of handlers
+- Supports the transformation pipeline architecture
+- Maintains backward compatibility during migration
+- Provides clear extension points for future handler types

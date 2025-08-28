@@ -105,15 +105,15 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 		return nil, fmt.Errorf("failed to discover packs: %w", err)
 	}
 
-	// Get linking handlers only
-	linkingHandlers, err := executor.GetClearableHandlersByMode(types.RunModeLinking)
+	// Get configuration handlers only (safe to clear/rerun)
+	configHandlers, err := executor.GetClearableConfigurationHandlers()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get linking handlers: %w", err)
+		return nil, fmt.Errorf("failed to get configuration handlers: %w", err)
 	}
 
 	logger.Debug().
 		Int("packCount", len(packs)).
-		Int("handlerCount", len(linkingHandlers)).
+		Int("handlerCount", len(configHandlers)).
 		Msg("Discovered packs and handlers")
 
 	// Process each pack
@@ -136,7 +136,7 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 		}
 
 		// Filter handlers to only those with state
-		handlersWithState := executor.FilterHandlersByState(ctx, linkingHandlers)
+		handlersWithState := executor.FilterHandlersByState(ctx, configHandlers)
 
 		logger.Debug().
 			Str("pack", pack.Name).

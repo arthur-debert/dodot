@@ -8,13 +8,21 @@ import (
 )
 
 // GetClearableHandlersByMode returns handlers that implement Clearable, grouped by run mode.
-// This is used by commands to get only the handlers they need to clear.
+// Deprecated: Use GetClearableConfigurationHandlers or GetClearableCodeExecutionHandlers
 func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearable, error) {
+	if mode == types.RunModeLinking {
+		return GetClearableConfigurationHandlers()
+	}
+	return GetClearableCodeExecutionHandlers()
+}
+
+// GetClearableConfigurationHandlers returns configuration handlers that implement Clearable
+func GetClearableConfigurationHandlers() (map[string]handlers.Clearable, error) {
 	logger := logging.GetLogger("executor.clear")
 	result := make(map[string]handlers.Clearable)
 
-	// Get handler names from known set
-	handlerNames := []string{"symlink", "shell", "path", "homebrew", "install"}
+	// Get configuration handler names
+	handlerNames := handlers.HandlerRegistry.GetConfigurationHandlers()
 
 	for _, name := range handlerNames {
 		handler, err := rules.CreateHandler(name, nil)
@@ -22,29 +30,7 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 			logger.Warn().
 				Str("handler", name).
 				Err(err).
-				Msg("Failed to get handler factory")
-			continue
-		}
-		if err != nil {
-			logger.Warn().
-				Str("handler", name).
-				Err(err).
 				Msg("Failed to create handler instance")
-			continue
-		}
-
-		// Check if handler matches the requested mode
-		var handlerMode types.RunMode
-		switch h := handler.(type) {
-		case handlers.LinkingHandler:
-			handlerMode = h.RunMode()
-		case handlers.ProvisioningHandler:
-			handlerMode = h.RunMode()
-		default:
-			continue
-		}
-
-		if handlerMode != mode {
 			continue
 		}
 
@@ -59,9 +45,43 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 	}
 
 	logger.Debug().
-		Str("mode", string(mode)).
 		Int("clearableCount", len(result)).
-		Msg("Found clearable handlers")
+		Msg("Found clearable configuration handlers")
+
+	return result, nil
+}
+
+// GetClearableCodeExecutionHandlers returns code execution handlers that implement Clearable
+func GetClearableCodeExecutionHandlers() (map[string]handlers.Clearable, error) {
+	logger := logging.GetLogger("executor.clear")
+	result := make(map[string]handlers.Clearable)
+
+	// Get code execution handler names
+	handlerNames := handlers.HandlerRegistry.GetCodeExecutionHandlers()
+
+	for _, name := range handlerNames {
+		handler, err := rules.CreateHandler(name, nil)
+		if err != nil {
+			logger.Warn().
+				Str("handler", name).
+				Err(err).
+				Msg("Failed to create handler instance")
+			continue
+		}
+
+		// Check if handler implements Clearable
+		if clearable, ok := handler.(handlers.Clearable); ok {
+			result[name] = clearable
+		} else {
+			logger.Debug().
+				Str("handler", name).
+				Msg("Handler does not implement Clearable")
+		}
+	}
+
+	logger.Debug().
+		Int("clearableCount", len(result)).
+		Msg("Found clearable code execution handlers")
 
 	return result, nil
 }
@@ -69,31 +89,31 @@ func GetClearableHandlersByMode(mode types.RunMode) (map[string]handlers.Clearab
 // GetAllClearableHandlers returns all handlers that implement Clearable
 func GetAllClearableHandlers() (map[string]handlers.Clearable, error) {
 	logger := logging.GetLogger("executor.clear")
-	handlers := make(map[string]handlers.Clearable)
+	allHandlers := make(map[string]handlers.Clearable)
 
-	// Get linking handlers
-	linkingHandlers, err := GetClearableHandlersByMode(types.RunModeLinking)
+	// Get configuration handlers
+	configHandlers, err := GetClearableConfigurationHandlers()
 	if err != nil {
 		return nil, err
 	}
-	for name, handler := range linkingHandlers {
-		handlers[name] = handler
+	for name, handler := range configHandlers {
+		allHandlers[name] = handler
 	}
 
-	// Get provisioning handlers
-	provisioningHandlers, err := GetClearableHandlersByMode(types.RunModeProvisioning)
+	// Get code execution handlers
+	codeExecHandlers, err := GetClearableCodeExecutionHandlers()
 	if err != nil {
 		return nil, err
 	}
-	for name, handler := range provisioningHandlers {
-		handlers[name] = handler
+	for name, handler := range codeExecHandlers {
+		allHandlers[name] = handler
 	}
 
 	logger.Debug().
-		Int("totalClearable", len(handlers)).
+		Int("totalClearable", len(allHandlers)).
 		Msg("Found all clearable handlers")
 
-	return handlers, nil
+	return allHandlers, nil
 }
 
 // FilterHandlersByState returns only handlers that have state for the given pack.
