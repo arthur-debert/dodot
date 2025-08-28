@@ -7,70 +7,23 @@ This guide covers essential information for contributing to dodot.
 
 Prerequisites: Go 1.23+, Git, Unix-like environment
 
-```bash
-git clone https://github.com/untitled-dotfiles/dodot.git
-cd dodot
-source .envrc                    # Sets up environment
-scripts/pre-commit install       # MANDATORY - installs git hooks
-scripts/build                    # Builds ./bin/dodot
-scripts/test                     # Runs tests with race detection
-```
-
-## Critical Rules
-
-1. **NO direct filesystem operations** - Always use synthfs:
-   ```go
-   // WRONG
-   os.ReadFile(path)
-   
-   // RIGHT
-   fs := synthfs.GetInstance()
-   fs.ReadFile(path)
-   ```
-
-2. **ALL errors need codes** for stable testing:
-   ```go
-   // WRONG
-   return fmt.Errorf("pack not found: %s", name)
-   
-   // RIGHT
-   return errors.New(errors.ErrPackNotFound, "pack not found: vim")
-   ```
-
-3. **Logging is MANDATORY** for new code:
-   ```go
-   logger := logging.GetLogger("component.name")
-   logger.Debug("processing file", "path", path)
-   ```
-   **CRITICAL**: Never log in init() functions
-
-4. **Pre-commit hooks are MANDATORY** - No exceptions
-
-5. **Documentation uses txxt format** - Not Markdown
+1. **ALL errors need codes** for stable testing:
+2. **Logging is MANDATORY** for new code, see pkg/logging/
+3. **Pre-commit hooks are MANDATORY** - No exceptions
+4. **Documentation uses txxt format** - Not Markdown
 
 ## Architecture Principles
 
 - **Thin CLI layer**: Business logic in `pkg/`, not `cmd/`
 - **Pure functions**: Handlers must be stateless
 - **Type safety**: No interface{}, use constants
-- **Return structured data**: Let CLI layer format output
+- **Return structured data**: Let CLI layer format output, no direct printing
+  to stdout
 
 ## Testing
 
-```go
-// Table-driven tests preferred
-tests := []struct {
-    name     string
-    input    string
-    wantErr  errors.ErrorCode  // Test codes, not messages
-}{
-    {"valid", "input", ""},
-    {"invalid", "", errors.ErrInvalidInput},
-}
-
-// Use testutil helpers
-testutil.SetupTest(t)
-```
+- Table-driven tests preferred
+- Use testutil helpers
 
 ## Package Structure
 
@@ -88,37 +41,36 @@ pkg/
 
 ## Development Workflow
 
-1. Create feature branch
+1. Create feature branch, if working on a gh issue, use $gh issue develop -c
+   <issue> to get the branch
 2. Write tests first (TDD encouraged)
 3. Implement feature
 4. Run `scripts/test` and `scripts/lint`
-5. Commit with clear message
+5. Commit with clear message, if working on a gh issue, refer asin for #<issue>
+   or closes: <issue>
 6. For releases: "Release X.Y.Z: description" commit prefix
+7. When done, write the pr for the branch, also referencing the for or closes
+   #issue.
+8. Verify , through the gh cli that the branch's check pass or anything broke.
 
-## Common Commands
+## Use provided tools for common neeeds
 
-```bash
-# Development
-scripts/build              # Build binary to ./bin/dodot
-scripts/test              # Run tests with race detection
-scripts/test-with-cov     # Generate coverage report
-scripts/lint              # Run golangci-lint
+- scripts/build              # Build binary to ./bin/dodot
+- scripts/test              # Run tests with race detection
+- scripts/go-coverage     # Generate coverage report
+- scripts/lint              # Run golangci-lint
+- scrpts/go-inner-deps <pkg> # for checking dependency graph for refactors
 
-# Testing single function
-go test -v -run TestFunctionName ./pkg/...
-
-# Verbose logging
-./bin/dodot -vvv status   # TRACE level logging
-
-# Release
-scripts/release-new --patch  # Bump version
+- single test: go test -v -run TestFunctionName ./pkg/...
+- logging: ./bin/dodot -vvv status   # TRACE level logging, can use -v or -vv, also in
+  tests
+- releasing: scripts/release-new --patch  --yes# Bump version
 ```
 
 ## Key Dependencies
 
 - `spf13/cobra` - CLI framework
 - `rs/zerolog` - Structured logging
-- `arthur-debert/go-synthfs` - Safe filesystem operations
 - `knadh/koanf` - Configuration management
 
 ## Quick Reference
