@@ -40,8 +40,8 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/status      | Business Logic   | status_test.go                                   | planned          | 80.90%       | 0%           | State inspection                             |
 | pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | planned          | 80.49%       | 0%           | Cleanup operations                           |
 | pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 49.32%       | 82.3%        | Orchestration tests created                  |
-| pkg/executor             | Integration      | executor_test.go, clear_test.go                  | planned          | 73.77%       | 0%           | Action execution                             |
-| pkg/shell                | Unit             | shell_test.go                                    | planned          | 0%           | 0%           | Shell detection                              |
+| pkg/executor             | Integration      | executor_orchestration_test.go                   | migrated         | 73.77%       | TBD          | Action execution orchestration               |
+| pkg/shell                | Unit             | shell_integration_test.go                        | migrated         | 0%           | TBD          | Shell integration orchestration              |
 | cmd/dodot                | CLI              | commands_test.go, root_test.go, topics_test.go   | migrated         | 20.26%       | 20.26%       | CLI commands                                 |
 | pkg/handlers             | Unit             | api_test.go                                      | migrated         | 100.00%      | 100.00%      | Handler registry                             |
 | pkg/handlers/homebrew    | Unit/Integration | homebrew_test.go                                 | migrated         | 64.68%       | 55.60%       | Handler logic                                |
@@ -100,8 +100,9 @@ Coverage Comparison Notes:
 - [ ] Remove FS dependencies
 
 === Phase 4: Integration Tests ===
-- [ ] Migrate pkg/core
-- [ ] Migrate pkg/executor
+- [x] Migrate pkg/core
+- [x] Migrate pkg/executor (orchestration tests)
+- [x] Migrate pkg/shell (integration tests)
 - [ ] Complex pipeline tests
 
 === Phase 5: Special Cases ===
@@ -143,6 +144,19 @@ Coverage Comparison Notes:
    - Pure data transformation testing
    - No filesystem or external dependencies
    - Tests different rendering scenarios
+
+5. **Shell Integration Test**: pkg/shell/shell_integration_test.go
+   - Tests InstallShellIntegration orchestration logic
+   - Uses EnvIsolated with real filesystem for PROJECT_ROOT setup
+   - Tests directory creation, file copying, permission setting
+   - Handles missing scripts, permission errors, directory creation failures
+
+6. **Executor Orchestration Test**: pkg/executor/executor_orchestration_test.go
+   - Tests New constructor with option validation and defaults
+   - Tests Execute method with multiple actions, error handling, dry run
+   - Tests handlePostExecution for LinkAction, RunScriptAction, BrewAction
+   - Tests error propagation from action execution and post-execution
+   - Uses real types.Action implementations for proper type assertions
 
 == Notes ==
 
