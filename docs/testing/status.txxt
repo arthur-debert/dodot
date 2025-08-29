@@ -26,13 +26,13 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 |--------------------------|------------------|--------------------------------------------------|------------------|--------------|--------------|----------------------------------------------|
 | pkg/cobrax/topics        | Unit             | topics_test.go                                   | do not migrate   | 40.00%       | 0%           | Template tests                               |
 | pkg/filesystem           | Unit             | filesystem_test.go                               | do not migrate   | 19.44%       | 0%           | FS abstraction                               |
-| pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | TBD          | Command orchestration - ignore file creation |
-| pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | planned          | 82.86%       | 0%           | Complex FS operations                        |
-| pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | migrated         | 88.89%       | TBD          | Code execution handler clearing              |
+| pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | migrated         | 82.86%       | TBD          | File adoption and pack management            |
 | pkg/commands/fill        | Business Logic   | -                                                | planned          | 0%           | 0%           | Missing tests                                |
 | pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | planned          | 95.24%       | 0%           | Config generation                            |
 | pkg/commands/initialize  | Business Logic   | initialize_test.go                               | planned          | 85.71%       | 0%           | Setup operations                             |
 | pkg/commands/internal    | Business Logic   | pipeline_test.go                                 | planned          | 70.00%       | 0%           | Core pipeline                                |
+| pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | TBD          | Command orchestration - ignore file creation |
+| pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | migrated         | 88.89%       | TBD          | Code execution handler clearing              |
 | pkg/commands/list        | Business Logic   | list_test.go                                     | migrated         | 100.00%      | TBD          | Query operations - pack discovery tests     |
 | pkg/commands/off         | Business Logic   | off_test.go                                      | migrated         | 95.65%       | TBD          | Handler disabling - orchestration tests     |
 | pkg/commands/on          | Business Logic   | on_test.go                                       | migrated         | 92.59%       | TBD          | Handler enabling - orchestration tests      |
