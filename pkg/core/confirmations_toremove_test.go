@@ -128,36 +128,37 @@ func TestConfirmationCollector_GetAll_Sorting(t *testing.T) {
 	}
 }
 
-func TestNewConsoleConfirmationDialog(t *testing.T) {
-	dialog := NewConsoleConfirmationDialog()
-	assert.NotNil(t, dialog)
-}
+// func TestNewConsoleConfirmationDialog(t *testing.T) {
+// 	dialog := NewConsoleConfirmationDialog()
+// 	assert.NotNil(t, dialog)
+// }
 
-func TestGetHandlerEmoji(t *testing.T) {
-	tests := []struct {
-		handler  string
-		expected string
-	}{
-		{"homebrew", "🍺"},
-		{"symlink", "🔗"},
-		{"provision", "🔧"},
-		{"shell", "🐚"},
-		{"path", "📁"},
-		{"unknown", "⚙️"},
-		{"", "⚙️"},
-		{"HOMEBREW", "🍺"}, // Case insensitive
-	}
+// func TestGetHandlerEmoji(t *testing.T) {
+// 	tests := []struct {
+// 		handler  string
+// 		expected string
+// 	}{
+// 		{"homebrew", "🍺"},
+// 		{"symlink", "🔗"},
+// 		{"provision", "🔧"},
+// 		{"shell", "🐚"},
+// 		{"path", "📁"},
+// 		{"unknown", "⚙️"},
+// 		{"", "⚙️"},
+// 		{"HOMEBREW", "🍺"}, // Case insensitive
+// 	}
 
-	for _, tt := range tests {
-		t.Run(tt.handler, func(t *testing.T) {
-			result := getHandlerEmoji(tt.handler)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
+// 	for _, tt := range tests {
+// 		t.Run(tt.handler, func(t *testing.T) {
+// 			result := getHandlerEmoji(tt.handler)
+// 			assert.Equal(t, tt.expected, result)
+// 		})
+// 	}
+// }
 
 func TestCollectAndProcessConfirmations_NoConfirmations(t *testing.T) {
-	dialog := NewConsoleConfirmationDialog()
+	// dialog := NewConsoleConfirmationDialog()
+	dialog := &mockConfirmationDialog{}
 
 	ctx, err := CollectAndProcessConfirmations([]types.ConfirmationRequest{}, dialog)
 	assert.NoError(t, err)

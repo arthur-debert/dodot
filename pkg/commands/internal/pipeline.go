@@ -11,6 +11,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/confirmations"
 )
 
 // CommandMode represents which types of handlers should be executed
@@ -139,7 +140,7 @@ func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
 			Msg("Confirmation requests found - presenting to user")
 
 		// Use console confirmation dialog
-		dialog := core.NewConsoleConfirmationDialog()
+		dialog := confirmations.NewConsoleDialog()
 
 		// Collect confirmations using utility function
 		confirmationContext, err = core.CollectAndProcessConfirmations(actionResult.Confirmations, dialog)
