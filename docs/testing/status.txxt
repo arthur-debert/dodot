@@ -28,7 +28,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/filesystem           | Unit             | filesystem_test.go                               | do not migrate   | 19.44%       | 0%           | FS abstraction                               |
 | pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | TBD          | Command orchestration - ignore file creation |
 | pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | planned          | 82.86%       | 0%           | Complex FS operations                        |
-| pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | planned          | 88.89%       | 0%           | State manipulation                           |
+| pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | migrated         | 88.89%       | TBD          | Code execution handler clearing              |
 | pkg/commands/fill        | Business Logic   | -                                                | planned          | 0%           | 0%           | Missing tests                                |
 | pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | planned          | 95.24%       | 0%           | Config generation                            |
 | pkg/commands/initialize  | Business Logic   | initialize_test.go                               | planned          | 85.71%       | 0%           | Setup operations                             |
@@ -36,7 +36,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/list        | Business Logic   | list_test.go                                     | migrated         | 100.00%      | TBD          | Query operations - pack discovery tests     |
 | pkg/commands/off         | Business Logic   | off_test.go                                      | migrated         | 95.65%       | TBD          | Handler disabling - orchestration tests     |
 | pkg/commands/on          | Business Logic   | on_test.go                                       | migrated         | 92.59%       | TBD          | Handler enabling - orchestration tests      |
-| pkg/commands/provision   | Business Logic   | provision_test.go                                | planned          | 68.92%       | 0%           | Multi-phase command                          |
+| pkg/commands/provision   | Business Logic   | provision_test.go                                | migrated         | 68.92%       | TBD          | Multi-phase command orchestration            |
 | pkg/commands/status      | Business Logic   | status_test.go                                   | migrated         | 80.90%       | TBD          | State inspection - orchestration tests      |
 | pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | migrated         | 80.49%       | TBD          | Cleanup operations - clearable orchestration |
 | pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 49.32%       | 82.3%        | Orchestration tests created                  |
@@ -52,7 +52,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/ui/lipbalm           | Output           | lipbalm_test.go                                  | migrated         | 97.78%       | 100.0%       | Terminal UI                                  |
 | pkg/ui/output/styles     | Output           | styles_test.go                                   | migrated         | 73.33%       | 74.7%        | Style definitions                            |
 | pkg/actions              | Unit             | actions_test.go                                  | migrated         | 94.29%       | 94.29%       | Pure logic tests                             |
-| pkg/commands/link        | Business Logic   | link_test.go                                     | migrated         | 66.67%       | 0%           | Primary use case                             |
+| pkg/commands/link        | Business Logic   | link_test.go                                     | migrated         | 66.67%       | TBD          | Configuration handler orchestration          |
 | pkg/config               | Unit             | config_test.go                                   | migrated         | 76.11%       | 88.9%        | Configuration logic                          |
 | pkg/datastore            | DataStore        | filesystem_test.go                               | migrated         | 53.93%       | 82.72%       | REAL FS ALLOWED                              |
 | pkg/errors               | Unit             | errors_test.go                                   | migrated         | 91.89%       | 91.89%       | Error handling                               |
