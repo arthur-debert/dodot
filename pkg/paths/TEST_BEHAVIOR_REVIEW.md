@@ -59,6 +59,24 @@
 
 **Recommendation**: Review the actual directory structure design
 
+### 7. TestResolveShellScriptPath (from shell_test.go)
+**Issues**: 
+- Test expects scripts to be in a "templates" directory
+- Implementation finds scripts in development locations (e.g., "/Users/adebert/h/dodot/pkg/shell")
+- Empty script name returns a path instead of an error
+- Test expects specific script names (bash.sh, zsh.sh, fish.sh) but implementation uses different names
+
+**Recommendation**: Clarify where shell scripts should be located and what naming convention to use
+
+### 8. TestGetShellScriptPath (from shell_test.go)
+**Issues**:
+- Test expects function to return just the script name (e.g., "bash.sh")
+- Implementation returns full absolute paths (e.g., "/Users/adebert/h/dodot/pkg/shell/dodot-init.sh")
+- Implementation uses "dodot-init.sh" for bash/zsh and "dodot-init.fish" for fish
+- Function returns default script for unknown shells instead of empty string
+
+**Recommendation**: Decide if the function should return script names or full paths
+
 ## Tests That Are Correct
 
 The following tests pass and represent correct behavior:
@@ -72,5 +90,3 @@ The following tests pass and represent correct behavior:
 - TestMustValidatePath
 - TestRelativePath
 - TestExpandHome
-- TestResolveShellScriptPath
-- TestGetShellScriptPath
