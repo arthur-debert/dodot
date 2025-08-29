@@ -26,7 +26,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 |--------------------------|------------------|--------------------------------------------------|------------------|--------------|--------------|----------------------------------------------|
 | pkg/cobrax/topics        | Unit             | topics_test.go                                   | do not migrate   | 40.00%       | 0%           | Template tests                               |
 | pkg/filesystem           | Unit             | filesystem_test.go                               | do not migrate   | 19.44%       | 0%           | FS abstraction                               |
-| pkg/commands/addignore   | Business Logic   | addignore_test.go                                | planned          | 84.62%       | 0%           | Command orchestration                        |
+| pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | TBD          | Command orchestration - ignore file creation |
 | pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | planned          | 82.86%       | 0%           | Complex FS operations                        |
 | pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | planned          | 88.89%       | 0%           | State manipulation                           |
 | pkg/commands/fill        | Business Logic   | -                                                | planned          | 0%           | 0%           | Missing tests                                |
