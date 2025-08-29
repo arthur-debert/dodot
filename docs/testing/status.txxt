@@ -39,7 +39,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/provision   | Business Logic   | provision_test.go                                | planned          | 68.92%       | 0%           | Multi-phase command                          |
 | pkg/commands/status      | Business Logic   | status_test.go                                   | planned          | 80.90%       | 0%           | State inspection                             |
 | pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | planned          | 80.49%       | 0%           | Cleanup operations                           |
-| pkg/core                 | Integration      | match_test.go, actions_test.go                   | planned          | 49.32%       | 0%           | Pipeline integration                         |
+| pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 49.32%       | 82.3%        | Orchestration tests created                  |
 | pkg/executor             | Integration      | executor_test.go, clear_test.go                  | planned          | 73.77%       | 0%           | Action execution                             |
 | pkg/shell                | Unit             | shell_test.go                                    | planned          | 0%           | 0%           | Shell detection                              |
 | cmd/dodot                | CLI              | commands_test.go, root_test.go, topics_test.go   | migrated         | 20.26%       | 20.26%       | CLI commands                                 |
@@ -75,6 +75,7 @@ Total Coverage:
 
 Coverage Comparison Notes:
 - Several packages show improved coverage after migration (e.g., datastore: 53.93% → 82.72%)
+- pkg/core shows significant improvement: 49.32% → 82.3% with orchestration-focused tests
 - Some packages show decreased coverage due to partial migration (e.g., types: 87.27% → 31.46%)
 - Packages with 0% old coverage in tests/revamp have already been fully migrated
 
