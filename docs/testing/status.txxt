@@ -45,7 +45,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/handlers             | Unit             | -                                                | planned          | 100.00%      | 0%           | Handler registry                             |
 | pkg/handlers/homebrew    | Unit/Integration | homebrew_test.go                                 | planned          | 64.68%       | 0%           | Handler logic                                |
 | pkg/handlers/install     | Unit/Integration | install_test.go                                  | planned          | 50.00%       | 0%           | Handler logic                                |
-| pkg/handlers/shell       | Unit/Integration | shell_test.go                                    | planned          | 77.78%       | 0%           | Handler logic                                |
+| pkg/handlers/shell       | Unit/Integration | shell_test.go                                    | migrated         | 77.78%       | 96.3%        | Handler logic                                |
 | pkg/shell                | Unit             | shell_test.go                                    | planned          | 0%           | 0%           | Shell detection                              |
 | pkg/ui                   | Unit             | ui_test.go                                       | planned          | 75.86%       | 0%           | UI utilities                                 |
 | pkg/ui/display           | Output           | display_test.go                                  | planned          | 81.25%       | 0%           | Display logic                                |
@@ -71,7 +71,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 Total Coverage:
 - Old Tests (main branch): 58.75% (2760/4698 statements)
 - New Tests (tests/revamp): 42.30% (750/1773 statements)
-- Migration Progress: 16.5% of test files migrated (16 out of 97)
+- Migration Progress: 17.5% of test files migrated (17 out of 97)
 
 Coverage Comparison Notes:
 - Several packages show improved coverage after migration (e.g., datastore: 53.93% → 82.72%)
