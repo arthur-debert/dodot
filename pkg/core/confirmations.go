@@ -72,7 +72,10 @@ func (cc *ConfirmationCollector) Count() int {
 	return len(cc.confirmations)
 }
 
-// ConfirmationDialog handles the display and collection of user responses
+// ConfirmationDialog handles the display and collection of user responses.
+// This interface stays in the core package as it defines the contract that
+// orchestration functions expect from UI implementations.
+// Concrete implementations (like ConsoleDialog) belong in the UI layer.
 type ConfirmationDialog interface {
 	// PresentConfirmations shows confirmations to the user and collects responses
 	PresentConfirmations(confirmations []types.ConfirmationRequest) ([]types.ConfirmationResponse, error)
