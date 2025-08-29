@@ -40,8 +40,8 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/status      | Business Logic   | status_test.go                                   | planned          | 80.90%       | 0%           | State inspection                             |
 | pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | planned          | 80.49%       | 0%           | Cleanup operations                           |
 | pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 49.32%       | 82.3%        | Orchestration tests created                  |
-| pkg/executor             | Integration      | executor_orchestration_test.go                   | migrated         | 73.77%       | TBD          | Action execution orchestration               |
-| pkg/shell                | Unit             | shell_integration_test.go                        | migrated         | 0%           | TBD          | Shell integration orchestration              |
+| pkg/executor             | Integration      | executor_orchestration_test.go                   | migrated         | 80.87%       | 80.87%       | Action execution orchestration               |
+| pkg/shell                | Unit             | shell_integration_test.go                        | migrated         | 88.46%       | 88.46%       | Shell integration orchestration              |
 | cmd/dodot                | CLI              | commands_test.go, root_test.go, topics_test.go   | migrated         | 20.26%       | 20.26%       | CLI commands                                 |
 | pkg/handlers             | Unit             | api_test.go                                      | migrated         | 100.00%      | 100.00%      | Handler registry                             |
 | pkg/handlers/homebrew    | Unit/Integration | homebrew_test.go                                 | migrated         | 64.68%       | 55.60%       | Handler logic                                |
@@ -69,15 +69,17 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 
 
 Total Coverage:
-- Old Tests (main branch): 58.75% (2760/4698 statements)
-- New Tests (tests/revamp): 42.30% (750/1773 statements)
-- Migration Progress: 17.5% of test files migrated (17 out of 97)
+- Old Tests (main branch): 69.56% (1675/2408 statements)
+- New Tests (tests/revamp): 57.52% (2169/3771 statements)
+- Migration Progress: 47.3% of test files migrated (52 new / 58 old)
 
 Coverage Comparison Notes:
 - Several packages show improved coverage after migration (e.g., datastore: 53.93% → 82.72%)
 - pkg/core shows significant improvement: 49.32% → 82.3% with orchestration-focused tests
+- pkg/executor maintained strong coverage: 80.87% with new orchestration tests
+- pkg/shell achieved excellent coverage: 88.46% with comprehensive integration tests
 - Some packages show decreased coverage due to partial migration (e.g., types: 87.27% → 31.46%)
-- Packages with 0% old coverage in tests/revamp have already been fully migrated
+- New test approach shows good coverage despite focusing on orchestration over integration
 
 == Migration Phases ==
 
