@@ -38,7 +38,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/on          | Business Logic   | on_test.go                                       | migrated         | 92.59%       | TBD          | Handler enabling - orchestration tests      |
 | pkg/commands/provision   | Business Logic   | provision_test.go                                | planned          | 68.92%       | 0%           | Multi-phase command                          |
 | pkg/commands/status      | Business Logic   | status_test.go                                   | planned          | 80.90%       | 0%           | State inspection                             |
-| pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | planned          | 80.49%       | 0%           | Cleanup operations                           |
+| pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | migrated         | 80.49%       | TBD          | Cleanup operations - clearable orchestration |
 | pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 49.32%       | 82.3%        | Orchestration tests created                  |
 | pkg/executor             | Integration      | executor_orchestration_test.go                   | migrated         | 80.87%       | 80.87%       | Action execution orchestration               |
 | pkg/shell                | Unit             | shell_integration_test.go                        | migrated         | 88.46%       | 88.46%       | Shell integration orchestration              |
