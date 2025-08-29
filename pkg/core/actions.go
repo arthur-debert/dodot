@@ -34,7 +34,7 @@ func GetActionsWithConfirmations(matches []types.RuleMatch) (ActionGenerationRes
 	logger := logging.GetLogger("core.actions")
 
 	// Group matches by handler
-	handlerGroups := groupMatchesByHandler(matches)
+	handlerGroups := GroupMatchesByHandler(matches)
 
 	var allActions []types.Action
 	var allConfirmations []types.ConfirmationRequest
@@ -115,8 +115,8 @@ func GetActionsWithConfirmations(matches []types.RuleMatch) (ActionGenerationRes
 	}, nil
 }
 
-// groupMatchesByHandler groups trigger matches by their handler name
-func groupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMatch {
+// GroupMatchesByHandler groups trigger matches by their handler name
+func GroupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMatch {
 	groups := make(map[string][]types.RuleMatch)
 
 	for _, match := range matches {
