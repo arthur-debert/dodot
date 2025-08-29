@@ -44,7 +44,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/filesystem           | Unit             | filesystem_test.go                               | planned          | 19.44%       | 0%           | FS abstraction                               |
 | pkg/handlers             | Unit             | api_test.go                                      | migrated         | 100.00%      | 100.00%      | Handler registry                             |
 | pkg/handlers/homebrew    | Unit/Integration | homebrew_test.go                                 | migrated         | 64.68%       | 55.60%       | Handler logic                                |
-| pkg/handlers/install     | Unit/Integration | install_test.go                                  | planned          | 50.00%       | 0%           | Handler logic                                |
+| pkg/handlers/install     | Unit/Integration | install_test.go                                  | migrated         | 50.00%       | 50.00%       | Handler logic                                |
 | pkg/handlers/shell       | Unit/Integration | shell_test.go                                    | migrated         | 77.78%       | 96.3%        | Handler logic                                |
 | pkg/shell                | Unit             | shell_test.go                                    | planned          | 0%           | 0%           | Shell detection                              |
 | pkg/ui                   | Unit             | ui_test.go                                       | planned          | 75.86%       | 0%           | UI utilities                                 |
