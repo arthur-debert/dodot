@@ -47,10 +47,10 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/handlers/install     | Unit/Integration | install_test.go                                  | migrated         | 50.00%       | 50.00%       | Handler logic                                |
 | pkg/handlers/shell       | Unit/Integration | shell_test.go                                    | migrated         | 77.78%       | 96.3%        | Handler logic                                |
 | pkg/shell                | Unit             | shell_test.go                                    | planned          | 0%           | 0%           | Shell detection                              |
-| pkg/ui                   | Unit             | ui_test.go                                       | planned          | 75.86%       | 0%           | UI utilities                                 |
-| pkg/ui/display           | Output           | display_test.go                                  | planned          | 81.25%       | 0%           | Display logic                                |
-| pkg/ui/lipbalm           | Output           | lipbalm_test.go                                  | planned          | 97.78%       | 0%           | Terminal UI                                  |
-| pkg/ui/output/styles     | Output           | styles_test.go                                   | planned          | 73.33%       | 0%           | Style definitions                            |
+| pkg/ui                   | Unit             | ui_test.go                                       | migrated         | 75.86%       | 65.5%        | UI utilities                                 |
+| pkg/ui/display           | Output           | display_test.go                                  | migrated         | 81.25%       | 81.3%        | Display logic                                |
+| pkg/ui/lipbalm           | Output           | lipbalm_test.go                                  | migrated         | 97.78%       | 100.0%       | Terminal UI                                  |
+| pkg/ui/output/styles     | Output           | styles_test.go                                   | migrated         | 73.33%       | 74.7%        | Style definitions                            |
 | pkg/actions              | Unit             | actions_test.go                                  | migrated         | 94.29%       | 94.29%       | Pure logic tests                             |
 | pkg/commands/link        | Business Logic   | link_test.go                                     | migrated         | 66.67%       | 0%           | Primary use case                             |
 | pkg/config               | Unit             | config_test.go                                   | migrated         | 76.11%       | 88.9%        | Configuration logic                          |
