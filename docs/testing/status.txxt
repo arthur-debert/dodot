@@ -58,7 +58,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/logging | Unit | logging_test.go | migrated | 82.22% | 86.7% | Logging setup |
 | pkg/packs | Unit | packs_test.go | migrated | 64.79% | 91.5% | Pack operations |
 | pkg/paths | Unit | paths_test.go, validation_test.go, shell_test.go | migrated | 75.00% | 85.3% | 6 tests skipped, see TEST_BEHAVIOR_REVIEW.md |
-| pkg/rules | Unit | rules_test.go | planned | 32.32% | 0% | Rule matching |
+| pkg/rules | Unit | config_test.go, scanner_test.go | migrated | 32.32% | 43.3% | Rule matching |
 | pkg/shell | Unit | shell_test.go | planned | 0% | 0% | Shell detection |
 | pkg/testutil | Meta | - | migrated | 42.19% | 40.59% | Test utilities |
 | pkg/types | Unit | types_test.go | migrated | 87.27% | 31.46% | Type definitions |
