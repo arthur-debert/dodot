@@ -33,7 +33,7 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | planned          | 95.24%       | 0%           | Config generation                            |
 | pkg/commands/initialize  | Business Logic   | initialize_test.go                               | planned          | 85.71%       | 0%           | Setup operations                             |
 | pkg/commands/internal    | Business Logic   | pipeline_test.go                                 | planned          | 70.00%       | 0%           | Core pipeline                                |
-| pkg/commands/list        | Business Logic   | list_test.go                                     | planned          | 100.00%      | 0%           | Query operations                             |
+| pkg/commands/list        | Business Logic   | list_test.go                                     | migrated         | 100.00%      | TBD          | Query operations - pack discovery tests     |
 | pkg/commands/off         | Business Logic   | off_test.go                                      | migrated         | 95.65%       | TBD          | Handler disabling - orchestration tests     |
 | pkg/commands/on          | Business Logic   | on_test.go                                       | migrated         | 92.59%       | TBD          | Handler enabling - orchestration tests      |
 | pkg/commands/provision   | Business Logic   | provision_test.go                                | planned          | 68.92%       | 0%           | Multi-phase command                          |
