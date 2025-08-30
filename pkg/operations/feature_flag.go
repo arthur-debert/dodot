@@ -1,27 +1,13 @@
 package operations
 
-import "os"
-
 // UseSimplifiedHandlers checks if the simplified handler system should be used.
-// This is controlled by the DODOT_USE_OPERATIONS environment variable.
-// Set DODOT_USE_OPERATIONS=true to enable the new system for testing.
+// Phase 3: This now always returns true - operations are the default.
 func UseSimplifiedHandlers() bool {
-	return os.Getenv("DODOT_USE_OPERATIONS") == "true"
+	return true
 }
 
 // IsHandlerSimplified checks if a specific handler has been migrated.
-// Phase 2: Migrating all handlers one by one.
+// Phase 3: All handlers are now simplified.
 func IsHandlerSimplified(handlerName string) bool {
-	if !UseSimplifiedHandlers() {
-		return false
-	}
-
-	// Phase 1: Path handler (completed)
-	// Phase 2: Migrating remaining handlers
-	switch handlerName {
-	case HandlerPath, HandlerSymlink, HandlerShell, HandlerInstall, HandlerHomebrew:
-		return true
-	default:
-		return false
-	}
+	return true
 }

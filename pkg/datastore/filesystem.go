@@ -3,6 +3,7 @@ package datastore
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -552,4 +553,120 @@ func (s *filesystemDataStore) GetState(packName, handlerName string) (interface{
 	// TODO: Implement generic state retrieval
 	// For now, return error to indicate not yet implemented
 	return nil, fmt.Errorf("generic GetState not yet implemented for handler %s", handlerName)
+}
+
+// CreateDataLink implements the simplified DataStore interface.
+// It links a source file into the datastore structure based on handler type.
+func (s *filesystemDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
+	switch handlerName {
+	case "symlink":
+		// For symlink handler, use the existing Link method
+		return s.Link(pack, sourceFile)
+
+	case "path":
+		// For path handler, use AddToPath
+		err := s.AddToPath(pack, sourceFile)
+		if err != nil {
+			return "", err
+		}
+		// Return the created link path
+		baseName := filepath.Base(sourceFile)
+		return filepath.Join(s.paths.PackHandlerDir(pack, "path"), baseName), nil
+
+	case "shell", "shell_profile":
+		// For shell handler, use AddToShellProfile
+		err := s.AddToShellProfile(pack, sourceFile)
+		if err != nil {
+			return "", err
+		}
+		// Return the created link path
+		baseName := filepath.Base(sourceFile)
+		return filepath.Join(s.paths.PackHandlerDir(pack, "shell"), baseName), nil
+
+	default:
+		return "", fmt.Errorf("unsupported handler for CreateDataLink: %s", handlerName)
+	}
+}
+
+// CreateUserLink implements the simplified DataStore interface.
+// It creates a user-visible symlink from datastore to user location.
+func (s *filesystemDataStore) CreateUserLink(datastorePath, userPath string) error {
+	// Expand home directory if needed
+	expandedPath := userPath
+	if strings.HasPrefix(userPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+		expandedPath = filepath.Join(home, userPath[2:])
+	}
+
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(expandedPath)
+	if err := s.fs.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory: %w", err)
+	}
+
+	// Remove existing file/link if present
+	if err := s.fs.Remove(expandedPath); err != nil && !os.IsNotExist(err) {
+		// Try to check if it's a directory
+		if stat, statErr := s.fs.Stat(expandedPath); statErr == nil && stat.IsDir() {
+			return fmt.Errorf("target path is a directory: %s", expandedPath)
+		}
+	}
+
+	// Create the symlink
+	if err := s.fs.Symlink(datastorePath, expandedPath); err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+
+	return nil
+}
+
+// RunAndRecord implements the simplified DataStore interface.
+// It executes a command and records completion with a sentinel.
+func (s *filesystemDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
+	// Check if already run using the existing method
+	sentinelDir := s.paths.PackHandlerDir(pack, handlerName)
+	sentinelPath := filepath.Join(sentinelDir, sentinel)
+
+	// Check if sentinel exists
+	if _, err := s.fs.Stat(sentinelPath); err == nil {
+		// Already run, skip
+		return nil
+	}
+
+	// Execute the command
+	cmd := exec.Command("sh", "-c", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command failed: %w\nOutput: %s", err, output)
+	}
+
+	// Record completion
+	if err := s.fs.MkdirAll(sentinelDir, 0755); err != nil {
+		return fmt.Errorf("failed to create sentinel directory: %w", err)
+	}
+
+	// Write sentinel with timestamp
+	content := fmt.Sprintf("completed|%s", time.Now().Format(time.RFC3339))
+	if err := s.fs.WriteFile(sentinelPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("failed to write sentinel file: %w", err)
+	}
+
+	return nil
+}
+
+// HasSentinel implements the simplified DataStore interface.
+// It checks if an operation has been completed.
+func (s *filesystemDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
+	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, handlerName), sentinel)
+	_, err := s.fs.Stat(sentinelPath)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check sentinel: %w", err)
 }

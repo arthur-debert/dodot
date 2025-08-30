@@ -4,9 +4,18 @@ import (
 	"fmt"
 )
 
-// DataStore is a minimal interface to avoid circular dependencies.
-// The actual implementation is in pkg/datastore.
+// DataStore represents dodot's storage interface.
+// Phase 3: This interface now includes both the new simplified methods
+// and legacy methods for backward compatibility.
 type DataStore interface {
+	// New simplified methods (Phase 3)
+	CreateDataLink(pack, handlerName, sourceFile string) (datastorePath string, err error)
+	CreateUserLink(datastorePath, userPath string) error
+	RunAndRecord(pack, handlerName, command, sentinel string) error
+	HasSentinel(pack, handlerName, sentinel string) (bool, error)
+	RemoveState(pack, handlerName string) error
+
+	// Legacy methods (to be removed in final cleanup)
 	Link(pack, sourceFile string) (intermediateLinkPath string, err error)
 	Unlink(pack, sourceFile string) error
 	AddToPath(pack, dirPath string) error
@@ -14,22 +23,15 @@ type DataStore interface {
 	RecordProvisioning(pack, sentinelName, checksum string) error
 	NeedsProvisioning(pack, sentinelName, checksum string) (bool, error)
 	GetStatus(pack, sourceFile string) (Status, error)
-	// Handler-specific status methods
 	GetSymlinkStatus(pack, sourceFile string) (Status, error)
 	GetPathStatus(pack, dirPath string) (Status, error)
 	GetShellProfileStatus(pack, scriptPath string) (Status, error)
 	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (Status, error)
 	GetBrewStatus(pack, brewfilePath, currentChecksum string) (Status, error)
-
-	// State removal methods
 	DeleteProvisioningState(packName, handlerName string) error
 	GetProvisioningHandlers(packName string) ([]string, error)
 	ListProvisioningState(packName string) (map[string][]string, error)
-
-	// Generic state management (new methods)
-	// These will eventually replace the handler-specific methods above
 	StoreState(packName, handlerName string, state interface{}) error
-	RemoveState(packName, handlerName string) error
 	GetState(packName, handlerName string) (interface{}, error)
 }
 
