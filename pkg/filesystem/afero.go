@@ -65,6 +65,10 @@ func (a *aferoFS) RemoveAll(path string) error {
 	return a.fs.RemoveAll(path)
 }
 
+func (a *aferoFS) Rename(oldpath, newpath string) error {
+	return a.fs.Rename(oldpath, newpath)
+}
+
 func (a *aferoFS) Lstat(name string) (fs.FileInfo, error) {
 	// Afero's Lstat is only available on the OsFs.
 	// For MemMapFs, Stat is sufficient for most tests.
