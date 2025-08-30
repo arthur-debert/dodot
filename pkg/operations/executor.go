@@ -298,6 +298,23 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		}
 
 		clearedItems = append(clearedItems, clearedItem)
+
+	case HandlerHomebrew:
+		// Homebrew handler stores run records in the datastore
+		homebrewDir := fmt.Sprintf("~/.local/share/dodot/data/%s/homebrew", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "homebrew_state",
+			Path:        homebrewDir,
+			Description: "Homebrew state will be removed",
+		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
 	}
 
 	// Actually remove if not dry run
