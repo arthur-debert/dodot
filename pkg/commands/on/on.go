@@ -63,7 +63,7 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 		result.Errors = append(result.Errors, fmt.Errorf("link failed: %w", err))
 	} else {
 		result.LinkResult = linkResult
-		result.TotalDeployed += linkResult.CompletedActions
+		result.TotalDeployed += linkResult.CompletedHandlers
 		// Check for errors in pack results
 		for packName, packResult := range linkResult.PackResults {
 			if packResult.FailedHandlers > 0 {
@@ -85,7 +85,7 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 		result.Errors = append(result.Errors, fmt.Errorf("provision failed: %w", err))
 	} else {
 		result.ProvisionResult = provisionResult
-		result.TotalDeployed += provisionResult.CompletedActions
+		result.TotalDeployed += provisionResult.CompletedHandlers
 		// Check for errors in pack results
 		for packName, packResult := range provisionResult.PackResults {
 			if packResult.FailedHandlers > 0 {

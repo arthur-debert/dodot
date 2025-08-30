@@ -81,7 +81,7 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 	mergedCtx := mergeExecutionContexts(installCtx, deployCtx)
 
 	// Set up shell integration after successful execution (not in dry-run mode)
-	if !opts.DryRun && (mergedCtx.CompletedActions > 0 || mergedCtx.SkippedActions > 0) {
+	if !opts.DryRun && (mergedCtx.CompletedHandlers > 0 || mergedCtx.SkippedHandlers > 0) {
 		log.Debug().Msg("Installing shell integration")
 
 		// Create paths instance to get data directory
@@ -110,9 +110,9 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 	}
 
 	log.Info().
-		Int("installActions", installCtx.TotalActions).
-		Int("deployActions", deployCtx.TotalActions).
-		Int("totalActions", mergedCtx.TotalActions).
+		Int("installActions", installCtx.TotalHandlers).
+		Int("deployActions", deployCtx.TotalHandlers).
+		Int("totalActions", mergedCtx.TotalHandlers).
 		Str("command", "ProvisionPacks").
 		Msg("Command finished")
 
@@ -172,16 +172,16 @@ func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *type
 	}
 
 	// Recalculate totals (AddPackResult should have handled this, but be explicit)
-	merged.TotalActions = 0
-	merged.CompletedActions = 0
-	merged.FailedActions = 0
-	merged.SkippedActions = 0
+	merged.TotalHandlers = 0
+	merged.CompletedHandlers = 0
+	merged.FailedHandlers = 0
+	merged.SkippedHandlers = 0
 
 	for _, packResult := range merged.PackResults {
-		merged.TotalActions += packResult.TotalHandlers
-		merged.CompletedActions += packResult.CompletedHandlers
-		merged.FailedActions += packResult.FailedHandlers
-		merged.SkippedActions += packResult.SkippedHandlers
+		merged.TotalHandlers += packResult.TotalHandlers
+		merged.CompletedHandlers += packResult.CompletedHandlers
+		merged.FailedHandlers += packResult.FailedHandlers
+		merged.SkippedHandlers += packResult.SkippedHandlers
 	}
 
 	return merged

@@ -45,17 +45,17 @@ type ExecutionContext struct {
 	// DryRun indicates if this was a dry run
 	DryRun bool
 
-	// TotalActions is the total count of actions across all packs
-	TotalActions int
+	// TotalHandlers is the total count of handlers across all packs
+	TotalHandlers int
 
-	// CompletedActions is the count of successfully completed actions
-	CompletedActions int
+	// CompletedHandlers is the count of successfully completed handlers
+	CompletedHandlers int
 
-	// FailedActions is the count of failed actions
-	FailedActions int
+	// FailedHandlers is the count of failed handlers
+	FailedHandlers int
 
-	// SkippedActions is the count of skipped actions
-	SkippedActions int
+	// SkippedHandlers is the count of skipped handlers
+	SkippedHandlers int
 }
 
 // PackExecutionResult contains the execution results for a single pack
@@ -116,7 +116,8 @@ type HandlerResult struct {
 	Pack string
 
 	// Operations are the operations that were executed
-	Operations []interface{} // Will be replaced with operations.Operation when available
+	// TODO: Type this properly when operations package is available
+	Operations []interface{}
 }
 
 // NewExecutionContext creates a new execution context
@@ -134,16 +135,16 @@ func (ec *ExecutionContext) AddPackResult(packName string, result *PackExecution
 	ec.PackResults[packName] = result
 
 	// Update totals based on Handlers, not Operations
-	ec.TotalActions = 0
-	ec.CompletedActions = 0
-	ec.FailedActions = 0
-	ec.SkippedActions = 0
+	ec.TotalHandlers = 0
+	ec.CompletedHandlers = 0
+	ec.FailedHandlers = 0
+	ec.SkippedHandlers = 0
 
 	for _, pr := range ec.PackResults {
-		ec.TotalActions += pr.TotalHandlers
-		ec.CompletedActions += pr.CompletedHandlers
-		ec.FailedActions += pr.FailedHandlers
-		ec.SkippedActions += pr.SkippedHandlers
+		ec.TotalHandlers += pr.TotalHandlers
+		ec.CompletedHandlers += pr.CompletedHandlers
+		ec.FailedHandlers += pr.FailedHandlers
+		ec.SkippedHandlers += pr.SkippedHandlers
 	}
 }
 
@@ -208,32 +209,6 @@ func (per *PackExecutionResult) updateStatus() {
 func (per *PackExecutionResult) Complete() {
 	per.EndTime = time.Now()
 	per.updateStatus()
-}
-
-// FileStatus represents the current status of a file managed by dodot
-type FileStatus struct {
-	// Path is the file or directory path
-	Path string
-
-	// Handler is the handler that manages this file
-	Handler string
-
-	// Status is the current status of the file
-	Status OperationStatus
-
-	// Message provides additional context about the status
-	Message string
-
-	// LastApplied is when the file was last successfully applied
-	LastApplied time.Time
-
-	// Metadata contains handler specific status information
-	// For example:
-	// - Symlinks: target path, whether link is valid
-	// - Profiles: which shell files contain entries
-	// - PATH: whether directory is in PATH
-	// - Homebrew: package version, installation status
-	Metadata map[string]interface{}
 }
 
 // ToDisplayResult transforms the ExecutionContext into a DisplayResult suitable for rendering
