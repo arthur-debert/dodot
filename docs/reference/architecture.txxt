@@ -178,10 +178,32 @@ renderer := output.NewTextRenderer()
 
 ## Component Responsibilities
 
-- **Rules**: Match files to handlers
-- **Handlers**: Convert matches to operations (50-100 lines each)
+### Commands (pkg/commands)
+- **Role**: Thin orchestration layer
+- **Responsibilities**: Parse/validate options, call domain objects, handle logging/feedback
+- **What they do**: Route to appropriate abstractions (Packs for pack operations, DataStore for handler operations)
+- **What they DON'T do**: Contain business logic, direct filesystem access, know handler internals
+
+### Handlers (pkg/handlers)  
+- **Role**: File-specific operation generators
+- **Responsibilities**: Convert file matches to operations (symlink, homebrew, shell_profile, etc.)
+- **Used by**: Handler-related commands (on/off/link/unlink/provision/deprovision)
+- **Size**: 50-100 lines each, focused on single concern
+
+### Packs (pkg/types/pack.go)
+- **Role**: Pack management domain object
+- **Responsibilities**: Pack operations (init, fill, adopt, addignore), guardian methods for safe manipulation
+- **What they do**: Know what needs to be created and where, create files within pack boundaries
+- **Used by**: Pack-related commands (init, fill, adopt, addignore)
+
+### DataStore (pkg/datastore)
+- **Role**: Operations execution abstraction
+- **Responsibilities**: Execute operations via 5-method API, state management
+- **Interface**: CreateDataLink, CreateUserLink, RunAndRecord, HasSentinel, RemoveState
+- **Used by**: All commands that need file operations
+
+### Operations & Executor
 - **Operations**: Data structures with type, pack, handler, source, target, command
-- **DataStore**: Execute operations via 5 methods
 - **Executor**: Orchestrate operation execution with dry-run support
 
 ## Performance Considerations
