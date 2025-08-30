@@ -225,10 +225,10 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		stateDirName = handler.Name()
 	}
 
-	// Phase 1: Handle path handler specifically
-	// TODO(Phase 2): Extract pattern for other handlers
+	// Phase 2: Handle each handler type
 	// TODO(Phase 3): Replace with generic RemoveState operation
-	if handler.Name() == HandlerPath {
+	switch handler.Name() {
+	case HandlerPath:
 		stateDir := fmt.Sprintf("~/.local/share/dodot/data/%s/%s", ctx.Pack.Name, stateDirName)
 
 		clearedItem := types.ClearedItem{
@@ -246,16 +246,88 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 
 		clearedItems = append(clearedItems, clearedItem)
 
-		// Actually remove if not dry run
-		if !ctx.DryRun && e.store != nil {
-			// Phase 1: Just log the removal
-			// Phase 2: Will call handler-specific cleanup methods
-			// Phase 3: Will use a generic RemoveState operation:
-			//   e.store.RemoveState(ctx.Pack.Name, handler.Name())
-			// This will remove all datastore entries for the handler
-			logger.Debug().Msg("Removing handler state")
-			// For now, we just mark it as cleared
+	case HandlerSymlink:
+		// Symlink handler stores links in the datastore
+		symlinksDir := fmt.Sprintf("~/.local/share/dodot/data/%s/symlinks", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "symlink_state",
+			Path:        symlinksDir,
+			Description: "Symlinks will be removed",
 		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
+
+	case HandlerShell:
+		// Shell handler stores scripts in the datastore
+		shellDir := fmt.Sprintf("~/.local/share/dodot/data/%s/shell", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "shell_state",
+			Path:        shellDir,
+			Description: "Shell profile sources will be removed",
+		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		} else if ctx.DryRun {
+			clearedItem.Description = "Would remove shell profile sources"
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
+
+	case HandlerInstall:
+		// Install handler stores run records in the datastore
+		installDir := fmt.Sprintf("~/.local/share/dodot/data/%s/install", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "provision_state",
+			Path:        installDir,
+			Description: "Install run records will be removed",
+		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
+
+	case HandlerHomebrew:
+		// Homebrew handler stores run records in the datastore
+		homebrewDir := fmt.Sprintf("~/.local/share/dodot/data/%s/homebrew", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "homebrew_state",
+			Path:        homebrewDir,
+			Description: "Homebrew state will be removed",
+		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
+	}
+
+	// Actually remove if not dry run
+	if !ctx.DryRun && e.store != nil && len(clearedItems) > 0 {
+		// Phase 2: Just log the removal for all handlers
+		// Phase 3: Will use a generic RemoveState operation:
+		//   e.store.RemoveState(ctx.Pack.Name, handler.Name())
+		// This will remove all datastore entries for the handler
+		logger.Debug().
+			Str("handler", handler.Name()).
+			Str("pack", ctx.Pack.Name).
+			Msg("Removing handler state")
+		// For now, we just mark it as cleared
 	}
 
 	// Phase 2: Add similar blocks for other handlers as they're migrated

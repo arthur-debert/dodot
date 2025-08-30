@@ -8,7 +8,11 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	pathHandler "github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/shell"
+	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -179,11 +183,19 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 }
 
 // getSimplifiedHandler returns the simplified handler for the given name.
-// This is where we instantiate simplified handlers during phase 1.
+// This is where we instantiate simplified handlers during phase 2.
 func getSimplifiedHandler(handlerName string) operations.Handler {
 	switch handlerName {
 	case operations.HandlerPath:
 		return pathHandler.NewSimplifiedHandler()
+	case operations.HandlerSymlink:
+		return symlink.NewSimplifiedHandler()
+	case operations.HandlerShell:
+		return shell.NewSimplifiedHandler()
+	case operations.HandlerInstall:
+		return install.NewSimplifiedHandler()
+	case operations.HandlerHomebrew:
+		return homebrew.NewSimplifiedHandler()
 	default:
 		// Other handlers not yet migrated
 		return nil
