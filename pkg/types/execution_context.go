@@ -12,16 +12,16 @@ import (
 type ExecutionStatus string
 
 const (
-	// ExecutionStatusSuccess means all actions succeeded
+	// ExecutionStatusSuccess means all handlers succeeded
 	ExecutionStatusSuccess ExecutionStatus = "success"
 
-	// ExecutionStatusPartial means some actions succeeded, some failed
+	// ExecutionStatusPartial means some handlers succeeded, some failed
 	ExecutionStatusPartial ExecutionStatus = "partial"
 
-	// ExecutionStatusError means all actions failed
+	// ExecutionStatusError means all handlers failed
 	ExecutionStatusError ExecutionStatus = "error"
 
-	// ExecutionStatusSkipped means all actions were skipped
+	// ExecutionStatusSkipped means all handlers were skipped
 	ExecutionStatusSkipped ExecutionStatus = "skipped"
 
 	// ExecutionStatusPending means execution hasn't started
@@ -45,17 +45,17 @@ type ExecutionContext struct {
 	// DryRun indicates if this was a dry run
 	DryRun bool
 
-	// TotalActions is the total count of actions across all packs
-	TotalActions int
+	// TotalHandlers is the total count of handlers across all packs
+	TotalHandlers int
 
-	// CompletedActions is the count of successfully completed actions
-	CompletedActions int
+	// CompletedHandlers is the count of successfully completed handlers
+	CompletedHandlers int
 
-	// FailedActions is the count of failed actions
-	FailedActions int
+	// FailedHandlers is the count of failed handlers
+	FailedHandlers int
 
-	// SkippedActions is the count of skipped actions
-	SkippedActions int
+	// SkippedHandlers is the count of skipped handlers
+	SkippedHandlers int
 }
 
 // PackExecutionResult contains the execution results for a single pack
@@ -89,7 +89,7 @@ type PackExecutionResult struct {
 }
 
 // HandlerResult tracks the result of a single Handler execution
-// This is the atomic unit - if ANY action in a Handler fails, the Handler fails
+// This is the atomic unit - if ANY operation in a Handler fails, the Handler fails
 type HandlerResult struct {
 	// HandlerName is the name of the Handler (symlink, homebrew, etc.)
 	HandlerName string
@@ -115,8 +115,9 @@ type HandlerResult struct {
 	// Pack is the pack this Handler belongs to
 	Pack string
 
-	// Actions are the original actions that were executed
-	Actions []Action
+	// Operations are the operations that were executed
+	// TODO: Type this properly when operations package is available
+	Operations []interface{}
 }
 
 // NewExecutionContext creates a new execution context
@@ -134,16 +135,16 @@ func (ec *ExecutionContext) AddPackResult(packName string, result *PackExecution
 	ec.PackResults[packName] = result
 
 	// Update totals based on Handlers, not Operations
-	ec.TotalActions = 0
-	ec.CompletedActions = 0
-	ec.FailedActions = 0
-	ec.SkippedActions = 0
+	ec.TotalHandlers = 0
+	ec.CompletedHandlers = 0
+	ec.FailedHandlers = 0
+	ec.SkippedHandlers = 0
 
 	for _, pr := range ec.PackResults {
-		ec.TotalActions += pr.TotalHandlers
-		ec.CompletedActions += pr.CompletedHandlers
-		ec.FailedActions += pr.FailedHandlers
-		ec.SkippedActions += pr.SkippedHandlers
+		ec.TotalHandlers += pr.TotalHandlers
+		ec.CompletedHandlers += pr.CompletedHandlers
+		ec.FailedHandlers += pr.FailedHandlers
+		ec.SkippedHandlers += pr.SkippedHandlers
 	}
 }
 
@@ -208,32 +209,6 @@ func (per *PackExecutionResult) updateStatus() {
 func (per *PackExecutionResult) Complete() {
 	per.EndTime = time.Now()
 	per.updateStatus()
-}
-
-// FileStatus represents the current status of a file managed by dodot
-type FileStatus struct {
-	// Path is the file or directory path
-	Path string
-
-	// Handler is the handler that manages this file
-	Handler string
-
-	// Status is the current status of the file
-	Status OperationStatus
-
-	// Message provides additional context about the status
-	Message string
-
-	// LastApplied is when the file was last successfully applied
-	LastApplied time.Time
-
-	// Metadata contains handler specific status information
-	// For example:
-	// - Symlinks: target path, whether link is valid
-	// - Profiles: which shell files contain entries
-	// - PATH: whether directory is in PATH
-	// - Homebrew: package version, installation status
-	Metadata map[string]interface{}
 }
 
 // ToDisplayResult transforms the ExecutionContext into a DisplayResult suitable for rendering
@@ -308,56 +283,31 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
 				displayMessage := generateHandlerMessage(pur.HandlerName, filePath, displayStatus, lastExecuted)
 
-				// Get additional info based on Handler type and action data
+				// Get additional info based on Handler type and operation data
 				additionalInfo := GetHandlerAdditionalInfo(pur.HandlerName)
 
-				// Extract handler-specific information from actions
-				if len(pur.Actions) > 0 {
-					homeDir := os.Getenv("HOME")
+				// Extract handler-specific information based on handler type
+				// This logic can be simplified once we have operations
+				switch pur.HandlerName {
+				case "symlink":
+					// For symlinks, show the target path with ~ for home
+					additionalInfo = fmt.Sprintf("→ ~/%s", filepath.Base(filePath))
 
-					switch pur.HandlerName {
-					case "symlink":
-						// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
-						for _, action := range pur.Actions {
-							if linkAction, ok := action.(*LinkAction); ok {
-								if linkAction.SourceFile == filePath && linkAction.TargetFile != "" {
-									additionalInfo = FormatSymlinkForDisplay(linkAction.TargetFile, homeDir, 46)
-									break
-								}
-							}
-						}
+				case "path":
+					// For PATH entries, show the directory being added
+					additionalInfo = fmt.Sprintf("→ $PATH/%s", filepath.Base(filePath))
 
-					case "path":
-						// For PATH entries, show the directory being added
-						for _, action := range pur.Actions {
-							if pathAction, ok := action.(*AddToPathAction); ok {
-								if pathAction.DirPath == filePath {
-									additionalInfo = fmt.Sprintf("→ $PATH/%s", filepath.Base(pathAction.DirPath))
-									break
-								}
-							}
-						}
-
-					case "shell":
-						// For shell profile entries, indicate the shell type if detectable
-						for _, action := range pur.Actions {
-							if shellAction, ok := action.(*AddToShellProfileAction); ok {
-								if shellAction.ScriptPath == filePath {
-									// Try to detect shell type from filename
-									fileName := filepath.Base(filePath)
-									if strings.Contains(fileName, "bash") {
-										additionalInfo = "→ bash profile"
-									} else if strings.Contains(fileName, "zsh") {
-										additionalInfo = "→ zsh profile"
-									} else if strings.Contains(fileName, "fish") {
-										additionalInfo = "→ fish config"
-									} else {
-										additionalInfo = "→ shell profile"
-									}
-									break
-								}
-							}
-						}
+				case "shell":
+					// For shell profile entries, indicate the shell type if detectable
+					fileName := filepath.Base(filePath)
+					if strings.Contains(fileName, "bash") {
+						additionalInfo = "→ bash profile"
+					} else if strings.Contains(fileName, "zsh") {
+						additionalInfo = "→ zsh profile"
+					} else if strings.Contains(fileName, "fish") {
+						additionalInfo = "→ fish config"
+					} else {
+						additionalInfo = "→ shell profile"
 					}
 				}
 

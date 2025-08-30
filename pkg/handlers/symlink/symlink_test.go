@@ -1,198 +1,184 @@
-// pkg/handlers/symlink/symlink_test.go
-// TEST TYPE: Unit/Integration Test
-// DEPENDENCIES: Mock DataStore, Memory FS
-// PURPOSE: Test symlink handler logic without real filesystem
-
 package symlink_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestSymlinkHandler_ProcessLinking_Unit(t *testing.T) {
+func TestHandler_ToOperations(t *testing.T) {
+	// Set HOME for consistent tests
+	oldHome := os.Getenv("HOME")
+	_ = os.Setenv("HOME", "/home/testuser")
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
+
+	handler := symlink.NewHandler()
+
 	tests := []struct {
-		name          string
-		matches       []types.RuleMatch
-		expectedCount int
-		verify        func(t *testing.T, actions []types.LinkingAction)
+		name        string
+		matches     []types.RuleMatch
+		wantOps     int
+		checkOps    func(*testing.T, []operations.Operation)
+		wantErr     bool
+		errContains string
 	}{
 		{
-			name: "single_file_creates_link_action",
+			name: "single file creates two operations",
 			matches: []types.RuleMatch{
 				{
+					Pack:         "vim",
 					Path:         ".vimrc",
 					AbsolutePath: "/dotfiles/vim/.vimrc",
+					HandlerName:  "symlink",
+				},
+			},
+			wantOps: 2,
+			checkOps: func(t *testing.T, ops []operations.Operation) {
+				// First operation: CreateDataLink
+				assert.Equal(t, operations.CreateDataLink, ops[0].Type)
+				assert.Equal(t, "vim", ops[0].Pack)
+				assert.Equal(t, "symlink", ops[0].Handler)
+				assert.Equal(t, "/dotfiles/vim/.vimrc", ops[0].Source)
+
+				// Second operation: CreateUserLink
+				assert.Equal(t, operations.CreateUserLink, ops[1].Type)
+				assert.Equal(t, "vim", ops[1].Pack)
+				assert.Equal(t, "/home/testuser/.vimrc", ops[1].Target)
+			},
+		},
+		{
+			name: "multiple files create paired operations",
+			matches: []types.RuleMatch{
+				{
 					Pack:         "vim",
-					RuleName:     "vimrc",
+					Path:         ".vimrc",
+					AbsolutePath: "/dotfiles/vim/.vimrc",
+					HandlerName:  "symlink",
+				},
+				{
+					Pack:         "vim",
+					Path:         ".vim/colors/theme.vim",
+					AbsolutePath: "/dotfiles/vim/.vim/colors/theme.vim",
+					HandlerName:  "symlink",
 				},
 			},
-			expectedCount: 1,
-			verify: func(t *testing.T, actions []types.LinkingAction) {
-				linkAction, ok := actions[0].(*types.LinkAction)
-				if !ok {
-					t.Error("expected LinkAction type")
-					return
-				}
-				if linkAction.PackName != "vim" {
-					t.Errorf("expected pack vim, got %s", linkAction.PackName)
-				}
+			wantOps: 4, // 2 operations per file
+			checkOps: func(t *testing.T, ops []operations.Operation) {
+				// Check pairs
+				assert.Equal(t, operations.CreateDataLink, ops[0].Type)
+				assert.Equal(t, operations.CreateUserLink, ops[1].Type)
+				assert.Equal(t, operations.CreateDataLink, ops[2].Type)
+				assert.Equal(t, operations.CreateUserLink, ops[3].Type)
+
+				// Check targets
+				assert.Equal(t, "/home/testuser/.vimrc", ops[1].Target)
+				assert.Equal(t, "/home/testuser/.vim/colors/theme.vim", ops[3].Target)
 			},
 		},
 		{
-			name: "multiple_files_create_multiple_actions",
+			name: "custom target directory",
 			matches: []types.RuleMatch{
 				{
-					Path:         ".bashrc",
-					AbsolutePath: "/dotfiles/bash/.bashrc",
-					Pack:         "bash",
-					RuleName:     "bashrc",
-				},
-				{
-					Path:         ".bash_profile",
-					AbsolutePath: "/dotfiles/bash/.bash_profile",
-					Pack:         "bash",
-					RuleName:     "bash_profile",
-				},
-			},
-			expectedCount: 2,
-			verify: func(t *testing.T, actions []types.LinkingAction) {
-				for _, action := range actions {
-					if _, ok := action.(*types.LinkAction); !ok {
-						t.Error("all actions should be LinkActions")
-					}
-				}
-			},
-		},
-		{
-			name: "custom_target_directory",
-			matches: []types.RuleMatch{
-				{
-					Path:         "config.json",
-					AbsolutePath: "/dotfiles/app/config.json",
-					Pack:         "app",
-					RuleName:     "filename",
+					Pack:         "configs",
+					Path:         "app.conf",
+					AbsolutePath: "/dotfiles/configs/app.conf",
+					HandlerName:  "symlink",
 					HandlerOptions: map[string]interface{}{
-						"target": "/etc/app",
+						"target": "/etc/myapp",
 					},
 				},
 			},
-			expectedCount: 1,
-			verify: func(t *testing.T, actions []types.LinkingAction) {
-				linkAction, ok := actions[0].(*types.LinkAction)
-				if !ok {
-					t.Error("expected LinkAction type")
-					return
-				}
-				if linkAction.TargetFile != "/etc/app/config.json" {
-					t.Errorf("expected target /etc/app/config.json, got %s", linkAction.TargetFile)
-				}
+			wantOps: 2,
+			checkOps: func(t *testing.T, ops []operations.Operation) {
+				assert.Equal(t, "/etc/myapp/app.conf", ops[1].Target)
 			},
+		},
+		{
+			name: "environment variable expansion in target",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "configs",
+					Path:         "config.yml",
+					AbsolutePath: "/dotfiles/configs/config.yml",
+					HandlerName:  "symlink",
+					HandlerOptions: map[string]interface{}{
+						"target": "$HOME/.config",
+					},
+				},
+			},
+			wantOps: 2,
+			checkOps: func(t *testing.T, ops []operations.Operation) {
+				assert.Equal(t, "/home/testuser/.config/config.yml", ops[1].Target)
+			},
+		},
+		{
+			name: "conflict detection",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "vim",
+					Path:         ".vimrc",
+					AbsolutePath: "/dotfiles/vim/.vimrc",
+					HandlerName:  "symlink",
+				},
+				{
+					Pack:         "neovim",
+					Path:         ".vimrc",
+					AbsolutePath: "/dotfiles/neovim/.vimrc",
+					HandlerName:  "symlink",
+				},
+			},
+			wantErr:     true,
+			errContains: "symlink conflict",
 		},
 	}
 
-	// Set test mode to avoid paths initialization
-	t.Setenv("DODOT_TEST_MODE", "true")
-	t.Setenv("HOME", "/home/testuser")
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := symlink.NewSymlinkHandler()
-			actions, err := handler.ProcessLinking(tt.matches)
+			ops, err := handler.ToOperations(tt.matches)
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContains)
+				return
 			}
 
-			if len(actions) != tt.expectedCount {
-				t.Errorf("expected %d actions, got %d", tt.expectedCount, len(actions))
-			}
+			require.NoError(t, err)
+			assert.Len(t, ops, tt.wantOps)
 
-			if tt.verify != nil {
-				tt.verify(t, actions)
+			if tt.checkOps != nil {
+				tt.checkOps(t, ops)
 			}
 		})
 	}
 }
 
-func TestSymlinkHandler_ProcessLinkingWithConfirmations(t *testing.T) {
-	// Set test mode
-	t.Setenv("DODOT_TEST_MODE", "true")
-	t.Setenv("HOME", "/home/testuser")
+func TestHandler_GetMetadata(t *testing.T) {
+	handler := symlink.NewHandler()
+	meta := handler.GetMetadata()
 
-	handler := symlink.NewSymlinkHandler()
-
-	matches := []types.RuleMatch{
-		{
-			Path:         ".vimrc",
-			AbsolutePath: "/dotfiles/vim/.vimrc",
-			Pack:         "vim",
-			RuleName:     "vimrc",
-		},
-		{
-			Path:         ".gvimrc",
-			AbsolutePath: "/dotfiles/vim/.gvimrc",
-			Pack:         "vim",
-			RuleName:     "gvimrc",
-		},
-	}
-
-	result, err := handler.ProcessLinkingWithConfirmations(matches)
-	if err != nil {
-		t.Fatalf("ProcessLinkingWithConfirmations failed: %v", err)
-	}
-
-	// Should have 2 actions
-	if len(result.Actions) != 2 {
-		t.Errorf("expected 2 actions, got %d", len(result.Actions))
-	}
-
-	// All actions should be LinkActions
-	for i, action := range result.Actions {
-		if _, ok := action.(*types.LinkAction); !ok {
-			t.Errorf("action %d is not a LinkAction", i)
-		}
-	}
-
-	// Should not require confirmations by default
-	if len(result.Confirmations) != 0 {
-		t.Errorf("expected no confirmations, got %d", len(result.Confirmations))
-	}
+	assert.Equal(t, "Creates symbolic links from dotfiles to target locations", meta.Description)
+	assert.False(t, meta.RequiresConfirm)
+	assert.True(t, meta.CanRunMultiple)
 }
 
-func TestSymlinkHandler_ConflictDetection(t *testing.T) {
-	// Set test mode
-	t.Setenv("DODOT_TEST_MODE", "true")
-	t.Setenv("HOME", "/home/testuser")
+func TestHandler_FormatClearedItem(t *testing.T) {
+	handler := symlink.NewHandler()
 
-	handler := symlink.NewSymlinkHandler()
-
-	// Two files targeting the same location
-	matches := []types.RuleMatch{
-		{
-			Path:         ".config",
-			AbsolutePath: "/dotfiles/app1/.config",
-			Pack:         "app1",
-			RuleName:     "config",
-		},
-		{
-			Path:         ".config",
-			AbsolutePath: "/dotfiles/app2/.config",
-			Pack:         "app2",
-			RuleName:     "config",
-		},
+	item := types.ClearedItem{
+		Type: "symlink",
+		Path: "/home/user/.vimrc",
 	}
 
-	_, err := handler.ProcessLinkingWithConfirmations(matches)
-	if err == nil {
-		t.Fatal("expected conflict error, got nil")
-	}
+	// Dry run
+	formatted := handler.FormatClearedItem(item, true)
+	assert.Equal(t, "Would remove symlink .vimrc", formatted)
 
-	// Should have detected the conflict and returned an error
-	expectedError := "symlink conflict: both /dotfiles/app1/.config and /dotfiles/app2/.config want to link to /home/testuser/.config"
-	if err.Error() != expectedError {
-		t.Errorf("expected error %q, got %q", expectedError, err.Error())
-	}
+	// Actual run
+	formatted = handler.FormatClearedItem(item, false)
+	assert.Equal(t, "Removed symlink .vimrc", formatted)
 }

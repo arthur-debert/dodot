@@ -38,6 +38,11 @@ func (m *MockSimpleDataStore) HasSentinel(pack, handlerName, sentinel string) (b
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
+	args := m.Called(pack, handlerName)
+	return args.Error(0)
+}
+
 type MockConfirmer struct {
 	mock.Mock
 }
@@ -61,7 +66,7 @@ cask "visual-studio-code"
 	require.NoError(t, err)
 
 	// Create simplified handler
-	handler := homebrew.NewSimplifiedHandler()
+	handler := homebrew.NewHandler()
 
 	// Create test matches
 	matches := []types.RuleMatch{
@@ -112,7 +117,7 @@ func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 	err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644)
 	require.NoError(t, err)
 
-	handler := homebrew.NewSimplifiedHandler()
+	handler := homebrew.NewHandler()
 
 	matches := []types.RuleMatch{
 		{
@@ -154,7 +159,7 @@ func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 
 func TestHomebrewHandler_ClearIntegration(t *testing.T) {
 	// Test clear functionality
-	handler := homebrew.NewSimplifiedHandler()
+	handler := homebrew.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -187,7 +192,7 @@ func TestHomebrewHandler_ClearWithUninstall(t *testing.T) {
 	_ = os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true")
 	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
-	handler := homebrew.NewSimplifiedHandler()
+	handler := homebrew.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -241,7 +246,7 @@ func TestHomebrewHandler_MultipleBrewfiles(t *testing.T) {
 	err = os.WriteFile(brewfile2, []byte("cask \"slack\"\n"), 0644)
 	require.NoError(t, err)
 
-	handler := homebrew.NewSimplifiedHandler()
+	handler := homebrew.NewHandler()
 
 	matches := []types.RuleMatch{
 		{

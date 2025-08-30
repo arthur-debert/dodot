@@ -1,334 +1,254 @@
-package install
+package install_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestInstallHandler_ProcessProvisioning(t *testing.T) {
-	// Create a temporary directory for test scripts
+func TestHandler_ToOperations(t *testing.T) {
+	// Create temp directory for test scripts
 	tempDir := t.TempDir()
 
-	// Create test scripts with known content
-	script1Content := "#!/bin/sh\necho 'Installing pack1'\n"
-	script1Path := filepath.Join(tempDir, "pack1", "install.sh")
-	if err := os.MkdirAll(filepath.Dir(script1Path), 0755); err != nil {
-		t.Fatalf("failed to create dir: %v", err)
-	}
-	if err := os.WriteFile(script1Path, []byte(script1Content), 0755); err != nil {
-		t.Fatalf("failed to write script: %v", err)
-	}
-
-	script2Content := "#!/bin/sh\necho 'Installing pack2'\n"
-	script2Path := filepath.Join(tempDir, "pack2", "provision.sh")
-	if err := os.MkdirAll(filepath.Dir(script2Path), 0755); err != nil {
-		t.Fatalf("failed to create dir: %v", err)
-	}
-	if err := os.WriteFile(script2Path, []byte(script2Content), 0755); err != nil {
-		t.Fatalf("failed to write script: %v", err)
-	}
-
-	handler := NewInstallHandler()
-
-	tests := []struct {
-		name          string
-		matches       []types.RuleMatch
-		expectedCount int
-		expectedError bool
-		checkActions  func(t *testing.T, actions []types.ProvisioningAction)
-	}{
-		{
-			name: "single install script",
-			matches: []types.RuleMatch{
-				{
-					Path:         "install.sh",
-					AbsolutePath: script1Path,
-					Pack:         "pack1",
-					RuleName:     "filename",
-				},
-			},
-			expectedCount: 1,
-			expectedError: false,
-			checkActions: func(t *testing.T, actions []types.ProvisioningAction) {
-				action, ok := actions[0].(*types.RunScriptAction)
-				if !ok {
-					t.Fatalf("action should be RunScriptAction, got %T", actions[0])
-				}
-				if action.PackName != "pack1" {
-					t.Errorf("PackName = %q, want %q", action.PackName, "pack1")
-				}
-				if action.ScriptPath != script1Path {
-					t.Errorf("ScriptPath = %q, want %q", action.ScriptPath, script1Path)
-				}
-				if action.Checksum == "" {
-					t.Error("Checksum should not be empty")
-				}
-				if !strings.Contains(action.Checksum, "sha256:") {
-					t.Errorf("Checksum should contain 'sha256:', got %q", action.Checksum)
-				}
-				if action.SentinelName != "install.sh.sentinel" {
-					t.Errorf("SentinelName = %q, want %q", action.SentinelName, "install.sh.sentinel")
-				}
-			},
-		},
-		{
-			name: "multiple provision scripts",
-			matches: []types.RuleMatch{
-				{
-					Path:         "install.sh",
-					AbsolutePath: script1Path,
-					Pack:         "pack1",
-					RuleName:     "filename",
-				},
-				{
-					Path:         "provision.sh",
-					AbsolutePath: script2Path,
-					Pack:         "pack2",
-					RuleName:     "filename",
-				},
-			},
-			expectedCount: 2,
-			expectedError: false,
-			checkActions: func(t *testing.T, actions []types.ProvisioningAction) {
-				// Check first action
-				action1, ok := actions[0].(*types.RunScriptAction)
-				if !ok {
-					t.Fatalf("actions[0] should be RunScriptAction, got %T", actions[0])
-				}
-				if action1.PackName != "pack1" {
-					t.Errorf("action1.PackName = %q, want %q", action1.PackName, "pack1")
-				}
-				if action1.ScriptPath != script1Path {
-					t.Errorf("action1.ScriptPath = %q, want %q", action1.ScriptPath, script1Path)
-				}
-				if action1.SentinelName != "install.sh.sentinel" {
-					t.Errorf("action1.SentinelName = %q, want %q", action1.SentinelName, "install.sh.sentinel")
-				}
-
-				// Check second action
-				action2, ok := actions[1].(*types.RunScriptAction)
-				if !ok {
-					t.Fatalf("actions[1] should be RunScriptAction, got %T", actions[1])
-				}
-				if action2.PackName != "pack2" {
-					t.Errorf("action2.PackName = %q, want %q", action2.PackName, "pack2")
-				}
-				if action2.ScriptPath != script2Path {
-					t.Errorf("action2.ScriptPath = %q, want %q", action2.ScriptPath, script2Path)
-				}
-				if action2.SentinelName != "provision.sh.sentinel" {
-					t.Errorf("action2.SentinelName = %q, want %q", action2.SentinelName, "provision.sh.sentinel")
-				}
-
-				// Verify different checksums (different content)
-				if action1.Checksum == action2.Checksum {
-					t.Error("Different scripts should have different checksums")
-				}
-			},
-		},
-		{
-			name:          "empty matches",
-			matches:       []types.RuleMatch{},
-			expectedCount: 0,
-			expectedError: false,
-		},
-		{
-			name: "non-existent script",
-			matches: []types.RuleMatch{
-				{
-					Path:         "missing.sh",
-					AbsolutePath: "/non/existent/path/missing.sh",
-					Pack:         "missing",
-					RuleName:     "filename",
-				},
-			},
-			expectedCount: 0,
-			expectedError: true,
-		},
-		{
-			name: "nested provision script",
-			matches: []types.RuleMatch{
-				{
-					Path:         "scripts/setup.sh",
-					AbsolutePath: script1Path,
-					Pack:         "complex",
-					RuleName:     "glob",
-				},
-			},
-			expectedCount: 1,
-			expectedError: false,
-			checkActions: func(t *testing.T, actions []types.ProvisioningAction) {
-				action, ok := actions[0].(*types.RunScriptAction)
-				if !ok {
-					t.Fatalf("action should be RunScriptAction, got %T", actions[0])
-				}
-				if action.PackName != "complex" {
-					t.Errorf("PackName = %q, want %q", action.PackName, "complex")
-				}
-				if action.SentinelName != "scripts/setup.sh.sentinel" {
-					t.Errorf("SentinelName = %q, want %q", action.SentinelName, "scripts/setup.sh.sentinel")
-				}
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actions, err := handler.ProcessProvisioning(tt.matches)
-
-			if tt.expectedError {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if len(actions) != tt.expectedCount {
-				t.Errorf("got %d actions, want %d", len(actions), tt.expectedCount)
-			}
-
-			if tt.checkActions != nil {
-				tt.checkActions(t, actions)
-			}
-		})
-	}
-}
-
-func TestInstallHandler_ValidateOptions(t *testing.T) {
-	handler := NewInstallHandler()
-
-	tests := []struct {
-		name          string
-		options       map[string]interface{}
-		expectedError bool
-	}{
-		{
-			name:          "nil options",
-			options:       nil,
-			expectedError: false,
-		},
-		{
-			name:          "empty options",
-			options:       map[string]interface{}{},
-			expectedError: false,
-		},
-		{
-			name: "any options are accepted",
-			options: map[string]interface{}{
-				"anything": "goes",
-			},
-			expectedError: false, // Currently no options are validated
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := handler.ValidateOptions(tt.options)
-			if tt.expectedError {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestInstallHandler_Properties(t *testing.T) {
-	handler := NewInstallHandler()
-
-	if got := handler.Name(); got != InstallHandlerName {
-		t.Errorf("Name() = %q, want %q", got, InstallHandlerName)
-	}
-
-	expectedDesc := "Runs install.sh scripts for initial setup"
-	if got := handler.Description(); got != expectedDesc {
-		t.Errorf("Description() = %q, want %q", got, expectedDesc)
-	}
-
-	if got := handler.Type(); got != types.HandlerTypeCodeExecution {
-		t.Errorf("Type() = %v, want %v", got, types.HandlerTypeCodeExecution)
-	}
-
-	// Verify template content
-	template := handler.GetTemplateContent()
-	if template == "" {
-		t.Error("GetTemplateContent() returned empty string")
-	}
-	if !strings.Contains(template, "dodot install script") {
-		t.Error("Template should contain 'dodot install script'")
-	}
-}
-
-func TestInstallHandler_ProcessProvisioningWithConfirmations(t *testing.T) {
-	// Create test script
-	tempDir := t.TempDir()
+	// Create test install script
+	scriptContent := "#!/bin/bash\necho 'Installing test pack'\n"
 	scriptPath := filepath.Join(tempDir, "install.sh")
-	scriptContent := "#!/bin/sh\necho 'Installing'\n"
+	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	require.NoError(t, err)
 
-	if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
-		t.Fatalf("failed to write script: %v", err)
-	}
+	handler := install.NewHandler()
 
-	handler := NewInstallHandler()
-
-	matches := []types.RuleMatch{
+	tests := []struct {
+		name     string
+		matches  []types.RuleMatch
+		wantOps  int
+		wantErr  bool
+		checkOps func(*testing.T, []operations.Operation)
+	}{
 		{
-			Path:         "install.sh",
-			AbsolutePath: scriptPath,
-			Pack:         "test-pack",
-			RuleName:     "filename",
+			name: "single install script creates one RunCommand operation",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "testpack",
+					Path:         "install.sh",
+					AbsolutePath: scriptPath,
+					HandlerName:  "install",
+				},
+			},
+			wantOps: 1,
+			checkOps: func(t *testing.T, ops []operations.Operation) {
+				assert.Equal(t, operations.RunCommand, ops[0].Type)
+				assert.Equal(t, "testpack", ops[0].Pack)
+				assert.Equal(t, "install", ops[0].Handler)
+				assert.Contains(t, ops[0].Command, scriptPath)
+				assert.Contains(t, ops[0].Command, "bash")
+				assert.NotEmpty(t, ops[0].Sentinel)
+				assert.Contains(t, ops[0].Sentinel, "install.sh-")
+			},
+		},
+		{
+			name: "multiple scripts create multiple operations",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "pack1",
+					Path:         "install.sh",
+					AbsolutePath: scriptPath,
+					HandlerName:  "install",
+				},
+				{
+					Pack:         "pack2",
+					Path:         "setup.sh",
+					AbsolutePath: scriptPath,
+					HandlerName:  "install",
+				},
+			},
+			wantOps: 2,
+			checkOps: func(t *testing.T, ops []operations.Operation) {
+				// Both should be RunCommand operations
+				for _, op := range ops {
+					assert.Equal(t, operations.RunCommand, op.Type)
+					assert.Equal(t, "install", op.Handler)
+					assert.Contains(t, op.Command, "bash")
+				}
+
+				// Check specific packs
+				assert.Equal(t, "pack1", ops[0].Pack)
+				assert.Contains(t, ops[0].Sentinel, "install.sh-")
+
+				assert.Equal(t, "pack2", ops[1].Pack)
+				assert.Contains(t, ops[1].Sentinel, "setup.sh-")
+			},
+		},
+		{
+			name:    "empty matches returns empty operations",
+			matches: []types.RuleMatch{},
+			wantOps: 0,
+		},
+		{
+			name: "non-existent script path returns error",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "badpack",
+					Path:         "missing.sh",
+					AbsolutePath: "/non/existent/script.sh",
+					HandlerName:  "install",
+				},
+			},
+			wantErr: true,
 		},
 	}
 
-	result, err := handler.ProcessProvisioningWithConfirmations(matches)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ops, err := handler.ToOperations(tt.matches)
 
-	// Should have actions but no confirmations (provisioning doesn't need confirmation)
-	if len(result.Actions) != 1 {
-		t.Errorf("got %d actions, want 1", len(result.Actions))
-	}
-	if len(result.Confirmations) != 0 {
-		t.Errorf("got %d confirmations, want 0", len(result.Confirmations))
-	}
-	if result.HasConfirmations() {
-		t.Error("HasConfirmations() = true, want false")
-	}
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
 
-	// Action should be RunScriptAction
-	scriptAction, ok := result.Actions[0].(*types.RunScriptAction)
-	if !ok {
-		t.Fatalf("action should be RunScriptAction, got %T", result.Actions[0])
-	}
-	if scriptAction.PackName != "test-pack" {
-		t.Errorf("PackName = %q, want %q", scriptAction.PackName, "test-pack")
-	}
-	if scriptAction.ScriptPath != scriptPath {
-		t.Errorf("ScriptPath = %q, want %q", scriptAction.ScriptPath, scriptPath)
-	}
-	if scriptAction.Checksum == "" {
-		t.Error("Checksum should not be empty")
-	}
-	if scriptAction.SentinelName != "install.sh.sentinel" {
-		t.Errorf("SentinelName = %q, want %q", scriptAction.SentinelName, "install.sh.sentinel")
+			require.NoError(t, err)
+			assert.Len(t, ops, tt.wantOps)
+
+			if tt.checkOps != nil {
+				tt.checkOps(t, ops)
+			}
+		})
 	}
 }
 
-// TODO: Add tests for Clear functionality once implemented
-func TestInstallHandler_Clear_TODO(t *testing.T) {
-	t.Skip("Clear functionality tests to be implemented when Clear method is complete")
+func TestHandler_GetMetadata(t *testing.T) {
+	handler := install.NewHandler()
+	meta := handler.GetMetadata()
+
+	assert.Equal(t, "Runs install.sh scripts for initial setup", meta.Description)
+	assert.False(t, meta.RequiresConfirm)
+	assert.False(t, meta.CanRunMultiple) // Scripts run once per checksum
+}
+
+func TestHandler_DeterministicSentinel(t *testing.T) {
+	// Create a test script with known content
+	tempDir := t.TempDir()
+	scriptContent := "#!/bin/bash\necho 'test'\n"
+	scriptPath := filepath.Join(tempDir, "install.sh")
+	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	require.NoError(t, err)
+
+	handler := install.NewHandler()
+
+	match := types.RuleMatch{
+		Pack:         "test",
+		Path:         "install.sh",
+		AbsolutePath: scriptPath,
+		HandlerName:  "install",
+	}
+
+	// Generate operations multiple times
+	ops1, err := handler.ToOperations([]types.RuleMatch{match})
+	require.NoError(t, err)
+
+	ops2, err := handler.ToOperations([]types.RuleMatch{match})
+	require.NoError(t, err)
+
+	// Sentinels should be identical for same content
+	assert.Equal(t, ops1[0].Sentinel, ops2[0].Sentinel)
+
+	// Modify the script
+	newContent := "#!/bin/bash\necho 'modified'\n"
+	err = os.WriteFile(scriptPath, []byte(newContent), 0755)
+	require.NoError(t, err)
+
+	ops3, err := handler.ToOperations([]types.RuleMatch{match})
+	require.NoError(t, err)
+
+	// Sentinel should be different after modification
+	assert.NotEqual(t, ops1[0].Sentinel, ops3[0].Sentinel)
+}
+
+func TestHandler_CommandFormat(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Test with path containing spaces
+	scriptPath := filepath.Join(tempDir, "my install script.sh")
+	err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'test'\n"), 0755)
+	require.NoError(t, err)
+
+	handler := install.NewHandler()
+
+	match := types.RuleMatch{
+		Pack:         "test",
+		Path:         "my install script.sh",
+		AbsolutePath: scriptPath,
+		HandlerName:  "install",
+	}
+
+	ops, err := handler.ToOperations([]types.RuleMatch{match})
+	require.NoError(t, err)
+
+	// Command should properly quote the path
+	expectedCommand := fmt.Sprintf("bash '%s'", scriptPath)
+	assert.Equal(t, expectedCommand, ops[0].Command)
+}
+
+func TestHandler_GetTemplateContent(t *testing.T) {
+	handler := install.NewHandler()
+
+	// Template should not be empty
+	template := handler.GetTemplateContent()
+	assert.NotEmpty(t, template)
+
+	// Should contain install script markers
+	assert.Contains(t, template, "#!/usr/bin/env bash")
+	assert.Contains(t, template, "dodot install script")
+	assert.Contains(t, template, "PACK_NAME")
+}
+
+func TestHandler_FormatClearedItem(t *testing.T) {
+	handler := install.NewHandler()
+
+	item := types.ClearedItem{
+		Type:        "provision_state",
+		Path:        "/some/path",
+		Description: "Default description",
+	}
+
+	// Test dry run formatting
+	formatted := handler.FormatClearedItem(item, true)
+	assert.Equal(t, "Would remove install run records", formatted)
+
+	// Test actual run formatting
+	formatted = handler.FormatClearedItem(item, false)
+	assert.Equal(t, "Removing install run records", formatted)
+}
+
+func TestHandler_SentinelFormat(t *testing.T) {
+	// This test verifies the sentinel format is consistent
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "test.sh")
+	err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho 'test'\n"), 0755)
+	require.NoError(t, err)
+
+	handler := install.NewHandler()
+
+	match := types.RuleMatch{
+		Pack:         "test",
+		Path:         "subdir/test.sh",
+		AbsolutePath: scriptPath,
+		HandlerName:  "install",
+	}
+
+	ops, err := handler.ToOperations([]types.RuleMatch{match})
+	require.NoError(t, err)
+
+	// Sentinel should use basename of path, not full path
+	assert.True(t, strings.HasPrefix(ops[0].Sentinel, "test.sh-"))
+	assert.False(t, strings.Contains(ops[0].Sentinel, "subdir"))
 }

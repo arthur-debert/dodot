@@ -27,7 +27,7 @@ const (
 	CheckSentinel
 )
 
-// Operation represents a single atomic action to be performed.
+// Operation represents a single atomic unit of work to be performed.
 // Operations are the bridge between handlers (which understand file patterns)
 // and the datastore (which only knows how to perform these 4 operations).
 type Operation struct {
@@ -39,30 +39,6 @@ type Operation struct {
 	Command  string                 // For RunCommand: command to execute
 	Sentinel string                 // For RunCommand/CheckSentinel: completion marker
 	Metadata map[string]interface{} // Handler-specific data for customization
-}
-
-// SimpleDataStore defines the minimal interface for dodot's storage needs.
-// This replaces the current 20+ method interface with just 4 operations.
-// The simplicity is intentional - handlers should contain logic, not the storage layer.
-type SimpleDataStore interface {
-	// CreateDataLink links a source file into the datastore structure.
-	// Returns the path to the created link in the datastore.
-	// This is step 1 for handlers that need to stage files.
-	CreateDataLink(pack, handlerName, sourceFile string) (datastorePath string, err error)
-
-	// CreateUserLink creates a user-visible symlink.
-	// This is step 2 for the symlink handler to make files accessible.
-	// Other handlers don't need this - their files are accessed via shell init.
-	CreateUserLink(datastorePath, userPath string) error
-
-	// RunAndRecord executes a command and records completion with a sentinel.
-	// This is idempotent - if the sentinel exists, the command is not re-run.
-	// Used by provisioning handlers (install, homebrew) to track completion.
-	RunAndRecord(pack, handlerName, command, sentinel string) error
-
-	// HasSentinel checks if an operation has been completed.
-	// This enables idempotent operations and status reporting.
-	HasSentinel(pack, handlerName, sentinel string) (bool, error)
 }
 
 // OperationResult captures the outcome of executing an operation.

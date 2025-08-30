@@ -35,6 +35,11 @@ func (m *MockSimpleDataStore) HasSentinel(pack, handlerName, sentinel string) (b
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
+	args := m.Called(pack, handlerName)
+	return args.Error(0)
+}
+
 type MockConfirmer struct {
 	mock.Mock
 }
@@ -48,7 +53,7 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 	// This test verifies the shell handler works with the operation system
 
 	// Create simplified handler
-	handler := shell.NewSimplifiedHandler()
+	handler := shell.NewHandler()
 
 	// Create test matches
 	matches := []types.RuleMatch{
@@ -105,7 +110,7 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
 	// This test verifies actual execution with the datastore
 
-	handler := shell.NewSimplifiedHandler()
+	handler := shell.NewHandler()
 
 	matches := []types.RuleMatch{
 		{
@@ -144,7 +149,7 @@ func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
 
 func TestShellHandler_ClearIntegration(t *testing.T) {
 	// Test clear functionality
-	handler := shell.NewSimplifiedHandler()
+	handler := shell.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -168,5 +173,5 @@ func TestShellHandler_ClearIntegration(t *testing.T) {
 	item := clearedItems[0]
 	assert.Equal(t, "shell_state", item.Type)
 	assert.Contains(t, item.Path, "bash/shell")
-	assert.Equal(t, "Would remove shell profile sources", item.Description)
+	assert.Equal(t, "Would remove shell state", item.Description)
 }

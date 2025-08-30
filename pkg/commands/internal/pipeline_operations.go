@@ -6,7 +6,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/errors"
-	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
@@ -16,8 +15,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/arthur-debert/dodot/pkg/ui/confirmations"
 )
 
 // RunPipelineWithOperations runs the pipeline using the new operation system.
@@ -51,130 +50,54 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 	}
 
 	// Group matches by handler for operation conversion
-	matchesByHandler := core.GroupMatchesByHandler(filteredMatches)
+	matchesByHandler := rules.GroupMatchesByHandler(filteredMatches)
 
-	// Convert matches to operations using simplified handlers where available
+	// Phase 3: All handlers are simplified - convert matches to operations
 	var allOperations []operations.Operation
-	var fallbackActions []types.Action
 
 	for handlerName, handlerMatches := range matchesByHandler {
-		if operations.IsHandlerSimplified(handlerName) {
-			// Use simplified handler to generate operations
-			logger.Debug().
-				Str("handler", handlerName).
-				Int("matches", len(handlerMatches)).
-				Msg("Using simplified handler")
+		logger.Debug().
+			Str("handler", handlerName).
+			Int("matches", len(handlerMatches)).
+			Msg("Converting matches to operations")
 
-			handler := getSimplifiedHandler(handlerName)
-			if handler != nil {
-				ops, err := handler.ToOperations(handlerMatches)
-				if err != nil {
-					return nil, errors.Wrapf(err, errors.ErrInternal,
-						"failed to convert matches to operations for handler %s", handlerName)
-				}
-				allOperations = append(allOperations, ops...)
-			}
-		} else {
-			// Fall back to regular action generation for non-migrated handlers
-			logger.Debug().
-				Str("handler", handlerName).
-				Int("matches", len(handlerMatches)).
-				Msg("Using legacy handler")
-
-			actionResult, err := core.GetActionsWithConfirmations(handlerMatches)
+		handler := getHandler(handlerName)
+		if handler != nil {
+			ops, err := handler.ToOperations(handlerMatches)
 			if err != nil {
 				return nil, errors.Wrapf(err, errors.ErrInternal,
-					"failed to generate actions for handler %s", handlerName)
+					"failed to convert matches to operations for handler %s", handlerName)
 			}
-
-			// Handle confirmations if needed
-			if actionResult.HasConfirmations() {
-				dialog := confirmations.NewConsoleDialog()
-				confirmCtx, err := core.CollectAndProcessConfirmations(actionResult.Confirmations, dialog)
-				if err != nil {
-					return nil, err
-				}
-				if !confirmCtx.AllApproved(getConfirmationIDs(actionResult.Confirmations)) {
-					// User cancelled
-					ctx := types.NewExecutionContext(getCommandFromMode(opts.CommandMode), opts.DryRun)
-					ctx.Complete()
-					return ctx, nil
-				}
-			}
-
-			fallbackActions = append(fallbackActions, actionResult.Actions...)
+			allOperations = append(allOperations, ops...)
 		}
 	}
 
 	// Create execution context
 	ctx := types.NewExecutionContext(getCommandFromMode(opts.CommandMode), opts.DryRun)
 
-	// If we have operations, execute them
-	if len(allOperations) > 0 {
-		// Create datastore and operation executor
-		fs := filesystem.NewOS()
-		dataStore := datastore.New(fs, pathsInstance)
+	// Create datastore and operation executor
+	fs := filesystem.NewOS()
+	dataStore := datastore.New(fs, pathsInstance)
 
-		// Create operation datastore adapter
-		opDataStore := operations.NewDataStoreAdapter(dataStore, fs)
+	// Create confirmer
+	confirmer := &simpleConfirmer{}
 
-		// Create confirmer
-		// For phase 1, we'll use a simple confirmer that always approves
-		confirmer := &simpleConfirmer{}
+	// Create operation executor
+	// Phase 3: Use DataStore directly, no adapter needed
+	executor := operations.NewExecutor(dataStore, fs, confirmer, opts.DryRun)
 
-		// Create operation executor
-		executor := operations.NewExecutor(opDataStore, fs, confirmer, opts.DryRun)
-
-		// Execute operations grouped by handler
-		for handlerName, handlerOps := range groupOperationsByHandler(allOperations) {
-			handler := getSimplifiedHandler(handlerName)
-			if handler != nil {
-				results, err := executor.Execute(handlerOps, handler)
-				if err != nil {
-					ctx.Complete()
-					return ctx, err
-				}
-
-				// Convert operation results to pack results
-				addOperationResultsToContext(ctx, results, selectedPacks)
-			}
-		}
-	}
-
-	// Execute fallback actions using regular executor
-	if len(fallbackActions) > 0 {
-		fs := filesystem.NewOS()
-		dataStore := datastore.New(fs, pathsInstance)
-
-		// Filter provisioning if needed
-		if opts.CommandMode == CommandModeAll && !opts.Force {
-			fallbackActions, err = core.FilterProvisioningActions(fallbackActions, opts.Force, dataStore)
+	// Execute operations grouped by handler
+	for handlerName, handlerOps := range groupOperationsByHandler(allOperations) {
+		handler := getHandler(handlerName)
+		if handler != nil {
+			results, err := executor.Execute(handlerOps, handler)
 			if err != nil {
-				return nil, err
-			}
-		}
-
-		// Execute with regular executor
-		exec := executor.New(executor.Options{
-			DataStore: dataStore,
-			DryRun:    opts.DryRun,
-			Logger:    logging.GetLogger("executor"),
-		})
-
-		results := exec.Execute(fallbackActions)
-
-		// Add results to context
-		packResultsMap := convertActionResultsToPackResults(results, selectedPacks)
-		for packName, packResult := range packResultsMap {
-			ctx.AddPackResult(packName, packResult)
-		}
-
-		// Check for errors
-		for _, result := range results {
-			if !result.Success && result.Error != nil {
 				ctx.Complete()
-				return ctx, errors.New(errors.ErrActionExecute, "some actions failed during execution")
+				return ctx, err
 			}
+
+			// Convert operation results to pack results
+			addOperationResultsToContext(ctx, results, selectedPacks)
 		}
 	}
 
@@ -182,22 +105,22 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 	return ctx, nil
 }
 
-// getSimplifiedHandler returns the simplified handler for the given name.
-// This is where we instantiate simplified handlers during phase 2.
-func getSimplifiedHandler(handlerName string) operations.Handler {
+// getHandler returns the simplified handler for the given name.
+// Phase 3: All handlers are now simplified.
+func getHandler(handlerName string) operations.Handler {
 	switch handlerName {
 	case operations.HandlerPath:
-		return pathHandler.NewSimplifiedHandler()
+		return pathHandler.NewHandler()
 	case operations.HandlerSymlink:
-		return symlink.NewSimplifiedHandler()
+		return symlink.NewHandler()
 	case operations.HandlerShell:
-		return shell.NewSimplifiedHandler()
+		return shell.NewHandler()
 	case operations.HandlerInstall:
-		return install.NewSimplifiedHandler()
+		return install.NewHandler()
 	case operations.HandlerHomebrew:
-		return homebrew.NewSimplifiedHandler()
+		return homebrew.NewHandler()
 	default:
-		// Other handlers not yet migrated
+		// Unknown handler
 		return nil
 	}
 }

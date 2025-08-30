@@ -13,15 +13,11 @@ dodot is built on a set of core principles that drive every design decision.
 
 ## The Mental Model
 
-dodot thinks in three concepts:
-
-**Packs** → **Handlers** → **Actions**
+**Packs** → **Handlers** → **Operations**
 
 - **Packs**: Directories of related dotfiles (vim/, zsh/, git/)
-- **Handlers**: Skills dodot has (symlink, provision, brew, shell)
-- **Actions**: What gets done ("symlink .vimrc to ~/.vimrc")
-
-That's it. No databases, no state files, no magic.
+- **Handlers**: Convert file matches to operations (symlink, provision, brew, shell, path)
+- **Operations**: Four types - CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
 
 ## Design Philosophy
 
@@ -49,8 +45,8 @@ You can override these, but the defaults handle 90% of cases.
 ### Separation of Concerns
 
 1. **Rules** match files to handlers
-2. **Handlers** generate actions (plan)
-3. **Actions** execute operations (do)
+2. **Handlers** convert matches to operations (plan)
+3. **Operations** execute through minimal DataStore API (do)
 
 Each layer is independent and testable.
 
@@ -59,7 +55,7 @@ Each layer is independent and testable.
 Every dodot command follows the same pipeline:
 
 ```
-Discover Packs → Match Rules → Generate Actions → Execute Actions
+Discover Packs → Match Rules → Generate Operations → Execute Operations
 ```
 
 This predictability means:

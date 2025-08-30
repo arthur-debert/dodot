@@ -3,6 +3,7 @@ package datastore
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,119 +25,98 @@ func New(fs types.FS, paths paths.Paths) DataStore {
 	}
 }
 
-func (s *filesystemDataStore) Link(pack, sourceFile string) (string, error) {
+// CreateDataLink implements the simplified DataStore interface.
+// It links a source file into the datastore structure based on handler type.
+func (s *filesystemDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
 	baseName := filepath.Base(sourceFile)
-	intermediateLinkDir := s.paths.PackHandlerDir(pack, "symlinks")
-	intermediateLinkPath := filepath.Join(intermediateLinkDir, baseName)
+	linkDir := s.paths.PackHandlerDir(pack, handlerName)
+	linkPath := filepath.Join(linkDir, baseName)
 
-	if err := s.fs.MkdirAll(intermediateLinkDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create intermediate directory for pack %s: %w", pack, err)
+	if err := s.fs.MkdirAll(linkDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create directory for pack %s handler %s: %w", pack, handlerName, err)
 	}
 
 	// If the link already exists and points to the correct source, do nothing.
-	if currentTarget, err := s.fs.Readlink(intermediateLinkPath); err == nil && currentTarget == sourceFile {
-		return intermediateLinkPath, nil
+	if currentTarget, err := s.fs.Readlink(linkPath); err == nil && currentTarget == sourceFile {
+		return linkPath, nil
 	}
 
 	// If it exists but is wrong, remove it first.
-	if _, err := s.fs.Lstat(intermediateLinkPath); err == nil {
-		if err := s.fs.Remove(intermediateLinkPath); err != nil {
-			return "", fmt.Errorf("failed to remove existing incorrect intermediate link: %w", err)
+	if _, err := s.fs.Lstat(linkPath); err == nil {
+		if err := s.fs.Remove(linkPath); err != nil {
+			return "", fmt.Errorf("failed to remove existing incorrect link: %w", err)
 		}
 	}
 
-	if err := s.fs.Symlink(sourceFile, intermediateLinkPath); err != nil {
-		return "", fmt.Errorf("failed to create intermediate symlink: %w", err)
+	if err := s.fs.Symlink(sourceFile, linkPath); err != nil {
+		return "", fmt.Errorf("failed to create symlink: %w", err)
 	}
 
-	return intermediateLinkPath, nil
+	return linkPath, nil
 }
 
-func (s *filesystemDataStore) Unlink(pack, sourceFile string) error {
-	baseName := filepath.Base(sourceFile)
-	intermediateLinkPath := filepath.Join(s.paths.PackHandlerDir(pack, "symlinks"), baseName)
-
-	// If the link doesn't exist, there's nothing to do.
-	if _, err := s.fs.Lstat(intermediateLinkPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil
+// CreateUserLink implements the simplified DataStore interface.
+// It creates a user-visible symlink from datastore to user location.
+func (s *filesystemDataStore) CreateUserLink(datastorePath, userPath string) error {
+	// Expand home directory if needed
+	expandedPath := userPath
+	if strings.HasPrefix(userPath, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("failed to get home directory: %w", err)
 		}
-		return fmt.Errorf("failed to stat intermediate link: %w", err)
+		expandedPath = filepath.Join(home, userPath[2:])
 	}
 
-	if err := s.fs.Remove(intermediateLinkPath); err != nil {
-		return fmt.Errorf("failed to remove intermediate symlink: %w", err)
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(expandedPath)
+	if err := s.fs.MkdirAll(parentDir, 0755); err != nil {
+		return fmt.Errorf("failed to create parent directory: %w", err)
+	}
+
+	// Remove existing file/link if present
+	if err := s.fs.Remove(expandedPath); err != nil && !os.IsNotExist(err) {
+		// Try to check if it's a directory
+		if stat, statErr := s.fs.Stat(expandedPath); statErr == nil && stat.IsDir() {
+			return fmt.Errorf("target path is a directory: %s", expandedPath)
+		}
+	}
+
+	// Create the symlink
+	if err := s.fs.Symlink(datastorePath, expandedPath); err != nil {
+		return fmt.Errorf("failed to create symlink: %w", err)
 	}
 
 	return nil
 }
 
-func (s *filesystemDataStore) AddToPath(pack, dirPath string) error {
-	baseName := filepath.Base(dirPath)
-	intermediateLinkDir := s.paths.PackHandlerDir(pack, "path")
-	intermediateLinkPath := filepath.Join(intermediateLinkDir, baseName)
+// RunAndRecord implements the simplified DataStore interface.
+// It executes a command and records completion with a sentinel.
+func (s *filesystemDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
+	// Check if already run using the existing method
+	sentinelDir := s.paths.PackHandlerDir(pack, handlerName)
+	sentinelPath := filepath.Join(sentinelDir, sentinel)
 
-	if err := s.fs.MkdirAll(intermediateLinkDir, 0755); err != nil {
-		return fmt.Errorf("failed to create path directory for pack %s: %w", pack, err)
-	}
-
-	// If the link already exists and points to the correct source, do nothing.
-	if currentTarget, err := s.fs.Readlink(intermediateLinkPath); err == nil && currentTarget == dirPath {
+	// Check if sentinel exists
+	if _, err := s.fs.Stat(sentinelPath); err == nil {
+		// Already run, skip
 		return nil
 	}
 
-	// If it exists but is wrong, remove it first.
-	if _, err := s.fs.Lstat(intermediateLinkPath); err == nil {
-		if err := s.fs.Remove(intermediateLinkPath); err != nil {
-			return fmt.Errorf("failed to remove existing incorrect path link: %w", err)
-		}
+	// Execute the command
+	cmd := exec.Command("sh", "-c", command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("command failed: %w\nOutput: %s", err, output)
 	}
 
-	if err := s.fs.Symlink(dirPath, intermediateLinkPath); err != nil {
-		return fmt.Errorf("failed to create path symlink: %w", err)
-	}
-
-	return nil
-}
-
-func (s *filesystemDataStore) AddToShellProfile(pack, scriptPath string) error {
-	baseName := filepath.Base(scriptPath)
-	intermediateLinkDir := s.paths.PackHandlerDir(pack, "shell")
-	intermediateLinkPath := filepath.Join(intermediateLinkDir, baseName)
-
-	if err := s.fs.MkdirAll(intermediateLinkDir, 0755); err != nil {
-		return fmt.Errorf("failed to create shell directory for pack %s: %w", pack, err)
-	}
-
-	// If the link already exists and points to the correct source, do nothing.
-	if currentTarget, err := s.fs.Readlink(intermediateLinkPath); err == nil && currentTarget == scriptPath {
-		return nil
-	}
-
-	// If it exists but is wrong, remove it first.
-	if _, err := s.fs.Lstat(intermediateLinkPath); err == nil {
-		if err := s.fs.Remove(intermediateLinkPath); err != nil {
-			return fmt.Errorf("failed to remove existing incorrect shell link: %w", err)
-		}
-	}
-
-	if err := s.fs.Symlink(scriptPath, intermediateLinkPath); err != nil {
-		return fmt.Errorf("failed to create shell symlink: %w", err)
-	}
-
-	return nil
-}
-
-func (s *filesystemDataStore) RecordProvisioning(pack, sentinelName, checksum string) error {
-	sentinelDir := s.paths.PackHandlerDir(pack, "install")
-	sentinelPath := filepath.Join(sentinelDir, sentinelName)
-
+	// Record completion
 	if err := s.fs.MkdirAll(sentinelDir, 0755); err != nil {
-		return fmt.Errorf("failed to create install directory for pack %s: %w", pack, err)
+		return fmt.Errorf("failed to create sentinel directory: %w", err)
 	}
 
-	// Use pipe separator to avoid conflicts with checksums that contain colons
-	content := fmt.Sprintf("%s|%s", checksum, time.Now().Format(time.RFC3339))
+	// Write sentinel with timestamp
+	content := fmt.Sprintf("completed|%s", time.Now().Format(time.RFC3339))
 	if err := s.fs.WriteFile(sentinelPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write sentinel file: %w", err)
 	}
@@ -144,412 +124,35 @@ func (s *filesystemDataStore) RecordProvisioning(pack, sentinelName, checksum st
 	return nil
 }
 
-func (s *filesystemDataStore) NeedsProvisioning(pack, sentinelName, checksum string) (bool, error) {
-	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, "install"), sentinelName)
-
-	content, err := s.fs.ReadFile(sentinelPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return true, nil
-		}
-		return false, fmt.Errorf("failed to read sentinel file: %w", err)
-	}
-
-	// The content format is "checksum|timestamp"
-	parts := strings.SplitN(string(content), "|", 2)
-	if len(parts) < 1 {
-		// Invalid sentinel file, assume provisioning is needed
+// HasSentinel implements the simplified DataStore interface.
+// It checks if an operation has been completed.
+func (s *filesystemDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
+	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, handlerName), sentinel)
+	_, err := s.fs.Stat(sentinelPath)
+	if err == nil {
 		return true, nil
 	}
-
-	return parts[0] != checksum, nil
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, fmt.Errorf("failed to check sentinel: %w", err)
 }
 
-// getPreviousRun retrieves information about the last execution of a handler
-// Returns the timestamp and checksum if available, or nil if never run
-func (s *filesystemDataStore) getPreviousRun(pack, handler, sentinelName string) (*time.Time, string, error) {
-	sentinelPath := filepath.Join(s.paths.PackHandlerDir(pack, handler), sentinelName)
-
-	content, err := s.fs.ReadFile(sentinelPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, "", nil
-		}
-		return nil, "", fmt.Errorf("failed to read sentinel file: %w", err)
-	}
-
-	// The content format is "checksum|timestamp"
-	parts := strings.SplitN(string(content), "|", 2)
-	if len(parts) < 2 {
-		// Invalid sentinel file format
-		return nil, "", nil
-	}
-
-	timestamp, err := time.Parse(time.RFC3339, parts[1])
-	if err != nil {
-		// Invalid timestamp, ignore it
-		return nil, parts[0], nil
-	}
-
-	return &timestamp, parts[0], nil
-}
-
-// checkIntermediateLink checks if an intermediate link exists and is valid
-func (s *filesystemDataStore) checkIntermediateLink(intermediateLinkPath, expectedTarget string) (exists bool, valid bool, err error) {
-	info, err := s.fs.Lstat(intermediateLinkPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, false, nil
-		}
-		return false, false, fmt.Errorf("failed to stat intermediate link: %w", err)
-	}
-
-	if info.Mode()&os.ModeSymlink == 0 {
-		// File exists but is not a symlink
-		return true, false, nil
-	}
-
-	target, err := s.fs.Readlink(intermediateLinkPath)
-	if err != nil {
-		return true, false, fmt.Errorf("failed to read link target: %w", err)
-	}
-
-	return true, target == expectedTarget, nil
-}
-
-// GetStatus checks the deployment status of any handler type
-func (s *filesystemDataStore) GetStatus(pack, sourceFile string) (types.Status, error) {
-	// This is the general entry point, but we need more context to determine handler type
-	// For now, default to symlink handler behavior for backward compatibility
-	return s.GetSymlinkStatus(pack, sourceFile)
-}
-
-// GetSymlinkStatus checks the status of a symlink deployment
-func (s *filesystemDataStore) GetSymlinkStatus(pack, sourceFile string) (types.Status, error) {
-	baseName := filepath.Base(sourceFile)
-	intermediateLinkPath := filepath.Join(s.paths.PackHandlerDir(pack, "symlinks"), baseName)
-
-	exists, valid, err := s.checkIntermediateLink(intermediateLinkPath, sourceFile)
-	if err != nil {
-		return types.Status{}, err
-	}
-
-	if !exists {
-		return types.Status{
-			State:   types.StatusStateMissing,
-			Message: "not linked",
-		}, nil
-	}
-
-	if !valid {
-		return types.Status{
-			State:   types.StatusStateError,
-			Message: "intermediate link points to wrong source",
-			ErrorDetails: &types.StatusErrorDetails{
-				ErrorType:        "invalid_intermediate",
-				IntermediatePath: intermediateLinkPath,
-				SourcePath:       sourceFile,
-			},
-		}, nil
-	}
-
-	// Check if source file still exists
-	// Note: We check using the absolute path since the filesystem might be relative
-	if _, err := s.fs.Stat(sourceFile); err != nil {
-		if os.IsNotExist(err) {
-			return types.Status{
-				State:   types.StatusStateError,
-				Message: "source file missing",
-				ErrorDetails: &types.StatusErrorDetails{
-					ErrorType:        "missing_source",
-					IntermediatePath: intermediateLinkPath,
-					SourcePath:       sourceFile,
-				},
-			}, nil
-		}
-		// If it's not "not exist", it might be because we're using relative paths
-		// Return ready status if we can't determine file existence
-	}
-
-	return types.Status{
-		State:   types.StatusStateReady,
-		Message: "linked",
-	}, nil
-}
-
-// GetPathStatus checks the status of a PATH directory deployment
-func (s *filesystemDataStore) GetPathStatus(pack, dirPath string) (types.Status, error) {
-	baseName := filepath.Base(dirPath)
-	intermediateLinkPath := filepath.Join(s.paths.PackHandlerDir(pack, "path"), baseName)
-
-	exists, valid, err := s.checkIntermediateLink(intermediateLinkPath, dirPath)
-	if err != nil {
-		return types.Status{}, err
-	}
-
-	if !exists {
-		return types.Status{
-			State:   types.StatusStateMissing,
-			Message: "not in PATH",
-		}, nil
-	}
-
-	if !valid {
-		return types.Status{
-			State:   types.StatusStateError,
-			Message: "PATH link points to wrong directory",
-		}, nil
-	}
-
-	return types.Status{
-		State:   types.StatusStateReady,
-		Message: "added to PATH",
-	}, nil
-}
-
-// GetShellProfileStatus checks the status of a shell profile script deployment
-func (s *filesystemDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
-	baseName := filepath.Base(scriptPath)
-	intermediateLinkPath := filepath.Join(s.paths.PackHandlerDir(pack, "shell"), baseName)
-
-	exists, valid, err := s.checkIntermediateLink(intermediateLinkPath, scriptPath)
-	if err != nil {
-		return types.Status{}, err
-	}
-
-	if !exists {
-		return types.Status{
-			State:   types.StatusStateMissing,
-			Message: "not sourced in shell",
-		}, nil
-	}
-
-	if !valid {
-		return types.Status{
-			State:   types.StatusStateError,
-			Message: "shell profile link points to wrong script",
-		}, nil
-	}
-
-	return types.Status{
-		State:   types.StatusStateReady,
-		Message: "sourced in shell profile",
-	}, nil
-}
-
-// GetProvisioningStatus checks the status of a provisioning action
-func (s *filesystemDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
-	timestamp, lastChecksum, err := s.getPreviousRun(pack, "install", sentinelName)
-	if err != nil {
-		return types.Status{}, err
-	}
-
-	if timestamp == nil {
-		return types.Status{
-			State:   types.StatusStateMissing,
-			Message: "never run",
-		}, nil
-	}
-
-	if lastChecksum != currentChecksum {
-		return types.Status{
-			State:     types.StatusStatePending,
-			Message:   "file changed, needs re-run",
-			Timestamp: timestamp,
-		}, nil
-	}
-
-	return types.Status{
-		State:     types.StatusStateReady,
-		Message:   "provisioned",
-		Timestamp: timestamp,
-	}, nil
-}
-
-// GetBrewStatus checks the status of a Homebrew deployment
-func (s *filesystemDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error) {
-	sentinelName := fmt.Sprintf("homebrew-%s.sentinel", pack)
-	timestamp, lastChecksum, err := s.getPreviousRun(pack, "homebrew", sentinelName)
-	if err != nil {
-		return types.Status{}, err
-	}
-
-	if timestamp == nil {
-		return types.Status{
-			State:   types.StatusStateMissing,
-			Message: "never installed",
-		}, nil
-	}
-
-	if lastChecksum != currentChecksum {
-		return types.Status{
-			State:     types.StatusStatePending,
-			Message:   "Brewfile changed, needs update",
-			Timestamp: timestamp,
-		}, nil
-	}
-
-	return types.Status{
-		State:     types.StatusStateReady,
-		Message:   "packages installed",
-		Timestamp: timestamp,
-	}, nil
-}
-
-// DeleteProvisioningState removes all provisioning state for a handler in a pack.
-func (s *filesystemDataStore) DeleteProvisioningState(packName, handlerName string) error {
-	// Only allow deletion of provisioning handlers
-	if !isProvisioningHandler(handlerName) {
-		return fmt.Errorf("cannot delete state for non-provisioning handler: %s", handlerName)
-	}
-
-	handlerDir := s.paths.PackHandlerDir(packName, handlerName)
+// RemoveState implements the simplified DataStore interface.
+// It removes all state for a handler in a pack.
+func (s *filesystemDataStore) RemoveState(pack, handlerName string) error {
+	stateDir := s.paths.PackHandlerDir(pack, handlerName)
 
 	// Check if directory exists
-	if _, err := s.fs.Stat(handlerDir); err != nil {
-		if os.IsNotExist(err) {
-			// Directory doesn't exist, nothing to do
-			return nil
-		}
-		return fmt.Errorf("failed to check handler directory: %w", err)
+	if _, err := s.fs.Stat(stateDir); os.IsNotExist(err) {
+		// Nothing to remove
+		return nil
 	}
 
-	// Remove the entire handler directory
-	if err := s.fs.RemoveAll(handlerDir); err != nil {
-		return fmt.Errorf("failed to remove handler state directory: %w", err)
+	// Remove the entire state directory
+	if err := s.fs.RemoveAll(stateDir); err != nil {
+		return fmt.Errorf("failed to remove state directory: %w", err)
 	}
 
 	return nil
-}
-
-// GetProvisioningHandlers returns list of handlers that have provisioning state.
-func (s *filesystemDataStore) GetProvisioningHandlers(packName string) ([]string, error) {
-	// Build the pack state directory path
-	packStateDir := filepath.Join(s.paths.DataDir(), "packs", packName)
-
-	// Check if pack directory exists
-	entries, err := s.fs.ReadDir(packStateDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []string{}, nil
-		}
-		return nil, fmt.Errorf("failed to read pack directory: %w", err)
-	}
-
-	var handlers []string
-	for _, entry := range entries {
-		if entry.IsDir() && isProvisioningHandler(entry.Name()) {
-			// Check if the handler directory has any content
-			handlerDir := filepath.Join(packStateDir, entry.Name())
-			contents, err := s.fs.ReadDir(handlerDir)
-			if err != nil {
-				continue // Skip if we can't read it
-			}
-			if len(contents) > 0 {
-				handlers = append(handlers, entry.Name())
-			}
-		}
-	}
-
-	return handlers, nil
-}
-
-// ListProvisioningState returns details about what provisioning state exists.
-func (s *filesystemDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
-	result := make(map[string][]string)
-	// Build the pack state directory path
-	packStateDir := filepath.Join(s.paths.DataDir(), "packs", packName)
-
-	// Check if pack directory exists
-	entries, err := s.fs.ReadDir(packStateDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return result, nil
-		}
-		return nil, fmt.Errorf("failed to read pack directory: %w", err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() && isProvisioningHandler(entry.Name()) {
-			handlerDir := filepath.Join(packStateDir, entry.Name())
-			contents, err := s.fs.ReadDir(handlerDir)
-			if err != nil {
-				continue // Skip if we can't read it
-			}
-
-			var stateFiles []string
-			for _, file := range contents {
-				if !file.IsDir() {
-					stateFiles = append(stateFiles, file.Name())
-				}
-			}
-
-			if len(stateFiles) > 0 {
-				result[entry.Name()] = stateFiles
-			}
-		}
-	}
-
-	return result, nil
-}
-
-// isProvisioningHandler returns true if the handler is a provisioning handler
-func isProvisioningHandler(handlerName string) bool {
-	switch handlerName {
-	case "install", "homebrew":
-		return true
-	default:
-		return false
-	}
-}
-
-// Generic state management implementation
-
-// StoreState saves arbitrary state for a handler in a pack
-// For now, this routes to the existing handler-specific methods
-// In the future, we'll have a unified state storage mechanism
-func (s *filesystemDataStore) StoreState(packName, handlerName string, state interface{}) error {
-	// TODO: Implement generic state storage
-	// For now, return error to indicate not yet implemented
-	return fmt.Errorf("generic StoreState not yet implemented for handler %s", handlerName)
-}
-
-// RemoveState removes all state for a handler in a pack
-// This is the unified method that will replace handler-specific removal
-func (s *filesystemDataStore) RemoveState(packName, handlerName string) error {
-	// Route to appropriate removal method based on handler type
-	switch handlerName {
-	case "symlink":
-		// Symlinks are stored as actual symlinks in the pack's symlinks directory
-		symlinkDir := s.paths.PackHandlerDir(packName, "symlinks")
-		return s.fs.RemoveAll(symlinkDir)
-
-	case "shell_profile":
-		// Shell profiles are stored in the shell_profiles directory
-		profileDir := s.paths.PackHandlerDir(packName, "shell_profiles")
-		return s.fs.RemoveAll(profileDir)
-
-	case "path":
-		// PATH entries are stored in the paths directory
-		pathDir := s.paths.PackHandlerDir(packName, "paths")
-		return s.fs.RemoveAll(pathDir)
-
-	case "install", "homebrew":
-		// Provisioning handlers store their state differently
-		// For now, we'll handle them through the existing provisioning paths
-		stateDir := s.paths.PackHandlerDir(packName, handlerName)
-		return s.fs.RemoveAll(stateDir)
-
-	default:
-		// Unknown handler - no state to remove
-		return nil
-	}
-}
-
-// GetState retrieves state for a handler in a pack
-// For now, this routes to the existing handler-specific methods
-func (s *filesystemDataStore) GetState(packName, handlerName string) (interface{}, error) {
-	// TODO: Implement generic state retrieval
-	// For now, return error to indicate not yet implemented
-	return nil, fmt.Errorf("generic GetState not yet implemented for handler %s", handlerName)
 }

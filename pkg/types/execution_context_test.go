@@ -46,10 +46,10 @@ func TestNewExecutionContext(t *testing.T) {
 			assert.Empty(t, ec.PackResults)
 			assert.False(t, ec.StartTime.IsZero())
 			assert.True(t, ec.EndTime.IsZero())
-			assert.Equal(t, 0, ec.TotalActions)
-			assert.Equal(t, 0, ec.CompletedActions)
-			assert.Equal(t, 0, ec.FailedActions)
-			assert.Equal(t, 0, ec.SkippedActions)
+			assert.Equal(t, 0, ec.TotalHandlers)
+			assert.Equal(t, 0, ec.CompletedHandlers)
+			assert.Equal(t, 0, ec.FailedHandlers)
+			assert.Equal(t, 0, ec.SkippedHandlers)
 		})
 	}
 }
@@ -77,18 +77,18 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 	// Add first pack
 	ec.AddPackResult("vim", pack1Result)
 	assert.Equal(t, 1, len(ec.PackResults))
-	assert.Equal(t, 5, ec.TotalActions)
-	assert.Equal(t, 3, ec.CompletedActions)
-	assert.Equal(t, 1, ec.FailedActions)
-	assert.Equal(t, 1, ec.SkippedActions)
+	assert.Equal(t, 5, ec.TotalHandlers)
+	assert.Equal(t, 3, ec.CompletedHandlers)
+	assert.Equal(t, 1, ec.FailedHandlers)
+	assert.Equal(t, 1, ec.SkippedHandlers)
 
 	// Add second pack
 	ec.AddPackResult("zsh", pack2Result)
 	assert.Equal(t, 2, len(ec.PackResults))
-	assert.Equal(t, 8, ec.TotalActions)
-	assert.Equal(t, 5, ec.CompletedActions)
-	assert.Equal(t, 1, ec.FailedActions)
-	assert.Equal(t, 2, ec.SkippedActions)
+	assert.Equal(t, 8, ec.TotalHandlers)
+	assert.Equal(t, 5, ec.CompletedHandlers)
+	assert.Equal(t, 1, ec.FailedHandlers)
+	assert.Equal(t, 2, ec.SkippedHandlers)
 }
 
 func TestExecutionContext_Complete(t *testing.T) {

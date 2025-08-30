@@ -11,89 +11,69 @@ to source files (e.g., $DOTFILES_ROOT/shell/zshrc). Instead, it uses a
 double-link structure where the linked file points to an intermediate 
 symlink in dodot's state directory, which then points to the source file.
 
-Why this design? The answer is state management. This structure ties together
-the link result, the thing itself, and our state representation.
-
-Alternative approaches like direct links with a JSON state file would require
-keeping the link and state in sync. Our design has key advantages:
-
-• No risk of being out of sync - the link IS the state
-• Easy debugging - if a state symlink points to a missing source file,
-  it's immediately visible
-• Robust and simple - no parsing, no corruption, just filesystem operations
-
-In essence: the filesystem structure itself is the state database.
+The double-link structure provides atomic state management: the link IS the state.
+No separate database to sync. Missing source files show as broken symlinks.
 
 State Storage Structure
 -----------------------
 
-Here's what dodot's state storage looks like after linking various handlers:
+Here's what dodot's state storage looks like with the new operations-based architecture:
 
 ```
 ~/.local/share/dodot/
-├── deployed/
-│   ├── symlink/         # Intermediate symlinks for regular files
-│   │   ├── .vimrc → ~/dotfiles/vim/vimrc
-│   │   ├── .zshrc → ~/dotfiles/zsh/zshrc
-│   │   └── .gitconfig → ~/dotfiles/git/gitconfig
+├── data/                # All handler state organized by pack
+│   ├── vim/
+│   │   ├── symlink/     # Intermediate symlinks
+│   │   │   ├── .vimrc → ~/dotfiles/vim/vimrc
+│   │   │   └── .gvimrc → ~/dotfiles/vim/gvimrc
+│   │   └── shell/       # Shell scripts to source
+│   │       └── aliases.sh → ~/dotfiles/vim/aliases.sh
 │   │
-│   ├── shell/   # Shell scripts to source
-│   │   ├── vim_aliases.sh → ~/dotfiles/vim/aliases.sh
-│   │   ├── git_functions.sh → ~/dotfiles/git/functions.sh
-│   │   └── tools_env.sh → ~/dotfiles/tools/env.sh
+│   ├── git/
+│   │   └── symlink/
+│   │       └── .gitconfig → ~/dotfiles/git/gitconfig
 │   │
-│   └── path/           # Directories to add to PATH
-│       ├── tools-bin → ~/dotfiles/tools/bin
-│       └── scripts-local → ~/dotfiles/scripts/.local/bin
-│
-├── homebrew/           # Brew execution tracking
-│   ├── tools_Brewfile.sentinel    # "sha256:2024-01-15T10:00:00Z"
-│   └── dev_Brewfile.sentinel      # "sha256:2024-01-20T14:30:00Z"
-│
-├── install/            # Provision script tracking
-│   ├── vim_install.sh.sentinel    # "sha256:2024-01-10T09:00:00Z"
-│   ├── tools_setup.sh.sentinel    # "sha256:2024-01-12T11:00:00Z"
-│   └── tools/                     # Copied scripts
-│       └── setup.sh
+│   ├── tools/
+│   │   ├── path/        # Directories to add to PATH
+│   │   │   └── bin → ~/dotfiles/tools/bin
+│   │   ├── homebrew/    # Brew execution tracking
+│   │   │   └── Brewfile.sentinel
+│   │   └── install/     # Provision script tracking
+│   │       └── setup.sh.sentinel
+│   │
+│   └── dev/
+│       └── install/
+│           └── install.sh.sentinel
 │
 └── shell/
-    └── dodot-init.sh   # Sources everything in shell/ and adds path/ to PATH
+    └── dodot-init.sh   # Sources shell scripts and adds directories to PATH
 ```
+
+State is organized by pack first, then handler. Each pack owns its state directory.
 
 How Each Handler Stores State
 ------------------------------
 
-1. Symlink Handler:
-   • Creates intermediate symlink in deployed/symlink/
-   • User's file (e.g., ~/.vimrc) points to intermediate
-   • Intermediate points to source in pack
+All handlers now use just 4 operation types through a minimal DataStore API:
+
+1. Configuration Handlers (symlink, shell, path):
+   • Use CreateDataLink operation
+   • Creates intermediate symlink in data/<pack>/<handler>/
+   • Links point to source files in pack
    • State = existence of these symlinks
 
-2. Shell Profile Handler:
-   • Creates symlinks in deployed/shell/
-   • Naming: <pack>_<filename> (e.g., vim_aliases.sh)
-   • dodot-init.sh sources all files in this directory
-   • State = existence of symlinks
+2. Code Execution Handlers (homebrew, install):
+   • Use RunCommand operation with sentinels
+   • Creates sentinel files in data/<pack>/<handler>/
+   • Content: "completed|timestamp"
+   • State = sentinel existence (idempotent execution)
 
-3. Path Handler:
-   • Creates symlinks in deployed/path/
-   • Naming: <pack>-<dirname> (e.g., tools-bin)
-   • Each symlink points to a directory to add to PATH
-   • dodot-init.sh iterates through these and adds to PATH
-   • State = existence of directory symlinks
-
-4. Homebrew Handler:
-   • Creates sentinel files in homebrew/
-   • Format: <pack>_Brewfile.sentinel
-   • Content: "checksum:timestamp"
-   • State = sentinel existence and checksum match
-
-5. Install Script Handler:
-   • Creates sentinel files in install/
-   • Copies scripts before execution for safety
-   • Format: <pack>_<script>.sentinel
-   • Content: "checksum:timestamp"
-   • State = sentinel existence and checksum match
+DataStore API (5 methods):
+• CreateDataLink(pack, handler, source) → datastorePath
+• CreateUserLink(datastorePath, userPath) → error
+• RunAndRecord(pack, handler, command, sentinel) → error
+• HasSentinel(pack, handler, sentinel) → bool
+• RemoveState(pack, handler) → error
 
 File Deployment Mapping
 -----------------------
@@ -141,36 +121,15 @@ Shell Integration
 
 dodot uses a single shell integration point: dodot-init.sh. This script:
 
-1. Sources all files in deployed/shell/
-2. Adds all directories in deployed/path/ to PATH
+1. Sources all files in data/*/shell/
+2. Adds all directories in data/*/path/ to PATH
 3. Exports environment variables for tracking
 4. Provides helper functions for status checking
 
 Your shell profile (.zshrc, .bashrc) only needs one line to source
 dodot-init.sh, avoiding multiple integration points.
 
-Storage Benefits
-----------------
 
-Version Control Integration:
-• Everything is stored in your git repository
-• No external databases or metadata
-• Easy to backup, share, and version
-
-Transparency:
-• You can see exactly what will be linked
-• The state IS the link - no hidden metadata
-• Easy to debug by examining symlinks
-
-Portability:
-• Works on any system with git and dodot
-• No migration or export procedures needed
-• Self-contained in your dotfiles repository
-
-Live Editing:
-• Edit files directly in your repository
-• Changes are immediately active via symlinks
-• No separate update or sync commands needed
 
 Storage Limitations
 -------------------
@@ -212,23 +171,26 @@ Understanding State Through Examples
 
 To check what's linked:
 ```
-# See all intermediate symlinks
-ls -la ~/.local/share/dodot/deployed/symlink/
+# See all state for a pack
+ls -la ~/.local/share/dodot/data/vim/
 
-# See what's added to PATH
-ls -la ~/.local/share/dodot/deployed/path/
+# See symlinks for a specific handler
+ls -la ~/.local/share/dodot/data/vim/symlink/
 
 # Check if a Brewfile was processed
-ls ~/.local/share/dodot/homebrew/
+ls ~/.local/share/dodot/data/tools/homebrew/
+
+# See all packs with state
+ls ~/.local/share/dodot/data/
 ```
 
 To understand a link:
 ```
 # Follow the symlink chain for .vimrc
 readlink ~/.vimrc
-# → /Users/you/.local/share/dodot/deployed/symlink/.vimrc
+# → /Users/you/.local/share/dodot/data/vim/symlink/.vimrc
 
-readlink /Users/you/.local/share/dodot/deployed/symlink/.vimrc  
+readlink /Users/you/.local/share/dodot/data/vim/symlink/.vimrc  
 # → /Users/you/dotfiles/vim/vimrc
 ```
 

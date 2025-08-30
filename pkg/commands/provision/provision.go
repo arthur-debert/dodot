@@ -35,13 +35,13 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 	log.Debug().Str("command", "ProvisionPacks").Msg("Executing command")
 
 	// Phase 1: Run all handlers (both code execution and configuration)
-	log.Debug().Msg("Phase 1: Executing provisioning actions (install scripts, brewfiles)")
+	log.Debug().Msg("Phase 1: Executing provisioning operations (install scripts, brewfiles)")
 	installCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
 		CommandMode:        internal.CommandModeAll, // Run all handler types
-		Force:              opts.Force,              // Force flag applies to provisioning actions
+		Force:              opts.Force,              // Force flag applies to provisioning operations
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 
@@ -52,17 +52,17 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
 			return installCtx, err // Return the original error to preserve error code
 		}
-		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning actions")
+		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning operations")
 	}
 
 	// Phase 2: Run configuration handlers only (symlinks, profiles, etc.)
-	log.Debug().Msg("Phase 2: Executing deployment actions (symlinks, profiles)")
+	log.Debug().Msg("Phase 2: Executing deployment operations (symlinks, profiles)")
 	deployCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
 		CommandMode:        internal.CommandModeConfiguration, // Only configuration handlers
-		Force:              false,                             // Force doesn't apply to deploy actions
+		Force:              false,                             // Force doesn't apply to deploy operations
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 
@@ -74,14 +74,14 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 			return mergeExecutionContexts(installCtx, deployCtx), err // Return the original error to preserve error code
 		}
 		// Return combined context with partial results from both phases
-		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute linking actions")
+		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute linking operations")
 	}
 
 	// Merge results from both phases
 	mergedCtx := mergeExecutionContexts(installCtx, deployCtx)
 
 	// Set up shell integration after successful execution (not in dry-run mode)
-	if !opts.DryRun && (mergedCtx.CompletedActions > 0 || mergedCtx.SkippedActions > 0) {
+	if !opts.DryRun && (mergedCtx.CompletedHandlers > 0 || mergedCtx.SkippedHandlers > 0) {
 		log.Debug().Msg("Installing shell integration")
 
 		// Create paths instance to get data directory
@@ -110,9 +110,9 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 	}
 
 	log.Info().
-		Int("installActions", installCtx.TotalActions).
-		Int("deployActions", deployCtx.TotalActions).
-		Int("totalActions", mergedCtx.TotalActions).
+		Int("installActions", installCtx.TotalHandlers).
+		Int("deployActions", deployCtx.TotalHandlers).
+		Int("totalActions", mergedCtx.TotalHandlers).
 		Str("command", "ProvisionPacks").
 		Msg("Command finished")
 
@@ -172,16 +172,16 @@ func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *type
 	}
 
 	// Recalculate totals (AddPackResult should have handled this, but be explicit)
-	merged.TotalActions = 0
-	merged.CompletedActions = 0
-	merged.FailedActions = 0
-	merged.SkippedActions = 0
+	merged.TotalHandlers = 0
+	merged.CompletedHandlers = 0
+	merged.FailedHandlers = 0
+	merged.SkippedHandlers = 0
 
 	for _, packResult := range merged.PackResults {
-		merged.TotalActions += packResult.TotalHandlers
-		merged.CompletedActions += packResult.CompletedHandlers
-		merged.FailedActions += packResult.FailedHandlers
-		merged.SkippedActions += packResult.SkippedHandlers
+		merged.TotalHandlers += packResult.TotalHandlers
+		merged.CompletedHandlers += packResult.CompletedHandlers
+		merged.FailedHandlers += packResult.FailedHandlers
+		merged.SkippedHandlers += packResult.SkippedHandlers
 	}
 
 	return merged

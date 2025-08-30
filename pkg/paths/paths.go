@@ -447,7 +447,7 @@ func (p *paths) HomebrewDir() string {
 
 // SentinelPath returns the path to a sentinel file for a given handler and pack.
 // This provides a unified way to construct sentinel file paths across the codebase.
-// The sentinel file is used to track whether a run-once action has been executed.
+// The sentinel file is used to track whether a run-once operation has been executed.
 //
 // The path structure is: <DataDir>/<handlerType>/<packName>
 // For example: ~/.local/share/dodot/provision/vim

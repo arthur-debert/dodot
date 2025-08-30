@@ -7,10 +7,10 @@ This document describes dodot's technical architecture and implementation detail
 
 - **Dotfiles Root**: Base directory containing all dotfile packs (defaults to ~/dotfiles)
 - **Pack**: A directory containing related dotfiles (vim/, git/, zsh/)
-- **Rule**: Pattern-to-handler mapping with priority (replaces triggers/matchers)
-- **Handler**: Action generator that processes matched files (symlink, provision, brew, shell)
-- **Action**: Self-contained operation to be executed
-- **DataStore**: Centralized state store for tracking operations
+- **Rule**: Pattern-to-handler mapping with priority
+- **Handler**: Converts matched files to operations (symlink, provision, brew, shell)
+- **Operation**: Atomic unit of work (CreateDataLink, CreateUserLink, RunCommand, CheckSentinel)
+- **DataStore**: Minimal 5-method API for state management
 
 ## Processing Pipeline
 
@@ -30,14 +30,14 @@ dodot follows a predictable four-stage pipeline:
 - Rules use simple patterns: *.sh, bin/, !*.tmp
 - Returns list of matches with handler assignments
 
-### Stage 3: Generation (GetActions)
+### Stage 3: Generation (ToOperations)
 - Matched files invoke their assigned handlers
-- Handlers generate actions for matched files
-- Actions are self-contained with all needed data
+- Handlers convert matches to simple operations
+- Operations are just data: type, pack, handler, source, target
 
-### Stage 4: Execution (Execute/Apply)
-- Actions execute through DataStore
-- Operations are performed in priority order
+### Stage 4: Execution (Execute)
+- Operations execute through minimal DataStore API
+- Only 4 operation types: CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
 - Results are tracked and reported
 
 ## State Management
@@ -64,9 +64,9 @@ pkg/
 ├── core/          # Pipeline functions (GetPacks, etc.)
 ├── types/         # Type definitions and interfaces
 ├── rules/         # Rule-based matching system
-├── handlers/      # Handler implementations
-├── actions/       # Action types
-├── datastore/     # State management
+├── handlers/      # Handler implementations (50-100 lines each)
+├── operations/    # Operation types and executor
+├── datastore/     # Minimal state management (5 methods)
 └── config/        # Configuration management
 ```
 
@@ -81,12 +81,26 @@ type Rule struct {
 }
 
 type Handler interface {
-    GenerateActions(pack Pack, files []string) ([]Action, error)
+    Name() string
+    Category() HandlerCategory
+    ToOperations(matches []RuleMatch) ([]Operation, error)
 }
 
-type Action interface {
-    Execute(ds DataStore) error
-    Type() string
+type Operation struct {
+    Type    OperationType // CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
+    Pack    string
+    Handler string
+    Source  string
+    Target  string
+    Command string
+}
+
+type DataStore interface {
+    CreateDataLink(pack, handlerName, sourceFile string) (string, error)
+    CreateUserLink(datastorePath, userPath string) error
+    RunAndRecord(pack, handlerName, command, sentinel string) error
+    HasSentinel(pack, handlerName, sentinel string) (bool, error)
+    RemoveState(pack, handlerName string) error
 }
 ```
 
@@ -162,26 +176,13 @@ renderer := output.NewJSONRenderer()
 renderer := output.NewTextRenderer()
 ```
 
-## Design Benefits
+## Component Responsibilities
 
-### Separation of Concerns
-Each component has a single responsibility:
-- Rules: Match files to handlers
-- Handlers: Generate actions
-- Actions: Execute operations
-- DataStore: Manage state
-
-### Pure Functions
-Handlers and rules are stateless:
-- Easy to test
-- No side effects
-- Predictable behavior
-
-### Type Safety
-Strong typing throughout:
-- No interface{} abuse
-- Compile-time guarantees
-- Self-documenting code
+- **Rules**: Match files to handlers
+- **Handlers**: Convert matches to operations (50-100 lines each)
+- **Operations**: Data structures with type, pack, handler, source, target, command
+- **DataStore**: Execute operations via 5 methods
+- **Executor**: Orchestrate operation execution with dry-run support
 
 ## Performance Considerations
 

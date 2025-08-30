@@ -15,7 +15,7 @@ func TestPathHandler_OperationIntegration(t *testing.T) {
 	// This test verifies the path handler works with the operation system
 
 	// Create simplified handler
-	handler := path.NewSimplifiedHandler()
+	handler := path.NewHandler()
 
 	// Create test matches
 	matches := []types.RuleMatch{
@@ -72,7 +72,7 @@ func TestPathHandler_OperationIntegration(t *testing.T) {
 
 func TestPathHandler_Clear(t *testing.T) {
 	// Test clear functionality
-	handler := path.NewSimplifiedHandler()
+	handler := path.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -96,5 +96,5 @@ func TestPathHandler_Clear(t *testing.T) {
 	item := clearedItems[0]
 	assert.Equal(t, "path_state", item.Type)
 	assert.Contains(t, item.Path, "tools/path")
-	assert.Contains(t, item.Description, "Would remove PATH entries")
+	assert.Contains(t, item.Description, "Would remove path state")
 }

@@ -1,6 +1,6 @@
 package types
 
-// ConfirmationRequest represents a request for user confirmation before executing actions
+// ConfirmationRequest represents a request for user confirmation before executing operations
 type ConfirmationRequest struct {
 	// ID is a unique identifier for this confirmation within the operation
 	ID string
@@ -29,38 +29,6 @@ type ConfirmationRequest struct {
 	Default bool
 }
 
-// ProcessingResult represents the result of handler processing, containing both
-// actions to execute and confirmations that need user approval
-type ProcessingResult struct {
-	// Actions contains all the actions that should be executed
-	Actions []Action
-
-	// Confirmations contains requests for user confirmation
-	// If empty, no confirmations are needed and actions can be executed directly
-	Confirmations []ConfirmationRequest
-}
-
-// NewProcessingResult creates a ProcessingResult with just actions (no confirmations)
-func NewProcessingResult(actions []Action) ProcessingResult {
-	return ProcessingResult{
-		Actions:       actions,
-		Confirmations: []ConfirmationRequest{},
-	}
-}
-
-// NewProcessingResultWithConfirmations creates a ProcessingResult with both actions and confirmations
-func NewProcessingResultWithConfirmations(actions []Action, confirmations []ConfirmationRequest) ProcessingResult {
-	return ProcessingResult{
-		Actions:       actions,
-		Confirmations: confirmations,
-	}
-}
-
-// HasConfirmations returns true if this result contains confirmations that need user approval
-func (pr ProcessingResult) HasConfirmations() bool {
-	return len(pr.Confirmations) > 0
-}
-
 // ConfirmationResponse represents a user's response to confirmation requests
 type ConfirmationResponse struct {
 	// ID matches the ConfirmationRequest.ID
@@ -71,7 +39,7 @@ type ConfirmationResponse struct {
 }
 
 // ConfirmationContext holds all user responses to confirmation requests
-// This is passed through to action execution if confirmations were approved
+// This is passed through to operation execution if confirmations were approved
 type ConfirmationContext struct {
 	// Responses maps confirmation IDs to user responses
 	Responses map[string]bool

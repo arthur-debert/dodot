@@ -8,7 +8,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -78,17 +77,15 @@ func FillPack(opts FillPackOptions) (*types.FillResult, error) {
 		var templateContent string
 		var fileMode uint32 = 0644 // default file mode
 
-		// Get template content based on handler type
-		switch h := handler.(type) {
-		case handlers.LinkingHandler:
-			templateContent = h.GetTemplateContent()
-		case handlers.ProvisioningHandler:
+		// Get template content from handler
+		if h, ok := handler.(interface{ GetTemplateContent() string }); ok {
 			templateContent = h.GetTemplateContent()
 			// Provisioning scripts should be executable
 			if handlerName == "install" {
 				fileMode = 0755
 			}
-		default:
+		} else if handlerName != "path" {
+			// Path handler doesn't provide template content, but that's expected
 			log.Warn().Str("handler", handlerName).Msg("Handler doesn't provide template content")
 			continue
 		}

@@ -1,66 +1,29 @@
 package datastore
 
-import "github.com/arthur-debert/dodot/pkg/types"
-
-// DataStore manages dodot's internal state on the filesystem.
-// This interface is also duplicated in pkg/types to avoid circular dependencies.
+// DataStore represents dodot's simplified storage interface.
+// This interface has only 5 operations instead of the previous 20+.
+// The simplicity is intentional - handlers contain logic, not the storage layer.
 type DataStore interface {
-	// Link creates the internal double-link structure for a file.
-	// It returns the path to the intermediate link, which should be the
-	// target for the final user-facing symlink.
-	Link(pack, sourceFile string) (intermediateLinkPath string, err error)
+	// CreateDataLink links a source file into the datastore structure.
+	// Returns the path to the created link in the datastore.
+	// This is step 1 for handlers that need to stage files.
+	CreateDataLink(pack, handlerName, sourceFile string) (datastorePath string, err error)
 
-	// Unlink removes the internal link for a file.
-	Unlink(pack, sourceFile string) error
+	// CreateUserLink creates a user-visible symlink.
+	// This is step 2 for the symlink handler to make files accessible.
+	// Other handlers don't need this - their files are accessed via shell init.
+	CreateUserLink(datastorePath, userPath string) error
 
-	// AddToPath makes a directory available to the shell's PATH.
-	AddToPath(pack, dirPath string) error
+	// RunAndRecord executes a command and records completion with a sentinel.
+	// This is idempotent - if the sentinel exists, the command is not re-run.
+	// Used by provisioning handlers (install, homebrew) to track completion.
+	RunAndRecord(pack, handlerName, command, sentinel string) error
 
-	// AddToShellProfile makes a script available to be sourced.
-	AddToShellProfile(pack, scriptPath string) error
+	// HasSentinel checks if an operation has been completed.
+	// This enables idempotent operations and status reporting.
+	HasSentinel(pack, handlerName, sentinel string) (bool, error)
 
-	// RecordProvisioning marks a provisioning action as complete.
-	RecordProvisioning(pack, sentinelName, checksum string) error
-
-	// NeedsProvisioning checks if a provisioning action needs to run.
-	NeedsProvisioning(pack, sentinelName, checksum string) (bool, error)
-
-	// GetStatus returns the status of a specific link or resource.
-	// This is a generic method that defaults to symlink handler behavior.
-	GetStatus(pack, sourceFile string) (types.Status, error)
-
-	// Handler-specific status methods
-	GetSymlinkStatus(pack, sourceFile string) (types.Status, error)
-	GetPathStatus(pack, dirPath string) (types.Status, error)
-	GetShellProfileStatus(pack, scriptPath string) (types.Status, error)
-	GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error)
-	GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error)
-
-	// State removal methods
-
-	// DeleteProvisioningState removes all provisioning state for a handler in a pack.
-	// It only removes state for provisioning handlers (homebrew, provision).
-	// Returns nil if the directory doesn't exist.
-	DeleteProvisioningState(packName, handlerName string) error
-
-	// GetProvisioningHandlers returns list of handlers that have provisioning state
-	// for the given pack. Only returns handlers that actually have state on disk.
-	GetProvisioningHandlers(packName string) ([]string, error)
-
-	// ListProvisioningState returns details about what provisioning state exists.
-	// The returned map has handler names as keys and lists of state file names as values.
-	// Useful for dry-run operations to show what would be removed.
-	ListProvisioningState(packName string) (map[string][]string, error)
-
-	// Generic state management methods
-	// These will eventually replace the handler-specific methods above
-
-	// StoreState saves arbitrary state for a handler in a pack
-	StoreState(packName, handlerName string, state interface{}) error
-
-	// RemoveState removes all state for a handler in a pack
-	RemoveState(packName, handlerName string) error
-
-	// GetState retrieves state for a handler in a pack
-	GetState(packName, handlerName string) (interface{}, error)
+	// RemoveState removes all state for a handler in a pack.
+	// This is used for cleanup/uninstall operations.
+	RemoveState(pack, handlerName string) error
 }

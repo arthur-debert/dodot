@@ -225,37 +225,31 @@ func TestTestEnvironment_IsolatedEnvironment(t *testing.T) {
 		_ = env.FS.MkdirAll(filepath.Dir(sourceFile), 0755)
 		_ = env.FS.WriteFile(sourceFile, []byte("vim config"), 0644)
 
-		// Link it
-		intermediatePath, err := env.DataStore.Link("vim", sourceFile)
+		// Create data link
+		datastorePath, err := env.DataStore.CreateDataLink("vim", "symlink", sourceFile)
 		if err != nil {
-			t.Fatalf("Link failed: %v", err)
+			t.Fatalf("CreateDataLink failed: %v", err)
 		}
-		if intermediatePath == "" {
-			t.Error("intermediate path is empty")
+		if datastorePath == "" {
+			t.Error("datastore path is empty")
 		}
 
-		// Check status
-		status, err := env.DataStore.GetStatus("vim", sourceFile)
+		// Create user link
+		userPath := filepath.Join(env.HomeDir, ".vimrc")
+		err = env.DataStore.CreateUserLink(datastorePath, userPath)
 		if err != nil {
-			t.Fatalf("GetStatus failed: %v", err)
-		}
-		if status.State != "ready" {
-			t.Errorf("expected ready state, got %s", status.State)
+			t.Fatalf("CreateUserLink failed: %v", err)
 		}
 
-		// Unlink
-		err = env.DataStore.Unlink("vim", sourceFile)
-		if err != nil {
-			t.Fatalf("Unlink failed: %v", err)
+		// Verify link exists
+		if _, err := env.FS.Lstat(userPath); err != nil {
+			t.Errorf("user link was not created: %v", err)
 		}
 
-		// Check status again
-		status, err = env.DataStore.GetStatus("vim", sourceFile)
+		// Remove state
+		err = env.DataStore.RemoveState("vim", "symlink")
 		if err != nil {
-			t.Fatalf("GetStatus failed: %v", err)
-		}
-		if status.State != "missing" {
-			t.Errorf("expected missing state after unlink, got %s", status.State)
+			t.Fatalf("RemoveState failed: %v", err)
 		}
 	})
 

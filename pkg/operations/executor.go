@@ -3,6 +3,7 @@ package operations
 import (
 	"fmt"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -11,14 +12,14 @@ import (
 // This is where the complexity lives - handlers just declare what they want,
 // the executor figures out how to make it happen.
 type Executor struct {
-	store      SimpleDataStore
+	store      types.DataStore
 	dryRun     bool
 	confirmer  Confirmer
 	fileSystem types.FS
 }
 
 // NewExecutor creates a new operation executor.
-func NewExecutor(store SimpleDataStore, fs types.FS, confirmer Confirmer, dryRun bool) *Executor {
+func NewExecutor(store types.DataStore, fs types.FS, confirmer Confirmer, dryRun bool) *Executor {
 	return &Executor{
 		store:      store,
 		fileSystem: fs,
@@ -187,7 +188,7 @@ func (e *Executor) simulateOperation(op Operation) OperationResult {
 }
 
 // ExecuteClear handles the clear operation for a handler.
-// This demonstrates how handler customization points are used.
+// Phase 3: Simplified to use generic state management.
 func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]types.ClearedItem, error) {
 	logger := logging.GetLogger("operations.executor").With().
 		Str("handler", handler.Name()).
@@ -209,14 +210,7 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		}
 	}
 
-	// PHASE 1 IMPLEMENTATION NOTE:
-	// This implementation is specific to the path handler for Phase 1.
-	// In Phase 2, as more handlers are migrated, we'll extract common patterns.
-	// In Phase 3, this will become a generic implementation that works with
-	// the simplified datastore interface using a "RemoveState" operation.
-	//
-	// The current implementation demonstrates the concept: handlers declare
-	// what state they maintain, and the executor handles the clearing logic.
+	// Phase 3: Generic implementation
 	var clearedItems []types.ClearedItem
 
 	// Get state directory name (handler can override)
@@ -225,120 +219,56 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		stateDirName = handler.Name()
 	}
 
-	// Phase 2: Handle each handler type
-	// TODO(Phase 3): Replace with generic RemoveState operation
-	switch handler.Name() {
-	case HandlerPath:
-		stateDir := fmt.Sprintf("~/.local/share/dodot/data/%s/%s", ctx.Pack.Name, stateDirName)
+	// Create generic cleared item
+	stateDir := fmt.Sprintf("~/.local/share/dodot/data/%s/%s", ctx.Pack.Name, stateDirName)
 
-		clearedItem := types.ClearedItem{
-			Type:        "path_state",
-			Path:        stateDir,
-			Description: "PATH entries will be removed",
-		}
-
-		// Format using handler customization
-		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
-			clearedItem.Description = formatted
-		} else if ctx.DryRun {
-			clearedItem.Description = "Would remove PATH entries"
-		}
-
-		clearedItems = append(clearedItems, clearedItem)
-
-	case HandlerSymlink:
-		// Symlink handler stores links in the datastore
-		symlinksDir := fmt.Sprintf("~/.local/share/dodot/data/%s/symlinks", ctx.Pack.Name)
-
-		clearedItem := types.ClearedItem{
-			Type:        "symlink_state",
-			Path:        symlinksDir,
-			Description: "Symlinks will be removed",
-		}
-
-		// Format using handler customization
-		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
-			clearedItem.Description = formatted
-		}
-
-		clearedItems = append(clearedItems, clearedItem)
-
-	case HandlerShell:
-		// Shell handler stores scripts in the datastore
-		shellDir := fmt.Sprintf("~/.local/share/dodot/data/%s/shell", ctx.Pack.Name)
-
-		clearedItem := types.ClearedItem{
-			Type:        "shell_state",
-			Path:        shellDir,
-			Description: "Shell profile sources will be removed",
-		}
-
-		// Format using handler customization
-		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
-			clearedItem.Description = formatted
-		} else if ctx.DryRun {
-			clearedItem.Description = "Would remove shell profile sources"
-		}
-
-		clearedItems = append(clearedItems, clearedItem)
-
-	case HandlerInstall:
-		// Install handler stores run records in the datastore
-		installDir := fmt.Sprintf("~/.local/share/dodot/data/%s/install", ctx.Pack.Name)
-
-		clearedItem := types.ClearedItem{
-			Type:        "provision_state",
-			Path:        installDir,
-			Description: "Install run records will be removed",
-		}
-
-		// Format using handler customization
-		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
-			clearedItem.Description = formatted
-		}
-
-		clearedItems = append(clearedItems, clearedItem)
-
-	case HandlerHomebrew:
-		// Homebrew handler stores run records in the datastore
-		homebrewDir := fmt.Sprintf("~/.local/share/dodot/data/%s/homebrew", ctx.Pack.Name)
-
-		clearedItem := types.ClearedItem{
-			Type:        "homebrew_state",
-			Path:        homebrewDir,
-			Description: "Homebrew state will be removed",
-		}
-
-		// Format using handler customization
-		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
-			clearedItem.Description = formatted
-		}
-
-		clearedItems = append(clearedItems, clearedItem)
+	// Determine item type based on handler name first, then category
+	itemType := "state"
+	if handler.Name() == HandlerSymlink {
+		itemType = "symlink_state"
+	} else if handler.Name() == HandlerPath {
+		itemType = "path_state"
+	} else if handler.Name() == HandlerShell {
+		itemType = "shell_state"
+	} else if handler.Name() == HandlerHomebrew {
+		itemType = "homebrew_state"
+	} else if handler.Name() == HandlerInstall {
+		itemType = "provision_state"
+	} else if handler.Category() == handlers.CategoryCodeExecution {
+		itemType = "provision_state"
 	}
+
+	clearedItem := types.ClearedItem{
+		Type:        itemType,
+		Path:        stateDir,
+		Description: fmt.Sprintf("%s state will be removed", handler.Name()),
+	}
+
+	// Let handler customize the description
+	if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+		clearedItem.Description = formatted
+	} else if ctx.DryRun {
+		clearedItem.Description = fmt.Sprintf("Would remove %s state", handler.Name())
+	}
+
+	clearedItems = append(clearedItems, clearedItem)
 
 	// Actually remove if not dry run
 	if !ctx.DryRun && e.store != nil && len(clearedItems) > 0 {
-		// Phase 2: Just log the removal for all handlers
-		// Phase 3: Will use a generic RemoveState operation:
-		//   e.store.RemoveState(ctx.Pack.Name, handler.Name())
-		// This will remove all datastore entries for the handler
+		// Phase 3: Use generic RemoveState operation
+		if err := e.store.RemoveState(ctx.Pack.Name, handler.Name()); err != nil {
+			logger.Error().
+				Err(err).
+				Str("handler", handler.Name()).
+				Str("pack", ctx.Pack.Name).
+				Msg("Failed to remove handler state")
+			return clearedItems, fmt.Errorf("failed to remove state: %w", err)
+		}
 		logger.Debug().
 			Str("handler", handler.Name()).
 			Str("pack", ctx.Pack.Name).
-			Msg("Removing handler state")
-		// For now, we just mark it as cleared
+			Msg("Removed handler state")
 	}
-
-	// Phase 2: Add similar blocks for other handlers as they're migrated
-	// Each handler will follow the same pattern:
-	// 1. Determine what state needs clearing
-	// 2. Create ClearedItem descriptions
-	// 3. Perform actual removal if not dry-run
-
-	// Phase 3: Replace all handler-specific blocks with:
-	// clearedItems, err := handler.GetClearedItems(ctx)
-	// if !ctx.DryRun { e.store.RemoveState(ctx.Pack.Name, handler.Name()) }
 
 	logger.Info().
 		Int("cleared_items", len(clearedItems)).

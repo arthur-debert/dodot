@@ -5,9 +5,11 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -75,10 +77,10 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 		return nil, fmt.Errorf("failed to discover packs: %w", err)
 	}
 
-	// Get code execution handlers (require user consent)
-	codeExecHandlers, err := executor.GetClearableCodeExecutionHandlers()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get code execution handlers: %w", err)
+	// Create code execution handlers (require user consent)
+	codeExecHandlers := []operations.Handler{
+		homebrew.NewHandler(),
+		install.NewHandler(),
 	}
 
 	logger.Debug().
@@ -98,15 +100,21 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 
 		// Create clear context for this pack
 		ctx := types.ClearContext{
-			Pack:      pack,
-			DataStore: ds,
-			FS:        fs,
-			Paths:     p,
-			DryRun:    opts.DryRun,
+			Pack:   pack,
+			FS:     fs,
+			Paths:  p,
+			DryRun: opts.DryRun,
 		}
 
 		// Filter handlers to only those with state
-		handlersWithState := executor.FilterHandlersByState(ctx, codeExecHandlers)
+		var handlersWithState []operations.Handler
+		for _, handler := range codeExecHandlers {
+			// Check if handler has any state for this pack
+			stateDir := p.PackHandlerDir(pack.Name, handler.Name())
+			if _, err := fs.Stat(stateDir); err == nil {
+				handlersWithState = append(handlersWithState, handler)
+			}
+		}
 
 		logger.Debug().
 			Str("pack", pack.Name).
@@ -121,23 +129,38 @@ func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) 
 			continue
 		}
 
-		// Clear handlers for this pack
-		clearResults, err := executor.ClearHandlers(ctx, handlersWithState)
-		if err != nil {
-			packResult.Error = err
-			result.Errors = append(result.Errors, fmt.Errorf("pack %s: %w", pack.Name, err))
+		// Create executor and clear handlers for this pack
+		executor := operations.NewExecutor(ds, fs, nil, opts.DryRun)
+		var clearResults []types.ClearedItem
+
+		for _, handler := range handlersWithState {
+			items, err := executor.ExecuteClear(handler, ctx)
+			if err != nil {
+				packResult.Error = err
+				result.Errors = append(result.Errors, fmt.Errorf("pack %s handler %s: %w", pack.Name, handler.Name(), err))
+				continue
+			}
+			clearResults = append(clearResults, items...)
 		}
 
-		// Convert clear results to handler results
-		for handlerName, clearResult := range clearResults {
+		// Group cleared items by handler
+		handlerItems := make(map[string][]types.ClearedItem)
+		for _, item := range clearResults {
+			// Extract handler name from the item (you might need to add HandlerName to ClearedItem)
+			// For now, we'll group by the handler that cleared it
+			handlerItems[item.Type] = append(handlerItems[item.Type], item)
+		}
+
+		// Convert to handler results
+		for _, handler := range handlersWithState {
+			items := handlerItems[handler.Name()]
 			handlerResult := HandlerResult{
-				HandlerName:  handlerName,
-				ClearedItems: clearResult.ClearedItems,
-				StateRemoved: clearResult.StateRemoved,
-				Error:        clearResult.Error,
+				HandlerName:  handler.Name(),
+				ClearedItems: items,
+				StateRemoved: len(items) > 0,
 			}
 			packResult.HandlersRun = append(packResult.HandlersRun, handlerResult)
-			packResult.TotalCleared += len(clearResult.ClearedItems)
+			packResult.TotalCleared += len(items)
 		}
 
 		result.TotalCleared += packResult.TotalCleared

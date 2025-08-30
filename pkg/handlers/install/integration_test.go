@@ -38,6 +38,11 @@ func (m *MockSimpleDataStore) HasSentinel(pack, handlerName, sentinel string) (b
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
+	args := m.Called(pack, handlerName)
+	return args.Error(0)
+}
+
 type MockConfirmer struct {
 	mock.Mock
 }
@@ -58,7 +63,7 @@ func TestInstallHandler_OperationIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create simplified handler
-	handler := install.NewSimplifiedHandler()
+	handler := install.NewHandler()
 
 	// Create test matches
 	matches := []types.RuleMatch{
@@ -108,7 +113,7 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 	require.NoError(t, err)
 
-	handler := install.NewSimplifiedHandler()
+	handler := install.NewHandler()
 
 	matches := []types.RuleMatch{
 		{
@@ -151,7 +156,7 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 func TestInstallHandler_CheckSentinel(t *testing.T) {
 	// Test that CheckSentinel operations work correctly
 
-	handler := install.NewSimplifiedHandler()
+	handler := install.NewHandler()
 
 	// Create a CheckSentinel operation
 	op := operations.Operation{
@@ -190,7 +195,7 @@ func TestInstallHandler_CheckSentinel(t *testing.T) {
 
 func TestInstallHandler_ClearIntegration(t *testing.T) {
 	// Test clear functionality
-	handler := install.NewSimplifiedHandler()
+	handler := install.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -227,7 +232,7 @@ func TestInstallHandler_IdempotentExecution(t *testing.T) {
 	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 	require.NoError(t, err)
 
-	handler := install.NewSimplifiedHandler()
+	handler := install.NewHandler()
 
 	match := types.RuleMatch{
 		Pack:         "test",
