@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import re
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict
+
+def parse_coverage_file(coverage_path: Path) -> Dict[str, Dict[str, float]]:
+    """Parse coverage file and return coverage percentage by package."""
+    package_coverage = defaultdict(lambda: {"covered": 0, "total": 0})
+    
+    with open(coverage_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Skip the mode line
+    if lines and lines[0].startswith("mode:"):
+        lines = lines[1:]
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Parse format: filename:start.col,end.col num_statements count
+        match = re.match(r'^(.+?):(\d+)\.(\d+),(\d+)\.(\d+)\s+(\d+)\s+(\d+)$', line)
+        if match:
+            file_path = match.group(1)
+            num_statements = int(match.group(6))
+            count = int(match.group(7))
+            
+            # Extract package from file path
+            pkg = os.path.dirname(file_path)
+            
+            package_coverage[pkg]["total"] += num_statements
+            if count > 0:
+                package_coverage[pkg]["covered"] += num_statements
+    
+    # Calculate percentages
+    result = {}
+    for pkg, stats in package_coverage.items():
+        if stats["total"] > 0:
+            percentage = (stats["covered"] / stats["total"]) * 100
+            result[pkg] = {
+                "covered": stats["covered"],
+                "total": stats["total"],
+                "percentage": percentage
+            }
+    
+    return result
+
+def print_coverage_summary(coverage: Dict, title: str):
+    """Print a formatted coverage summary."""
+    if not coverage:
+        print(f"\n{title}: No coverage data found")
+        return
+    
+    print(f"\n{title}:")
+    print("-" * 80)
+    print(f"{'Package':<50} {'Coverage':>10} {'Statements':>15}")
+    print("-" * 80)
+    
+    # Sort by package name
+    sorted_packages = sorted(coverage.items())
+    
+    total_covered = 0
+    total_statements = 0
+    
+    for pkg, stats in sorted_packages:
+        print(f"{pkg:<50} {stats['percentage']:>9.2f}% {stats['covered']:>7}/{stats['total']:<7}")
+        total_covered += stats["covered"]
+        total_statements += stats["total"]
+    
+    print("-" * 80)
+    if total_statements > 0:
+        total_pct = (total_covered / total_statements) * 100
+        print(f"{'TOTAL':<50} {total_pct:>9.2f}% {total_covered:>7}/{total_statements:<7}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Summarize Go test coverage by package"
+    )
+    
+    parser.add_argument(
+        "coverage_file",
+        help="Path to coverage.out file"
+    )
+    
+    parser.add_argument(
+        "--title",
+        default="Coverage Summary",
+        help="Title for the summary"
+    )
+    
+    parser.add_argument(
+        "--min-coverage",
+        type=float,
+        help="Only show packages with coverage below this threshold"
+    )
+    
+    parser.add_argument(
+        "--max-coverage",
+        type=float,
+        help="Only show packages with coverage above this threshold"
+    )
+    
+    args = parser.parse_args()
+    
+    # Check if file exists
+    coverage_path = Path(args.coverage_file)
+    if not coverage_path.exists():
+        print(f"Error: Coverage file not found: {args.coverage_file}", file=sys.stderr)
+        sys.exit(1)
+    
+    # Parse coverage
+    coverage = parse_coverage_file(coverage_path)
+    
+    # Filter by thresholds if specified
+    if args.min_coverage is not None or args.max_coverage is not None:
+        filtered = {}
+        for pkg, stats in coverage.items():
+            pct = stats["percentage"]
+            if args.min_coverage is not None and pct < args.min_coverage:
+                continue
+            if args.max_coverage is not None and pct > args.max_coverage:
+                continue
+            filtered[pkg] = stats
+        coverage = filtered
+    
+    # Print summary
+    print_coverage_summary(coverage, args.title)
+
+if __name__ == "__main__":
+    main()

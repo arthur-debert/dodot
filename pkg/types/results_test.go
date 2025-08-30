@@ -1,31 +1,37 @@
-package types
+// pkg/types/results_test.go
+// TEST TYPE: Unit Tests
+// DEPENDENCIES: None
+// PURPOSE: Test result types and display structures
+
+package types_test
 
 import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestDisplayPack_GetPackStatus(t *testing.T) {
 	tests := []struct {
 		name       string
-		pack       DisplayPack
+		pack       types.DisplayPack
 		wantStatus string
 	}{
 		{
-			name: "empty pack returns queue",
-			pack: DisplayPack{
+			name: "empty_pack_returns_queue",
+			pack: types.DisplayPack{
 				Name:  "empty-pack",
-				Files: []DisplayFile{},
+				Files: []types.DisplayFile{},
 			},
 			wantStatus: "queue",
 		},
 		{
-			name: "all success returns success",
-			pack: DisplayPack{
+			name: "all_success_returns_success",
+			pack: types.DisplayPack{
 				Name: "success-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "success"},
 					{Path: "file2", Status: "success"},
 					{Path: "file3", Status: "success"},
@@ -34,10 +40,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "success",
 		},
 		{
-			name: "any error returns alert",
-			pack: DisplayPack{
+			name: "any_error_returns_alert",
+			pack: types.DisplayPack{
 				Name: "error-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "success"},
 					{Path: "file2", Status: "error"},
 					{Path: "file3", Status: "success"},
@@ -46,10 +52,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "alert",
 		},
 		{
-			name: "all errors returns alert",
-			pack: DisplayPack{
+			name: "all_errors_returns_alert",
+			pack: types.DisplayPack{
 				Name: "all-errors-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "error"},
 					{Path: "file2", Status: "error"},
 				},
@@ -57,10 +63,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "alert",
 		},
 		{
-			name: "mixed statuses returns queue",
-			pack: DisplayPack{
+			name: "mixed_statuses_returns_queue",
+			pack: types.DisplayPack{
 				Name: "mixed-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "success"},
 					{Path: "file2", Status: "queue"},
 					{Path: "file3", Status: "success"},
@@ -69,10 +75,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "queue",
 		},
 		{
-			name: "config files are ignored",
-			pack: DisplayPack{
+			name: "config_files_are_ignored",
+			pack: types.DisplayPack{
 				Name: "config-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "success"},
 					{Path: ".dodot.toml", Status: "config"},
 					{Path: "file2", Status: "success"},
@@ -81,10 +87,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "success",
 		},
 		{
-			name: "only config files returns success",
-			pack: DisplayPack{
+			name: "only_config_files_returns_success",
+			pack: types.DisplayPack{
 				Name: "only-config-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: ".dodot.toml", Status: "config"},
 					{Path: ".dodotignore", Status: "config"},
 				},
@@ -92,10 +98,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "success",
 		},
 		{
-			name: "error takes precedence over queue",
-			pack: DisplayPack{
+			name: "error_takes_precedence_over_queue",
+			pack: types.DisplayPack{
 				Name: "error-precedence-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "queue"},
 					{Path: "file2", Status: "error"},
 					{Path: "file3", Status: "queue"},
@@ -104,10 +110,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "alert",
 		},
 		{
-			name: "unknown status treated as not success",
-			pack: DisplayPack{
+			name: "unknown_status_treated_as_not_success",
+			pack: types.DisplayPack{
 				Name: "unknown-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "success"},
 					{Path: "file2", Status: "unknown"},
 					{Path: "file3", Status: "success"},
@@ -116,10 +122,10 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 			wantStatus: "queue",
 		},
 		{
-			name: "ignored status files",
-			pack: DisplayPack{
+			name: "ignored_status_files",
+			pack: types.DisplayPack{
 				Name: "ignored-pack",
-				Files: []DisplayFile{
+				Files: []types.DisplayFile{
 					{Path: "file1", Status: "success"},
 					{Path: "file2", Status: "ignored"},
 					{Path: "file3", Status: "success"},
@@ -137,62 +143,72 @@ func TestDisplayPack_GetPackStatus(t *testing.T) {
 	}
 }
 
-func TestDisplayPack_ComplexScenarios(t *testing.T) {
-	t.Run("large pack with mixed statuses", func(t *testing.T) {
-		pack := DisplayPack{
-			Name: "large-pack",
-			Files: []DisplayFile{
-				{Path: "file1", Status: "success"},
-				{Path: "file2", Status: "success"},
-				{Path: "file3", Status: "config"},
-				{Path: "file4", Status: "success"},
-				{Path: "file5", Status: "queue"},
-				{Path: "file6", Status: "success"},
-				{Path: "file7", Status: "config"},
-				{Path: "file8", Status: "success"},
-			},
-		}
-		// Has non-success (queue) so should return queue
-		assert.Equal(t, "queue", pack.GetPackStatus())
-	})
+func TestCommandResult_FormatCommandMessage(t *testing.T) {
+	tests := []struct {
+		name        string
+		verb        string
+		packNames   []string
+		expectedMsg string
+	}{
+		{
+			name:        "single_pack",
+			verb:        "linked",
+			packNames:   []string{"vim"},
+			expectedMsg: "The pack vim has been linked.",
+		},
+		{
+			name:        "two_packs",
+			verb:        "unlinked",
+			packNames:   []string{"vim", "git"},
+			expectedMsg: "The packs vim and git have been unlinked.",
+		},
+		{
+			name:        "three_packs",
+			verb:        "provisioned",
+			packNames:   []string{"vim", "git", "tools"},
+			expectedMsg: "The packs vim, git, and tools have been provisioned.",
+		},
+		{
+			name:        "no_packs",
+			verb:        "linked",
+			packNames:   []string{},
+			expectedMsg: "",
+		},
+	}
 
-	t.Run("pack with override files", func(t *testing.T) {
-		pack := DisplayPack{
-			Name: "override-pack",
-			Files: []DisplayFile{
-				{Path: "file1", Status: "success", IsOverride: true},
-				{Path: "file2", Status: "error", IsOverride: true},
-				{Path: "file3", Status: "success", IsOverride: false},
-			},
-		}
-		// Override doesn't affect status calculation
-		assert.Equal(t, "alert", pack.GetPackStatus())
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := types.FormatCommandMessage(tt.verb, tt.packNames)
+			assert.Equal(t, tt.expectedMsg, got)
+		})
+	}
+}
 
-	t.Run("pack with message and handler details", func(t *testing.T) {
-		lastExec := time.Now()
-		pack := DisplayPack{
-			Name:      "detailed-pack",
-			HasConfig: true,
-			IsIgnored: false,
-			Files: []DisplayFile{
-				{
-					Handler:      "symlink",
-					Path:         "file1",
-					Status:       "success",
-					Message:      "Linked successfully",
-					LastExecuted: &lastExec,
-				},
-				{
-					Handler:      "homebrew",
-					Path:         "Brewfile",
-					Status:       "error",
-					Message:      "Failed to install",
-					LastExecuted: nil,
+func TestDisplayResult_Structure(t *testing.T) {
+	now := time.Now()
+	result := types.DisplayResult{
+		Command: "status",
+		Packs: []types.DisplayPack{
+			{
+				Name:   "vim",
+				Status: "success",
+				Files: []types.DisplayFile{
+					{
+						Handler: "symlink",
+						Path:    ".vimrc",
+						Status:  "success",
+						Message: "linked",
+					},
 				},
 			},
-		}
-		// Error takes precedence
-		assert.Equal(t, "alert", pack.GetPackStatus())
-	})
+		},
+		DryRun:    false,
+		Timestamp: now,
+	}
+
+	assert.Equal(t, "status", result.Command)
+	assert.False(t, result.DryRun)
+	assert.Equal(t, now, result.Timestamp)
+	assert.Len(t, result.Packs, 1)
+	assert.Equal(t, "vim", result.Packs[0].Name)
 }

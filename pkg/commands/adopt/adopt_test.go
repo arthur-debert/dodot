@@ -1,308 +1,531 @@
-package adopt
+// pkg/commands/adopt/adopt_test.go
+// TEST TYPE: Business Logic Integration
+// DEPENDENCIES: Mock DataStore, Memory FS
+// PURPOSE: Test adopt command orchestration for file adoption and pack management
+
+package adopt_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands/adopt"
 	"github.com/arthur-debert/dodot/pkg/errors"
-	// Import handler packages to register their factories
-	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestAdoptFiles(t *testing.T) {
-	tests := []struct {
-		name             string
-		setupFiles       map[string]string
-		packName         string
-		sourcePaths      []string
-		force            bool
-		wantErr          bool
-		errCode          errors.ErrorCode
-		wantAdoptedCount int
-		checkResults     func(t *testing.T, result *types.AdoptResult, root string)
-	}{
-		{
-			name: "adopt single file from home",
-			setupFiles: map[string]string{
-				"home/.gitconfig": "user.name = Test",
-			},
-			packName:         "git",
-			sourcePaths:      []string{"$HOME/.gitconfig"},
-			wantErr:          false,
-			wantAdoptedCount: 1,
-			checkResults: func(t *testing.T, result *types.AdoptResult, root string) {
-				// Check file was moved and symlinked
-				adopted := result.AdoptedFiles[0]
-				assert.Contains(t, adopted.NewPath, "git/gitconfig")
+func TestAdoptFiles_EmptySourcePaths_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-				// Verify symlink exists and points to new location
-				target, err := os.Readlink(adopted.SymlinkPath)
-				require.NoError(t, err)
-				assert.Equal(t, adopted.NewPath, target)
-			},
-		},
-		{
-			name: "adopt multiple files",
-			setupFiles: map[string]string{
-				"home/.bashrc":       "# bashrc",
-				"home/.bash_profile": "# profile",
-			},
-			packName:         "shell",
-			sourcePaths:      []string{"$HOME/.bashrc", "$HOME/.bash_profile"},
-			wantErr:          false,
-			wantAdoptedCount: 2,
-		},
-		{
-			name: "adopt file from XDG config",
-			setupFiles: map[string]string{
-				"home/.config/starship/starship.toml": "format = \"$all$character\"",
-			},
-			packName:         "starship",
-			sourcePaths:      []string{"$HOME/.config/starship/starship.toml"},
-			wantErr:          false,
-			wantAdoptedCount: 1,
-			checkResults: func(t *testing.T, result *types.AdoptResult, root string) {
-				// Check XDG structure is preserved
-				adopted := result.AdoptedFiles[0]
-				assert.Contains(t, adopted.NewPath, "starship/starship/starship.toml")
-			},
-		},
-		{
-			name:        "adopt non-existent file",
-			setupFiles:  map[string]string{},
-			packName:    "test",
-			sourcePaths: []string{"$HOME/.nonexistent"},
-			wantErr:     true,
-		},
-		{
-			name: "adopt to non-existent pack creates it",
-			setupFiles: map[string]string{
-				"home/.vimrc": "set number",
-			},
-			packName:         "newpack",
-			sourcePaths:      []string{"$HOME/.vimrc"},
-			wantErr:          false,
-			wantAdoptedCount: 1,
-			checkResults: func(t *testing.T, result *types.AdoptResult, root string) {
-				// Verify pack was created
-				packPath := filepath.Join(root, "dotfiles", "newpack")
-				info, err := os.Stat(packPath)
-				require.NoError(t, err)
-				assert.True(t, info.IsDir())
-			},
-		},
-		{
-			name: "destination already exists without force",
-			setupFiles: map[string]string{
-				"home/.gitconfig":        "new content",
-				"dotfiles/git/gitconfig": "old content",
-			},
-			packName:    "git",
-			sourcePaths: []string{"$HOME/.gitconfig"},
-			force:       false,
-			wantErr:     true,
-		},
-		{
-			name: "destination already exists with force",
-			setupFiles: map[string]string{
-				"home/.gitconfig":        "new content",
-				"dotfiles/git/gitconfig": "old content",
-			},
-			packName:         "git",
-			sourcePaths:      []string{"$HOME/.gitconfig"},
-			force:            true,
-			wantErr:          false,
-			wantAdoptedCount: 1,
-		},
-		{
-			name: "empty pack name",
-			setupFiles: map[string]string{
-				"home/.gitconfig": "content",
-			},
-			packName:    "",
-			sourcePaths: []string{"$HOME/.gitconfig"},
-			wantErr:     true,
-			errCode:     errors.ErrPackNotFound,
-		},
-		{
-			name: "pack name with trailing slash",
-			setupFiles: map[string]string{
-				"home/.gitconfig": "content",
-			},
-			packName:         "git/",
-			sourcePaths:      []string{"$HOME/.gitconfig"},
-			wantErr:          false,
-			wantAdoptedCount: 1,
-		},
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "test-pack",
+		SourcePaths:  []string{},
+		Force:        false,
+		FileSystem:   env.FS,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup test filesystem
-			root := testutil.TempDir(t, "adopt-test")
-			dotfilesPath := filepath.Join(root, "dotfiles")
-			homePath := filepath.Join(root, "home")
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
 
-			// Create dotfiles directory
-			require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+	// Verify empty sources handling
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "test-pack", result.PackName, "pack name should match")
+	assert.Len(t, result.AdoptedFiles, 0, "should adopt no files")
+}
 
-			// Set HOME to test directory
-			oldHome := os.Getenv("HOME")
-			require.NoError(t, os.Setenv("HOME", homePath))
-			defer func() { _ = os.Setenv("HOME", oldHome) }()
+func TestAdoptFiles_SingleFile_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-			// Set XDG_CONFIG_HOME
-			require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(homePath, ".config")))
-			defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+	// Create a file to adopt in the mock home directory
+	homeFile := filepath.Join(env.HomeDir, ".gitconfig")
+	err := env.FS.WriteFile(homeFile, []byte("user.name = Test User"), 0644)
+	require.NoError(t, err)
 
-			// Create files from setupFiles map
-			for path, content := range tt.setupFiles {
-				fullPath := filepath.Join(root, path)
-				testutil.CreateFile(t, filepath.Dir(fullPath), filepath.Base(fullPath), content)
-			}
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "git",
+		SourcePaths:  []string{homeFile},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
 
-			// Expand source paths
-			expandedPaths := make([]string, len(tt.sourcePaths))
-			for i, path := range tt.sourcePaths {
-				expandedPaths[i] = os.ExpandEnv(path)
-			}
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
 
-			// Run AdoptFiles
-			result, err := AdoptFiles(AdoptFilesOptions{
-				DotfilesRoot: dotfilesPath,
-				PackName:     tt.packName,
-				SourcePaths:  expandedPaths,
-				Force:        tt.force,
-			})
+	// Verify single file adoption orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "git", result.PackName, "pack name should match")
 
-			// Check error
-			if tt.wantErr {
-				require.Error(t, err)
-				if tt.errCode != "" {
-					var dodotErr *errors.DodotError
-					require.ErrorAs(t, err, &dodotErr)
-					assert.Equal(t, tt.errCode, dodotErr.Code)
-				}
-				return
-			}
+	// Should have adopted one file
+	assert.Len(t, result.AdoptedFiles, 1, "should adopt one file")
+	adopted := result.AdoptedFiles[0]
+	assert.Equal(t, homeFile, adopted.OriginalPath, "original path should match")
+	assert.Equal(t, homeFile, adopted.SymlinkPath, "symlink path should match original")
+	assert.Contains(t, adopted.NewPath, "git/gitconfig", "new path should be in git pack")
 
-			require.NoError(t, err)
-			require.NotNil(t, result)
+	// Verify file was moved and symlinked (orchestration behavior)
+	// File should no longer exist at original location as regular file
+	info, err := env.FS.Lstat(homeFile)
+	require.NoError(t, err)
+	assert.True(t, info.Mode()&os.ModeSymlink != 0, "original location should be symlink")
 
-			// Verify result
-			assert.Equal(t, tt.wantAdoptedCount, len(result.AdoptedFiles))
+	// File should exist at new location
+	_, err = env.FS.Stat(adopted.NewPath)
+	assert.NoError(t, err, "file should exist at new path")
+}
 
-			// Run custom checks
-			if tt.checkResults != nil {
-				tt.checkResults(t, result, root)
-			}
-		})
+func TestAdoptFiles_MultipleFiles_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create multiple files to adopt
+	files := map[string]string{
+		".bashrc":       "# bashrc content",
+		".bash_profile": "# profile content",
+		".bash_aliases": "# aliases content",
+	}
+
+	var sourcePaths []string
+	for filename, content := range files {
+		filePath := filepath.Join(env.HomeDir, filename)
+		err := env.FS.WriteFile(filePath, []byte(content), 0644)
+		require.NoError(t, err)
+		sourcePaths = append(sourcePaths, filePath)
+	}
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "shell",
+		SourcePaths:  sourcePaths,
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify multiple file adoption orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "shell", result.PackName, "pack name should match")
+	assert.Len(t, result.AdoptedFiles, 3, "should adopt all three files")
+
+	// Verify all files were processed
+	adoptedPaths := make(map[string]bool)
+	for _, adopted := range result.AdoptedFiles {
+		adoptedPaths[filepath.Base(adopted.OriginalPath)] = true
+		assert.Contains(t, adopted.NewPath, "shell/", "new path should be in shell pack")
+	}
+
+	for filename := range files {
+		assert.True(t, adoptedPaths[filename], "should have adopted %s", filename)
 	}
 }
 
-func TestAdoptIdempotency(t *testing.T) {
-	// Setup test filesystem
-	root := testutil.TempDir(t, "adopt-idempotent-test")
-	dotfilesPath := filepath.Join(root, "dotfiles")
-	homePath := filepath.Join(root, "home")
+func TestAdoptFiles_NonExistentFile_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	// Create dotfiles directory
-	require.NoError(t, os.MkdirAll(dotfilesPath, 0755))
+	nonExistentFile := filepath.Join(env.HomeDir, ".nonexistent")
 
-	// Set HOME to test directory
-	oldHome := os.Getenv("HOME")
-	require.NoError(t, os.Setenv("HOME", homePath))
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
-
-	// Create a file
-	testutil.CreateFile(t, homePath, ".gitconfig", "user.name = Test")
-
-	// First adoption
-	result1, err := AdoptFiles(AdoptFilesOptions{
-		DotfilesRoot: dotfilesPath,
-		PackName:     "git",
-		SourcePaths:  []string{filepath.Join(homePath, ".gitconfig")},
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "test",
+		SourcePaths:  []string{nonExistentFile},
 		Force:        false,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(result1.AdoptedFiles))
+		FileSystem:   env.FS,
+	}
 
-	// Second adoption (should be idempotent - no files adopted)
-	result2, err := AdoptFiles(AdoptFilesOptions{
-		DotfilesRoot: dotfilesPath,
-		PackName:     "git",
-		SourcePaths:  []string{filepath.Join(homePath, ".gitconfig")},
-		Force:        false,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 0, len(result2.AdoptedFiles))
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify error handling for non-existent files
+	assert.Error(t, err, "should return error for non-existent file")
+	assert.Contains(t, err.Error(), "source file does not exist", "error should mention non-existent file")
+	// Result should be nil on error
+	assert.Nil(t, result, "result should be nil on error")
 }
 
-func TestDetermineDestinationPath(t *testing.T) {
-	oldHome := os.Getenv("HOME")
-	testHome := "/home/testuser"
-	require.NoError(t, os.Setenv("HOME", testHome))
-	defer func() { _ = os.Setenv("HOME", oldHome) }()
+func TestAdoptFiles_NewPackCreation_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
-	defer func() { _ = os.Unsetenv("XDG_CONFIG_HOME") }()
+	// Create file to adopt
+	sourceFile := filepath.Join(env.HomeDir, ".vimrc")
+	err := env.FS.WriteFile(sourceFile, []byte("set number"), 0644)
+	require.NoError(t, err)
 
-	tests := []struct {
-		name       string
-		packPath   string
-		sourcePath string
-		want       string
-	}{
-		{
-			name:       "file in home directory",
-			packPath:   "/dotfiles/git",
-			sourcePath: filepath.Join(testHome, ".gitconfig"),
-			want:       "/dotfiles/git/gitconfig",
-		},
-		{
-			name:       "file in XDG config",
-			packPath:   "/dotfiles/starship",
-			sourcePath: filepath.Join(testHome, ".config/starship/starship.toml"),
-			want:       "/dotfiles/starship/starship/starship.toml",
-		},
-		{
-			name:       "nested hidden directory",
-			packPath:   "/dotfiles/app",
-			sourcePath: "/opt/.myapp/config/settings.json",
-			want:       "/dotfiles/app/config/settings.json",
-		},
-		{
-			name:       "file without leading dot",
-			packPath:   "/dotfiles/misc",
-			sourcePath: filepath.Join(testHome, "myconfig"),
-			want:       "/dotfiles/misc/myconfig",
-		},
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "newpack", // Pack doesn't exist yet
+		SourcePaths:  []string{sourceFile},
+		Force:        false,
+		FileSystem:   env.FS,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Initialize paths instance for mapping
-			pathsInstance, err := paths.New("")
-			require.NoError(t, err)
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
 
-			// Create pack object
-			pack := &types.Pack{
-				Name: filepath.Base(tt.packPath),
-				Path: tt.packPath,
-			}
+	// Verify new pack creation orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "newpack", result.PackName, "pack name should match")
+	assert.Len(t, result.AdoptedFiles, 1, "should adopt the file")
 
-			got := pathsInstance.MapSystemFileToPack(pack, tt.sourcePath)
-			assert.Equal(t, tt.want, got)
-		})
+	// Verify pack directory was created
+	packPath := filepath.Join(env.DotfilesRoot, "newpack")
+	info, err := env.FS.Stat(packPath)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir(), "pack directory should be created")
+
+	// Verify file was adopted into new pack
+	adopted := result.AdoptedFiles[0]
+	assert.Contains(t, adopted.NewPath, "newpack/vimrc", "file should be in new pack")
+}
+
+func TestAdoptFiles_ForceOverwrite_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create existing pack with conflicting file
+	packDir := filepath.Join(env.DotfilesRoot, "git")
+	err := env.FS.MkdirAll(packDir, 0755)
+	require.NoError(t, err)
+
+	existingFile := filepath.Join(packDir, "gitconfig")
+	err = env.FS.WriteFile(existingFile, []byte("old content"), 0644)
+	require.NoError(t, err)
+
+	// Create source file with new content
+	sourceFile := filepath.Join(env.HomeDir, ".gitconfig")
+	err = env.FS.WriteFile(sourceFile, []byte("new content"), 0644)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "git",
+		SourcePaths:  []string{sourceFile},
+		Force:        true, // Key: force overwrite
+		FileSystem:   env.FS,
 	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify force overwrite orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Len(t, result.AdoptedFiles, 1, "should adopt file with force")
+
+	// Verify new content was written
+	content, err := env.FS.ReadFile(existingFile)
+	require.NoError(t, err)
+	assert.Equal(t, "new content", string(content), "file should have new content")
+}
+
+func TestAdoptFiles_ConflictWithoutForce_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create existing pack with conflicting file
+	packDir := filepath.Join(env.DotfilesRoot, "git")
+	err := env.FS.MkdirAll(packDir, 0755)
+	require.NoError(t, err)
+
+	existingFile := filepath.Join(packDir, "gitconfig")
+	err = env.FS.WriteFile(existingFile, []byte("existing content"), 0644)
+	require.NoError(t, err)
+
+	// Create source file
+	sourceFile := filepath.Join(env.HomeDir, ".gitconfig")
+	err = env.FS.WriteFile(sourceFile, []byte("new content"), 0644)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "git",
+		SourcePaths:  []string{sourceFile},
+		Force:        false, // Key: no force
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify conflict handling without force
+	assert.Error(t, err, "should return error for existing destination")
+	assert.Contains(t, err.Error(), "destination already exists", "error should mention conflict")
+	assert.Contains(t, err.Error(), "use --force to overwrite", "error should suggest force flag")
+	assert.Nil(t, result, "result should be nil on error")
+
+	// Verify original file remains unchanged
+	content, err := env.FS.ReadFile(existingFile)
+	require.NoError(t, err)
+	assert.Equal(t, "existing content", string(content), "existing file should be unchanged")
+}
+
+func TestAdoptFiles_InvalidPackName_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create file to adopt
+	sourceFile := filepath.Join(env.HomeDir, ".testrc")
+	err := env.FS.WriteFile(sourceFile, []byte("test content"), 0644)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "", // Invalid: empty pack name
+		SourcePaths:  []string{sourceFile},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify pack name validation
+	assert.Error(t, err, "should return error for empty pack name")
+	var dodotErr *errors.DodotError
+	if assert.ErrorAs(t, err, &dodotErr) {
+		assert.Equal(t, errors.ErrPackNotFound, dodotErr.Code, "should have pack not found error code")
+	}
+	assert.Nil(t, result, "result should be nil on error")
+}
+
+func TestAdoptFiles_PackNameTrailingSlash_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create file to adopt
+	sourceFile := filepath.Join(env.HomeDir, ".testrc")
+	err := env.FS.WriteFile(sourceFile, []byte("test content"), 0644)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "test/", // Trailing slash (from shell completion)
+		SourcePaths:  []string{sourceFile},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify trailing slash handling
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "test", result.PackName, "pack name should be normalized (no trailing slash)")
+	assert.Len(t, result.AdoptedFiles, 1, "should adopt the file")
+}
+
+func TestAdoptFiles_IdempotentBehavior_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create pack and file structure
+	packDir := filepath.Join(env.DotfilesRoot, "git")
+	err := env.FS.MkdirAll(packDir, 0755)
+	require.NoError(t, err)
+
+	// Create managed file in pack
+	managedFile := filepath.Join(packDir, "gitconfig")
+	err = env.FS.WriteFile(managedFile, []byte("managed content"), 0644)
+	require.NoError(t, err)
+
+	// Create symlink at original location (simulating already adopted file)
+	symlinkPath := filepath.Join(env.HomeDir, ".gitconfig")
+	err = env.FS.MkdirAll(env.HomeDir, 0755)
+	require.NoError(t, err)
+	err = env.FS.Symlink(managedFile, symlinkPath)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "git",
+		SourcePaths:  []string{symlinkPath},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify idempotent behavior (already managed files are skipped)
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "git", result.PackName, "pack name should match")
+	assert.Len(t, result.AdoptedFiles, 0, "should not adopt already managed file")
+}
+
+func TestAdoptFiles_XDGConfigFile_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create XDG config file
+	configDir := filepath.Join(env.HomeDir, ".config", "starship")
+	configFile := filepath.Join(configDir, "starship.toml")
+	err := env.FS.MkdirAll(configDir, 0755)
+	require.NoError(t, err)
+	err = env.FS.WriteFile(configFile, []byte("format = \"$all$character\""), 0644)
+	require.NoError(t, err)
+
+	// Set XDG_CONFIG_HOME for path mapping
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(env.HomeDir, ".config")))
+	defer func() {
+		if oldXDG == "" {
+			_ = os.Unsetenv("XDG_CONFIG_HOME")
+		} else {
+			_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
+		}
+	}()
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "starship",
+		SourcePaths:  []string{configFile},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify XDG config adoption orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Equal(t, "starship", result.PackName, "pack name should match")
+	assert.Len(t, result.AdoptedFiles, 1, "should adopt XDG config file")
+
+	// Verify XDG structure is preserved in pack
+	adopted := result.AdoptedFiles[0]
+	assert.Contains(t, adopted.NewPath, "starship/starship/starship.toml", "XDG structure should be preserved")
+}
+
+func TestAdoptFiles_PartialFailure_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create one valid file and one invalid path
+	validFile := filepath.Join(env.HomeDir, ".gitconfig")
+	err := env.FS.WriteFile(validFile, []byte("valid content"), 0644)
+	require.NoError(t, err)
+
+	invalidFile := filepath.Join(env.HomeDir, ".nonexistent")
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "mixed",
+		SourcePaths:  []string{validFile, invalidFile}, // Mix of valid and invalid
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify partial failure handling
+	assert.Error(t, err, "should return error for invalid file")
+	assert.Contains(t, err.Error(), "source file does not exist", "error should mention non-existent file")
+	// On error, entire operation fails (no partial success)
+	assert.Nil(t, result, "result should be nil on any file failure")
+
+	// Verify valid file was not processed (atomic behavior)
+	_, err = env.FS.Stat(validFile)
+	assert.NoError(t, err, "valid file should remain at original location")
+}
+
+func TestAdoptFiles_ResultStructure_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create test file
+	sourceFile := filepath.Join(env.HomeDir, ".testrc")
+	err := env.FS.WriteFile(sourceFile, []byte("test content"), 0644)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "structure-test",
+		SourcePaths:  []string{sourceFile},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify result structure completeness
+	require.NoError(t, err)
+	require.NotNil(t, result, "result should not be nil")
+
+	// Verify AdoptResult structure
+	assert.Equal(t, "structure-test", result.PackName, "pack name should match")
+	assert.NotNil(t, result.AdoptedFiles, "adopted files should not be nil")
+	assert.Len(t, result.AdoptedFiles, 1, "should have one adopted file")
+
+	// Verify AdoptedFile structure
+	adopted := result.AdoptedFiles[0]
+	assert.NotEmpty(t, adopted.OriginalPath, "original path should be populated")
+	assert.NotEmpty(t, adopted.NewPath, "new path should be populated")
+	assert.NotEmpty(t, adopted.SymlinkPath, "symlink path should be populated")
+	assert.Equal(t, sourceFile, adopted.OriginalPath, "original path should match source")
+	assert.Equal(t, sourceFile, adopted.SymlinkPath, "symlink path should match original")
+}
+
+func TestAdoptFiles_FileSystemIntegration_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create nested directory structure
+	nestedDir := filepath.Join(env.HomeDir, ".config", "app", "deep")
+	nestedFile := filepath.Join(nestedDir, "config.json")
+	err := env.FS.MkdirAll(nestedDir, 0755)
+	require.NoError(t, err)
+	err = env.FS.WriteFile(nestedFile, []byte("{\"setting\": \"value\"}"), 0644)
+	require.NoError(t, err)
+
+	opts := adopt.AdoptFilesOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackName:     "app",
+		SourcePaths:  []string{nestedFile},
+		Force:        false,
+		FileSystem:   env.FS,
+	}
+
+	// Execute
+	result, err := adopt.AdoptFiles(opts)
+
+	// Verify complex filesystem operation orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return adoption result")
+	assert.Len(t, result.AdoptedFiles, 1, "should adopt nested file")
+
+	adopted := result.AdoptedFiles[0]
+
+	// Verify directory structure was created in pack
+	packConfigDir := filepath.Dir(adopted.NewPath)
+	info, err := env.FS.Stat(packConfigDir)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir(), "nested directory should be created in pack")
+
+	// Verify symlink chain works correctly
+	target, err := env.FS.Readlink(adopted.SymlinkPath)
+	require.NoError(t, err)
+	assert.Equal(t, adopted.NewPath, target, "symlink should point to adopted file")
+
+	// Verify file content is preserved
+	content, err := env.FS.ReadFile(adopted.NewPath)
+	require.NoError(t, err)
+	assert.Equal(t, "{\"setting\": \"value\"}", string(content), "file content should be preserved")
 }

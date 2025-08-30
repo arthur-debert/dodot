@@ -1,13 +1,20 @@
-package types
+// pkg/types/types_test.go
+// TEST TYPE: Unit Tests
+// DEPENDENCIES: None
+// PURPOSE: Test basic type structures
+
+package types_test
 
 import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPackStructure(t *testing.T) {
-	pack := Pack{
+func TestPack_Structure(t *testing.T) {
+	pack := types.Pack{
 		Name: "test-pack",
 		Path: "/path/to/pack",
 		Config: config.PackConfig{
@@ -17,25 +24,16 @@ func TestPackStructure(t *testing.T) {
 		},
 	}
 
-	if pack.Name != "test-pack" {
-		t.Errorf("Expected pack name 'test-pack', got '%s'", pack.Name)
-	}
-
-	if pack.Path != "/path/to/pack" {
-		t.Errorf("Expected pack path '/path/to/pack', got '%s'", pack.Path)
-	}
-
-	if len(pack.Config.Ignore) != 1 {
-		t.Errorf("Expected 1 ignore rule, got %d", len(pack.Config.Ignore))
-	}
+	assert.Equal(t, "test-pack", pack.Name)
+	assert.Equal(t, "/path/to/pack", pack.Path)
+	assert.Len(t, pack.Config.Ignore, 1)
+	assert.Equal(t, "*.bak", pack.Config.Ignore[0].Path)
 }
 
-func TestRuleMatchStructure(t *testing.T) {
-	pack := Pack{Name: "test-pack", Path: "/test"}
-
-	match := RuleMatch{
+func TestRuleMatch_Structure(t *testing.T) {
+	match := types.RuleMatch{
 		RuleName:     "filename",
-		Pack:         pack.Name,
+		Pack:         "test-pack",
 		Path:         "file.txt",
 		AbsolutePath: "/test/file.txt",
 		Priority:     10,
@@ -46,11 +44,14 @@ func TestRuleMatchStructure(t *testing.T) {
 		HandlerOptions: map[string]interface{}{},
 	}
 
-	if match.Pack != "test-pack" {
-		t.Errorf("Expected pack 'test-pack', got '%s'", match.Pack)
-	}
+	assert.Equal(t, "test-pack", match.Pack)
+	assert.Equal(t, "file.txt", match.Path)
+	assert.Equal(t, "/test/file.txt", match.AbsolutePath)
+	assert.Equal(t, 10, match.Priority)
+	assert.Equal(t, "filename", match.RuleName)
+	assert.Equal(t, "symlink", match.HandlerName)
 
-	if match.Path != "file.txt" {
-		t.Errorf("Expected path 'file.txt', got '%s'", match.Path)
-	}
+	// Check metadata
+	assert.Contains(t, match.Metadata, "pattern")
+	assert.Equal(t, "*.txt", match.Metadata["pattern"])
 }

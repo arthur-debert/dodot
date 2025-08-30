@@ -1,0 +1,361 @@
+#!/usr/bin/env python3
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Set, Tuple
+
+# Coverage grading constants
+GOOD_THRESHOLD = 80
+AVERAGE_MIN_THRESHOLD = 60
+
+# Color definitions
+BG_GOOD = '28'
+BG_AVERAGE = '220'
+BG_POOR = '196'
+
+# Check if terminal supports colors
+def supports_color():
+    """Check if the terminal supports ANSI color codes."""
+    if os.environ.get('NO_COLOR'):
+        return False
+    if os.environ.get('TERM') == 'dumb':
+        return False
+    if sys.stdout.isatty():
+        return True
+    if os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
+        return True
+    return False
+
+# Initialize color variables
+COLOR_BG_GOOD = ""
+COLOR_BG_AVERAGE = ""
+COLOR_BG_POOR = ""
+COLOR_WHITE = ""
+COLOR_RESET = ""
+
+def init_colors(use_colors=True):
+    """Initialize color codes."""
+    global COLOR_BG_GOOD, COLOR_BG_AVERAGE, COLOR_BG_POOR, COLOR_WHITE, COLOR_RESET
+    
+    if use_colors and supports_color():
+        COLOR_BG_GOOD = f"\033[48;5;{BG_GOOD}m\033[38;5;15m"
+        COLOR_BG_AVERAGE = f"\033[48;5;{BG_AVERAGE}m\033[38;5;15m"
+        COLOR_BG_POOR = f"\033[48;5;{BG_POOR}m\033[38;5;15m"
+        COLOR_WHITE = "\033[38;5;15m"
+        COLOR_RESET = "\033[0m"
+    else:
+        COLOR_BG_GOOD = ""
+        COLOR_BG_AVERAGE = ""
+        COLOR_BG_POOR = ""
+        COLOR_WHITE = ""
+        COLOR_RESET = ""
+
+def find_test_files():
+    """Find all test files and categorize them as new or old."""
+    new_tests = []
+    old_tests = []
+    
+    for root, _, files in os.walk("."):
+        for file in files:
+            if file.endswith("_toremove_test.go"):
+                old_tests.append(os.path.join(root, file))
+            elif file.endswith("_test.go"):
+                new_tests.append(os.path.join(root, file))
+    
+    return new_tests, old_tests
+
+def generate_coverage_for_test_type(test_files: List[str], output_file: str, test_type: str) -> bool:
+    """Generate coverage for a specific set of test files."""
+    if not test_files:
+        print(f"No {test_type} test files found")
+        return False
+    
+    # Extract unique package paths from test files
+    packages = set()
+    for test_file in test_files:
+        # Convert file path to package path
+        pkg_path = os.path.dirname(test_file)
+        if pkg_path.startswith("./"):
+            pkg_path = pkg_path[2:]
+        packages.add("./" + pkg_path)
+    
+    # Build the go test command with specific test files
+    cmd = ["go", "test", "-coverprofile", output_file]
+    
+    # Add all packages but run only specific test files
+    test_patterns = []
+    for pkg in sorted(packages):
+        # Extract package name from path
+        pkg_parts = pkg.split("/")
+        if test_type == "new":
+            # Include only non-toremove test files
+            test_patterns.append(f"-run=Test")
+        cmd.append(pkg)
+    
+    # If running old tests, we need to rename them temporarily
+    renamed_files = []
+    if test_type == "old":
+        for test_file in test_files:
+            if test_file.endswith("_toremove_test.go"):
+                # Temporarily rename to make it a valid test file
+                temp_name = test_file.replace("_toremove_test.go", "_temp_test.go")
+                try:
+                    os.rename(test_file, temp_name)
+                    renamed_files.append((test_file, temp_name))
+                except Exception as e:
+                    print(f"Error renaming {test_file}: {e}")
+    
+    print(f"Generating coverage for {test_type} tests...")
+    print(f"Running: {' '.join(cmd)}")
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # Restore renamed files
+        for original, temp in renamed_files:
+            try:
+                os.rename(temp, original)
+            except Exception as e:
+                print(f"Error restoring {original}: {e}")
+        
+        if result.returncode != 0:
+            print(f"Error generating coverage: {result.stderr}", file=sys.stderr)
+            return False
+        print(f"Coverage data written to {output_file}")
+        return True
+    except Exception as e:
+        # Restore renamed files in case of error
+        for original, temp in renamed_files:
+            try:
+                os.rename(temp, original)
+            except:
+                pass
+        print(f"Error running go test: {e}", file=sys.stderr)
+        return False
+
+def parse_coverage_file(coverage_path: Path) -> Dict[str, Dict[str, float]]:
+    """Parse coverage file and return coverage percentage by package."""
+    package_coverage = defaultdict(lambda: {"covered": 0, "total": 0})
+    
+    with open(coverage_path, 'r') as f:
+        lines = f.readlines()
+    
+    # Skip the mode line
+    if lines and lines[0].startswith("mode:"):
+        lines = lines[1:]
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # Parse format: filename:start.col,end.col num_statements count
+        match = re.match(r'^(.+?):(\d+)\.(\d+),(\d+)\.(\d+)\s+(\d+)\s+(\d+)$', line)
+        if match:
+            file_path = match.group(1)
+            num_statements = int(match.group(6))
+            count = int(match.group(7))
+            
+            # Extract package from file path
+            pkg = os.path.dirname(file_path)
+            
+            package_coverage[pkg]["total"] += num_statements
+            if count > 0:
+                package_coverage[pkg]["covered"] += num_statements
+    
+    # Calculate percentages
+    result = {}
+    for pkg, stats in package_coverage.items():
+        if stats["total"] > 0:
+            percentage = (stats["covered"] / stats["total"]) * 100
+            result[pkg] = {
+                "covered": stats["covered"],
+                "total": stats["total"],
+                "percentage": percentage
+            }
+    
+    return result
+
+def get_coverage_color(percentage: float) -> str:
+    """Return the color for a coverage percentage."""
+    if percentage >= GOOD_THRESHOLD:
+        return COLOR_BG_GOOD
+    elif percentage >= AVERAGE_MIN_THRESHOLD:
+        return COLOR_BG_AVERAGE
+    else:
+        return COLOR_BG_POOR
+
+def compare_coverage(new_coverage: Dict, old_coverage: Dict):
+    """Compare coverage between new and old tests."""
+    all_packages = sorted(set(new_coverage.keys()) | set(old_coverage.keys()))
+    
+    print("\n" + "="*120)
+    print(f"{'Package':<50} {'Old Tests':>20} {'New Tests':>20} {'Difference':>20}")
+    print("="*120)
+    
+    total_old_covered = 0
+    total_old_statements = 0
+    total_new_covered = 0
+    total_new_statements = 0
+    
+    for pkg in all_packages:
+        old_stats = old_coverage.get(pkg, {"covered": 0, "total": 0, "percentage": 0})
+        new_stats = new_coverage.get(pkg, {"covered": 0, "total": 0, "percentage": 0})
+        
+        old_pct = old_stats["percentage"]
+        new_pct = new_stats["percentage"]
+        diff = new_pct - old_pct
+        
+        # Format strings
+        old_str = f"{old_pct:6.2f}% ({old_stats['covered']}/{old_stats['total']})" if old_stats["total"] > 0 else "No tests"
+        new_str = f"{new_pct:6.2f}% ({new_stats['covered']}/{new_stats['total']})" if new_stats["total"] > 0 else "No tests"
+        
+        # Apply colors
+        old_color = get_coverage_color(old_pct) if old_stats["total"] > 0 else ""
+        new_color = get_coverage_color(new_pct) if new_stats["total"] > 0 else ""
+        
+        # Difference indicator
+        if old_stats["total"] == 0 and new_stats["total"] > 0:
+            diff_str = "New coverage"
+            diff_color = COLOR_BG_GOOD
+        elif old_stats["total"] > 0 and new_stats["total"] == 0:
+            diff_str = "Tests removed"
+            diff_color = COLOR_BG_POOR
+        elif old_stats["total"] > 0 and new_stats["total"] > 0:
+            if diff > 5:
+                diff_str = f"+{diff:.2f}%"
+                diff_color = COLOR_BG_GOOD
+            elif diff < -5:
+                diff_str = f"{diff:.2f}%"
+                diff_color = COLOR_BG_POOR
+            else:
+                diff_str = f"{diff:+.2f}%"
+                diff_color = COLOR_BG_AVERAGE
+        else:
+            diff_str = "No tests"
+            diff_color = ""
+        
+        print(f"{pkg:<50} {old_color}{old_str:>20}{COLOR_RESET} {new_color}{new_str:>20}{COLOR_RESET} {diff_color}{diff_str:>20}{COLOR_RESET}")
+        
+        total_old_covered += old_stats["covered"]
+        total_old_statements += old_stats["total"]
+        total_new_covered += new_stats["covered"]
+        total_new_statements += new_stats["total"]
+    
+    # Total summary
+    print("="*120)
+    if total_old_statements > 0:
+        total_old_pct = (total_old_covered / total_old_statements) * 100
+    else:
+        total_old_pct = 0
+    
+    if total_new_statements > 0:
+        total_new_pct = (total_new_covered / total_new_statements) * 100
+    else:
+        total_new_pct = 0
+    
+    total_diff = total_new_pct - total_old_pct
+    
+    old_total_str = f"{total_old_pct:6.2f}% ({total_old_covered}/{total_old_statements})"
+    new_total_str = f"{total_new_pct:6.2f}% ({total_new_covered}/{total_new_statements})"
+    
+    old_total_color = get_coverage_color(total_old_pct)
+    new_total_color = get_coverage_color(total_new_pct)
+    
+    if total_diff > 0:
+        diff_total_str = f"+{total_diff:.2f}%"
+        diff_total_color = COLOR_BG_GOOD
+    else:
+        diff_total_str = f"{total_diff:.2f}%"
+        diff_total_color = COLOR_BG_POOR if total_diff < 0 else COLOR_BG_AVERAGE
+    
+    print(f"{'TOTAL':<50} {old_total_color}{old_total_str:>20}{COLOR_RESET} {new_total_color}{new_total_str:>20}{COLOR_RESET} {diff_total_color}{diff_total_str:>20}{COLOR_RESET}")
+    print("="*120)
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Compare coverage between new tests (_test.go) and old tests (_toremove_test.go)"
+    )
+    
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored output"
+    )
+    
+    parser.add_argument(
+        "--package",
+        help="Analyze only a specific package"
+    )
+    
+    parser.add_argument(
+        "--skip-old",
+        action="store_true",
+        help="Skip running old tests (use existing coverage file if available)"
+    )
+    
+    parser.add_argument(
+        "--skip-new",
+        action="store_true",
+        help="Skip running new tests (use existing coverage file if available)"
+    )
+    
+    args = parser.parse_args()
+    
+    # Initialize colors
+    init_colors(not args.no_color)
+    
+    # Find test files
+    new_tests, old_tests = find_test_files()
+    
+    # Filter by package if specified
+    if args.package:
+        pkg_path = args.package.replace(".", "/")
+        new_tests = [t for t in new_tests if pkg_path in t]
+        old_tests = [t for t in old_tests if pkg_path in t]
+    
+    # Generate or load coverage for new tests
+    new_coverage_file = "coverage_new.out"
+    if not args.skip_new:
+        if not generate_coverage_for_test_type(new_tests, new_coverage_file, "new"):
+            # If no new tests, create empty coverage
+            new_coverage = {}
+        else:
+            new_coverage = parse_coverage_file(Path(new_coverage_file))
+    else:
+        if Path(new_coverage_file).exists():
+            new_coverage = parse_coverage_file(Path(new_coverage_file))
+        else:
+            print(f"Warning: {new_coverage_file} not found, assuming no new test coverage")
+            new_coverage = {}
+    
+    # Generate or load coverage for old tests
+    old_coverage_file = "coverage_old.out"
+    if not args.skip_old:
+        if not generate_coverage_for_test_type(old_tests, old_coverage_file, "old"):
+            # If no old tests, create empty coverage
+            old_coverage = {}
+        else:
+            old_coverage = parse_coverage_file(Path(old_coverage_file))
+    else:
+        if Path(old_coverage_file).exists():
+            old_coverage = parse_coverage_file(Path(old_coverage_file))
+        else:
+            print(f"Warning: {old_coverage_file} not found, assuming no old test coverage")
+            old_coverage = {}
+    
+    # Compare coverage
+    compare_coverage(new_coverage, old_coverage)
+    
+    # Summary of test files
+    print(f"\nTest Migration Summary:")
+    print(f"New test files (_test.go): {len(new_tests)}")
+    print(f"Old test files (_toremove_test.go): {len(old_tests)}")
+
+if __name__ == "__main__":
+    main()

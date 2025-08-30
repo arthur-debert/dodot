@@ -1,15 +1,19 @@
-package shell
+// Test Type: Unit Test
+// Description: Tests for the shell handler - manages shell profile modifications
+
+package shell_test
 
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestShellHandler_ProcessLinking(t *testing.T) {
-	handler := NewShellHandler()
+	handler := shell.NewShellHandler()
 
 	tests := []struct {
 		name          string
@@ -19,7 +23,7 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 		checkActions  func(t *testing.T, actions []types.LinkingAction)
 	}{
 		{
-			name: "single shell script",
+			name: "single_shell_script",
 			matches: []types.RuleMatch{
 				{
 					Path:         "aliases.sh",
@@ -38,7 +42,7 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple shell scripts from same pack",
+			name: "multiple_shell_scripts_from_same_pack",
 			matches: []types.RuleMatch{
 				{
 					Path:         "aliases.sh",
@@ -70,7 +74,7 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name: "shell scripts from different packs",
+			name: "shell_scripts_from_different_packs",
 			matches: []types.RuleMatch{
 				{
 					Path:         "aliases.sh",
@@ -100,13 +104,13 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name:          "empty matches",
+			name:          "empty_matches",
 			matches:       []types.RuleMatch{},
 			expectedCount: 0,
 			expectedError: false,
 		},
 		{
-			name: "nested shell scripts",
+			name: "nested_shell_scripts",
 			matches: []types.RuleMatch{
 				{
 					Path:         "config/aliases.sh",
@@ -121,6 +125,29 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 				action, ok := actions[0].(*types.AddToShellProfileAction)
 				require.True(t, ok)
 				assert.Equal(t, "/dotfiles/shell/config/aliases.sh", action.ScriptPath)
+			},
+		},
+		{
+			name: "shell_script_with_handler_options",
+			matches: []types.RuleMatch{
+				{
+					Path:         "profile.sh",
+					AbsolutePath: "/dotfiles/shell/profile.sh",
+					Pack:         "shell",
+					RuleName:     "filename",
+					HandlerOptions: map[string]interface{}{
+						"placement": "environment",
+					},
+				},
+			},
+			expectedCount: 1,
+			expectedError: false,
+			checkActions: func(t *testing.T, actions []types.LinkingAction) {
+				action, ok := actions[0].(*types.AddToShellProfileAction)
+				require.True(t, ok)
+				assert.Equal(t, "shell", action.PackName)
+				assert.Equal(t, "/dotfiles/shell/profile.sh", action.ScriptPath)
+				// Note: Current implementation doesn't use options yet
 			},
 		},
 	}
@@ -144,8 +171,48 @@ func TestShellHandler_ProcessLinking(t *testing.T) {
 	}
 }
 
+func TestShellHandler_ProcessLinkingWithConfirmations(t *testing.T) {
+	handler := shell.NewShellHandler()
+
+	tests := []struct {
+		name          string
+		matches       []types.RuleMatch
+		expectedCount int
+		expectedError bool
+	}{
+		{
+			name: "shell_scripts_no_confirmations_needed",
+			matches: []types.RuleMatch{
+				{
+					Path:         "aliases.sh",
+					AbsolutePath: "/dotfiles/bash/aliases.sh",
+					Pack:         "bash",
+					RuleName:     "filename",
+				},
+			},
+			expectedCount: 1,
+			expectedError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := handler.ProcessLinkingWithConfirmations(tt.matches)
+
+			if tt.expectedError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Len(t, result.Actions, tt.expectedCount)
+			assert.Empty(t, result.Confirmations, "shell handler should not need confirmations for linking")
+		})
+	}
+}
+
 func TestShellHandler_ValidateOptions(t *testing.T) {
-	handler := NewShellHandler()
+	handler := shell.NewShellHandler()
 
 	tests := []struct {
 		name          string
@@ -153,19 +220,27 @@ func TestShellHandler_ValidateOptions(t *testing.T) {
 		expectedError bool
 	}{
 		{
-			name:          "nil options",
+			name:          "nil_options",
 			options:       nil,
 			expectedError: false,
 		},
 		{
-			name:          "empty options",
+			name:          "empty_options",
 			options:       map[string]interface{}{},
 			expectedError: false,
 		},
 		{
-			name: "any options are accepted",
+			name: "placement_option",
+			options: map[string]interface{}{
+				"placement": "environment",
+			},
+			expectedError: false, // Currently no options are validated
+		},
+		{
+			name: "any_options_accepted",
 			options: map[string]interface{}{
 				"anything": "goes",
+				"foo":      123,
 			},
 			expectedError: false, // Currently no options are validated
 		},
@@ -184,9 +259,9 @@ func TestShellHandler_ValidateOptions(t *testing.T) {
 }
 
 func TestShellHandler_Properties(t *testing.T) {
-	handler := NewShellHandler()
+	handler := shell.NewShellHandler()
 
-	assert.Equal(t, ShellHandlerName, handler.Name())
+	assert.Equal(t, shell.ShellHandlerName, handler.Name())
 	assert.Equal(t, "Manages shell profile modifications (e.g., sourcing aliases)", handler.Description())
 	assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
 
@@ -194,4 +269,98 @@ func TestShellHandler_Properties(t *testing.T) {
 	template := handler.GetTemplateContent()
 	assert.NotEmpty(t, template)
 	assert.Contains(t, template, "Shell aliases")
+}
+
+func TestShellHandler_Clear(t *testing.T) {
+	handler := shell.NewShellHandler()
+
+	tests := []struct {
+		name        string
+		dryRun      bool
+		expectedLen int
+	}{
+		{
+			name:        "clear_dry_run",
+			dryRun:      true,
+			expectedLen: 1,
+		},
+		{
+			name:        "clear_actual",
+			dryRun:      false,
+			expectedLen: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := types.ClearContext{
+				Pack: types.Pack{
+					Name: "bash",
+				},
+				DryRun: tt.dryRun,
+				Paths: &mockPaths{
+					packHandlerDir: "/data/state/packs/bash/shell",
+				},
+			}
+
+			cleared, err := handler.Clear(ctx)
+			require.NoError(t, err)
+			assert.Len(t, cleared, tt.expectedLen)
+
+			item := cleared[0]
+			assert.Equal(t, "shell_state", item.Type)
+			assert.Equal(t, "/data/state/packs/bash/shell", item.Path)
+
+			if tt.dryRun {
+				assert.Contains(t, item.Description, "Would remove")
+			} else {
+				assert.Contains(t, item.Description, "will be removed")
+			}
+		})
+	}
+}
+
+// mockPaths implements the minimal Paths interface for testing
+type mockPaths struct {
+	packHandlerDir string
+}
+
+func (m *mockPaths) PackHandlerDir(packName, handlerName string) string {
+	return m.packHandlerDir
+}
+
+func (m *mockPaths) DataDir() string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) StateRoot() string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) PacksRoot() string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) PackRoot(packName string) string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) DeployedRoot() string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) HandlerDir(handlerName string) string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) IntermediateFile(packName, sourceFile string) string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) HandlerDataFile(handlerName, filename string) string {
+	panic("not implemented")
+}
+
+func (m *mockPaths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+	panic("not implemented")
 }

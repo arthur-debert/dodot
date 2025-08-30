@@ -1,175 +1,434 @@
-package rules
+// Test Type: Unit Test
+// Description: Tests for the rules package - scanner that matches files against rules
+
+package rules_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/rules"
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestScanner_PatternMatching(t *testing.T) {
-	tests := []struct {
-		name     string
-		files    []FileInfo
-		rules    []config.Rule
-		expected map[string]string // filename -> handler
-	}{
-		{
-			name: "exact filename match",
-			files: []FileInfo{
-				{Path: "install.sh", Name: "install.sh", IsDirectory: false},
-				{Path: "README.md", Name: "README.md", IsDirectory: false},
-			},
-			rules: []config.Rule{
-				{Pattern: "install.sh", Handler: "install"},
-				{Pattern: "*", Handler: "symlink"},
-			},
-			expected: map[string]string{
-				"install.sh": "install",
-				"README.md":  "symlink",
-			},
-		},
-		{
-			name: "glob pattern match",
-			files: []FileInfo{
-				{Path: "aliases.sh", Name: "aliases.sh", IsDirectory: false},
-				{Path: "my-aliases.sh", Name: "my-aliases.sh", IsDirectory: false},
-				{Path: "config", Name: "config", IsDirectory: false},
-			},
-			rules: []config.Rule{
-				{Pattern: "*aliases.sh", Handler: "shell"},
-				{Pattern: "*", Handler: "symlink"},
-			},
-			expected: map[string]string{
-				"aliases.sh":    "shell",
-				"my-aliases.sh": "shell",
-				"config":        "symlink",
-			},
-		},
-		{
-			name: "directory pattern with trailing slash",
-			files: []FileInfo{
-				{Path: "bin", Name: "bin", IsDirectory: true},
-				{Path: "lib", Name: "lib", IsDirectory: true},
-				{Path: "bin.txt", Name: "bin.txt", IsDirectory: false},
-			},
-			rules: []config.Rule{
-				{Pattern: "bin/", Handler: "path"},
-				{Pattern: "*", Handler: "symlink"},
-			},
-			expected: map[string]string{
-				"bin":     "path",
-				"bin.txt": "symlink",
-			},
-		},
-		{
-			name: "exclusion patterns",
-			files: []FileInfo{
-				{Path: "config", Name: "config", IsDirectory: false},
-				{Path: "config.bak", Name: "config.bak", IsDirectory: false},
-				{Path: ".DS_Store", Name: ".DS_Store", IsDirectory: false},
-			},
-			rules: []config.Rule{
-				{Pattern: "!*.bak"},
-				{Pattern: "!.DS_Store"},
-				{Pattern: "*", Handler: "symlink"},
-			},
-			expected: map[string]string{
-				"config": "symlink",
-				// config.bak and .DS_Store should be excluded
-			},
-		},
-		{
-			name: "matching order - exact before glob",
-			files: []FileInfo{
-				{Path: "test.sh", Name: "test.sh", IsDirectory: false},
-			},
-			rules: []config.Rule{
-				{Pattern: "test.sh", Handler: "install"}, // Exact match
-				{Pattern: "*.sh", Handler: "shell"},      // Glob pattern
-				{Pattern: "*", Handler: "symlink"},       // Catchall
-			},
-			expected: map[string]string{
-				"test.sh": "install", // Exact match wins over glob
-			},
-		},
-	}
+func TestScanner_ScanPack(t *testing.T) {
+	t.Run("exact_filename_match", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary directory for testing
-			tmpDir := t.TempDir()
-			pack := types.Pack{
-				Name: "test",
-				Path: tmpDir,
-			}
+		// Setup files
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"install.sh": "#!/bin/bash",
+				"README.md":  "# README",
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
 
-			// Create test files
-			for _, f := range tt.files {
-				path := filepath.Join(tmpDir, f.Path)
-				if f.IsDirectory {
-					require.NoError(t, os.Mkdir(path, 0755))
-				} else {
-					require.NoError(t, os.WriteFile(path, []byte("test"), 0644))
-				}
-			}
+		// Create scanner with rules
+		ruleList := []config.Rule{
+			{Pattern: "install.sh", Handler: "install"},
+			{Pattern: "*", Handler: "symlink"},
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
-			// Run scanner
-			scanner := NewScanner(tt.rules)
-			matches, err := scanner.ScanPack(pack)
-			require.NoError(t, err)
+		// Create pack struct
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
 
-			// Check results
-			matchMap := make(map[string]string)
-			for _, m := range matches {
-				matchMap[m.FileName] = m.Handler
-			}
+		// Scan
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
 
-			assert.Equal(t, tt.expected, matchMap)
-		})
-	}
+		// Verify matches
+		assert.Len(t, matches, 2)
+
+		matchMap := make(map[string]string)
+		for _, m := range matches {
+			matchMap[m.FileName] = m.Handler
+		}
+
+		assert.Equal(t, "install", matchMap["install.sh"])
+		assert.Equal(t, "symlink", matchMap["README.md"])
+	})
+
+	t.Run("glob_pattern_match", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
+
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"aliases.sh":    "alias ll='ls -la'",
+				"my-aliases.sh": "alias g='git'",
+				"config":        "some config",
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
+
+		ruleList := []config.Rule{
+			{Pattern: "*aliases.sh", Handler: "shell"},
+			{Pattern: "*", Handler: "symlink"},
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
+
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
+
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
+		assert.Len(t, matches, 3)
+
+		matchMap := make(map[string]string)
+		for _, m := range matches {
+			matchMap[m.FileName] = m.Handler
+		}
+
+		assert.Equal(t, "shell", matchMap["aliases.sh"])
+		assert.Equal(t, "shell", matchMap["my-aliases.sh"])
+		assert.Equal(t, "symlink", matchMap["config"])
+	})
+
+	t.Run("directory_pattern", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
+
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"bin.txt": "not a directory",
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
+
+		// Manually create directories
+		testPack.AddDirectory("bin")
+		testPack.AddDirectory("lib")
+
+		ruleList := []config.Rule{
+			{Pattern: "bin/", Handler: "path"},
+			{Pattern: "*", Handler: "symlink"},
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
+
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
+
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
+
+		matchMap := make(map[string]string)
+		for _, m := range matches {
+			matchMap[m.FileName] = m.Handler
+		}
+
+		// Only bin and bin.txt match (lib doesn't match * for directories)
+		assert.Len(t, matches, 2)
+		assert.Equal(t, "path", matchMap["bin"])
+		assert.NotContains(t, matchMap, "lib") // Directories don't match *
+		assert.Equal(t, "symlink", matchMap["bin.txt"])
+	})
+
+	t.Run("exclusion_patterns", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
+
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"config":     "main config",
+				"config.bak": "backup",
+				".DS_Store":  "mac file",
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
+
+		ruleList := []config.Rule{
+			{Pattern: "!*.bak"},
+			{Pattern: "!.DS_Store"},
+			{Pattern: "*", Handler: "symlink"},
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
+
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
+
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
+
+		matchMap := make(map[string]bool)
+		for _, m := range matches {
+			matchMap[m.FileName] = true
+		}
+
+		// Only config should match (config.bak excluded by rule, .DS_Store skipped by scanner)
+		assert.Len(t, matches, 1)
+		assert.True(t, matchMap["config"])
+		assert.False(t, matchMap["config.bak"])
+		assert.False(t, matchMap[".DS_Store"]) // Not even seen by rules
+	})
+
+	t.Run("rule_precedence", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
+
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"test.sh": "#!/bin/bash",
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
+
+		ruleList := []config.Rule{
+			{Pattern: "test.sh", Handler: "install"}, // Exact match
+			{Pattern: "*.sh", Handler: "shell"},      // Glob pattern
+			{Pattern: "*", Handler: "symlink"},       // Catchall
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
+
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
+
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
+		assert.Len(t, matches, 1)
+		assert.Equal(t, "install", matches[0].Handler)
+	})
+
+	t.Run("top_level_only", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
+
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"setup.sh":       "#!/bin/bash",
+				"config/app.yml": "app config", // This creates config dir but scanner won't see app.yml
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
+
+		ruleList := []config.Rule{
+			{Pattern: "*.sh", Handler: "shell"},
+			{Pattern: "*", Handler: "symlink"},
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
+
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
+
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
+
+		// Scanner only reads top-level entries
+		fileHandlers := make(map[string]string)
+		for _, m := range matches {
+			fileHandlers[m.FileName] = m.Handler
+		}
+
+		assert.Equal(t, "shell", fileHandlers["setup.sh"])
+		assert.NotContains(t, fileHandlers, "config")  // Directory doesn't match *
+		assert.NotContains(t, fileHandlers, "app.yml") // Nested file not seen
+	})
+
+	t.Run("options_passed_through", func(t *testing.T) {
+		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+		defer env.Cleanup()
+
+		packConfig := testutil.PackConfig{
+			Files: map[string]string{
+				"profile.sh": "export PATH",
+			},
+		}
+		testPack := env.SetupPack("testpack", packConfig)
+
+		ruleList := []config.Rule{
+			{
+				Pattern: "profile.sh",
+				Handler: "shell",
+				Options: map[string]interface{}{
+					"placement": "environment",
+				},
+			},
+		}
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
+
+		pack := types.Pack{
+			Name: testPack.Name,
+			Path: testPack.Path,
+		}
+
+		matches, err := scanner.ScanPack(pack)
+		require.NoError(t, err)
+		assert.Len(t, matches, 1)
+		assert.Equal(t, "environment", matches[0].Options["placement"])
+	})
 }
 
 func TestScanner_HiddenFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-	pack := types.Pack{
-		Name: "test",
-		Path: tmpDir,
-	}
+	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+	defer env.Cleanup()
 
-	// Create test files including hidden ones
-	files := []string{
-		"normal.txt",
-		".hidden",
-		".config", // Special case - should be included
-		".gitignore",
+	packConfig := testutil.PackConfig{
+		Files: map[string]string{
+			"normal.txt":           "normal file",
+			".hidden":              "hidden file",
+			".config/settings.yml": "settings",
+			".gitignore":           "*.log",
+		},
 	}
+	testPack := env.SetupPack("testpack", packConfig)
 
-	for _, f := range files {
-		require.NoError(t, os.WriteFile(filepath.Join(tmpDir, f), []byte("test"), 0644))
-	}
-
-	scanner := NewScanner([]config.Rule{
+	scanner := rules.NewScannerWithFS([]config.Rule{
 		{Pattern: "*", Handler: "symlink"},
-	})
+	}, env.FS)
+
+	pack := types.Pack{
+		Name: testPack.Name,
+		Path: testPack.Path,
+	}
 
 	matches, err := scanner.ScanPack(pack)
 	require.NoError(t, err)
 
-	// Should match normal.txt, .hidden, and .config but not .gitignore (which is skipped)
-	assert.Len(t, matches, 3)
+	// Count matches by filename
+	matchedFiles := make(map[string]bool)
+	for _, m := range matches {
+		matchedFiles[m.FileName] = true
+	}
+
+	// Scanner only reads top-level and skips .gitignore
+	// Directories don't match * pattern
+	assert.True(t, matchedFiles["normal.txt"])
+	assert.True(t, matchedFiles[".hidden"])
+	assert.False(t, matchedFiles[".config"])      // Directory doesn't match *
+	assert.False(t, matchedFiles["settings.yml"]) // Nested file not seen
+	assert.False(t, matchedFiles[".gitignore"])   // Skipped by scanner
+}
+
+func TestScanner_EmptyPack(t *testing.T) {
+	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+	defer env.Cleanup()
+
+	// Create empty pack
+	testPack := env.SetupPack("empty", testutil.PackConfig{})
+
+	scanner := rules.NewScannerWithFS([]config.Rule{
+		{Pattern: "*", Handler: "symlink"},
+	}, env.FS)
+
+	pack := types.Pack{
+		Name: testPack.Name,
+		Path: testPack.Path,
+	}
+
+	matches, err := scanner.ScanPack(pack)
+	assert.NoError(t, err)
+	assert.Empty(t, matches)
+}
+
+func TestScanner_ComplexExclusions(t *testing.T) {
+	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+	defer env.Cleanup()
+
+	packConfig := testutil.PackConfig{
+		Files: map[string]string{
+			"config":       "main config",
+			"config~":      "backup 1",
+			"config.bak":   "backup 2",
+			"config.swp":   "swap file",
+			"#config#":     "emacs backup",
+			".DS_Store":    "mac file",
+			"important.sh": "#!/bin/bash",
+		},
+	}
+	testPack := env.SetupPack("testpack", packConfig)
+
+	// Use default-like exclusion rules
+	scanner := rules.NewScannerWithFS([]config.Rule{
+		{Pattern: "!*.bak"},
+		{Pattern: "!*.swp"},
+		{Pattern: "!*~"},
+		{Pattern: "!#*#"},
+		{Pattern: "!.DS_Store"},
+		{Pattern: "*", Handler: "symlink"},
+	}, env.FS)
+
+	pack := types.Pack{
+		Name: testPack.Name,
+		Path: testPack.Path,
+	}
+
+	matches, err := scanner.ScanPack(pack)
+	require.NoError(t, err)
 
 	matchedFiles := make(map[string]bool)
 	for _, m := range matches {
 		matchedFiles[m.FileName] = true
 	}
 
-	assert.True(t, matchedFiles["normal.txt"])
-	assert.True(t, matchedFiles[".config"])
-	assert.True(t, matchedFiles[".hidden"])     // Regular hidden files are included
-	assert.False(t, matchedFiles[".gitignore"]) // Special files are excluded
+	// .DS_Store is skipped by scanner, others excluded by rules
+	assert.Len(t, matches, 2)
+	assert.True(t, matchedFiles["config"])
+	assert.True(t, matchedFiles["important.sh"])
+	assert.False(t, matchedFiles["config~"])
+	assert.False(t, matchedFiles["config.bak"])
+	assert.False(t, matchedFiles["config.swp"])
+	assert.False(t, matchedFiles["#config#"])
+	assert.False(t, matchedFiles[".DS_Store"]) // Skipped by scanner, not rules
+}
+
+func TestNewScanner(t *testing.T) {
+	// Test that NewScanner creates a scanner without filesystem
+	ruleList := []config.Rule{
+		{Pattern: "*", Handler: "symlink"},
+	}
+
+	scanner := rules.NewScanner(ruleList)
+	assert.NotNil(t, scanner)
+}
+
+func TestMatch_Fields(t *testing.T) {
+	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+	defer env.Cleanup()
+
+	packConfig := testutil.PackConfig{
+		Files: map[string]string{
+			"file.txt": "content", // Top level file
+		},
+	}
+	testPack := env.SetupPack("mypack", packConfig)
+
+	scanner := rules.NewScannerWithFS([]config.Rule{
+		{Pattern: "*", Handler: "symlink", Options: map[string]interface{}{"key": "value"}},
+	}, env.FS)
+
+	pack := types.Pack{
+		Name: testPack.Name,
+		Path: testPack.Path,
+	}
+
+	matches, err := scanner.ScanPack(pack)
+	require.NoError(t, err)
+
+	require.Len(t, matches, 1)
+	fileMatch := matches[0]
+
+	assert.Equal(t, "mypack", fileMatch.PackName)
+	assert.Equal(t, "file.txt", fileMatch.FilePath)
+	assert.Equal(t, "file.txt", fileMatch.FileName)
+	assert.False(t, fileMatch.IsDirectory)
+	assert.Equal(t, "symlink", fileMatch.Handler)
+	assert.Equal(t, "value", fileMatch.Options["key"])
 }

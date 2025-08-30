@@ -1,6 +1,12 @@
+// pkg/types/action_test.go
+// TEST TYPE: Unit Tests
+// DEPENDENCIES: Mock DataStore
+// PURPOSE: Test action types and their Execute methods
+
 package types_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -8,7 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockDataStore is a mock implementation of types.DataStore
+// MockDataStore is a mock implementation of types.DataStore for testing
 type MockDataStore struct {
 	mock.Mock
 }
@@ -88,6 +94,7 @@ func (m *MockDataStore) ListProvisioningState(packName string) (map[string][]str
 	return args.Get(0).(map[string][]string), args.Error(1)
 }
 
+// TestLinkAction_Execute tests LinkAction execution
 func TestLinkAction_Execute(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -97,7 +104,7 @@ func TestLinkAction_Execute(t *testing.T) {
 		expectedErrMsg string
 	}{
 		{
-			name: "successful link",
+			name: "successful_link",
 			action: &types.LinkAction{
 				PackName:   "vim",
 				SourceFile: "/home/user/dotfiles/vim/.vimrc",
@@ -110,7 +117,7 @@ func TestLinkAction_Execute(t *testing.T) {
 			expectedErr: false,
 		},
 		{
-			name: "link failure",
+			name: "link_failure",
 			action: &types.LinkAction{
 				PackName:   "vim",
 				SourceFile: "/home/user/dotfiles/vim/.vimrc",
@@ -118,7 +125,7 @@ func TestLinkAction_Execute(t *testing.T) {
 			},
 			mockSetup: func(m *MockDataStore) {
 				m.On("Link", "vim", "/home/user/dotfiles/vim/.vimrc").
-					Return("", assert.AnError)
+					Return("", errors.New("permission denied"))
 			},
 			expectedErr:    true,
 			expectedErrMsg: "failed to create intermediate link",
@@ -144,6 +151,7 @@ func TestLinkAction_Execute(t *testing.T) {
 	}
 }
 
+// TestLinkAction_Properties tests LinkAction properties
 func TestLinkAction_Properties(t *testing.T) {
 	action := &types.LinkAction{
 		PackName:   "vim",
@@ -154,10 +162,11 @@ func TestLinkAction_Properties(t *testing.T) {
 	assert.Equal(t, "vim", action.Pack())
 	assert.Equal(t, "Link .vimrc to ~/.vimrc", action.Description())
 
-	// Verify it implements LinkingAction
+	// Verify it implements LinkingAction interface
 	var _ types.LinkingAction = action
 }
 
+// TestUnlinkAction_Execute tests UnlinkAction execution
 func TestUnlinkAction_Execute(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -166,7 +175,7 @@ func TestUnlinkAction_Execute(t *testing.T) {
 		expectedErr bool
 	}{
 		{
-			name: "successful unlink",
+			name: "successful_unlink",
 			action: &types.UnlinkAction{
 				PackName:   "vim",
 				SourceFile: ".vimrc",
@@ -177,13 +186,13 @@ func TestUnlinkAction_Execute(t *testing.T) {
 			expectedErr: false,
 		},
 		{
-			name: "unlink failure",
+			name: "unlink_failure",
 			action: &types.UnlinkAction{
 				PackName:   "vim",
 				SourceFile: ".vimrc",
 			},
 			mockSetup: func(m *MockDataStore) {
-				m.On("Unlink", "vim", ".vimrc").Return(assert.AnError)
+				m.On("Unlink", "vim", ".vimrc").Return(errors.New("not found"))
 			},
 			expectedErr: true,
 		},
@@ -207,90 +216,50 @@ func TestUnlinkAction_Execute(t *testing.T) {
 	}
 }
 
+// TestUnlinkAction_Properties tests UnlinkAction properties
+func TestUnlinkAction_Properties(t *testing.T) {
+	action := &types.UnlinkAction{
+		PackName:   "vim",
+		SourceFile: ".vimrc",
+	}
+
+	assert.Equal(t, "vim", action.Pack())
+	assert.Equal(t, "Unlink .vimrc", action.Description())
+
+	// Verify it implements LinkingAction interface
+	var _ types.LinkingAction = action
+}
+
+// TestAddToPathAction_Execute tests AddToPathAction execution
 func TestAddToPathAction_Execute(t *testing.T) {
-	action := &types.AddToPathAction{
-		PackName: "tools",
-		DirPath:  "/home/user/dotfiles/tools/bin",
-	}
-
-	mockStore := new(MockDataStore)
-	mockStore.On("AddToPath", "tools", "/home/user/dotfiles/tools/bin").Return(nil)
-
-	err := action.Execute(mockStore)
-	assert.NoError(t, err)
-	assert.Equal(t, "tools", action.Pack())
-	assert.Equal(t, "Add /home/user/dotfiles/tools/bin to PATH", action.Description())
-
-	mockStore.AssertExpectations(t)
-}
-
-func TestAddToShellProfileAction_Execute(t *testing.T) {
-	action := &types.AddToShellProfileAction{
-		PackName:   "shell",
-		ScriptPath: "/home/user/dotfiles/shell/aliases.sh",
-	}
-
-	mockStore := new(MockDataStore)
-	mockStore.On("AddToShellProfile", "shell", "/home/user/dotfiles/shell/aliases.sh").Return(nil)
-
-	err := action.Execute(mockStore)
-	assert.NoError(t, err)
-	assert.Equal(t, "shell", action.Pack())
-	assert.Equal(t, "Add /home/user/dotfiles/shell/aliases.sh to shell profile", action.Description())
-
-	mockStore.AssertExpectations(t)
-}
-
-func TestRunScriptAction_Execute(t *testing.T) {
 	tests := []struct {
-		name           string
-		action         *types.RunScriptAction
-		mockSetup      func(*MockDataStore)
-		expectedErr    bool
-		expectedErrMsg string
+		name        string
+		action      *types.AddToPathAction
+		mockSetup   func(*MockDataStore)
+		expectedErr bool
 	}{
 		{
-			name: "needs provisioning",
-			action: &types.RunScriptAction{
-				PackName:     "dev",
-				ScriptPath:   "/home/user/dotfiles/dev/install.sh",
-				Checksum:     "sha256:12345",
-				SentinelName: "install.sh.sentinel",
+			name: "successful_add_to_path",
+			action: &types.AddToPathAction{
+				PackName: "tools",
+				DirPath:  "/home/user/tools/bin",
 			},
 			mockSetup: func(m *MockDataStore) {
-				m.On("NeedsProvisioning", "dev", "install.sh.sentinel", "sha256:12345").
-					Return(true, nil)
+				m.On("AddToPath", "tools", "/home/user/tools/bin").Return(nil)
 			},
 			expectedErr: false,
 		},
 		{
-			name: "already provisioned",
-			action: &types.RunScriptAction{
-				PackName:     "dev",
-				ScriptPath:   "/home/user/dotfiles/dev/install.sh",
-				Checksum:     "sha256:12345",
-				SentinelName: "install.sh.sentinel",
+			name: "add_to_path_failure",
+			action: &types.AddToPathAction{
+				PackName: "tools",
+				DirPath:  "/home/user/tools/bin",
 			},
 			mockSetup: func(m *MockDataStore) {
-				m.On("NeedsProvisioning", "dev", "install.sh.sentinel", "sha256:12345").
-					Return(false, nil)
+				m.On("AddToPath", "tools", "/home/user/tools/bin").
+					Return(errors.New("failed to add"))
 			},
-			expectedErr: false,
-		},
-		{
-			name: "check provisioning fails",
-			action: &types.RunScriptAction{
-				PackName:     "dev",
-				ScriptPath:   "/home/user/dotfiles/dev/install.sh",
-				Checksum:     "sha256:12345",
-				SentinelName: "install.sh.sentinel",
-			},
-			mockSetup: func(m *MockDataStore) {
-				m.On("NeedsProvisioning", "dev", "install.sh.sentinel", "sha256:12345").
-					Return(false, assert.AnError)
-			},
-			expectedErr:    true,
-			expectedErrMsg: "failed to check provisioning status",
+			expectedErr: true,
 		},
 	}
 
@@ -303,7 +272,6 @@ func TestRunScriptAction_Execute(t *testing.T) {
 
 			if tt.expectedErr {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), tt.expectedErrMsg)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -313,56 +281,260 @@ func TestRunScriptAction_Execute(t *testing.T) {
 	}
 }
 
+// TestAddToPathAction_Properties tests AddToPathAction properties
+func TestAddToPathAction_Properties(t *testing.T) {
+	action := &types.AddToPathAction{
+		PackName: "tools",
+		DirPath:  "bin",
+	}
+
+	assert.Equal(t, "tools", action.Pack())
+	assert.Equal(t, "Add bin to PATH", action.Description())
+
+	// Verify it implements LinkingAction interface
+	var _ types.LinkingAction = action
+}
+
+// TestAddToShellProfileAction_Execute tests AddToShellProfileAction execution
+func TestAddToShellProfileAction_Execute(t *testing.T) {
+	tests := []struct {
+		name        string
+		action      *types.AddToShellProfileAction
+		mockSetup   func(*MockDataStore)
+		expectedErr bool
+	}{
+		{
+			name: "successful_add_to_shell_profile",
+			action: &types.AddToShellProfileAction{
+				PackName:   "git",
+				ScriptPath: "/home/user/dotfiles/git/aliases.sh",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("AddToShellProfile", "git", "/home/user/dotfiles/git/aliases.sh").Return(nil)
+			},
+			expectedErr: false,
+		},
+		{
+			name: "add_to_shell_profile_failure",
+			action: &types.AddToShellProfileAction{
+				PackName:   "git",
+				ScriptPath: "/home/user/dotfiles/git/aliases.sh",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("AddToShellProfile", "git", "/home/user/dotfiles/git/aliases.sh").
+					Return(errors.New("failed"))
+			},
+			expectedErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStore := new(MockDataStore)
+			tt.mockSetup(mockStore)
+
+			err := tt.action.Execute(mockStore)
+
+			if tt.expectedErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockStore.AssertExpectations(t)
+		})
+	}
+}
+
+// TestAddToShellProfileAction_Properties tests AddToShellProfileAction properties
+func TestAddToShellProfileAction_Properties(t *testing.T) {
+	action := &types.AddToShellProfileAction{
+		PackName:   "git",
+		ScriptPath: "aliases.sh",
+	}
+
+	assert.Equal(t, "git", action.Pack())
+	assert.Equal(t, "Add aliases.sh to shell profile", action.Description())
+
+	// Verify it implements LinkingAction interface
+	var _ types.LinkingAction = action
+}
+
+// TestRunScriptAction_Execute tests RunScriptAction execution
+func TestRunScriptAction_Execute(t *testing.T) {
+	tests := []struct {
+		name        string
+		action      *types.RunScriptAction
+		mockSetup   func(*MockDataStore)
+		expectedErr bool
+	}{
+		{
+			name: "already_provisioned",
+			action: &types.RunScriptAction{
+				PackName:     "tools",
+				ScriptPath:   "./install.sh",
+				Checksum:     "sha256:12345",
+				SentinelName: "install.sh.sentinel",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("NeedsProvisioning", "tools", "install.sh.sentinel", "sha256:12345").
+					Return(false, nil)
+			},
+			expectedErr: false,
+		},
+		{
+			name: "needs_provisioning",
+			action: &types.RunScriptAction{
+				PackName:     "tools",
+				ScriptPath:   "./install.sh",
+				Checksum:     "sha256:12345",
+				SentinelName: "install.sh.sentinel",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("NeedsProvisioning", "tools", "install.sh.sentinel", "sha256:12345").
+					Return(true, nil)
+			},
+			expectedErr: false, // Action itself doesn't run the script
+		},
+		{
+			name: "check_provisioning_error",
+			action: &types.RunScriptAction{
+				PackName:     "tools",
+				ScriptPath:   "./install.sh",
+				Checksum:     "sha256:12345",
+				SentinelName: "install.sh.sentinel",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("NeedsProvisioning", "tools", "install.sh.sentinel", "sha256:12345").
+					Return(false, errors.New("check failed"))
+			},
+			expectedErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStore := new(MockDataStore)
+			tt.mockSetup(mockStore)
+
+			err := tt.action.Execute(mockStore)
+
+			if tt.expectedErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockStore.AssertExpectations(t)
+		})
+	}
+}
+
+// TestRunScriptAction_Properties tests RunScriptAction properties
 func TestRunScriptAction_Properties(t *testing.T) {
 	action := &types.RunScriptAction{
-		PackName:     "dev",
-		ScriptPath:   "install.sh",
+		PackName:     "tools",
+		ScriptPath:   "./install.sh",
 		Checksum:     "sha256:12345",
 		SentinelName: "install.sh.sentinel",
 	}
 
-	assert.Equal(t, "dev", action.Pack())
-	assert.Equal(t, "Run provisioning script install.sh", action.Description())
+	assert.Equal(t, "tools", action.Pack())
+	assert.Equal(t, "Run provisioning script ./install.sh", action.Description())
 
-	// Verify it implements ProvisioningAction
+	// Verify it implements ProvisioningAction interface
 	var _ types.ProvisioningAction = action
 }
 
+// TestRecordProvisioningAction_Execute tests RecordProvisioningAction
 func TestRecordProvisioningAction_Execute(t *testing.T) {
 	action := &types.RecordProvisioningAction{
-		PackName:     "dev",
+		PackName:     "tools",
 		SentinelName: "install.sh.sentinel",
 		Checksum:     "sha256:12345",
 	}
 
 	mockStore := new(MockDataStore)
-	mockStore.On("RecordProvisioning", "dev", "install.sh.sentinel", "sha256:12345").Return(nil)
+	mockStore.On("RecordProvisioning", "tools", "install.sh.sentinel", "sha256:12345").Return(nil)
 
 	err := action.Execute(mockStore)
 	assert.NoError(t, err)
-	assert.Equal(t, "dev", action.Pack())
+
+	assert.Equal(t, "tools", action.Pack())
 	assert.Equal(t, "Record provisioning complete for install.sh.sentinel", action.Description())
+
+	// Verify it implements ProvisioningAction interface
+	var _ types.ProvisioningAction = action
 
 	mockStore.AssertExpectations(t)
 }
 
-// Test that all actions implement the correct interfaces
-func TestActionInterfaces(t *testing.T) {
-	// Linking actions
-	var _ types.LinkingAction = &types.LinkAction{}
-	var _ types.LinkingAction = &types.UnlinkAction{}
-	var _ types.LinkingAction = &types.AddToPathAction{}
-	var _ types.LinkingAction = &types.AddToShellProfileAction{}
+// TestBrewAction_Execute tests BrewAction execution
+func TestBrewAction_Execute(t *testing.T) {
+	tests := []struct {
+		name        string
+		action      *types.BrewAction
+		mockSetup   func(*MockDataStore)
+		expectedErr bool
+	}{
+		{
+			name: "already_installed",
+			action: &types.BrewAction{
+				PackName:     "dev",
+				BrewfilePath: "/home/user/dotfiles/dev/Brewfile",
+				Checksum:     "sha256:67890",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("NeedsProvisioning", "dev", "homebrew-dev.sentinel", "sha256:67890").
+					Return(false, nil)
+			},
+			expectedErr: false,
+		},
+		{
+			name: "needs_installation",
+			action: &types.BrewAction{
+				PackName:     "dev",
+				BrewfilePath: "/home/user/dotfiles/dev/Brewfile",
+				Checksum:     "sha256:67890",
+			},
+			mockSetup: func(m *MockDataStore) {
+				m.On("NeedsProvisioning", "dev", "homebrew-dev.sentinel", "sha256:67890").
+					Return(true, nil)
+			},
+			expectedErr: false, // Action itself doesn't run brew
+		},
+	}
 
-	// Provisioning actions
-	var _ types.ProvisioningAction = &types.RunScriptAction{}
-	var _ types.ProvisioningAction = &types.RecordProvisioningAction{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockStore := new(MockDataStore)
+			tt.mockSetup(mockStore)
 
-	// All implement base Action interface
-	var _ types.Action = &types.LinkAction{}
-	var _ types.Action = &types.UnlinkAction{}
-	var _ types.Action = &types.AddToPathAction{}
-	var _ types.Action = &types.AddToShellProfileAction{}
-	var _ types.Action = &types.RunScriptAction{}
-	var _ types.Action = &types.RecordProvisioningAction{}
+			err := tt.action.Execute(mockStore)
+
+			if tt.expectedErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			mockStore.AssertExpectations(t)
+		})
+	}
 }
+
+// TestBrewAction_Properties tests BrewAction properties
+func TestBrewAction_Properties(t *testing.T) {
+	action := &types.BrewAction{
+		PackName:     "dev",
+		BrewfilePath: "/home/user/dotfiles/dev/Brewfile",
+		Checksum:     "sha256:67890",
+	}
+
+	assert.Equal(t, "dev", action.Pack())
+	assert.Equal(t, "Install Homebrew packages from /home/user/dotfiles/dev/Brewfile", action.Description())
+
+	// Verify it implements ProvisioningAction interface
+	var _ types.ProvisioningAction = action
+}
+

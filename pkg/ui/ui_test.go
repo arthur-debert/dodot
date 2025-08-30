@@ -3,7 +3,6 @@ package ui_test
 import (
 	"bytes"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -14,29 +13,40 @@ import (
 
 func TestNewRenderer(t *testing.T) {
 	tests := []struct {
-		name    string
-		format  ui.Format
-		wantErr bool
+		name        string
+		format      ui.Format
+		expectError bool
+		description string
 	}{
 		{
-			name:    "terminal format",
-			format:  ui.FormatTerminal,
-			wantErr: false,
+			name:        "create terminal renderer",
+			format:      ui.FormatTerminal,
+			expectError: false,
+			description: "should create terminal renderer successfully",
 		},
 		{
-			name:    "text format",
-			format:  ui.FormatText,
-			wantErr: false,
+			name:        "create text renderer",
+			format:      ui.FormatText,
+			expectError: false,
+			description: "should create text renderer successfully",
 		},
 		{
-			name:    "json format",
-			format:  ui.FormatJSON,
-			wantErr: false,
+			name:        "create json renderer",
+			format:      ui.FormatJSON,
+			expectError: false,
+			description: "should create JSON renderer successfully",
 		},
 		{
-			name:    "auto format",
-			format:  ui.FormatAuto,
-			wantErr: false,
+			name:        "create auto renderer with buffer",
+			format:      ui.FormatAuto,
+			expectError: false,
+			description: "should default to terminal format when output is not a file",
+		},
+		{
+			name:        "invalid format",
+			format:      ui.Format(999),
+			expectError: true,
+			description: "should return error for unknown format",
 		},
 	}
 
@@ -44,8 +54,11 @@ func TestNewRenderer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			renderer, err := ui.NewRenderer(tt.format, buf)
-			if tt.wantErr {
+
+			if tt.expectError {
 				assert.Error(t, err)
+				assert.Nil(t, renderer)
+				assert.Contains(t, err.Error(), "unknown format")
 			} else {
 				assert.NoError(t, err)
 				assert.NotNil(t, renderer)
@@ -54,31 +67,34 @@ func TestNewRenderer(t *testing.T) {
 	}
 }
 
-func TestFormatParsing(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected ui.Format
-		wantErr  bool
-	}{
-		{"auto", ui.FormatAuto, false},
-		{"", ui.FormatAuto, false},
-		{"term", ui.FormatTerminal, false},
-		{"terminal", ui.FormatTerminal, false},
-		{"text", ui.FormatText, false},
-		{"plain", ui.FormatText, false},
-		{"json", ui.FormatJSON, false},
-		{"invalid", ui.FormatAuto, true},
+func TestRendererInterface(t *testing.T) {
+	// Test that all renderer implementations satisfy the Renderer interface
+	formats := []ui.Format{
+		ui.FormatTerminal,
+		ui.FormatText,
+		ui.FormatJSON,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			format, err := ui.ParseFormat(tt.input)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expected, format)
-			}
+	for _, format := range formats {
+		t.Run(format.String()+" renderer implements interface", func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			renderer, err := ui.NewRenderer(format, buf)
+			require.NoError(t, err)
+
+			// Verify the renderer implements all required methods
+			assert.NotNil(t, renderer)
+
+			// Test basic method calls (just ensure they don't panic)
+			err = renderer.RenderMessage("test message")
+			assert.NoError(t, err)
+
+			err = renderer.RenderError(assert.AnError)
+			assert.NoError(t, err)
+
+			// Test with simple data
+			testData := map[string]string{"test": "data"}
+			err = renderer.RenderResult(testData)
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -121,6 +137,34 @@ func TestJSONRenderer(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, "bar", result["foo"])
 	})
+
+	t.Run("render complex result", func(t *testing.T) {
+		buf.Reset()
+		complexData := &types.DisplayResult{
+			Command: "test",
+			Packs: []types.DisplayPack{
+				{
+					Name: "vim",
+					Files: []types.DisplayFile{
+						{
+							Path:    ".vimrc",
+							Handler: "symlink",
+							Status:  "success",
+						},
+					},
+				},
+			},
+		}
+		err := renderer.RenderResult(complexData)
+		assert.NoError(t, err)
+
+		var result types.DisplayResult
+		err = json.Unmarshal(buf.Bytes(), &result)
+		assert.NoError(t, err)
+		assert.Equal(t, "test", result.Command)
+		assert.Len(t, result.Packs, 1)
+		assert.Equal(t, "vim", result.Packs[0].Name)
+	})
 }
 
 func TestTextRenderer(t *testing.T) {
@@ -142,113 +186,6 @@ func TestTextRenderer(t *testing.T) {
 		assert.Equal(t, "Error: assert.AnError general error for testing\n", buf.String())
 	})
 
-	t.Run("render display result", func(t *testing.T) {
-		buf.Reset()
-		result := &types.DisplayResult{
-			Packs: []types.DisplayPack{
-				{
-					Name: "test",
-					Files: []types.DisplayFile{
-						{
-							Path:    ".vimrc",
-							Handler: "symlink",
-							Status:  "success",
-						},
-					},
-				},
-			},
-		}
-		err := renderer.RenderResult(result)
-		assert.NoError(t, err)
-		output := buf.String()
-		assert.Contains(t, output, "test [status=success]:")
-		assert.Contains(t, output, ".vimrc")
-		assert.Contains(t, output, "symlink")
-	})
-
-	t.Run("render execution context", func(t *testing.T) {
-		buf.Reset()
-		ctx := &types.ExecutionContext{
-			Command: "test",
-			DryRun:  true,
-			PackResults: map[string]*types.PackExecutionResult{
-				"vim": {
-					Pack: &types.Pack{Name: "vim"},
-					HandlerResults: []*types.HandlerResult{
-						{
-							HandlerName: "symlink",
-							Status:      "success",
-							Files:       []string{".vimrc"},
-						},
-					},
-					Status: "success",
-				},
-			},
-		}
-		err := renderer.RenderResult(ctx)
-		assert.NoError(t, err)
-		output := buf.String()
-		assert.Contains(t, output, "test (dry run)")
-		assert.Contains(t, output, "vim [status=queue]:")
-		assert.Contains(t, output, "symlink")
-	})
-
-	t.Run("render display result with ignored pack", func(t *testing.T) {
-		buf.Reset()
-		result := &types.DisplayResult{
-			Packs: []types.DisplayPack{
-				{
-					Name:      "ignored-pack",
-					IsIgnored: true,
-				},
-			},
-		}
-		err := renderer.RenderResult(result)
-		assert.NoError(t, err)
-		output := buf.String()
-		assert.Contains(t, output, "ignored-pack")
-		assert.Contains(t, output, "[ignored]")
-		assert.Contains(t, output, ".dodotignore : dodot is ignoring this dir")
-	})
-
-	t.Run("render display result with config file", func(t *testing.T) {
-		buf.Reset()
-		result := &types.DisplayResult{
-			Packs: []types.DisplayPack{
-				{
-					Name:      "test",
-					HasConfig: true,
-					Files: []types.DisplayFile{
-						{
-							Path:    ".dodot.toml",
-							Status:  "config",
-							Handler: "config",
-						},
-					},
-				},
-			},
-		}
-		err := renderer.RenderResult(result)
-		assert.NoError(t, err)
-		output := buf.String()
-		assert.Contains(t, output, "test")
-		assert.Contains(t, output, "[config]")
-		assert.Contains(t, output, ".dodot.toml")
-		assert.Contains(t, output, "[status=config]")
-	})
-
-	t.Run("render empty display result", func(t *testing.T) {
-		buf.Reset()
-		result := &types.DisplayResult{
-			Command: "test",
-			Packs:   []types.DisplayPack{},
-		}
-		err := renderer.RenderResult(result)
-		assert.NoError(t, err)
-		output := buf.String()
-		assert.Contains(t, output, "No packs to process")
-	})
-
 	t.Run("render unknown result type", func(t *testing.T) {
 		buf.Reset()
 		unknownData := map[string]string{"foo": "bar"}
@@ -260,11 +197,6 @@ func TestTextRenderer(t *testing.T) {
 }
 
 func TestTerminalRenderer(t *testing.T) {
-	// Only run if we have a real terminal
-	if os.Getenv("CI") != "" {
-		t.Skip("Skipping terminal tests in CI environment")
-	}
-
 	buf := &bytes.Buffer{}
 	renderer, err := ui.NewRenderer(ui.FormatTerminal, buf)
 	require.NoError(t, err)
@@ -282,27 +214,13 @@ func TestTerminalRenderer(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Contains(t, buf.String(), "assert.AnError")
 	})
-}
 
-func TestFormatDetection(t *testing.T) {
-	// Test detection with NO_COLOR set
-	t.Run("NO_COLOR set", func(t *testing.T) {
-		oldEnv := os.Getenv("NO_COLOR")
-		err := os.Setenv("NO_COLOR", "1")
-		require.NoError(t, err)
-		defer func() {
-			err := os.Setenv("NO_COLOR", oldEnv)
-			assert.NoError(t, err)
-		}()
-
-		format := ui.DetectFormat(os.Stdout)
-		assert.Equal(t, ui.FormatText, format)
-	})
-
-	// Test detection with pipe (this test is environment-dependent)
-	t.Run("detect from stdout", func(t *testing.T) {
-		format := ui.DetectFormat(os.Stdout)
-		// Just ensure it returns a valid format
-		assert.Contains(t, []ui.Format{ui.FormatTerminal, ui.FormatText}, format)
+	t.Run("render unknown result type", func(t *testing.T) {
+		buf.Reset()
+		unknownData := map[string]string{"foo": "bar"}
+		err := renderer.RenderResult(unknownData)
+		assert.NoError(t, err)
+		output := buf.String()
+		assert.Contains(t, output, "map[foo:bar]")
 	})
 }

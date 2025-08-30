@@ -1,67 +1,198 @@
-package rules
+// Test Type: Unit Test
+// Description: Tests for the rules package - configuration loading and rule management
+
+package rules_test
 
 import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/rules"
+	"github.com/arthur-debert/dodot/pkg/testutil"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestGetDefaultRules(t *testing.T) {
-	rules := getDefaultRules()
-
-	// Check we have some rules
-	assert.NotEmpty(t, rules)
-
-	// Check exclusion rules
-	exclusionCount := 0
-	for _, r := range rules {
-		if r.Pattern[0] == '!' {
-			exclusionCount++
+func TestLoadRules(t *testing.T) {
+	t.Run("loads_rules_from_config", func(t *testing.T) {
+		// Create a koanf instance with rules
+		data := map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{
+					"pattern": "*.sh",
+					"handler": "shell",
+				},
+				map[string]interface{}{
+					"pattern": "bin/",
+					"handler": "path",
+				},
+				map[string]interface{}{
+					"pattern": "*",
+					"handler": "symlink",
+				},
+			},
 		}
-	}
-	assert.Greater(t, exclusionCount, 0, "Should have exclusion rules")
 
-	// Check for essential handlers
-	handlers := make(map[string]bool)
-	for _, r := range rules {
-		if r.Handler != "" {
-			handlers[r.Handler] = true
+		k := koanf.New(".")
+		err := k.Load(confmap.Provider(data, "."), nil)
+		require.NoError(t, err)
+
+		rules, err := rules.LoadRules(k)
+		assert.NoError(t, err)
+		assert.Len(t, rules, 3)
+
+		assert.Equal(t, "*.sh", rules[0].Pattern)
+		assert.Equal(t, "shell", rules[0].Handler)
+
+		assert.Equal(t, "bin/", rules[1].Pattern)
+		assert.Equal(t, "path", rules[1].Handler)
+
+		assert.Equal(t, "*", rules[2].Pattern)
+		assert.Equal(t, "symlink", rules[2].Handler)
+	})
+
+	t.Run("returns_defaults_when_no_rules_configured", func(t *testing.T) {
+		k := koanf.New(".")
+		// Empty config
+
+		rules, err := rules.LoadRules(k)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, rules)
+
+		// Check we have exclusions, exact matches, and catchall
+		var hasExclusions, hasExactMatches, hasCatchall bool
+		for _, rule := range rules {
+			if rule.Pattern[0] == '!' {
+				hasExclusions = true
+			}
+			if rule.Pattern == "install.sh" {
+				hasExactMatches = true
+			}
+			if rule.Pattern == "*" && rule.Handler == "symlink" {
+				hasCatchall = true
+			}
 		}
-	}
+		assert.True(t, hasExclusions, "Default rules should have exclusions")
+		assert.True(t, hasExactMatches, "Default rules should have exact matches")
+		assert.True(t, hasCatchall, "Default rules should have catchall")
+	})
 
-	assert.True(t, handlers["symlink"], "Should have symlink handler")
-	assert.True(t, handlers["install"], "Should have install handler")
-	assert.True(t, handlers["shell"], "Should have shell handler")
-	assert.True(t, handlers["path"], "Should have path handler")
-	assert.True(t, handlers["homebrew"], "Should have homebrew handler")
-
-	// Check catchall rule exists
-	var catchall *config.Rule
-	for i, r := range rules {
-		if r.Pattern == "*" && r.Handler == "symlink" {
-			catchall = &rules[i]
+	t.Run("validates_rules", func(t *testing.T) {
+		// Rule with empty pattern
+		data := map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{
+					"pattern": "",
+					"handler": "shell",
+				},
+			},
 		}
-	}
-	assert.NotNil(t, catchall, "Should have catchall rule")
+
+		k := koanf.New(".")
+		err := k.Load(confmap.Provider(data, "."), nil)
+		require.NoError(t, err)
+
+		_, err = rules.LoadRules(k)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "empty pattern")
+
+		// Rule with empty handler (non-exclusion)
+		data = map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{
+					"pattern": "*.sh",
+					"handler": "",
+				},
+			},
+		}
+
+		k = koanf.New(".")
+		err = k.Load(confmap.Provider(data, "."), nil)
+		require.NoError(t, err)
+
+		_, err = rules.LoadRules(k)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "empty handler")
+
+		// Exclusion rule with empty handler is OK
+		data = map[string]interface{}{
+			"rules": []interface{}{
+				map[string]interface{}{
+					"pattern": "!*.tmp",
+					"handler": "",
+				},
+			},
+		}
+
+		k = koanf.New(".")
+		err = k.Load(confmap.Provider(data, "."), nil)
+		require.NoError(t, err)
+
+		rules, err := rules.LoadRules(k)
+		assert.NoError(t, err)
+		assert.Len(t, rules, 1)
+	})
 }
 
 func TestMergeRules(t *testing.T) {
-	global := []config.Rule{
-		{Pattern: "*.sh", Handler: "shell"},
-		{Pattern: "*", Handler: "symlink"},
-	}
+	t.Run("pack_rules_take_precedence", func(t *testing.T) {
+		global := []config.Rule{
+			{Pattern: "*.sh", Handler: "shell"},
+			{Pattern: "*", Handler: "symlink"},
+		}
 
-	packSpecific := []config.Rule{
-		{Pattern: "special.sh", Handler: "install"},
-	}
+		packSpecific := []config.Rule{
+			{Pattern: "special.sh", Handler: "install"},
+			{Pattern: "*.sh", Handler: "custom"},
+		}
 
-	merged := MergeRules(global, packSpecific)
+		merged := rules.MergeRules(global, packSpecific)
 
-	// Pack rules should come first
-	assert.Equal(t, "special.sh", merged[0].Pattern)
-	assert.Equal(t, "install", merged[0].Handler)
+		// Pack rules should come first
+		assert.Equal(t, packSpecific[0], merged[0])
+		assert.Equal(t, packSpecific[1], merged[1])
+		assert.Equal(t, global[0], merged[2])
+		assert.Equal(t, global[1], merged[3])
 
-	// All rules should be present
-	assert.Len(t, merged, 3)
+		assert.Len(t, merged, 4)
+	})
+
+	t.Run("handles_empty_rule_sets", func(t *testing.T) {
+		// Empty pack rules
+		global := []config.Rule{
+			{Pattern: "*", Handler: "symlink"},
+		}
+		merged := rules.MergeRules(global, nil)
+		assert.Equal(t, global, merged)
+
+		// Empty global rules
+		packSpecific := []config.Rule{
+			{Pattern: "*.sh", Handler: "shell"},
+		}
+		merged = rules.MergeRules(nil, packSpecific)
+		assert.Equal(t, packSpecific, merged)
+
+		// Both empty
+		merged = rules.MergeRules(nil, nil)
+		assert.Empty(t, merged)
+	})
 }
+
+func TestLoadPackRulesFS(t *testing.T) {
+	t.Run("returns_empty_rules_when_no_config", func(t *testing.T) {
+		// This test documents current behavior - LoadPackRulesFS always returns empty rules
+		// This is noted in the source code as a TODO
+
+		// Create a memory filesystem with no config file
+		fs := testutil.NewMemoryFS()
+		// Don't create any files, so Stat will fail
+
+		rules, err := rules.LoadPackRulesFS("/some/path", fs)
+		assert.NoError(t, err)
+		assert.Empty(t, rules)
+	})
+}
+
+// Remove mockFS completely - we'll use testutil.MemoryFS instead

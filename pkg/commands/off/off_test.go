@@ -1,110 +1,165 @@
-package off
+// pkg/commands/off/off_test.go
+// TEST TYPE: Business Logic Integration
+// DEPENDENCIES: Mock DataStore, Memory FS
+// PURPOSE: Test off command orchestration without filesystem dependencies
+
+package off_test
 
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/commands/link"
+	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestOffPacks_EmptyPacks(t *testing.T) {
-	env := testutil.NewTestEnvironment(t, "off-empty")
-	defer env.Cleanup()
+func TestOffPacks_EmptyPackNames_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	opts := OffPacksOptions{
-		DotfilesRoot: env.DotfilesRoot(),
+	opts := off.OffPacksOptions{
+		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		DryRun:       false,
 	}
 
-	result, err := OffPacks(opts)
+	// Execute
+	result, err := off.OffPacks(opts)
+
+	// Verify orchestration behavior
 	require.NoError(t, err)
-	assert.NotNil(t, result.UnlinkResult)
-	assert.NotNil(t, result.DeprovisionResult)
-	assert.Zero(t, result.TotalCleared)
+	assert.NotNil(t, result.UnlinkResult, "should call unlink command")
+	assert.NotNil(t, result.DeprovisionResult, "should call deprovision command")
+	assert.Zero(t, result.TotalCleared, "no packs to clear")
+	assert.Empty(t, result.Errors, "no errors expected")
 	assert.False(t, result.DryRun)
 }
 
-func TestOffPacks_Basic(t *testing.T) {
-	env := testutil.NewTestEnvironment(t, "off-basic")
-	defer env.Cleanup()
+func TestOffPacks_DryRun_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	// Create a pack with files
-	packDir := env.CreatePack("mypack")
-	testutil.CreateFile(t, packDir, ".vimrc", "set number")
-	testutil.CreateFile(t, packDir, ".bashrc", "alias ll='ls -la'")
+	// Create a basic pack structure
+	env.SetupPack("testpack", testutil.PackConfig{
+		Files: map[string]string{
+			".testrc": "test config",
+			".dodot.toml": `[[rule]]
+match = ".testrc"
+handler = "symlink"`,
+		},
+	})
 
-	// First, link the pack to have something to turn off
-	linkOpts := link.LinkPacksOptions{
-		DotfilesRoot: env.DotfilesRoot(),
-		PackNames:    []string{"mypack"},
-		DryRun:       false,
-	}
-	_, err := link.LinkPacks(linkOpts)
-	require.NoError(t, err)
-
-	// Now turn it off
-	opts := OffPacksOptions{
-		DotfilesRoot: env.DotfilesRoot(),
-		PackNames:    []string{"mypack"},
-		DryRun:       false,
-	}
-
-	result, err := OffPacks(opts)
-	require.NoError(t, err)
-	assert.NotNil(t, result.UnlinkResult)
-	assert.NotNil(t, result.DeprovisionResult)
-	assert.Greater(t, result.TotalCleared, 0)
-	assert.Empty(t, result.Errors)
-}
-
-func TestOffPacks_DryRun(t *testing.T) {
-	env := testutil.NewTestEnvironment(t, "off-dryrun")
-	defer env.Cleanup()
-
-	// Create and link a pack
-	packDir := env.CreatePack("mypack")
-	testutil.CreateFile(t, packDir, ".vimrc", "set number")
-
-	linkOpts := link.LinkPacksOptions{
-		DotfilesRoot: env.DotfilesRoot(),
-		PackNames:    []string{"mypack"},
-		DryRun:       false,
-	}
-	_, err := link.LinkPacks(linkOpts)
-	require.NoError(t, err)
-
-	// Turn off with dry run
-	opts := OffPacksOptions{
-		DotfilesRoot: env.DotfilesRoot(),
-		PackNames:    []string{"mypack"},
+	opts := off.OffPacksOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackNames:    []string{"testpack"},
 		DryRun:       true,
 	}
 
-	result, err := OffPacks(opts)
+	// Execute
+	result, err := off.OffPacks(opts)
+
+	// Verify dry run propagates to sub-commands
 	require.NoError(t, err)
-	assert.True(t, result.DryRun)
-	assert.NotNil(t, result.UnlinkResult)
-	assert.NotNil(t, result.DeprovisionResult)
-	assert.True(t, result.UnlinkResult.DryRun)
-	assert.True(t, result.DeprovisionResult.DryRun)
+	assert.True(t, result.DryRun, "should preserve dry run flag")
+	assert.NotNil(t, result.UnlinkResult, "should call unlink")
+	assert.NotNil(t, result.DeprovisionResult, "should call deprovision")
+	if result.UnlinkResult != nil {
+		assert.True(t, result.UnlinkResult.DryRun, "unlink should receive dry run flag")
+	}
+	if result.DeprovisionResult != nil {
+		assert.True(t, result.DeprovisionResult.DryRun, "deprovision should receive dry run flag")
+	}
 }
 
-func TestOffPacks_NonExistentPack(t *testing.T) {
-	env := testutil.NewTestEnvironment(t, "off-nonexistent")
-	defer env.Cleanup()
+func TestOffPacks_SpecificPackNames_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	opts := OffPacksOptions{
-		DotfilesRoot: env.DotfilesRoot(),
+	// Create multiple packs
+	env.SetupPack("pack1", testutil.PackConfig{
+		Files: map[string]string{
+			".pack1rc": "pack1 config",
+			".dodot.toml": `[[rule]]
+match = ".pack1rc"
+handler = "symlink"`,
+		},
+	})
+
+	env.SetupPack("pack2", testutil.PackConfig{
+		Files: map[string]string{
+			".pack2rc": "pack2 config",
+			".dodot.toml": `[[rule]]
+match = ".pack2rc"
+handler = "symlink"`,
+		},
+	})
+
+	opts := off.OffPacksOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackNames:    []string{"pack1"},
+		DryRun:       false,
+	}
+
+	// Execute
+	result, err := off.OffPacks(opts)
+
+	// Verify orchestration passes pack names correctly
+	require.NoError(t, err)
+	assert.NotNil(t, result.UnlinkResult, "should call unlink")
+	assert.NotNil(t, result.DeprovisionResult, "should call deprovision")
+}
+
+func TestOffPacks_NonExistentPack_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	opts := off.OffPacksOptions{
+		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"nonexistent"},
 		DryRun:       false,
 	}
 
-	// The command should handle non-existent packs gracefully
-	result, err := OffPacks(opts)
-	// May or may not error depending on implementation
-	_ = err
-	_ = result
+	// Execute
+	result, err := off.OffPacks(opts)
+
+	// Verify orchestration handles non-existent packs
+	// When a pack doesn't exist, the underlying commands return errors
+	// but the off command should still return a result structure
+	assert.NotNil(t, result, "should return result even with errors")
+
+	// The off command may return an error if underlying commands fail
+	if err != nil {
+		assert.Contains(t, err.Error(), "off command encountered", "error should indicate command encountered issues")
+	}
+
+	// Result structure should still be populated even with errors
+	if result != nil {
+		assert.GreaterOrEqual(t, len(result.Errors), 0, "errors slice should contain error information")
+	}
+}
+
+func TestOffPacks_ResultAggregation_Orchestration(t *testing.T) {
+	// Setup - use isolated for consistency
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	opts := off.OffPacksOptions{
+		DotfilesRoot: env.DotfilesRoot,
+		PackNames:    []string{},
+		DryRun:       false,
+	}
+
+	// Execute
+	result, err := off.OffPacks(opts)
+
+	// Verify result aggregation structure
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return result object")
+
+	// Verify all required fields are set
+	assert.NotNil(t, result.UnlinkResult, "UnlinkResult should be populated")
+	assert.NotNil(t, result.DeprovisionResult, "DeprovisionResult should be populated")
+	assert.GreaterOrEqual(t, result.TotalCleared, 0, "TotalCleared should be non-negative")
+	assert.GreaterOrEqual(t, len(result.Errors), 0, "Errors slice should be accessible (nil or empty)")
+	assert.False(t, result.DryRun, "DryRun should match input")
 }

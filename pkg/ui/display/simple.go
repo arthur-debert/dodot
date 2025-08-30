@@ -137,25 +137,6 @@ func (r *TextRenderer) renderFile(file types.DisplayFile) error {
 	return err
 }
 
-// truncatePath truncates a path to fit within maxLen characters
-func truncatePath(path string, maxLen int) string {
-	if len(path) <= maxLen {
-		return path
-	}
-
-	// Show beginning and end of path
-	if maxLen < 10 {
-		return path[:maxLen]
-	}
-
-	// Reserve 3 chars for "..."
-	availableChars := maxLen - 3
-	startChars := availableChars / 2
-	endChars := availableChars - startChars
-
-	return path[:startChars] + "..." + path[len(path)-endChars:]
-}
-
 // RenderExecutionContext is a convenience method that transforms and renders an ExecutionContext
 func (r *TextRenderer) RenderExecutionContext(ctx *types.ExecutionContext) error {
 	if ctx == nil {

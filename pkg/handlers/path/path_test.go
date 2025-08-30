@@ -1,25 +1,29 @@
-package path
+// Test Type: Unit Test
+// Description: Tests for the path handler - handler logic tests with no filesystem or external dependencies
+
+package path_test
 
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/handlers/path"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestPathHandler_ProcessLinking(t *testing.T) {
-	handler := NewPathHandler()
+	handler := path.NewPathHandler()
 
 	tests := []struct {
 		name          string
 		matches       []types.RuleMatch
 		expectedCount int
-		expectedError bool
+		expectError   bool
 		checkActions  func(t *testing.T, actions []types.LinkingAction)
 	}{
 		{
-			name: "single directory",
+			name: "single_directory_creates_one_action",
 			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
@@ -29,8 +33,9 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 				},
 			},
 			expectedCount: 1,
-			expectedError: false,
+			expectError:   false,
 			checkActions: func(t *testing.T, actions []types.LinkingAction) {
+				require.Len(t, actions, 1)
 				addPathAction, ok := actions[0].(*types.AddToPathAction)
 				require.True(t, ok, "action should be AddToPathAction")
 				assert.Equal(t, "tools", addPathAction.PackName)
@@ -38,7 +43,7 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name: "multiple directories from same pack",
+			name: "multiple_directories_from_same_pack",
 			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
@@ -54,8 +59,10 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 				},
 			},
 			expectedCount: 2,
-			expectedError: false,
+			expectError:   false,
 			checkActions: func(t *testing.T, actions []types.LinkingAction) {
+				require.Len(t, actions, 2)
+				
 				// Check first action
 				action1, ok := actions[0].(*types.AddToPathAction)
 				require.True(t, ok)
@@ -70,7 +77,7 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name: "duplicate directory detection",
+			name: "duplicate_directory_is_deduped",
 			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
@@ -86,9 +93,9 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 				},
 			},
 			expectedCount: 1, // Second duplicate should be skipped
-			expectedError: false,
+			expectError:   false,
 			checkActions: func(t *testing.T, actions []types.LinkingAction) {
-				assert.Len(t, actions, 1)
+				require.Len(t, actions, 1)
 				addPathAction, ok := actions[0].(*types.AddToPathAction)
 				require.True(t, ok)
 				assert.Equal(t, "tools", addPathAction.PackName)
@@ -96,7 +103,7 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name: "different packs with same directory name",
+			name: "different_packs_with_same_directory_name",
 			matches: []types.RuleMatch{
 				{
 					Path:         "bin",
@@ -112,8 +119,10 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 				},
 			},
 			expectedCount: 2, // Both should be included since they're from different packs
-			expectedError: false,
+			expectError:   false,
 			checkActions: func(t *testing.T, actions []types.LinkingAction) {
+				require.Len(t, actions, 2)
+				
 				action1, ok := actions[0].(*types.AddToPathAction)
 				require.True(t, ok)
 				assert.Equal(t, "tools", action1.PackName)
@@ -126,10 +135,10 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 			},
 		},
 		{
-			name:          "empty matches",
+			name:          "empty_matches_returns_empty_actions",
 			matches:       []types.RuleMatch{},
 			expectedCount: 0,
-			expectedError: false,
+			expectError:   false,
 		},
 	}
 
@@ -137,8 +146,8 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			actions, err := handler.ProcessLinking(tt.matches)
 
-			if tt.expectedError {
-				assert.Error(t, err)
+			if tt.expectError {
+				require.Error(t, err)
 				return
 			}
 
@@ -152,64 +161,109 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 	}
 }
 
+func TestPathHandler_ProcessLinkingWithConfirmations(t *testing.T) {
+	handler := path.NewPathHandler()
+
+	t.Run("returns_correct_processing_result", func(t *testing.T) {
+		matches := []types.RuleMatch{
+			{
+				Path:         "bin",
+				AbsolutePath: "/dotfiles/tools/bin",
+				Pack:         "tools",
+				RuleName:     "directory",
+			},
+		}
+
+		result, err := handler.ProcessLinkingWithConfirmations(matches)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Len(t, result.Actions, 1)
+		assert.Empty(t, result.Confirmations)
+
+		// Verify action is correct type
+		_, ok := result.Actions[0].(*types.AddToPathAction)
+		assert.True(t, ok)
+	})
+}
+
 func TestPathHandler_ValidateOptions(t *testing.T) {
-	handler := NewPathHandler()
+	handler := path.NewPathHandler()
 
 	tests := []struct {
-		name          string
-		options       map[string]interface{}
-		expectedError bool
+		name        string
+		options     map[string]interface{}
+		expectError bool
+		errorMsg    string
 	}{
 		{
-			name:          "nil options",
-			options:       nil,
-			expectedError: false,
+			name:        "nil_options_is_valid",
+			options:     nil,
+			expectError: false,
 		},
 		{
-			name:          "empty options",
-			options:       map[string]interface{}{},
-			expectedError: false,
+			name:        "empty_options_is_valid",
+			options:     map[string]interface{}{},
+			expectError: false,
 		},
 		{
-			name: "valid target option",
+			name: "valid_target_option",
 			options: map[string]interface{}{
 				"target": "/custom/path",
 			},
-			expectedError: false,
+			expectError: false,
 		},
 		{
-			name: "invalid target type",
+			name: "invalid_target_type",
 			options: map[string]interface{}{
 				"target": 123,
 			},
-			expectedError: true,
+			expectError: true,
+			errorMsg:    "target option must be a string",
 		},
 		{
-			name: "unknown option",
+			name: "unknown_option",
 			options: map[string]interface{}{
 				"unknown": "value",
 			},
-			expectedError: true,
+			expectError: true,
+			errorMsg:    "unknown option",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := handler.ValidateOptions(tt.options)
-			if tt.expectedError {
-				assert.Error(t, err)
+			if tt.expectError {
+				require.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
 }
 
 func TestPathHandler_Properties(t *testing.T) {
-	handler := NewPathHandler()
+	handler := path.NewPathHandler()
 
-	assert.Equal(t, PathHandlerName, handler.Name())
-	assert.Equal(t, "Adds directories to PATH", handler.Description())
-	assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
-	assert.Empty(t, handler.GetTemplateContent())
+	t.Run("name_returns_correct_value", func(t *testing.T) {
+		assert.Equal(t, path.PathHandlerName, handler.Name())
+		assert.Equal(t, "path", handler.Name())
+	})
+
+	t.Run("description_returns_correct_value", func(t *testing.T) {
+		assert.Equal(t, "Adds directories to PATH", handler.Description())
+	})
+
+	t.Run("type_returns_configuration", func(t *testing.T) {
+		assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
+	})
+
+	t.Run("template_content_is_empty", func(t *testing.T) {
+		assert.Empty(t, handler.GetTemplateContent())
+	})
 }
+
+

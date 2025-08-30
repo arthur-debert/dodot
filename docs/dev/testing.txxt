@@ -1,6 +1,191 @@
-Testing Guide
-============
+=== Testing in dodot ===
 
-This guide will cover testing strategies and best practices for dodot.
+This document defines testing practices for the dodot codebase.
 
-(Documentation to be written)
+
+== Core Principles ==
+
+We avoid generic integration tests that make changes hard to track and debug.
+Instead, we focus on isolated, fast, predictable tests at the right abstraction level.
+
+Tests MUST:
+    - Run in under 10ms (unit) or 100ms (integration)
+    - Be completely isolated - no shared state
+    - Never mutate the real filesystem
+    - Never bypass the DataStore abstraction
+    - Have a single, clear purpose
+
+
+== Test Categories ==
+
+1. Unit Tests
+
+    Test pure business logic with no external dependencies.
+    
+    Example: pkg/actions/action_test.go
+    
+        -- go
+        func TestLinkAction_Execute(t *testing.T) {
+            m := testutil.NewMockDataStore()
+            action := &LinkAction{Source: "vimrc", Target: ".vimrc"}
+            
+            err := action.Execute(m)
+            
+            assert.NoError(t, err)
+            assert.True(t, m.LinkCreated("vimrc", ".vimrc"))
+        }
+        --
+
+
+2. Business Logic Tests
+
+    Test command orchestration with mocked dependencies.
+    
+    Example: pkg/commands/link/link_test.go
+    
+        -- go
+        func TestLinkPacks_SinglePack(t *testing.T) {
+            env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+            defer env.Cleanup()
+            
+            env.SetupPack("vim", testutil.PackConfig{
+                Files: map[string]string{"vimrc": "set number"},
+            })
+            
+            result, err := link.LinkPacks(link.Options{
+                DotfilesRoot: env.DotfilesRoot,
+                PackNames:    []string{"vim"},
+            })
+            
+            assert.NoError(t, err)
+            assert.Equal(t, StatusSuccess, result.Status)
+        }
+        --
+
+
+3. DataStore Tests
+
+    ONLY these tests may use real filesystem operations.
+    
+    Example: pkg/datastore/filesystem_test.go
+    
+        -- go
+        func TestFilesystemStore_CreateLink(t *testing.T) {
+            tempDir := t.TempDir()
+            store := datastore.NewFilesystemStore(tempDir)
+            
+            err := store.CreateLink("source", "target")
+            
+            assert.NoError(t, err)
+            // Real filesystem assertions allowed here
+        }
+        --
+
+
+== Test Utilities ==
+
+=== TestEnvironment ===
+
+Core test orchestrator providing isolated environments.
+
+    -- go
+    env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+    defer env.Cleanup()
+    --
+
+Environment types:
+    - EnvMemoryOnly: Pure in-memory, no disk access
+    - EnvIsolated: Real filesystem in temp directory
+    - EnvMocked: Custom mock configuration
+
+
+=== MockDataStore ===
+
+In-memory DataStore implementation for testing.
+
+    -- go
+    m := testutil.NewMockDataStore()
+    m.WithError(types.LinkExists, errors.New("conflict"))
+    --
+
+Key methods:
+    - WithError(): Inject specific errors
+    - WithProvisioningState(): Set handler states
+    - LinkCreated(): Check if link was created
+    - GetStatus(): Retrieve link status
+
+
+=== Pack Setup ===
+
+Declarative pack creation for tests.
+
+    -- go
+    env.SetupPack("vim", testutil.PackConfig{
+        Files: map[string]string{
+            "vimrc": "set number",
+            ".vim/colors/theme.vim": "colorscheme",
+        },
+        Rules: []string{"*.vim -> .vim/"},
+    })
+    --
+
+
+=== File Trees ===
+
+Hierarchical file structure definition.
+
+    -- go
+    env.WithFileTree(testutil.FileTree{
+        "dotfiles": testutil.Dir{
+            "vim": testutil.Dir{
+                "vimrc": "content",
+                "rules.toml": testutil.PackRules{...},
+            },
+        },
+    })
+    --
+
+
+== What NOT to Do ==
+
+L Direct filesystem access outside DataStore tests:
+    -- go
+    // WRONG
+    _, err := os.Stat("/home/user/.vimrc")
+    
+    // RIGHT
+    status, err := env.DataStore.GetStatus("vim", "vimrc")
+    --
+
+L Testing multiple concerns in one test:
+    -- go
+    // WRONG - tests linking, output, and filesystem
+    result := LinkCommand(args)
+    assert.Contains(t, output, "✓")
+    assert.True(t, fileExists(".vimrc"))
+    
+    // RIGHT - test each concern separately
+    --
+
+L Using real paths or home directories:
+    -- go
+    // WRONG
+    os.Setenv("HOME", "/tmp/test")
+    
+    // RIGHT
+    env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+    --
+
+
+== Running Tests ==
+
+    -- bash
+    ./scripts/test              # Run all tests
+    ./scripts/test-with-cov     # Generate coverage report
+    go test -v -run TestName    # Run specific test
+    --
+
+Tests must pass before committing. Use pre-commit hooks:
+    -- bash
+    ./scripts/pre-commit install
+    --

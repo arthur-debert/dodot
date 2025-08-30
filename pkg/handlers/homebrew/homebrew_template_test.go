@@ -3,8 +3,6 @@ package homebrew
 import (
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestHomebrewHandler_GetTemplateContent(t *testing.T) {
@@ -13,18 +11,34 @@ func TestHomebrewHandler_GetTemplateContent(t *testing.T) {
 	content := handler.GetTemplateContent()
 
 	// Template should not be empty
-	assert.NotEmpty(t, content)
+	if content == "" {
+		t.Error("GetTemplateContent() returned empty string")
+	}
 
 	// Should contain key brewfile elements
-	assert.Contains(t, content, "Homebrew dependencies")
-	assert.Contains(t, content, "PACK_NAME")
-	assert.Contains(t, content, "dodot install")
-	assert.Contains(t, content, "brew '")
-	assert.Contains(t, content, "cask '")
+	expectedContents := []string{
+		"Homebrew dependencies",
+		"PACK_NAME",
+		"dodot install",
+		"brew '",
+		"cask '",
+	}
+
+	// Check each expected content
+	for _, expected := range expectedContents {
+		if !strings.Contains(content, expected) {
+			t.Errorf("Template should contain %q", expected)
+		}
+	}
 
 	// Should be valid Ruby syntax (basic check)
-	assert.Contains(t, content, "#") // Comments
+	if !strings.Contains(content, "#") {
+		t.Error("Template should contain comments (starting with #)")
+	}
 
 	// Should not have trailing newlines
-	assert.Equal(t, strings.TrimSpace(content), content)
+	trimmed := strings.TrimSpace(content)
+	if trimmed != content {
+		t.Error("Template should not have leading or trailing whitespace")
+	}
 }

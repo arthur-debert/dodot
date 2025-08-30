@@ -1,75 +1,95 @@
 package testutil
 
-// MockPaths is a test implementation of the Pather interface
-type MockPaths struct {
-	DotfilesRootPath string
-	DataDirPath      string
-	ConfigDirPath    string
-	CacheDirPath     string
-	StateDirPath     string
+import (
+	"path/filepath"
+	"strings"
+	
+	"github.com/arthur-debert/dodot/pkg/types"
+)
+
+// MockPathResolver provides mock path resolution for testing
+type MockPathResolver struct {
+	home      string
+	xdgConfig string
+	xdgData   string
+	xdgCache  string
+	xdgState  string
+	dotfiles  string
 }
 
-// DotfilesRoot returns the mock dotfiles root path
-func (m *MockPaths) DotfilesRoot() string {
-	if m.DotfilesRootPath == "" {
-		return "/test/dotfiles"
+// NewMockPathResolver creates a new mock path resolver
+func NewMockPathResolver(home, xdgConfig, xdgData string) *MockPathResolver {
+	return &MockPathResolver{
+		home:      home,
+		xdgConfig: xdgConfig,
+		xdgData:   xdgData,
+		xdgCache:  home + "/.cache",
+		xdgState:  home + "/.local/state",
+		dotfiles:  home + "/dotfiles",
 	}
-	return m.DotfilesRootPath
 }
 
-// DataDir returns the mock data directory path
-func (m *MockPaths) DataDir() string {
-	if m.DataDirPath == "" {
-		return "/test/data"
+// Home returns the home directory path
+func (m *MockPathResolver) Home() string {
+	return m.home
+}
+
+// DotfilesRoot returns the dotfiles root directory
+func (m *MockPathResolver) DotfilesRoot() string {
+	return m.dotfiles
+}
+
+// DataDir returns the XDG data directory
+func (m *MockPathResolver) DataDir() string {
+	return m.xdgData
+}
+
+// ConfigDir returns the XDG config directory
+func (m *MockPathResolver) ConfigDir() string {
+	return m.xdgConfig
+}
+
+// CacheDir returns the XDG cache directory
+func (m *MockPathResolver) CacheDir() string {
+	return m.xdgCache
+}
+
+// StateDir returns the XDG state directory  
+func (m *MockPathResolver) StateDir() string {
+	return m.xdgState
+}
+
+// WithDotfilesRoot sets a custom dotfiles root
+func (m *MockPathResolver) WithDotfilesRoot(path string) *MockPathResolver {
+	m.dotfiles = path
+	return m
+}
+
+// PackHandlerDir returns the directory for a pack's handler state
+func (m *MockPathResolver) PackHandlerDir(packName, handlerName string) string {
+	// Mock implementation: put handler state in data dir
+	return filepath.Join(m.xdgData, "dodot", "packs", packName, handlerName)
+}
+
+// MapPackFileToSystem maps a pack file to its system location
+func (m *MockPathResolver) MapPackFileToSystem(pack *types.Pack, relPath string) string {
+	// Simple mock implementation
+	// For files in root of pack, add dot prefix
+	// For files in subdirectories, preserve structure
+	
+	parts := strings.Split(relPath, "/")
+	
+	if len(parts) == 1 {
+		// Top-level file, add dot prefix
+		return filepath.Join(m.home, "."+relPath)
 	}
-	return m.DataDirPath
-}
-
-// ConfigDir returns the mock config directory path
-func (m *MockPaths) ConfigDir() string {
-	if m.ConfigDirPath == "" {
-		return "/test/config"
+	
+	// Subdirectory file
+	if parts[0] == ".config" {
+		// XDG config file
+		return filepath.Join(m.xdgConfig, strings.Join(parts[1:], "/"))
 	}
-	return m.ConfigDirPath
-}
-
-// CacheDir returns the mock cache directory path
-func (m *MockPaths) CacheDir() string {
-	if m.CacheDirPath == "" {
-		return "/test/cache"
-	}
-	return m.CacheDirPath
-}
-
-// StateDir returns the mock state directory path
-func (m *MockPaths) StateDir() string {
-	if m.StateDirPath == "" {
-		return "/test/state"
-	}
-	return m.StateDirPath
-}
-
-// DeployedSymlink returns the deployed symlink directory
-func (m *MockPaths) DeployedSymlink() string {
-	return m.DataDir() + "/deployed/symlink"
-}
-
-// DeployedPath returns the deployed path directory
-func (m *MockPaths) DeployedPath() string {
-	return m.DataDir() + "/deployed/path"
-}
-
-// DeployedShellProfile returns the deployed shell profile directory
-func (m *MockPaths) DeployedShellProfile() string {
-	return m.DataDir() + "/deployed/shell"
-}
-
-// InitScript returns the path to the init script
-func (m *MockPaths) InitScript() string {
-	return m.DataDir() + "/shell/dodot-init.sh"
-}
-
-// LogFile returns the path to the log file
-func (m *MockPaths) LogFile() string {
-	return m.DataDir() + "/dodot.log"
+	
+	// Default: preserve structure in home
+	return filepath.Join(m.home, relPath)
 }

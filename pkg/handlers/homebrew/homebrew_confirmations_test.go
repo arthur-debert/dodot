@@ -3,13 +3,12 @@ package homebrew
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHomebrewHandler_ProcessProvisioningWithConfirmations(t *testing.T) {
@@ -22,7 +21,9 @@ func TestHomebrewHandler_ProcessProvisioningWithConfirmations(t *testing.T) {
 brew "vim"
 cask "visual-studio-code"`
 
-	require.NoError(t, os.WriteFile(brewfilePath, []byte(brewfileContent), 0644))
+	if err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644); err != nil {
+		t.Fatalf("failed to write Brewfile: %v", err)
+	}
 
 	matches := []types.RuleMatch{
 		{
@@ -33,19 +34,35 @@ cask "visual-studio-code"`
 	}
 
 	result, err := h.ProcessProvisioningWithConfirmations(matches)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should have actions but no confirmations (provisioning doesn't need confirmation)
-	assert.Len(t, result.Actions, 1)
-	assert.Len(t, result.Confirmations, 0)
-	assert.False(t, result.HasConfirmations())
+	if len(result.Actions) != 1 {
+		t.Errorf("got %d actions, want 1", len(result.Actions))
+	}
+	if len(result.Confirmations) != 0 {
+		t.Errorf("got %d confirmations, want 0", len(result.Confirmations))
+	}
+	if result.HasConfirmations() {
+		t.Error("HasConfirmations() = true, want false")
+	}
 
 	// Action should be BrewAction
 	brewAction, ok := result.Actions[0].(*types.BrewAction)
-	require.True(t, ok)
-	assert.Equal(t, "test-pack", brewAction.PackName)
-	assert.Equal(t, brewfilePath, brewAction.BrewfilePath)
-	assert.NotEmpty(t, brewAction.Checksum)
+	if !ok {
+		t.Fatalf("action should be BrewAction, got %T", result.Actions[0])
+	}
+	if brewAction.PackName != "test-pack" {
+		t.Errorf("PackName = %q, want %q", brewAction.PackName, "test-pack")
+	}
+	if brewAction.BrewfilePath != brewfilePath {
+		t.Errorf("BrewfilePath = %q, want %q", brewAction.BrewfilePath, brewfilePath)
+	}
+	if brewAction.Checksum == "" {
+		t.Error("Checksum should not be empty")
+	}
 }
 
 func TestHomebrewHandler_ProcessProvisioning_BackwardCompatibility(t *testing.T) {
@@ -56,7 +73,9 @@ func TestHomebrewHandler_ProcessProvisioning_BackwardCompatibility(t *testing.T)
 	brewfilePath := filepath.Join(tmpDir, "Brewfile")
 	brewfileContent := `brew "git"`
 
-	require.NoError(t, os.WriteFile(brewfilePath, []byte(brewfileContent), 0644))
+	if err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644); err != nil {
+		t.Fatalf("failed to write Brewfile: %v", err)
+	}
 
 	matches := []types.RuleMatch{
 		{
@@ -67,14 +86,22 @@ func TestHomebrewHandler_ProcessProvisioning_BackwardCompatibility(t *testing.T)
 	}
 
 	actions, err := h.ProcessProvisioning(matches)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should still work the old way
-	assert.Len(t, actions, 1)
+	if len(actions) != 1 {
+		t.Errorf("got %d actions, want 1", len(actions))
+	}
 
 	brewAction, ok := actions[0].(*types.BrewAction)
-	require.True(t, ok)
-	assert.Equal(t, "test-pack", brewAction.PackName)
+	if !ok {
+		t.Fatalf("action should be BrewAction, got %T", actions[0])
+	}
+	if brewAction.PackName != "test-pack" {
+		t.Errorf("PackName = %q, want %q", brewAction.PackName, "test-pack")
+	}
 }
 
 func TestHomebrewHandler_GetClearConfirmations_Disabled(t *testing.T) {
@@ -82,40 +109,52 @@ func TestHomebrewHandler_GetClearConfirmations_Disabled(t *testing.T) {
 	_ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
 
 	h := NewHomebrewHandler()
-	fs := testutil.NewTestFS()
+	fs := testutil.NewMemoryFS()
+	paths := testutil.NewMockPathResolver("/home/test", "/home/test/.config", "/test/data")
 
 	ctx := types.ClearContext{
 		Pack:  types.Pack{Name: "test-pack", Path: "/test/pack"},
 		FS:    fs,
-		Paths: &mockClearPaths{dataDir: "/test/data"},
+		Paths: paths,
 	}
 
 	confirmations, err := h.GetClearConfirmations(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should return empty when uninstall is not enabled
-	assert.Empty(t, confirmations)
+	if len(confirmations) != 0 {
+		t.Errorf("got %d confirmations, want 0", len(confirmations))
+	}
 }
 
 func TestHomebrewHandler_GetClearConfirmations_NoState(t *testing.T) {
 	// Set env var to enable uninstall
-	require.NoError(t, os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"))
+	if err := os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"); err != nil {
+		t.Fatalf("failed to set env var: %v", err)
+	}
 	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
 	h := NewHomebrewHandler()
-	fs := testutil.NewTestFS()
+	fs := testutil.NewMemoryFS()
+	paths := testutil.NewMockPathResolver("/home/test", "/home/test/.config", "/test/data")
 
 	ctx := types.ClearContext{
 		Pack:  types.Pack{Name: "test-pack", Path: "test/pack"},
 		FS:    fs,
-		Paths: &mockClearPaths{dataDir: "test/data"},
+		Paths: paths,
 	}
 
 	confirmations, err := h.GetClearConfirmations(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should return empty when no state exists
-	assert.Empty(t, confirmations)
+	if len(confirmations) != 0 {
+		t.Errorf("got %d confirmations, want 0", len(confirmations))
+	}
 }
 
 func TestHomebrewHandler_GetClearConfirmations_WithPackages(t *testing.T) {
@@ -131,27 +170,33 @@ func TestHomebrewHandler_GetClearConfirmations_WithPackages(t *testing.T) {
 	}
 
 	// Set env var to enable uninstall
-	require.NoError(t, os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"))
+	if err := os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"); err != nil {
+		t.Fatalf("failed to set env var: %v", err)
+	}
 	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
 	h := NewHomebrewHandler()
-	fs := testutil.NewTestFS()
+	fs := testutil.NewMemoryFS()
+	paths := testutil.NewMockPathResolver("/home/test", "/home/test/.config", "/test/data")
 
-	// Create test pack structure
-	dataDir := "test/data"
-	stateDir := filepath.Join(dataDir, "packs", "test-pack", "homebrew")
-
-	// Create Brewfile with real filesystem (needed for parseBrewfile)
+	// Create test pack structure with real filesystem (needed for parseBrewfile)
 	tmpDir := t.TempDir()
 	brewfileContent := `brew "git"
 brew "vim"
 cask "visual-studio-code"`
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "Brewfile"), []byte(brewfileContent), 0644))
+	if err := os.WriteFile(filepath.Join(tmpDir, "Brewfile"), []byte(brewfileContent), 0644); err != nil {
+		t.Fatalf("failed to write Brewfile: %v", err)
+	}
 
-	// Create state directory and sentinel file
-	require.NoError(t, fs.MkdirAll(stateDir, 0755))
+	// Create state directory and sentinel file in memory FS
+	stateDir := "/test/data/dodot/packs/test-pack/homebrew"
+	if err := fs.MkdirAll(stateDir, 0755); err != nil {
+		t.Fatalf("failed to create state dir: %v", err)
+	}
 	sentinelPath := filepath.Join(stateDir, "test-pack_Brewfile.sentinel")
-	require.NoError(t, fs.WriteFile(sentinelPath, []byte("checksum|2024-01-01"), 0644))
+	if err := fs.WriteFile(sentinelPath, []byte("checksum|2024-01-01"), 0644); err != nil {
+		t.Fatalf("failed to write sentinel: %v", err)
+	}
 
 	ctx := types.ClearContext{
 		Pack: types.Pack{
@@ -159,26 +204,46 @@ cask "visual-studio-code"`
 			Path: tmpDir, // Point to real directory with Brewfile
 		},
 		FS:    fs,
-		Paths: &mockClearPaths{dataDir: dataDir},
+		Paths: paths,
 	}
 
 	confirmations, err := h.GetClearConfirmations(ctx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should have one confirmation
-	require.Len(t, confirmations, 1)
+	if len(confirmations) != 1 {
+		t.Fatalf("got %d confirmations, want 1", len(confirmations))
+	}
 
 	confirmation := confirmations[0]
-	assert.Equal(t, "homebrew-clear-test-pack", confirmation.ID)
-	assert.Equal(t, "test-pack", confirmation.Pack)
-	assert.Equal(t, "homebrew", confirmation.Handler)
-	assert.Equal(t, "clear", confirmation.Operation)
-	assert.Equal(t, "Uninstall Homebrew packages", confirmation.Title)
-	assert.Contains(t, confirmation.Description, "Uninstall Homebrew packages")
-	assert.False(t, confirmation.Default) // Should default to No
+	if confirmation.ID != "homebrew-clear-test-pack" {
+		t.Errorf("ID = %q, want %q", confirmation.ID, "homebrew-clear-test-pack")
+	}
+	if confirmation.Pack != "test-pack" {
+		t.Errorf("Pack = %q, want %q", confirmation.Pack, "test-pack")
+	}
+	if confirmation.Handler != "homebrew" {
+		t.Errorf("Handler = %q, want %q", confirmation.Handler, "homebrew")
+	}
+	if confirmation.Operation != "clear" {
+		t.Errorf("Operation = %q, want %q", confirmation.Operation, "clear")
+	}
+	if confirmation.Title != "Uninstall Homebrew packages" {
+		t.Errorf("Title = %q, want %q", confirmation.Title, "Uninstall Homebrew packages")
+	}
+	if !strings.Contains(confirmation.Description, "Uninstall Homebrew packages") {
+		t.Errorf("Description should contain 'Uninstall Homebrew packages', got %q", confirmation.Description)
+	}
+	if confirmation.Default {
+		t.Error("Default = true, want false")
+	}
 
 	// Should have items describing packages
-	assert.NotEmpty(t, confirmation.Items)
+	if len(confirmation.Items) == 0 {
+		t.Error("Items should not be empty")
+	}
 }
 
 func TestHomebrewHandler_ClearWithConfirmations_NoUninstall(t *testing.T) {
@@ -186,34 +251,42 @@ func TestHomebrewHandler_ClearWithConfirmations_NoUninstall(t *testing.T) {
 	_ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL")
 
 	h := NewHomebrewHandler()
-	fs := testutil.NewTestFS()
+	fs := testutil.NewMemoryFS()
+	paths := testutil.NewMockPathResolver("/home/test", "/home/test/.config", "/test/data")
 
 	ctx := types.ClearContext{
 		Pack:  types.Pack{Name: "test-pack", Path: "test/pack"},
 		FS:    fs,
-		Paths: &mockClearPaths{dataDir: "test/data"},
+		Paths: paths,
 	}
 
 	// Should fall back to basic clear when uninstall is not enabled
 	items, err := h.ClearWithConfirmations(ctx, nil)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Basic clear with no state should return empty
-	assert.Empty(t, items)
+	if len(items) != 0 {
+		t.Errorf("got %d items, want 0", len(items))
+	}
 }
 
 func TestHomebrewHandler_ClearWithConfirmations_UserDeclined(t *testing.T) {
 	// Set env var to enable uninstall
-	require.NoError(t, os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"))
+	if err := os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true"); err != nil {
+		t.Fatalf("failed to set env var: %v", err)
+	}
 	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
 	h := NewHomebrewHandler()
-	fs := testutil.NewTestFS()
+	fs := testutil.NewMemoryFS()
+	paths := testutil.NewMockPathResolver("/home/test", "/home/test/.config", "/test/data")
 
 	ctx := types.ClearContext{
 		Pack:  types.Pack{Name: "test-pack", Path: "test/pack"},
 		FS:    fs,
-		Paths: &mockClearPaths{dataDir: "test/data"},
+		Paths: paths,
 	}
 
 	// Create confirmation context where user declined
@@ -224,10 +297,14 @@ func TestHomebrewHandler_ClearWithConfirmations_UserDeclined(t *testing.T) {
 
 	// Should fall back to basic clear when user declined
 	items, err := h.ClearWithConfirmations(ctx, confirmationCtx)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Basic clear with no state should return empty
-	assert.Empty(t, items)
+	if len(items) != 0 {
+		t.Errorf("got %d items, want 0", len(items))
+	}
 }
 
 func TestHomebrewHandler_InterfaceCompliance(t *testing.T) {
@@ -240,11 +317,13 @@ func TestHomebrewHandler_InterfaceCompliance(t *testing.T) {
 	var _ handlers.ClearableWithConfirmations = h
 
 	// Verify through type assertion
-	_, ok := interface{}(h).(handlers.ProvisioningHandlerWithConfirmations)
-	assert.True(t, ok, "Should implement ProvisioningHandlerWithConfirmations")
+	if _, ok := interface{}(h).(handlers.ProvisioningHandlerWithConfirmations); !ok {
+		t.Error("Should implement ProvisioningHandlerWithConfirmations")
+	}
 
-	_, ok = interface{}(h).(handlers.ClearableWithConfirmations)
-	assert.True(t, ok, "Should implement ClearableWithConfirmations")
+	if _, ok := interface{}(h).(handlers.ClearableWithConfirmations); !ok {
+		t.Error("Should implement ClearableWithConfirmations")
+	}
 }
 
 func TestHomebrewHandler_ProcessProvisioningWithConfirmations_MultipleMatches(t *testing.T) {
@@ -254,12 +333,20 @@ func TestHomebrewHandler_ProcessProvisioningWithConfirmations_MultipleMatches(t 
 	tmpDir := t.TempDir()
 
 	brewfile1Path := filepath.Join(tmpDir, "pack1", "Brewfile")
-	require.NoError(t, os.MkdirAll(filepath.Dir(brewfile1Path), 0755))
-	require.NoError(t, os.WriteFile(brewfile1Path, []byte(`brew "git"`), 0644))
+	if err := os.MkdirAll(filepath.Dir(brewfile1Path), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	if err := os.WriteFile(brewfile1Path, []byte(`brew "git"`), 0644); err != nil {
+		t.Fatalf("failed to write Brewfile: %v", err)
+	}
 
 	brewfile2Path := filepath.Join(tmpDir, "pack2", "Brewfile.dev")
-	require.NoError(t, os.MkdirAll(filepath.Dir(brewfile2Path), 0755))
-	require.NoError(t, os.WriteFile(brewfile2Path, []byte(`cask "visual-studio-code"`), 0644))
+	if err := os.MkdirAll(filepath.Dir(brewfile2Path), 0755); err != nil {
+		t.Fatalf("failed to create dir: %v", err)
+	}
+	if err := os.WriteFile(brewfile2Path, []byte(`cask "visual-studio-code"`), 0644); err != nil {
+		t.Fatalf("failed to write Brewfile: %v", err)
+	}
 
 	matches := []types.RuleMatch{
 		{Pack: "pack1", Path: "Brewfile", AbsolutePath: brewfile1Path},
@@ -267,18 +354,33 @@ func TestHomebrewHandler_ProcessProvisioningWithConfirmations_MultipleMatches(t 
 	}
 
 	result, err := h.ProcessProvisioningWithConfirmations(matches)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	// Should have 2 actions, no confirmations
-	assert.Len(t, result.Actions, 2)
-	assert.Len(t, result.Confirmations, 0)
+	if len(result.Actions) != 2 {
+		t.Errorf("got %d actions, want 2", len(result.Actions))
+	}
+	if len(result.Confirmations) != 0 {
+		t.Errorf("got %d confirmations, want 0", len(result.Confirmations))
+	}
 
 	// Both actions should be BrewActions
 	for i, action := range result.Actions {
 		brewAction, ok := action.(*types.BrewAction)
-		require.True(t, ok, "Action %d should be BrewAction", i)
-		assert.NotEmpty(t, brewAction.PackName)
-		assert.NotEmpty(t, brewAction.BrewfilePath)
-		assert.NotEmpty(t, brewAction.Checksum)
+		if !ok {
+			t.Errorf("Action %d should be BrewAction, got %T", i, action)
+			continue
+		}
+		if brewAction.PackName == "" {
+			t.Errorf("Action %d: PackName should not be empty", i)
+		}
+		if brewAction.BrewfilePath == "" {
+			t.Errorf("Action %d: BrewfilePath should not be empty", i)
+		}
+		if brewAction.Checksum == "" {
+			t.Errorf("Action %d: Checksum should not be empty", i)
+		}
 	}
 }

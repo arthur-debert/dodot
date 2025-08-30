@@ -2,8 +2,6 @@ package handlers
 
 import (
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestHandlerRegistry_IsConfigurationHandler(t *testing.T) {
@@ -52,7 +50,9 @@ func TestHandlerRegistry_IsConfigurationHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HandlerRegistry.IsConfigurationHandler(tt.handlerName)
-			assert.Equal(t, tt.expected, result)
+			if result != tt.expected {
+				t.Errorf("IsConfigurationHandler(%q) = %v, want %v", tt.handlerName, result, tt.expected)
+			}
 		})
 	}
 }
@@ -103,7 +103,9 @@ func TestHandlerRegistry_IsCodeExecutionHandler(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HandlerRegistry.IsCodeExecutionHandler(tt.handlerName)
-			assert.Equal(t, tt.expected, result)
+			if result != tt.expected {
+				t.Errorf("IsCodeExecutionHandler(%q) = %v, want %v", tt.handlerName, result, tt.expected)
+			}
 		})
 	}
 }
@@ -154,7 +156,9 @@ func TestHandlerRegistry_GetHandlerCategory(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := HandlerRegistry.GetHandlerCategory(tt.handlerName)
-			assert.Equal(t, tt.expected, result)
+			if result != tt.expected {
+				t.Errorf("GetHandlerCategory(%q) = %v, want %v", tt.handlerName, result, tt.expected)
+			}
 		})
 	}
 }
@@ -163,15 +167,28 @@ func TestHandlerRegistry_GetConfigurationHandlers(t *testing.T) {
 	result := HandlerRegistry.GetConfigurationHandlers()
 
 	expected := []string{"symlink", "shell", "path"}
-	assert.Equal(t, expected, result)
-	assert.Len(t, result, 3)
+	if len(result) != len(expected) {
+		t.Errorf("GetConfigurationHandlers() returned %d handlers, want %d", len(result), len(expected))
+	}
+
+	for i, handler := range expected {
+		if i >= len(result) {
+			t.Errorf("GetConfigurationHandlers() missing handler at index %d: want %q", i, handler)
+			continue
+		}
+		if result[i] != handler {
+			t.Errorf("GetConfigurationHandlers()[%d] = %q, want %q", i, result[i], handler)
+		}
+	}
 
 	// Verify all returned handlers are actually configuration handlers
 	for _, handlerName := range result {
-		assert.True(t, HandlerRegistry.IsConfigurationHandler(handlerName),
-			"Handler %s should be identified as configuration handler", handlerName)
-		assert.False(t, HandlerRegistry.IsCodeExecutionHandler(handlerName),
-			"Handler %s should not be identified as code execution handler", handlerName)
+		if !HandlerRegistry.IsConfigurationHandler(handlerName) {
+			t.Errorf("Handler %q should be identified as configuration handler", handlerName)
+		}
+		if HandlerRegistry.IsCodeExecutionHandler(handlerName) {
+			t.Errorf("Handler %q should not be identified as code execution handler", handlerName)
+		}
 	}
 }
 
@@ -179,15 +196,28 @@ func TestHandlerRegistry_GetCodeExecutionHandlers(t *testing.T) {
 	result := HandlerRegistry.GetCodeExecutionHandlers()
 
 	expected := []string{"homebrew", "install"}
-	assert.Equal(t, expected, result)
-	assert.Len(t, result, 2)
+	if len(result) != len(expected) {
+		t.Errorf("GetCodeExecutionHandlers() returned %d handlers, want %d", len(result), len(expected))
+	}
+
+	for i, handler := range expected {
+		if i >= len(result) {
+			t.Errorf("GetCodeExecutionHandlers() missing handler at index %d: want %q", i, handler)
+			continue
+		}
+		if result[i] != handler {
+			t.Errorf("GetCodeExecutionHandlers()[%d] = %q, want %q", i, result[i], handler)
+		}
+	}
 
 	// Verify all returned handlers are actually code execution handlers
 	for _, handlerName := range result {
-		assert.True(t, HandlerRegistry.IsCodeExecutionHandler(handlerName),
-			"Handler %s should be identified as code execution handler", handlerName)
-		assert.False(t, HandlerRegistry.IsConfigurationHandler(handlerName),
-			"Handler %s should not be identified as configuration handler", handlerName)
+		if !HandlerRegistry.IsCodeExecutionHandler(handlerName) {
+			t.Errorf("Handler %q should be identified as code execution handler", handlerName)
+		}
+		if HandlerRegistry.IsConfigurationHandler(handlerName) {
+			t.Errorf("Handler %q should not be identified as configuration handler", handlerName)
+		}
 	}
 }
 
@@ -195,7 +225,9 @@ func TestHandlerRegistry_RequiresExecutionOrdering(t *testing.T) {
 	result := HandlerRegistry.RequiresExecutionOrdering()
 
 	// Should return true - code execution handlers run before configuration handlers
-	assert.True(t, result)
+	if !result {
+		t.Error("RequiresExecutionOrdering() = false, want true")
+	}
 }
 
 // Test that handler categories are mutually exclusive
@@ -214,8 +246,9 @@ func TestHandlerRegistry_MutualExclusivity(t *testing.T) {
 
 	// Check that no code execution handler is already in the set
 	for _, handler := range codeExecHandlers {
-		assert.False(t, handlerSet[handler],
-			"Handler %s appears in both configuration and code execution categories", handler)
+		if handlerSet[handler] {
+			t.Errorf("Handler %q appears in both configuration and code execution categories", handler)
+		}
 	}
 }
 
@@ -228,26 +261,26 @@ func TestHandlerRegistry_Consistency(t *testing.T) {
 		isConfig := HandlerRegistry.IsConfigurationHandler(handler)
 		category := HandlerRegistry.GetHandlerCategory(handler)
 
-		if isConfig {
-			assert.Equal(t, CategoryConfiguration, category,
-				"Handler %s: IsConfigurationHandler and GetHandlerCategory should be consistent", handler)
+		if isConfig && category != CategoryConfiguration {
+			t.Errorf("Handler %q: IsConfigurationHandler returns true but GetHandlerCategory returns %v", handler, category)
 		}
 
 		// Test that IsCodeExecutionHandler and GetHandlerCategory are consistent
 		isCodeExec := HandlerRegistry.IsCodeExecutionHandler(handler)
 
-		if isCodeExec {
-			assert.Equal(t, CategoryCodeExecution, category,
-				"Handler %s: IsCodeExecutionHandler and GetHandlerCategory should be consistent", handler)
+		if isCodeExec && category != CategoryCodeExecution {
+			t.Errorf("Handler %q: IsCodeExecutionHandler returns true but GetHandlerCategory returns %v", handler, category)
 		}
 
 		// Test that a handler cannot be both categories
-		assert.False(t, isConfig && isCodeExec,
-			"Handler %s cannot be both configuration and code execution", handler)
+		if isConfig && isCodeExec {
+			t.Errorf("Handler %q cannot be both configuration and code execution", handler)
+		}
 
 		// Test that a handler must be at least one category (for known handlers)
-		assert.True(t, isConfig || isCodeExec,
-			"Handler %s must be either configuration or code execution", handler)
+		if !isConfig && !isCodeExec {
+			t.Errorf("Handler %q must be either configuration or code execution", handler)
+		}
 	}
 }
 
@@ -257,11 +290,17 @@ func TestHandlerRegistry_ConfigurationHandlersComplete(t *testing.T) {
 
 	for _, handler := range configHandlers {
 		// Each should be identified as configuration
-		assert.True(t, HandlerRegistry.IsConfigurationHandler(handler))
+		if !HandlerRegistry.IsConfigurationHandler(handler) {
+			t.Errorf("GetConfigurationHandlers() returned %q which is not identified as configuration handler", handler)
+		}
 		// Each should have configuration category
-		assert.Equal(t, CategoryConfiguration, HandlerRegistry.GetHandlerCategory(handler))
+		if HandlerRegistry.GetHandlerCategory(handler) != CategoryConfiguration {
+			t.Errorf("GetConfigurationHandlers() returned %q which has category %v", handler, HandlerRegistry.GetHandlerCategory(handler))
+		}
 		// Each should NOT be identified as code execution
-		assert.False(t, HandlerRegistry.IsCodeExecutionHandler(handler))
+		if HandlerRegistry.IsCodeExecutionHandler(handler) {
+			t.Errorf("GetConfigurationHandlers() returned %q which is identified as code execution handler", handler)
+		}
 	}
 }
 
@@ -271,40 +310,99 @@ func TestHandlerRegistry_CodeExecutionHandlersComplete(t *testing.T) {
 
 	for _, handler := range codeExecHandlers {
 		// Each should be identified as code execution
-		assert.True(t, HandlerRegistry.IsCodeExecutionHandler(handler))
+		if !HandlerRegistry.IsCodeExecutionHandler(handler) {
+			t.Errorf("GetCodeExecutionHandlers() returned %q which is not identified as code execution handler", handler)
+		}
 		// Each should have code execution category
-		assert.Equal(t, CategoryCodeExecution, HandlerRegistry.GetHandlerCategory(handler))
+		if HandlerRegistry.GetHandlerCategory(handler) != CategoryCodeExecution {
+			t.Errorf("GetCodeExecutionHandlers() returned %q which has category %v", handler, HandlerRegistry.GetHandlerCategory(handler))
+		}
 		// Each should NOT be identified as configuration
-		assert.False(t, HandlerRegistry.IsConfigurationHandler(handler))
+		if HandlerRegistry.IsConfigurationHandler(handler) {
+			t.Errorf("GetCodeExecutionHandlers() returned %q which is identified as configuration handler", handler)
+		}
 	}
 }
 
 // Test edge cases and potential future scenarios
 func TestHandlerRegistry_EdgeCases(t *testing.T) {
-	edgeCases := []string{
-		"",            // empty string
-		"unknown",     // unknown handler
-		"SYMLINK",     // case sensitivity
-		"symlink ",    // whitespace
-		" symlink",    // leading whitespace
-		"sym-link",    // similar but different
-		"nonexistent", // clearly non-existent
+	edgeCases := []struct {
+		name     string
+		input    string
+		category HandlerCategory
+		isConfig bool
+		isCode   bool
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			category: CategoryConfiguration, // default
+			isConfig: false,
+			isCode:   false,
+		},
+		{
+			name:     "unknown handler",
+			input:    "unknown",
+			category: CategoryConfiguration, // default
+			isConfig: false,
+			isCode:   false,
+		},
+		{
+			name:     "uppercase variation",
+			input:    "SYMLINK",
+			category: CategoryConfiguration, // default
+			isConfig: false,                 // case sensitive
+			isCode:   false,
+		},
+		{
+			name:     "whitespace suffix",
+			input:    "symlink ",
+			category: CategoryConfiguration, // default
+			isConfig: false,                 // exact match
+			isCode:   false,
+		},
+		{
+			name:     "whitespace prefix",
+			input:    " symlink",
+			category: CategoryConfiguration, // default
+			isConfig: false,                 // exact match
+			isCode:   false,
+		},
+		{
+			name:     "similar but different",
+			input:    "sym-link",
+			category: CategoryConfiguration, // default
+			isConfig: false,
+			isCode:   false,
+		},
+		{
+			name:     "clearly non-existent",
+			input:    "nonexistent",
+			category: CategoryConfiguration, // default
+			isConfig: false,
+			isCode:   false,
+		},
 	}
 
-	for _, testCase := range edgeCases {
-		t.Run("edge_case_"+testCase, func(t *testing.T) {
-			// Unknown handlers should default to configuration (safe default)
-			category := HandlerRegistry.GetHandlerCategory(testCase)
-			assert.Equal(t, CategoryConfiguration, category,
-				"Unknown handler %q should default to configuration category", testCase)
+	for _, tc := range edgeCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Test GetHandlerCategory
+			category := HandlerRegistry.GetHandlerCategory(tc.input)
+			if category != tc.category {
+				t.Errorf("GetHandlerCategory(%q) = %v, want %v", tc.input, category, tc.category)
+			}
 
-			// Unknown handlers should not be identified as either category
-			isConfig := HandlerRegistry.IsConfigurationHandler(testCase)
-			isCodeExec := HandlerRegistry.IsCodeExecutionHandler(testCase)
+			// Test IsConfigurationHandler
+			isConfig := HandlerRegistry.IsConfigurationHandler(tc.input)
+			if isConfig != tc.isConfig {
+				t.Errorf("IsConfigurationHandler(%q) = %v, want %v", tc.input, isConfig, tc.isConfig)
+			}
 
-			// For edge cases, both should be false (unknown handlers)
-			assert.False(t, isConfig, "Edge case %q should not be identified as configuration", testCase)
-			assert.False(t, isCodeExec, "Edge case %q should not be identified as code execution", testCase)
+			// Test IsCodeExecutionHandler
+			isCode := HandlerRegistry.IsCodeExecutionHandler(tc.input)
+			if isCode != tc.isCode {
+				t.Errorf("IsCodeExecutionHandler(%q) = %v, want %v", tc.input, isCode, tc.isCode)
+			}
 		})
 	}
 }

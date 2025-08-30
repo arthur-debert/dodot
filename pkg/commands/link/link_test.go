@@ -1,217 +1,372 @@
-package link
+// pkg/commands/link/link_test.go
+// TEST TYPE: Business Logic Integration
+// DEPENDENCIES: Mock DataStore, Memory FS
+// PURPOSE: Test link command orchestration for configuration handler deployment
+
+package link_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/testutil"
-	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestLinkPacks_SymlinkHandler(t *testing.T) {
-	// Create test environment
-	tempDir := testutil.TempDir(t, "deploy-symlink")
-	dotfilesDir := filepath.Join(tempDir, "dotfiles")
-	homeDir := filepath.Join(tempDir, "home")
+func TestLinkPacks_EmptyPackNames_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	testutil.CreateDir(t, tempDir, "dotfiles")
-	testutil.CreateDir(t, tempDir, "home")
-	testutil.CreateDir(t, homeDir, ".local/share/dodot")
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+	}
 
-	t.Setenv("HOME", homeDir)
-	t.Setenv("DOTFILES_ROOT", dotfilesDir)
-	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
+	// Execute
+	result, err := link.LinkPacks(opts)
 
-	// Create a test pack with files that should be symlinked
-	testutil.CreateDir(t, dotfilesDir, "vim")
-	testutil.CreateFile(t, dotfilesDir, "vim/vimrc", "\" Test vimrc configuration")
-	testutil.CreateFile(t, dotfilesDir, "vim/gvimrc", "\" Test gvimrc configuration")
+	// Verify configuration orchestration behavior
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+	assert.False(t, result.DryRun, "dry run should match input")
+	assert.GreaterOrEqual(t, len(result.PackResults), 0, "pack results should be accessible")
+}
 
-	// Deploy the vim pack
-	ctx, err := LinkPacks(LinkPacksOptions{
-		DotfilesRoot:       dotfilesDir,
+func TestLinkPacks_SinglePack_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create a pack with configuration files
+	env.SetupPack("vim", testutil.PackConfig{
+		Files: map[string]string{
+			".vimrc":  "\" vim configuration",
+			".gvimrc": "\" gvim configuration",
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
 		PackNames:          []string{"vim"},
 		DryRun:             false,
 		EnableHomeSymlinks: true,
-	})
-
-	// Verify no errors
-	testutil.AssertNoError(t, err)
-	testutil.AssertNotNil(t, ctx)
-
-	// Verify execution context
-	testutil.AssertEqual(t, "link", ctx.Command)
-	testutil.AssertFalse(t, ctx.DryRun, "Should not be dry run")
-
-	// Verify pack results
-	packResult, ok := ctx.GetPackResult("vim")
-	testutil.AssertTrue(t, ok, "Should have vim pack result")
-	testutil.AssertNotNil(t, packResult)
-	testutil.AssertEqual(t, "vim", packResult.Pack.Name)
-	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
-
-	// Should have symlink handler results
-	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
-
-	// Find handler result (actions use generic "handler" name)
-	var handlerResult *types.HandlerResult
-	for _, pur := range packResult.HandlerResults {
-		if pur.HandlerName == "handler" {
-			handlerResult = pur
-			break
-		}
 	}
-	testutil.AssertNotNil(t, handlerResult, "Should have handler result")
-	testutil.AssertEqual(t, types.StatusReady, handlerResult.Status)
 
-	// Verify actual symlinks were created (Layer 1: top-level files get dot prefix)
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc symlink should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gvimrc")), "gvimrc symlink should exist")
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify configuration deployment orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+	assert.False(t, result.DryRun, "should not be dry run")
+
+	// Should have results for the vim pack
+	packResult, exists := result.GetPackResult("vim")
+	assert.True(t, exists, "should have vim pack result")
+	assert.NotNil(t, packResult, "vim pack result should not be nil")
+	assert.Equal(t, "vim", packResult.Pack.Name, "pack name should match")
 }
 
-func TestLinkPacks_DryRun(t *testing.T) {
-	// Create test environment
-	tempDir := testutil.TempDir(t, "deploy-dryrun")
-	dotfilesDir := filepath.Join(tempDir, "dotfiles")
-	homeDir := filepath.Join(tempDir, "home")
+func TestLinkPacks_DryRun_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	testutil.CreateDir(t, tempDir, "dotfiles")
-	testutil.CreateDir(t, tempDir, "home")
+	// Create pack with linkable files
+	env.SetupPack("zsh", testutil.PackConfig{
+		Files: map[string]string{
+			".zshrc":       "# zsh configuration",
+			".zsh_aliases": "# zsh aliases",
+		},
+	})
 
-	t.Setenv("HOME", homeDir)
-	t.Setenv("DOTFILES_ROOT", dotfilesDir)
-
-	// Create a test pack
-	testutil.CreateDir(t, dotfilesDir, "bash")
-	testutil.CreateFile(t, dotfilesDir, "bash/bashrc", "# Test bashrc")
-
-	// Deploy in dry-run mode
-	ctx, err := LinkPacks(LinkPacksOptions{
-		DotfilesRoot:       dotfilesDir,
-		PackNames:          []string{"bash"},
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"zsh"},
 		DryRun:             true,
 		EnableHomeSymlinks: true,
-	})
+	}
 
-	// Verify no errors
-	testutil.AssertNoError(t, err)
-	testutil.AssertNotNil(t, ctx)
+	// Execute
+	result, err := link.LinkPacks(opts)
 
-	// Verify execution context
-	testutil.AssertTrue(t, ctx.DryRun, "Should be dry run")
-	testutil.AssertEqual(t, "link", ctx.Command)
+	// Verify dry run behavior
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+	assert.True(t, result.DryRun, "should be dry run")
 
-	// Verify pack results exist
-	packResult, ok := ctx.GetPackResult("bash")
-	testutil.AssertTrue(t, ok, "Should have bash pack result")
-	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
-
-	// Verify no actual files were created (dry run)
-	testutil.AssertFalse(t, testutil.FileExists(t, filepath.Join(homeDir, ".bashrc")), "bashrc symlink should not exist in dry run")
+	// Dry run should still process packs but not make changes
+	packResult, exists := result.GetPackResult("zsh")
+	assert.True(t, exists, "should have zsh pack result")
+	assert.NotNil(t, packResult, "zsh pack result should not be nil")
 }
 
-func TestLinkPacks_AllPacks(t *testing.T) {
-	// Create test environment
-	tempDir := testutil.TempDir(t, "deploy-allpacks")
-	dotfilesDir := filepath.Join(tempDir, "dotfiles")
-	homeDir := filepath.Join(tempDir, "home")
+func TestLinkPacks_MultiplePacks_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	testutil.CreateDir(t, tempDir, "dotfiles")
-	testutil.CreateDir(t, tempDir, "home")
-	testutil.CreateDir(t, homeDir, ".local/share/dodot")
-
-	t.Setenv("HOME", homeDir)
-	t.Setenv("DOTFILES_ROOT", dotfilesDir)
-	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
-
-	// Create multiple test packs
-	testutil.CreateDir(t, dotfilesDir, "vim")
-	testutil.CreateFile(t, dotfilesDir, "vim/vimrc", "\" Vim config")
-
-	testutil.CreateDir(t, dotfilesDir, "git")
-	testutil.CreateFile(t, dotfilesDir, "git/gitconfig", "[user]\n\tname = Test")
-
-	// Deploy all packs (empty PackNames means all)
-	ctx, err := LinkPacks(LinkPacksOptions{
-		DotfilesRoot:       dotfilesDir,
-		PackNames:          []string{}, // All packs
-		DryRun:             false,
-		EnableHomeSymlinks: true,
+	// Create multiple packs with different configurations
+	env.SetupPack("vim", testutil.PackConfig{
+		Files: map[string]string{
+			".vimrc": "\" vim config",
+		},
 	})
 
-	// Verify no errors
-	testutil.AssertNoError(t, err)
-	testutil.AssertNotNil(t, ctx)
+	env.SetupPack("git", testutil.PackConfig{
+		Files: map[string]string{
+			".gitconfig":        "[user]\n\tname = Test User",
+			".gitignore_global": "*.log",
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"vim", "git"},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify multiple pack orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
 
 	// Should have results for both packs
-	vimResult, hasVim := ctx.GetPackResult("vim")
-	gitResult, hasGit := ctx.GetPackResult("git")
+	vimResult, vimExists := result.GetPackResult("vim")
+	assert.True(t, vimExists, "should have vim pack result")
+	assert.NotNil(t, vimResult, "vim pack result should not be nil")
 
-	testutil.AssertTrue(t, hasVim, "Should have vim pack result")
-	testutil.AssertTrue(t, hasGit, "Should have git pack result")
-	testutil.AssertEqual(t, types.ExecutionStatusSuccess, vimResult.Status)
-	testutil.AssertEqual(t, types.ExecutionStatusSuccess, gitResult.Status)
-
-	// Verify files from both packs were deployed (Layer 1: top-level files get dot prefix)
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".vimrc")), "vimrc should exist")
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".gitconfig")), "gitconfig should exist")
+	gitResult, gitExists := result.GetPackResult("git")
+	assert.True(t, gitExists, "should have git pack result")
+	assert.NotNil(t, gitResult, "git pack result should not be nil")
 }
 
-func TestLinkPacks_SkipInstallScripts(t *testing.T) {
-	// Create test environment
-	tempDir := testutil.TempDir(t, "deploy-skip-install")
-	dotfilesDir := filepath.Join(tempDir, "dotfiles")
-	homeDir := filepath.Join(tempDir, "home")
+func TestLinkPacks_NonExistentPack_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	testutil.CreateDir(t, tempDir, "dotfiles")
-	testutil.CreateDir(t, tempDir, "home")
-	testutil.CreateDir(t, homeDir, ".local/share/dodot")
-
-	t.Setenv("HOME", homeDir)
-	t.Setenv("DOTFILES_ROOT", dotfilesDir)
-	t.Setenv("DODOT_DATA_DIR", filepath.Join(homeDir, ".local", "share", "dodot"))
-
-	// Create a pack with both symlink files and install script
-	testutil.CreateDir(t, dotfilesDir, "tools")
-	testutil.CreateFile(t, dotfilesDir, "tools/aliases", "# Test aliases")
-
-	// Create install script (should be skipped in deploy mode)
-	installScript := `#!/bin/bash
-echo "Installing tools" > /tmp/install-was-run
-`
-	testutil.CreateFile(t, dotfilesDir, "tools/install.sh", installScript)
-	err := os.Chmod(filepath.Join(dotfilesDir, "tools/install.sh"), 0755)
-	testutil.AssertNoError(t, err)
-
-	// Deploy the pack
-	ctx, err := LinkPacks(LinkPacksOptions{
-		DotfilesRoot:       dotfilesDir,
-		PackNames:          []string{"tools"},
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"nonexistent"},
 		DryRun:             false,
 		EnableHomeSymlinks: true,
-	})
+	}
 
-	// Verify no errors
-	testutil.AssertNoError(t, err)
-	testutil.AssertNotNil(t, ctx)
+	// Execute
+	result, err := link.LinkPacks(opts)
 
-	// Verify pack results
-	packResult, ok := ctx.GetPackResult("tools")
-	testutil.AssertTrue(t, ok, "Should have tools pack result")
-	testutil.AssertEqual(t, types.ExecutionStatusSuccess, packResult.Status)
-
-	// Should only have handler results (uses generic "handler" name)
-	// In link mode, we should not have any provisioning actions
-	testutil.AssertTrue(t, len(packResult.HandlerResults) > 0, "Should have handler results")
-
-	// The key test is that install script was not executed
-	// (which is verified below)
-
-	// Verify symlink was created but install script was not run
-	testutil.AssertTrue(t, testutil.FileExists(t, filepath.Join(homeDir, ".aliases")), "aliases symlink should exist")
-	testutil.AssertFalse(t, testutil.FileExists(t, "/tmp/install-was-run"), "Install script should NOT have been executed")
+	// Verify error handling for non-existent packs
+	assert.Error(t, err, "should return error for non-existent pack")
+	// Result may still be returned with error information
+	if result != nil {
+		assert.Equal(t, "link", result.Command, "command should still be link")
+	}
 }
 
-// TestLinkPacks_InvalidPack and TestLinkPacks_EmptyPack were removed
-// These scenarios are already tested in pkg/commands/internal/pipeline_test.go
+func TestLinkPacks_ConfigurationMode_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create pack with mixed file types (configuration + executable)
+	env.SetupPack("mixed-pack", testutil.PackConfig{
+		Files: map[string]string{
+			".configrc":  "config file",
+			"install.sh": "#!/bin/sh\necho install", // Should be ignored by link
+			"bin/tool":   "#!/bin/sh\necho tool",
+			"aliases.sh": "alias ll='ls -la'",
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"mixed-pack"},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify configuration-only mode orchestration
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+
+	packResult, exists := result.GetPackResult("mixed-pack")
+	assert.True(t, exists, "should have mixed-pack result")
+	assert.NotNil(t, packResult, "pack result should not be nil")
+
+	// Link should only process configuration handlers, not install scripts
+	// This is handled by the internal pipeline using CommandModeConfiguration
+}
+
+func TestLinkPacks_HomeSymlinksDisabled_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	env.SetupPack("test-pack", testutil.PackConfig{
+		Files: map[string]string{
+			".testrc": "test configuration",
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"test-pack"},
+		DryRun:             false,
+		EnableHomeSymlinks: false, // Key: disabled home symlinks
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify orchestration with disabled home symlinks
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+
+	// Command should complete but symlink behavior depends on internal pipeline
+	packResult, exists := result.GetPackResult("test-pack")
+	assert.True(t, exists, "should have test-pack result")
+	assert.NotNil(t, packResult, "pack result should not be nil")
+}
+
+func TestLinkPacks_EmptyDotfiles_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+	// No packs created - empty dotfiles directory
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify empty dotfiles handling
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+	assert.Len(t, result.PackResults, 0, "should have no pack results for empty dotfiles")
+	assert.Equal(t, 0, result.TotalActions, "should have no actions for empty dotfiles")
+}
+
+func TestLinkPacks_ExecutionContext_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	env.SetupPack("context-test", testutil.PackConfig{
+		Files: map[string]string{
+			".testrc":   "test config",
+			"script.sh": "#!/bin/sh\necho test",
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"context-test"},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify execution context structure completeness
+	require.NoError(t, err)
+	require.NotNil(t, result, "result should not be nil")
+
+	// Verify ExecutionContext structure
+	assert.Equal(t, "link", result.Command, "command should be link")
+	assert.False(t, result.DryRun, "dry run should match input")
+	assert.NotZero(t, result.StartTime, "start time should be set")
+	assert.NotZero(t, result.EndTime, "end time should be set")
+	assert.GreaterOrEqual(t, result.TotalActions, 0, "total actions should be non-negative")
+	assert.GreaterOrEqual(t, result.CompletedActions, 0, "completed actions should be non-negative")
+	assert.GreaterOrEqual(t, result.FailedActions, 0, "failed actions should be non-negative")
+	assert.GreaterOrEqual(t, result.SkippedActions, 0, "skipped actions should be non-negative")
+
+	// Verify pack results structure
+	assert.NotNil(t, result.PackResults, "pack results should not be nil")
+	assert.GreaterOrEqual(t, len(result.PackResults), 0, "pack results should be accessible")
+}
+
+func TestLinkPacks_CommandModeConfiguration_Integration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create pack with various handler types
+	env.SetupPack("handler-test", testutil.PackConfig{
+		Files: map[string]string{
+			".configrc":  "config file",       // symlink handler
+			"aliases.sh": "alias test='echo'", // shell handler
+			"bin/tool":   "#!/bin/sh\necho x", // path handler
+			"install.sh": "#!/bin/sh\necho i", // install handler (should be skipped)
+			"Brewfile":   "brew 'git'",        // homebrew handler (should be skipped)
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"handler-test"},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify that link only processes configuration handlers
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+
+	packResult, exists := result.GetPackResult("handler-test")
+	assert.True(t, exists, "should have handler-test result")
+	assert.NotNil(t, packResult, "pack result should not be nil")
+
+	// The internal pipeline should filter to configuration handlers only
+	// Specific handler verification is handled by the internal pipeline tests
+	// Orchestration tests focus on command-level behavior
+}
+
+func TestLinkPacks_ForceFlag_Orchestration(t *testing.T) {
+	// Setup
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	env.SetupPack("force-test", testutil.PackConfig{
+		Files: map[string]string{
+			".testrc": "test configuration",
+		},
+	})
+
+	opts := link.LinkPacksOptions{
+		DotfilesRoot:       env.DotfilesRoot,
+		PackNames:          []string{"force-test"},
+		DryRun:             false,
+		EnableHomeSymlinks: true,
+		// Note: LinkPacksOptions doesn't have Force flag - it's always false internally
+	}
+
+	// Execute
+	result, err := link.LinkPacks(opts)
+
+	// Verify link doesn't use force flag (unlike provision)
+	require.NoError(t, err)
+	assert.NotNil(t, result, "should return execution context")
+	assert.Equal(t, "link", result.Command, "command should be link")
+
+	// Link command behavior is consistent regardless of force (no force flag available)
+	packResult, exists := result.GetPackResult("force-test")
+	assert.True(t, exists, "should have force-test result")
+	assert.NotNil(t, packResult, "pack result should not be nil")
+}

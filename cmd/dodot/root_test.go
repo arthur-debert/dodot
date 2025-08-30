@@ -5,16 +5,21 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/testutil"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDeployCmd(t *testing.T) {
-	// Set up a test dotfiles directory
-	dotfilesRoot := testutil.TempDir(t, "dotfiles")
-	testutil.CreateDir(t, dotfilesRoot, "pack1")
-	testutil.CreateDir(t, dotfilesRoot, "pack2")
+	// Set up test environment with isolated filesystem
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+	defer env.Cleanup()
+
+	// Create pack directories
+	env.SetupPack("pack1", testutil.PackConfig{})
+	env.SetupPack("pack2", testutil.PackConfig{})
 
 	// Set the DOTFILES_ROOT environment variable
-	t.Setenv("DOTFILES_ROOT", dotfilesRoot)
+	t.Setenv("DOTFILES_ROOT", env.DotfilesRoot)
 
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
@@ -24,28 +29,28 @@ func TestDeployCmd(t *testing.T) {
 	err := rootCmd.Execute()
 
 	// Assert no error occurred
-	testutil.AssertNoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
+	// Create test environment without setting DOTFILES_ROOT
+	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+	defer env.Cleanup()
+
 	// Unset the DOTFILES_ROOT environment variable
 	t.Setenv("DOTFILES_ROOT", "")
 
-	// Create a temporary directory to serve as current working directory
-	// This will be used as the fallback dotfiles root
-	tempDir := testutil.TempDir(t, "fallback-dotfiles")
-
-	// Change working directory to the temp directory
+	// Change working directory to the dotfiles root
 	origWd, err := os.Getwd()
-	testutil.AssertNoError(t, err)
-	err = os.Chdir(tempDir)
-	testutil.AssertNoError(t, err)
+	require.NoError(t, err)
+	err = os.Chdir(env.DotfilesRoot)
+	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = os.Chdir(origWd)
 	})
 
 	// Create some basic pack structure for the fallback to work
-	testutil.CreateDir(t, tempDir, "test-pack")
+	env.SetupPack("test-pack", testutil.PackConfig{})
 
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
@@ -56,5 +61,5 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 
 	// The command should succeed but with a fallback warning
 	// (it uses current working directory as fallback)
-	testutil.AssertNoError(t, err)
+	assert.NoError(t, err)
 }
