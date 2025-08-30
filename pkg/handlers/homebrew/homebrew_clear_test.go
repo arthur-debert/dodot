@@ -2,6 +2,7 @@ package homebrew
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,15 @@ import (
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
+
+// skipIfBrewNotAvailable skips the test if brew command is not available
+func skipIfBrewNotAvailable(t *testing.T) {
+	t.Helper()
+	_, err := exec.LookPath("brew")
+	if err != nil {
+		t.Skip("Skipping test: brew command not available")
+	}
+}
 
 func TestHomebrewHandler_Clear_Basic(t *testing.T) {
 	tests := []struct {
@@ -166,9 +176,7 @@ func TestHomebrewHandler_Clear_Basic(t *testing.T) {
 }
 
 func TestParseBrewfile(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping test that requires brew in short mode")
-	}
+	skipIfBrewNotAvailable(t)
 
 	tests := []struct {
 		name            string

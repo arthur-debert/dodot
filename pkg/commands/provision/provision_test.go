@@ -6,6 +6,7 @@
 package provision_test
 
 import (
+	"os/exec"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/commands/provision"
@@ -42,14 +43,20 @@ func TestProvisionPacks_SinglePack_Orchestration(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
 	// Create a pack with mixed handler types (both install and configuration)
+	files := map[string]string{
+		".vimrc":     "\" vim configuration",
+		"install.sh": "#!/bin/sh\necho installing dependencies",
+		"aliases.sh": "alias vi='vim'",
+		"bin/tool":   "#!/bin/sh\necho custom tool",
+	}
+
+	// Only add Brewfile if brew is available
+	if _, err := exec.LookPath("brew"); err == nil {
+		files["Brewfile"] = "brew 'git'\nbrew 'vim'"
+	}
+
 	env.SetupPack("fullstack", testutil.PackConfig{
-		Files: map[string]string{
-			".vimrc":     "\" vim configuration",
-			"install.sh": "#!/bin/sh\necho installing dependencies",
-			"Brewfile":   "brew 'git'\nbrew 'vim'",
-			"aliases.sh": "alias vi='vim'",
-			"bin/tool":   "#!/bin/sh\necho custom tool",
-		},
+		Files: files,
 	})
 
 	opts := provision.ProvisionPacksOptions{
@@ -229,13 +236,19 @@ func TestProvisionPacks_PhaseSequencing_Orchestration(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
 	// Create pack that would show phase sequencing
+	files := map[string]string{
+		".configrc":  "configuration file",
+		"install.sh": "#!/bin/sh\necho install first",
+		"aliases.sh": "alias test='echo configured after install'",
+	}
+
+	// Only add Brewfile if brew is available
+	if _, err := exec.LookPath("brew"); err == nil {
+		files["Brewfile"] = "brew 'git'"
+	}
+
 	env.SetupPack("sequenced", testutil.PackConfig{
-		Files: map[string]string{
-			".configrc":  "configuration file",
-			"install.sh": "#!/bin/sh\necho install first",
-			"Brewfile":   "brew 'git'",
-			"aliases.sh": "alias test='echo configured after install'",
-		},
+		Files: files,
 	})
 
 	opts := provision.ProvisionPacksOptions{
@@ -367,16 +380,22 @@ func TestProvisionPacks_TwoPhaseIntegration_Orchestration(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
 	// Create pack that exercises both phases
+	files := map[string]string{
+		// Phase 1: Code execution handlers
+		"install.sh": "#!/bin/sh\necho provisioning phase",
+		// Phase 2: Configuration handlers
+		".configrc":  "config from phase 2",
+		"aliases.sh": "alias configured='echo after provision'",
+		"bin/script": "#!/bin/sh\necho path addition",
+	}
+
+	// Only add Brewfile if brew is available
+	if _, err := exec.LookPath("brew"); err == nil {
+		files["Brewfile"] = "brew 'git'"
+	}
+
 	env.SetupPack("two-phase", testutil.PackConfig{
-		Files: map[string]string{
-			// Phase 1: Code execution handlers
-			"install.sh": "#!/bin/sh\necho provisioning phase",
-			"Brewfile":   "brew 'git'",
-			// Phase 2: Configuration handlers
-			".configrc":  "config from phase 2",
-			"aliases.sh": "alias configured='echo after provision'",
-			"bin/script": "#!/bin/sh\necho path addition",
-		},
+		Files: files,
 	})
 
 	opts := provision.ProvisionPacksOptions{
