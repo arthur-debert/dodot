@@ -327,3 +327,79 @@ func TestAdapter_RoundTrip(t *testing.T) {
 	assert.True(t, pathActionFound, "Path action should be preserved")
 	assert.True(t, scriptActionFound, "Script action should be preserved")
 }
+
+func TestExtractScriptPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		command  string
+		expected string
+	}{
+		{
+			name:     "simple script path",
+			command:  "./install.sh",
+			expected: "./install.sh",
+		},
+		{
+			name:     "script with arguments",
+			command:  "./install.sh --verbose --prefix=/usr/local",
+			expected: "./install.sh",
+		},
+		{
+			name:     "absolute path",
+			command:  "/usr/bin/setup.sh arg1 arg2",
+			expected: "/usr/bin/setup.sh",
+		},
+		{
+			name:     "relative path with dots",
+			command:  "../scripts/configure.sh --enable-feature",
+			expected: "../scripts/configure.sh",
+		},
+		{
+			name:     "simple command name",
+			command:  "make",
+			expected: "make",
+		},
+		{
+			name:     "command with args but no path",
+			command:  "npm install",
+			expected: "npm install",
+		},
+		{
+			name:     "empty command",
+			command:  "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// We need to test this through the adapter since extractScriptPath is private
+			// Create a RunScriptAction and convert it to operations
+			executor := operations.NewExecutor(nil, nil, nil, false)
+			adapter := operations.NewActionAdapter(executor)
+
+			action := &types.RunScriptAction{
+				PackName:     "test",
+				ScriptPath:   tt.command,
+				SentinelName: "test-sentinel",
+				Checksum:     "test123",
+			}
+
+			ops, err := adapter.ActionsToOperations([]types.Action{action})
+			require.NoError(t, err)
+			require.Len(t, ops, 1)
+
+			// The command in the operation should be the original command
+			assert.Equal(t, tt.command, ops[0].Command)
+
+			// Now convert back and check the script path extraction
+			actions, err := adapter.OperationsToActions(ops)
+			require.NoError(t, err)
+			require.Len(t, actions, 1)
+
+			scriptAction, ok := actions[0].(*types.RunScriptAction)
+			require.True(t, ok)
+			assert.Equal(t, tt.expected, scriptAction.ScriptPath)
+		})
+	}
+}

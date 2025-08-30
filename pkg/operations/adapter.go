@@ -3,6 +3,7 @@ package operations
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -219,9 +220,25 @@ func (a *ActionAdapter) actionToOperations(action types.Action) ([]Operation, er
 }
 
 // extractScriptPath is a helper to parse script path from command.
-// In real implementation, this would be more robust.
+// This is needed because the install handler stores the full command
+// but the RunScriptAction expects just the script path.
+//
+// TODO: This is a temporary solution for Phase 1. In Phase 2 when the
+// install handler is migrated, it should store script path and args
+// separately in the operation metadata to avoid this parsing.
 func extractScriptPath(command string) string {
-	// Simple implementation - just return the command
-	// Real implementation would parse properly
+	// For Phase 1, we assume simple script paths without complex quoting
+	// The install handler typically uses paths like "./install.sh" or "scripts/setup.sh"
+
+	// If the command starts with a path (. or /) return the first word
+	if len(command) > 0 && (command[0] == '.' || command[0] == '/') {
+		// Find first space to separate script from arguments
+		if spaceIdx := strings.IndexByte(command, ' '); spaceIdx > 0 {
+			return command[:spaceIdx]
+		}
+		return command
+	}
+
+	// Otherwise return the whole command - might be a simple script name
 	return command
 }
