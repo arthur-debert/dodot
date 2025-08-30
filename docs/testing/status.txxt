@@ -28,9 +28,9 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 | pkg/filesystem           | Unit             | filesystem_test.go                               | do not migrate   | 19.44%       | 0%           | FS abstraction                               |
 | pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | migrated         | 82.86%       | 81.43%       | File adoption and pack management            |
 | pkg/commands/fill        | Business Logic   | -                                                | skip             | 0%           | 0%           | Command not implemented (TODO)               |
-| pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | skip             | 95.24%       | 0%           | Needs FS injection refactor                  |
+| pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | not migrated     | 95.24%       | 0%           | Needs FS injection refactor                  |
 | pkg/commands/initialize  | Business Logic   | initialize_test.go                               | skip             | 85.71%       | 0%           | Needs consistent FS injection                |
-| pkg/commands/internal    | Business Logic   | pipeline_test.go                                 | skip             | 70.00%       | 0%           | Core infrastructure - needs refactor         |
+| pkg/commands/internal    | Business Logic   | pipeline_test.go                                 | not migrated     | 70.00%       | 0%           | Core infrastructure - needs refactor         |
 | pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | 84.62%       | Command orchestration - ignore file creation |
 | pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | migrated         | 88.89%       | 66.67%       | Code execution handler clearing              |
 | pkg/commands/list        | Business Logic   | list_test.go                                     | migrated         | 100.00%      | 100.00%      | Query operations - pack discovery tests     |
@@ -69,9 +69,9 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 
 
 Total Coverage:
-- Old Tests (main branch): 69.56% (1675/2408 statements)
-- New Tests (tests/revamp): 57.52% (2169/3771 statements)
-- Migration Progress: 47.3% of test files migrated (52 new / 58 old)
+- Old Tests (remaining): 54.51% (320/587 statements) - only pkg/commands/genconfig and pkg/commands/internal
+- New Tests (migrated): 47.08% (2067/4390 statements)
+- Migration Progress: 91.42% of test files migrated (64 new / 6 old remaining)
 
 Coverage Comparison Notes:
 - Several packages show improved coverage after migration (e.g., datastore: 53.93% → 82.72%)
