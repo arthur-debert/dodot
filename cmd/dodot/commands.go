@@ -48,11 +48,11 @@ func NewRootCmd() *cobra.Command {
 	initTemplateFormatting()
 
 	var (
-		verbosity         int
-		dryRun            bool
-		force             bool
-		configFile        string
-		formatStr         string
+		verbosity          int
+		dryRun             bool
+		force              bool
+		configFile         string
+		formatStr          string
 		useSimplifiedRules bool
 	)
 
@@ -384,10 +384,10 @@ func newProvisionCmd() *cobra.Command {
 			// Provision packs using the new implementation
 			var ctx *types.ExecutionContext
 			opts := provision.ProvisionPacksOptions{
-				DotfilesRoot:       p.DotfilesRoot(),
-				PackNames:          args,
-				DryRun:             dryRun,
-				Force:              force,
+				DotfilesRoot: p.DotfilesRoot(),
+				PackNames:    args,
+				DryRun:       dryRun,
+				Force:        force,
 			}
 			if useSimplified {
 				ctx, err = provision.ProvisionPacksSimplified(opts)

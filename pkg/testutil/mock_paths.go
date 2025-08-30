@@ -3,7 +3,7 @@ package testutil
 import (
 	"path/filepath"
 	"strings"
-	
+
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -54,7 +54,7 @@ func (m *MockPathResolver) CacheDir() string {
 	return m.xdgCache
 }
 
-// StateDir returns the XDG state directory  
+// StateDir returns the XDG state directory
 func (m *MockPathResolver) StateDir() string {
 	return m.xdgState
 }
@@ -76,20 +76,20 @@ func (m *MockPathResolver) MapPackFileToSystem(pack *types.Pack, relPath string)
 	// Simple mock implementation
 	// For files in root of pack, add dot prefix
 	// For files in subdirectories, preserve structure
-	
+
 	parts := strings.Split(relPath, "/")
-	
+
 	if len(parts) == 1 {
 		// Top-level file, add dot prefix
 		return filepath.Join(m.home, "."+relPath)
 	}
-	
+
 	// Subdirectory file
 	if parts[0] == ".config" {
 		// XDG config file
 		return filepath.Join(m.xdgConfig, strings.Join(parts[1:], "/"))
 	}
-	
+
 	// Default: preserve structure in home
 	return filepath.Join(m.home, relPath)
 }

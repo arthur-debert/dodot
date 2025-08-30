@@ -62,7 +62,7 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 			expectError:   false,
 			checkActions: func(t *testing.T, actions []types.LinkingAction) {
 				require.Len(t, actions, 2)
-				
+
 				// Check first action
 				action1, ok := actions[0].(*types.AddToPathAction)
 				require.True(t, ok)
@@ -122,7 +122,7 @@ func TestPathHandler_ProcessLinking(t *testing.T) {
 			expectError:   false,
 			checkActions: func(t *testing.T, actions []types.LinkingAction) {
 				require.Len(t, actions, 2)
-				
+
 				action1, ok := actions[0].(*types.AddToPathAction)
 				require.True(t, ok)
 				assert.Equal(t, "tools", action1.PackName)
@@ -265,5 +265,3 @@ func TestPathHandler_Properties(t *testing.T) {
 		assert.Empty(t, handler.GetTemplateContent())
 	})
 }
-
-
