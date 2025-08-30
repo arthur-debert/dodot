@@ -10,8 +10,14 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// AddIgnoreRefactored creates a .dodotignore file using proper abstractions
-func AddIgnoreRefactored(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
+// AddIgnoreOptions holds options for the add-ignore command
+type AddIgnoreOptions struct {
+	DotfilesRoot string
+	PackName     string
+}
+
+// AddIgnore creates a .dodotignore file using proper abstractions
+func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
 	logger := logging.GetLogger("commands.addignore")
 	logger.Info().
 		Str("pack", opts.PackName).
