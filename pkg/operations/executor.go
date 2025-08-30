@@ -221,7 +221,7 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 
 	// For path handler in phase 1, we know it stores links in the datastore
 	// In phase 3, this will be more generic
-	if handler.Name() == "path" {
+	if handler.Name() == HandlerPath {
 		stateDir := fmt.Sprintf("~/.local/share/dodot/data/%s/%s", ctx.Pack.Name, stateDirName)
 
 		clearedItem := types.ClearedItem{

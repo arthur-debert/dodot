@@ -18,7 +18,7 @@ func IsHandlerSimplified(handlerName string) bool {
 
 	// Phase 1: Only path handler is migrated
 	switch handlerName {
-	case "path":
+	case HandlerPath:
 		return true
 	default:
 		return false

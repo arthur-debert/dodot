@@ -51,20 +51,20 @@ func (a *ActionAdapter) operationToAction(op Operation) (types.Action, error) {
 	case CreateDataLink:
 		// CreateDataLink operations map to different actions based on handler
 		switch op.Handler {
-		case "symlink":
+		case HandlerSymlink:
 			// SPECIAL CASE: Symlink requires both CreateDataLink and CreateUserLink
 			// to form a complete LinkAction. We skip processing here and handle
 			// the complete action when we see CreateUserLink.
 			// TODO: Consider tracking operation pairs for better error handling
 			return nil, nil // Skip, will be handled with CreateUserLink
 
-		case "path":
+		case HandlerPath:
 			return &types.AddToPathAction{
 				PackName: op.Pack,
 				DirPath:  op.Source,
 			}, nil
 
-		case "shell", "shell_profile":
+		case HandlerShell, HandlerShellProfile:
 			return &types.AddToShellProfileAction{
 				PackName:   op.Pack,
 				ScriptPath: op.Source,
@@ -90,7 +90,7 @@ func (a *ActionAdapter) operationToAction(op Operation) (types.Action, error) {
 	case RunCommand:
 		// RunCommand operations map to provisioning actions
 		switch op.Handler {
-		case "install":
+		case HandlerInstall:
 			return &types.RunScriptAction{
 				PackName:     op.Pack,
 				ScriptPath:   extractScriptPath(op.Command),
@@ -98,7 +98,7 @@ func (a *ActionAdapter) operationToAction(op Operation) (types.Action, error) {
 				Checksum:     op.Metadata["checksum"].(string),
 			}, nil
 
-		case "homebrew":
+		case HandlerHomebrew:
 			return &types.BrewAction{
 				PackName:     op.Pack,
 				BrewfilePath: op.Metadata["brewfile"].(string),
@@ -146,13 +146,13 @@ func (a *ActionAdapter) actionToOperations(action types.Action) ([]Operation, er
 			{
 				Type:    CreateDataLink,
 				Pack:    act.PackName,
-				Handler: "symlink",
+				Handler: HandlerSymlink,
 				Source:  act.SourceFile,
 			},
 			{
 				Type:    CreateUserLink,
 				Pack:    act.PackName,
-				Handler: "symlink",
+				Handler: HandlerSymlink,
 				Source:  act.SourceFile, // Will be resolved to datastore path
 				Target:  act.TargetFile,
 			},
@@ -165,7 +165,7 @@ func (a *ActionAdapter) actionToOperations(action types.Action) ([]Operation, er
 			{
 				Type:    CreateDataLink,
 				Pack:    act.PackName,
-				Handler: "path",
+				Handler: HandlerPath,
 				Source:  act.DirPath,
 			},
 		}, nil
@@ -177,7 +177,7 @@ func (a *ActionAdapter) actionToOperations(action types.Action) ([]Operation, er
 			{
 				Type:    CreateDataLink,
 				Pack:    act.PackName,
-				Handler: "shell_profile",
+				Handler: HandlerShellProfile,
 				Source:  act.ScriptPath,
 			},
 		}, nil
@@ -188,7 +188,7 @@ func (a *ActionAdapter) actionToOperations(action types.Action) ([]Operation, er
 			{
 				Type:     RunCommand,
 				Pack:     act.PackName,
-				Handler:  "install",
+				Handler:  HandlerInstall,
 				Command:  act.ScriptPath,
 				Sentinel: act.SentinelName,
 				Metadata: map[string]interface{}{
@@ -203,7 +203,7 @@ func (a *ActionAdapter) actionToOperations(action types.Action) ([]Operation, er
 			{
 				Type:     RunCommand,
 				Pack:     act.PackName,
-				Handler:  "homebrew",
+				Handler:  HandlerHomebrew,
 				Command:  fmt.Sprintf("brew bundle --file=%s", act.BrewfilePath),
 				Sentinel: fmt.Sprintf("brewfile-%s", act.Checksum),
 				Metadata: map[string]interface{}{

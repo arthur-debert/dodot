@@ -182,7 +182,7 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 // This is where we instantiate simplified handlers during phase 1.
 func getSimplifiedHandler(handlerName string) operations.Handler {
 	switch handlerName {
-	case "path":
+	case operations.HandlerPath:
 		return pathHandler.NewSimplifiedHandler()
 	default:
 		// Other handlers not yet migrated
