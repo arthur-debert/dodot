@@ -27,7 +27,7 @@ const (
 	CheckSentinel
 )
 
-// Operation represents a single atomic action to be performed.
+// Operation represents a single atomic unit of work to be performed.
 // Operations are the bridge between handlers (which understand file patterns)
 // and the datastore (which only knows how to perform these 4 operations).
 type Operation struct {

@@ -35,13 +35,13 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 	log.Debug().Str("command", "ProvisionPacks").Msg("Executing command")
 
 	// Phase 1: Run all handlers (both code execution and configuration)
-	log.Debug().Msg("Phase 1: Executing provisioning actions (install scripts, brewfiles)")
+	log.Debug().Msg("Phase 1: Executing provisioning operations (install scripts, brewfiles)")
 	installCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
 		CommandMode:        internal.CommandModeAll, // Run all handler types
-		Force:              opts.Force,              // Force flag applies to provisioning actions
+		Force:              opts.Force,              // Force flag applies to provisioning operations
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 
@@ -52,17 +52,17 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
 			return installCtx, err // Return the original error to preserve error code
 		}
-		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning actions")
+		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning operations")
 	}
 
 	// Phase 2: Run configuration handlers only (symlinks, profiles, etc.)
-	log.Debug().Msg("Phase 2: Executing deployment actions (symlinks, profiles)")
+	log.Debug().Msg("Phase 2: Executing deployment operations (symlinks, profiles)")
 	deployCtx, err := internal.RunPipeline(internal.PipelineOptions{
 		DotfilesRoot:       opts.DotfilesRoot,
 		PackNames:          opts.PackNames,
 		DryRun:             opts.DryRun,
 		CommandMode:        internal.CommandModeConfiguration, // Only configuration handlers
-		Force:              false,                             // Force doesn't apply to deploy actions
+		Force:              false,                             // Force doesn't apply to deploy operations
 		EnableHomeSymlinks: opts.EnableHomeSymlinks,
 	})
 
@@ -74,7 +74,7 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 			return mergeExecutionContexts(installCtx, deployCtx), err // Return the original error to preserve error code
 		}
 		// Return combined context with partial results from both phases
-		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute linking actions")
+		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute linking operations")
 	}
 
 	// Merge results from both phases

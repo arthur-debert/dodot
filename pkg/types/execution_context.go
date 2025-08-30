@@ -12,16 +12,16 @@ import (
 type ExecutionStatus string
 
 const (
-	// ExecutionStatusSuccess means all actions succeeded
+	// ExecutionStatusSuccess means all handlers succeeded
 	ExecutionStatusSuccess ExecutionStatus = "success"
 
-	// ExecutionStatusPartial means some actions succeeded, some failed
+	// ExecutionStatusPartial means some handlers succeeded, some failed
 	ExecutionStatusPartial ExecutionStatus = "partial"
 
-	// ExecutionStatusError means all actions failed
+	// ExecutionStatusError means all handlers failed
 	ExecutionStatusError ExecutionStatus = "error"
 
-	// ExecutionStatusSkipped means all actions were skipped
+	// ExecutionStatusSkipped means all handlers were skipped
 	ExecutionStatusSkipped ExecutionStatus = "skipped"
 
 	// ExecutionStatusPending means execution hasn't started

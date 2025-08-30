@@ -1,6 +1,6 @@
 package types
 
-// ConfirmationRequest represents a request for user confirmation before executing actions
+// ConfirmationRequest represents a request for user confirmation before executing operations
 type ConfirmationRequest struct {
 	// ID is a unique identifier for this confirmation within the operation
 	ID string
@@ -39,7 +39,7 @@ type ConfirmationResponse struct {
 }
 
 // ConfirmationContext holds all user responses to confirmation requests
-// This is passed through to action execution if confirmations were approved
+// This is passed through to operation execution if confirmations were approved
 type ConfirmationContext struct {
 	// Responses maps confirmation IDs to user responses
 	Responses map[string]bool
