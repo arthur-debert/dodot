@@ -311,7 +311,7 @@ func newLinkCmd() *cobra.Command {
 				EnableHomeSymlinks: true,
 			}
 			if useSimplified {
-				ctx, err = link.LinkPacksSimplified(opts)
+				ctx, err = link.LinkPacks(opts)
 			} else {
 				ctx, err = commands.LinkPacks(opts)
 			}
@@ -390,7 +390,7 @@ func newProvisionCmd() *cobra.Command {
 				Force:        force,
 			}
 			if useSimplified {
-				ctx, err = provision.ProvisionPacksSimplified(opts)
+				ctx, err = provision.ProvisionPacks(opts)
 			} else {
 				ctx, err = commands.ProvisionPacks(commands.ProvisionPacksOptions{
 					DotfilesRoot:       p.DotfilesRoot(),
@@ -1078,9 +1078,7 @@ func newUnlinkCmd() *cobra.Command {
 			// Run unlink command
 			result, err := commands.UnlinkPacks(commands.UnlinkPacksOptions{
 				DotfilesRoot: p.DotfilesRoot(),
-				DataDir:      p.DataDir(),
 				PackNames:    args,
-				Force:        force,
 				DryRun:       dryRun,
 			})
 			if err != nil {

@@ -12,6 +12,10 @@ const (
 	CommandModeConfiguration CommandMode = "configuration"
 	// CommandModeAll runs all handlers (both configuration and code execution)
 	CommandModeAll CommandMode = "all"
+	// CommandModeUnlink runs clear operations for configuration handlers
+	CommandModeUnlink CommandMode = "unlink"
+	// CommandModeDeprovision runs clear operations for provisioning handlers
+	CommandModeDeprovision CommandMode = "deprovision"
 )
 
 // PipelineOptions contains options for running the execution pipeline
