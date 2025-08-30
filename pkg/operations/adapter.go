@@ -39,14 +39,23 @@ func (a *ActionAdapter) OperationsToActions(operations []Operation) ([]types.Act
 
 // operationToAction converts a single operation to an action.
 // This mapping shows how the 4 operations cover all current action types.
+//
+// ADAPTER COMPLEXITY NOTE:
+// The symlink handler requires special handling because it generates two operations
+// (CreateDataLink + CreateUserLink) that map to a single LinkAction. This is handled
+// by returning nil for CreateDataLink and composing the full action at CreateUserLink.
+// This approach works but will need careful review as more complex handlers are migrated.
+// This adapter is intentionally temporary and will be removed in Phase 3.
 func (a *ActionAdapter) operationToAction(op Operation) (types.Action, error) {
 	switch op.Type {
 	case CreateDataLink:
 		// CreateDataLink operations map to different actions based on handler
 		switch op.Handler {
 		case "symlink":
-			// For symlink, we need both operations to create a LinkAction
-			// This is handled by looking ahead in the operation list
+			// SPECIAL CASE: Symlink requires both CreateDataLink and CreateUserLink
+			// to form a complete LinkAction. We skip processing here and handle
+			// the complete action when we see CreateUserLink.
+			// TODO: Consider tracking operation pairs for better error handling
 			return nil, nil // Skip, will be handled with CreateUserLink
 
 		case "path":
@@ -66,11 +75,15 @@ func (a *ActionAdapter) operationToAction(op Operation) (types.Action, error) {
 		}
 
 	case CreateUserLink:
-		// CreateUserLink + previous CreateDataLink = LinkAction
-		// In real implementation, we'd track the datastore path
+		// SPECIAL CASE CONTINUED: This assumes a previous CreateDataLink operation
+		// for the symlink handler. In the real implementation, the adapter would
+		// need to track the datastore path from the CreateDataLink operation.
+		// This complexity is acceptable for a temporary adapter but highlights
+		// why the operation-based approach is cleaner - handlers can generate
+		// exactly the operations they need without this mapping complexity.
 		return &types.LinkAction{
 			PackName:   op.Pack,
-			SourceFile: filepath.Base(op.Source), // Simplified for example
+			SourceFile: filepath.Base(op.Source), // Simplified for adapter
 			TargetFile: op.Target,
 		}, nil
 
