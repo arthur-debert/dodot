@@ -17,23 +17,23 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 		name        string
 		packName    string
 		handlerName string
-		setupFunc   func(env *testutil.TestEnvironment)
-		verifyFunc  func(t *testing.T, env *testutil.TestEnvironment, err error)
+		setupFunc   func(env *testutil.TestEnvironment, paths paths.Paths)
+		verifyFunc  func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error)
 	}{
 		{
 			name:        "remove symlink handler state",
 			packName:    "testpack",
 			handlerName: "symlink",
-			setupFunc: func(env *testutil.TestEnvironment) {
+			setupFunc: func(env *testutil.TestEnvironment, paths paths.Paths) {
 				// Create symlink state directory with content
-				symlinkDir := env.Paths.PackHandlerDir("testpack", "symlink")
+				symlinkDir := paths.PackHandlerDir("testpack", "symlink")
 				require.NoError(t, env.FS.MkdirAll(symlinkDir, 0755))
 				require.NoError(t, env.FS.Symlink("source", filepath.Join(symlinkDir, "link")))
 			},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				require.NoError(t, err)
 				// Verify directory was removed
-				symlinkDir := env.Paths.PackHandlerDir("testpack", "symlink")
+				symlinkDir := paths.PackHandlerDir("testpack", "symlink")
 				_, statErr := env.FS.Stat(symlinkDir)
 				assert.True(t, os.IsNotExist(statErr), "symlink state directory should be removed")
 			},
@@ -42,9 +42,9 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			name:        "remove shell_profile handler state",
 			packName:    "testpack",
 			handlerName: "shell_profile",
-			setupFunc: func(env *testutil.TestEnvironment) {
+			setupFunc: func(env *testutil.TestEnvironment, paths paths.Paths) {
 				// Create shell_profile state directory with content
-				profileDir := env.Paths.PackHandlerDir("testpack", "shell_profile")
+				profileDir := paths.PackHandlerDir("testpack", "shell_profile")
 				require.NoError(t, env.FS.MkdirAll(profileDir, 0755))
 				require.NoError(t, env.FS.WriteFile(
 					filepath.Join(profileDir, "profile.state"),
@@ -52,10 +52,10 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 					0644,
 				))
 			},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				require.NoError(t, err)
 				// Verify directory was removed
-				profileDir := env.Paths.PackHandlerDir("testpack", "shell_profile")
+				profileDir := paths.PackHandlerDir("testpack", "shell_profile")
 				_, statErr := env.FS.Stat(profileDir)
 				assert.True(t, os.IsNotExist(statErr), "shell_profile state directory should be removed")
 			},
@@ -64,9 +64,9 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			name:        "remove path handler state",
 			packName:    "testpack",
 			handlerName: "path",
-			setupFunc: func(env *testutil.TestEnvironment) {
+			setupFunc: func(env *testutil.TestEnvironment, paths paths.Paths) {
 				// Create path state directory with content
-				pathDir := env.Paths.PackHandlerDir("testpack", "path")
+				pathDir := paths.PackHandlerDir("testpack", "path")
 				require.NoError(t, env.FS.MkdirAll(pathDir, 0755))
 				require.NoError(t, env.FS.WriteFile(
 					filepath.Join(pathDir, "bin.state"),
@@ -74,10 +74,10 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 					0644,
 				))
 			},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				require.NoError(t, err)
 				// Verify directory was removed
-				pathDir := env.Paths.PackHandlerDir("testpack", "path")
+				pathDir := paths.PackHandlerDir("testpack", "path")
 				_, statErr := env.FS.Stat(pathDir)
 				assert.True(t, os.IsNotExist(statErr), "path state directory should be removed")
 			},
@@ -86,9 +86,9 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			name:        "remove install handler state delegates to DeleteProvisioningState",
 			packName:    "testpack",
 			handlerName: "install",
-			setupFunc: func(env *testutil.TestEnvironment) {
+			setupFunc: func(env *testutil.TestEnvironment, paths paths.Paths) {
 				// Create provisioning state in the correct location
-				provDir := env.Paths.PackHandlerDir("testpack", "install")
+				provDir := paths.PackHandlerDir("testpack", "install")
 				require.NoError(t, env.FS.MkdirAll(provDir, 0755))
 				require.NoError(t, env.FS.WriteFile(
 					filepath.Join(provDir, "install.sh.run"),
@@ -96,10 +96,10 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 					0644,
 				))
 			},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				require.NoError(t, err)
 				// Verify provisioning state was removed
-				provDir := env.Paths.PackHandlerDir("testpack", "install")
+				provDir := paths.PackHandlerDir("testpack", "install")
 				_, statErr := env.FS.Stat(provDir)
 				assert.True(t, os.IsNotExist(statErr), "provisioning state should be removed")
 			},
@@ -108,9 +108,9 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			name:        "remove homebrew handler state delegates to DeleteProvisioningState",
 			packName:    "testpack",
 			handlerName: "homebrew",
-			setupFunc: func(env *testutil.TestEnvironment) {
+			setupFunc: func(env *testutil.TestEnvironment, paths paths.Paths) {
 				// Create provisioning state in the correct location
-				provDir := env.Paths.PackHandlerDir("testpack", "homebrew")
+				provDir := paths.PackHandlerDir("testpack", "homebrew")
 				require.NoError(t, env.FS.MkdirAll(provDir, 0755))
 				require.NoError(t, env.FS.WriteFile(
 					filepath.Join(provDir, "Brewfile.run"),
@@ -118,10 +118,10 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 					0644,
 				))
 			},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				require.NoError(t, err)
 				// Verify provisioning state was removed
-				provDir := env.Paths.PackHandlerDir("testpack", "homebrew")
+				provDir := paths.PackHandlerDir("testpack", "homebrew")
 				_, statErr := env.FS.Stat(provDir)
 				assert.True(t, os.IsNotExist(statErr), "provisioning state should be removed")
 			},
@@ -130,8 +130,8 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			name:        "unknown handler returns no error",
 			packName:    "testpack",
 			handlerName: "unknown",
-			setupFunc:   func(env *testutil.TestEnvironment) {},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			setupFunc:   func(env *testutil.TestEnvironment, paths paths.Paths) {},
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				assert.NoError(t, err, "unknown handler should not error")
 			},
 		},
@@ -139,10 +139,10 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			name:        "remove non-existent state returns no error",
 			packName:    "testpack",
 			handlerName: "symlink",
-			setupFunc: func(env *testutil.TestEnvironment) {
+			setupFunc: func(env *testutil.TestEnvironment, paths paths.Paths) {
 				// Don't create any state
 			},
-			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
+			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, paths paths.Paths, err error) {
 				assert.NoError(t, err, "removing non-existent state should not error")
 			},
 		},
@@ -162,13 +162,13 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			ds := datastore.New(env.FS, pathsInstance)
 
 			// Run setup
-			tt.setupFunc(env)
+			tt.setupFunc(env, pathsInstance)
 
 			// Execute RemoveState
 			err = ds.RemoveState(tt.packName, tt.handlerName)
 
 			// Verify results
-			tt.verifyFunc(t, env, err)
+			tt.verifyFunc(t, env, pathsInstance, err)
 		})
 	}
 }
@@ -192,13 +192,13 @@ func TestFilesystemDataStore_RemoveState_Integration(t *testing.T) {
 			var stateDir string
 			switch handler {
 			case "symlink":
-				stateDir = env.Paths.PackHandlerDir(packName, "symlink")
+				stateDir = pathsInstance.PackHandlerDir(packName, "symlink")
 			case "shell_profile":
-				stateDir = env.Paths.PackHandlerDir(packName, "shell_profile")
+				stateDir = pathsInstance.PackHandlerDir(packName, "shell_profile")
 			case "path":
-				stateDir = env.Paths.PackHandlerDir(packName, "path")
+				stateDir = pathsInstance.PackHandlerDir(packName, "path")
 			case "install":
-				stateDir = env.Paths.PackHandlerDir(packName, "install")
+				stateDir = pathsInstance.PackHandlerDir(packName, "install")
 			}
 
 			require.NoError(t, env.FS.MkdirAll(stateDir, 0755))
@@ -221,13 +221,13 @@ func TestFilesystemDataStore_RemoveState_Integration(t *testing.T) {
 			var stateDir string
 			switch handler {
 			case "symlink":
-				stateDir = env.Paths.PackHandlerDir(packName, "symlink")
+				stateDir = pathsInstance.PackHandlerDir(packName, "symlink")
 			case "shell_profile":
-				stateDir = env.Paths.PackHandlerDir(packName, "shell_profile")
+				stateDir = pathsInstance.PackHandlerDir(packName, "shell_profile")
 			case "path":
-				stateDir = env.Paths.PackHandlerDir(packName, "path")
+				stateDir = pathsInstance.PackHandlerDir(packName, "path")
 			case "install":
-				stateDir = env.Paths.PackHandlerDir(packName, "install")
+				stateDir = pathsInstance.PackHandlerDir(packName, "install")
 			}
 
 			_, err := env.FS.Stat(stateDir)

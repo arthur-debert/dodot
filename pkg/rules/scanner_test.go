@@ -4,6 +4,7 @@
 package rules_test
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
@@ -107,8 +108,8 @@ func TestScanner_ScanPack(t *testing.T) {
 		testPack := env.SetupPack("testpack", packConfig)
 
 		// Manually create directories
-		testPack.AddDirectory("bin")
-		testPack.AddDirectory("lib")
+		require.NoError(t, env.FS.MkdirAll(filepath.Join(testPack.Path, "bin"), 0755))
+		require.NoError(t, env.FS.MkdirAll(filepath.Join(testPack.Path, "lib"), 0755))
 
 		ruleList := []config.Rule{
 			{Pattern: "bin/", Handler: "path"},

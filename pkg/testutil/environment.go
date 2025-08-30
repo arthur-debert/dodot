@@ -1,11 +1,18 @@
+// pkg/testutil/environment.go
+// DEPENDENCIES: None (base test utilities)
+// PURPOSE: Orchestrate test environments with proper dependencies
+
 package testutil
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 
+	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -13,26 +20,21 @@ import (
 type EnvType int
 
 const (
-	// EnvMemoryOnly uses in-memory filesystem and mocked dependencies (default)
-	EnvMemoryOnly EnvType = iota
-	// EnvIsolated uses real filesystem in isolated temp directories
-	EnvIsolated
-	// EnvMocked uses highly controlled mocks for testing edge cases
-	EnvMocked
+	EnvMemoryOnly EnvType = iota // Pure in-memory, no real filesystem
+	EnvIsolated                  // Real filesystem in temp directory
 )
 
-// TestEnvironment provides isolated test setup with automatic cleanup
+// TestEnvironment provides a complete test environment with all dependencies
 type TestEnvironment struct {
 	// Core paths
 	DotfilesRoot string
 	HomeDir      string
-	XDGConfig    string
 	XDGData      string
 
 	// Core dependencies
 	DataStore types.DataStore
 	FS        types.FS
-	Paths     types.PathResolver
+	Paths     types.Pather
 
 	// Environment type
 	Type EnvType
@@ -43,376 +45,358 @@ type TestEnvironment struct {
 	cleanup []func()
 }
 
-// EnvOption allows customization of TestEnvironment
-type EnvOption func(*TestEnvironment)
+// NewTestEnvironment creates a new test environment
+func NewTestEnvironment(t *testing.T, envType EnvType) *TestEnvironment {
+	t.Helper()
 
-// WithHome sets a custom home directory path
-func WithHome(path string) EnvOption {
-	return func(e *TestEnvironment) {
-		e.HomeDir = path
-	}
-}
-
-// WithDotfilesRoot sets a custom dotfiles root path
-func WithDotfilesRoot(path string) EnvOption {
-	return func(e *TestEnvironment) {
-		e.DotfilesRoot = path
-	}
-}
-
-// WithXDGConfig sets a custom XDG config directory
-func WithXDGConfig(path string) EnvOption {
-	return func(e *TestEnvironment) {
-		e.XDGConfig = path
-	}
-}
-
-// WithXDGData sets a custom XDG data directory
-func WithXDGData(path string) EnvOption {
-	return func(e *TestEnvironment) {
-		e.XDGData = path
-	}
-}
-
-// WithDataStore sets a custom DataStore implementation
-func WithDataStore(ds types.DataStore) EnvOption {
-	return func(e *TestEnvironment) {
-		e.DataStore = ds
-	}
-}
-
-// WithFS sets a custom filesystem implementation
-func WithFS(fs types.FS) EnvOption {
-	return func(e *TestEnvironment) {
-		e.FS = fs
-	}
-}
-
-// NewTestEnvironment creates a new test environment with the specified type
-func NewTestEnvironment(t *testing.T, envType EnvType, opts ...EnvOption) *TestEnvironment {
 	env := &TestEnvironment{
-		Type:    envType,
-		t:       t,
-		cleanup: []func(){},
+		t:    t,
+		Type: envType,
 	}
 
-	// Setup based on environment type
 	switch envType {
 	case EnvMemoryOnly:
 		env.setupMemoryEnvironment()
 	case EnvIsolated:
 		env.setupIsolatedEnvironment()
-	case EnvMocked:
-		env.setupMockedEnvironment()
-	}
-
-	// Apply options
-	for _, opt := range opts {
-		opt(env)
 	}
 
 	// Set environment variables
-	env.setupEnvironmentVariables()
+	t.Setenv("DOTFILES_ROOT", env.DotfilesRoot)
+	t.Setenv("HOME", env.HomeDir)
+	t.Setenv("XDG_DATA_HOME", env.XDGData)
 
-	// Register cleanup
-	t.Cleanup(env.Cleanup)
+	// Create core dependencies
+	if env.Paths == nil {
+		pathsInstance, err := paths.New(env.DotfilesRoot)
+		if err != nil {
+			t.Fatalf("Failed to create paths: %v", err)
+		}
+		env.Paths = pathsInstance
+	}
+
+	if env.DataStore == nil {
+		// For memory environment, use mock datastore
+		if envType == EnvMemoryOnly {
+			env.DataStore = NewMockSimpleDataStore(env.FS)
+		}
+		// For isolated environment, datastore is created in setupIsolatedEnvironment
+	}
+
+	// Ensure cleanup
+	t.Cleanup(func() {
+		env.Cleanup()
+	})
 
 	return env
 }
 
-// setupMemoryEnvironment configures a pure in-memory test environment
-func (e *TestEnvironment) setupMemoryEnvironment() {
-	// Use virtual paths
-	e.DotfilesRoot = "/virtual/dotfiles"
-	e.HomeDir = "/virtual/home"
-	e.XDGConfig = "/virtual/home/.config"
-	e.XDGData = "/virtual/home/.local/share"
+// setupMemoryEnvironment configures a pure in-memory environment
+func (env *TestEnvironment) setupMemoryEnvironment() {
+	env.DotfilesRoot = "/virtual/dotfiles"
+	env.HomeDir = "/virtual/home"
+	env.XDGData = "/virtual/home/.local/share"
 
 	// Create memory filesystem
-	memFS := NewMemoryFS()
-	e.FS = memFS
+	env.FS = NewMemoryFS()
 
-	// Create directories in memory
-	_ = memFS.MkdirAll(e.DotfilesRoot, 0755)
-	_ = memFS.MkdirAll(e.HomeDir, 0755)
-	_ = memFS.MkdirAll(e.XDGConfig, 0755)
-	_ = memFS.MkdirAll(filepath.Join(e.XDGData, "dodot"), 0755)
-
-	// Create mock datastore
-	e.DataStore = NewMockDataStore()
-
-	// Create mock path resolver
-	e.Paths = NewMockPathResolver(e.HomeDir, e.XDGConfig, e.XDGData)
+	// Create base directories
+	_ = env.FS.MkdirAll(env.DotfilesRoot, 0755)
+	_ = env.FS.MkdirAll(env.HomeDir, 0755)
+	_ = env.FS.MkdirAll(env.XDGData, 0755)
 }
 
-// setupIsolatedEnvironment configures a real filesystem in temp directories
-func (e *TestEnvironment) setupIsolatedEnvironment() {
-	// Create real filesystem implementation
-	realFS := &realFilesystem{}
-
+// setupIsolatedEnvironment configures a real filesystem in temp directory
+func (env *TestEnvironment) setupIsolatedEnvironment() {
 	// Create temp directory
-	e.tempDir = e.t.TempDir()
+	tempDir := env.t.TempDir()
+	env.tempDir = tempDir
 
-	// Setup paths
-	e.DotfilesRoot = filepath.Join(e.tempDir, "dotfiles")
-	e.HomeDir = filepath.Join(e.tempDir, "home")
-	e.XDGConfig = filepath.Join(e.tempDir, "home", ".config")
-	e.XDGData = filepath.Join(e.tempDir, "home", ".local", "share")
+	// Set up paths
+	env.DotfilesRoot = filepath.Join(tempDir, "dotfiles")
+	env.HomeDir = filepath.Join(tempDir, "home")
+	env.XDGData = filepath.Join(tempDir, "home", ".local", "share")
 
-	// Create directories using os package directly
-	_ = os.MkdirAll(e.DotfilesRoot, 0755)
-	_ = os.MkdirAll(e.HomeDir, 0755)
-	_ = os.MkdirAll(e.XDGConfig, 0755)
-	_ = os.MkdirAll(filepath.Join(e.XDGData, "dodot"), 0755)
+	// Create real filesystem
+	env.FS = filesystem.NewOS()
 
-	// Use real filesystem operations
-	e.FS = realFS
+	// Create base directories
+	_ = env.FS.MkdirAll(env.DotfilesRoot, 0755)
+	_ = env.FS.MkdirAll(env.HomeDir, 0755)
+	_ = env.FS.MkdirAll(env.XDGData, 0755)
 
-	// Create real paths instance
-	pathsInstance, err := func() (types.PathResolver, error) {
-		// Set up environment for paths initialization
-		e.t.Setenv("DOTFILES_ROOT", e.DotfilesRoot)
-		e.t.Setenv("HOME", e.HomeDir)
-		e.t.Setenv("XDG_CONFIG_HOME", e.XDGConfig)
-		e.t.Setenv("XDG_DATA_HOME", e.XDGData)
-
-		// Create a minimal paths implementation that implements PathResolver
-		return &realPaths{
-			dotfilesRoot: e.DotfilesRoot,
-			homeDir:      e.HomeDir,
-			xdgConfig:    e.XDGConfig,
-			xdgData:      e.XDGData,
-		}, nil
-	}()
+	// For isolated environment, create real paths and datastore
+	pathsInstance, err := paths.New(env.DotfilesRoot)
 	if err != nil {
-		e.t.Fatalf("failed to create paths: %v", err)
+		env.t.Fatalf("Failed to create paths: %v", err)
 	}
-	e.Paths = pathsInstance
+	env.Paths = pathsInstance
 
-	// Create real datastore using the real filesystem and paths
-	e.DataStore = &realDataStore{
-		fs:      e.FS,
-		paths:   e.Paths,
-		dataDir: filepath.Join(e.XDGData, "dodot"),
-	}
-}
-
-// setupMockedEnvironment configures highly controlled mocks
-func (e *TestEnvironment) setupMockedEnvironment() {
-	// Similar to memory but with more control points
-	e.setupMemoryEnvironment()
-
-	// Could add error injection, latency simulation, etc.
-}
-
-// setupEnvironmentVariables sets up isolated environment variables
-func (e *TestEnvironment) setupEnvironmentVariables() {
-	// Save current values for cleanup
-	oldHome := os.Getenv("HOME")
-	oldDotfiles := os.Getenv("DOTFILES_ROOT")
-	oldXDGConfig := os.Getenv("XDG_CONFIG_HOME")
-	oldXDGData := os.Getenv("XDG_DATA_HOME")
-	oldDodotData := os.Getenv("DODOT_DATA_DIR")
-
-	// Set new values
-	e.t.Setenv("HOME", e.HomeDir)
-	e.t.Setenv("DOTFILES_ROOT", e.DotfilesRoot)
-	e.t.Setenv("XDG_CONFIG_HOME", e.XDGConfig)
-	e.t.Setenv("XDG_DATA_HOME", e.XDGData)
-	e.t.Setenv("DODOT_DATA_DIR", filepath.Join(e.XDGData, "dodot"))
-	e.t.Setenv("DODOT_TEST_MODE", "true")
-
-	// Register cleanup to restore
-	e.cleanup = append(e.cleanup, func() {
-		_ = os.Setenv("HOME", oldHome)
-		_ = os.Setenv("DOTFILES_ROOT", oldDotfiles)
-		_ = os.Setenv("XDG_CONFIG_HOME", oldXDGConfig)
-		_ = os.Setenv("XDG_DATA_HOME", oldXDGData)
-		_ = os.Setenv("DODOT_DATA_DIR", oldDodotData)
-		_ = os.Unsetenv("DODOT_TEST_MODE")
-	})
-}
-
-// Cleanup performs all cleanup operations
-func (e *TestEnvironment) Cleanup() {
-	// Run cleanup functions in reverse order
-	for i := len(e.cleanup) - 1; i >= 0; i-- {
-		e.cleanup[i]()
+	// Create real datastore
+	env.DataStore = &realDataStore{
+		fs:      env.FS,
+		dataDir: filepath.Join(env.XDGData, "dodot", "data"),
 	}
 }
 
-// SetupPack creates a pack with the given configuration
-func (e *TestEnvironment) SetupPack(name string, config PackConfig) *TestPack {
-	packPath := filepath.Join(e.DotfilesRoot, name)
+// Cleanup performs environment cleanup
+func (env *TestEnvironment) Cleanup() {
+	// Run any registered cleanup functions
+	for _, fn := range env.cleanup {
+		fn()
+	}
+}
 
-	// Create pack directory
-	if err := e.FS.MkdirAll(packPath, 0755); err != nil {
-		e.t.Fatalf("failed to create pack directory: %v", err)
+// SetupPack creates a test pack with the given configuration
+func (env *TestEnvironment) SetupPack(name string, config PackConfig) types.Pack {
+	env.t.Helper()
+
+	packPath := filepath.Join(env.DotfilesRoot, name)
+	if err := env.FS.MkdirAll(packPath, 0755); err != nil {
+		env.t.Fatalf("Failed to create pack directory: %v", err)
 	}
 
 	// Create files
-	for path, content := range config.Files {
-		fullPath := filepath.Join(packPath, path)
-		dir := filepath.Dir(fullPath)
+	for filePath, content := range config.Files {
+		fullPath := filepath.Join(packPath, filePath)
 
-		// Create parent directories
-		if err := e.FS.MkdirAll(dir, 0755); err != nil {
-			e.t.Fatalf("failed to create directory %s: %v", dir, err)
+		// Create parent directory if needed
+		if dir := filepath.Dir(fullPath); dir != "." {
+			if err := env.FS.MkdirAll(dir, 0755); err != nil {
+				env.t.Fatalf("Failed to create directory %s: %v", dir, err)
+			}
 		}
 
 		// Write file
-		if err := e.FS.WriteFile(fullPath, []byte(content), 0644); err != nil {
-			e.t.Fatalf("failed to write file %s: %v", fullPath, err)
+		if err := env.FS.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			env.t.Fatalf("Failed to write file %s: %v", filePath, err)
 		}
 	}
 
-	// Create rules file if rules are specified
+	// Create rules file if rules are provided
 	if len(config.Rules) > 0 {
-		rulesContent := ""
-		for _, rule := range config.Rules {
-			rulesContent += rule.String() + "\n"
-		}
-
+		rulesContent := generateRulesFile(config.Rules)
 		rulesPath := filepath.Join(packPath, ".dodot.toml")
-		if err := e.FS.WriteFile(rulesPath, []byte(rulesContent), 0644); err != nil {
-			e.t.Fatalf("failed to write rules file: %v", err)
+		if err := env.FS.WriteFile(rulesPath, []byte(rulesContent), 0644); err != nil {
+			env.t.Fatalf("Failed to write rules file: %v", err)
 		}
 	}
 
-	return &TestPack{
+	return types.Pack{
 		Name: name,
 		Path: packPath,
-		env:  e,
 	}
 }
 
-// WithFileTree sets up a complete file tree structure
-func (e *TestEnvironment) WithFileTree(tree FileTree) *TestEnvironment {
-	for packName, packContents := range tree {
-		config := PackConfig{
-			Files: make(map[string]string),
-		}
-
-		// Convert nested structure to flat paths
-		flattenFileTree("", packContents, config.Files)
-
-		e.SetupPack(packName, config)
-	}
-
-	return e
+// WithFileTree creates a complete file tree structure
+func (env *TestEnvironment) WithFileTree(tree FileTree) {
+	env.t.Helper()
+	createFileTree(env.t, env.FS, env.DotfilesRoot, tree)
 }
 
-// flattenFileTree converts nested FileTree to flat map of paths
-func flattenFileTree(prefix string, node interface{}, result map[string]string) {
-	switch v := node.(type) {
-	case string:
-		// Leaf node - file content
-		result[prefix] = v
-	case FileTree:
-		// Directory node
-		for name, content := range v {
-			path := name
-			if prefix != "" {
-				path = filepath.Join(prefix, name)
+// PackConfig defines configuration for a test pack
+type PackConfig struct {
+	Files map[string]string // Path -> Content
+	Rules []Rule            // Rules configuration
+}
+
+// Rule represents a test rule configuration
+type Rule struct {
+	Type    string // "filename", "directory", etc.
+	Pattern string
+	Handler string
+	Options map[string]interface{}
+}
+
+// FileTree represents a directory structure for testing
+type FileTree map[string]interface{}
+
+// createFileTree recursively creates a file tree
+func createFileTree(t *testing.T, fs types.FS, basePath string, tree FileTree) {
+	t.Helper()
+
+	for name, content := range tree {
+		fullPath := filepath.Join(basePath, name)
+
+		switch v := content.(type) {
+		case string:
+			// It's a file
+			if err := fs.WriteFile(fullPath, []byte(v), 0644); err != nil {
+				t.Fatalf("Failed to write file %s: %v", fullPath, err)
 			}
-			flattenFileTree(path, content, result)
-		}
-	case map[string]interface{}:
-		// Also support regular maps
-		for name, content := range v {
-			path := name
-			if prefix != "" {
-				path = filepath.Join(prefix, name)
+		case FileTree:
+			// It's a directory
+			if err := fs.MkdirAll(fullPath, 0755); err != nil {
+				t.Fatalf("Failed to create directory %s: %v", fullPath, err)
 			}
-			flattenFileTree(path, content, result)
+			createFileTree(t, fs, fullPath, v)
+		default:
+			t.Fatalf("Invalid file tree content type for %s: %T", name, content)
 		}
 	}
 }
 
-// realFilesystem implements types.FS using actual OS filesystem operations
-type realFilesystem struct{}
+// generateRulesFile creates a TOML rules file content
+func generateRulesFile(rules []Rule) string {
+	content := ""
+	for _, rule := range rules {
+		content += "[[rules]]\n"
+		content += fmt.Sprintf("type = %q\n", rule.Type)
+		content += fmt.Sprintf("pattern = %q\n", rule.Pattern)
+		content += fmt.Sprintf("handler = %q\n", rule.Handler)
 
-func (r *realFilesystem) Stat(name string) (os.FileInfo, error) {
-	return os.Stat(name)
+		if len(rule.Options) > 0 {
+			content += "[rules.options]\n"
+			for k, v := range rule.Options {
+				content += fmt.Sprintf("%s = %q\n", k, v)
+			}
+		}
+		content += "\n"
+	}
+	return content
 }
 
-func (r *realFilesystem) ReadFile(name string) ([]byte, error) {
-	return os.ReadFile(name)
+// Pre-built pack configurations for common test scenarios
+
+// VimPack returns a pre-configured vim pack
+func VimPack() PackConfig {
+	return PackConfig{
+		Files: map[string]string{
+			"vimrc":              "\" Vim configuration\nset number\nset expandtab",
+			"gvimrc":             "\" GVim configuration\nset guifont=Monaco:h12",
+			"colors/monokai.vim": "\" Monokai color scheme",
+		},
+		Rules: []Rule{
+			{Type: "filename", Pattern: "vimrc", Handler: "symlink"},
+			{Type: "filename", Pattern: "gvimrc", Handler: "symlink"},
+		},
+	}
 }
 
-func (r *realFilesystem) WriteFile(name string, data []byte, perm os.FileMode) error {
-	return os.WriteFile(name, data, perm)
+// GitPack returns a pre-configured git pack
+func GitPack() PackConfig {
+	return PackConfig{
+		Files: map[string]string{
+			"gitconfig": "[user]\n  name = Test User\n  email = test@example.com",
+			"gitignore": "*.tmp\n*.log\n.DS_Store",
+		},
+		Rules: []Rule{
+			{Type: "filename", Pattern: "git*", Handler: "symlink"},
+		},
+	}
 }
 
-func (r *realFilesystem) MkdirAll(path string, perm os.FileMode) error {
-	return os.MkdirAll(path, perm)
+// ShellPack returns a pre-configured shell pack
+func ShellPack() PackConfig {
+	return PackConfig{
+		Files: map[string]string{
+			"aliases.sh":   "alias ll='ls -la'\nalias gs='git status'",
+			"functions.sh": "function mkcd() { mkdir -p \"$1\" && cd \"$1\"; }",
+			"profile.sh":   "export EDITOR=vim\nexport LANG=en_US.UTF-8",
+		},
+		Rules: []Rule{
+			{Type: "filename", Pattern: "*.sh", Handler: "shell"},
+		},
+	}
 }
 
-func (r *realFilesystem) Symlink(oldname, newname string) error {
-	return os.Symlink(oldname, newname)
+// ToolsPack returns a pre-configured tools pack
+func ToolsPack() PackConfig {
+	return PackConfig{
+		Files: map[string]string{
+			"bin/my-script":    "#!/bin/bash\necho 'Hello from my-script'",
+			"bin/another-tool": "#!/bin/bash\necho 'Another tool'",
+			"install.sh":       "#!/bin/bash\necho 'Installing tools...'",
+			"Brewfile":         "brew 'git'\nbrew 'vim'\nbrew 'tmux'",
+		},
+		Rules: []Rule{
+			{Type: "directory", Pattern: "bin/", Handler: "path"},
+			{Type: "filename", Pattern: "install.sh", Handler: "install"},
+			{Type: "filename", Pattern: "Brewfile", Handler: "homebrew"},
+		},
+	}
 }
 
-func (r *realFilesystem) Readlink(name string) (string, error) {
-	return os.Readlink(name)
+// MockSimpleDataStore provides a simple mock DataStore for testing
+type MockSimpleDataStore struct {
+	dataLinks map[string]string // pack:handler:source -> datastorePath
+	userLinks map[string]string // target -> source
+	sentinels map[string]bool   // pack:handler:sentinel -> exists
+	commands  map[string]string // pack:handler:sentinel -> command
+	fs        types.FS
 }
 
-func (r *realFilesystem) Remove(name string) error {
-	return os.Remove(name)
+// NewMockSimpleDataStore creates a new mock datastore
+func NewMockSimpleDataStore(fs types.FS) *MockSimpleDataStore {
+	return &MockSimpleDataStore{
+		dataLinks: make(map[string]string),
+		userLinks: make(map[string]string),
+		sentinels: make(map[string]bool),
+		commands:  make(map[string]string),
+		fs:        fs,
+	}
 }
 
-func (r *realFilesystem) RemoveAll(path string) error {
-	return os.RemoveAll(path)
+func (m *MockSimpleDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sourceFile)
+	datastorePath := fmt.Sprintf("/datastore/%s/%s/%s", pack, handlerName, filepath.Base(sourceFile))
+	m.dataLinks[key] = datastorePath
+	return datastorePath, nil
 }
 
-func (r *realFilesystem) Lstat(name string) (os.FileInfo, error) {
-	return os.Lstat(name)
+func (m *MockSimpleDataStore) CreateUserLink(datastorePath, userPath string) error {
+	m.userLinks[userPath] = datastorePath
+	return nil
 }
 
-func (r *realFilesystem) ReadDir(name string) ([]os.DirEntry, error) {
-	return os.ReadDir(name)
+func (m *MockSimpleDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sentinel)
+	m.sentinels[key] = true
+	m.commands[key] = command
+	return nil
 }
 
-// realPaths implements types.PathResolver for isolated environments
-type realPaths struct {
-	dotfilesRoot string
-	homeDir      string
-	xdgConfig    string
-	xdgData      string
+func (m *MockSimpleDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sentinel)
+	return m.sentinels[key], nil
 }
 
-func (r *realPaths) PackHandlerDir(packName, handlerName string) string {
-	return filepath.Join(r.xdgData, "dodot", "packs", packName, handlerName)
-}
+func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
+	// Remove all entries for this pack/handler combination
+	prefix := fmt.Sprintf("%s:%s:", pack, handlerName)
 
-func (r *realPaths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
-	// Simple implementation for testing
-	parts := strings.Split(relPath, "/")
-
-	if len(parts) == 1 {
-		// Top-level file, add dot prefix
-		return filepath.Join(r.homeDir, "."+relPath)
+	// Remove data links
+	for key := range m.dataLinks {
+		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
+			delete(m.dataLinks, key)
+		}
 	}
 
-	// Subdirectory file
-	if parts[0] == ".config" {
-		// XDG config file
-		return filepath.Join(r.xdgConfig, strings.Join(parts[1:], "/"))
+	// Remove sentinels
+	for key := range m.sentinels {
+		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
+			delete(m.sentinels, key)
+		}
 	}
 
-	// Default: preserve structure in home
-	return filepath.Join(r.homeDir, relPath)
+	return nil
 }
+
+// Helper methods for testing
+func (m *MockSimpleDataStore) GetDataLinks() map[string]string { return m.dataLinks }
+func (m *MockSimpleDataStore) GetUserLinks() map[string]string { return m.userLinks }
+func (m *MockSimpleDataStore) GetSentinels() map[string]bool   { return m.sentinels }
+func (m *MockSimpleDataStore) GetCommands() map[string]string  { return m.commands }
 
 // realDataStore implements a minimal DataStore using real filesystem
 type realDataStore struct {
 	fs      types.FS
-	paths   types.PathResolver
 	dataDir string
 }
 
-func (d *realDataStore) Link(pack, sourceFile string) (string, error) {
+func (d *realDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
 	baseName := filepath.Base(sourceFile)
-	intermediateLinkDir := d.paths.PackHandlerDir(pack, "symlinks")
+	intermediateLinkDir := filepath.Join(d.dataDir, pack, handlerName)
 	intermediateLinkPath := filepath.Join(intermediateLinkDir, baseName)
 
 	if err := d.fs.MkdirAll(intermediateLinkDir, 0755); err != nil {
@@ -438,126 +422,48 @@ func (d *realDataStore) Link(pack, sourceFile string) (string, error) {
 	return intermediateLinkPath, nil
 }
 
-func (d *realDataStore) Unlink(pack, sourceFile string) error {
-	baseName := filepath.Base(sourceFile)
-	intermediateLinkPath := filepath.Join(d.paths.PackHandlerDir(pack, "symlinks"), baseName)
-	return d.fs.Remove(intermediateLinkPath)
-}
-
-func (d *realDataStore) GetStatus(pack, sourceFile string) (types.Status, error) {
-	return d.GetSymlinkStatus(pack, sourceFile)
-}
-
-func (d *realDataStore) GetSymlinkStatus(pack, sourceFile string) (types.Status, error) {
-	baseName := filepath.Base(sourceFile)
-	intermediateLinkPath := filepath.Join(d.paths.PackHandlerDir(pack, "symlinks"), baseName)
-
-	if _, err := d.fs.Lstat(intermediateLinkPath); err != nil {
-		return types.Status{
-			State:   types.StatusStateMissing,
-			Message: "Not linked",
-		}, nil
+func (d *realDataStore) CreateUserLink(datastorePath, userPath string) error {
+	// Create parent directory if needed
+	if err := d.fs.MkdirAll(filepath.Dir(userPath), 0755); err != nil {
+		return err
 	}
 
-	return types.Status{
-		State:   types.StatusStateReady,
-		Message: "Linked",
-	}, nil
-}
-
-// Implement remaining DataStore methods with minimal functionality
-func (d *realDataStore) AddToPath(pack, dirPath string) error                         { return nil }
-func (d *realDataStore) AddToShellProfile(pack, scriptPath string) error              { return nil }
-func (d *realDataStore) RecordProvisioning(pack, sentinelName, checksum string) error { return nil }
-func (d *realDataStore) NeedsProvisioning(pack, sentinelName, checksum string) (bool, error) {
-	return true, nil
-}
-func (d *realDataStore) GetPathStatus(pack, dirPath string) (types.Status, error) {
-	return types.Status{State: types.StatusStateMissing}, nil
-}
-func (d *realDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
-	return types.Status{State: types.StatusStateMissing}, nil
-}
-func (d *realDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
-	return types.Status{State: types.StatusStateMissing}, nil
-}
-func (d *realDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string) (types.Status, error) {
-	return types.Status{State: types.StatusStateMissing}, nil
-}
-func (d *realDataStore) DeleteProvisioningState(packName, handlerName string) error { return nil }
-func (d *realDataStore) GetProvisioningHandlers(packName string) ([]string, error)  { return nil, nil }
-func (d *realDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
-	return nil, nil
-}
-
-// Generic state management methods
-func (d *realDataStore) StoreState(packName, handlerName string, state interface{}) error {
-	// For testing, just return nil
-	return nil
-}
-
-func (d *realDataStore) RemoveState(packName, handlerName string) error {
-	// For testing, just return nil
-	return nil
-}
-
-func (d *realDataStore) GetState(packName, handlerName string) (interface{}, error) {
-	// For testing, just return nil
-	return nil, nil
-}
-
-// New DataStore interface methods
-
-func (d *realDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
-	baseName := filepath.Base(sourceFile)
-	linkDir := d.paths.PackHandlerDir(pack, handlerName)
-	linkPath := filepath.Join(linkDir, baseName)
-
-	if err := d.fs.MkdirAll(linkDir, 0755); err != nil {
-		return "", err
-	}
-
-	// If the link already exists and points to the correct source, do nothing
-	if currentTarget, err := d.fs.Readlink(linkPath); err == nil && currentTarget == sourceFile {
-		return linkPath, nil
-	}
-
-	// If it exists but is wrong, remove it first
-	if _, err := d.fs.Lstat(linkPath); err == nil {
-		if err := d.fs.Remove(linkPath); err != nil {
-			return "", err
+	// If link already exists, remove it
+	if _, err := d.fs.Lstat(userPath); err == nil {
+		if err := d.fs.Remove(userPath); err != nil {
+			return err
 		}
 	}
 
-	if err := d.fs.Symlink(sourceFile, linkPath); err != nil {
-		return "", err
-	}
-
-	return linkPath, nil
-}
-
-func (d *realDataStore) CreateUserLink(datastorePath, userPath string) error {
-	// Ensure parent directory exists
-	parentDir := filepath.Dir(userPath)
-	if err := d.fs.MkdirAll(parentDir, 0755); err != nil {
-		return err
-	}
-
-	// Remove existing file/link if present
-	if err := d.fs.Remove(userPath); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-
-	// Create the symlink
 	return d.fs.Symlink(datastorePath, userPath)
 }
 
 func (d *realDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
-	// For testing, just return nil - we don't actually run commands
-	return nil
+	// For test environment, just record the sentinel
+	sentinelDir := filepath.Join(d.dataDir, pack, handlerName)
+	sentinelPath := filepath.Join(sentinelDir, sentinel)
+
+	if err := d.fs.MkdirAll(sentinelDir, 0755); err != nil {
+		return err
+	}
+
+	content := fmt.Sprintf("completed|%s", time.Now().Format(time.RFC3339))
+	return d.fs.WriteFile(sentinelPath, []byte(content), 0644)
 }
 
 func (d *realDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
-	// For testing, always return false
-	return false, nil
+	sentinelPath := filepath.Join(d.dataDir, pack, handlerName, sentinel)
+	_, err := d.fs.Stat(sentinelPath)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+func (d *realDataStore) RemoveState(pack, handlerName string) error {
+	stateDir := filepath.Join(d.dataDir, pack, handlerName)
+	return d.fs.RemoveAll(stateDir)
 }
