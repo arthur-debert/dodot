@@ -36,6 +36,11 @@ func (m *MockSimpleDataStore) HasSentinel(pack, handlerName, sentinel string) (b
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
+	args := m.Called(pack, handlerName)
+	return args.Error(0)
+}
+
 // MockHandler implements operations.Handler for testing
 type MockHandler struct {
 	operations.BaseHandler

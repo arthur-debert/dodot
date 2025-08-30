@@ -3,239 +3,87 @@ package install
 import (
 	_ "embed"
 	"fmt"
-	"os"
-	"strings"
+	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
-	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// InstallHandlerName is the name of the provision handler
 const InstallHandlerName = "install"
 
-// provisionTemplate is the template content for install.sh
-const provisionTemplate = `#!/usr/bin/env bash
-# dodot install script for PACK_NAME pack
-# 
-# This script runs ONCE during 'dodot install PACK_NAME'
-# Use it for one-time setup tasks like:
-# - Installing dependencies not available via Homebrew
-# - Creating directories
-# - Downloading external resources
-# - Setting up initial configurations
-#
-# The script is idempotent - dodot tracks execution via checksums
-# and won't run it again unless the file contents change.
-#
-# Safe to keep empty or remove. By keeping it, you can add
-# installation steps later without redeploying the pack.
+//go:embed install-template.txt
+var provisionTemplate string
 
-set -euo pipefail
-
-echo "Installing PACK_NAME pack..."
-
-# Add your installation commands below
-# Examples:
-# mkdir -p "$HOME/.config/PACK_NAME"
-# curl -fsSL https://example.com/install.sh | bash
-`
-
-// InstallHandler runs install.sh scripts
-type InstallHandler struct{}
-
-// NewInstallHandler creates a new instance of the install script handler
-func NewInstallHandler() *InstallHandler {
-	return &InstallHandler{}
+// Handler implements the new simplified handler interface.
+// It transforms install script requests into operations without performing any I/O.
+type Handler struct {
+	operations.BaseHandler
 }
 
-// Name returns the unique name of this handler
-func (h *InstallHandler) Name() string {
-	return InstallHandlerName
-}
-
-// Description returns a human-readable description of what this handler does
-func (h *InstallHandler) Description() string {
-	return "Runs install.sh scripts for initial setup"
-}
-
-// Type returns the fundamental nature of this handler's operations
-func (h *InstallHandler) Type() types.HandlerType {
-	return types.HandlerTypeCodeExecution
-}
-
-// ProcessProvisioning takes install script matches and generates RunScriptAction instances
-func (h *InstallHandler) ProcessProvisioning(matches []types.RuleMatch) ([]types.ProvisioningAction, error) {
-	result, err := h.ProcessProvisioningWithConfirmations(matches)
-	if err != nil {
-		return nil, err
+// NewHandler creates a new simplified install handler.
+func NewHandler() *Handler {
+	return &Handler{
+		BaseHandler: operations.NewBaseHandler(InstallHandlerName, handlers.CategoryCodeExecution),
 	}
-
-	// Convert ProcessingResult actions to ProvisioningAction slice for backward compatibility
-	provisioningActions := make([]types.ProvisioningAction, 0, len(result.Actions))
-	for _, action := range result.Actions {
-		if provAction, ok := action.(types.ProvisioningAction); ok {
-			provisioningActions = append(provisioningActions, provAction)
-		}
-	}
-
-	return provisioningActions, nil
 }
 
-// ProcessProvisioningWithConfirmations implements ProvisioningHandlerWithConfirmations
-func (h *InstallHandler) ProcessProvisioningWithConfirmations(matches []types.RuleMatch) (types.ProcessingResult, error) {
-	logger := logging.GetLogger("handlers.install")
-	actions := make([]types.Action, 0, len(matches))
+// ToOperations converts rule matches to install operations.
+// Install scripts use RunCommand for execution with sentinel tracking.
+func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
+	var ops []operations.Operation
 
 	for _, match := range matches {
-		logger.Debug().
-			Str("path", match.Path).
-			Str("pack", match.Pack).
-			Msg("Processing install script")
-
-		// Calculate checksum of the script
+		// Calculate checksum for idempotency
 		checksum, err := hashutil.CalculateFileChecksum(match.AbsolutePath)
 		if err != nil {
-			logger.Error().
-				Err(err).
-				Str("path", match.AbsolutePath).
-				Msg("Failed to calculate checksum")
-			return types.ProcessingResult{}, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
+			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
 		}
 
-		// Create RunScriptAction
-		action := &types.RunScriptAction{
-			PackName:     match.Pack,
-			ScriptPath:   match.AbsolutePath,
-			Checksum:     checksum,
-			SentinelName: fmt.Sprintf("%s.sentinel", match.Path),
-		}
+		// Create sentinel name from script filename
+		sentinelName := fmt.Sprintf("%s-%s", filepath.Base(match.Path), checksum)
 
-		actions = append(actions, action)
+		// Install scripts are executed with RunCommand
+		// The executor will check the sentinel and skip if already run
+		ops = append(ops, operations.Operation{
+			Type:     operations.RunCommand,
+			Pack:     match.Pack,
+			Handler:  InstallHandlerName,
+			Command:  fmt.Sprintf("bash '%s'", match.AbsolutePath),
+			Sentinel: sentinelName,
+		})
 	}
 
-	logger.Info().
-		Int("match_count", len(matches)).
-		Int("action_count", len(actions)).
-		Msg("processed provisioning script matches")
-
-	// Provision scripts don't need confirmation - they're just running install scripts
-	// Confirmation is only needed for clearing/uninstalling
-	return types.NewProcessingResult(actions), nil
+	return ops, nil
 }
 
-// ValidateOptions checks if the provided options are valid for this handler
-func (h *InstallHandler) ValidateOptions(options map[string]interface{}) error {
-	// Install script handler doesn't have any options
-	return nil
+// GetMetadata returns handler metadata.
+func (h *Handler) GetMetadata() operations.HandlerMetadata {
+	return operations.HandlerMetadata{
+		Description:     "Runs install.sh scripts for initial setup",
+		RequiresConfirm: false, // Install scripts don't need confirmation
+		CanRunMultiple:  false, // Only run once per checksum
+	}
 }
 
-// GetTemplateContent returns the template content for this handler
-func (h *InstallHandler) GetTemplateContent() string {
+// GetTemplateContent returns the template content for this handler.
+func (h *Handler) GetTemplateContent() string {
 	return provisionTemplate
 }
 
-// Clear prepares for provision cleanup (reads state, future: runs uninstall.sh)
-func (h *InstallHandler) Clear(ctx types.ClearContext) ([]types.ClearedItem, error) {
-	logger := logging.GetLogger("handlers.install").With().
-		Str("pack", ctx.Pack.Name).
-		Bool("dryRun", ctx.DryRun).
-		Logger()
-
-	clearedItems := []types.ClearedItem{}
-
-	// Read state to understand what was installed
-	stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, "install")
-	entries, err := ctx.FS.ReadDir(stateDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			logger.Debug().Msg("No install state directory")
-			return clearedItems, nil
-		}
-		return nil, fmt.Errorf("failed to read install state: %w", err)
-	}
-
-	// Find run records to understand what scripts were executed
-	scriptRuns := make(map[string][]string) // script name -> run timestamps
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "run-") {
-			continue
-		}
-
-		// Extract script name from run record
-		// Format: run-<timestamp>-<hash> or similar
-		// For now, just record that we found run records
-		logger.Info().
-			Str("runRecord", entry.Name()).
-			Msg("Found provision run record")
-
-		// TODO: Parse the run record to extract which script was run
-		scriptName := "install.sh" // Default assumption
-		scriptRuns[scriptName] = append(scriptRuns[scriptName], entry.Name())
-	}
-
-	// TODO: In a future release:
-	// 1. Check if uninstall.sh exists in the pack
-	// 2. If it exists, prompt user: "Run uninstall.sh for this pack?"
-	// 3. Execute uninstall.sh if confirmed
-	// 4. Return list of what was uninstalled
-
-	for scriptName, runs := range scriptRuns {
-		runCount := len(runs)
-		if ctx.DryRun {
-			clearedItems = append(clearedItems, types.ClearedItem{
-				Type:        "provision_state",
-				Path:        stateDir,
-				Description: fmt.Sprintf("Would remove %d run record(s) for %s (uninstall.sh not implemented)", runCount, scriptName),
-			})
-		} else {
-			clearedItems = append(clearedItems, types.ClearedItem{
-				Type:        "provision_state",
-				Path:        stateDir,
-				Description: fmt.Sprintf("Removing %d run record(s) for %s (uninstall.sh check not implemented)", runCount, scriptName),
-			})
-		}
-	}
-
-	if len(clearedItems) == 0 && len(entries) > 0 {
-		// Had entries but no run records
-		if ctx.DryRun {
-			clearedItems = append(clearedItems, types.ClearedItem{
-				Type:        "provision_state",
-				Path:        stateDir,
-				Description: "Would remove install state directory",
-			})
-		} else {
-			clearedItems = append(clearedItems, types.ClearedItem{
-				Type:        "provision_state",
-				Path:        stateDir,
-				Description: "Removing install state directory",
-			})
-		}
-	}
-
-	return clearedItems, nil
+// GetStateDirectoryName returns the directory name for storing state.
+func (h *Handler) GetStateDirectoryName() string {
+	return "install"
 }
 
-// init registers the install handler factory
-// func init() {
-// 	handlerFactoryRegistry := registry.GetRegistry[registry.HandlerFactory]()
-// 	registry.MustRegister(handlerFactoryRegistry, InstallHandlerName, func(options map[string]interface{}) (interface{}, error) {
-// 		handler := NewInstallHandler()
-//
-// 		// Apply options if provided
-// 		if options != nil {
-// 			if err := handler.ValidateOptions(options); err != nil {
-// 				return nil, err
-// 			}
-// 		}
-//
-// 		return handler, nil
-// 	})
-// }
+// FormatClearedItem formats a cleared item for display.
+func (h *Handler) FormatClearedItem(item types.ClearedItem, dryRun bool) string {
+	if dryRun {
+		return "Would remove install run records"
+	}
+	return "Removing install run records"
+}
 
 // Verify interface compliance
-var _ handlers.ProvisioningHandler = (*InstallHandler)(nil)
-var _ handlers.ProvisioningHandlerWithConfirmations = (*InstallHandler)(nil)
-var _ handlers.Clearable = (*InstallHandler)(nil)
+var _ operations.Handler = (*Handler)(nil)

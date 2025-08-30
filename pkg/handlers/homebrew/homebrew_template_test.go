@@ -6,7 +6,7 @@ import (
 )
 
 func TestHomebrewHandler_GetTemplateContent(t *testing.T) {
-	handler := NewHomebrewHandler()
+	handler := NewHandler()
 
 	content := handler.GetTemplateContent()
 

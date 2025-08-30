@@ -5,9 +5,12 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/shell"
+	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -105,10 +108,11 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 		return nil, fmt.Errorf("failed to discover packs: %w", err)
 	}
 
-	// Get configuration handlers only (safe to clear/rerun)
-	configHandlers, err := executor.GetClearableConfigurationHandlers()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get configuration handlers: %w", err)
+	// Create configuration handlers only (safe to clear/rerun)
+	configHandlers := []operations.Handler{
+		symlink.NewHandler(),
+		shell.NewHandler(),
+		path.NewHandler(),
 	}
 
 	logger.Debug().
@@ -128,15 +132,21 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 
 		// Create clear context for this pack
 		ctx := types.ClearContext{
-			Pack:      pack,
-			DataStore: ds,
-			FS:        fs,
-			Paths:     p,
-			DryRun:    opts.DryRun,
+			Pack:   pack,
+			FS:     fs,
+			Paths:  p,
+			DryRun: opts.DryRun,
 		}
 
 		// Filter handlers to only those with state
-		handlersWithState := executor.FilterHandlersByState(ctx, configHandlers)
+		var handlersWithState []operations.Handler
+		for _, handler := range configHandlers {
+			// Check if handler has any state for this pack
+			stateDir := p.PackHandlerDir(pack.Name, handler.Name())
+			if _, err := fs.Stat(stateDir); err == nil {
+				handlersWithState = append(handlersWithState, handler)
+			}
+		}
 
 		logger.Debug().
 			Str("pack", pack.Name).
@@ -152,45 +162,41 @@ func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
 		}
 
 		// Clear handlers for this pack using enhanced method that handles linking handlers
-		clearResults, err := executor.ClearHandlers(ctx, handlersWithState)
-		if err != nil {
-			packResult.Errors = append(packResult.Errors, err.Error())
-			logger.Error().
-				Err(err).
-				Str("pack", pack.Name).
-				Msg("Failed to clear handlers")
+		// Create executor and clear handlers for this pack
+		executor := operations.NewExecutor(ds, fs, nil, opts.DryRun)
+		clearResults := make(map[string][]types.ClearedItem)
+
+		for _, handler := range handlersWithState {
+			items, err := executor.ExecuteClear(handler, ctx)
+			if err != nil {
+				packResult.Errors = append(packResult.Errors, fmt.Sprintf("%s: %v", handler.Name(), err))
+				logger.Error().
+					Err(err).
+					Str("pack", pack.Name).
+					Str("handler", handler.Name()).
+					Msg("Failed to clear handler")
+				continue
+			}
+			clearResults[handler.Name()] = items
 		}
 
 		// Convert clear results to unlink format
-		for handlerName, clearResult := range clearResults {
-			if clearResult.Error != nil {
-				packResult.Errors = append(packResult.Errors,
-					fmt.Sprintf("%s: %v", handlerName, clearResult.Error))
-			}
-
+		for handlerName, items := range clearResults {
 			// Convert cleared items to removed items
-			for _, item := range clearResult.ClearedItems {
+			for _, item := range items {
 				removedItem := RemovedItem{
 					Type:    item.Type,
 					Path:    item.Path,
-					Success: clearResult.Error == nil,
+					Success: true,
 				}
-
-				// For symlinks, the description contains target info
-				// We don't have direct access to the target, but that's OK
-				// The important part is that the symlink was removed
-
 				packResult.RemovedItems = append(packResult.RemovedItems, removedItem)
 			}
 
 			// Add state directory removal as a separate item
-			// In dry run mode, we still want to report what would be removed
-			if clearResult.StateRemoved || ctx.DryRun {
-				// Use the actual state directory name (e.g., "symlinks" for "symlink" handler)
-				stateDirName := executor.GetHandlerStateDir(handlerName)
+			if len(items) > 0 || ctx.DryRun {
 				packResult.RemovedItems = append(packResult.RemovedItems, RemovedItem{
 					Type:    handlerName + "_directory",
-					Path:    p.PackHandlerDir(pack.Name, stateDirName),
+					Path:    p.PackHandlerDir(pack.Name, handlerName),
 					Success: true,
 				})
 			}

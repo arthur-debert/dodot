@@ -164,19 +164,19 @@ func CreateHandler(name string, options map[string]interface{}) (interface{}, er
 
 	switch name {
 	case "symlink":
-		h := symlink.NewSymlinkHandler()
+		h := symlink.NewHandler()
 		return h, nil
 	case "shell":
-		h := shell.NewShellHandler()
+		h := shell.NewHandler()
 		return h, nil
 	case "homebrew":
-		h := homebrew.NewHomebrewHandler()
+		h := homebrew.NewHandler()
 		return h, nil
 	case "install":
-		h := install.NewInstallHandler()
+		h := install.NewHandler()
 		return h, nil
 	case "path":
-		h := path.NewPathHandler()
+		h := path.NewHandler()
 		return h, nil
 	default:
 		return nil, fmt.Errorf("unknown handler: %s", name)

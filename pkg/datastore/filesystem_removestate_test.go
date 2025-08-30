@@ -26,14 +26,14 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			handlerName: "symlink",
 			setupFunc: func(env *testutil.TestEnvironment) {
 				// Create symlink state directory with content
-				symlinkDir := env.Paths.PackHandlerDir("testpack", "symlinks")
+				symlinkDir := env.Paths.PackHandlerDir("testpack", "symlink")
 				require.NoError(t, env.FS.MkdirAll(symlinkDir, 0755))
 				require.NoError(t, env.FS.Symlink("source", filepath.Join(symlinkDir, "link")))
 			},
 			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
 				require.NoError(t, err)
 				// Verify directory was removed
-				symlinkDir := env.Paths.PackHandlerDir("testpack", "symlinks")
+				symlinkDir := env.Paths.PackHandlerDir("testpack", "symlink")
 				_, statErr := env.FS.Stat(symlinkDir)
 				assert.True(t, os.IsNotExist(statErr), "symlink state directory should be removed")
 			},
@@ -44,7 +44,7 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			handlerName: "shell_profile",
 			setupFunc: func(env *testutil.TestEnvironment) {
 				// Create shell_profile state directory with content
-				profileDir := env.Paths.PackHandlerDir("testpack", "shell_profiles")
+				profileDir := env.Paths.PackHandlerDir("testpack", "shell_profile")
 				require.NoError(t, env.FS.MkdirAll(profileDir, 0755))
 				require.NoError(t, env.FS.WriteFile(
 					filepath.Join(profileDir, "profile.state"),
@@ -55,7 +55,7 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
 				require.NoError(t, err)
 				// Verify directory was removed
-				profileDir := env.Paths.PackHandlerDir("testpack", "shell_profiles")
+				profileDir := env.Paths.PackHandlerDir("testpack", "shell_profile")
 				_, statErr := env.FS.Stat(profileDir)
 				assert.True(t, os.IsNotExist(statErr), "shell_profile state directory should be removed")
 			},
@@ -66,7 +66,7 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			handlerName: "path",
 			setupFunc: func(env *testutil.TestEnvironment) {
 				// Create path state directory with content
-				pathDir := env.Paths.PackHandlerDir("testpack", "paths")
+				pathDir := env.Paths.PackHandlerDir("testpack", "path")
 				require.NoError(t, env.FS.MkdirAll(pathDir, 0755))
 				require.NoError(t, env.FS.WriteFile(
 					filepath.Join(pathDir, "bin.state"),
@@ -77,7 +77,7 @@ func TestFilesystemDataStore_RemoveState(t *testing.T) {
 			verifyFunc: func(t *testing.T, env *testutil.TestEnvironment, err error) {
 				require.NoError(t, err)
 				// Verify directory was removed
-				pathDir := env.Paths.PackHandlerDir("testpack", "paths")
+				pathDir := env.Paths.PackHandlerDir("testpack", "path")
 				_, statErr := env.FS.Stat(pathDir)
 				assert.True(t, os.IsNotExist(statErr), "path state directory should be removed")
 			},
@@ -192,11 +192,11 @@ func TestFilesystemDataStore_RemoveState_Integration(t *testing.T) {
 			var stateDir string
 			switch handler {
 			case "symlink":
-				stateDir = env.Paths.PackHandlerDir(packName, "symlinks")
+				stateDir = env.Paths.PackHandlerDir(packName, "symlink")
 			case "shell_profile":
-				stateDir = env.Paths.PackHandlerDir(packName, "shell_profiles")
+				stateDir = env.Paths.PackHandlerDir(packName, "shell_profile")
 			case "path":
-				stateDir = env.Paths.PackHandlerDir(packName, "paths")
+				stateDir = env.Paths.PackHandlerDir(packName, "path")
 			case "install":
 				stateDir = env.Paths.PackHandlerDir(packName, "install")
 			}
@@ -221,11 +221,11 @@ func TestFilesystemDataStore_RemoveState_Integration(t *testing.T) {
 			var stateDir string
 			switch handler {
 			case "symlink":
-				stateDir = env.Paths.PackHandlerDir(packName, "symlinks")
+				stateDir = env.Paths.PackHandlerDir(packName, "symlink")
 			case "shell_profile":
-				stateDir = env.Paths.PackHandlerDir(packName, "shell_profiles")
+				stateDir = env.Paths.PackHandlerDir(packName, "shell_profile")
 			case "path":
-				stateDir = env.Paths.PackHandlerDir(packName, "paths")
+				stateDir = env.Paths.PackHandlerDir(packName, "path")
 			case "install":
 				stateDir = env.Paths.PackHandlerDir(packName, "install")
 			}

@@ -115,8 +115,8 @@ type HandlerResult struct {
 	// Pack is the pack this Handler belongs to
 	Pack string
 
-	// Actions are the original actions that were executed
-	Actions []Action
+	// Operations are the operations that were executed
+	Operations []interface{} // Will be replaced with operations.Operation when available
 }
 
 // NewExecutionContext creates a new execution context
@@ -311,53 +311,28 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 				// Get additional info based on Handler type and action data
 				additionalInfo := GetHandlerAdditionalInfo(pur.HandlerName)
 
-				// Extract handler-specific information from actions
-				if len(pur.Actions) > 0 {
-					homeDir := os.Getenv("HOME")
+				// Extract handler-specific information based on handler type
+				// This logic can be simplified once we have operations
+				switch pur.HandlerName {
+				case "symlink":
+					// For symlinks, show the target path with ~ for home
+					additionalInfo = fmt.Sprintf("→ ~/%s", filepath.Base(filePath))
 
-					switch pur.HandlerName {
-					case "symlink":
-						// For symlinks, show the target path with ~ for home and truncated from the left to fit 46 chars
-						for _, action := range pur.Actions {
-							if linkAction, ok := action.(*LinkAction); ok {
-								if linkAction.SourceFile == filePath && linkAction.TargetFile != "" {
-									additionalInfo = FormatSymlinkForDisplay(linkAction.TargetFile, homeDir, 46)
-									break
-								}
-							}
-						}
+				case "path":
+					// For PATH entries, show the directory being added
+					additionalInfo = fmt.Sprintf("→ $PATH/%s", filepath.Base(filePath))
 
-					case "path":
-						// For PATH entries, show the directory being added
-						for _, action := range pur.Actions {
-							if pathAction, ok := action.(*AddToPathAction); ok {
-								if pathAction.DirPath == filePath {
-									additionalInfo = fmt.Sprintf("→ $PATH/%s", filepath.Base(pathAction.DirPath))
-									break
-								}
-							}
-						}
-
-					case "shell":
-						// For shell profile entries, indicate the shell type if detectable
-						for _, action := range pur.Actions {
-							if shellAction, ok := action.(*AddToShellProfileAction); ok {
-								if shellAction.ScriptPath == filePath {
-									// Try to detect shell type from filename
-									fileName := filepath.Base(filePath)
-									if strings.Contains(fileName, "bash") {
-										additionalInfo = "→ bash profile"
-									} else if strings.Contains(fileName, "zsh") {
-										additionalInfo = "→ zsh profile"
-									} else if strings.Contains(fileName, "fish") {
-										additionalInfo = "→ fish config"
-									} else {
-										additionalInfo = "→ shell profile"
-									}
-									break
-								}
-							}
-						}
+				case "shell":
+					// For shell profile entries, indicate the shell type if detectable
+					fileName := filepath.Base(filePath)
+					if strings.Contains(fileName, "bash") {
+						additionalInfo = "→ bash profile"
+					} else if strings.Contains(fileName, "zsh") {
+						additionalInfo = "→ zsh profile"
+					} else if strings.Contains(fileName, "fish") {
+						additionalInfo = "→ fish config"
+					} else {
+						additionalInfo = "→ shell profile"
 					}
 				}
 

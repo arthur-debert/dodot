@@ -222,11 +222,9 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 	// Create generic cleared item
 	stateDir := fmt.Sprintf("~/.local/share/dodot/data/%s/%s", ctx.Pack.Name, stateDirName)
 
-	// Determine item type based on handler category
+	// Determine item type based on handler name first, then category
 	itemType := "state"
-	if handler.Category() == handlers.CategoryCodeExecution {
-		itemType = "provision_state"
-	} else if handler.Name() == HandlerSymlink {
+	if handler.Name() == HandlerSymlink {
 		itemType = "symlink_state"
 	} else if handler.Name() == HandlerPath {
 		itemType = "path_state"
@@ -234,6 +232,10 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		itemType = "shell_state"
 	} else if handler.Name() == HandlerHomebrew {
 		itemType = "homebrew_state"
+	} else if handler.Name() == HandlerInstall {
+		itemType = "provision_state"
+	} else if handler.Category() == handlers.CategoryCodeExecution {
+		itemType = "provision_state"
 	}
 
 	clearedItem := types.ClearedItem{

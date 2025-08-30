@@ -505,3 +505,59 @@ func (d *realDataStore) GetState(packName, handlerName string) (interface{}, err
 	// For testing, just return nil
 	return nil, nil
 }
+
+// New DataStore interface methods
+
+func (d *realDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
+	baseName := filepath.Base(sourceFile)
+	linkDir := d.paths.PackHandlerDir(pack, handlerName)
+	linkPath := filepath.Join(linkDir, baseName)
+
+	if err := d.fs.MkdirAll(linkDir, 0755); err != nil {
+		return "", err
+	}
+
+	// If the link already exists and points to the correct source, do nothing
+	if currentTarget, err := d.fs.Readlink(linkPath); err == nil && currentTarget == sourceFile {
+		return linkPath, nil
+	}
+
+	// If it exists but is wrong, remove it first
+	if _, err := d.fs.Lstat(linkPath); err == nil {
+		if err := d.fs.Remove(linkPath); err != nil {
+			return "", err
+		}
+	}
+
+	if err := d.fs.Symlink(sourceFile, linkPath); err != nil {
+		return "", err
+	}
+
+	return linkPath, nil
+}
+
+func (d *realDataStore) CreateUserLink(datastorePath, userPath string) error {
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(userPath)
+	if err := d.fs.MkdirAll(parentDir, 0755); err != nil {
+		return err
+	}
+
+	// Remove existing file/link if present
+	if err := d.fs.Remove(userPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Create the symlink
+	return d.fs.Symlink(datastorePath, userPath)
+}
+
+func (d *realDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
+	// For testing, just return nil - we don't actually run commands
+	return nil
+}
+
+func (d *realDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
+	// For testing, always return false
+	return false, nil
+}

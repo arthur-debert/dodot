@@ -36,6 +36,11 @@ func (m *MockSimpleDataStore) HasSentinel(pack, handlerName, sentinel string) (b
 	return args.Bool(0), args.Error(1)
 }
 
+func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
+	args := m.Called(pack, handlerName)
+	return args.Error(0)
+}
+
 type MockConfirmer struct {
 	mock.Mock
 }
@@ -54,7 +59,7 @@ func TestSymlinkHandler_OperationIntegration(t *testing.T) {
 	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	// Create simplified handler
-	handler := symlink.NewSimplifiedHandler()
+	handler := symlink.NewHandler()
 
 	// Create test matches
 	matches := []types.RuleMatch{
@@ -108,7 +113,7 @@ func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 	_ = os.Setenv("HOME", "/home/testuser")
 	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
-	handler := symlink.NewSimplifiedHandler()
+	handler := symlink.NewHandler()
 
 	matches := []types.RuleMatch{
 		{
@@ -156,7 +161,7 @@ func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 
 func TestSymlinkHandler_Clear(t *testing.T) {
 	// Test clear functionality
-	handler := symlink.NewSimplifiedHandler()
+	handler := symlink.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -179,6 +184,6 @@ func TestSymlinkHandler_Clear(t *testing.T) {
 	// Check cleared item
 	item := clearedItems[0]
 	assert.Equal(t, "symlink_state", item.Type)
-	assert.Contains(t, item.Path, "vim/symlinks")
+	assert.Contains(t, item.Path, "vim/symlink")
 	assert.Contains(t, item.Description, "Would remove symlink")
 }

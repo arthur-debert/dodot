@@ -1,267 +1,199 @@
-// Test Type: Unit Test
-// Description: Tests for the path handler - handler logic tests with no filesystem or external dependencies
-
 package path_test
 
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestPathHandler_ProcessLinking(t *testing.T) {
-	handler := path.NewPathHandler()
-
-	tests := []struct {
-		name          string
-		matches       []types.RuleMatch
-		expectedCount int
-		expectError   bool
-		checkActions  func(t *testing.T, actions []types.LinkingAction)
-	}{
-		{
-			name: "single_directory_creates_one_action",
-			matches: []types.RuleMatch{
-				{
-					Path:         "bin",
-					AbsolutePath: "/dotfiles/tools/bin",
-					Pack:         "tools",
-					RuleName:     "directory",
-				},
-			},
-			expectedCount: 1,
-			expectError:   false,
-			checkActions: func(t *testing.T, actions []types.LinkingAction) {
-				require.Len(t, actions, 1)
-				addPathAction, ok := actions[0].(*types.AddToPathAction)
-				require.True(t, ok, "action should be AddToPathAction")
-				assert.Equal(t, "tools", addPathAction.PackName)
-				assert.Equal(t, "/dotfiles/tools/bin", addPathAction.DirPath)
-			},
-		},
-		{
-			name: "multiple_directories_from_same_pack",
-			matches: []types.RuleMatch{
-				{
-					Path:         "bin",
-					AbsolutePath: "/dotfiles/dev/bin",
-					Pack:         "dev",
-					RuleName:     "directory",
-				},
-				{
-					Path:         "scripts",
-					AbsolutePath: "/dotfiles/dev/scripts",
-					Pack:         "dev",
-					RuleName:     "directory",
-				},
-			},
-			expectedCount: 2,
-			expectError:   false,
-			checkActions: func(t *testing.T, actions []types.LinkingAction) {
-				require.Len(t, actions, 2)
-
-				// Check first action
-				action1, ok := actions[0].(*types.AddToPathAction)
-				require.True(t, ok)
-				assert.Equal(t, "dev", action1.PackName)
-				assert.Equal(t, "/dotfiles/dev/bin", action1.DirPath)
-
-				// Check second action
-				action2, ok := actions[1].(*types.AddToPathAction)
-				require.True(t, ok)
-				assert.Equal(t, "dev", action2.PackName)
-				assert.Equal(t, "/dotfiles/dev/scripts", action2.DirPath)
-			},
-		},
-		{
-			name: "duplicate_directory_is_deduped",
-			matches: []types.RuleMatch{
-				{
-					Path:         "bin",
-					AbsolutePath: "/dotfiles/tools/bin",
-					Pack:         "tools",
-					RuleName:     "directory",
-				},
-				{
-					Path:         "bin",
-					AbsolutePath: "/dotfiles/tools/bin",
-					Pack:         "tools",
-					RuleName:     "directory",
-				},
-			},
-			expectedCount: 1, // Second duplicate should be skipped
-			expectError:   false,
-			checkActions: func(t *testing.T, actions []types.LinkingAction) {
-				require.Len(t, actions, 1)
-				addPathAction, ok := actions[0].(*types.AddToPathAction)
-				require.True(t, ok)
-				assert.Equal(t, "tools", addPathAction.PackName)
-				assert.Equal(t, "/dotfiles/tools/bin", addPathAction.DirPath)
-			},
-		},
-		{
-			name: "different_packs_with_same_directory_name",
-			matches: []types.RuleMatch{
-				{
-					Path:         "bin",
-					AbsolutePath: "/dotfiles/tools/bin",
-					Pack:         "tools",
-					RuleName:     "directory",
-				},
-				{
-					Path:         "bin",
-					AbsolutePath: "/dotfiles/dev/bin",
-					Pack:         "dev",
-					RuleName:     "directory",
-				},
-			},
-			expectedCount: 2, // Both should be included since they're from different packs
-			expectError:   false,
-			checkActions: func(t *testing.T, actions []types.LinkingAction) {
-				require.Len(t, actions, 2)
-
-				action1, ok := actions[0].(*types.AddToPathAction)
-				require.True(t, ok)
-				assert.Equal(t, "tools", action1.PackName)
-				assert.Equal(t, "/dotfiles/tools/bin", action1.DirPath)
-
-				action2, ok := actions[1].(*types.AddToPathAction)
-				require.True(t, ok)
-				assert.Equal(t, "dev", action2.PackName)
-				assert.Equal(t, "/dotfiles/dev/bin", action2.DirPath)
-			},
-		},
-		{
-			name:          "empty_matches_returns_empty_actions",
-			matches:       []types.RuleMatch{},
-			expectedCount: 0,
-			expectError:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			actions, err := handler.ProcessLinking(tt.matches)
-
-			if tt.expectError {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
-			assert.Len(t, actions, tt.expectedCount)
-
-			if tt.checkActions != nil {
-				tt.checkActions(t, actions)
-			}
-		})
-	}
-}
-
-func TestPathHandler_ProcessLinkingWithConfirmations(t *testing.T) {
-	handler := path.NewPathHandler()
-
-	t.Run("returns_correct_processing_result", func(t *testing.T) {
-		matches := []types.RuleMatch{
-			{
-				Path:         "bin",
-				AbsolutePath: "/dotfiles/tools/bin",
-				Pack:         "tools",
-				RuleName:     "directory",
-			},
-		}
-
-		result, err := handler.ProcessLinkingWithConfirmations(matches)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.Len(t, result.Actions, 1)
-		assert.Empty(t, result.Confirmations)
-
-		// Verify action is correct type
-		_, ok := result.Actions[0].(*types.AddToPathAction)
-		assert.True(t, ok)
-	})
-}
-
-func TestPathHandler_ValidateOptions(t *testing.T) {
-	handler := path.NewPathHandler()
-
+func TestHandler_ToOperations(t *testing.T) {
 	tests := []struct {
 		name        string
-		options     map[string]interface{}
-		expectError bool
-		errorMsg    string
+		matches     []types.RuleMatch
+		expectedOps int
+		checkFunc   func(*testing.T, []operations.Operation)
 	}{
 		{
-			name:        "nil_options_is_valid",
-			options:     nil,
-			expectError: false,
-		},
-		{
-			name:        "empty_options_is_valid",
-			options:     map[string]interface{}{},
-			expectError: false,
-		},
-		{
-			name: "valid_target_option",
-			options: map[string]interface{}{
-				"target": "/custom/path",
+			name: "single directory creates one operation",
+			matches: []types.RuleMatch{
+				{
+					Pack:        "tools",
+					Path:        "bin",
+					HandlerName: "path",
+				},
 			},
-			expectError: false,
+			expectedOps: 1,
+			checkFunc: func(t *testing.T, ops []operations.Operation) {
+				assert.Equal(t, operations.CreateDataLink, ops[0].Type)
+				assert.Equal(t, "tools", ops[0].Pack)
+				assert.Equal(t, "path", ops[0].Handler)
+				assert.Equal(t, "bin", ops[0].Source)
+			},
 		},
 		{
-			name: "invalid_target_type",
-			options: map[string]interface{}{
-				"target": 123,
+			name: "multiple directories create multiple operations",
+			matches: []types.RuleMatch{
+				{
+					Pack:        "tools",
+					Path:        "bin",
+					HandlerName: "path",
+				},
+				{
+					Pack:        "tools",
+					Path:        "scripts",
+					HandlerName: "path",
+				},
+				{
+					Pack:        "dev",
+					Path:        "bin",
+					HandlerName: "path",
+				},
 			},
-			expectError: true,
-			errorMsg:    "target option must be a string",
+			expectedOps: 3,
+			checkFunc: func(t *testing.T, ops []operations.Operation) {
+				// All should be CreateDataLink operations
+				for _, op := range ops {
+					assert.Equal(t, operations.CreateDataLink, op.Type)
+					assert.Equal(t, "path", op.Handler)
+				}
+
+				// Check specific operations exist
+				foundToolsBin := false
+				foundToolsScripts := false
+				foundDevBin := false
+
+				for _, op := range ops {
+					if op.Pack == "tools" && op.Source == "bin" {
+						foundToolsBin = true
+					}
+					if op.Pack == "tools" && op.Source == "scripts" {
+						foundToolsScripts = true
+					}
+					if op.Pack == "dev" && op.Source == "bin" {
+						foundDevBin = true
+					}
+				}
+
+				assert.True(t, foundToolsBin, "Should have tools/bin")
+				assert.True(t, foundToolsScripts, "Should have tools/scripts")
+				assert.True(t, foundDevBin, "Should have dev/bin")
+			},
 		},
 		{
-			name: "unknown_option",
-			options: map[string]interface{}{
-				"unknown": "value",
+			name: "duplicate paths are deduplicated",
+			matches: []types.RuleMatch{
+				{
+					Pack:        "tools",
+					Path:        "bin",
+					HandlerName: "path",
+				},
+				{
+					Pack:        "tools",
+					Path:        "bin",
+					HandlerName: "path",
+				},
+				{
+					Pack:        "tools",
+					Path:        "bin",
+					HandlerName: "path",
+				},
 			},
-			expectError: true,
-			errorMsg:    "unknown option",
+			expectedOps: 1, // Only one operation despite 3 matches
+			checkFunc: func(t *testing.T, ops []operations.Operation) {
+				assert.Equal(t, "tools", ops[0].Pack)
+				assert.Equal(t, "bin", ops[0].Source)
+			},
+		},
+		{
+			name: "same path in different packs creates separate operations",
+			matches: []types.RuleMatch{
+				{
+					Pack:        "tools",
+					Path:        "bin",
+					HandlerName: "path",
+				},
+				{
+					Pack:        "dev",
+					Path:        "bin",
+					HandlerName: "path",
+				},
+			},
+			expectedOps: 2, // Same path but different packs
+			checkFunc: func(t *testing.T, ops []operations.Operation) {
+				packs := make(map[string]bool)
+				for _, op := range ops {
+					assert.Equal(t, "bin", op.Source)
+					packs[op.Pack] = true
+				}
+				assert.True(t, packs["tools"])
+				assert.True(t, packs["dev"])
+			},
+		},
+		{
+			name:        "empty matches creates empty operations",
+			matches:     []types.RuleMatch{},
+			expectedOps: 0,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := handler.ValidateOptions(tt.options)
-			if tt.expectError {
-				require.Error(t, err)
-				if tt.errorMsg != "" {
-					assert.Contains(t, err.Error(), tt.errorMsg)
-				}
-			} else {
-				require.NoError(t, err)
+			handler := path.NewHandler()
+
+			ops, err := handler.ToOperations(tt.matches)
+			require.NoError(t, err)
+			assert.Len(t, ops, tt.expectedOps)
+
+			if tt.checkFunc != nil {
+				tt.checkFunc(t, ops)
 			}
 		})
 	}
 }
 
-func TestPathHandler_Properties(t *testing.T) {
-	handler := path.NewPathHandler()
+func TestHandler_Metadata(t *testing.T) {
+	handler := path.NewHandler()
 
-	t.Run("name_returns_correct_value", func(t *testing.T) {
-		assert.Equal(t, path.PathHandlerName, handler.Name())
-		assert.Equal(t, "path", handler.Name())
-	})
+	// Test basic properties
+	assert.Equal(t, "path", handler.Name())
+	assert.Equal(t, handlers.CategoryConfiguration, handler.Category())
 
-	t.Run("description_returns_correct_value", func(t *testing.T) {
-		assert.Equal(t, "Adds directories to PATH", handler.Description())
-	})
+	// Test metadata
+	metadata := handler.GetMetadata()
+	assert.Equal(t, "Adds directories to shell PATH", metadata.Description)
+	assert.False(t, metadata.RequiresConfirm) // PATH additions are safe
+	assert.True(t, metadata.CanRunMultiple)   // Can add multiple directories
 
-	t.Run("type_returns_configuration", func(t *testing.T) {
-		assert.Equal(t, types.HandlerTypeConfiguration, handler.Type())
-	})
+	// Test that optional methods use defaults
+	assert.Nil(t, handler.GetClearConfirmation(types.ClearContext{}))
+	assert.Empty(t, handler.FormatClearedItem(types.ClearedItem{}, false))
+	assert.NoError(t, handler.ValidateOperations(nil))
+	assert.Empty(t, handler.GetStateDirectoryName())
+}
 
-	t.Run("template_content_is_empty", func(t *testing.T) {
-		assert.Empty(t, handler.GetTemplateContent())
-	})
+func TestHandler_ComparisonWithCurrent(t *testing.T) {
+	// This test documents the simplification achieved
+
+	// Current handler has these responsibilities:
+	// 1. ProcessLinking with backward compatibility     - REMOVED (operation executor handles)
+	// 2. ProcessLinkingWithConfirmations              - REMOVED (operation executor handles)
+	// 3. Complex options parsing                      - REMOVED (not needed)
+	// 4. Path resolution and validation               - REMOVED (datastore handles)
+	// 5. Action creation with all fields              - SIMPLIFIED (just operations)
+	// 6. Logging throughout                           - REMOVED (executor handles)
+	// 7. State management                             - REMOVED (datastore handles)
+	// 8. Clear method implementation                  - REMOVED (generic reversal)
+
+	// New handler only has:
+	// 1. Name and category
+	// 2. Metadata for UI
+	// 3. Match to operation transformation
+	// 4. Optional customization points
+
+	// Result: ~185 lines → ~40 lines (78% reduction)
 }

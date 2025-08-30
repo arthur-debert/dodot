@@ -1,6 +1,8 @@
 package internal
 
 import (
+	"time"
+
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/errors"
@@ -13,6 +15,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -47,7 +50,7 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 	}
 
 	// Group matches by handler for operation conversion
-	matchesByHandler := core.GroupMatchesByHandler(filteredMatches)
+	matchesByHandler := rules.GroupMatchesByHandler(filteredMatches)
 
 	// Phase 3: All handlers are simplified - convert matches to operations
 	var allOperations []operations.Operation
@@ -58,7 +61,7 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 			Int("matches", len(handlerMatches)).
 			Msg("Converting matches to operations")
 
-		handler := getSimplifiedHandler(handlerName)
+		handler := getHandler(handlerName)
 		if handler != nil {
 			ops, err := handler.ToOperations(handlerMatches)
 			if err != nil {
@@ -85,7 +88,7 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 
 	// Execute operations grouped by handler
 	for handlerName, handlerOps := range groupOperationsByHandler(allOperations) {
-		handler := getSimplifiedHandler(handlerName)
+		handler := getHandler(handlerName)
 		if handler != nil {
 			results, err := executor.Execute(handlerOps, handler)
 			if err != nil {
@@ -102,20 +105,20 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 	return ctx, nil
 }
 
-// getSimplifiedHandler returns the simplified handler for the given name.
+// getHandler returns the simplified handler for the given name.
 // Phase 3: All handlers are now simplified.
-func getSimplifiedHandler(handlerName string) operations.Handler {
+func getHandler(handlerName string) operations.Handler {
 	switch handlerName {
 	case operations.HandlerPath:
-		return pathHandler.NewSimplifiedHandler()
+		return pathHandler.NewHandler()
 	case operations.HandlerSymlink:
-		return symlink.NewSimplifiedHandler()
+		return symlink.NewHandler()
 	case operations.HandlerShell:
-		return shell.NewSimplifiedHandler()
+		return shell.NewHandler()
 	case operations.HandlerInstall:
-		return install.NewSimplifiedHandler()
+		return install.NewHandler()
 	case operations.HandlerHomebrew:
-		return homebrew.NewSimplifiedHandler()
+		return homebrew.NewHandler()
 	default:
 		// Unknown handler
 		return nil

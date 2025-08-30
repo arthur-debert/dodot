@@ -10,7 +10,13 @@ import (
 
 // MockDataStore provides a mock implementation of types.DataStore for testing
 type MockDataStore struct {
-	mu            sync.RWMutex
+	mu        sync.RWMutex
+	dataLinks map[string]string // pack:handler:source -> datastorePath
+	userLinks map[string]string // target -> source
+	sentinels map[string]bool   // pack:handler:sentinel -> exists
+	commands  map[string]string // pack:handler:sentinel -> command
+
+	// Legacy fields for compatibility
 	links         map[string]string            // pack:source -> target
 	paths         map[string][]string          // pack -> paths
 	provisioning  map[string]map[string]string // pack:handler -> checksum
@@ -27,6 +33,10 @@ type MockDataStore struct {
 // NewMockDataStore creates a new mock data store
 func NewMockDataStore() *MockDataStore {
 	return &MockDataStore{
+		dataLinks:     make(map[string]string),
+		userLinks:     make(map[string]string),
+		sentinels:     make(map[string]bool),
+		commands:      make(map[string]string),
 		links:         make(map[string]string),
 		paths:         make(map[string][]string),
 		provisioning:  make(map[string]map[string]string),
@@ -409,44 +419,6 @@ func (m *MockDataStore) StoreState(packName, handlerName string, state interface
 	return nil
 }
 
-// RemoveState implements the DataStore interface
-func (m *MockDataStore) RemoveState(packName, handlerName string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.calls = append(m.calls, fmt.Sprintf("RemoveState:%s:%s", packName, handlerName))
-
-	if m.errorOn == "RemoveState" && m.errorToReturn != nil {
-		return m.errorToReturn
-	}
-
-	// Simulate removing state based on handler type
-	switch handlerName {
-	case "symlink":
-		// Remove all links for this pack
-		for key := range m.links {
-			if strings.HasPrefix(key, packName+":") {
-				delete(m.links, key)
-			}
-		}
-	case "path":
-		// Remove all paths for this pack
-		delete(m.paths, packName)
-	case "shell_profile":
-		// Remove all shell profiles for this pack
-		for key := range m.shellProfiles {
-			if strings.HasPrefix(key, packName+":") {
-				delete(m.shellProfiles, key)
-			}
-		}
-	case "install", "homebrew":
-		// Remove provisioning state
-		delete(m.provisioning, packName)
-	}
-
-	return nil
-}
-
 // GetState implements the DataStore interface
 func (m *MockDataStore) GetState(packName, handlerName string) (interface{}, error) {
 	m.mu.Lock()
@@ -467,6 +439,10 @@ func (m *MockDataStore) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	m.dataLinks = make(map[string]string)
+	m.userLinks = make(map[string]string)
+	m.sentinels = make(map[string]bool)
+	m.commands = make(map[string]string)
 	m.links = make(map[string]string)
 	m.paths = make(map[string][]string)
 	m.provisioning = make(map[string]map[string]string)
@@ -474,4 +450,98 @@ func (m *MockDataStore) Reset() {
 	m.calls = []string{}
 	m.errorOn = ""
 	m.errorToReturn = nil
+}
+
+// New DataStore interface methods
+
+// CreateDataLink implements the DataStore interface
+func (m *MockDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("CreateDataLink(%s,%s,%s)", pack, handlerName, sourceFile))
+
+	if m.errorOn == "CreateDataLink" {
+		return "", m.errorToReturn
+	}
+
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sourceFile)
+	datastorePath := fmt.Sprintf("/datastore/%s/%s/%s", pack, handlerName, sourceFile)
+	m.dataLinks[key] = datastorePath
+	return datastorePath, nil
+}
+
+// CreateUserLink implements the DataStore interface
+func (m *MockDataStore) CreateUserLink(datastorePath, userPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("CreateUserLink(%s,%s)", datastorePath, userPath))
+
+	if m.errorOn == "CreateUserLink" {
+		return m.errorToReturn
+	}
+
+	m.userLinks[userPath] = datastorePath
+	return nil
+}
+
+// RunAndRecord implements the DataStore interface
+func (m *MockDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("RunAndRecord(%s,%s,%s,%s)", pack, handlerName, command, sentinel))
+
+	if m.errorOn == "RunAndRecord" {
+		return m.errorToReturn
+	}
+
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sentinel)
+	m.sentinels[key] = true
+	m.commands[key] = command
+	return nil
+}
+
+// HasSentinel implements the DataStore interface
+func (m *MockDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("HasSentinel(%s,%s,%s)", pack, handlerName, sentinel))
+
+	if m.errorOn == "HasSentinel" {
+		return false, m.errorToReturn
+	}
+
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sentinel)
+	return m.sentinels[key], nil
+}
+
+// RemoveState implements the DataStore interface
+func (m *MockDataStore) RemoveState(pack, handlerName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("RemoveState(%s,%s)", pack, handlerName))
+
+	if m.errorOn == "RemoveState" {
+		return m.errorToReturn
+	}
+
+	// Remove all entries for this pack/handler combination
+	prefix := fmt.Sprintf("%s:%s:", pack, handlerName)
+	for key := range m.dataLinks {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.dataLinks, key)
+		}
+	}
+	for key := range m.sentinels {
+		if strings.HasPrefix(key, prefix) {
+			delete(m.sentinels, key)
+			delete(m.commands, key)
+		}
+	}
+
+	return nil
 }
