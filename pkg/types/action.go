@@ -25,6 +25,12 @@ type DataStore interface {
 	DeleteProvisioningState(packName, handlerName string) error
 	GetProvisioningHandlers(packName string) ([]string, error)
 	ListProvisioningState(packName string) (map[string][]string, error)
+
+	// Generic state management (new methods)
+	// These will eventually replace the handler-specific methods above
+	StoreState(packName, handlerName string, state interface{}) error
+	RemoveState(packName, handlerName string) error
+	GetState(packName, handlerName string) (interface{}, error)
 }
 
 // Action is the base interface for all actions.

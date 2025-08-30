@@ -49,45 +49,20 @@ func ClearHandler(ctx types.ClearContext, handler handlers.Clearable, handlerNam
 	}
 	result.ClearedItems = clearedItems
 
-	// Step 2: Clean up handler state directory
-	// TODO: This is a temporary solution for backward compatibility.
-	// Ideally, the DataStore should provide a unified state removal method
-	// that works for all handler types.
+	// Step 2: Clean up handler state using the unified RemoveState method
 	if !ctx.DryRun {
-		logger.Debug().Msg("Removing handler state directory")
-		
-		// For provisioning handlers, use DeleteProvisioningState
-		if !isLinkingHandler(handlerName) {
-			if err := ctx.DataStore.DeleteProvisioningState(ctx.Pack.Name, handlerName); err != nil {
-				logger.Error().Err(err).Msg("Failed to remove state directory")
-				result.Error = fmt.Errorf("failed to remove state directory: %w", err)
-				return result, result.Error
-			}
-		} else {
-			// For linking handlers, manually remove the state directory
-			// after the handler has cleaned its contents
-			stateDirName := GetHandlerStateDir(handlerName)
-			stateDir := ctx.Paths.PackHandlerDir(ctx.Pack.Name, stateDirName)
-			
-			// Check if directory exists and is empty
-			if _, err := ctx.FS.Stat(stateDir); err == nil {
-				// Try to remove the directory
-				if err := ctx.FS.RemoveAll(stateDir); err != nil {
-					logger.Error().
-						Err(err).
-						Str("stateDir", stateDir).
-						Msg("Failed to remove state directory")
-					result.Error = fmt.Errorf("failed to remove state directory: %w", err)
-					return result, result.Error
-				}
-				logger.Debug().
-					Str("stateDir", stateDir).
-					Msg("Removed linking handler state directory")
-			}
+		logger.Debug().Msg("Removing handler state")
+
+		if err := ctx.DataStore.RemoveState(ctx.Pack.Name, handlerName); err != nil {
+			logger.Error().Err(err).Msg("Failed to remove handler state")
+			result.Error = fmt.Errorf("failed to remove handler state: %w", err)
+			return result, result.Error
 		}
+
 		result.StateRemoved = true
+		logger.Debug().Msg("Handler state removed successfully")
 	} else {
-		logger.Debug().Msg("Dry run - would remove handler state directory")
+		logger.Debug().Msg("Dry run - would remove handler state")
 	}
 
 	logger.Info().
@@ -128,16 +103,4 @@ func ClearHandlers(ctx types.ClearContext, handlers map[string]handlers.Clearabl
 	}
 
 	return results, firstError
-}
-
-// isLinkingHandler checks if a handler is a linking handler based on its name.
-// This is a temporary solution until we have a better way to determine handler types.
-// TODO: Replace this with a proper handler type check through the registry.
-func isLinkingHandler(handlerName string) bool {
-	switch handlerName {
-	case "symlink", "path", "shell":
-		return true
-	default:
-		return false
-	}
 }

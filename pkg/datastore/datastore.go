@@ -51,4 +51,16 @@ type DataStore interface {
 	// The returned map has handler names as keys and lists of state file names as values.
 	// Useful for dry-run operations to show what would be removed.
 	ListProvisioningState(packName string) (map[string][]string, error)
+
+	// Generic state management methods
+	// These will eventually replace the handler-specific methods above
+
+	// StoreState saves arbitrary state for a handler in a pack
+	StoreState(packName, handlerName string, state interface{}) error
+
+	// RemoveState removes all state for a handler in a pack
+	RemoveState(packName, handlerName string) error
+
+	// GetState retrieves state for a handler in a pack
+	GetState(packName, handlerName string) (interface{}, error)
 }

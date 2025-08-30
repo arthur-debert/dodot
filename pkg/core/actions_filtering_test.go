@@ -60,6 +60,9 @@ func (m *mockDataStore) GetProvisioningHandlers(packName string) ([]string, erro
 func (m *mockDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
 	return nil, nil
 }
+func (m *mockDataStore) StoreState(packName, handlerName string, state interface{}) error { return nil }
+func (m *mockDataStore) RemoveState(packName, handlerName string) error                   { return nil }
+func (m *mockDataStore) GetState(packName, handlerName string) (interface{}, error)       { return nil, nil }
 
 // Tests for Action Filtering Logic
 

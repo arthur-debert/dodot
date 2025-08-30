@@ -94,6 +94,21 @@ func (m *MockDataStore) ListProvisioningState(packName string) (map[string][]str
 	return args.Get(0).(map[string][]string), args.Error(1)
 }
 
+func (m *MockDataStore) StoreState(packName, handlerName string, state interface{}) error {
+	args := m.Called(packName, handlerName, state)
+	return args.Error(0)
+}
+
+func (m *MockDataStore) RemoveState(packName, handlerName string) error {
+	args := m.Called(packName, handlerName)
+	return args.Error(0)
+}
+
+func (m *MockDataStore) GetState(packName, handlerName string) (interface{}, error) {
+	args := m.Called(packName, handlerName)
+	return args.Get(0), args.Error(1)
+}
+
 // TestLinkAction_Execute tests LinkAction execution
 func TestLinkAction_Execute(t *testing.T) {
 	tests := []struct {
@@ -537,4 +552,3 @@ func TestBrewAction_Properties(t *testing.T) {
 	// Verify it implements ProvisioningAction interface
 	var _ types.ProvisioningAction = action
 }
-

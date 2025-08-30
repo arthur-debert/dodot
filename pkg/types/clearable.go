@@ -17,6 +17,7 @@ type PathResolver interface {
 // DataStoreInterface provides the minimal interface needed for clearing operations
 type DataStoreInterface interface {
 	DeleteProvisioningState(packName, handlerName string) error
+	RemoveState(packName, handlerName string) error
 }
 
 // ClearContext provides all the resources needed for a handler to clean up
