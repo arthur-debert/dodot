@@ -1,0 +1,109 @@
+# Testing Improvements for dodot Commands
+
+This document summarizes the testing improvements made to ensure commands actually work as expected.
+
+## What We Fixed
+
+### 1. genconfig Command Tests
+- **Issue**: Test file was marked as "toremove" and not running
+- **Fix**: Activated and updated tests to use proper test environment
+- **Coverage**: Now tests all functionality including:
+  - Output to stdout
+  - Writing to single/multiple packs
+  - Skipping existing files
+  - Creating missing directories
+  - Filesystem injection support
+
+### 2. fill Command Tests  
+- **Issue**: Command was broken (TODO: Re-implement) but tests passed
+- **Fix**: Fixed command implementation and added comprehensive tests
+- **Coverage**: Tests verify:
+  - Template creation for missing handlers
+  - Skipping handlers with existing files
+  - Proper file permissions
+  - Integration with rules system
+
+### 3. init Command Tests
+- **Issue**: Command used hardcoded templates instead of rules system
+- **Fix**: Reimplemented to use fill command and added integration tests
+- **Coverage**: Tests verify:
+  - Pack creation with all expected files
+  - Integration with fill command
+  - Config file generation
+  - Error handling
+
+## Testing Best Practices Applied
+
+### 1. Use TestEnvironment
+All tests now use the proper test environment:
+```go
+env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+defer env.Cleanup()
+```
+
+### 2. Filesystem Injection
+Commands support filesystem injection for testing:
+```go
+type Options struct {
+    FileSystem types.FS // Optional for testing
+}
+```
+
+### 3. Verify Actual Functionality
+Tests don't just check if files exist, they verify:
+- File contents are correct
+- Permissions are set properly
+- Integration with other commands works
+- Generated files work with handlers
+
+### 4. Test Error Cases
+Each command has tests for:
+- Invalid inputs
+- Missing dependencies
+- Existing file conflicts
+- Permission issues
+
+## Current Test Coverage Status
+
+### Well Tested Commands
+- **addignore**: Comprehensive integration tests
+- **adopt**: Extensive tests including rollback scenarios
+- **deprovision**: Tests clearing of provisioning state
+- **fill**: Tests template generation dynamically
+- **genconfig**: Tests config generation and file writing
+- **init**: Tests pack creation with templates
+- **link**: Tests configuration deployment
+- **list**: Tests pack discovery
+- **off**: Tests combined deprovision + unlink
+- **on**: Tests combined link + provision
+- **provision**: Tests two-phase execution
+- **status**: Tests state inspection
+- **unlink**: Tests cleanup operations
+
+### Testing Gaps Remaining
+1. **End-to-End Workflows**: Need tests that run full sequences like:
+   - init → fill → adopt → link → provision → status
+   
+2. **Real Filesystem Tests**: Most tests use memory FS, need some with real FS for:
+   - Symlink behavior
+   - Permission handling
+   - Cross-platform issues
+
+3. **Handler Integration**: Need tests that verify:
+   - Shell profiles are actually sourceable
+   - Homebrew files are valid syntax
+   - Install scripts execute properly
+
+## Lessons Learned
+
+1. **Tests Must Verify Functionality**: A passing test that only checks file existence can hide broken features
+2. **Integration Points Matter**: Commands that depend on each other need integration tests
+3. **Use Proper Abstractions**: Filesystem injection makes tests reliable and fast
+4. **Test the User Experience**: Tests should verify what users actually care about
+
+## Next Steps
+
+1. Add end-to-end test suite for complete workflows
+2. Add selected real filesystem tests for critical operations
+3. Monitor test coverage and maintain > 80% threshold
+4. Review tests during code review to ensure they test actual functionality
