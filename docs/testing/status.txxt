@@ -26,44 +26,44 @@ Note: Current test files will be renamed to *_toremove_test.go before migration 
 |--------------------------|------------------|--------------------------------------------------|------------------|--------------|--------------|----------------------------------------------|
 | pkg/cobrax/topics        | Unit             | topics_test.go                                   | do not migrate   | 40.00%       | 0%           | Template tests                               |
 | pkg/filesystem           | Unit             | filesystem_test.go                               | do not migrate   | 19.44%       | 0%           | FS abstraction                               |
-| pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | migrated         | 82.86%       | TBD          | File adoption and pack management            |
-| pkg/commands/fill        | Business Logic   | -                                                | planned          | 0%           | 0%           | Missing tests                                |
-| pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | planned          | 95.24%       | 0%           | Config generation                            |
-| pkg/commands/initialize  | Business Logic   | initialize_test.go                               | planned          | 85.71%       | 0%           | Setup operations                             |
-| pkg/commands/internal    | Business Logic   | pipeline_test.go                                 | planned          | 70.00%       | 0%           | Core pipeline                                |
-| pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | TBD          | Command orchestration - ignore file creation |
-| pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | migrated         | 88.89%       | TBD          | Code execution handler clearing              |
-| pkg/commands/list        | Business Logic   | list_test.go                                     | migrated         | 100.00%      | TBD          | Query operations - pack discovery tests     |
-| pkg/commands/off         | Business Logic   | off_test.go                                      | migrated         | 95.65%       | TBD          | Handler disabling - orchestration tests     |
-| pkg/commands/on          | Business Logic   | on_test.go                                       | migrated         | 92.59%       | TBD          | Handler enabling - orchestration tests      |
-| pkg/commands/provision   | Business Logic   | provision_test.go                                | migrated         | 68.92%       | TBD          | Multi-phase command orchestration            |
-| pkg/commands/status      | Business Logic   | status_test.go                                   | migrated         | 80.90%       | TBD          | State inspection - orchestration tests      |
-| pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | migrated         | 80.49%       | TBD          | Cleanup operations - clearable orchestration |
-| pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 49.32%       | 82.3%        | Orchestration tests created                  |
+| pkg/commands/adopt       | Business Logic   | adopt_test.go                                    | migrated         | 82.86%       | 81.43%       | File adoption and pack management            |
+| pkg/commands/fill        | Business Logic   | -                                                | skip             | 0%           | 0%           | Command not implemented (TODO)               |
+| pkg/commands/genconfig   | Business Logic   | genconfig_test.go                                | skip             | 95.24%       | 0%           | Needs FS injection refactor                  |
+| pkg/commands/initialize  | Business Logic   | initialize_test.go                               | skip             | 85.71%       | 0%           | Needs consistent FS injection                |
+| pkg/commands/internal    | Business Logic   | pipeline_test.go                                 | skip             | 70.00%       | 0%           | Core infrastructure - needs refactor         |
+| pkg/commands/addignore   | Business Logic   | addignore_test.go                                | migrated         | 84.62%       | 84.62%       | Command orchestration - ignore file creation |
+| pkg/commands/deprovision | Business Logic   | deprovision_test.go                              | migrated         | 88.89%       | 66.67%       | Code execution handler clearing              |
+| pkg/commands/list        | Business Logic   | list_test.go                                     | migrated         | 100.00%      | 100.00%      | Query operations - pack discovery tests     |
+| pkg/commands/off         | Business Logic   | off_test.go                                      | migrated         | 95.65%       | 95.65%       | Handler disabling - orchestration tests     |
+| pkg/commands/on          | Business Logic   | on_test.go                                       | migrated         | 92.59%       | 92.59%       | Handler enabling - orchestration tests      |
+| pkg/commands/provision   | Business Logic   | provision_test.go                                | migrated         | 68.92%       | 74.32%       | Multi-phase command orchestration            |
+| pkg/commands/status      | Business Logic   | status_test.go                                   | migrated         | 80.90%       | 78.65%       | State inspection - orchestration tests      |
+| pkg/commands/unlink      | Business Logic   | unlink_test.go                                   | migrated         | 80.49%       | 87.80%       | Cleanup operations - clearable orchestration |
+| pkg/core                 | Integration      | match_test.go, actions_test.go                   | migrated         | 82.28%       | 82.28%       | Orchestration tests created                  |
 | pkg/executor             | Integration      | executor_orchestration_test.go                   | migrated         | 80.87%       | 80.87%       | Action execution orchestration               |
 | pkg/shell                | Unit             | shell_integration_test.go                        | migrated         | 88.46%       | 88.46%       | Shell integration orchestration              |
 | cmd/dodot                | CLI              | commands_test.go, root_test.go, topics_test.go   | migrated         | 20.26%       | 20.26%       | CLI commands                                 |
 | pkg/handlers             | Unit             | api_test.go                                      | migrated         | 100.00%      | 100.00%      | Handler registry                             |
-| pkg/handlers/homebrew    | Unit/Integration | homebrew_test.go                                 | migrated         | 64.68%       | 55.60%       | Handler logic                                |
+| pkg/handlers/homebrew    | Unit/Integration | homebrew_test.go                                 | migrated         | 64.68%       | 55.56%       | Handler logic                                |
 | pkg/handlers/install     | Unit/Integration | install_test.go                                  | migrated         | 50.00%       | 50.00%       | Handler logic                                |
-| pkg/handlers/shell       | Unit/Integration | shell_test.go                                    | migrated         | 77.78%       | 96.3%        | Handler logic                                |
-| pkg/ui                   | Unit             | ui_test.go                                       | migrated         | 75.86%       | 65.5%        | UI utilities                                 |
-| pkg/ui/display           | Output           | display_test.go                                  | migrated         | 81.25%       | 81.3%        | Display logic                                |
-| pkg/ui/lipbalm           | Output           | lipbalm_test.go                                  | migrated         | 97.78%       | 100.0%       | Terminal UI                                  |
-| pkg/ui/output/styles     | Output           | styles_test.go                                   | migrated         | 73.33%       | 74.7%        | Style definitions                            |
+| pkg/handlers/shell       | Unit/Integration | shell_test.go                                    | migrated         | 96.30%       | 96.30%       | Handler logic                                |
+| pkg/ui                   | Unit             | ui_test.go                                       | migrated         | 75.86%       | 65.52%       | UI utilities                                 |
+| pkg/ui/display           | Output           | display_test.go                                  | migrated         | 81.25%       | 85.71%       | Display logic                                |
+| pkg/ui/lipbalm           | Output           | lipbalm_test.go                                  | migrated         | 97.78%       | 100.00%      | Terminal UI                                  |
+| pkg/ui/output/styles     | Output           | styles_test.go                                   | migrated         | 73.33%       | 74.67%       | Style definitions                            |
 | pkg/actions              | Unit             | actions_test.go                                  | migrated         | 94.29%       | 94.29%       | Pure logic tests                             |
-| pkg/commands/link        | Business Logic   | link_test.go                                     | migrated         | 66.67%       | TBD          | Configuration handler orchestration          |
-| pkg/config               | Unit             | config_test.go                                   | migrated         | 76.11%       | 88.9%        | Configuration logic                          |
+| pkg/commands/link        | Business Logic   | link_test.go                                     | migrated         | 88.89%       | 88.89%       | Configuration handler orchestration          |
+| pkg/config               | Unit             | config_test.go                                   | migrated         | 76.11%       | 60.62%       | Configuration logic                          |
 | pkg/datastore            | DataStore        | filesystem_test.go                               | migrated         | 53.93%       | 82.72%       | REAL FS ALLOWED                              |
 | pkg/errors               | Unit             | errors_test.go                                   | migrated         | 91.89%       | 91.89%       | Error handling                               |
 | pkg/handlers/symlink     | Unit/Integration | symlink_test.go                                  | migrated         | 81.91%       | 81.91%       | Handler logic, memory FS                     |
 | pkg/handlers/path        | Unit/Integration | path_test.go                                     | migrated         | 97.62%       | 97.62%       | Handler logic                                |
 | pkg/internal/hashutil    | Unit             | hash_test.go                                     | migrated         | 88.89%       | 100.00%      | Hashing utilities                            |
-| pkg/logging              | Unit             | logging_test.go                                  | migrated         | 82.22%       | 86.7%        | Logging setup                                |
-| pkg/packs                | Unit             | packs_test.go                                    | migrated         | 64.79%       | 91.5%        | Pack operations                              |
-| pkg/paths                | Unit             | paths_test.go, validation_test.go, shell_test.go | migrated         | 75.00%       | 85.3%        | 6 tests skipped, see TEST_BEHAVIOR_REVIEW.md |
-| pkg/rules                | Unit             | config_test.go, scanner_test.go                  | migrated         | 32.32%       | 43.3%        | Rule matching                                |
-| pkg/ui/output            | Output           | renderer_test.go                                 | migrated         | 85.96%       | 89.47%       | Output rendering                             |
+| pkg/logging              | Unit             | logging_test.go                                  | migrated         | 82.22%       | 86.67%       | Logging setup                                |
+| pkg/packs                | Unit             | packs_test.go                                    | migrated         | 67.14%       | 67.14%       | Pack operations                              |
+| pkg/paths                | Unit             | paths_test.go, validation_test.go, shell_test.go | migrated         | 78.16%       | 78.16%       | 6 tests skipped, see TEST_BEHAVIOR_REVIEW.md |
+| pkg/rules                | Unit             | config_test.go, scanner_test.go                  | migrated         | 32.32%       | 43.29%       | Rule matching                                |
+| pkg/ui/output            | Output           | renderer_test.go                                 | migrated         | 89.47%       | 89.47%       | Output rendering                             |
 | pkg/testutil             | Meta             | -                                                | migrated         | 42.19%       | 40.59%       | Test utilities                               |
 | pkg/types                | Unit             | types_test.go                                    | migrated         | 87.27%       | 31.46%       | Type definitions                             |
 

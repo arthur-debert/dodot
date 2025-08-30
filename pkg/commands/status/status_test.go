@@ -181,9 +181,10 @@ func TestStatusPacks_IgnoredPack_Inspection(t *testing.T) {
 
 	var ignoredPack, normalPack *types.DisplayPack
 	for i := range result.Packs {
-		if result.Packs[i].Name == "ignored-pack" {
+		switch result.Packs[i].Name {
+		case "ignored-pack":
 			ignoredPack = &result.Packs[i]
-		} else if result.Packs[i].Name == "normal-pack" {
+		case "normal-pack":
 			normalPack = &result.Packs[i]
 		}
 	}
