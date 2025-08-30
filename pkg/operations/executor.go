@@ -209,8 +209,14 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		}
 	}
 
-	// For simplified handlers, clearing is straightforward:
-	// Remove the handler's state directory
+	// PHASE 1 IMPLEMENTATION NOTE:
+	// This implementation is specific to the path handler for Phase 1.
+	// In Phase 2, as more handlers are migrated, we'll extract common patterns.
+	// In Phase 3, this will become a generic implementation that works with
+	// the simplified datastore interface using a "RemoveState" operation.
+	//
+	// The current implementation demonstrates the concept: handlers declare
+	// what state they maintain, and the executor handles the clearing logic.
 	var clearedItems []types.ClearedItem
 
 	// Get state directory name (handler can override)
@@ -219,8 +225,9 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		stateDirName = handler.Name()
 	}
 
-	// For path handler in phase 1, we know it stores links in the datastore
-	// In phase 3, this will be more generic
+	// Phase 1: Handle path handler specifically
+	// TODO(Phase 2): Extract pattern for other handlers
+	// TODO(Phase 3): Replace with generic RemoveState operation
 	if handler.Name() == HandlerPath {
 		stateDir := fmt.Sprintf("~/.local/share/dodot/data/%s/%s", ctx.Pack.Name, stateDirName)
 
@@ -241,12 +248,25 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 
 		// Actually remove if not dry run
 		if !ctx.DryRun && e.store != nil {
-			// In phase 1, we use the adapter's RemoveState equivalent
-			// In phase 3, this will be a generic operation
+			// Phase 1: Just log the removal
+			// Phase 2: Will call handler-specific cleanup methods
+			// Phase 3: Will use a generic RemoveState operation:
+			//   e.store.RemoveState(ctx.Pack.Name, handler.Name())
+			// This will remove all datastore entries for the handler
 			logger.Debug().Msg("Removing handler state")
 			// For now, we just mark it as cleared
 		}
 	}
+
+	// Phase 2: Add similar blocks for other handlers as they're migrated
+	// Each handler will follow the same pattern:
+	// 1. Determine what state needs clearing
+	// 2. Create ClearedItem descriptions
+	// 3. Perform actual removal if not dry-run
+
+	// Phase 3: Replace all handler-specific blocks with:
+	// clearedItems, err := handler.GetClearedItems(ctx)
+	// if !ctx.DryRun { e.store.RemoveState(ctx.Pack.Name, handler.Name()) }
 
 	logger.Info().
 		Int("cleared_items", len(clearedItems)).
