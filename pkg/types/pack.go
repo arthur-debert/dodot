@@ -73,7 +73,7 @@ func (p *Pack) CreateFileWithMode(fs FS, filename, content string, mode os.FileM
 }
 
 // AdoptFile moves an external file into the pack and returns the destination path
-func (p *Pack) AdoptFile(fs FS, externalPath, internalPath string) (string, error) {
+func (p *Pack) AdoptFile(fs FS, externalPath, internalPath string, force bool) (string, error) {
 	destPath := p.GetFilePath(internalPath)
 
 	// Ensure destination directory exists
@@ -84,7 +84,13 @@ func (p *Pack) AdoptFile(fs FS, externalPath, internalPath string) (string, erro
 
 	// Check if destination already exists
 	if _, err := fs.Stat(destPath); err == nil {
-		return "", fmt.Errorf("destination already exists: %s", destPath)
+		if !force {
+			return "", fmt.Errorf("destination already exists: %s (use --force to overwrite)", destPath)
+		}
+		// Remove existing file if force is enabled
+		if err := fs.Remove(destPath); err != nil {
+			return "", fmt.Errorf("failed to remove existing destination: %w", err)
+		}
 	}
 
 	// Move the file
