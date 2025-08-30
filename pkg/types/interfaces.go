@@ -22,6 +22,7 @@ type FS interface {
 	// Other operations
 	Remove(name string) error
 	RemoveAll(path string) error
+	Rename(oldpath, newpath string) error
 
 	// Optional operations - implementations should check for support
 	// For testing, Lstat can fall back to Stat

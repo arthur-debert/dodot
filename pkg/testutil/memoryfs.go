@@ -417,6 +417,62 @@ func (m *MemoryFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return entries, nil
 }
 
+// Rename renames (moves) a file or directory
+func (m *MemoryFS) Rename(oldpath, newpath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	oldpath = m.normalizePath(oldpath)
+	newpath = m.normalizePath(newpath)
+
+	// Get the node to move
+	node, err := m.getNode(oldpath)
+	if err != nil {
+		return err
+	}
+
+	// Check if new path already exists
+	if _, err := m.getNode(newpath); err == nil {
+		return &fs.PathError{Op: "rename", Path: newpath, Err: errors.New("file exists")}
+	}
+
+	// Get old and new parent directories
+	oldParent, oldName, err := m.getParentAndName(oldpath)
+	if err != nil {
+		return err
+	}
+
+	newParent, newName, err := m.getParentAndName(newpath)
+	if err != nil {
+		return err
+	}
+
+	// Remove from old parent
+	delete(oldParent.children, oldName)
+
+	// Add to new parent
+	newParent.children[newName] = node
+
+	// Update file map
+	delete(m.files, oldpath)
+	m.files[newpath] = node
+
+	// If it's a directory, update all children paths
+	if node.isDir {
+		oldPrefix := oldpath + "/"
+		newPrefix := newpath + "/"
+		for p, n := range m.files {
+			if strings.HasPrefix(p, oldPrefix) {
+				newPath := newPrefix + strings.TrimPrefix(p, oldPrefix)
+				delete(m.files, p)
+				m.files[newPath] = n
+			}
+		}
+	}
+
+	return nil
+}
+
 // Lstat returns file info without following symlinks
 func (m *MemoryFS) Lstat(name string) (os.FileInfo, error) {
 	m.mu.RLock()

@@ -47,6 +47,10 @@ func (o *osFS) RemoveAll(path string) error {
 	return os.RemoveAll(path)
 }
 
+func (o *osFS) Rename(oldpath, newpath string) error {
+	return os.Rename(oldpath, newpath)
+}
+
 func (o *osFS) Lstat(name string) (fs.FileInfo, error) {
 	return os.Lstat(name)
 }
