@@ -1,0 +1,139 @@
+package operations
+
+import (
+	"github.com/arthur-debert/dodot/pkg/handlers"
+	"github.com/arthur-debert/dodot/pkg/types"
+)
+
+// OperationType represents the fundamental operations that dodot performs.
+// This is the core insight: dodot only does 4 things, everything else is orchestration.
+type OperationType int
+
+const (
+	// CreateDataLink creates a link in the datastore pointing to a source file.
+	// This is used by symlink, path, and shell handlers to stage files.
+	CreateDataLink OperationType = iota
+
+	// CreateUserLink creates a user-visible symlink pointing to the datastore.
+	// This is the final step for symlink handler to make files accessible.
+	CreateUserLink
+
+	// RunCommand executes a command and records completion with a sentinel.
+	// This is used by install and homebrew handlers for provisioning.
+	RunCommand
+
+	// CheckSentinel queries if an operation has been completed.
+	// This prevents re-running expensive operations.
+	CheckSentinel
+)
+
+// Operation represents a single atomic action to be performed.
+// Operations are the bridge between handlers (which understand file patterns)
+// and the datastore (which only knows how to perform these 4 operations).
+type Operation struct {
+	Type     OperationType
+	Pack     string
+	Handler  string
+	Source   string                 // For link operations: source file path
+	Target   string                 // For link operations: target path
+	Command  string                 // For RunCommand: command to execute
+	Sentinel string                 // For RunCommand/CheckSentinel: completion marker
+	Metadata map[string]interface{} // Handler-specific data for customization
+}
+
+// SimpleDataStore defines the minimal interface for dodot's storage needs.
+// This replaces the current 20+ method interface with just 4 operations.
+// The simplicity is intentional - handlers should contain logic, not the storage layer.
+type SimpleDataStore interface {
+	// CreateDataLink links a source file into the datastore structure.
+	// Returns the path to the created link in the datastore.
+	// This is step 1 for handlers that need to stage files.
+	CreateDataLink(pack, handlerName, sourceFile string) (datastorePath string, err error)
+
+	// CreateUserLink creates a user-visible symlink.
+	// This is step 2 for the symlink handler to make files accessible.
+	// Other handlers don't need this - their files are accessed via shell init.
+	CreateUserLink(datastorePath, userPath string) error
+
+	// RunAndRecord executes a command and records completion with a sentinel.
+	// This is idempotent - if the sentinel exists, the command is not re-run.
+	// Used by provisioning handlers (install, homebrew) to track completion.
+	RunAndRecord(pack, handlerName, command, sentinel string) error
+
+	// HasSentinel checks if an operation has been completed.
+	// This enables idempotent operations and status reporting.
+	HasSentinel(pack, handlerName, sentinel string) (bool, error)
+}
+
+// OperationResult captures the outcome of executing an operation.
+// This is used for status reporting and dry-run output.
+type OperationResult struct {
+	Operation Operation
+	Success   bool
+	Message   string
+	Error     error
+}
+
+// HandlerMetadata provides UI/UX information about a handler.
+// This separates presentation concerns from operation logic.
+type HandlerMetadata struct {
+	Description     string // Human-readable description
+	RequiresConfirm bool   // Whether operations need user confirmation
+	CanRunMultiple  bool   // Whether handler supports multiple executions
+}
+
+// Handler is the simplified interface that all handlers implement.
+// The key insight: handlers are just data transformers, not orchestrators.
+type Handler interface {
+	// Core identification
+	Name() string
+	Category() handlers.HandlerCategory
+
+	// Core responsibility: transform file matches to operations
+	// This is the heart of the simplification - handlers just declare
+	// what operations they need, not how to perform them.
+	ToOperations(matches []types.RuleMatch) ([]Operation, error)
+
+	// Metadata for UI/UX
+	GetMetadata() HandlerMetadata
+
+	// Optional customization points with sensible defaults.
+	// Most handlers won't need to implement these.
+	GetClearConfirmation(ctx types.ClearContext) *ConfirmationRequest
+	FormatClearedItem(item types.ClearedItem, dryRun bool) string
+	ValidateOperations(ops []Operation) error
+	GetStateDirectoryName() string
+}
+
+// ConfirmationRequest represents a request for user confirmation.
+// This allows handlers like homebrew to customize their confirmation flow.
+type ConfirmationRequest struct {
+	ID          string   // Unique identifier for the confirmation
+	Title       string   // Question to ask the user
+	Description string   // Additional context
+	Items       []string // List of items affected (e.g., packages to uninstall)
+}
+
+// Confirmer is a simple interface for user confirmations.
+// This will be properly defined in types package in phase 3.
+type Confirmer interface {
+	RequestConfirmation(id, title, description string, items ...string) bool
+}
+
+// BaseHandler provides default implementations for optional handler methods.
+// This is crucial for keeping handlers simple - they only override what they need.
+type BaseHandler struct {
+	name     string
+	category handlers.HandlerCategory
+}
+
+func (h *BaseHandler) Name() string                       { return h.name }
+func (h *BaseHandler) Category() handlers.HandlerCategory { return h.category }
+
+// Default implementations return empty/nil to use system defaults
+func (h *BaseHandler) GetClearConfirmation(ctx types.ClearContext) *ConfirmationRequest {
+	return nil
+}
+func (h *BaseHandler) FormatClearedItem(item types.ClearedItem, dryRun bool) string { return "" }
+func (h *BaseHandler) ValidateOperations(ops []Operation) error                     { return nil }
+func (h *BaseHandler) GetStateDirectoryName() string                                { return "" }
