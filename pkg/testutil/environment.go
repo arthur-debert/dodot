@@ -489,3 +489,19 @@ func (d *realDataStore) GetProvisioningHandlers(packName string) ([]string, erro
 func (d *realDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
 	return nil, nil
 }
+
+// Generic state management methods
+func (d *realDataStore) StoreState(packName, handlerName string, state interface{}) error {
+	// For testing, just return nil
+	return nil
+}
+
+func (d *realDataStore) RemoveState(packName, handlerName string) error {
+	// For testing, just return nil
+	return nil
+}
+
+func (d *realDataStore) GetState(packName, handlerName string) (interface{}, error) {
+	// For testing, just return nil
+	return nil, nil
+}

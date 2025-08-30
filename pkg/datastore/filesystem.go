@@ -502,3 +502,54 @@ func isProvisioningHandler(handlerName string) bool {
 		return false
 	}
 }
+
+// Generic state management implementation
+
+// StoreState saves arbitrary state for a handler in a pack
+// For now, this routes to the existing handler-specific methods
+// In the future, we'll have a unified state storage mechanism
+func (s *filesystemDataStore) StoreState(packName, handlerName string, state interface{}) error {
+	// TODO: Implement generic state storage
+	// For now, return error to indicate not yet implemented
+	return fmt.Errorf("generic StoreState not yet implemented for handler %s", handlerName)
+}
+
+// RemoveState removes all state for a handler in a pack
+// This is the unified method that will replace handler-specific removal
+func (s *filesystemDataStore) RemoveState(packName, handlerName string) error {
+	// Route to appropriate removal method based on handler type
+	switch handlerName {
+	case "symlink":
+		// Symlinks are stored as actual symlinks in the pack's symlinks directory
+		symlinkDir := s.paths.PackHandlerDir(packName, "symlinks")
+		return s.fs.RemoveAll(symlinkDir)
+
+	case "shell_profile":
+		// Shell profiles are stored in the shell_profiles directory
+		profileDir := s.paths.PackHandlerDir(packName, "shell_profiles")
+		return s.fs.RemoveAll(profileDir)
+
+	case "path":
+		// PATH entries are stored in the paths directory
+		pathDir := s.paths.PackHandlerDir(packName, "paths")
+		return s.fs.RemoveAll(pathDir)
+
+	case "install", "homebrew":
+		// Provisioning handlers store their state differently
+		// For now, we'll handle them through the existing provisioning paths
+		stateDir := s.paths.PackHandlerDir(packName, handlerName)
+		return s.fs.RemoveAll(stateDir)
+
+	default:
+		// Unknown handler - no state to remove
+		return nil
+	}
+}
+
+// GetState retrieves state for a handler in a pack
+// For now, this routes to the existing handler-specific methods
+func (s *filesystemDataStore) GetState(packName, handlerName string) (interface{}, error) {
+	// TODO: Implement generic state retrieval
+	// For now, return error to indicate not yet implemented
+	return nil, fmt.Errorf("generic GetState not yet implemented for handler %s", handlerName)
+}

@@ -4,22 +4,22 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	
+
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // MockDataStore provides a mock implementation of types.DataStore for testing
 type MockDataStore struct {
 	mu            sync.RWMutex
-	links         map[string]string              // pack:source -> target
-	paths         map[string][]string            // pack -> paths
-	provisioning  map[string]map[string]string   // pack:handler -> checksum
-	shellProfiles map[string]string              // pack:script -> status
-	
+	links         map[string]string            // pack:source -> target
+	paths         map[string][]string          // pack -> paths
+	provisioning  map[string]map[string]string // pack:handler -> checksum
+	shellProfiles map[string]string            // pack:script -> status
+
 	// Error injection
-	errorOn      string
+	errorOn       string
 	errorToReturn error
-	
+
 	// Call tracking
 	calls []string
 }
@@ -39,17 +39,17 @@ func NewMockDataStore() *MockDataStore {
 func (m *MockDataStore) Link(pack, sourceFile string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("Link(%s,%s)", pack, sourceFile))
-	
+
 	if m.errorOn == "Link" {
 		return "", m.errorToReturn
 	}
-	
+
 	key := fmt.Sprintf("%s:%s", pack, sourceFile)
 	target := fmt.Sprintf("/home/.%s", sourceFile)
 	m.links[key] = target
-	
+
 	return target, nil
 }
 
@@ -57,16 +57,16 @@ func (m *MockDataStore) Link(pack, sourceFile string) (string, error) {
 func (m *MockDataStore) Unlink(pack, sourceFile string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("Unlink(%s,%s)", pack, sourceFile))
-	
+
 	if m.errorOn == "Unlink" {
 		return m.errorToReturn
 	}
-	
+
 	key := fmt.Sprintf("%s:%s", pack, sourceFile)
 	delete(m.links, key)
-	
+
 	return nil
 }
 
@@ -74,13 +74,13 @@ func (m *MockDataStore) Unlink(pack, sourceFile string) error {
 func (m *MockDataStore) GetStatus(pack, sourceFile string) (types.Status, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("GetStatus(%s,%s)", pack, sourceFile))
-	
+
 	if m.errorOn == "GetStatus" {
 		return types.Status{}, m.errorToReturn
 	}
-	
+
 	key := fmt.Sprintf("%s:%s", pack, sourceFile)
 	if _, exists := m.links[key]; exists {
 		return types.Status{
@@ -88,7 +88,7 @@ func (m *MockDataStore) GetStatus(pack, sourceFile string) (types.Status, error)
 			Message: "Linked",
 		}, nil
 	}
-	
+
 	return types.Status{
 		State:   types.StatusStateMissing,
 		Message: "Not linked",
@@ -99,13 +99,13 @@ func (m *MockDataStore) GetStatus(pack, sourceFile string) (types.Status, error)
 func (m *MockDataStore) AddToPath(pack, dirPath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("AddToPath(%s,%s)", pack, dirPath))
-	
+
 	if m.errorOn == "AddToPath" {
 		return m.errorToReturn
 	}
-	
+
 	m.paths[pack] = append(m.paths[pack], dirPath)
 	return nil
 }
@@ -114,19 +114,19 @@ func (m *MockDataStore) AddToPath(pack, dirPath string) error {
 func (m *MockDataStore) NeedsProvisioning(pack, sentinelName, checksum string) (bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("NeedsProvisioning(%s,%s,%s)", pack, sentinelName, checksum))
-	
+
 	if m.errorOn == "NeedsProvisioning" {
 		return false, m.errorToReturn
 	}
-	
+
 	if packMap, exists := m.provisioning[pack]; exists {
 		if storedChecksum, exists := packMap[sentinelName]; exists {
 			return storedChecksum != checksum, nil
 		}
 	}
-	
+
 	return true, nil // Not provisioned yet
 }
 
@@ -134,17 +134,17 @@ func (m *MockDataStore) NeedsProvisioning(pack, sentinelName, checksum string) (
 func (m *MockDataStore) RecordProvisioning(pack, sentinelName, checksum string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("RecordProvisioning(%s,%s,%s)", pack, sentinelName, checksum))
-	
+
 	if m.errorOn == "RecordProvisioning" {
 		return m.errorToReturn
 	}
-	
+
 	if _, exists := m.provisioning[pack]; !exists {
 		m.provisioning[pack] = make(map[string]string)
 	}
-	
+
 	m.provisioning[pack][sentinelName] = checksum
 	return nil
 }
@@ -160,7 +160,7 @@ func (m *MockDataStore) WithError(method string, err error) *MockDataStore {
 func (m *MockDataStore) WithLink(pack, source, target string) *MockDataStore {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	key := fmt.Sprintf("%s:%s", pack, source)
 	m.links[key] = target
 	return m
@@ -177,17 +177,17 @@ func (m *MockDataStore) WithBrokenLink(pack, source, target string) *MockDataSto
 func (m *MockDataStore) WithProvisioningState(pack, handler string, provisioned bool) *MockDataStore {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	if _, exists := m.provisioning[pack]; !exists {
 		m.provisioning[pack] = make(map[string]string)
 	}
-	
+
 	if provisioned {
 		m.provisioning[pack][handler] = "mock-checksum"
 	} else {
 		delete(m.provisioning[pack], handler)
 	}
-	
+
 	return m
 }
 
@@ -195,7 +195,7 @@ func (m *MockDataStore) WithProvisioningState(pack, handler string, provisioned 
 func (m *MockDataStore) GetCalls() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	calls := make([]string, len(m.calls))
 	copy(calls, m.calls)
 	return calls
@@ -205,13 +205,13 @@ func (m *MockDataStore) GetCalls() []string {
 func (m *MockDataStore) AddToShellProfile(pack, scriptPath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("AddToShellProfile(%s,%s)", pack, scriptPath))
-	
+
 	if m.errorOn == "AddToShellProfile" {
 		return m.errorToReturn
 	}
-	
+
 	key := fmt.Sprintf("%s:%s", pack, scriptPath)
 	m.shellProfiles[key] = "added"
 	return nil
@@ -226,13 +226,13 @@ func (m *MockDataStore) GetSymlinkStatus(pack, sourceFile string) (types.Status,
 func (m *MockDataStore) GetPathStatus(pack, dirPath string) (types.Status, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("GetPathStatus(%s,%s)", pack, dirPath))
-	
+
 	if m.errorOn == "GetPathStatus" {
 		return types.Status{}, m.errorToReturn
 	}
-	
+
 	if paths, exists := m.paths[pack]; exists {
 		for _, p := range paths {
 			if p == dirPath {
@@ -243,7 +243,7 @@ func (m *MockDataStore) GetPathStatus(pack, dirPath string) (types.Status, error
 			}
 		}
 	}
-	
+
 	return types.Status{
 		State:   types.StatusStateMissing,
 		Message: "Not in PATH",
@@ -254,13 +254,13 @@ func (m *MockDataStore) GetPathStatus(pack, dirPath string) (types.Status, error
 func (m *MockDataStore) GetShellProfileStatus(pack, scriptPath string) (types.Status, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("GetShellProfileStatus(%s,%s)", pack, scriptPath))
-	
+
 	if m.errorOn == "GetShellProfileStatus" {
 		return types.Status{}, m.errorToReturn
 	}
-	
+
 	key := fmt.Sprintf("%s:%s", pack, scriptPath)
 	if _, exists := m.shellProfiles[key]; exists {
 		return types.Status{
@@ -268,7 +268,7 @@ func (m *MockDataStore) GetShellProfileStatus(pack, scriptPath string) (types.St
 			Message: "Added to shell profile",
 		}, nil
 	}
-	
+
 	return types.Status{
 		State:   types.StatusStateMissing,
 		Message: "Not in shell profile",
@@ -279,13 +279,13 @@ func (m *MockDataStore) GetShellProfileStatus(pack, scriptPath string) (types.St
 func (m *MockDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksum string) (types.Status, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("GetProvisioningStatus(%s,%s,%s)", pack, sentinelName, currentChecksum))
-	
+
 	if m.errorOn == "GetProvisioningStatus" {
 		return types.Status{}, m.errorToReturn
 	}
-	
+
 	if packMap, exists := m.provisioning[pack]; exists {
 		if storedChecksum, exists := packMap[sentinelName]; exists {
 			if storedChecksum == currentChecksum {
@@ -300,7 +300,7 @@ func (m *MockDataStore) GetProvisioningStatus(pack, sentinelName, currentChecksu
 			}, nil
 		}
 	}
-	
+
 	return types.Status{
 		State:   types.StatusStateMissing,
 		Message: "Not provisioned",
@@ -317,13 +317,13 @@ func (m *MockDataStore) GetBrewStatus(pack, brewfilePath, currentChecksum string
 func (m *MockDataStore) DeleteProvisioningState(packName, handlerName string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("DeleteProvisioningState(%s,%s)", packName, handlerName))
-	
+
 	if m.errorOn == "DeleteProvisioningState" {
 		return m.errorToReturn
 	}
-	
+
 	// For mock, we'll just clear all provisioning for the pack/handler combination
 	if packMap, exists := m.provisioning[packName]; exists {
 		for sentinel := range packMap {
@@ -332,7 +332,7 @@ func (m *MockDataStore) DeleteProvisioningState(packName, handlerName string) er
 			}
 		}
 	}
-	
+
 	return nil
 }
 
@@ -340,13 +340,13 @@ func (m *MockDataStore) DeleteProvisioningState(packName, handlerName string) er
 func (m *MockDataStore) GetProvisioningHandlers(packName string) ([]string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("GetProvisioningHandlers(%s)", packName))
-	
+
 	if m.errorOn == "GetProvisioningHandlers" {
 		return nil, m.errorToReturn
 	}
-	
+
 	handlers := []string{}
 	if packMap, exists := m.provisioning[packName]; exists {
 		handlerSet := make(map[string]bool)
@@ -358,12 +358,12 @@ func (m *MockDataStore) GetProvisioningHandlers(packName string) ([]string, erro
 			}
 			handlerSet[handler] = true
 		}
-		
+
 		for handler := range handlerSet {
 			handlers = append(handlers, handler)
 		}
 	}
-	
+
 	return handlers, nil
 }
 
@@ -371,13 +371,13 @@ func (m *MockDataStore) GetProvisioningHandlers(packName string) ([]string, erro
 func (m *MockDataStore) ListProvisioningState(packName string) (map[string][]string, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	m.calls = append(m.calls, fmt.Sprintf("ListProvisioningState(%s)", packName))
-	
+
 	if m.errorOn == "ListProvisioningState" {
 		return nil, m.errorToReturn
 	}
-	
+
 	result := make(map[string][]string)
 	if packMap, exists := m.provisioning[packName]; exists {
 		for sentinel := range packMap {
@@ -388,15 +388,85 @@ func (m *MockDataStore) ListProvisioningState(packName string) (map[string][]str
 			result[handler] = append(result[handler], sentinel)
 		}
 	}
-	
+
 	return result, nil
+}
+
+// Generic state management methods
+
+// StoreState implements the DataStore interface
+func (m *MockDataStore) StoreState(packName, handlerName string, state interface{}) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("StoreState:%s:%s", packName, handlerName))
+
+	if m.errorOn == "StoreState" && m.errorToReturn != nil {
+		return m.errorToReturn
+	}
+
+	// For now, just track the call
+	return nil
+}
+
+// RemoveState implements the DataStore interface
+func (m *MockDataStore) RemoveState(packName, handlerName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("RemoveState:%s:%s", packName, handlerName))
+
+	if m.errorOn == "RemoveState" && m.errorToReturn != nil {
+		return m.errorToReturn
+	}
+
+	// Simulate removing state based on handler type
+	switch handlerName {
+	case "symlink":
+		// Remove all links for this pack
+		for key := range m.links {
+			if strings.HasPrefix(key, packName+":") {
+				delete(m.links, key)
+			}
+		}
+	case "path":
+		// Remove all paths for this pack
+		delete(m.paths, packName)
+	case "shell_profile":
+		// Remove all shell profiles for this pack
+		for key := range m.shellProfiles {
+			if strings.HasPrefix(key, packName+":") {
+				delete(m.shellProfiles, key)
+			}
+		}
+	case "install", "homebrew":
+		// Remove provisioning state
+		delete(m.provisioning, packName)
+	}
+
+	return nil
+}
+
+// GetState implements the DataStore interface
+func (m *MockDataStore) GetState(packName, handlerName string) (interface{}, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("GetState:%s:%s", packName, handlerName))
+
+	if m.errorOn == "GetState" && m.errorToReturn != nil {
+		return nil, m.errorToReturn
+	}
+
+	// For now, just return nil
+	return nil, nil
 }
 
 // Reset clears all state and call history
 func (m *MockDataStore) Reset() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	
+
 	m.links = make(map[string]string)
 	m.paths = make(map[string][]string)
 	m.provisioning = make(map[string]map[string]string)

@@ -1,0 +1,103 @@
+# Testing Gaps in dodot Commands
+
+This document identifies testing gaps discovered during command audit, explaining why we thought some commands were working when they weren't.
+
+## Critical Testing Gaps
+
+### Commands Without Tests
+1. **genconfig** - No integration tests at all
+2. **deprovision** - No test file exists
+
+### Commands with Insufficient Tests
+1. **initialize** - Has basic tests but doesn't verify the created pack actually works
+2. **fill** - Tests don't verify generated files work with other commands
+
+## Why We Missed Broken Commands
+
+The `init` and `fill` commands appeared to work because:
+1. They had test files that passed
+2. Tests only verified surface behavior (files created) not functionality
+3. Tests didn't check if created files actually worked with handlers
+4. No end-to-end tests existed to catch integration issues
+
+## Recommended Testing Strategy
+
+### 1. Integration Test Requirements
+Every command should have tests that:
+- Verify core functionality works end-to-end
+- Test integration with other commands
+- Use real handler implementations (not mocks)
+- Verify file contents, not just existence
+
+### 2. End-to-End Test Scenarios
+Add tests for complete workflows:
+```
+# Pack lifecycle test
+init → fill → adopt files → link → provision → status → deprovision → unlink
+
+# File adoption test  
+adopt → link → verify symlinks → unlink → verify cleanup
+
+# Configuration test
+genconfig → edit config → link with custom rules → verify behavior
+```
+
+### 3. Real Filesystem Tests
+Current tests use memory FS which can hide issues:
+- Symlink resolution differences
+- Permission handling
+- Path separator issues
+- Case sensitivity
+
+### 4. Handler Verification Tests
+Tests should verify handlers actually work:
+- Shell profiles are sourceable
+- Homebrew files are valid
+- Install scripts are executable
+- PATH modifications work
+
+## Immediate Actions
+
+1. **Add missing tests**:
+   - `genconfig` command tests
+   - `deprovision` command tests
+
+2. **Enhance existing tests**:
+   - `init`: Verify created pack works with link/provision
+   - `fill`: Verify templates work with handlers
+   
+3. **Add integration test suite**:
+   - Full workflow tests
+   - Cross-command verification
+   - Real filesystem validation
+
+## Test Coverage Verification
+
+Run coverage to identify untested code:
+```bash
+./scripts/test-with-cov
+```
+
+Look for:
+- Commands with < 80% coverage
+- Error paths not tested
+- Integration points not covered
+
+## Preventing Future Issues
+
+1. **Test Review Checklist**:
+   - Does test verify actual functionality?
+   - Are error cases covered?
+   - Is integration with other components tested?
+   - Would test catch the "TODO: Re-implement" issue?
+
+2. **CI Requirements**:
+   - Minimum coverage thresholds
+   - Integration test suite must pass
+   - End-to-end tests for releases
+
+3. **Testing Philosophy**:
+   - Test behavior, not implementation
+   - Verify user-visible outcomes
+   - Include negative test cases
+   - Test the full stack when possible

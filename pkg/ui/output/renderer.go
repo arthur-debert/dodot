@@ -9,9 +9,9 @@ import (
 	"text/template"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/lipbalm"
 	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/charmbracelet/lipgloss"
 )
 

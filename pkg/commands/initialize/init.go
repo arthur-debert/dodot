@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
@@ -19,45 +20,8 @@ type InitPackOptions struct {
 	DotfilesRoot string
 	// PackName is the name of the new pack to create.
 	PackName string
-}
-
-// InitPack creates a new pack directory with template files and configuration.
-// templateFile holds basic template information
-type templateFile struct {
-	filename    string
-	content     string
-	mode        uint32
-	handlerName string
-}
-
-// getBasicTemplates returns basic template files for pack initialization
-func getBasicTemplates(packName string) []templateFile {
-	return []templateFile{
-		{
-			filename:    "aliases.sh",
-			content:     "# Shell aliases for " + packName + " pack\n# Add your aliases below\n\n# Example:\n# alias ll='ls -la'\n",
-			mode:        0644,
-			handlerName: "shell",
-		},
-		{
-			filename:    "install.sh",
-			content:     "#!/usr/bin/env bash\n# Installation script for " + packName + " pack\n# This script runs once during 'dodot install'\n\necho \"Installing " + packName + " pack...\"\n\n# Add your installation commands here\n",
-			mode:        0755,
-			handlerName: "provision",
-		},
-		{
-			filename:    "Brewfile",
-			content:     "# Homebrew dependencies for " + packName + " pack\n# This file is processed during 'dodot install'\n\n# Add your brew dependencies:\n# brew \"git\"\n# cask \"visual-studio-code\"\n",
-			mode:        0644,
-			handlerName: "homebrew",
-		},
-		{
-			filename:    "path.sh",
-			content:     "# PATH modifications for " + packName + " pack\n# Add directories to PATH below\n\n# Example:\n# export PATH=\"$HOME/.local/bin:$PATH\"\n",
-			mode:        0644,
-			handlerName: "path",
-		},
-	}
+	// FileSystem is the filesystem to use (optional, defaults to OS filesystem)
+	FileSystem types.FS
 }
 
 func InitPack(opts InitPackOptions) (*types.InitResult, error) {
@@ -74,7 +38,13 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 		return nil, errors.Newf(errors.ErrInvalidInput, "pack name contains invalid characters: %s", opts.PackName)
 	}
 
-	// 2. Build pack path and check if it exists
+	// 2. Use provided filesystem or default
+	fs := opts.FileSystem
+	if fs == nil {
+		fs = filesystem.NewOS()
+	}
+
+	// 3. Build pack path and check if it exists
 	pathsManager, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to initialize paths")
@@ -82,15 +52,12 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 	packPath := pathsManager.PackPath(opts.PackName)
 
 	// Check if pack already exists
-	if _, err := os.Stat(packPath); err == nil {
+	if _, err := fs.Stat(packPath); err == nil {
 		return nil, errors.Newf(errors.ErrPackExists, "pack %q already exists", opts.PackName)
 	}
 
-	// 3. Create filesystem instance for file operations
-	fs := filesystem.NewOS()
-	cfg := config.Default()
-
 	// 4. Create the pack directory
+	cfg := config.Default()
 	log.Info().Str("directory", packPath).Msg("Creating pack directory")
 	if err := fs.MkdirAll(packPath, os.FileMode(cfg.FilePermissions.Directory)); err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create pack directory")
@@ -98,27 +65,14 @@ func InitPack(opts InitPackOptions) (*types.InitResult, error) {
 
 	var filesCreated []string
 
-	// 5. Create .dodot.toml configuration file
-	configContent := `# dodot configuration for ` + opts.PackName + ` pack
-# See https://github.com/arthur-debert/dodot for documentation
+	// 5. Create pack configuration file
+	// Get the default config content and comment it out
+	configContent := config.GetUserDefaultsContent()
+	commentedConfig := commentOutConfigValues(configContent)
 
-# Uncomment to skip this pack during deployment
-# skip = true
-
-# File-specific rules
-[files]
-# Ignore specific files
-# "*.bak" = "ignore"
-# "*.tmp" = "ignore"
-
-# Override default handler for specific files
-# "my-script.sh" = "provision"
-# "my-aliases.sh" = "profile"
-`
-
-	configPath := pathsManager.PackConfigPath(opts.PackName)
+	configPath := filepath.Join(packPath, ".dodot.toml")
 	log.Info().Str("file", ".dodot.toml").Msg("Creating configuration file")
-	if err := fs.WriteFile(configPath, []byte(configContent), os.FileMode(cfg.FilePermissions.File)); err != nil {
+	if err := fs.WriteFile(configPath, []byte(commentedConfig), 0644); err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create configuration file")
 	}
 	filesCreated = append(filesCreated, ".dodot.toml")
@@ -131,17 +85,21 @@ This pack was created by dodot init. It contains configuration files and scripts
 for the ` + opts.PackName + ` environment.
 
 Files in this pack:
-- .dodot.toml     - Pack configuration
-- aliases.sh      - Shell aliases (sourced in shell profile)
-- install.sh      - Installation script (runs once during 'dodot install')
-- Brewfile        - Homebrew dependencies (processed during 'dodot install')
-- path.sh         - PATH modifications (sourced in shell profile)
+- .dodot.toml     - Pack configuration  
 - README.txt      - This file
 
+The following template files will be created based on your configuration:
+- Shell configuration files (aliases, profile, etc.)
+- Installation script (if needed)
+- Homebrew dependencies file (if needed)
+- PATH modifications (if needed)
+
 Getting Started:
-1. Add your dotfiles to this directory
-2. Edit the template files to add your configurations
-3. Run 'dodot deploy ` + opts.PackName + `' to deploy this pack
+1. Edit .dodot.toml to customize handler mappings if needed
+2. Run 'dodot fill ` + opts.PackName + `' to create template files
+3. Add your dotfiles to this directory
+4. Edit the template files to add your configurations
+5. Run 'dodot link ` + opts.PackName + `' to deploy this pack
 
 For more information, see: https://github.com/arthur-debert/dodot
 `
@@ -153,22 +111,23 @@ For more information, see: https://github.com/arthur-debert/dodot
 	}
 	filesCreated = append(filesCreated, "README.txt")
 
-	// 7. Get all template files for the pack
-	// TODO: Re-implement using rules system
-	// For now, create basic template files manually
-	templates := getBasicTemplates(opts.PackName)
-
-	// 8. Create each template file
-	for _, template := range templates {
-		templatePath := filepath.Join(packPath, template.filename)
-		log.Info().Str("file", template.filename).Str("handler", template.handlerName).Msg("Creating template file")
-		if err := fs.WriteFile(templatePath, []byte(template.content), os.FileMode(template.mode)); err != nil {
-			return nil, errors.Wrapf(err, errors.ErrInternal, "failed to create template file %s", template.filename)
-		}
-		filesCreated = append(filesCreated, template.filename)
+	// 7. Use fill command to create template files
+	log.Info().Msg("Creating template files using fill command")
+	fillOpts := fill.FillPackOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackName:     opts.PackName,
+		FileSystem:   fs,
 	}
 
-	// 9. Return result
+	fillResult, err := fill.FillPack(fillOpts)
+	if err != nil {
+		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to fill pack with template files")
+	}
+
+	// Add the files created by fill command
+	filesCreated = append(filesCreated, fillResult.FilesCreated...)
+
+	// 8. Return result
 	result := &types.InitResult{
 		PackName:     opts.PackName,
 		Path:         packPath,
@@ -185,4 +144,38 @@ For more information, see: https://github.com/arthur-debert/dodot
 		Int("filesCreated", len(result.FilesCreated)).
 		Msg("Command finished")
 	return result, nil
+}
+
+// commentOutConfigValues takes the TOML content and comments out all non-comment, non-blank lines
+// that contain configuration values (assignments)
+func commentOutConfigValues(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		// Keep blank lines as-is
+		if trimmed == "" {
+			result = append(result, line)
+			continue
+		}
+
+		// Keep lines that are already comments
+		if strings.HasPrefix(trimmed, "#") {
+			result = append(result, line)
+			continue
+		}
+
+		// Keep section headers (e.g., [pack], [symlink]) as-is
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			result = append(result, line)
+			continue
+		}
+
+		// Comment out configuration value lines
+		result = append(result, "# "+line)
+	}
+
+	return strings.Join(result, "\n")
 }
