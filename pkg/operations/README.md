@@ -70,11 +70,11 @@ go test ./pkg/handlers/path/simplified_test.go
 - Maintain backward compatibility through adapters
 - Demonstrate consistent 70-80% code reduction across all handlers
 
-### Migration Order:
-1. **symlink** - Most used handler, demonstrates CreateDataLink + CreateUserLink pattern
-2. **shell_profile** - Similar to path, demonstrates shell integration patterns
-3. **install** - First provisioning handler, demonstrates RunCommand + CheckSentinel
-4. **homebrew** - Complex provisioning with external tool integration
+### Migration Progress:
+1. ✅ **symlink** - 315→113 lines (64% reduction) - Two-operation pattern working
+2. 🚧 **shell_profile** - Similar to path, demonstrates shell integration patterns
+3. ⏳ **install** - First provisioning handler, demonstrates RunCommand + CheckSentinel
+4. ⏳ **homebrew** - Complex provisioning with external tool integration
 
 ### Success Criteria:
 - All handlers work with DODOT_USE_OPERATIONS=true

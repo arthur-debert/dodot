@@ -19,7 +19,7 @@ func IsHandlerSimplified(handlerName string) bool {
 	// Phase 1: Path handler (completed)
 	// Phase 2: Migrating remaining handlers
 	switch handlerName {
-	case HandlerPath, HandlerSymlink:
+	case HandlerPath, HandlerSymlink, HandlerShell:
 		return true
 	default:
 		return false

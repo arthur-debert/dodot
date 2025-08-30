@@ -262,6 +262,25 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		}
 
 		clearedItems = append(clearedItems, clearedItem)
+
+	case HandlerShell:
+		// Shell handler stores scripts in the datastore
+		shellDir := fmt.Sprintf("~/.local/share/dodot/data/%s/shell", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "shell_state",
+			Path:        shellDir,
+			Description: "Shell profile sources will be removed",
+		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		} else if ctx.DryRun {
+			clearedItem.Description = "Would remove shell profile sources"
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
 	}
 
 	// Actually remove if not dry run
