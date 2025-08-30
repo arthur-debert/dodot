@@ -89,7 +89,7 @@ type PackExecutionResult struct {
 }
 
 // HandlerResult tracks the result of a single Handler execution
-// This is the atomic unit - if ANY action in a Handler fails, the Handler fails
+// This is the atomic unit - if ANY operation in a Handler fails, the Handler fails
 type HandlerResult struct {
 	// HandlerName is the name of the Handler (symlink, homebrew, etc.)
 	HandlerName string
@@ -283,7 +283,7 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
 				displayMessage := generateHandlerMessage(pur.HandlerName, filePath, displayStatus, lastExecuted)
 
-				// Get additional info based on Handler type and action data
+				// Get additional info based on Handler type and operation data
 				additionalInfo := GetHandlerAdditionalInfo(pur.HandlerName)
 
 				// Extract handler-specific information based on handler type

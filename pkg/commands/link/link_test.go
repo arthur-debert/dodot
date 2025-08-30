@@ -258,7 +258,7 @@ func TestLinkPacks_EmptyDotfiles_Orchestration(t *testing.T) {
 	assert.NotNil(t, result, "should return execution context")
 	assert.Equal(t, "link", result.Command, "command should be link")
 	assert.Len(t, result.PackResults, 0, "should have no pack results for empty dotfiles")
-	assert.Equal(t, 0, result.TotalHandlers, "should have no actions for empty dotfiles")
+	assert.Equal(t, 0, result.TotalHandlers, "should have no handlers for empty dotfiles")
 }
 
 func TestLinkPacks_ExecutionContext_Orchestration(t *testing.T) {
@@ -291,10 +291,10 @@ func TestLinkPacks_ExecutionContext_Orchestration(t *testing.T) {
 	assert.False(t, result.DryRun, "dry run should match input")
 	assert.NotZero(t, result.StartTime, "start time should be set")
 	assert.NotZero(t, result.EndTime, "end time should be set")
-	assert.GreaterOrEqual(t, result.TotalHandlers, 0, "total actions should be non-negative")
-	assert.GreaterOrEqual(t, result.CompletedHandlers, 0, "completed actions should be non-negative")
-	assert.GreaterOrEqual(t, result.FailedHandlers, 0, "failed actions should be non-negative")
-	assert.GreaterOrEqual(t, result.SkippedHandlers, 0, "skipped actions should be non-negative")
+	assert.GreaterOrEqual(t, result.TotalHandlers, 0, "total handlers should be non-negative")
+	assert.GreaterOrEqual(t, result.CompletedHandlers, 0, "completed handlers should be non-negative")
+	assert.GreaterOrEqual(t, result.FailedHandlers, 0, "failed handlers should be non-negative")
+	assert.GreaterOrEqual(t, result.SkippedHandlers, 0, "skipped handlers should be non-negative")
 
 	// Verify pack results structure
 	assert.NotNil(t, result.PackResults, "pack results should not be nil")

@@ -331,7 +331,7 @@ func TestProvisionPacks_EmptyDotfiles_Orchestration(t *testing.T) {
 	assert.NotNil(t, result, "should return execution context")
 	assert.Equal(t, "provision", result.Command, "command should be provision")
 	assert.Len(t, result.PackResults, 0, "should have no pack results for empty dotfiles")
-	assert.Equal(t, 0, result.TotalHandlers, "should have no actions for empty dotfiles")
+	assert.Equal(t, 0, result.TotalHandlers, "should have no handlers for empty dotfiles")
 }
 
 func TestProvisionPacks_ExecutionContext_Orchestration(t *testing.T) {
@@ -365,10 +365,10 @@ func TestProvisionPacks_ExecutionContext_Orchestration(t *testing.T) {
 	assert.False(t, result.DryRun, "dry run should match input")
 	assert.NotZero(t, result.StartTime, "start time should be set")
 	assert.NotZero(t, result.EndTime, "end time should be set")
-	assert.GreaterOrEqual(t, result.TotalHandlers, 0, "total actions should be non-negative")
-	assert.GreaterOrEqual(t, result.CompletedHandlers, 0, "completed actions should be non-negative")
-	assert.GreaterOrEqual(t, result.FailedHandlers, 0, "failed actions should be non-negative")
-	assert.GreaterOrEqual(t, result.SkippedHandlers, 0, "skipped actions should be non-negative")
+	assert.GreaterOrEqual(t, result.TotalHandlers, 0, "total handlers should be non-negative")
+	assert.GreaterOrEqual(t, result.CompletedHandlers, 0, "completed handlers should be non-negative")
+	assert.GreaterOrEqual(t, result.FailedHandlers, 0, "failed handlers should be non-negative")
+	assert.GreaterOrEqual(t, result.SkippedHandlers, 0, "skipped handlers should be non-negative")
 
 	// Verify pack results structure
 	assert.NotNil(t, result.PackResults, "pack results should not be nil")
@@ -423,7 +423,7 @@ func TestProvisionPacks_TwoPhaseIntegration_Orchestration(t *testing.T) {
 	assert.GreaterOrEqual(t, packResult.TotalHandlers, 0, "should have handlers from both phases")
 
 	// Verify the execution context reflects merged state
-	assert.GreaterOrEqual(t, result.TotalHandlers, 0, "total actions should include both phases")
+	assert.GreaterOrEqual(t, result.TotalHandlers, 0, "total handlers should include both phases")
 }
 
 func TestProvisionPacks_ErrorHandling_Orchestration(t *testing.T) {

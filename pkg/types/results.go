@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// OperationStatus defines the state of an operation/action execution
+// OperationStatus defines the state of an operation execution
 type OperationStatus string
 
 const (
