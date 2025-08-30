@@ -62,7 +62,30 @@ go test ./pkg/operations/...
 go test ./pkg/handlers/path/simplified_test.go
 ```
 
-## Next Steps
+## Phase 2 Status 🚧 IN PROGRESS
 
-Phase 2: Migrate remaining handlers
-Phase 3: Simplify DataStore interface and remove adapters
+### Objectives:
+- Migrate all remaining handlers to simplified architecture
+- Each handler should be reduced to ~50-100 lines (data transformation only)
+- Maintain backward compatibility through adapters
+- Demonstrate consistent 70-80% code reduction across all handlers
+
+### Migration Order:
+1. **symlink** - Most used handler, demonstrates CreateDataLink + CreateUserLink pattern
+2. **shell_profile** - Similar to path, demonstrates shell integration patterns
+3. **install** - First provisioning handler, demonstrates RunCommand + CheckSentinel
+4. **homebrew** - Complex provisioning with external tool integration
+
+### Success Criteria:
+- All handlers work with DODOT_USE_OPERATIONS=true
+- Each handler is <100 lines of code
+- All existing tests pass
+- Clear functionality works for all handlers
+- Integration tests demonstrate end-to-end functionality
+
+## Phase 3 (Future)
+
+- Replace DataStore with SimpleDataStore interface (4 methods only)
+- Remove all adapters and legacy code
+- Implement generic state management
+- Full architectural simplification complete

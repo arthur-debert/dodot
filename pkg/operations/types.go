@@ -127,6 +127,14 @@ type BaseHandler struct {
 	category handlers.HandlerCategory
 }
 
+// NewBaseHandler creates a new BaseHandler with the given name and category.
+func NewBaseHandler(name string, category handlers.HandlerCategory) BaseHandler {
+	return BaseHandler{
+		name:     name,
+		category: category,
+	}
+}
+
 func (h *BaseHandler) Name() string                       { return h.name }
 func (h *BaseHandler) Category() handlers.HandlerCategory { return h.category }
 

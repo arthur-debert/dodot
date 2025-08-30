@@ -9,6 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	pathHandler "github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -179,11 +180,13 @@ func RunPipelineWithOperations(opts PipelineOptions) (*types.ExecutionContext, e
 }
 
 // getSimplifiedHandler returns the simplified handler for the given name.
-// This is where we instantiate simplified handlers during phase 1.
+// This is where we instantiate simplified handlers during phase 2.
 func getSimplifiedHandler(handlerName string) operations.Handler {
 	switch handlerName {
 	case operations.HandlerPath:
 		return pathHandler.NewSimplifiedHandler()
+	case operations.HandlerSymlink:
+		return symlink.NewSimplifiedHandler()
 	default:
 		// Other handlers not yet migrated
 		return nil

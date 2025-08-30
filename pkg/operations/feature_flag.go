@@ -10,15 +10,16 @@ func UseSimplifiedHandlers() bool {
 }
 
 // IsHandlerSimplified checks if a specific handler has been migrated.
-// During phase 1, only the path handler is migrated as proof of concept.
+// Phase 2: Migrating all handlers one by one.
 func IsHandlerSimplified(handlerName string) bool {
 	if !UseSimplifiedHandlers() {
 		return false
 	}
 
-	// Phase 1: Only path handler is migrated
+	// Phase 1: Path handler (completed)
+	// Phase 2: Migrating remaining handlers
 	switch handlerName {
-	case HandlerPath:
+	case HandlerPath, HandlerSymlink:
 		return true
 	default:
 		return false
