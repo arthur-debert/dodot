@@ -73,8 +73,8 @@ go test ./pkg/handlers/path/simplified_test.go
 ### Migration Progress:
 1. ✅ **symlink** - 315→113 lines (64% reduction) - Two-operation pattern working
 2. ✅ **shell** - 150→56 lines (63% reduction) - Single CreateDataLink pattern
-3. 🚧 **install** - First provisioning handler, demonstrates RunCommand + CheckSentinel
-4. ⏳ **homebrew** - Complex provisioning with external tool integration
+3. ✅ **install** - 241→83 lines (66% reduction) - RunCommand + CheckSentinel pattern
+4. 🚧 **homebrew** - Complex provisioning with external tool integration
 
 ### Success Criteria:
 - All handlers work with DODOT_USE_OPERATIONS=true

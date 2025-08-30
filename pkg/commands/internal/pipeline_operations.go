@@ -8,6 +8,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	pathHandler "github.com/arthur-debert/dodot/pkg/handlers/path"
 	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
@@ -190,6 +191,8 @@ func getSimplifiedHandler(handlerName string) operations.Handler {
 		return symlink.NewSimplifiedHandler()
 	case operations.HandlerShell:
 		return shell.NewSimplifiedHandler()
+	case operations.HandlerInstall:
+		return install.NewSimplifiedHandler()
 	default:
 		// Other handlers not yet migrated
 		return nil

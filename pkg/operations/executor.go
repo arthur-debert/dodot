@@ -281,6 +281,23 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		}
 
 		clearedItems = append(clearedItems, clearedItem)
+
+	case HandlerInstall:
+		// Install handler stores run records in the datastore
+		installDir := fmt.Sprintf("~/.local/share/dodot/data/%s/install", ctx.Pack.Name)
+
+		clearedItem := types.ClearedItem{
+			Type:        "provision_state",
+			Path:        installDir,
+			Description: "Install run records will be removed",
+		}
+
+		// Format using handler customization
+		if formatted := handler.FormatClearedItem(clearedItem, ctx.DryRun); formatted != "" {
+			clearedItem.Description = formatted
+		}
+
+		clearedItems = append(clearedItems, clearedItem)
 	}
 
 	// Actually remove if not dry run
