@@ -1,0 +1,184 @@
+                        HANDLER SIMPLIFICATION PROPOSAL
+
+
+1. Problem Statement
+
+    The current dodot implementation suffers from significant over-engineering:
+    
+        - DataStore has 20+ handler-specific methods
+        - Each handler contains 200-300+ lines of code
+        - Extensive duplication across handlers
+        - Complex coupling between layers
+        
+    Total complexity exceeds 3000+ lines for what are fundamentally simple operations.
+
+
+2. Core Insight
+
+    dodot performs only four fundamental operations:
+    
+        1. Create links in datastore pointing to source files
+        2. Create links in user directories pointing to datastore
+        3. Execute commands and record completion with sentinels
+        4. Check if operations have been completed
+        
+    Everything else is orchestration around these primitives.
+
+
+3. Proposed Architecture
+
+    
+    3.1 Simple DataStore
+    
+        Replace 20+ methods with just 4 operations:
+        
+            - CreateDataLink: Links source files into datastore structure
+            - CreateUserLink: Creates user-visible symlinks
+            - RunAndRecord: Executes commands and records sentinels
+            - HasSentinel: Checks if operations were completed
+    
+    
+    3.2 Handlers as Data Transformers
+    
+        Handlers become simple transformers from file matches to operations:
+        
+            - Input: RuleMatches from the rules system
+            - Output: List of Operations to perform
+            - Lines of code: 50-100 (down from 200-300+)
+        
+        Handler customization through optional methods:
+        
+            - GetClearConfirmation: Generate confirmation prompts
+            - FormatClearedItem: Custom clear output formatting
+            - ValidateOperations: Handler-specific validation
+            - GetStateDirectoryName: Override state directory naming
+    
+    
+    3.3 Operation Types
+    
+        Four operation types map directly to datastore methods:
+        
+            - CreateDataLink: For path, shell, and symlink handlers
+            - CreateUserLink: For symlink handler user links
+            - RunCommand: For install and homebrew handlers
+            - CheckSentinel: Query operation completion
+
+
+4. Handler Peculiarities
+
+    
+    4.1 Homebrew Handler
+    
+        - Requires package list parsing for uninstall confirmations
+        - Conditional behavior based on DODOT_HOMEBREW_UNINSTALL
+        - Groups packages by type (formulae vs casks)
+    
+    
+    4.2 Symlink Handler
+    
+        - Validates no target conflicts
+        - Uses plural state directory name ("symlinks")
+        - Formats paths with ~ for home directory
+    
+    
+    4.3 Install Handler
+    
+        - Future support for uninstall.sh scripts
+        - Clear messages indicate if uninstall available
+
+
+5. Shell Integration
+
+    The existing shell integration in pkg/shell/ handles runtime behavior:
+    
+        - PATH management by reading datastore links
+        - Script sourcing by iterating entries
+        - No handler-specific logic needed
+
+
+6. Benefits
+
+    
+    6.1 Quantitative
+    
+        - Code reduction: 70-80% less code
+        - Interface simplification: 4 methods vs 20+
+        - Handler size: 50-100 lines vs 200-300+
+        - Test complexity: Mock 4 operations vs 20+ methods
+    
+    
+    6.2 Qualitative
+    
+        - Clear separation of concerns
+        - Handlers become pure functions
+        - Easier to extend with new handlers
+        - Simpler mental model
+
+
+7. Migration Strategy
+
+    
+    7.1 Phase 1: Parallel Implementation
+    
+        - Build operation layer alongside existing system
+        - Create adapters between operations and actions
+        - Test with single handler behind feature flag
+    
+    
+    7.2 Phase 2: Handler Migration
+    
+        - Migrate handlers incrementally
+        - Maintain backward compatibility
+        - Extensive testing at each step
+    
+    
+    7.3 Phase 3: Cleanup
+    
+        - Remove old action system
+        - Simplify datastore to 4 methods
+        - Update documentation
+
+
+8. Success Criteria
+
+    - All existing functionality preserved
+    - 70%+ code reduction achieved
+    - New handler implementation requires <100 lines
+    - Test coverage maintained or improved
+    - Performance characteristics maintained
+
+
+----
+
+
+INTERFACE DEFINITIONS¹
+
+¹ Core interfaces for the simplified architecture:
+
+SimpleDataStore interface:
+    CreateDataLink(pack, handlerName, sourceFile string) (string, error)
+    CreateUserLink(datastorePath, userPath string) error
+    RunAndRecord(pack, handlerName, command string, sentinel string) error
+    HasSentinel(pack, handlerName, sentinel string) (bool, error)
+
+Handler interface:
+    Name() string
+    Category() HandlerCategory
+    ToOperations(matches []RuleMatch) ([]Operation, error)
+    GetMetadata() HandlerMetadata
+    
+    // Optional customization with defaults
+    GetClearConfirmation(ctx ClearContext) *ConfirmationRequest
+    FormatClearedItem(item ClearedItem, dryRun bool) string
+    ValidateOperations(ops []Operation) error
+    GetStateDirectoryName() string
+
+Operation struct:
+    Type     OperationType
+    Pack     string
+    Handler  string
+    Source   string
+    Target   string
+    Command  string
+    Sentinel string
+    Metadata map[string]interface{}

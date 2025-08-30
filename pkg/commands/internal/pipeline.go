@@ -9,6 +9,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/executor"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/confirmations"
@@ -38,6 +39,11 @@ type PipelineOptions struct {
 // RunPipeline executes the core pipeline: GetPacks -> GetTriggers -> GetActions -> Execute
 // This replaces the old RunExecutionPipeline but works with DirectExecutor instead of Operations
 func RunPipeline(opts PipelineOptions) (*types.ExecutionContext, error) {
+	// Check if we should use the operation-based pipeline
+	if operations.UseSimplifiedHandlers() {
+		return RunPipelineWithOperations(opts)
+	}
+
 	logger := logging.GetLogger("commands.internal.pipeline")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).
