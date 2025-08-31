@@ -14,28 +14,48 @@ This document describes dodot's technical architecture and implementation detail
 
 ## Processing Pipeline
 
-dodot follows a predictable four-stage pipeline:
+dodot follows a unified execution pipeline through core.Execute():
 
 ```
-1. Discovery → 2. Matching → 3. Generation → 4. Execution
+Commands → core.Execute() → rules → handlers → operations → DataStore
 ```
 
-### Stage 1: Discovery (GetPacks)
+### Unified Execution Flow
+
+The `core.Execute()` function provides a single entry point for all handler-based commands:
+
+1. **Pack Discovery** - Scans DOTFILES_ROOT for packs
+2. **Rule Matching** - Matches files against rules  
+3. **Command Filtering** - Filters matches by command type (link, provision, etc.)
+4. **Handler Execution** - Executes handlers via rules.ExecuteMatches()
+5. **DataStore Operations** - Performs actual filesystem changes
+
+### Command Types
+
+- **CommandLink**: Configuration handlers only (symlink, shell, path)
+- **CommandProvision**: All handlers (code execution first, then configuration)
+- **CommandUnlink**: Removes configuration state via DataStore.RemoveState()
+- **CommandDeprovision**: Removes provisioning state via DataStore.RemoveState()
+
+### Stage Details
+
+#### Stage 1: Discovery (DiscoverAndSelectPacks)
 - Scans DOTFILES_ROOT for pack directories
 - Applies ignore patterns from configuration
 - Returns ordered list of packs with metadata
 
-### Stage 2: Matching (GetMatches)
+#### Stage 2: Matching (GetMatches)
 - For each pack, scans files against rules
 - Rules use simple patterns: *.sh, bin/, !*.tmp
 - Returns list of matches with handler assignments
 
-### Stage 3: Generation (ToOperations)
-- Matched files invoke their assigned handlers
-- Handlers convert matches to simple operations
-- Operations are just data: type, pack, handler, source, target
+#### Stage 3: Generation (rules.ExecuteMatches)
+- Groups matches by handler type
+- Determines execution order (code handlers before config handlers)
+- Converts matches to operations via handler.ToOperations()
+- Executes operations through DataStore
 
-### Stage 4: Execution (Execute)
+#### Stage 4: Execution (DataStore)
 - Operations execute through minimal DataStore API
 - Only 4 operation types: CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
 - Results are tracked and reported
@@ -61,12 +81,13 @@ This provides:
 
 ```
 pkg/
-├── core/          # Pipeline functions (GetPacks, etc.)
+├── core/          # Pipeline functions (Execute, DiscoverAndSelectPacks, GetMatches)
 ├── types/         # Type definitions and interfaces
-├── rules/         # Rule-based matching system
+├── rules/         # Rule-based matching system with ExecuteMatches
 ├── handlers/      # Handler implementations (50-100 lines each)
 ├── operations/    # Operation types and executor
 ├── datastore/     # Minimal state management (5 methods)
+├── commands/      # Command implementations (thin orchestrators)
 └── config/        # Configuration management
 ```
 
@@ -147,20 +168,44 @@ The CLI layer follows strict design principles:
 
 ### Thin CLI Layer
 
-- **Commands** only parse arguments and format output
-- **Business logic** lives in pkg/, returns structured data
-- **No string formatting** in core functions
+- **Commands** only parse arguments and call core.Execute() or domain methods
+- **Business logic** lives in pkg/core, pkg/rules, and handlers
+- **No direct handler knowledge** in commands
 - **Clear boundaries** between layers
+
+### Command Flow
+
+```go
+// Handler-based commands use core.Execute()
+ctx, err := core.Execute(core.CommandLink, core.ExecuteOptions{
+    DotfilesRoot: opts.DotfilesRoot,
+    PackNames:    opts.PackNames,
+    DryRun:       opts.DryRun,
+    Force:        opts.Force,
+    Confirmer:    confirmer,
+    FileSystem:   filesystem.NewOS(),
+})
+
+// Non-handler commands use domain methods
+pack.AdoptFile(sourceFile, targetName)  // For adopt command
+dataStore.RemoveState(pack, handler)     // For unlink/deprovision
+```
 
 ### Package Organization
 
 ```
-cmd/dodot/
-├── msgs.go       # User-facing messages
-├── output/       # Output formatting
-├── status.go     # Status command
-├── link.go       # Link command
-└── unlink.go     # Unlink command
+cmd/dodot/          # Cobra CLI layer
+├── commands.go     # Command registration
+└── root.go         # Root command setup
+
+pkg/commands/       # Command implementations
+├── link/           # Uses core.Execute(CommandLink)
+├── provision/      # Uses core.Execute(CommandProvision)
+├── unlink/         # Uses DataStore.RemoveState()
+├── deprovision/    # Uses DataStore.RemoveState()
+├── adopt/          # Uses Pack.AdoptFile()
+├── init/           # Uses Pack methods
+└── ...             # Other commands
 ```
 
 ### Unified Output System
@@ -180,9 +225,22 @@ renderer := output.NewTextRenderer()
 
 ### Commands (pkg/commands)
 - **Role**: Thin orchestration layer
-- **Responsibilities**: Parse/validate options, call domain objects, handle logging/feedback
-- **What they do**: Route to appropriate abstractions (Packs for pack operations, DataStore for handler operations)
-- **What they DON'T do**: Contain business logic, direct filesystem access, know handler internals
+- **Responsibilities**: Parse/validate options, call core.Execute() or domain methods
+- **Handler commands**: Use core.Execute() with appropriate CommandType
+- **Non-handler commands**: Use Pack guardian methods or DataStore directly
+- **What they DON'T do**: Contain business logic, know handler internals, bypass abstractions
+
+### Core (pkg/core)
+- **Role**: Unified execution pipeline
+- **Key function**: core.Execute() orchestrates the entire flow
+- **Responsibilities**: Pack discovery, rule matching, command filtering, delegation to rules
+- **Components**: Execute, DiscoverAndSelectPacks, GetMatches, FilterMatchesByHandlerCategory
+
+### Rules (pkg/rules)
+- **Role**: Bridge between matches and execution
+- **Key function**: rules.ExecuteMatches() converts matches to operations
+- **Responsibilities**: Group matches by handler, determine execution order, invoke handlers, execute via DataStore
+- **Components**: GetMatches, ExecuteMatches, GroupMatchesByHandler, GetHandlerExecutionOrder
 
 ### Handlers (pkg/handlers)  
 - **Role**: File-specific operation generators
@@ -212,6 +270,20 @@ renderer := output.NewTextRenderer()
 - **Parallel discovery**: Scan packs concurrently
 - **Minimal I/O**: Cache filesystem operations
 - **Early termination**: Stop on first error in dry-run
+
+## Architectural Principles
+
+### Unified Execution
+- **Single entry point**: All handler-based commands use core.Execute()
+- **No business logic in commands**: Commands are thin orchestrators only
+- **Proper abstractions**: Commands → Core → Rules → Handlers → Operations → DataStore
+- **No bypassing**: Never skip abstraction layers or access handlers directly
+
+### Separation of Concerns
+- **Handler commands**: link, provision use core.Execute() for handler operations
+- **Pack commands**: init, fill, adopt use Pack guardian methods
+- **State commands**: unlink, deprovision use DataStore.RemoveState()
+- **Query commands**: list, status use discovery functions
 
 ## Error Philosophy
 

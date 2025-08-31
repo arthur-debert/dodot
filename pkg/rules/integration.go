@@ -15,6 +15,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -419,4 +420,205 @@ func GetHandlersNeedingFiles(pack types.Pack, optionalFS ...types.FS) ([]string,
 		Msg("Handlers needing files")
 
 	return needingFiles, nil
+}
+
+// ExecutionOptions contains options for executing rule matches
+type ExecutionOptions struct {
+	DryRun     bool
+	Force      bool
+	Confirmer  operations.Confirmer
+	FileSystem types.FS
+}
+
+// ExecuteMatches executes rule matches using handlers and the DataStore abstraction.
+// This is the core execution function that replaces the internal pipeline approach.
+func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts ExecutionOptions) (*types.ExecutionContext, error) {
+	logger := logging.GetLogger("rules.integration")
+	logger.Info().
+		Int("matches", len(matches)).
+		Bool("dryRun", opts.DryRun).
+		Bool("force", opts.Force).
+		Msg("Executing rule matches")
+
+	// Create execution context
+	ctx := types.NewExecutionContext("execute", opts.DryRun)
+
+	// Group matches by handler type
+	groupedMatches := GroupMatchesByHandler(matches)
+	if len(groupedMatches) == 0 {
+		logger.Info().Msg("No matches to execute")
+		ctx.Complete()
+		return ctx, nil
+	}
+
+	// Get execution order (code execution handlers before configuration handlers)
+	handlerNames := GetHandlerExecutionOrder(getHandlerNames(groupedMatches))
+	logger.Debug().
+		Strs("executionOrder", handlerNames).
+		Msg("Handler execution order determined")
+
+	// Create operations executor
+	executor := operations.NewExecutor(dataStore, opts.FileSystem, opts.Confirmer, opts.DryRun)
+
+	// Execute each handler in order
+	for _, handlerName := range handlerNames {
+		handlerMatches := groupedMatches[handlerName]
+		logger.Debug().
+			Str("handler", handlerName).
+			Int("matchCount", len(handlerMatches)).
+			Msg("Executing handler")
+
+		// Create handler instance
+		handler, err := createOperationsHandler(handlerName)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("handler", handlerName).
+				Msg("Failed to create handler")
+			return ctx, errors.Wrapf(err, errors.ErrInternal,
+				"failed to create handler %s", handlerName)
+		}
+
+		// Convert matches to operations
+		operations, err := handler.ToOperations(handlerMatches)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("handler", handlerName).
+				Msg("Failed to convert matches to operations")
+			return ctx, errors.Wrapf(err, errors.ErrInternal,
+				"failed to convert matches to operations for handler %s", handlerName)
+		}
+
+		if len(operations) == 0 {
+			logger.Debug().
+				Str("handler", handlerName).
+				Msg("No operations generated, skipping")
+			continue
+		}
+
+		// Execute operations
+		results, err := executor.Execute(operations, handler)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("handler", handlerName).
+				Msg("Handler execution failed")
+			return ctx, errors.Wrapf(err, errors.ErrActionExecute,
+				"failed to execute operations for handler %s", handlerName)
+		}
+
+		// Add results to execution context
+		addOperationResultsToExecutionContext(ctx, results, handlerMatches)
+
+		logger.Info().
+			Str("handler", handlerName).
+			Int("operationCount", len(operations)).
+			Int("successCount", countSuccessfulResults(results)).
+			Msg("Handler execution completed")
+	}
+
+	ctx.Complete()
+	logger.Info().
+		Int("totalHandlers", ctx.TotalHandlers).
+		Int("completedHandlers", ctx.CompletedHandlers).
+		Int("failedHandlers", ctx.FailedHandlers).
+		Msg("Rule match execution completed")
+
+	return ctx, nil
+}
+
+// createOperationsHandler creates an operations.Handler instance by name
+func createOperationsHandler(name string) (operations.Handler, error) {
+	switch name {
+	case "symlink":
+		return symlink.NewHandler(), nil
+	case "shell":
+		return shell.NewHandler(), nil
+	case "homebrew":
+		return homebrew.NewHandler(), nil
+	case "install":
+		return install.NewHandler(), nil
+	case "path":
+		return path.NewHandler(), nil
+	default:
+		return nil, fmt.Errorf("unknown handler: %s", name)
+	}
+}
+
+// getHandlerNames extracts handler names from grouped matches
+func getHandlerNames(grouped map[string][]types.RuleMatch) []string {
+	names := make([]string, 0, len(grouped))
+	for name := range grouped {
+		names = append(names, name)
+	}
+	return names
+}
+
+// addOperationResultsToExecutionContext converts operation results to execution context data
+func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []types.RuleMatch) {
+	// Group results by pack
+	resultsByPack := make(map[string][]operations.OperationResult)
+	for _, result := range results {
+		pack := result.Operation.Pack
+		resultsByPack[pack] = append(resultsByPack[pack], result)
+	}
+
+	// Convert to pack results
+	for packName, packResults := range resultsByPack {
+		// Create handler result
+		handlerResult := &types.HandlerResult{
+			HandlerName: packResults[0].Operation.Handler,
+			Files:       make([]string, 0, len(packResults)),
+			Status:      types.StatusReady,
+		}
+
+		// Add files and check for errors
+		hasErrors := false
+		for _, result := range packResults {
+			if result.Operation.Source != "" {
+				handlerResult.Files = append(handlerResult.Files, result.Operation.Source)
+			}
+			if !result.Success {
+				hasErrors = true
+				handlerResult.Error = result.Error
+			}
+		}
+
+		if hasErrors {
+			handlerResult.Status = types.StatusError
+		}
+
+		// Create or update pack result
+		packResult, exists := ctx.GetPackResult(packName)
+		if !exists {
+			// Find pack from matches
+			var pack *types.Pack
+			for _, match := range matches {
+				if match.Pack == packName {
+					pack = &types.Pack{Name: packName, Path: filepath.Dir(match.AbsolutePath)}
+					break
+				}
+			}
+			if pack == nil {
+				pack = &types.Pack{Name: packName, Path: ""}
+			}
+
+			packResult = types.NewPackExecutionResult(pack)
+			ctx.AddPackResult(packName, packResult)
+		}
+
+		packResult.AddHandlerResult(handlerResult)
+	}
+}
+
+// countSuccessfulResults counts how many operation results were successful
+func countSuccessfulResults(results []operations.OperationResult) int {
+	count := 0
+	for _, result := range results {
+		if result.Success {
+			count++
+		}
+	}
+	return count
 }

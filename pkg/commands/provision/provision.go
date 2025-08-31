@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/arthur-debert/dodot/pkg/commands/internal"
+	"github.com/arthur-debert/dodot/pkg/core"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/shell"
@@ -27,61 +28,38 @@ type ProvisionPacksOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// ProvisionPacks runs the installation + deployment using the direct executor approach.
+// ProvisionPacks runs the installation + deployment using the unified core execution approach.
 // It executes both code execution handlers (install scripts, brewfiles) and configuration
-// handlers (symlinks, shell profiles, path) in sequence.
+// handlers (symlinks, shell profiles, path) in the correct order.
 func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("commands.provision")
 	log.Debug().Str("command", "ProvisionPacks").Msg("Executing command")
 
-	// Phase 1: Run all handlers (both code execution and configuration)
-	log.Debug().Msg("Phase 1: Executing provisioning operations (install scripts, brewfiles)")
-	installCtx, err := internal.RunPipeline(internal.PipelineOptions{
-		DotfilesRoot:       opts.DotfilesRoot,
-		PackNames:          opts.PackNames,
-		DryRun:             opts.DryRun,
-		CommandMode:        internal.CommandModeAll, // Run all handler types
-		Force:              opts.Force,              // Force flag applies to provisioning operations
-		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	// Create confirmer that always approves (matches internal pipeline behavior)
+	confirmer := &alwaysApproveConfirmer{}
+
+	// Use the unified core execution flow (runs all handlers in correct order)
+	ctx, err := core.Execute(core.CommandProvision, core.ExecuteOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		DryRun:       opts.DryRun,
+		Force:        opts.Force,
+		Confirmer:    confirmer,
+		FileSystem:   filesystem.NewOS(),
 	})
 
 	if err != nil {
-		log.Error().Err(err).Msg("Phase 1 (provisioning) failed")
+		log.Error().Err(err).Msg("Provision failed")
 		// Check if this is a pack not found error and propagate it directly
 		var dodotErr *doerrors.DodotError
 		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-			return installCtx, err // Return the original error to preserve error code
+			return ctx, err // Return the original error to preserve error code
 		}
-		return installCtx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning operations")
+		return ctx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning operations")
 	}
-
-	// Phase 2: Run configuration handlers only (symlinks, profiles, etc.)
-	log.Debug().Msg("Phase 2: Executing deployment operations (symlinks, profiles)")
-	deployCtx, err := internal.RunPipeline(internal.PipelineOptions{
-		DotfilesRoot:       opts.DotfilesRoot,
-		PackNames:          opts.PackNames,
-		DryRun:             opts.DryRun,
-		CommandMode:        internal.CommandModeConfiguration, // Only configuration handlers
-		Force:              false,                             // Force doesn't apply to deploy operations
-		EnableHomeSymlinks: opts.EnableHomeSymlinks,
-	})
-
-	if err != nil {
-		log.Error().Err(err).Msg("Phase 2 (linking) failed")
-		// Check if this is a pack not found error and propagate it directly
-		var dodotErr *doerrors.DodotError
-		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-			return mergeExecutionContexts(installCtx, deployCtx), err // Return the original error to preserve error code
-		}
-		// Return combined context with partial results from both phases
-		return mergeExecutionContexts(installCtx, deployCtx), doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute linking operations")
-	}
-
-	// Merge results from both phases
-	mergedCtx := mergeExecutionContexts(installCtx, deployCtx)
 
 	// Set up shell integration after successful execution (not in dry-run mode)
-	if !opts.DryRun && (mergedCtx.CompletedHandlers > 0 || mergedCtx.SkippedHandlers > 0) {
+	if !opts.DryRun && (ctx.CompletedHandlers > 0 || ctx.SkippedHandlers > 0) {
 		log.Debug().Msg("Installing shell integration")
 
 		// Create paths instance to get data directory
@@ -110,79 +88,16 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 	}
 
 	log.Info().
-		Int("installActions", installCtx.TotalHandlers).
-		Int("deployActions", deployCtx.TotalHandlers).
-		Int("totalActions", mergedCtx.TotalHandlers).
+		Int("totalActions", ctx.TotalHandlers).
 		Str("command", "ProvisionPacks").
 		Msg("Command finished")
 
-	return mergedCtx, nil
+	return ctx, nil
 }
 
-// mergeExecutionContexts combines results from install and deploy phases into a single context
-func mergeExecutionContexts(installCtx, deployCtx *types.ExecutionContext) *types.ExecutionContext {
-	if installCtx == nil && deployCtx == nil {
-		return types.NewExecutionContext("provision", false)
-	}
-	if installCtx == nil {
-		deployCtx.Command = "provision" // Update command name
-		return deployCtx
-	}
-	if deployCtx == nil {
-		return installCtx
-	}
+// alwaysApproveConfirmer matches the behavior of internal.simpleConfirmer
+type alwaysApproveConfirmer struct{}
 
-	// Create new merged context using provisioning context as base
-	merged := types.NewExecutionContext("provision", installCtx.DryRun)
-	merged.StartTime = installCtx.StartTime
-
-	// Add all pack results from install phase
-	for packName, packResult := range installCtx.PackResults {
-		merged.AddPackResult(packName, packResult)
-	}
-
-	// Merge in pack results from deploy phase
-	for packName, deployPackResult := range deployCtx.PackResults {
-		if existingPackResult, exists := merged.PackResults[packName]; exists {
-			// Merge Handler results from deploy into existing pack result
-			existingPackResult.HandlerResults = append(existingPackResult.HandlerResults, deployPackResult.HandlerResults...)
-			existingPackResult.TotalHandlers += deployPackResult.TotalHandlers
-			existingPackResult.CompletedHandlers += deployPackResult.CompletedHandlers
-			existingPackResult.FailedHandlers += deployPackResult.FailedHandlers
-			existingPackResult.SkippedHandlers += deployPackResult.SkippedHandlers
-
-			// Update pack status - if either phase failed, mark as failed
-			switch deployPackResult.Status {
-			case types.ExecutionStatusError:
-				existingPackResult.Status = types.ExecutionStatusError
-			case types.ExecutionStatusPartial:
-				existingPackResult.Status = types.ExecutionStatusPartial
-			}
-		} else {
-			// Add pack result that only appeared in deploy phase
-			merged.AddPackResult(packName, deployPackResult)
-		}
-	}
-
-	// Use the later end time
-	if deployCtx.EndTime.After(installCtx.EndTime) {
-		merged.EndTime = deployCtx.EndTime
-	} else {
-		merged.EndTime = installCtx.EndTime
-	}
-
-	// Recalculate totals (AddPackResult should have handled this, but be explicit)
-	merged.TotalHandlers = 0
-	merged.CompletedHandlers = 0
-	merged.FailedHandlers = 0
-	merged.SkippedHandlers = 0
-
-	for _, packResult := range merged.PackResults {
-		merged.TotalHandlers += packResult.TotalHandlers
-		merged.CompletedHandlers += packResult.CompletedHandlers
-		merged.FailedHandlers += packResult.FailedHandlers
-		merged.SkippedHandlers += packResult.SkippedHandlers
-	}
-
-	return merged
+func (a *alwaysApproveConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
+	return true
 }
