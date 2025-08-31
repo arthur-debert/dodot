@@ -1363,10 +1363,15 @@ func newOffCmd() *cobra.Command {
 }
 
 func newOnCmd() *cobra.Command {
-	return &cobra.Command{
+	var (
+		noProvision    bool
+		provisionRerun bool
+	)
+
+	cmd := &cobra.Command{
 		Use:   "on [packs...]",
 		Short: "Install and deploy packs",
-		Long:  "The on command deploys packs by running 'link' followed by 'provision'. This creates all symlinks and installs all provisioned resources (homebrew packages, etc.). This is equivalent to running 'dodot link' followed by 'dodot provision'.",
+		Long:  "The on command deploys packs by running 'link' followed by 'provision'. This creates all symlinks and installs all provisioned resources (homebrew packages, etc.). This is equivalent to running 'dodot link' followed by 'dodot provision'.\n\nProvisioning Options:\n  --no-provision: Skip provisioning handlers (only link files)\n  --provision-rerun: Force re-run provisioning even if already done",
 		Example: `  # Deploy all packs
   dodot on
   
@@ -1374,7 +1379,13 @@ func newOnCmd() *cobra.Command {
   dodot on vim zsh
   
   # Preview deployment
-  dodot on --dry-run vim`,
+  dodot on --dry-run vim
+  
+  # Link only without provisioning
+  dodot on --no-provision vim
+  
+  # Force re-run provisioning
+  dodot on --provision-rerun vim`,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1397,10 +1408,12 @@ func newOnCmd() *cobra.Command {
 
 			// Turn on packs using the on command
 			result, err := on.OnPacks(on.OnPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-				Force:        force,
+				DotfilesRoot:   p.DotfilesRoot(),
+				PackNames:      args,
+				DryRun:         dryRun,
+				Force:          force,
+				NoProvision:    noProvision,
+				ProvisionRerun: provisionRerun,
 			})
 			if err != nil {
 				// Check if this is a pack not found error and provide detailed help
@@ -1482,6 +1495,15 @@ func newOnCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	// Add command-specific flags
+	cmd.Flags().BoolVar(&noProvision, "no-provision", false, "Skip provisioning handlers (only link files)")
+	cmd.Flags().BoolVar(&provisionRerun, "provision-rerun", false, "Force re-run provisioning even if already done")
+
+	// Mark mutually exclusive flags
+	cmd.MarkFlagsMutuallyExclusive("no-provision", "provision-rerun")
+
+	return cmd
 }
 
 // Completion command removed - use dodot-completions tool to generate shell completions

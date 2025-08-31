@@ -40,12 +40,13 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 
 	// Use the unified core execution flow (runs all handlers in correct order)
 	ctx, err := core.Execute(core.CommandProvision, core.ExecuteOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		Force:        opts.Force,
-		Confirmer:    confirmer,
-		FileSystem:   filesystem.NewOS(),
+		DotfilesRoot:        opts.DotfilesRoot,
+		PackNames:           opts.PackNames,
+		DryRun:              opts.DryRun,
+		Force:               opts.Force,
+		ForceReprovisioning: opts.Force, // Force flag controls reprovisioning
+		Confirmer:           confirmer,
+		FileSystem:          filesystem.NewOS(),
 	})
 
 	if err != nil {

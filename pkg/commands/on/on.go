@@ -19,6 +19,10 @@ type OnPacksOptions struct {
 	DryRun bool
 	// Force forces operations even if there are conflicts
 	Force bool
+	// NoProvision skips provisioning handlers (only link files)
+	NoProvision bool
+	// ProvisionRerun forces re-run provisioning even if already done
+	ProvisionRerun bool
 }
 
 // OnResult represents the result of turning on packs
@@ -43,6 +47,8 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 		Strs("packNames", opts.PackNames).
 		Bool("dryRun", opts.DryRun).
 		Bool("force", opts.Force).
+		Bool("noProvision", opts.NoProvision).
+		Bool("provisionRerun", opts.ProvisionRerun).
 		Msg("Starting on command")
 
 	result := &OnResult{
@@ -72,26 +78,31 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 		}
 	}
 
-	// Step 2: Run provision
-	provisionOpts := provision.ProvisionPacksOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-	}
+	// Step 2: Run provision (unless --no-provision was specified)
+	if !opts.NoProvision {
+		provisionOpts := provision.ProvisionPacksOptions{
+			DotfilesRoot: opts.DotfilesRoot,
+			PackNames:    opts.PackNames,
+			DryRun:       opts.DryRun,
+			Force:        opts.ProvisionRerun, // --provision-rerun maps to Force flag
+		}
 
-	provisionResult, err := provision.ProvisionPacks(provisionOpts)
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to provision packs")
-		result.Errors = append(result.Errors, fmt.Errorf("provision failed: %w", err))
-	} else {
-		result.ProvisionResult = provisionResult
-		result.TotalDeployed += provisionResult.CompletedHandlers
-		// Check for errors in pack results
-		for packName, packResult := range provisionResult.PackResults {
-			if packResult.FailedHandlers > 0 {
-				result.Errors = append(result.Errors, fmt.Errorf("pack %s had %d failed handlers during provisioning", packName, packResult.FailedHandlers))
+		provisionResult, err := provision.ProvisionPacks(provisionOpts)
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to provision packs")
+			result.Errors = append(result.Errors, fmt.Errorf("provision failed: %w", err))
+		} else {
+			result.ProvisionResult = provisionResult
+			result.TotalDeployed += provisionResult.CompletedHandlers
+			// Check for errors in pack results
+			for packName, packResult := range provisionResult.PackResults {
+				if packResult.FailedHandlers > 0 {
+					result.Errors = append(result.Errors, fmt.Errorf("pack %s had %d failed handlers during provisioning", packName, packResult.FailedHandlers))
+				}
 			}
 		}
+	} else {
+		logger.Info().Msg("Skipping provision step due to --no-provision flag")
 	}
 
 	logger.Info().
