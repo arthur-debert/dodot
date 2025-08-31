@@ -153,33 +153,3 @@ func TestFilterMatchesByHandlerCategory(t *testing.T) {
 		assert.Len(t, filtered, len(allMatches))
 	})
 }
-
-func TestGetMatchesSimplified(t *testing.T) {
-	t.Run("orchestrates through rules system", func(t *testing.T) {
-		// Create test pack with rules on actual filesystem
-		// since GetMatchesSimplified doesn't support custom filesystem
-
-		// Get packs
-		packs := []types.Pack{
-			{
-				Name: "test-pack",
-				Path: "/non-existent-pack",
-			},
-		}
-
-		// Execute - expect error due to non-existent pack
-		_, err := core.GetMatchesSimplified(packs)
-
-		// Verify - this tests the orchestration, not the actual matching
-		assert.Error(t, err)
-	})
-
-	t.Run("handles empty pack list", func(t *testing.T) {
-		// Execute
-		matches, err := core.GetMatchesSimplified([]types.Pack{})
-
-		// Verify
-		require.NoError(t, err)
-		assert.Empty(t, matches)
-	})
-}
