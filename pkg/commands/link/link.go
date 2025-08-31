@@ -1,7 +1,8 @@
 package link
 
 import (
-	"github.com/arthur-debert/dodot/pkg/commands/internal"
+	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -18,21 +19,24 @@ type LinkPacksOptions struct {
 	EnableHomeSymlinks bool
 }
 
-// LinkPacks runs the linking logic using the direct executor approach.
+// LinkPacks runs the linking logic using the unified core execution approach.
 // It executes configuration handlers only (symlinks, shell profiles, path) while
 // skipping code execution handlers (install scripts, brewfiles).
 func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
 	log := logging.GetLogger("commands.link")
 	log.Debug().Str("command", "LinkPacks").Msg("Executing command")
 
-	// Use the internal pipeline with configuration mode
-	ctx, err := internal.RunPipeline(internal.PipelineOptions{
-		DotfilesRoot:       opts.DotfilesRoot,
-		PackNames:          opts.PackNames,
-		DryRun:             opts.DryRun,
-		CommandMode:        internal.CommandModeConfiguration, // Key: only run configuration handlers
-		Force:              false,                             // Link doesn't use force flag
-		EnableHomeSymlinks: opts.EnableHomeSymlinks,
+	// Create confirmer that always approves (matches internal pipeline behavior)
+	confirmer := &alwaysApproveConfirmer{}
+
+	// Use the unified core execution flow
+	ctx, err := core.Execute(core.CommandLink, core.ExecuteOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		DryRun:       opts.DryRun,
+		Force:        false, // Link doesn't use force flag
+		Confirmer:    confirmer,
+		FileSystem:   filesystem.NewOS(),
 	})
 
 	if err != nil {
@@ -42,4 +46,11 @@ func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
 
 	log.Info().Str("command", "LinkPacks").Msg("Command finished")
 	return ctx, nil
+}
+
+// alwaysApproveConfirmer matches the behavior of internal.simpleConfirmer
+type alwaysApproveConfirmer struct{}
+
+func (a *alwaysApproveConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
+	return true
 }
