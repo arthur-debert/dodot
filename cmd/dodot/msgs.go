@@ -8,22 +8,18 @@ import (
 // Short messages (one-liners)
 const (
 	// Command descriptions
-	MsgRootShort        = "A stateless dotfiles manager"
-	MsgLinkShort        = "Link dotfiles to the system"
-	MsgProvisionShort   = "Provision and link dotfiles to the system"
-	MsgListShort        = "List all available packs"
-	MsgListLong         = "List displays all packs found in your DOTFILES_ROOT directory."
-	MsgStatusShort      = "Show deployment status of packs"
-	MsgUnlinkShort      = "Unlink specified packs"
-	MsgDeprovisionShort = "Remove provisioning state for packs"
-	MsgInitShort        = "Create a new pack with template files"
-	MsgFillShort        = "Add placeholder files to an existing pack"
-	MsgAddIgnoreShort   = "Create a .dodotignore file to ignore a pack"
-	MsgAdoptShort       = "Adopt existing files into a pack"
-	MsgTopicsShort      = "Display available documentation topics"
-	MsgTopicsLong       = "Display a list of all available help topics that provide additional documentation beyond command help."
-	MsgCompletionShort  = "Generate shell completion script"
-	MsgSnippetShort     = "Output shell integration snippet"
+	MsgRootShort       = "A stateless dotfiles manager"
+	MsgListShort       = "List all available packs"
+	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
+	MsgStatusShort     = "Show deployment status of packs"
+	MsgInitShort       = "Create a new pack with template files"
+	MsgFillShort       = "Add placeholder files to an existing pack"
+	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
+	MsgAdoptShort      = "Adopt existing files into a pack"
+	MsgTopicsShort     = "Display available documentation topics"
+	MsgTopicsLong      = "Display a list of all available help topics that provide additional documentation beyond command help."
+	MsgCompletionShort = "Generate shell completion script"
+	MsgSnippetShort    = "Output shell integration snippet"
 
 	// Status messages
 	MsgDryRunNotice      = "\nDRY RUN MODE - No changes were made"
@@ -47,17 +43,13 @@ const (
 	MsgHandlerDesc       = " - %s"
 
 	// Error messages
-	MsgErrInitPaths        = "failed to initialize paths: %w"
-	MsgErrLinkPacks        = "failed to link packs: %w"
-	MsgErrProvisionPacks   = "failed to provision packs: %w"
-	MsgErrListPacks        = "failed to list packs: %w"
-	MsgErrStatusPacks      = "failed to get pack status: %w"
-	MsgErrInitPack         = "failed to initialize pack: %w"
-	MsgErrFillPack         = "failed to fill pack: %w"
-	MsgErrAddIgnore        = "failed to add ignore file: %w"
-	MsgErrAdoptFiles       = "failed to adopt files: %w"
-	MsgErrUnlinkPacks      = "failed to unlink packs: %w"
-	MsgErrDeprovisionPacks = "failed to deprovision packs: %w"
+	MsgErrInitPaths   = "failed to initialize paths: %w"
+	MsgErrListPacks   = "failed to list packs: %w"
+	MsgErrStatusPacks = "failed to get pack status: %w"
+	MsgErrInitPack    = "failed to initialize pack: %w"
+	MsgErrFillPack    = "failed to fill pack: %w"
+	MsgErrAddIgnore   = "failed to add ignore file: %w"
+	MsgErrAdoptFiles  = "failed to adopt files: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
@@ -75,22 +67,6 @@ var (
 	//go:embed msgs/root-long.txt
 	msgRootLongRaw string
 	MsgRootLong    = strings.TrimSpace(msgRootLongRaw)
-
-	//go:embed msgs/link-long.txt
-	msgLinkLongRaw string
-	MsgLinkLong    = strings.TrimSpace(msgLinkLongRaw)
-
-	//go:embed msgs/link-example.txt
-	msgLinkExampleRaw string
-	MsgLinkExample    = strings.TrimSpace(msgLinkExampleRaw)
-
-	//go:embed msgs/provision-long.txt
-	msgProvisionLongRaw string
-	MsgProvisionLong    = strings.TrimSpace(msgProvisionLongRaw)
-
-	//go:embed msgs/provision-example.txt
-	msgProvisionExampleRaw string
-	MsgProvisionExample    = strings.TrimSpace(msgProvisionExampleRaw)
 
 	//go:embed msgs/list-example.txt
 	msgListExampleRaw string
@@ -135,22 +111,6 @@ var (
 	//go:embed msgs/adopt-example.txt
 	msgAdoptExampleRaw string
 	MsgAdoptExample    = strings.TrimSpace(msgAdoptExampleRaw)
-
-	//go:embed msgs/unlink-long.txt
-	msgUnlinkLongRaw string
-	MsgUnlinkLong    = strings.TrimSpace(msgUnlinkLongRaw)
-
-	//go:embed msgs/unlink-example.txt
-	msgUnlinkExampleRaw string
-	MsgUnlinkExample    = strings.TrimSpace(msgUnlinkExampleRaw)
-
-	//go:embed msgs/deprovision-long.txt
-	msgDeprovisionLongRaw string
-	MsgDeprovisionLong    = strings.TrimSpace(msgDeprovisionLongRaw)
-
-	//go:embed msgs/deprovision-example.txt
-	msgDeprovisionExampleRaw string
-	MsgDeprovisionExample    = strings.TrimSpace(msgDeprovisionExampleRaw)
 
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string

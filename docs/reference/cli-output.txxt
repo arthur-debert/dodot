@@ -30,9 +30,9 @@ The message describes what action was taken, while the pack status shows the res
 Example Output
 ==============
 
-After running ``dodot link vim``::
+After running ``dodot on vim``::
 
-    The pack vim has been linked.
+    The pack vim has been turned on.
 
     vim:
       ➞ .vimrc → ~/.vimrc [linked]
@@ -84,14 +84,14 @@ Commands create a CommandResult with:
 1. An optional message describing the action
 2. The current pack status from the status command
 
-Example from the link command::
+Example from the on command::
 
-    // Get pack status after linking
+    // Get pack status after turning on
     statusResult, err := commands.StatusPacks(...)
     
     // Create result with message
     cmdResult := &types.CommandResult{
-        Message: types.FormatCommandMessage("linked", packNames),
+        Message: types.FormatCommandMessage("turned on", packNames),
         Result:  statusResult,
     }
     
@@ -112,12 +112,8 @@ Commands and Their Messages
 
 Pack-altering commands::
 
-    link       - "The pack(s) X have been linked."
-    provision  - "The pack(s) X have been provisioned."
-    unlink     - "The pack(s) X have been unlinked."
     on         - "The pack(s) X have been turned on."
     off        - "The pack(s) X have been turned off."
-    deprovision - "The pack(s) X have been deprovisioned."
 
 Pack creation/modification::
 

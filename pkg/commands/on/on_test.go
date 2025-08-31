@@ -160,19 +160,13 @@ func TestOnPacks_NonExistentPack_Orchestration(t *testing.T) {
 	result, err := on.OnPacks(opts)
 
 	// Verify orchestration handles non-existent packs
-	// When a pack doesn't exist, the underlying commands return errors
-	// but the on command should still return a result structure
-	assert.NotNil(t, result, "should return result even with errors")
+	// When a pack doesn't exist, both link and provision fail
+	require.Error(t, err, "should return error for non-existent pack")
+	assert.Contains(t, err.Error(), "on command encountered", "error should indicate command encountered issues")
 
-	// The on command may return an error if underlying commands fail
-	if err != nil {
-		assert.Contains(t, err.Error(), "on command encountered", "error should indicate command encountered issues")
-	}
-
-	// Result structure should still be populated even with errors
-	if result != nil {
-		assert.GreaterOrEqual(t, len(result.Errors), 0, "errors slice should contain error information")
-	}
+	// Result should still be returned with error details
+	require.NotNil(t, result, "should return result even with errors")
+	assert.True(t, len(result.Errors) > 0, "should have errors recorded")
 }
 
 func TestOnPacks_ResultAggregation_Orchestration(t *testing.T) {
