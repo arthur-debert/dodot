@@ -45,11 +45,15 @@ const (
 	ErrHandlerInvalid  ErrorCode = "TRICK_INVALID"
 	ErrHandlerExecute  ErrorCode = "TRICK_EXECUTE"
 
-	// Action errors
-	ErrActionInvalid  ErrorCode = "ACTION_INVALID"
-	ErrActionConflict ErrorCode = "ACTION_CONFLICT"
-	ErrActionExecute  ErrorCode = "ACTION_EXECUTE"
-	ErrActionCreate   ErrorCode = "ACTION_CREATE"
+	// Operation errors
+	ErrOperationInvalid  ErrorCode = "OPERATION_INVALID"
+	ErrOperationConflict ErrorCode = "OPERATION_CONFLICT"
+	ErrOperationExecute  ErrorCode = "OPERATION_EXECUTE"
+
+	// Legacy aliases for backward compatibility (to be removed)
+	ErrActionInvalid  = ErrOperationInvalid
+	ErrActionConflict = ErrOperationConflict
+	ErrActionExecute  = ErrOperationExecute
 
 	// FileSystem errors
 	ErrFileNotFound  ErrorCode = "FILE_NOT_FOUND"
