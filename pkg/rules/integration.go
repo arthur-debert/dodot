@@ -504,7 +504,7 @@ func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts E
 				Err(err).
 				Str("handler", handlerName).
 				Msg("Handler execution failed")
-			return ctx, errors.Wrapf(err, errors.ErrActionExecute,
+			return ctx, errors.Wrapf(err, errors.ErrOperationExecute,
 				"failed to execute operations for handler %s", handlerName)
 		}
 

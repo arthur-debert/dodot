@@ -55,7 +55,7 @@ func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error)
 		if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
 			return ctx, err // Return the original error to preserve error code
 		}
-		return ctx, doerrors.Wrapf(err, doerrors.ErrActionExecute, "failed to execute provisioning operations")
+		return ctx, doerrors.Wrapf(err, doerrors.ErrOperationExecute, "failed to execute provisioning operations")
 	}
 
 	// Set up shell integration after successful execution (not in dry-run mode)

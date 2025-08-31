@@ -1,8 +1,8 @@
 # Handlers Guide
 
-Handlers are the action generators in dodot that process matched files and directories
-to create link actions. Each handler serves a specific purpose in managing your
-dotfiles.
+Handlers are operation generators in dodot that process matched files and convert them
+into simple operations (CreateDataLink, CreateUserLink, RunCommand). Each handler serves 
+a specific purpose in managing your dotfiles.
 
 ## Available Handlers
 
@@ -40,31 +40,32 @@ including examples, configuration, and best practices, see:
 
 
 
-## Handler Execution Phases
+## Handler Categories
 
-Handlers run in different phases based on their RunMode:
+Handlers are divided into two categories based on their operation types:
 
-### Provision Phase (`dodot provision`)
-- **RunModeOnce** handlers execute here
-- ProvisionScriptHandler: Runs setup scripts
-- BrewHandler: Installs packages
-- These run before link actions
+### Code Execution Handlers (`dodot provision`)
+- Generate **RunCommand** operations with sentinels
+- Install Handler: Runs setup scripts once
+- Homebrew Handler: Installs packages once
+- Operations are tracked to prevent re-execution
 
-### Link Phase (`dodot link`)
-- **RunModeMany** handlers execute here
-- SymlinkHandler: Creates configuration symlinks
-- PathHandler: Updates PATH
-- ShellProfileHandler: Sets up shell environment
+### Configuration Handlers (`dodot link`)
+- Generate **CreateDataLink** and **CreateUserLink** operations
+- Symlink Handler: Creates configuration symlinks
+- Path Handler: Manages PATH entries
+- Shell Handler: Sources shell configuration
+- Operations are idempotent (safe to run multiple times)
 
 ## Quick Reference
 
-| Handler | Run Mode | Purpose | Creates |
-|---------|----------|---------|---------|
-| symlink | Link | Link configs | Symlinks in ~ |
-| provision | Provision | Run setup scripts | Whatever scripts create |
-| brew | Provision | Manage packages | System packages |
-| shell | Link | Shell config | Entries in init.sh |
-| path | Link | PATH management | PATH exports |
+| Handler | Category | Operations | Purpose |
+|---------|----------|------------|---------|
+| symlink | Configuration | CreateDataLink + CreateUserLink | Link configs to home |
+| install | Code Execution | RunCommand | Run setup scripts once |
+| homebrew | Code Execution | RunCommand | Install packages once |
+| shell | Configuration | CreateDataLink | Source shell configs |
+| path | Configuration | CreateDataLink | Manage PATH entries |
 
 ## Handler Documentation Structure
 
@@ -87,12 +88,14 @@ Each handler's doc.go file contains:
 
 While dodot includes comprehensive built-in handlers, you can create custom ones:
 
-1. Implement the `Handler` interface
+1. Implement the `operations.Handler` interface (just ~50-100 lines!)
 2. Add handler creation in `pkg/rules/integration.go`
-3. Define the action type and execution
+3. Implement `ToOperations()` to convert matches to operations
 4. Add rules to your configuration
 
-See `pkg/types/handler.go` for the interface definition.
+Handlers are now simple data transformers - they just declare what operations
+they need, not how to perform them. See `pkg/operations/types.go` for the 
+interface definition.
 
 ## Best Practices
 
