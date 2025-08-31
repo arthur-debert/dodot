@@ -50,11 +50,6 @@ const (
 	ErrOperationConflict ErrorCode = "OPERATION_CONFLICT"
 	ErrOperationExecute  ErrorCode = "OPERATION_EXECUTE"
 
-	// Legacy aliases for backward compatibility (to be removed)
-	ErrActionInvalid  = ErrOperationInvalid
-	ErrActionConflict = ErrOperationConflict
-	ErrActionExecute  = ErrOperationExecute
-
 	// FileSystem errors
 	ErrFileNotFound  ErrorCode = "FILE_NOT_FOUND"
 	ErrFileAccess    ErrorCode = "FILE_ACCESS"
