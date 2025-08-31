@@ -224,5 +224,115 @@ func (m *MockDataStore) Reset() {
 	m.errorToReturn = nil
 }
 
+// HasHandlerState checks if any state exists for a handler in a pack
+func (m *MockDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("HasHandlerState(%s,%s)", pack, handlerName))
+
+	if m.errorOn == "HasHandlerState" {
+		return false, m.errorToReturn
+	}
+
+	// Check if any sentinels exist for this pack/handler combination
+	prefix := fmt.Sprintf("%s:%s:", pack, handlerName)
+	for key := range m.sentinels {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// ListPackHandlers returns a list of all handlers that have state for a given pack
+func (m *MockDataStore) ListPackHandlers(pack string) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("ListPackHandlers(%s)", pack))
+
+	if m.errorOn == "ListPackHandlers" {
+		return nil, m.errorToReturn
+	}
+
+	handlers := make(map[string]bool)
+	prefix := pack + ":"
+
+	// Find all unique handlers for this pack
+	for key := range m.sentinels {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			parts := splitKey(key)
+			if len(parts) >= 2 {
+				handlers[parts[1]] = true
+			}
+		}
+	}
+
+	// Convert map to slice
+	result := make([]string, 0, len(handlers))
+	for handler := range handlers {
+		result = append(result, handler)
+	}
+
+	return result, nil
+}
+
+// ListHandlerSentinels returns all sentinel files for a specific handler in a pack
+func (m *MockDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	m.calls = append(m.calls, fmt.Sprintf("ListHandlerSentinels(%s,%s)", pack, handlerName))
+
+	if m.errorOn == "ListHandlerSentinels" {
+		return nil, m.errorToReturn
+	}
+
+	var sentinels []string
+	prefix := fmt.Sprintf("%s:%s:", pack, handlerName)
+
+	for key := range m.sentinels {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			parts := splitKey(key)
+			if len(parts) >= 3 {
+				sentinels = append(sentinels, parts[2])
+			}
+		}
+	}
+
+	return sentinels, nil
+}
+
+// splitKey splits a colon-separated key into parts
+func splitKey(key string) []string {
+	var parts []string
+	start := 0
+	for i, ch := range key {
+		if ch == ':' {
+			parts = append(parts, key[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(key) {
+		parts = append(parts, key[start:])
+	}
+	return parts
+}
+
+// SetSentinel sets a sentinel value for testing
+func (m *MockDataStore) SetSentinel(pack, handlerName, sentinel string, exists bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sentinel)
+	if exists {
+		m.sentinels[key] = true
+	} else {
+		delete(m.sentinels, key)
+	}
+}
+
 // Verify interface compliance
 var _ types.DataStore = (*MockDataStore)(nil)

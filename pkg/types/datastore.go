@@ -26,4 +26,18 @@ type DataStore interface {
 	// RemoveState removes all state for a handler in a pack.
 	// This is used for cleanup/uninstall operations.
 	RemoveState(pack, handlerName string) error
+
+	// Query methods for checking handler state
+
+	// HasHandlerState checks if any state exists for a handler in a pack.
+	// This is useful for determining if a handler has been used/provisioned.
+	HasHandlerState(pack, handlerName string) (bool, error)
+
+	// ListPackHandlers returns a list of all handlers that have state for a given pack.
+	// This helps identify which handlers have been used in a pack.
+	ListPackHandlers(pack string) ([]string, error)
+
+	// ListHandlerSentinels returns all sentinel files for a specific handler in a pack.
+	// This provides detailed information about what operations have been completed.
+	ListHandlerSentinels(pack, handlerName string) ([]string, error)
 }

@@ -156,3 +156,80 @@ func (s *filesystemDataStore) RemoveState(pack, handlerName string) error {
 
 	return nil
 }
+
+// HasHandlerState checks if any state exists for a handler in a pack.
+func (s *filesystemDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
+	stateDir := s.paths.PackHandlerDir(pack, handlerName)
+
+	// Check if the directory exists
+	if _, err := s.fs.Stat(stateDir); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check handler state directory: %w", err)
+	}
+
+	// Check if the directory has any contents
+	entries, err := s.fs.ReadDir(stateDir)
+	if err != nil {
+		return false, fmt.Errorf("failed to read handler state directory: %w", err)
+	}
+
+	return len(entries) > 0, nil
+}
+
+// ListPackHandlers returns a list of all handlers that have state for a given pack.
+func (s *filesystemDataStore) ListPackHandlers(pack string) ([]string, error) {
+	packDir := filepath.Join(s.paths.DataDir(), "packs", pack)
+
+	// Check if the pack directory exists
+	if _, err := s.fs.Stat(packDir); err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to check pack directory: %w", err)
+	}
+
+	// Read all handler directories
+	entries, err := s.fs.ReadDir(packDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read pack directory: %w", err)
+	}
+
+	var handlers []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			handlers = append(handlers, entry.Name())
+		}
+	}
+
+	return handlers, nil
+}
+
+// ListHandlerSentinels returns all sentinel files for a specific handler in a pack.
+func (s *filesystemDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
+	stateDir := s.paths.PackHandlerDir(pack, handlerName)
+
+	// Check if the directory exists
+	if _, err := s.fs.Stat(stateDir); err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, fmt.Errorf("failed to check handler state directory: %w", err)
+	}
+
+	// Read all files in the directory
+	entries, err := s.fs.ReadDir(stateDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read handler state directory: %w", err)
+	}
+
+	var sentinels []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			sentinels = append(sentinels, entry.Name())
+		}
+	}
+
+	return sentinels, nil
+}
