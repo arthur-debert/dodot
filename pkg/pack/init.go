@@ -86,25 +86,23 @@ func Initialize(opts InitOptions) (*types.PackCommandResult, error) {
 	}
 	filesCreated = append(filesCreated, "README.txt")
 
-	// Now we need to create a Pack instance to use Fill
-	// First, load the configuration we just wrote
-	packConfig := config.PackConfig{} // Use default config for new pack
-	p := &types.Pack{
-		Name:   opts.PackName,
-		Path:   packPath,
-		Config: packConfig,
-	}
+	// Pack configuration will be loaded automatically by Fill function
 
-	// Wrap in our enhanced Pack type and fill with template files
-	enhancedPack := New(p)
+	// Fill the pack with template files using the static function
 	log.Info().Msg("Creating template files")
-	fillResult, err := enhancedPack.Fill(fs)
+	fillOpts := FillOptions{
+		PackName:     opts.PackName,
+		DotfilesRoot: opts.DotfilesRoot,
+		FileSystem:   fs,
+		// Don't pass GetPackStatus here to avoid duplication
+	}
+	fillResult, err := Fill(fillOpts)
 	if err != nil {
 		return nil, errors.Wrapf(err, errors.ErrInternal, "failed to fill pack with template files")
 	}
 
 	// Add the files created by fill
-	filesCreated = append(filesCreated, fillResult.FilesCreated...)
+	filesCreated = append(filesCreated, fillResult.Metadata.CreatedPaths...)
 
 	log.Info().
 		Str("pack", opts.PackName).
