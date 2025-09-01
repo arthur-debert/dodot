@@ -1,8 +1,0 @@
-Provision runs both provisioning actions (install scripts, Homebrew packages)
-and linking actions (symlinks, shell profiles, PATH entries) for your dotfiles.
-
-This is a complete setup command that:
-1. First runs all provisioning handlers (install scripts, brewfiles)
-2. Then runs all linking handlers (symlinks, profiles, paths)
-
-Use --force to re-run provisioning handlers that have already been executed.

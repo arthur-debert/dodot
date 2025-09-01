@@ -3,108 +3,81 @@ package dodot
 import (
 	_ "embed"
 	"strings"
+
+	// Import messages from command packages
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/addignore"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/adopt"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/fill"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/genconfig"
+	initcmd "github.com/arthur-debert/dodot/cmd/dodot/commands/init"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/off"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/on"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/snippet"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/status"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
 )
 
-// Short messages (one-liners)
-const (
-	// Command descriptions
-	MsgRootShort       = "A stateless dotfiles manager"
-	MsgStatusShort     = "Show pack status(es)"
-	MsgInitShort       = "Create a new pack with template files"
-	MsgFillShort       = "Add placeholder files to an existing pack"
-	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
-	MsgAdoptShort      = "Adopt existing files into a pack"
-	MsgTopicsShort     = "List all topics or show help for a topic"
-	MsgTopicsLong      = "Display a list of all available help topics that provide additional documentation beyond command help."
-	MsgCompletionShort = "Generate shell completion script"
-	MsgSnippetShort    = "Output shell integration snippet for inclusion in profile"
+// Re-export command messages for backward compatibility
+var (
+	// Status command
+	MsgStatusShort    = status.MsgShort
+	MsgErrStatusPacks = status.MsgErrStatusPacks
 
-	// Status messages
-	MsgDryRunNotice      = "\nDRY RUN MODE - No changes were made"
-	MsgNoOperations      = "No operations needed."
-	MsgOperationsFormat  = "\nPerformed %d operations:\n"
-	MsgOperationItem     = "  ✓ %s\n"
-	MsgNoPacksFound      = "No packs found."
-	MsgAvailablePacks    = "Available packs:"
-	MsgPackItem          = "  %s\n"
-	MsgPackCreatedFormat = "Created pack '%s' with the following files:\n"
-	MsgPackFilledFormat  = "Added the following files to pack '%s':\n"
-	MsgPackHasAllFiles   = "Pack '%s' already has all standard files.\n"
-	MsgIgnoreFileCreated = "Created .dodotignore file in pack '%s'\n"
-	MsgIgnoreFileExists  = "Pack '%s' already has a .dodotignore file\n"
-	MsgFileAdopted       = "✔ Moving '%s' to '%s'\n"
-	MsgSymlinkCreated    = "✔ Creating symlink: '%s' -> '%s'\n"
-	MsgAdoptSuccess      = "✨ Success! %d file(s) are now managed by dodot in the '%s' pack.\n"
-	MsgNoFilesAdopted    = "No files were adopted.\n"
-	MsgPackStatusFormat  = "\n%s:\n"
-	MsgHandlerStatus     = "  %s: %s"
-	MsgHandlerDesc       = " - %s"
+	// Init command
+	MsgInitShort   = initcmd.MsgShort
+	MsgErrInitPack = initcmd.MsgErrInitPack
+
+	// Fill command
+	MsgFillShort   = fill.MsgShort
+	MsgErrFillPack = fill.MsgErrFillPack
+
+	// Adopt command
+	MsgAdoptShort    = adopt.MsgShort
+	MsgErrAdoptFiles = adopt.MsgErrAdoptFiles
+
+	// Add-ignore command
+	MsgAddIgnoreShort = addignore.MsgShort
+	MsgErrAddIgnore   = addignore.MsgErrAddIgnore
+
+	// Topics command
+	MsgTopicsShort = topics.MsgShort
+	MsgTopicsLong  = topics.MsgLong
+
+	// Snippet command
+	MsgSnippetShort = snippet.MsgShort
+
+	// Gen-config command
+	MsgGenConfigShort = genconfig.MsgShort
+
+	// Off command (not currently used, but imported to avoid "imported and not used" error)
+	_ = off.MsgShort
+
+	// On command (not currently used, but imported to avoid "imported and not used" error)
+	_ = on.MsgShort
+)
+
+// General messages (not command-specific)
+const (
+	// Root command description
+	MsgRootShort = "A stateless dotfiles manager"
 
 	// Error messages
-	MsgErrInitPaths   = "failed to initialize paths: %w"
-	MsgErrListPacks   = "failed to list packs: %w"
-	MsgErrStatusPacks = "failed to get pack status: %w"
-	MsgErrInitPack    = "failed to initialize pack: %w"
-	MsgErrFillPack    = "failed to fill pack: %w"
-	MsgErrAddIgnore   = "failed to add ignore file: %w"
-	MsgErrAdoptFiles  = "failed to adopt files: %w"
+	MsgErrInitPaths = "failed to initialize paths: %w"
 
 	// Flag descriptions
 	MsgFlagVerbose = "Increase verbosity (-v INFO, -vv DEBUG, -vvv TRACE)"
 	MsgFlagDryRun  = "Preview changes without executing them"
 	MsgFlagForce   = "Force execution of run-once handlers even if already executed"
-	MsgFlagType    = "Type of pack to create (basic, shell, vim, etc.)"
 
 	// Debug messages
 	MsgDebugDotfilesRoot = "Debug: Using dotfiles root: %s (fallback=%v)\n"
-	MsgDebugUsingCwd     = "Using current directory: %s\n"
 )
 
-// Long messages from embedded files
+// Embedded message files for general messages
 var (
 	//go:embed msgs/root-long.txt
 	msgRootLongRaw string
 	MsgRootLong    = strings.TrimSpace(msgRootLongRaw)
-
-	//go:embed msgs/status-long.txt
-	msgStatusLongRaw string
-	MsgStatusLong    = strings.TrimSpace(msgStatusLongRaw)
-
-	//go:embed msgs/status-example.txt
-	msgStatusExampleRaw string
-	MsgStatusExample    = strings.TrimSpace(msgStatusExampleRaw)
-
-	//go:embed msgs/init-long.txt
-	msgInitLongRaw string
-	MsgInitLong    = strings.TrimSpace(msgInitLongRaw)
-
-	//go:embed msgs/init-example.txt
-	msgInitExampleRaw string
-	MsgInitExample    = strings.TrimSpace(msgInitExampleRaw)
-
-	//go:embed msgs/fill-long.txt
-	msgFillLongRaw string
-	MsgFillLong    = strings.TrimSpace(msgFillLongRaw)
-
-	//go:embed msgs/fill-example.txt
-	msgFillExampleRaw string
-	MsgFillExample    = strings.TrimSpace(msgFillExampleRaw)
-
-	//go:embed msgs/addignore-long.txt
-	msgAddIgnoreLongRaw string
-	MsgAddIgnoreLong    = strings.TrimSpace(msgAddIgnoreLongRaw)
-
-	//go:embed msgs/addignore-example.txt
-	msgAddIgnoreExampleRaw string
-	MsgAddIgnoreExample    = strings.TrimSpace(msgAddIgnoreExampleRaw)
-
-	//go:embed msgs/adopt-long.txt
-	msgAdoptLongRaw string
-	MsgAdoptLong    = strings.TrimSpace(msgAdoptLongRaw)
-
-	//go:embed msgs/adopt-example.txt
-	msgAdoptExampleRaw string
-	MsgAdoptExample    = strings.TrimSpace(msgAdoptExampleRaw)
 
 	//go:embed msgs/fallback-warning.txt
 	msgFallbackWarningRaw string
@@ -113,16 +86,4 @@ var (
 	//go:embed msgs/usage-template.txt
 	msgUsageTemplateRaw string
 	MsgUsageTemplate    = strings.TrimSpace(msgUsageTemplateRaw)
-
-	//go:embed msgs/completion-long.txt
-	msgCompletionLongRaw string
-	MsgCompletionLong    = strings.TrimSpace(msgCompletionLongRaw)
-
-	//go:embed msgs/snippet-long.txt
-	msgSnippetLongRaw string
-	MsgSnippetLong    = strings.TrimSpace(msgSnippetLongRaw)
-
-	//go:embed msgs/snippet-example.txt
-	msgSnippetExampleRaw string
-	MsgSnippetExample    = strings.TrimSpace(msgSnippetExampleRaw)
 )

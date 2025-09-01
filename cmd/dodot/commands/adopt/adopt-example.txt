@@ -1,0 +1,8 @@
+# Adopt your existing .vimrc into the vim pack
+dodot adopt vim ~/.vimrc
+
+# Adopt multiple files at once
+dodot adopt shell ~/.bashrc ~/.bash_profile ~/.bash_aliases
+
+# Force overwrite if files already exist in the pack
+dodot adopt --force git ~/.gitconfig ~/.gitignore_global
