@@ -19,15 +19,12 @@ import (
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
 	topicspkg "github.com/arthur-debert/dodot/cmd/dodot/internal/topics"
 	"github.com/arthur-debert/dodot/internal/version"
-	"github.com/arthur-debert/dodot/pkg/commands"
-	offpkg "github.com/arthur-debert/dodot/pkg/commands/off"
-	onpkg "github.com/arthur-debert/dodot/pkg/commands/on"
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/dispatcher"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
@@ -299,8 +296,8 @@ func newStatusCmd() *cobra.Command {
 			Strs("packs", args).
 			Msg("Checking pack status")
 
-		// Run status command
-		result, err := commands.StatusPacks(commands.StatusPacksOptions{
+		// Run status command using the dispatcher
+		result, err := dispatcher.Dispatch(dispatcher.CommandStatus, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			Paths:        p,
@@ -345,8 +342,8 @@ func newInitCmd() *cobra.Command {
 			Str("pack", packName).
 			Msg("Creating new pack")
 
-		// Use the actual InitPack implementation
-		result, err := commands.InitPack(commands.InitPackOptions{
+		// Use the dispatcher for init command
+		result, err := dispatcher.Dispatch(dispatcher.CommandInit, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackName:     packName,
 		})
@@ -386,10 +383,10 @@ func newFillCmd() *cobra.Command {
 			Str("pack", packName).
 			Msg("Filling pack with placeholder files")
 
-		// Use the actual FillPack implementation
-		result, err := commands.FillPack(commands.FillPackOptions{
+		// Use the dispatcher for fill command
+		result, err := dispatcher.Dispatch(dispatcher.CommandFill, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
-			PackName:     packName,
+			PackNames:    []string{packName},
 		})
 		if err != nil {
 			return fmt.Errorf(fill.MsgErrFillPack, err)
@@ -434,10 +431,10 @@ func newAdoptCmd() *cobra.Command {
 			Bool("force", force).
 			Msg("Adopting files into pack")
 
-		// Adopt files using the new implementation
-		result, err := commands.AdoptFiles(commands.AdoptFilesOptions{
+		// Adopt files using the dispatcher
+		result, err := dispatcher.Dispatch(dispatcher.CommandAdopt, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
-			PackName:     packName,
+			PackNames:    []string{packName},
 			SourcePaths:  sourcePaths,
 			Force:        force,
 		})
@@ -493,10 +490,10 @@ func newAddIgnoreCmd() *cobra.Command {
 			Str("pack", packName).
 			Msg("Adding ignore file to pack")
 
-		// Use the actual AddIgnore implementation
-		result, err := commands.AddIgnore(commands.AddIgnoreOptions{
+		// Use the dispatcher for add-ignore command
+		result, err := dispatcher.Dispatch(dispatcher.CommandAddIgnore, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
-			PackName:     packName,
+			PackNames:    []string{packName},
 		})
 		if err != nil {
 			// Check if this is a pack not found error and provide detailed help
@@ -561,17 +558,19 @@ func newSnippetCmd() *cobra.Command {
 			return err
 		}
 
-		// Install shell scripts if requested
-		var installMessage string
-		if provision {
-			if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
-				return fmt.Errorf("failed to install shell integration: %w", err)
-			}
-			installMessage = fmt.Sprintf("Shell integration scripts installed to %s/shell/", dataDir)
+		// Use the new generic output command
+		outputResult, err := core.GenerateOutput(core.OutputOptions{
+			Type:  core.OutputTypeSnippet,
+			Write: false, // Snippets are never written to files
+			Snippet: &core.SnippetOutputOptions{
+				Shell:     shell,
+				DataDir:   dataDir,
+				Provision: provision,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to generate snippet: %w", err)
 		}
-
-		// Get the appropriate snippet for the shell using the actual data directory
-		snippetText := shellpkg.GetShellIntegrationSnippet(shell, dataDir)
 
 		// Create a result structure for the snippet
 		snippetResult := struct {
@@ -581,11 +580,14 @@ func newSnippetCmd() *cobra.Command {
 			Installed      bool   `json:"installed"`
 			InstallMessage string `json:"installMessage,omitempty"`
 		}{
-			Shell:          shell,
-			DataDir:        dataDir,
-			Snippet:        snippetText,
-			Installed:      provision,
-			InstallMessage: installMessage,
+			Shell:     outputResult.Metadata["shell"].(string),
+			DataDir:   outputResult.Metadata["dataDir"].(string),
+			Snippet:   outputResult.Content,
+			Installed: outputResult.Metadata["installed"].(bool),
+		}
+		// Add install message if present
+		if msg, ok := outputResult.Metadata["installMessage"].(string); ok {
+			snippetResult.InstallMessage = msg
 		}
 
 		// For text/terminal output, we want just the snippet with optional message
@@ -600,8 +602,8 @@ func newSnippetCmd() *cobra.Command {
 			}
 		} else {
 			// Text/Terminal format - output the snippet directly with header comment
-			if installMessage != "" {
-				if err := renderer.RenderMessage(installMessage); err != nil {
+			if snippetResult.InstallMessage != "" {
+				if err := renderer.RenderMessage(snippetResult.InstallMessage); err != nil {
 					return err
 				}
 				if err := renderer.RenderMessage(""); err != nil { // blank line
@@ -610,7 +612,7 @@ func newSnippetCmd() *cobra.Command {
 			}
 
 			// Output the snippet with comment header
-			fullSnippet := "\n# Run the dodot initialization script if it exists\n" + snippetText
+			fullSnippet := "\n# Run the dodot initialization script if it exists\n" + snippetResult.Snippet
 			if err := renderer.RenderMessage(fullSnippet); err != nil {
 				return fmt.Errorf("failed to render snippet: %w", err)
 			}
@@ -636,10 +638,14 @@ func newGenConfigCmd() *cobra.Command {
 			dotfilesRoot = p.DotfilesRoot()
 		}
 
-		result, err := commands.GenConfig(commands.GenConfigOptions{
-			DotfilesRoot: dotfilesRoot,
-			PackNames:    args,
-			Write:        write,
+		// Use the new generic output command
+		outputResult, err := core.GenerateOutput(core.OutputOptions{
+			Type:  core.OutputTypeConfig,
+			Write: write,
+			Config: &core.ConfigOutputOptions{
+				DotfilesRoot: dotfilesRoot,
+				PackNames:    args,
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to generate config: %w", err)
@@ -647,7 +653,7 @@ func newGenConfigCmd() *cobra.Command {
 
 		// If not writing, output to stdout
 		if !write {
-			fmt.Print(result.ConfigContent)
+			fmt.Print(outputResult.Content)
 			return nil
 		}
 
@@ -659,12 +665,12 @@ func newGenConfigCmd() *cobra.Command {
 
 		// Create command result
 		var message string
-		if len(result.FilesWritten) == 0 {
+		if len(outputResult.FilesWritten) == 0 {
 			message = "No configuration files were written (files may already exist)."
-		} else if len(result.FilesWritten) == 1 {
-			message = fmt.Sprintf("Configuration written to %s", result.FilesWritten[0])
+		} else if len(outputResult.FilesWritten) == 1 {
+			message = fmt.Sprintf("Configuration written to %s", outputResult.FilesWritten[0])
 		} else {
-			message = fmt.Sprintf("Configuration written to %d files", len(result.FilesWritten))
+			message = fmt.Sprintf("Configuration written to %d files", len(outputResult.FilesWritten))
 		}
 
 		cmdResult := &types.CommandResult{
@@ -699,8 +705,8 @@ func newOffCmd() *cobra.Command {
 			Strs("packs", args).
 			Msg("Turning off packs")
 
-		// Turn off packs using the off command
-		result, err := offpkg.OffPacks(offpkg.OffPacksOptions{
+		// Turn off packs using the dispatcher
+		result, err := dispatcher.Dispatch(dispatcher.CommandOff, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			DryRun:       dryRun,
@@ -753,8 +759,8 @@ func newOnCmd() *cobra.Command {
 			Strs("packs", args).
 			Msg("Turning on packs")
 
-		// Turn on packs using the on command
-		result, err := onpkg.OnPacks(onpkg.OnPacksOptions{
+		// Turn on packs using the dispatcher
+		result, err := dispatcher.Dispatch(dispatcher.CommandOn, dispatcher.Options{
 			DotfilesRoot:   p.DotfilesRoot(),
 			PackNames:      args,
 			DryRun:         dryRun,
