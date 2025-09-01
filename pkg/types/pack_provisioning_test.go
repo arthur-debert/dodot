@@ -1,142 +1,59 @@
-package types
+// pkg/types/pack_provisioning_test.go
+// TEST TYPE: Unit Tests
+// DEPENDENCIES: pkg/testutil
+// PURPOSE: Test Pack provisioning-related methods
+
+package types_test
 
 import (
-	"errors"
 	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/testutil"
+	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
 )
-
-// MockDataStore implements DataStore interface for testing
-type MockDataStore struct {
-	handlerStates    map[string]map[string]bool     // pack -> handler -> hasState
-	packHandlers     map[string][]string            // pack -> list of handlers
-	handlerSentinels map[string]map[string][]string // pack -> handler -> sentinels
-	errorOnCall      bool
-}
-
-func NewMockDataStore() *MockDataStore {
-	return &MockDataStore{
-		handlerStates:    make(map[string]map[string]bool),
-		packHandlers:     make(map[string][]string),
-		handlerSentinels: make(map[string]map[string][]string),
-	}
-}
-
-func (m *MockDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
-	return "", nil
-}
-
-func (m *MockDataStore) CreateUserLink(datastorePath, userPath string) error {
-	return nil
-}
-
-func (m *MockDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
-	return nil
-}
-
-func (m *MockDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
-	return false, nil
-}
-
-func (m *MockDataStore) RemoveState(pack, handlerName string) error {
-	return nil
-}
-
-func (m *MockDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
-	if m.errorOnCall {
-		return false, errors.New("pack not found")
-	}
-	if packStates, ok := m.handlerStates[pack]; ok {
-		if hasState, ok := packStates[handlerName]; ok {
-			return hasState, nil
-		}
-	}
-	return false, nil
-}
-
-func (m *MockDataStore) ListPackHandlers(pack string) ([]string, error) {
-	if m.errorOnCall {
-		return nil, errors.New("pack not found")
-	}
-	if handlers, ok := m.packHandlers[pack]; ok {
-		return handlers, nil
-	}
-	return []string{}, nil
-}
-
-func (m *MockDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
-	if m.errorOnCall {
-		return nil, errors.New("pack not found")
-	}
-	if packSentinels, ok := m.handlerSentinels[pack]; ok {
-		if sentinels, ok := packSentinels[handlerName]; ok {
-			return sentinels, nil
-		}
-	}
-	return []string{}, nil
-}
-
-// Helper methods for test setup
-func (m *MockDataStore) SetHandlerState(pack, handler string, hasState bool) {
-	if m.handlerStates[pack] == nil {
-		m.handlerStates[pack] = make(map[string]bool)
-	}
-	m.handlerStates[pack][handler] = hasState
-}
-
-func (m *MockDataStore) SetPackHandlers(pack string, handlers []string) {
-	m.packHandlers[pack] = handlers
-	// Also ensure state entries exist
-	if m.handlerStates[pack] == nil {
-		m.handlerStates[pack] = make(map[string]bool)
-	}
-	for _, h := range handlers {
-		if _, exists := m.handlerStates[pack][h]; !exists {
-			m.handlerStates[pack][h] = false
-		}
-	}
-}
 
 func TestPackIsHandlerProvisioned(t *testing.T) {
 	tests := []struct {
 		name        string
-		pack        *Pack
+		pack        *types.Pack
 		handler     string
-		setupFunc   func(*MockDataStore)
+		setupFunc   func(*testutil.MockDataStore)
 		expected    bool
 		expectError bool
 	}{
 		{
 			name:    "provisioned handler returns true",
-			pack:    &Pack{Name: "vim"},
+			pack:    &types.Pack{Name: "vim"},
 			handler: "homebrew",
-			setupFunc: func(ds *MockDataStore) {
-				ds.SetHandlerState("vim", "homebrew", true)
+			setupFunc: func(ds *testutil.MockDataStore) {
+				ds.SetSentinel("vim", "homebrew", "test-sentinel", true)
 			},
 			expected: true,
 		},
 		{
 			name:    "unprovisioned handler returns false",
-			pack:    &Pack{Name: "vim"},
+			pack:    &types.Pack{Name: "vim"},
 			handler: "install",
-			setupFunc: func(ds *MockDataStore) {
-				ds.SetHandlerState("vim", "install", false)
+			setupFunc: func(ds *testutil.MockDataStore) {
+				// No sentinels set means no state
 			},
 			expected: false,
 		},
 		{
 			name:        "non-existent handler returns false",
-			pack:        &Pack{Name: "vim"},
+			pack:        &types.Pack{Name: "vim"},
 			handler:     "nonexistent",
-			setupFunc:   func(ds *MockDataStore) {},
+			setupFunc:   func(ds *testutil.MockDataStore) {},
 			expected:    false,
 			expectError: false,
 		},
 		{
 			name:    "error from datastore propagates",
-			pack:    &Pack{Name: "vim"},
+			pack:    &types.Pack{Name: "vim"},
 			handler: "homebrew",
-			setupFunc: func(ds *MockDataStore) {
-				ds.errorOnCall = true
+			setupFunc: func(ds *testutil.MockDataStore) {
+				ds.WithError("HasHandlerState", assert.AnError)
 			},
 			expected:    false,
 			expectError: true,
@@ -146,7 +63,7 @@ func TestPackIsHandlerProvisioned(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			ds := NewMockDataStore()
+			ds := testutil.NewMockDataStore()
 			if tt.setupFunc != nil {
 				tt.setupFunc(ds)
 			}
@@ -155,15 +72,12 @@ func TestPackIsHandlerProvisioned(t *testing.T) {
 			result, err := tt.pack.IsHandlerProvisioned(ds, tt.handler)
 
 			// Verify
-			if tt.expectError && err == nil {
-				t.Error("expected error but got none")
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if !tt.expectError && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-			if result != tt.expected {
-				t.Errorf("expected %v but got %v", tt.expected, result)
-			}
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
@@ -171,57 +85,53 @@ func TestPackIsHandlerProvisioned(t *testing.T) {
 func TestPackGetProvisionedHandlers(t *testing.T) {
 	tests := []struct {
 		name        string
-		pack        *Pack
-		setupFunc   func(*MockDataStore)
+		pack        *types.Pack
+		setupFunc   func(*testutil.MockDataStore)
 		expected    []string
 		expectError bool
 	}{
 		{
 			name: "returns only handlers with state",
-			pack: &Pack{Name: "vim"},
-			setupFunc: func(ds *MockDataStore) {
-				ds.SetPackHandlers("vim", []string{"symlink", "homebrew", "install", "shell"})
-				ds.SetHandlerState("vim", "symlink", true)
-				ds.SetHandlerState("vim", "homebrew", true)
-				ds.SetHandlerState("vim", "install", false) // no state
-				ds.SetHandlerState("vim", "shell", true)
+			pack: &types.Pack{Name: "vim"},
+			setupFunc: func(ds *testutil.MockDataStore) {
+				ds.SetSentinel("vim", "symlink", "test1", true)
+				ds.SetSentinel("vim", "homebrew", "test2", true)
+				// install handler has no sentinels (no state)
+				ds.SetSentinel("vim", "shell", "test3", true)
 			},
 			expected: []string{"symlink", "homebrew", "shell"},
 		},
 		{
 			name: "pack with no provisioned handlers",
-			pack: &Pack{Name: "tmux"},
-			setupFunc: func(ds *MockDataStore) {
-				ds.SetPackHandlers("tmux", []string{"symlink", "shell"})
-				ds.SetHandlerState("tmux", "symlink", false)
-				ds.SetHandlerState("tmux", "shell", false)
+			pack: &types.Pack{Name: "tmux"},
+			setupFunc: func(ds *testutil.MockDataStore) {
+				// No sentinels set for any handlers
 			},
 			expected: []string{},
 		},
 		{
 			name:      "non-existent pack returns empty list",
-			pack:      &Pack{Name: "nonexistent"},
-			setupFunc: func(ds *MockDataStore) {},
+			pack:      &types.Pack{Name: "nonexistent"},
+			setupFunc: func(ds *testutil.MockDataStore) {},
 			expected:  []string{},
 		},
 		{
 			name: "error from ListPackHandlers propagates",
-			pack: &Pack{Name: "vim"},
-			setupFunc: func(ds *MockDataStore) {
-				ds.errorOnCall = true
+			pack: &types.Pack{Name: "vim"},
+			setupFunc: func(ds *testutil.MockDataStore) {
+				ds.WithError("ListPackHandlers", assert.AnError)
 			},
 			expected:    nil,
 			expectError: true,
 		},
 		{
 			name: "mixed state handlers",
-			pack: &Pack{Name: "git"},
-			setupFunc: func(ds *MockDataStore) {
-				ds.SetPackHandlers("git", []string{"symlink", "shell", "path", "homebrew"})
-				ds.SetHandlerState("git", "symlink", true)
-				ds.SetHandlerState("git", "shell", false)
-				ds.SetHandlerState("git", "path", true)
-				ds.SetHandlerState("git", "homebrew", false)
+			pack: &types.Pack{Name: "git"},
+			setupFunc: func(ds *testutil.MockDataStore) {
+				ds.SetSentinel("git", "symlink", "test1", true)
+				// shell handler has no sentinels (no state)
+				ds.SetSentinel("git", "path", "test2", true)
+				// homebrew handler has no sentinels (no state)
 			},
 			expected: []string{"symlink", "path"},
 		},
@@ -230,7 +140,7 @@ func TestPackGetProvisionedHandlers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			ds := NewMockDataStore()
+			ds := testutil.NewMockDataStore()
 			if tt.setupFunc != nil {
 				tt.setupFunc(ds)
 			}
@@ -239,34 +149,14 @@ func TestPackGetProvisionedHandlers(t *testing.T) {
 			result, err := tt.pack.GetProvisionedHandlers(ds)
 
 			// Verify
-			if tt.expectError && err == nil {
-				t.Error("expected error but got none")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("unexpected error: %v", err)
-			}
-
-			if tt.expected == nil && result != nil {
-				t.Errorf("expected nil result but got %v", result)
-				return
-			}
-
-			// Sort results for consistent comparison
-			if len(result) != len(tt.expected) {
-				t.Errorf("expected %d handlers but got %d: %v", len(tt.expected), len(result), result)
-				return
-			}
-
-			// Create a map for easier comparison
-			resultMap := make(map[string]bool)
-			for _, h := range result {
-				resultMap[h] = true
-			}
-
-			for _, expected := range tt.expected {
-				if !resultMap[expected] {
-					t.Errorf("expected handler %s not found in result %v", expected, result)
+			if tt.expectError {
+				assert.Error(t, err)
+				if tt.expected == nil {
+					assert.Nil(t, result)
 				}
+			} else {
+				assert.NoError(t, err)
+				assert.ElementsMatch(t, tt.expected, result)
 			}
 		})
 	}
