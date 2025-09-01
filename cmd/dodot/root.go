@@ -20,7 +20,6 @@ import (
 	topicspkg "github.com/arthur-debert/dodot/cmd/dodot/internal/topics"
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/commands"
-	offpkg "github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/core"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -698,8 +697,8 @@ func newOffCmd() *cobra.Command {
 			Strs("packs", args).
 			Msg("Turning off packs")
 
-		// Turn off packs using the off command
-		result, err := offpkg.OffPacks(offpkg.OffPacksOptions{
+		// Turn off packs using the dispatcher
+		result, err := commands.Dispatch(commands.CommandOff, commands.DispatchOptions{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			DryRun:       dryRun,
