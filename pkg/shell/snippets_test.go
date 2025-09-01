@@ -1,14 +1,14 @@
-// pkg/types/shell_test.go
+// pkg/shell/snippets_test.go
 // TEST TYPE: Unit Tests
 // DEPENDENCIES: None
 // PURPOSE: Test shell integration snippet generation
 
-package types_test
+package shell_test
 
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -75,7 +75,7 @@ end`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := types.GetShellIntegrationSnippet(tt.shell, tt.customDataDir)
+			result := shell.GetShellIntegrationSnippet(tt.shell, tt.customDataDir)
 			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
@@ -107,7 +107,7 @@ func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := types.GetShellIntegrationSnippet(tt.shell, tt.dataDir)
+			result := shell.GetShellIntegrationSnippet(tt.shell, tt.dataDir)
 			assert.Contains(t, result, tt.dataDir)
 		})
 	}
@@ -120,7 +120,7 @@ func TestGetShellIntegrationSnippet_Constants(t *testing.T) {
     source "$HOME/.local/share/dodot/shell/dodot-init.fish"
 end`
 
-	assert.Equal(t, bashExpected, types.GetShellIntegrationSnippet("bash", ""))
-	assert.Equal(t, bashExpected, types.GetShellIntegrationSnippet("zsh", ""))
-	assert.Equal(t, fishExpected, types.GetShellIntegrationSnippet("fish", ""))
+	assert.Equal(t, bashExpected, shell.GetShellIntegrationSnippet("bash", ""))
+	assert.Equal(t, bashExpected, shell.GetShellIntegrationSnippet("zsh", ""))
+	assert.Equal(t, fishExpected, shell.GetShellIntegrationSnippet("fish", ""))
 }

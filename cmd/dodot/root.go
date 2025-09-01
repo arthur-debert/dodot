@@ -571,7 +571,7 @@ func newSnippetCmd() *cobra.Command {
 		}
 
 		// Get the appropriate snippet for the shell using the actual data directory
-		snippetText := types.GetShellIntegrationSnippet(shell, dataDir)
+		snippetText := shellpkg.GetShellIntegrationSnippet(shell, dataDir)
 
 		// Create a result structure for the snippet
 		snippetResult := struct {
