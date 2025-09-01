@@ -148,19 +148,19 @@ func convertToDisplayPack(status *pack.StatusResult) types.DisplayPack {
 }
 
 // statusStateToDisplayStatus converts internal status states to display status strings
-func statusStateToDisplayStatus(state types.StatusState) string {
+func statusStateToDisplayStatus(state pack.StatusState) string {
 	switch state {
-	case types.StatusStateReady, types.StatusStateSuccess:
+	case pack.StatusStateReady, pack.StatusStateSuccess:
 		return "success"
-	case types.StatusStateMissing:
+	case pack.StatusStateMissing:
 		return "queue"
-	case types.StatusStatePending:
+	case pack.StatusStatePending:
 		return "queue"
-	case types.StatusStateError:
+	case pack.StatusStateError:
 		return "error"
-	case types.StatusStateIgnored:
+	case pack.StatusStateIgnored:
 		return "ignored"
-	case types.StatusStateConfig:
+	case pack.StatusStateConfig:
 		return "config"
 	default:
 		return "unknown"

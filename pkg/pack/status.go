@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
@@ -13,6 +14,65 @@ import (
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
+
+// StatusState represents the state of a deployment
+type StatusState string
+
+const (
+	// StatusStatePending indicates the action has not been executed yet
+	StatusStatePending StatusState = "pending"
+
+	// StatusStateReady indicates the item is correctly deployed
+	StatusStateReady StatusState = "ready"
+
+	// StatusStateMissing indicates the item is not deployed
+	StatusStateMissing StatusState = "missing"
+
+	// StatusStateSuccess indicates the action was executed successfully
+	StatusStateSuccess StatusState = "success"
+
+	// StatusStateError indicates the action failed or is broken
+	StatusStateError StatusState = "error"
+
+	// StatusStateIgnored indicates the item is explicitly ignored
+	StatusStateIgnored StatusState = "ignored"
+
+	// StatusStateConfig indicates this is a configuration file
+	StatusStateConfig StatusState = "config"
+
+	// StatusStateUnknown indicates the status could not be determined
+	StatusStateUnknown StatusState = "unknown"
+)
+
+// Status represents the deployment status of an action
+type Status struct {
+	// State is the current status state
+	State StatusState
+
+	// Message is a human-readable status message
+	Message string
+
+	// Timestamp is when the action was last executed (optional)
+	Timestamp *time.Time
+
+	// ErrorDetails provides additional information about errors (optional)
+	ErrorDetails *StatusErrorDetails
+}
+
+// StatusErrorDetails provides detailed information about status errors
+type StatusErrorDetails struct {
+	// ErrorType describes the type of error (e.g., "missing_source", "missing_intermediate")
+	ErrorType string
+
+	// DeployedPath is the user-facing path that has an issue
+	DeployedPath string
+
+	// IntermediatePath is the dodot state path involved
+	IntermediatePath string
+
+	// SourcePath is the source file path
+	SourcePath string
+}
 
 // StatusOptions contains options for getting pack status
 type StatusOptions struct {
@@ -59,7 +119,7 @@ type FileStatus struct {
 	AbsolutePath string
 
 	// Current deployment status
-	Status types.Status
+	Status Status
 
 	// Additional handler-specific information
 	AdditionalInfo string
@@ -108,8 +168,8 @@ func GetStatus(opts StatusOptions) (*StatusResult, error) {
 				Str("handler", match.HandlerName).
 				Msg("Failed to get handler status")
 			// Add error status for this file
-			status = types.Status{
-				State:   types.StatusStateError,
+			status = Status{
+				State:   StatusStateError,
 				Message: fmt.Sprintf("status check failed: %v", err),
 			}
 		}
@@ -156,7 +216,7 @@ func checkSpecialFiles(pack types.Pack, result *StatusResult, fs types.FS) error
 }
 
 // getHandlerStatus checks the deployment status for a specific match
-func getHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (types.Status, error) {
+func getHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	// Check handler category to determine how to check status
 	category := handlers.HandlerRegistry.GetHandlerCategory(match.HandlerName)
 
@@ -168,22 +228,22 @@ func getHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.Da
 		// For code execution handlers (install, homebrew), check sentinels
 		return getCodeExecutionHandlerStatus(match, pack, dataStore, fs)
 	default:
-		return types.Status{
-			State:   types.StatusStateUnknown,
+		return Status{
+			State:   StatusStateUnknown,
 			Message: "unknown handler type",
 		}, nil
 	}
 }
 
 // getConfigurationHandlerStatus checks status for configuration handlers
-func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (types.Status, error) {
+func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	baseName := filepath.Base(match.Path)
 	intermediateLinkPath := filepath.Join(pathsInstance.PackHandlerDir(pack.Name, match.HandlerName), baseName)
 
 	// Check if intermediate link exists and is valid
 	exists, valid, err := checkIntermediateLink(fs, intermediateLinkPath, match.AbsolutePath)
 	if err != nil {
-		return types.Status{}, err
+		return Status{}, err
 	}
 
 	if !exists {
@@ -196,8 +256,8 @@ func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 		case "shell":
 			message = "not sourced in shell"
 		}
-		return types.Status{
-			State:   types.StatusStateMissing,
+		return Status{
+			State:   StatusStateMissing,
 			Message: message,
 		}, nil
 	}
@@ -210,10 +270,10 @@ func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 		case "shell":
 			message = "shell profile link points to wrong script"
 		}
-		return types.Status{
-			State:   types.StatusStateError,
+		return Status{
+			State:   StatusStateError,
 			Message: message,
-			ErrorDetails: &types.StatusErrorDetails{
+			ErrorDetails: &StatusErrorDetails{
 				ErrorType:        "invalid_intermediate",
 				IntermediatePath: intermediateLinkPath,
 				SourcePath:       match.AbsolutePath,
@@ -225,10 +285,10 @@ func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 	if match.HandlerName == "symlink" {
 		if _, err := fs.Stat(match.AbsolutePath); err != nil {
 			if os.IsNotExist(err) {
-				return types.Status{
-					State:   types.StatusStateError,
+				return Status{
+					State:   StatusStateError,
 					Message: "source file missing",
-					ErrorDetails: &types.StatusErrorDetails{
+					ErrorDetails: &StatusErrorDetails{
 						ErrorType:        "missing_source",
 						IntermediatePath: intermediateLinkPath,
 						SourcePath:       match.AbsolutePath,
@@ -248,18 +308,18 @@ func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 		message = "sourced in shell profile"
 	}
 
-	return types.Status{
-		State:   types.StatusStateReady,
+	return Status{
+		State:   StatusStateReady,
 		Message: message,
 	}, nil
 }
 
 // getCodeExecutionHandlerStatus checks status for code execution handlers
-func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS) (types.Status, error) {
+func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS) (Status, error) {
 	// Calculate current checksum
 	currentChecksum, err := hashutil.CalculateFileChecksum(match.AbsolutePath)
 	if err != nil {
-		return types.Status{}, fmt.Errorf("failed to calculate checksum: %w", err)
+		return Status{}, fmt.Errorf("failed to calculate checksum: %w", err)
 	}
 
 	// Determine sentinel name based on handler type
@@ -276,14 +336,14 @@ func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 	// Check if sentinel exists
 	hasSentinel, err := dataStore.HasSentinel(pack.Name, match.HandlerName, sentinelName)
 	if err != nil {
-		return types.Status{}, err
+		return Status{}, err
 	}
 
 	if !hasSentinel {
 		// Check if there's an old sentinel with different checksum
 		sentinels, err := dataStore.ListHandlerSentinels(pack.Name, match.HandlerName)
 		if err != nil {
-			return types.Status{}, err
+			return Status{}, err
 		}
 
 		// Look for any sentinel for this file
@@ -297,8 +357,8 @@ func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 		}
 
 		if oldSentinelFound {
-			return types.Status{
-				State:   types.StatusStatePending,
+			return Status{
+				State:   StatusStatePending,
 				Message: "file changed, needs re-run",
 			}, nil
 		}
@@ -307,8 +367,8 @@ func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 		if match.HandlerName == "homebrew" {
 			message = "never installed"
 		}
-		return types.Status{
-			State:   types.StatusStateMissing,
+		return Status{
+			State:   StatusStateMissing,
 			Message: message,
 		}, nil
 	}
@@ -318,8 +378,8 @@ func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 		message = "packages installed"
 	}
 
-	return types.Status{
-		State:     types.StatusStateReady,
+	return Status{
+		State:     StatusStateReady,
 		Message:   message,
 		Timestamp: nil,
 	}, nil
@@ -421,19 +481,19 @@ func calculatePackStatus(files []FileStatus) string {
 }
 
 // statusStateToDisplayStatus converts internal status states to display status strings
-func statusStateToDisplayStatus(state types.StatusState) string {
+func statusStateToDisplayStatus(state StatusState) string {
 	switch state {
-	case types.StatusStateReady, types.StatusStateSuccess:
+	case StatusStateReady, StatusStateSuccess:
 		return "success"
-	case types.StatusStateMissing:
+	case StatusStateMissing:
 		return "queue"
-	case types.StatusStatePending:
+	case StatusStatePending:
 		return "queue"
-	case types.StatusStateError:
+	case StatusStateError:
 		return "error"
-	case types.StatusStateIgnored:
+	case StatusStateIgnored:
 		return "ignored"
-	case types.StatusStateConfig:
+	case StatusStateConfig:
 		return "config"
 	default:
 		return "unknown"
