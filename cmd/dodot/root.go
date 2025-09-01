@@ -343,8 +343,8 @@ func newInitCmd() *cobra.Command {
 			Str("pack", packName).
 			Msg("Creating new pack")
 
-		// Use the actual InitPack implementation
-		result, err := commands.InitPack(commands.InitPackOptions{
+		// Use the dispatcher for init command
+		result, err := commands.Dispatch(commands.CommandInit, commands.DispatchOptions{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackName:     packName,
 		})
@@ -384,10 +384,10 @@ func newFillCmd() *cobra.Command {
 			Str("pack", packName).
 			Msg("Filling pack with placeholder files")
 
-		// Use the actual FillPack implementation
-		result, err := commands.FillPack(commands.FillPackOptions{
+		// Use the dispatcher for fill command
+		result, err := commands.Dispatch(commands.CommandFill, commands.DispatchOptions{
 			DotfilesRoot: p.DotfilesRoot(),
-			PackName:     packName,
+			PackNames:    []string{packName},
 		})
 		if err != nil {
 			return fmt.Errorf(fill.MsgErrFillPack, err)
@@ -432,10 +432,10 @@ func newAdoptCmd() *cobra.Command {
 			Bool("force", force).
 			Msg("Adopting files into pack")
 
-		// Adopt files using the new implementation
-		result, err := commands.AdoptFiles(commands.AdoptFilesOptions{
+		// Adopt files using the dispatcher
+		result, err := commands.Dispatch(commands.CommandAdopt, commands.DispatchOptions{
 			DotfilesRoot: p.DotfilesRoot(),
-			PackName:     packName,
+			PackNames:    []string{packName},
 			SourcePaths:  sourcePaths,
 			Force:        force,
 		})
@@ -491,10 +491,10 @@ func newAddIgnoreCmd() *cobra.Command {
 			Str("pack", packName).
 			Msg("Adding ignore file to pack")
 
-		// Use the actual AddIgnore implementation
-		result, err := commands.AddIgnore(commands.AddIgnoreOptions{
+		// Use the dispatcher for add-ignore command
+		result, err := commands.Dispatch(commands.CommandAddIgnore, commands.DispatchOptions{
 			DotfilesRoot: p.DotfilesRoot(),
-			PackName:     packName,
+			PackNames:    []string{packName},
 		})
 		if err != nil {
 			// Check if this is a pack not found error and provide detailed help
