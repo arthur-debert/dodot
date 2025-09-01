@@ -3,12 +3,12 @@
 // DEPENDENCIES: Mock DataStore, Memory FS
 // PURPOSE: Test on command with new provisioning options
 
-package pack_test
+package packcommands_test
 
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +34,7 @@ handler = "install"`,
 		},
 	})
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"mixed"},
 		DryRun:       false,
@@ -44,7 +44,7 @@ handler = "install"`,
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify only link was executed, not provision
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ handler = "install"`,
 	}
 
 	// First run - should skip already provisioned
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot:   env.DotfilesRoot,
 		PackNames:      []string{"tools"},
 		DryRun:         false,
@@ -89,7 +89,7 @@ handler = "install"`,
 		FileSystem:     env.FS,
 	}
 
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 	require.NoError(t, err)
 
 	// Verify pack was turned on but install was skipped
@@ -101,7 +101,7 @@ handler = "install"`,
 	// Second run with ProvisionRerun - should re-run provisioning
 	opts.ProvisionRerun = true
 
-	result2, err := pack.TurnOn(opts)
+	result2, err := packcommands.TurnOn(opts)
 	require.NoError(t, err)
 
 	// Verify provisioning was re-run
@@ -124,7 +124,7 @@ handler = "install"`,
 		},
 	})
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"broken"},
 		DryRun:       false,
@@ -134,7 +134,7 @@ handler = "install"`,
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Should handle provisioning errors gracefully
 	// The error handling might vary based on implementation
@@ -185,7 +185,7 @@ handler = "shell"`,
 		mockDS.SetSentinel("complex", "install", "install.sh", true)
 	}
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot:   env.DotfilesRoot,
 		PackNames:      []string{"complex"},
 		DryRun:         false,
@@ -196,7 +196,7 @@ handler = "shell"`,
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify mixed provisioning behavior
 	require.NoError(t, err)

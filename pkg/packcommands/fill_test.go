@@ -1,4 +1,4 @@
-package pack_test
+package packcommands_test
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -93,13 +93,13 @@ func TestFill(t *testing.T) {
 			}
 
 			// Run fill command
-			opts := pack.FillOptions{
+			opts := packcommands.FillOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     "testpack",
 				FileSystem:   fs,
 			}
 
-			result, err := pack.Fill(opts)
+			result, err := packcommands.Fill(opts)
 
 			// Check error
 			if tt.expectedError != "" {
@@ -188,13 +188,13 @@ func TestFillErrors(t *testing.T) {
 			}
 
 			// Run fill command
-			opts := pack.FillOptions{
+			opts := packcommands.FillOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     tt.packName,
 				FileSystem:   env.FS,
 			}
 
-			result, err := pack.Fill(opts)
+			result, err := packcommands.Fill(opts)
 
 			// Should error
 			require.Error(t, err)

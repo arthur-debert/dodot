@@ -1,4 +1,4 @@
-package pack
+package packcommands
 
 import (
 	"github.com/arthur-debert/dodot/pkg/types"

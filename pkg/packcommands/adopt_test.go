@@ -3,7 +3,7 @@
 // DEPENDENCIES: Mock DataStore, Memory FS
 // PURPOSE: Test adopt command orchestration for file adoption and pack management
 
-package pack_test
+package packcommands_test
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ func TestAdopt_EmptySourcePaths_Orchestration(t *testing.T) {
 	// Create the pack first
 	env.SetupPack("test-pack", testutil.PackConfig{})
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "test-pack",
 		SourcePaths:  []string{},
@@ -33,7 +33,7 @@ func TestAdopt_EmptySourcePaths_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify empty sources handling - adopt succeeds but adopts nothing
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestAdopt_SingleFile_Orchestration(t *testing.T) {
 	err := env.FS.WriteFile(homeFile, []byte("user.name = Test User"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "git",
 		SourcePaths:  []string{homeFile},
@@ -63,7 +63,7 @@ func TestAdopt_SingleFile_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify single file adoption orchestration
 	require.NoError(t, err)
@@ -108,7 +108,7 @@ func TestAdopt_MultipleFiles_Orchestration(t *testing.T) {
 		sourcePaths = append(sourcePaths, filePath)
 	}
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "shell",
 		SourcePaths:  sourcePaths,
@@ -117,7 +117,7 @@ func TestAdopt_MultipleFiles_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify multiple file adoption orchestration
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func TestAdopt_NonExistentFile_Orchestration(t *testing.T) {
 
 	nonExistentFile := filepath.Join(env.HomeDir, ".nonexistent")
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "test",
 		SourcePaths:  []string{nonExistentFile},
@@ -156,7 +156,7 @@ func TestAdopt_NonExistentFile_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify error handling for non-existent files
 	assert.Error(t, err, "should return error for non-existent file")
@@ -174,7 +174,7 @@ func TestAdopt_NewPackCreation_Orchestration(t *testing.T) {
 	err := env.FS.WriteFile(sourceFile, []byte("set number"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "newpack", // Pack doesn't exist yet
 		SourcePaths:  []string{sourceFile},
@@ -183,7 +183,7 @@ func TestAdopt_NewPackCreation_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify error for non-existent pack
 	require.Error(t, err)
@@ -210,7 +210,7 @@ func TestAdopt_ForceOverwrite_Orchestration(t *testing.T) {
 	err = env.FS.WriteFile(sourceFile, []byte("new content"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "git",
 		SourcePaths:  []string{sourceFile},
@@ -219,7 +219,7 @@ func TestAdopt_ForceOverwrite_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify force overwrite orchestration
 	require.NoError(t, err)
@@ -251,7 +251,7 @@ func TestAdopt_ConflictWithoutForce_Orchestration(t *testing.T) {
 	err = env.FS.WriteFile(sourceFile, []byte("new content"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "git",
 		SourcePaths:  []string{sourceFile},
@@ -260,7 +260,7 @@ func TestAdopt_ConflictWithoutForce_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify conflict handling without force
 	assert.Error(t, err, "should return error for existing destination")
@@ -283,7 +283,7 @@ func TestAdopt_InvalidPackName_Orchestration(t *testing.T) {
 	err := env.FS.WriteFile(sourceFile, []byte("test content"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "", // Invalid: empty pack name
 		SourcePaths:  []string{sourceFile},
@@ -292,7 +292,7 @@ func TestAdopt_InvalidPackName_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify pack name validation
 	assert.Error(t, err, "should return error for empty pack name")
@@ -312,7 +312,7 @@ func TestAdopt_PackNameTrailingSlash_Orchestration(t *testing.T) {
 	err := env.FS.WriteFile(sourceFile, []byte("test content"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "test/", // Trailing slash (from shell completion)
 		SourcePaths:  []string{sourceFile},
@@ -321,7 +321,7 @@ func TestAdopt_PackNameTrailingSlash_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify trailing slash handling
 	require.NoError(t, err)
@@ -352,7 +352,7 @@ func TestAdopt_IdempotentBehavior_Orchestration(t *testing.T) {
 	err = env.FS.Symlink(managedFile, symlinkPath)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "git",
 		SourcePaths:  []string{symlinkPath},
@@ -361,7 +361,7 @@ func TestAdopt_IdempotentBehavior_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify idempotent behavior (already managed files are skipped)
 	require.NoError(t, err)
@@ -397,7 +397,7 @@ func TestAdopt_XDGConfigFile_Orchestration(t *testing.T) {
 		}
 	}()
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "starship",
 		SourcePaths:  []string{configFile},
@@ -406,7 +406,7 @@ func TestAdopt_XDGConfigFile_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify XDG config adoption orchestration
 	require.NoError(t, err)
@@ -435,7 +435,7 @@ func TestAdopt_PartialFailure_Orchestration(t *testing.T) {
 
 	invalidFile := filepath.Join(env.HomeDir, ".nonexistent")
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "mixed",
 		SourcePaths:  []string{validFile, invalidFile}, // Mix of valid and invalid
@@ -444,7 +444,7 @@ func TestAdopt_PartialFailure_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify partial failure handling
 	assert.Error(t, err, "should return error for invalid file")
@@ -469,7 +469,7 @@ func TestAdopt_ResultStructure_Orchestration(t *testing.T) {
 	err := env.FS.WriteFile(sourceFile, []byte("test content"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "structure-test",
 		SourcePaths:  []string{sourceFile},
@@ -478,7 +478,7 @@ func TestAdopt_ResultStructure_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify result structure completeness
 	require.NoError(t, err)
@@ -512,7 +512,7 @@ func TestAdopt_FileSystemIntegration_Orchestration(t *testing.T) {
 	err = env.FS.WriteFile(nestedFile, []byte("{\"setting\": \"value\"}"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.AdoptOptions{
+	opts := packcommands.AdoptOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "app",
 		SourcePaths:  []string{nestedFile},
@@ -521,7 +521,7 @@ func TestAdopt_FileSystemIntegration_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.Adopt(opts)
+	result, err := packcommands.Adopt(opts)
 
 	// Verify complex filesystem operation orchestration
 	require.NoError(t, err)

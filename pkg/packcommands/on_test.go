@@ -3,13 +3,13 @@
 // DEPENDENCIES: Mock DataStore, Memory FS
 // PURPOSE: Test on command orchestration without filesystem dependencies
 
-package pack_test
+package packcommands_test
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ func TestTurnOn_EmptyPackNames_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		DryRun:       false,
@@ -28,7 +28,7 @@ func TestTurnOn_EmptyPackNames_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ handler = "symlink"`,
 		},
 	})
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"testpack"},
 		DryRun:       true,
@@ -60,7 +60,7 @@ handler = "symlink"`,
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestTurnOn_ForceFlag_Orchestration(t *testing.T) {
 	err := env.FS.WriteFile(filepath.Join(env.HomeDir, ".conflicted.conf"), []byte("user content"), 0644)
 	require.NoError(t, err)
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"force-test"},
 		DryRun:       false,
@@ -97,7 +97,7 @@ func TestTurnOn_ForceFlag_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
@@ -128,7 +128,7 @@ func TestTurnOn_SpecificPacks_Orchestration(t *testing.T) {
 	})
 
 	// Only turn on specific packs
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"pack1", "pack3"},
 		DryRun:       false,
@@ -137,7 +137,7 @@ func TestTurnOn_SpecificPacks_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestTurnOn_InvalidPack_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"non-existent"},
 		DryRun:       false,
@@ -167,7 +167,7 @@ func TestTurnOn_InvalidPack_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	_, err := pack.TurnOn(opts)
+	_, err := packcommands.TurnOn(opts)
 
 	// Verify error handling
 	require.Error(t, err)
@@ -188,7 +188,7 @@ func TestTurnOn_MultipleHandlers_Orchestration(t *testing.T) {
 		},
 	})
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"multi"},
 		DryRun:       false,
@@ -197,7 +197,7 @@ func TestTurnOn_MultipleHandlers_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
@@ -215,7 +215,7 @@ func TestTurnOn_EmptyDotfilesDirectory_Orchestration(t *testing.T) {
 
 	// No packs created
 
-	opts := pack.OnOptions{
+	opts := packcommands.OnOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{}, // Empty = all packs
 		DryRun:       false,
@@ -224,7 +224,7 @@ func TestTurnOn_EmptyDotfilesDirectory_Orchestration(t *testing.T) {
 	}
 
 	// Execute
-	result, err := pack.TurnOn(opts)
+	result, err := packcommands.TurnOn(opts)
 
 	// Verify behavior with no packs
 	require.NoError(t, err)

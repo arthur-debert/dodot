@@ -1,4 +1,4 @@
-package pack_test
+package packcommands_test
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -62,13 +62,13 @@ func TestInitialize(t *testing.T) {
 			defer env.Cleanup()
 
 			// Run init command
-			opts := pack.InitOptions{
+			opts := packcommands.InitOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     tt.packName,
 				FileSystem:   env.FS,
 			}
 
-			result, err := pack.Initialize(opts)
+			result, err := packcommands.Initialize(opts)
 
 			// Check error
 			if tt.expectedError != "" {
@@ -156,13 +156,13 @@ func TestInitializeExistingPack(t *testing.T) {
 	require.NoError(t, env.FS.MkdirAll(packPath, 0755))
 
 	// Try to init over existing pack
-	opts := pack.InitOptions{
+	opts := packcommands.InitOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     packName,
 		FileSystem:   env.FS,
 	}
 
-	result, err := pack.Initialize(opts)
+	result, err := packcommands.Initialize(opts)
 
 	// Should error
 	require.Error(t, err)
@@ -179,13 +179,13 @@ func TestInitializeIntegration(t *testing.T) {
 
 		// Init a new pack
 		packName := "integration"
-		opts := pack.InitOptions{
+		opts := packcommands.InitOptions{
 			DotfilesRoot: env.DotfilesRoot,
 			PackName:     packName,
 			FileSystem:   env.FS,
 		}
 
-		result, err := pack.Initialize(opts)
+		result, err := packcommands.Initialize(opts)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
