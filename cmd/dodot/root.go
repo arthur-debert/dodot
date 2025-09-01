@@ -297,8 +297,8 @@ func newStatusCmd() *cobra.Command {
 			Strs("packs", args).
 			Msg("Checking pack status")
 
-		// Run status command
-		result, err := commands.StatusPacks(commands.StatusPacksOptions{
+		// Run status command using the dispatcher
+		result, err := commands.Dispatch(commands.CommandStatus, commands.DispatchOptions{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			Paths:        p,
