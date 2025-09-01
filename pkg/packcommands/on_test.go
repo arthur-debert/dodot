@@ -172,7 +172,7 @@ func TestTurnOn_InvalidPack_Orchestration(t *testing.T) {
 	// Verify error handling
 	require.Error(t, err)
 	// Result may still be returned with error details
-	assert.Contains(t, err.Error(), "errors", "should have error message")
+	assert.Contains(t, err.Error(), "pack(s) not found", "should have error message about pack not found")
 }
 
 func TestTurnOn_MultipleHandlers_Orchestration(t *testing.T) {
