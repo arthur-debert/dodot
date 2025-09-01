@@ -1,6 +1,0 @@
-#!/bin/bash
-# If this script is sourced, set a flag that should NOT be set
-if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    export HELLO_WAS_SOURCED=1
-fi
-echo "Hello from tools"

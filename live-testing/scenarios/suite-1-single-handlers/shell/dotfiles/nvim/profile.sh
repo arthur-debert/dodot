@@ -1,1 +1,0 @@
-export NVIM_CONFIG=1

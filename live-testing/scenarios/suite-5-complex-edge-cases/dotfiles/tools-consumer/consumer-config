@@ -1,3 +1,0 @@
-# Configuration that depends on essential-tool being available
-tool_path=$(which essential-tool 2>/dev/null || echo "NOT_FOUND")
-consumer_status=active
