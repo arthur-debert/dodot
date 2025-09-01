@@ -19,14 +19,12 @@ import (
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
 	topicspkg "github.com/arthur-debert/dodot/cmd/dodot/internal/topics"
 	"github.com/arthur-debert/dodot/internal/version"
-	genconfigpkg "github.com/arthur-debert/dodot/pkg/commands/genconfig"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/dispatcher"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
@@ -560,17 +558,19 @@ func newSnippetCmd() *cobra.Command {
 			return err
 		}
 
-		// Install shell scripts if requested
-		var installMessage string
-		if provision {
-			if err := shellpkg.InstallShellIntegration(dataDir); err != nil {
-				return fmt.Errorf("failed to install shell integration: %w", err)
-			}
-			installMessage = fmt.Sprintf("Shell integration scripts installed to %s/shell/", dataDir)
+		// Use the new generic output command
+		outputResult, err := core.GenerateOutput(core.OutputOptions{
+			Type:  core.OutputTypeSnippet,
+			Write: false, // Snippets are never written to files
+			Snippet: &core.SnippetOutputOptions{
+				Shell:     shell,
+				DataDir:   dataDir,
+				Provision: provision,
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to generate snippet: %w", err)
 		}
-
-		// Get the appropriate snippet for the shell using the actual data directory
-		snippetText := shellpkg.GetShellIntegrationSnippet(shell, dataDir)
 
 		// Create a result structure for the snippet
 		snippetResult := struct {
@@ -580,11 +580,14 @@ func newSnippetCmd() *cobra.Command {
 			Installed      bool   `json:"installed"`
 			InstallMessage string `json:"installMessage,omitempty"`
 		}{
-			Shell:          shell,
-			DataDir:        dataDir,
-			Snippet:        snippetText,
-			Installed:      provision,
-			InstallMessage: installMessage,
+			Shell:     outputResult.Metadata["shell"].(string),
+			DataDir:   outputResult.Metadata["dataDir"].(string),
+			Snippet:   outputResult.Content,
+			Installed: outputResult.Metadata["installed"].(bool),
+		}
+		// Add install message if present
+		if msg, ok := outputResult.Metadata["installMessage"].(string); ok {
+			snippetResult.InstallMessage = msg
 		}
 
 		// For text/terminal output, we want just the snippet with optional message
@@ -599,8 +602,8 @@ func newSnippetCmd() *cobra.Command {
 			}
 		} else {
 			// Text/Terminal format - output the snippet directly with header comment
-			if installMessage != "" {
-				if err := renderer.RenderMessage(installMessage); err != nil {
+			if snippetResult.InstallMessage != "" {
+				if err := renderer.RenderMessage(snippetResult.InstallMessage); err != nil {
 					return err
 				}
 				if err := renderer.RenderMessage(""); err != nil { // blank line
@@ -609,7 +612,7 @@ func newSnippetCmd() *cobra.Command {
 			}
 
 			// Output the snippet with comment header
-			fullSnippet := "\n# Run the dodot initialization script if it exists\n" + snippetText
+			fullSnippet := "\n# Run the dodot initialization script if it exists\n" + snippetResult.Snippet
 			if err := renderer.RenderMessage(fullSnippet); err != nil {
 				return fmt.Errorf("failed to render snippet: %w", err)
 			}
@@ -635,10 +638,14 @@ func newGenConfigCmd() *cobra.Command {
 			dotfilesRoot = p.DotfilesRoot()
 		}
 
-		result, err := genconfigpkg.GenConfig(genconfigpkg.GenConfigOptions{
-			DotfilesRoot: dotfilesRoot,
-			PackNames:    args,
-			Write:        write,
+		// Use the new generic output command
+		outputResult, err := core.GenerateOutput(core.OutputOptions{
+			Type:  core.OutputTypeConfig,
+			Write: write,
+			Config: &core.ConfigOutputOptions{
+				DotfilesRoot: dotfilesRoot,
+				PackNames:    args,
+			},
 		})
 		if err != nil {
 			return fmt.Errorf("failed to generate config: %w", err)
@@ -646,7 +653,7 @@ func newGenConfigCmd() *cobra.Command {
 
 		// If not writing, output to stdout
 		if !write {
-			fmt.Print(result.ConfigContent)
+			fmt.Print(outputResult.Content)
 			return nil
 		}
 
@@ -658,12 +665,12 @@ func newGenConfigCmd() *cobra.Command {
 
 		// Create command result
 		var message string
-		if len(result.FilesWritten) == 0 {
+		if len(outputResult.FilesWritten) == 0 {
 			message = "No configuration files were written (files may already exist)."
-		} else if len(result.FilesWritten) == 1 {
-			message = fmt.Sprintf("Configuration written to %s", result.FilesWritten[0])
+		} else if len(outputResult.FilesWritten) == 1 {
+			message = fmt.Sprintf("Configuration written to %s", outputResult.FilesWritten[0])
 		} else {
-			message = fmt.Sprintf("Configuration written to %d files", len(result.FilesWritten))
+			message = fmt.Sprintf("Configuration written to %d files", len(outputResult.FilesWritten))
 		}
 
 		cmdResult := &types.CommandResult{
