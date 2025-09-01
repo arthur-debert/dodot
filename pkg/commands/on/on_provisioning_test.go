@@ -23,18 +23,14 @@ func TestOnPacks_NoProvision_Orchestration(t *testing.T) {
 		Files: map[string]string{
 			".vimrc":     "\" vim config",
 			"install.sh": "#!/bin/sh\necho installing",
-			"Brewfile":   "brew 'git'",
+			"setup.sh":   "#!/bin/sh\necho setup",
 			".dodot.toml": `[[rule]]
 match = ".vimrc"
 handler = "symlink"
 
 [[rule]]
-match = "install.sh"
-handler = "install"
-
-[[rule]]
-match = "Brewfile"
-handler = "homebrew"`,
+match = "*.sh"
+handler = "install"`,
 		},
 	})
 
@@ -116,21 +112,17 @@ func TestOnPacks_AlreadyProvisioned_Orchestration(t *testing.T) {
 	env.SetupPack("apps", testutil.PackConfig{
 		Files: map[string]string{
 			"install.sh": "#!/bin/sh\necho installing apps",
-			"Brewfile":   "brew 'vim'\nbrew 'tmux'",
+			"setup.sh":   "#!/bin/sh\necho setting up",
 			".dodot.toml": `[[rule]]
-match = "install.sh"
-handler = "install"
-
-[[rule]]
-match = "Brewfile"
-handler = "homebrew"`,
+match = "*.sh"
+handler = "install"`,
 		},
 	})
 
 	// Mark handlers as already provisioned
 	if mockDS, ok := env.DataStore.(*testutil.MockSimpleDataStore); ok {
 		mockDS.SetSentinel("apps", "install", "install.sh", true)
-		mockDS.SetSentinel("apps", "homebrew", "Brewfile", true)
+		mockDS.SetSentinel("apps", "install", "setup.sh", true)
 	}
 
 	opts := on.OnPacksOptions{
