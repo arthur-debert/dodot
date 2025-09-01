@@ -1,8 +1,0 @@
-  # Link all packs
-  dodot link
-  
-  # Link specific packs
-  dodot link vim zsh
-  
-  # Dry run to preview changes
-  dodot link --dry-run

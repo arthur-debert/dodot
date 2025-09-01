@@ -36,17 +36,17 @@ styles:
 	}{
 		{
 			name:        "no config flag uses default styles",
-			args:        []string{"list"},
+			args:        []string{"status"},
 			checkStyles: false,
 		},
 		{
 			name:        "valid config flag loads custom styles",
-			args:        []string{"--config", customStylesPath, "list"},
+			args:        []string{"--config", customStylesPath, "status"},
 			checkStyles: true,
 		},
 		{
 			name:          "invalid config path shows warning",
-			args:          []string{"--config", "/nonexistent/styles.yaml", "list"},
+			args:          []string{"--config", "/nonexistent/styles.yaml", "status"},
 			expectWarning: true,
 		},
 		{

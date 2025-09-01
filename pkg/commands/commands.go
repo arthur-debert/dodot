@@ -4,7 +4,6 @@
 // between the CLI interface and the core pipeline functionality.
 //
 // Each command is implemented in its own subdirectory:
-//   - list/     - ListPacks command
 //   - status/   - StatusPacks command
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
@@ -23,19 +22,11 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/genconfig"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
-	"github.com/arthur-debert/dodot/pkg/commands/list"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // Re-export all command types and functions to maintain existing API
-
-// ListPacks finds all available packs in the dotfiles root directory.
-type ListPacksOptions = list.ListPacksOptions
-
-func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
-	return list.ListPacks(opts)
-}
 
 // StatusPacks shows the link status of specified packs.
 type StatusPacksOptions = status.StatusPacksOptions

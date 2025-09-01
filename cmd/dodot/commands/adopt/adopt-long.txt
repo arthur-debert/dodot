@@ -1,0 +1,9 @@
+The adopt command moves existing configuration files from your home directory
+(or other locations) into a dodot pack, replacing them with symlinks.
+
+This is useful when you want to start managing existing dotfiles with dodot.
+The original files are moved into the pack directory and symlinks are created
+in their original locations, pointing to the pack files.
+
+By default, adopt will fail if the target file already exists in the pack.
+Use --force to overwrite existing files in the pack.

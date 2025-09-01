@@ -246,7 +246,7 @@ func TestTextRenderer_Render(t *testing.T) {
 		{
 			name: "empty pack with no files",
 			result: &types.DisplayResult{
-				Command: "list",
+				Command: "status",
 				Packs: []types.DisplayPack{
 					{
 						Name:   "empty-pack",
@@ -256,7 +256,7 @@ func TestTextRenderer_Render(t *testing.T) {
 				},
 			},
 			expected: []string{
-				"list",
+				"status",
 				"empty-pack [status=success]:",
 				"(no files)",
 			},
@@ -264,7 +264,7 @@ func TestTextRenderer_Render(t *testing.T) {
 		{
 			name: "multiple packs sorted alphabetically",
 			result: &types.DisplayResult{
-				Command: "list",
+				Command: "status",
 				Packs: []types.DisplayPack{
 					{
 						Name:   "zsh",
@@ -283,7 +283,7 @@ func TestTextRenderer_Render(t *testing.T) {
 				},
 			},
 			expected: []string{
-				"list",
+				"status",
 				"bash [status=success]:", // Should come first alphabetically
 				".bashrc",
 				"zsh [status=success]:", // Should come second
