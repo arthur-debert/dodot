@@ -121,9 +121,7 @@ func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 
 		// Track pack-level errors
 		if len(packResult.Errors) > 0 {
-			for _, err := range packResult.Errors {
-				errors = append(errors, err)
-			}
+			errors = append(errors, packResult.Errors...)
 		}
 	}
 

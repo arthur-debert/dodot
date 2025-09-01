@@ -1,13 +1,17 @@
 package pack
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/statustype"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -17,20 +21,23 @@ type InitOptions struct {
 	PackName string
 	// DotfilesRoot is the root directory for dotfiles
 	DotfilesRoot string
-}
-
-// InitResult represents the result of initializing a new pack
-type InitResult struct {
-	PackName     string   `json:"packName"`
-	Path         string   `json:"path"`
-	FilesCreated []string `json:"filesCreated"`
+	// FileSystem is the filesystem to use (optional, defaults to OS filesystem)
+	FileSystem types.FS
+	// GetPackStatus is a function to get pack status to avoid circular imports
+	GetPackStatus statustype.GetPackStatusFunc
 }
 
 // Initialize creates a new pack with the standard structure and template files.
 // This is a static method since we're creating a new pack, not operating on an existing one.
-func Initialize(fs types.FS, opts InitOptions) (*InitResult, error) {
+func Initialize(opts InitOptions) (*types.PackCommandResult, error) {
 	log := logging.GetLogger("pack.init")
 	log.Debug().Str("pack", opts.PackName).Msg("Initializing new pack")
+
+	// Use provided filesystem or default
+	fs := opts.FileSystem
+	if fs == nil {
+		fs = filesystem.NewOS()
+	}
 
 	// Validate pack name
 	if opts.PackName == "" {
@@ -99,18 +106,41 @@ func Initialize(fs types.FS, opts InitOptions) (*InitResult, error) {
 	// Add the files created by fill
 	filesCreated = append(filesCreated, fillResult.FilesCreated...)
 
-	// Return result
-	result := &InitResult{
-		PackName:     opts.PackName,
-		Path:         packPath,
-		FilesCreated: filesCreated,
-	}
-
 	log.Info().
 		Str("pack", opts.PackName).
 		Str("path", packPath).
-		Int("filesCreated", len(result.FilesCreated)).
+		Int("filesCreated", len(filesCreated)).
 		Msg("Pack initialization completed")
+
+	// Get current pack status if function provided
+	var packStatus []types.DisplayPack
+	if opts.GetPackStatus != nil {
+		var statusErr error
+		packStatus, statusErr = opts.GetPackStatus(opts.PackName, opts.DotfilesRoot, fs)
+		if statusErr != nil {
+			log.Error().Err(statusErr).Msg("Failed to get pack status")
+		}
+	}
+
+	// Build result
+	result := &types.PackCommandResult{
+		Command:   "init",
+		Timestamp: time.Now(),
+		DryRun:    false,
+		Packs:     []types.DisplayPack{},
+		Metadata: types.CommandMetadata{
+			FilesCreated: len(filesCreated),
+			CreatedPaths: filesCreated,
+		},
+	}
+
+	// Copy packs from status if available
+	if packStatus != nil {
+		result.Packs = packStatus
+	}
+
+	// Generate message
+	result.Message = fmt.Sprintf("The pack %s has been initialized with %d files.", opts.PackName, len(filesCreated))
 
 	return result, nil
 }
