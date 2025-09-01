@@ -110,10 +110,6 @@ func NewRootCmd() *cobra.Command {
 		ID:    "config",
 		Title: "CONFIG HELPERS:",
 	})
-	rootCmd.AddGroup(&cobra.Group{
-		ID:    "help",
-		Title: "HELP:",
-	})
 
 	// Set custom help template
 	rootCmd.SetUsageTemplate(MsgUsageTemplate)
@@ -131,7 +127,7 @@ func NewRootCmd() *cobra.Command {
 	// Config helpers
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newGenConfigCmd())
-	// Help commands
+	// Additional commands
 	rootCmd.AddCommand(newTopicsCmd())
 	// Completion command removed - use dodot-completions tool instead
 
@@ -658,10 +654,9 @@ func newAddIgnoreCmd() *cobra.Command {
 
 func newTopicsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "topics",
-		Short:   MsgTopicsShort,
-		Long:    MsgTopicsLong,
-		GroupID: "help",
+		Use:   "topics",
+		Short: MsgTopicsShort,
+		Long:  MsgTopicsLong,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Find the help command and execute it with "topics" argument
 			if helpCmd, _, err := cmd.Root().Find([]string{"help"}); err == nil {
