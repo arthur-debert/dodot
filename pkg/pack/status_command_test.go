@@ -1,11 +1,11 @@
-package status_test
+package pack_test
 
 import (
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/commands/status"
+	"github.com/arthur-debert/dodot/pkg/pack"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStatusPacks_NoPacksReturnsEmptyResult(t *testing.T) {
+func TestGetPacksStatus_NoPacksReturnsEmptyResult(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -30,13 +30,13 @@ func TestStatusPacks_NoPacksReturnsEmptyResult(t *testing.T) {
 	assert.Empty(t, result.Packs)
 }
 
-func TestStatusPacks_SinglePackWithNoFiles(t *testing.T) {
+func TestGetPacksStatus_SinglePackWithNoFiles(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("empty", testutil.PackConfig{
 		Files: map[string]string{},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -52,7 +52,7 @@ func TestStatusPacks_SinglePackWithNoFiles(t *testing.T) {
 	assert.Equal(t, "queue", result.Packs[0].Status)
 }
 
-func TestStatusPacks_PackWithIgnoredFile(t *testing.T) {
+func TestGetPacksStatus_PackWithIgnoredFile(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("ignored", testutil.PackConfig{
 		Files: map[string]string{
@@ -60,7 +60,7 @@ func TestStatusPacks_PackWithIgnoredFile(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -78,7 +78,7 @@ func TestStatusPacks_PackWithIgnoredFile(t *testing.T) {
 	assert.Equal(t, "ignored", result.Packs[0].Files[0].Status)
 }
 
-func TestStatusPacks_PackWithConfigFile(t *testing.T) {
+func TestGetPacksStatus_PackWithConfigFile(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("configured", testutil.PackConfig{
 		Files: map[string]string{
@@ -86,7 +86,7 @@ func TestStatusPacks_PackWithConfigFile(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -103,7 +103,7 @@ func TestStatusPacks_PackWithConfigFile(t *testing.T) {
 	assert.Equal(t, "config", result.Packs[0].Files[0].Status)
 }
 
-func TestStatusPacks_PackWithUnlinkedSymlinkFiles(t *testing.T) {
+func TestGetPacksStatus_PackWithUnlinkedSymlinkFiles(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("vim", testutil.PackConfig{
 		Files: map[string]string{
@@ -112,7 +112,7 @@ func TestStatusPacks_PackWithUnlinkedSymlinkFiles(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -147,7 +147,7 @@ func TestStatusPacks_PackWithUnlinkedSymlinkFiles(t *testing.T) {
 	assert.Equal(t, "not linked", gvimrcFile.Message)
 }
 
-func TestStatusPacks_PackWithLinkedSymlinkFiles(t *testing.T) {
+func TestGetPacksStatus_PackWithLinkedSymlinkFiles(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("vim", testutil.PackConfig{
 		Files: map[string]string{
@@ -164,7 +164,7 @@ func TestStatusPacks_PackWithLinkedSymlinkFiles(t *testing.T) {
 	intermediateLinkPath := filepath.Join(intermediateLinkDir, ".vimrc")
 	require.NoError(t, env.FS.Symlink(vimrcPath, intermediateLinkPath))
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -186,7 +186,7 @@ func TestStatusPacks_PackWithLinkedSymlinkFiles(t *testing.T) {
 	assert.Equal(t, "linked", packResult.Files[0].Message)
 }
 
-func TestStatusPacks_PackWithPathHandlerFiles(t *testing.T) {
+func TestGetPacksStatus_PackWithPathHandlerFiles(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 
 	// First create the pack
@@ -203,7 +203,7 @@ func TestStatusPacks_PackWithPathHandlerFiles(t *testing.T) {
 	toolPath := filepath.Join(binDir, "tool1")
 	require.NoError(t, env.FS.WriteFile(toolPath, []byte("#!/bin/bash\necho tool1"), 0755))
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -238,7 +238,7 @@ func TestStatusPacks_PackWithPathHandlerFiles(t *testing.T) {
 	assert.Equal(t, "not in PATH", packResult.Files[0].Message)
 }
 
-func TestStatusPacks_PackWithShellProfileFiles(t *testing.T) {
+func TestGetPacksStatus_PackWithShellProfileFiles(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("shell", testutil.PackConfig{
 		Files: map[string]string{
@@ -247,7 +247,7 @@ func TestStatusPacks_PackWithShellProfileFiles(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -283,7 +283,7 @@ func TestStatusPacks_PackWithShellProfileFiles(t *testing.T) {
 	}
 }
 
-func TestStatusPacks_PackWithInstallScript(t *testing.T) {
+func TestGetPacksStatus_PackWithInstallScript(t *testing.T) {
 	// Use isolated environment for code execution handlers that need real files
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 	env.SetupPack("app", testutil.PackConfig{
@@ -292,7 +292,7 @@ func TestStatusPacks_PackWithInstallScript(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -313,7 +313,7 @@ func TestStatusPacks_PackWithInstallScript(t *testing.T) {
 	assert.Equal(t, "never run", packResult.Files[0].Message)
 }
 
-func TestStatusPacks_PackWithBrewfile(t *testing.T) {
+func TestGetPacksStatus_PackWithBrewfile(t *testing.T) {
 	// Use isolated environment for code execution handlers that need real files
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 	env.SetupPack("homebrew", testutil.PackConfig{
@@ -322,7 +322,7 @@ func TestStatusPacks_PackWithBrewfile(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -343,7 +343,7 @@ func TestStatusPacks_PackWithBrewfile(t *testing.T) {
 	assert.Equal(t, "never installed", packResult.Files[0].Message)
 }
 
-func TestStatusPacks_MixedPackWithMultipleHandlers(t *testing.T) {
+func TestGetPacksStatus_MixedPackWithMultipleHandlers(t *testing.T) {
 	// Use isolated environment for mixed handlers including code execution
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
@@ -367,7 +367,7 @@ func TestStatusPacks_MixedPackWithMultipleHandlers(t *testing.T) {
 	// Note: In isolated environment, we could create actual symlinks, but following
 	// testing guidelines, we'll test without pre-existing links
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -402,7 +402,7 @@ func TestStatusPacks_MixedPackWithMultipleHandlers(t *testing.T) {
 	assert.Equal(t, "queue", filesByPath["install.sh"].Status)
 }
 
-func TestStatusPacks_SpecificPackSelection(t *testing.T) {
+func TestGetPacksStatus_SpecificPackSelection(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("vim", testutil.PackConfig{
 		Files: map[string]string{
@@ -420,7 +420,7 @@ func TestStatusPacks_SpecificPackSelection(t *testing.T) {
 		},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"vim"},
 		Paths:        env.Paths,
@@ -433,7 +433,7 @@ func TestStatusPacks_SpecificPackSelection(t *testing.T) {
 	assert.Equal(t, "vim", result.Packs[0].Name)
 }
 
-func TestStatusPacks_ErrorStatusWhenIntermediateLinkPointsToWrongSource(t *testing.T) {
+func TestGetPacksStatus_ErrorStatusWhenIntermediateLinkPointsToWrongSource(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("broken", testutil.PackConfig{
 		Files: map[string]string{
@@ -449,7 +449,7 @@ func TestStatusPacks_ErrorStatusWhenIntermediateLinkPointsToWrongSource(t *testi
 	linkPath := filepath.Join(packHandlerDir, ".config")
 	require.NoError(t, env.FS.Symlink(wrongSource, linkPath))
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -471,7 +471,7 @@ func TestStatusPacks_ErrorStatusWhenIntermediateLinkPointsToWrongSource(t *testi
 	assert.Equal(t, "link points to wrong source", file.Message)
 }
 
-func TestStatusPacks_ProvisioningStatusWithChangedFile(t *testing.T) {
+func TestGetPacksStatus_ProvisioningStatusWithChangedFile(t *testing.T) {
 	// Use isolated environment for code execution handlers
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 	env.SetupPack("app", testutil.PackConfig{
@@ -490,7 +490,7 @@ func TestStatusPacks_ProvisioningStatusWithChangedFile(t *testing.T) {
 	err := env.FS.WriteFile(installPath, []byte("#!/bin/bash\necho v2"), 0755)
 	require.NoError(t, err)
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -528,14 +528,14 @@ func TestStatusPacks_ProvisioningStatusWithChangedFile(t *testing.T) {
 	}
 }
 
-func TestStatusPacks_Timestamp(t *testing.T) {
+func TestGetPacksStatus_Timestamp(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("test", testutil.PackConfig{
 		Files: map[string]string{},
 	})
 
 	before := time.Now()
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		Paths:        env.Paths,
 		FileSystem:   env.FS,
@@ -547,13 +547,13 @@ func TestStatusPacks_Timestamp(t *testing.T) {
 	assert.True(t, result.Timestamp.Before(after) || result.Timestamp.Equal(after))
 }
 
-func TestStatusPacks_WithInvalidPack(t *testing.T) {
+func TestGetPacksStatus_WithInvalidPack(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	env.SetupPack("valid", testutil.PackConfig{
 		Files: map[string]string{},
 	})
 
-	result, err := status.StatusPacks(status.StatusPacksOptions{
+	result, err := pack.GetPacksStatus(pack.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"valid", "nonexistent"},
 		Paths:        env.Paths,
