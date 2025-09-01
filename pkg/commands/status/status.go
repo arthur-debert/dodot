@@ -28,20 +28,24 @@ type StatusPacksOptions struct {
 	// If empty, all packs are checked
 	PackNames []string
 
-	// Paths provides system paths (required)
+	// Paths provides system paths (optional, will be created if not provided)
 	Paths types.Pather
 
-	// FileSystem to use (defaults to OS filesystem)
+	// FileSystem to use (optional, defaults to OS filesystem)
 	FileSystem types.FS
 }
 
 // StatusPacks shows the deployment status of specified packs
+// This is a query operation that uses core pack discovery but doesn't execute handlers.
 func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("commands.status")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).
 		Strs("packNames", opts.PackNames).
 		Msg("Starting status command")
+
+	// Track any errors encountered
+	var errors []error
 
 	// Initialize filesystem if not provided
 	if opts.FileSystem == nil {
@@ -57,9 +61,10 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
 		opts.Paths = p
 	}
 
-	// Use centralized pack discovery and selection with filesystem support
+	// Use core pack discovery (consistent with on/off commands)
 	selectedPacks, err := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
 	if err != nil {
+		logger.Error().Err(err).Msg("Failed to discover packs")
 		return nil, err
 	}
 
@@ -73,16 +78,16 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
 	// Build command result
 	result := &types.PackCommandResult{
 		Command:   "status",
-		DryRun:    false,
+		DryRun:    false, // Status is always a query, never a dry run
 		Timestamp: time.Now(),
 		Packs:     make([]types.DisplayPack, 0, len(selectedPacks)),
 		// Status command doesn't have a message
 		Message: "",
 	}
 
-	// Process each pack
+	// Process each pack using centralized status logic
 	for _, p := range selectedPacks {
-		// Get pack status using the new pack.GetStatus function
+		// Get pack status using the centralized pack.GetStatus function
 		statusOpts := pack.StatusOptions{
 			Pack:       p,
 			DataStore:  dataStore,
@@ -96,13 +101,24 @@ func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
 				Err(err).
 				Str("pack", p.Name).
 				Msg("Failed to get pack status")
+			errors = append(errors, fmt.Errorf("pack %s: status check failed: %w", p.Name, err))
 			// Continue with other packs even if one fails
 			continue
 		}
 
-		// Convert to display format
+		// Convert to display format using existing conversion logic
 		displayPack := convertToDisplayPack(packStatus)
 		result.Packs = append(result.Packs, displayPack)
+	}
+
+	logger.Info().
+		Int("packsProcessed", len(result.Packs)).
+		Int("errors", len(errors)).
+		Msg("Status command completed")
+
+	// Return error if any packs failed (but still return partial results)
+	if len(errors) > 0 {
+		return result, fmt.Errorf("status command encountered %d errors", len(errors))
 	}
 
 	return result, nil
