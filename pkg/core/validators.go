@@ -12,6 +12,10 @@ import (
 
 // ValidateSinglePack ensures exactly one pack is specified
 func ValidateSinglePack(packs []types.Pack, opts CommandExecuteOptions) error {
+	// Check for empty pack name
+	if len(opts.PackNames) > 0 && opts.PackNames[0] == "" {
+		return fmt.Errorf("pack name cannot be empty")
+	}
 	if len(packs) != 1 {
 		return fmt.Errorf("this command requires exactly one pack, got %d", len(packs))
 	}
