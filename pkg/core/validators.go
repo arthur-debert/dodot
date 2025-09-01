@@ -37,6 +37,10 @@ func ValidatePackDoesNotExist(packs []types.Pack, opts CommandExecuteOptions) er
 	}
 
 	packName := opts.PackNames[0]
+	if packName == "" {
+		return fmt.Errorf("pack name cannot be empty")
+	}
+
 	packPath := filepath.Join(opts.DotfilesRoot, packName)
 
 	fs := opts.FileSystem
