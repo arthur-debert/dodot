@@ -7,15 +7,7 @@
 package status
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/filesystem"
-	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/pack"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -28,143 +20,23 @@ type StatusPacksOptions struct {
 	// If empty, all packs are checked
 	PackNames []string
 
-	// Paths provides system paths (required)
+	// Paths provides system paths (optional, will be created if not provided)
 	Paths types.Pather
 
-	// FileSystem to use (defaults to OS filesystem)
+	// FileSystem to use (optional, defaults to OS filesystem)
 	FileSystem types.FS
 }
 
-// StatusPacks shows the deployment status of specified packs
+// StatusPacks is a thin wrapper around pack.GetPacksStatus for backward compatibility.
+// The core logic has been moved to pkg/pack/status_command.go following the established pattern.
 func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
-	logger := logging.GetLogger("commands.status")
-	logger.Debug().
-		Str("dotfilesRoot", opts.DotfilesRoot).
-		Strs("packNames", opts.PackNames).
-		Msg("Starting status command")
-
-	// Initialize filesystem if not provided
-	if opts.FileSystem == nil {
-		opts.FileSystem = filesystem.NewOS()
+	// Convert command options to pack options
+	packOpts := pack.StatusCommandOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		Paths:        opts.Paths,
+		FileSystem:   opts.FileSystem,
 	}
 
-	// Initialize paths if not provided
-	if opts.Paths == nil {
-		p, err := paths.New(opts.DotfilesRoot)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize paths: %w", err)
-		}
-		opts.Paths = p
-	}
-
-	// Use centralized pack discovery and selection with filesystem support
-	selectedPacks, err := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
-	if err != nil {
-		return nil, err
-	}
-
-	logger.Info().
-		Int("packCount", len(selectedPacks)).
-		Msg("Found packs to check")
-
-	// Create datastore for status checking
-	dataStore := datastore.New(opts.FileSystem, opts.Paths.(paths.Paths))
-
-	// Build command result
-	result := &types.PackCommandResult{
-		Command:   "status",
-		DryRun:    false,
-		Timestamp: time.Now(),
-		Packs:     make([]types.DisplayPack, 0, len(selectedPacks)),
-		// Status command doesn't have a message
-		Message: "",
-	}
-
-	// Process each pack
-	for _, p := range selectedPacks {
-		// Get pack status using the new pack.GetStatus function
-		statusOpts := pack.StatusOptions{
-			Pack:       p,
-			DataStore:  dataStore,
-			FileSystem: opts.FileSystem,
-			Paths:      opts.Paths.(paths.Paths),
-		}
-
-		packStatus, err := pack.GetStatus(statusOpts)
-		if err != nil {
-			logger.Error().
-				Err(err).
-				Str("pack", p.Name).
-				Msg("Failed to get pack status")
-			// Continue with other packs even if one fails
-			continue
-		}
-
-		// Convert to display format
-		displayPack := convertToDisplayPack(packStatus)
-		result.Packs = append(result.Packs, displayPack)
-	}
-
-	return result, nil
-}
-
-// convertToDisplayPack converts pack.StatusResult to types.DisplayPack
-func convertToDisplayPack(status *pack.StatusResult) types.DisplayPack {
-	displayPack := types.DisplayPack{
-		Name:      status.Name,
-		HasConfig: status.HasConfig,
-		IsIgnored: status.IsIgnored,
-		Status:    status.Status,
-		Files:     make([]types.DisplayFile, 0, len(status.Files)),
-	}
-
-	// Convert each file status
-	for _, file := range status.Files {
-		displayFile := types.DisplayFile{
-			Handler:        file.Handler,
-			Path:           file.Path,
-			Status:         statusStateToDisplayStatus(file.Status.State),
-			Message:        file.Status.Message,
-			LastExecuted:   file.Status.Timestamp,
-			HandlerSymbol:  types.GetHandlerSymbol(file.Handler),
-			AdditionalInfo: file.AdditionalInfo,
-		}
-		displayPack.Files = append(displayPack.Files, displayFile)
-	}
-
-	// Add special files if present
-	if status.IsIgnored {
-		displayPack.Files = append([]types.DisplayFile{{
-			Path:   ".dodotignore",
-			Status: "ignored",
-		}}, displayPack.Files...)
-	}
-	if status.HasConfig {
-		displayPack.Files = append([]types.DisplayFile{{
-			Path:   ".dodot.toml",
-			Status: "config",
-		}}, displayPack.Files...)
-	}
-
-	return displayPack
-}
-
-// statusStateToDisplayStatus converts internal status states to display status strings
-func statusStateToDisplayStatus(state pack.StatusState) string {
-	switch state {
-	case pack.StatusStateReady, pack.StatusStateSuccess:
-		return "success"
-	case pack.StatusStateMissing:
-		return "queue"
-	case pack.StatusStatePending:
-		return "queue"
-	case pack.StatusStateError:
-		return "error"
-	case pack.StatusStateIgnored:
-		return "ignored"
-	case pack.StatusStateConfig:
-		return "config"
-	default:
-		return "unknown"
-	}
+	return pack.GetPacksStatus(packOpts)
 }

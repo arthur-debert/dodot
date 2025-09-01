@@ -1,20 +1,12 @@
 package off
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/arthur-debert/dodot/pkg/commands/status"
-	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/filesystem"
-	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/pack"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // OffPacksOptions defines the options for the OffPacks command
+// This is a wrapper around pack.OffOptions for backward compatibility
 type OffPacksOptions struct {
 	// DotfilesRoot is the path to the root of the dotfiles directory
 	DotfilesRoot string
@@ -24,135 +16,16 @@ type OffPacksOptions struct {
 	DryRun bool
 }
 
-// OffPacks turns off the specified packs by removing all handler state.
-// This completely removes the pack deployment (both symlinks and provisioned resources).
-//
-// The command removes all handler state from the data directory for each pack.
+// OffPacks is a thin wrapper around pack.TurnOff for backward compatibility.
+// The core logic has been moved to pkg/pack/off.go following the established pattern.
 func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
-	logger := logging.GetLogger("commands.off")
-	logger.Debug().
-		Str("dotfilesRoot", opts.DotfilesRoot).
-		Strs("packNames", opts.PackNames).
-		Bool("dryRun", opts.DryRun).
-		Msg("Starting off command")
-
-	// Track execution details
-	var totalCleared int
-	var errors []error
-	var handlersRun []string
-	allHandlersMap := make(map[string]bool)
-
-	// Initialize paths
-	pathsInstance, err := paths.New(opts.DotfilesRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize paths: %w", err)
-	}
-
-	// Create filesystem and datastore
-	fs := filesystem.NewOS()
-	store := datastore.New(fs, pathsInstance)
-
-	// Discover and select packs
-	selectedPacks, err := core.DiscoverAndSelectPacksFS(pathsInstance.DotfilesRoot(), opts.PackNames, fs)
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to discover packs")
-		return nil, err
-	}
-
-	// Process each pack
-	for _, pack := range selectedPacks {
-		// Get all handler types
-		allHandlers := append(
-			handlers.HandlerRegistry.GetConfigurationHandlers(),
-			handlers.HandlerRegistry.GetCodeExecutionHandlers()...,
-		)
-
-		// Remove state for each handler type
-		for _, handlerName := range allHandlers {
-			// Check if handler has state
-			hasState, err := store.HasHandlerState(pack.Name, handlerName)
-			if err != nil {
-				logger.Warn().Err(err).
-					Str("pack", pack.Name).
-					Str("handler", handlerName).
-					Msg("Failed to check handler state")
-				continue
-			}
-
-			if hasState {
-				if opts.DryRun {
-					logger.Info().
-						Str("pack", pack.Name).
-						Str("handler", handlerName).
-						Msg("[DRY RUN] Would remove handler state")
-					allHandlersMap[handlerName] = true
-				} else {
-					logger.Debug().
-						Str("pack", pack.Name).
-						Str("handler", handlerName).
-						Msg("Removing handler state")
-
-					if err := store.RemoveState(pack.Name, handlerName); err != nil {
-						errors = append(errors, fmt.Errorf("pack %s: failed to remove %s handler state: %w", pack.Name, handlerName, err))
-					} else {
-						totalCleared++
-						allHandlersMap[handlerName] = true
-					}
-				}
-			}
-		}
-	}
-
-	logger.Info().
-		Int("totalCleared", totalCleared).
-		Int("errors", len(errors)).
-		Bool("dryRun", opts.DryRun).
-		Msg("Off command completed")
-
-	// Convert map to slice for handlers run
-	for handler := range allHandlersMap {
-		handlersRun = append(handlersRun, handler)
-	}
-
-	// Get current pack status
-	statusOpts := status.StatusPacksOptions{
+	// Convert command options to pack options
+	packOpts := pack.OffOptions{
 		DotfilesRoot: opts.DotfilesRoot,
 		PackNames:    opts.PackNames,
-		FileSystem:   fs,
-	}
-	packStatus, err := status.StatusPacks(statusOpts)
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to get pack status")
-		errors = append(errors, fmt.Errorf("failed to get pack status: %w", err))
+		DryRun:       opts.DryRun,
+		FileSystem:   nil, // Use default OS filesystem
 	}
 
-	// Build result
-	result := &types.PackCommandResult{
-		Command:   "off",
-		Timestamp: time.Now(),
-		DryRun:    opts.DryRun,
-		Packs:     []types.DisplayPack{},
-		Metadata: types.CommandMetadata{
-			TotalCleared: totalCleared,
-			HandlersRun:  handlersRun,
-		},
-	}
-
-	// Copy packs from status if available
-	if packStatus != nil {
-		result.Packs = packStatus.Packs
-	}
-
-	// Generate message
-	packNames := make([]string, 0, len(result.Packs))
-	for _, pack := range result.Packs {
-		packNames = append(packNames, pack.Name)
-	}
-	result.Message = types.FormatCommandMessage("turned off", packNames)
-
-	if len(errors) > 0 {
-		return result, fmt.Errorf("off command encountered %d errors", len(errors))
-	}
-
-	return result, nil
+	return pack.TurnOff(packOpts)
 }

@@ -1,10 +1,11 @@
 package adopt
 
 import (
-	"github.com/arthur-debert/dodot/pkg/commands/status"
-	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/types"
+
+	// Import registry to register commands
+	_ "github.com/arthur-debert/dodot/pkg/commands/registry"
 )
 
 // AdoptFilesOptions holds options for the adopt command
@@ -16,37 +17,18 @@ type AdoptFilesOptions struct {
 	FileSystem   types.FS // Allow injecting a filesystem for testing
 }
 
-// AdoptFiles moves existing files into a pack and creates symlinks back to their original locations
+// AdoptFiles is a thin wrapper that delegates to the centralized command execution.
+// The core logic has been moved to the command registry.
 func AdoptFiles(opts AdoptFilesOptions) (*types.PackCommandResult, error) {
-	logger := logging.GetLogger("commands.adopt")
-	logger.Info().
-		Str("pack", opts.PackName).
-		Str("dotfiles_root", opts.DotfilesRoot).
-		Strs("source_paths", opts.SourcePaths).
-		Bool("force", opts.Force).
-		Msg("Adopting files into pack")
-
-	// Create status function that wraps the status command
-	getStatusFunc := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-		statusOpts := status.StatusPacksOptions{
-			DotfilesRoot: dotfilesRoot,
-			PackNames:    []string{packName},
-			FileSystem:   fs,
-		}
-		result, err := status.StatusPacks(statusOpts)
-		if err != nil {
-			return nil, err
-		}
-		return result.Packs, nil
-	}
-
-	// Delegate to pack.Adopt
-	return pack.Adopt(pack.AdoptOptions{
-		SourcePaths:   opts.SourcePaths,
-		Force:         opts.Force,
-		DotfilesRoot:  opts.DotfilesRoot,
-		PackName:      opts.PackName,
-		FileSystem:    opts.FileSystem,
-		GetPackStatus: getStatusFunc,
+	// Use the centralized command execution
+	return core.ExecuteRegisteredCommand("adopt", core.CommandExecuteOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    []string{opts.PackName},
+		DryRun:       false,
+		Force:        opts.Force,
+		FileSystem:   opts.FileSystem,
+		Options: map[string]interface{}{
+			"sourcePaths": opts.SourcePaths,
+		},
 	})
 }

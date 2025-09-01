@@ -24,6 +24,7 @@ type Pack struct {
 }
 
 // GetFilePath returns the full path to a file within the pack
+// This method delegates to the function in pkg/pack for consistency.
 func (p *Pack) GetFilePath(filename string) string {
 	return filepath.Join(p.Path, filename)
 }

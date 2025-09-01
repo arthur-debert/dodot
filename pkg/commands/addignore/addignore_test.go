@@ -32,6 +32,7 @@ func TestAddIgnore_CreateIgnoreFile_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim",
+		FileSystem:   env.FS,
 	}
 
 	// Execute
@@ -71,6 +72,7 @@ func TestAddIgnore_AlreadyExists_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim",
+		FileSystem:   env.FS,
 	}
 
 	// Execute
@@ -104,6 +106,7 @@ func TestAddIgnore_PackNameNormalization_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim/", // Trailing slash should be normalized
+		FileSystem:   env.FS,
 	}
 
 	// Execute
@@ -130,6 +133,7 @@ func TestAddIgnore_NonExistentPack_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "nonexistent",
+		FileSystem:   env.FS,
 	}
 
 	// Execute
@@ -152,6 +156,7 @@ func TestAddIgnore_EmptyPackName_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "", // Empty pack name
+		FileSystem:   env.FS,
 	}
 
 	// Execute
@@ -184,6 +189,7 @@ func TestAddIgnore_InvalidPackName_Orchestration(t *testing.T) {
 			opts := addignore.AddIgnoreOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     packName,
+				FileSystem:   env.FS,
 			}
 
 			// Execute
@@ -213,6 +219,7 @@ func TestAddIgnore_ResultStructure_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim",
+		FileSystem:   env.FS,
 	}
 
 	// Execute
@@ -253,6 +260,7 @@ func TestAddIgnore_MultiplePacksOrchestration_Integration(t *testing.T) {
 			opts := addignore.AddIgnoreOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     packName,
+				FileSystem:   env.FS,
 			}
 
 			result, err := addignore.AddIgnore(opts)
@@ -291,6 +299,7 @@ func TestAddIgnore_FileSystemIntegration_Orchestration(t *testing.T) {
 	opts := addignore.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "complex-pack",
+		FileSystem:   env.FS,
 	}
 
 	// Execute
