@@ -58,15 +58,6 @@ func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]
 	return args.Get(0).([]string), args.Error(1)
 }
 
-type MockConfirmer struct {
-	mock.Mock
-}
-
-func (m *MockConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	args := m.Called(id, title, description, items)
-	return args.Bool(0)
-}
-
 func TestHomebrewHandler_OperationIntegration(t *testing.T) {
 	// This test verifies the homebrew handler works with the operation system
 
@@ -109,8 +100,7 @@ cask "visual-studio-code"
 
 	// Test with executor in dry-run mode
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, true)
+	executor := operations.NewExecutor(store, nil, true)
 
 	// Execute operations
 	results, err := executor.Execute(ops, handler)
@@ -148,7 +138,6 @@ func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 
 	// Create mock store and set expectations
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
 
 	// Expect RunAndRecord to be called with the correct parameters
 	expectedCommand := fmt.Sprintf("brew bundle --file='%s'", brewfilePath)
@@ -158,7 +147,7 @@ func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 	})).Return(nil)
 
 	// Execute with real mode (not dry-run)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 	results, err := executor.Execute(ops, handler)
 
 	require.NoError(t, err)
@@ -178,8 +167,7 @@ func TestHomebrewHandler_ClearIntegration(t *testing.T) {
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
 	ctx := types.ClearContext{
@@ -211,17 +199,7 @@ func TestHomebrewHandler_ClearWithUninstall(t *testing.T) {
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-
-	// Expect confirmation request
-	confirmer.On("RequestConfirmation",
-		"homebrew_uninstall_dev-tools",
-		"Uninstall Homebrew packages?",
-		"This will uninstall Homebrew packages from dev-tools pack",
-		[]string{"Package uninstallation may affect other applications"},
-	).Return(true)
-
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
 	ctx := types.ClearContext{
@@ -239,9 +217,6 @@ func TestHomebrewHandler_ClearWithUninstall(t *testing.T) {
 	// Check cleared item reflects uninstall
 	item := clearedItems[0]
 	assert.Contains(t, item.Description, "Would uninstall Homebrew packages")
-
-	// Verify confirmation was requested
-	confirmer.AssertExpectations(t)
 }
 
 func TestHomebrewHandler_MultipleBrewfiles(t *testing.T) {

@@ -55,16 +55,12 @@ func TestExecute(t *testing.T) {
 				},
 			})
 
-			// Simple confirmer for testing
-			confirmer := &testConfirmer{}
-
 			// Execute command
 			opts := ExecuteOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackNames:    []string{"test-pack"},
 				DryRun:       false,
 				Force:        false,
-				Confirmer:    confirmer,
 				FileSystem:   env.FS,
 			}
 
@@ -105,7 +101,6 @@ func TestExecuteDryRun(t *testing.T) {
 		PackNames:    []string{"test-pack"},
 		DryRun:       true,
 		Force:        false,
-		Confirmer:    &testConfirmer{},
 		FileSystem:   env.FS,
 	}
 
@@ -172,11 +167,4 @@ func TestFilterMatchesByCommandType(t *testing.T) {
 			assert.ElementsMatch(t, tt.expectHandlers, actualHandlers)
 		})
 	}
-}
-
-// testConfirmer is a simple confirmer for testing that always approves
-type testConfirmer struct{}
-
-func (tc *testConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	return true
 }

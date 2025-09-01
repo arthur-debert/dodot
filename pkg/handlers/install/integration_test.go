@@ -58,15 +58,6 @@ func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]
 	return args.Get(0).([]string), args.Error(1)
 }
 
-type MockConfirmer struct {
-	mock.Mock
-}
-
-func (m *MockConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	args := m.Called(id, title, description, items)
-	return args.Bool(0)
-}
-
 func TestInstallHandler_OperationIntegration(t *testing.T) {
 	// This test verifies the install handler works with the operation system
 
@@ -105,8 +96,7 @@ func TestInstallHandler_OperationIntegration(t *testing.T) {
 
 	// Test with executor in dry-run mode
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, true)
+	executor := operations.NewExecutor(store, nil, true)
 
 	// Execute operations
 	results, err := executor.Execute(ops, handler)
@@ -144,7 +134,6 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 
 	// Create mock store and set expectations
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
 
 	// Expect RunAndRecord to be called with the correct parameters
 	expectedCommand := fmt.Sprintf("bash '%s'", scriptPath)
@@ -154,7 +143,7 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 	})).Return(nil)
 
 	// Execute with real mode (not dry-run)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 	results, err := executor.Execute(ops, handler)
 
 	require.NoError(t, err)
@@ -183,11 +172,10 @@ func TestInstallHandler_CheckSentinel(t *testing.T) {
 
 	// Test when sentinel exists
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
 
 	store.On("HasSentinel", "testpack", "install", "install.sh-abc123").Return(true, nil)
 
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 	results, err := executor.Execute([]operations.Operation{op}, handler)
 
 	require.NoError(t, err)
@@ -199,7 +187,7 @@ func TestInstallHandler_CheckSentinel(t *testing.T) {
 	store2 := new(MockSimpleDataStore)
 	store2.On("HasSentinel", "testpack", "install", "install.sh-abc123").Return(false, nil)
 
-	executor2 := operations.NewExecutor(store2, nil, confirmer, false)
+	executor2 := operations.NewExecutor(store2, nil, false)
 	results2, err := executor2.Execute([]operations.Operation{op}, handler)
 
 	require.NoError(t, err)
@@ -214,8 +202,7 @@ func TestInstallHandler_ClearIntegration(t *testing.T) {
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
 	ctx := types.ClearContext{

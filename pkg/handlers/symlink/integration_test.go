@@ -56,15 +56,6 @@ func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]
 	return args.Get(0).([]string), args.Error(1)
 }
 
-type MockConfirmer struct {
-	mock.Mock
-}
-
-func (m *MockConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	args := m.Called(id, title, description, items)
-	return args.Bool(0)
-}
-
 func TestSymlinkHandler_OperationIntegration(t *testing.T) {
 	// This test verifies the symlink handler works with the operation system
 
@@ -105,8 +96,7 @@ func TestSymlinkHandler_OperationIntegration(t *testing.T) {
 
 	// Test with executor in dry-run mode
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, true)
+	executor := operations.NewExecutor(store, nil, true)
 
 	// Execute operations
 	results, err := executor.Execute(ops, handler)
@@ -144,7 +134,6 @@ func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 
 	// Create mock store and set expectations
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
 
 	// Expect CreateDataLink to be called
 	store.On("CreateDataLink", "vim", "symlink", "/dotfiles/vim/.vimrc").
@@ -158,7 +147,7 @@ func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 		Return(nil)
 
 	// Execute with real mode (not dry-run)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 	results, err := executor.Execute(ops, handler)
 
 	require.NoError(t, err)
@@ -180,8 +169,7 @@ func TestSymlinkHandler_Clear(t *testing.T) {
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
 	ctx := types.ClearContext{

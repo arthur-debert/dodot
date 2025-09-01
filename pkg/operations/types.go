@@ -90,12 +90,6 @@ type ConfirmationRequest struct {
 	Items       []string // List of items affected (e.g., packages to uninstall)
 }
 
-// Confirmer is a simple interface for user confirmations.
-// This will be properly defined in types package in phase 3.
-type Confirmer interface {
-	RequestConfirmation(id, title, description string, items ...string) bool
-}
-
 // BaseHandler provides default implementations for optional handler methods.
 // This is crucial for keeping handlers simple - they only override what they need.
 type BaseHandler struct {

@@ -77,16 +77,6 @@ func (m *MockHandler) ValidateOperations(ops []operations.Operation) error {
 	return args.Error(0)
 }
 
-// MockConfirmer implements operations.Confirmer for testing
-type MockConfirmer struct {
-	mock.Mock
-}
-
-func (m *MockConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	args := m.Called(id, title, description, items)
-	return args.Bool(0)
-}
-
 func TestExecutor_Execute(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -210,7 +200,6 @@ func TestExecutor_Execute(t *testing.T) {
 			// Setup mocks
 			store := new(MockSimpleDataStore)
 			handler := new(MockHandler)
-			confirmer := new(MockConfirmer)
 
 			// Configure handler base
 			handler.BaseHandler = operations.BaseHandler{}
@@ -223,7 +212,7 @@ func TestExecutor_Execute(t *testing.T) {
 
 			// Create executor
 			// For phase 1, we pass nil for FS as it's not used yet
-			executor := operations.NewExecutor(store, nil, confirmer, dryRun)
+			executor := operations.NewExecutor(store, nil, dryRun)
 
 			// Execute operations
 			results, err := executor.Execute(tt.operations, handler)
@@ -250,9 +239,8 @@ func TestExecutor_Execute(t *testing.T) {
 func TestExecutor_CheckSentinel(t *testing.T) {
 	store := new(MockSimpleDataStore)
 	handler := new(MockHandler)
-	confirmer := new(MockConfirmer)
 
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Test sentinel exists
 	store.On("HasSentinel", "tools", "install", "install-complete").Return(true, nil)
