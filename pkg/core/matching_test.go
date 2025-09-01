@@ -45,13 +45,20 @@ handler = "symlink"`,
 		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, env.FS)
 		require.NoError(t, err)
 
-		// Execute - GetMatchesFS currently ignores the filesystem parameter
-		// so this test verifies the orchestration behavior, not the actual matching
-		_, err = core.GetMatchesFS(packs, env.FS)
+		// Execute - GetMatchesFS now properly uses the filesystem parameter
+		matches, err := core.GetMatchesFS(packs, env.FS)
 
-		// Verify - Since the rules system doesn't use the custom filesystem yet,
-		// we expect an error when it tries to scan the packs
-		assert.Error(t, err)
+		// Verify - Now that GetMatchesFS properly uses the filesystem,
+		// it should work correctly with the memory filesystem
+		require.NoError(t, err)
+		assert.NotEmpty(t, matches)
+
+		// Should have matches from both packs
+		packNames := make(map[string]bool)
+		for _, match := range matches {
+			packNames[match.Pack] = true
+		}
+		assert.Len(t, packNames, 2, "should have matches from both packs")
 	})
 
 	t.Run("handles packs without rules", func(t *testing.T) {
@@ -69,11 +76,12 @@ handler = "symlink"`,
 		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"norules"}, env.FS)
 		require.NoError(t, err)
 
-		// Execute - GetMatchesFS currently ignores the filesystem parameter
-		_, err = core.GetMatchesFS(packs, env.FS)
+		// Execute - GetMatchesFS now properly uses the filesystem parameter
+		matches, err := core.GetMatchesFS(packs, env.FS)
 
-		// Verify - we expect an error due to filesystem issue
-		assert.Error(t, err)
+		// Verify - it should work even without pack-specific rules (uses global rules)
+		require.NoError(t, err)
+		assert.NotEmpty(t, matches, "should have matches using global rules")
 	})
 
 	t.Run("handles empty pack list", func(t *testing.T) {

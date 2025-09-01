@@ -14,9 +14,7 @@ func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
 
 // GetMatchesFS processes packs and returns all files that match rules using the provided filesystem
 func GetMatchesFS(packs []types.Pack, filesystem types.FS) ([]types.RuleMatch, error) {
-	// For now, ignore the filesystem parameter and use the rules system
-	// TODO: Update rules system to support custom filesystem
-	return rules.GetMatches(packs)
+	return rules.GetMatchesFS(packs, filesystem)
 }
 
 // FilterMatchesByHandlerCategory filters rule matches based on handler category

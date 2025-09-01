@@ -5,9 +5,12 @@ package dispatcher
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packcommands"
+	"github.com/arthur-debert/dodot/pkg/packpipeline"
+	"github.com/arthur-debert/dodot/pkg/packpipeline/commands"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -66,146 +69,217 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 		Bool("force", opts.Force).
 		Msg("Dispatching pack command")
 
-	var result *types.PackCommandResult
-	var err error
-
 	switch cmdType {
 	case CommandOn:
-		result, err = packcommands.TurnOn(packcommands.OnOptions{
-			DotfilesRoot:   opts.DotfilesRoot,
-			PackNames:      opts.PackNames,
-			DryRun:         opts.DryRun,
-			Force:          opts.Force,
-			NoProvision:    opts.NoProvision,
-			ProvisionRerun: opts.ProvisionRerun,
-			FileSystem:     opts.FileSystem,
-		})
-
-	case CommandOff:
-		result, err = packcommands.TurnOff(packcommands.OffOptions{
+		// Use pack pipeline for on command
+		onCmd := &commands.OnCommand{
+			NoProvision: opts.NoProvision,
+			Force:       opts.Force,
+		}
+		pipelineResult, err := packpipeline.Execute(onCmd, opts.PackNames, packpipeline.Options{
 			DotfilesRoot: opts.DotfilesRoot,
-			PackNames:    opts.PackNames,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
+
+	case CommandOff:
+		// Use pack pipeline for off command
+		offCmd := &commands.OffCommand{}
+		pipelineResult, err := packpipeline.Execute(offCmd, opts.PackNames, packpipeline.Options{
+			DotfilesRoot: opts.DotfilesRoot,
+			DryRun:       opts.DryRun,
+			FileSystem:   opts.FileSystem,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
 
 	case CommandStatus:
-		result, err = packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
+		// Use pack pipeline for status command
+		statusCmd := &commands.StatusCommand{}
+		pipelineResult, err := packpipeline.Execute(statusCmd, opts.PackNames, packpipeline.Options{
 			DotfilesRoot: opts.DotfilesRoot,
-			PackNames:    opts.PackNames,
-			Paths:        opts.Paths,
+			DryRun:       false, // Status is always a query
 			FileSystem:   opts.FileSystem,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
 
 	case CommandInit:
-		// For init, we need to create a status function
-		getPackStatus := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-			statusResult, err := packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
-				DotfilesRoot: dotfilesRoot,
-				PackNames:    []string{packName},
-				FileSystem:   fs,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return statusResult.Packs, nil
+		// Init is special - it creates the pack first, then fills it
+		// Step 1: Create the pack directory
+		err := commands.InitPreprocess(opts.PackName, opts.DotfilesRoot, opts.FileSystem)
+		if err != nil {
+			return nil, err
 		}
 
-		result, err = packcommands.Initialize(packcommands.InitOptions{
-			PackName:      opts.PackName,
-			DotfilesRoot:  opts.DotfilesRoot,
-			FileSystem:    opts.FileSystem,
-			GetPackStatus: getPackStatus,
-		})
-
-	case CommandFill:
-		// Extract pack name for fill command
-		var packName string
-		if len(opts.PackNames) > 0 {
-			packName = opts.PackNames[0]
+		// Step 2: Use pack pipeline with InitCommand (which internally uses FillCommand)
+		initCmd := &commands.InitCommand{
+			PackName: opts.PackName,
 		}
-
-		result, err = packcommands.Fill(packcommands.FillOptions{
-			PackName:     packName,
+		pipelineResult, err := packpipeline.Execute(initCmd, []string{opts.PackName}, packpipeline.Options{
 			DotfilesRoot: opts.DotfilesRoot,
+			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
+
+	case CommandFill:
+		// Use pack pipeline for fill command
+		fillCmd := &commands.FillCommand{}
+		pipelineResult, err := packpipeline.Execute(fillCmd, opts.PackNames, packpipeline.Options{
+			DotfilesRoot: opts.DotfilesRoot,
+			DryRun:       opts.DryRun,
+			FileSystem:   opts.FileSystem,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
 
 	case CommandAdopt:
-		// Extract pack name for adopt command
-		var packName string
-		if len(opts.PackNames) > 0 {
-			packName = opts.PackNames[0]
+		// Use pack pipeline for adopt command
+		adoptCmd := &commands.AdoptCommand{
+			SourcePaths: opts.SourcePaths,
+			Force:       opts.Force,
 		}
-
-		// Skip pack validation here - it will be handled by packcommands.Adopt
-		// This avoids circular dependency issues
-
-		// Create status function
-		getPackStatus := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-			statusResult, err := packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
-				DotfilesRoot: dotfilesRoot,
-				PackNames:    []string{packName},
-				FileSystem:   fs,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return statusResult.Packs, nil
-		}
-
-		result, err = packcommands.Adopt(packcommands.AdoptOptions{
-			SourcePaths:   opts.SourcePaths,
-			Force:         opts.Force,
-			DotfilesRoot:  opts.DotfilesRoot,
-			PackName:      packName,
-			FileSystem:    opts.FileSystem,
-			GetPackStatus: getPackStatus,
+		pipelineResult, err := packpipeline.Execute(adoptCmd, opts.PackNames, packpipeline.Options{
+			DotfilesRoot: opts.DotfilesRoot,
+			DryRun:       opts.DryRun,
+			FileSystem:   opts.FileSystem,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
 
 	case CommandAddIgnore:
-		// Extract pack name for add-ignore command
-		var packName string
-		if len(opts.PackNames) > 0 {
-			packName = opts.PackNames[0]
-		}
-
-		// Create status function
-		getPackStatus := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-			statusResult, err := packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
-				DotfilesRoot: dotfilesRoot,
-				PackNames:    []string{packName},
-				FileSystem:   fs,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return statusResult.Packs, nil
-		}
-
-		result, err = packcommands.AddIgnore(packcommands.AddIgnoreOptions{
-			PackName:      packName,
-			DotfilesRoot:  opts.DotfilesRoot,
-			FileSystem:    opts.FileSystem,
-			GetPackStatus: getPackStatus,
+		// Use pack pipeline for add-ignore command
+		addIgnoreCmd := &commands.AddIgnoreCommand{}
+		pipelineResult, err := packpipeline.Execute(addIgnoreCmd, opts.PackNames, packpipeline.Options{
+			DotfilesRoot: opts.DotfilesRoot,
+			DryRun:       opts.DryRun,
+			FileSystem:   opts.FileSystem,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return convertPipelineResult(pipelineResult), nil
 
 	default:
 		return nil, fmt.Errorf("unknown command type: %s", cmdType)
 	}
+}
 
-	if err != nil {
-		logger.Error().
-			Str("command", string(cmdType)).
-			Err(err).
-			Msg("Command execution failed")
-		return nil, err
+// convertPipelineResult converts pack pipeline result to types.PackCommandResult
+func convertPipelineResult(pipelineResult *packpipeline.Result) *types.PackCommandResult {
+	result := &types.PackCommandResult{
+		Command:   pipelineResult.Command,
+		Timestamp: time.Now(),
+		DryRun:    false,
+		Packs:     make([]types.DisplayPack, 0, len(pipelineResult.PackResults)),
 	}
 
-	logger.Info().
-		Str("command", string(cmdType)).
-		Int("packCount", len(result.Packs)).
-		Msg("Command completed successfully")
+	// Convert each pack result
+	for _, pr := range pipelineResult.PackResults {
+		// Extract status result if available
+		if statusResult, ok := pr.CommandSpecificResult.(*packcommands.StatusResult); ok && statusResult != nil {
+			displayPack := types.DisplayPack{
+				Name:      statusResult.Name,
+				HasConfig: statusResult.HasConfig,
+				IsIgnored: statusResult.IsIgnored,
+				Status:    statusResult.Status,
+				Files:     make([]types.DisplayFile, 0, len(statusResult.Files)),
+			}
 
-	return result, nil
+			// Convert each file status
+			for _, file := range statusResult.Files {
+				displayFile := types.DisplayFile{
+					Handler:        file.Handler,
+					Path:           file.Path,
+					Status:         statusStateToDisplayStatus(file.Status.State),
+					Message:        file.Status.Message,
+					LastExecuted:   file.Status.Timestamp,
+					HandlerSymbol:  types.GetHandlerSymbol(file.Handler),
+					AdditionalInfo: file.AdditionalInfo,
+				}
+				displayPack.Files = append(displayPack.Files, displayFile)
+			}
+
+			// Add special files if present
+			if statusResult.IsIgnored {
+				displayPack.Files = append([]types.DisplayFile{{
+					Path:   ".dodotignore",
+					Status: "ignored",
+				}}, displayPack.Files...)
+			}
+			if statusResult.HasConfig {
+				displayPack.Files = append([]types.DisplayFile{{
+					Path:   ".dodot.toml",
+					Status: "config",
+				}}, displayPack.Files...)
+			}
+
+			result.Packs = append(result.Packs, displayPack)
+		} else {
+			// Fallback for commands that don't return status
+			displayPack := types.DisplayPack{
+				Name:   pr.Pack.Name,
+				Status: "unknown",
+			}
+			if pr.Success {
+				displayPack.Status = "success"
+			} else if pr.Error != nil {
+				displayPack.Status = "error"
+			}
+			result.Packs = append(result.Packs, displayPack)
+		}
+	}
+
+	// Generate message based on command and results
+	packNames := make([]string, 0, len(result.Packs))
+	for _, pack := range result.Packs {
+		packNames = append(packNames, pack.Name)
+	}
+
+	switch pipelineResult.Command {
+	case "on":
+		result.Message = types.FormatCommandMessage("turned on", packNames)
+	case "off":
+		result.Message = types.FormatCommandMessage("turned off", packNames)
+	case "status":
+		result.Message = "" // Status command doesn't have a message
+	}
+
+	return result
+}
+
+// statusStateToDisplayStatus converts internal status states to display status strings
+func statusStateToDisplayStatus(state packcommands.StatusState) string {
+	switch state {
+	case packcommands.StatusStateReady, packcommands.StatusStateSuccess:
+		return "success"
+	case packcommands.StatusStateMissing:
+		return "queue"
+	case packcommands.StatusStatePending:
+		return "queue"
+	case packcommands.StatusStateError:
+		return "error"
+	case packcommands.StatusStateIgnored:
+		return "ignored"
+	case packcommands.StatusStateConfig:
+		return "config"
+	default:
+		return "unknown"
+	}
 }
