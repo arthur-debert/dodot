@@ -16,27 +16,27 @@ func TestPathHandler_OperationIntegration(t *testing.T) {
 	// Create simplified handler
 	handler := path.NewHandler()
 
-	// Create test matches
-	matches := []types.RuleMatch{
+	// Create test file inputs
+	files := []operations.FileInput{
 		{
-			Pack:        "tools",
-			Path:        "bin",
-			HandlerName: "path",
+			PackName:     "tools",
+			SourcePath:   "/test/tools/bin",
+			RelativePath: "bin",
 		},
 		{
-			Pack:        "tools",
-			Path:        "scripts",
-			HandlerName: "path",
+			PackName:     "tools",
+			SourcePath:   "/test/tools/scripts",
+			RelativePath: "scripts",
 		},
 		{
-			Pack:        "dev",
-			Path:        "bin",
-			HandlerName: "path",
+			PackName:     "dev",
+			SourcePath:   "/test/dev/bin",
+			RelativePath: "bin",
 		},
 	}
 
 	// Convert to operations
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(files)
 	require.NoError(t, err)
 	assert.Len(t, ops, 3)
 

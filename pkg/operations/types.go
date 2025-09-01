@@ -5,6 +5,15 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// FileInput represents the minimal information handlers need about a file.
+// This decouples handlers from the matching/rules system.
+type FileInput struct {
+	PackName     string                 // Name of the pack containing this file
+	SourcePath   string                 // Absolute path to the file
+	RelativePath string                 // Path relative to pack root
+	Options      map[string]interface{} // Handler-specific options from rules
+}
+
 // OperationType represents the fundamental operations that dodot performs.
 // This is the core insight: dodot only does 4 things, everything else is orchestration.
 type OperationType int
@@ -65,10 +74,10 @@ type Handler interface {
 	Name() string
 	Category() handlers.HandlerCategory
 
-	// Core responsibility: transform file matches to operations
+	// Core responsibility: transform file inputs to operations
 	// This is the heart of the simplification - handlers just declare
 	// what operations they need, not how to perform them.
-	ToOperations(matches []types.RuleMatch) ([]Operation, error)
+	ToOperations(files []FileInput) ([]Operation, error)
 
 	// Metadata for UI/UX
 	GetMetadata() HandlerMetadata

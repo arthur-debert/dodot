@@ -72,12 +72,11 @@ func TestInstallHandler_OperationIntegration(t *testing.T) {
 	handler := install.NewHandler()
 
 	// Create test matches
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "testpack",
-			Path:         "install.sh",
-			AbsolutePath: scriptPath,
-			HandlerName:  "install",
+			PackName:     "testpack",
+			RelativePath: "install.sh",
+			SourcePath:   scriptPath,
 		},
 	}
 
@@ -120,12 +119,11 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 
 	handler := install.NewHandler()
 
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "testpack",
-			Path:         "install.sh",
-			AbsolutePath: scriptPath,
-			HandlerName:  "install",
+			PackName:     "testpack",
+			RelativePath: "install.sh",
+			SourcePath:   scriptPath,
 		},
 	}
 
@@ -236,18 +234,17 @@ func TestInstallHandler_IdempotentExecution(t *testing.T) {
 
 	handler := install.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "test",
-		Path:         "install.sh",
-		AbsolutePath: scriptPath,
-		HandlerName:  "install",
+	match := operations.FileInput{
+		PackName:     "test",
+		RelativePath: "install.sh",
+		SourcePath:   scriptPath,
 	}
 
 	// Generate operations twice
-	ops1, err := handler.ToOperations([]types.RuleMatch{match})
+	ops1, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
-	ops2, err := handler.ToOperations([]types.RuleMatch{match})
+	ops2, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Same content should produce same sentinel

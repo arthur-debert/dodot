@@ -216,7 +216,7 @@ func checkSpecialFiles(pack types.Pack, result *StatusResult, fs types.FS) error
 }
 
 // getHandlerStatus checks the deployment status for a specific match
-func getHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
+func getHandlerStatus(match handlerpipeline.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	// Check handler category to determine how to check status
 	category := handlers.HandlerRegistry.GetHandlerCategory(match.HandlerName)
 
@@ -236,7 +236,7 @@ func getHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.Da
 }
 
 // getConfigurationHandlerStatus checks status for configuration handlers
-func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
+func getConfigurationHandlerStatus(match handlerpipeline.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	baseName := filepath.Base(match.Path)
 	intermediateLinkPath := filepath.Join(pathsInstance.PackHandlerDir(pack.Name, match.HandlerName), baseName)
 
@@ -315,7 +315,7 @@ func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 }
 
 // getCodeExecutionHandlerStatus checks status for code execution handlers
-func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS) (Status, error) {
+func getCodeExecutionHandlerStatus(match handlerpipeline.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS) (Status, error) {
 	// Calculate current checksum
 	currentChecksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
 	if err != nil {

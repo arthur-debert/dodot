@@ -97,15 +97,15 @@ handler = "symlink"`,
 
 func TestFilterMatchesByHandlerCategory(t *testing.T) {
 	// Create test matches
-	createMatch := func(pack, handler string) types.RuleMatch {
-		return types.RuleMatch{
+	createMatch := func(pack, handler string) handlerpipeline.RuleMatch {
+		return handlerpipeline.RuleMatch{
 			Pack:        pack,
 			HandlerName: handler,
 			Path:        "test",
 		}
 	}
 
-	allMatches := []types.RuleMatch{
+	allMatches := []handlerpipeline.RuleMatch{
 		createMatch("vim", "symlink"),    // configuration
 		createMatch("vim", "shell"),      // configuration
 		createMatch("vim", "path"),       // configuration

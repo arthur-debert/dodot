@@ -8,18 +8,18 @@ import (
 )
 
 // GetMatches processes packs and returns all files that match rules
-func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
+func GetMatches(packs []types.Pack) ([]handlerpipeline.RuleMatch, error) {
 	return GetMatchesFS(packs, filesystem.NewOS())
 }
 
 // GetMatchesFS processes packs and returns all files that match rules using the provided filesystem
-func GetMatchesFS(packs []types.Pack, filesystem types.FS) ([]types.RuleMatch, error) {
+func GetMatchesFS(packs []types.Pack, filesystem types.FS) ([]handlerpipeline.RuleMatch, error) {
 	return handlerpipeline.GetMatchesFS(packs, filesystem)
 }
 
 // FilterMatchesByHandlerCategory filters rule matches based on handler category
-func FilterMatchesByHandlerCategory(matches []types.RuleMatch, allowConfiguration, allowCodeExecution bool) []types.RuleMatch {
-	var filtered []types.RuleMatch
+func FilterMatchesByHandlerCategory(matches []handlerpipeline.RuleMatch, allowConfiguration, allowCodeExecution bool) []handlerpipeline.RuleMatch {
+	var filtered []handlerpipeline.RuleMatch
 
 	for _, match := range matches {
 		// Check if handler is configuration type

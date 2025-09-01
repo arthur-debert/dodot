@@ -5,7 +5,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers/shell"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,18 +14,17 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		matches  []types.RuleMatch
+		matches  []operations.FileInput
 		wantOps  int
 		checkOps func(*testing.T, []operations.Operation)
 	}{
 		{
 			name: "single shell script creates one operation",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "bash",
-					Path:         "aliases.sh",
-					AbsolutePath: "/dotfiles/bash/aliases.sh",
-					HandlerName:  "shell",
+					PackName:     "bash",
+					RelativePath: "aliases.sh",
+					SourcePath:   "/dotfiles/bash/aliases.sh",
 				},
 			},
 			wantOps: 1,
@@ -39,24 +37,21 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "multiple shell scripts create multiple operations",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "bash",
-					Path:         "aliases.sh",
-					AbsolutePath: "/dotfiles/bash/aliases.sh",
-					HandlerName:  "shell",
+					PackName:     "bash",
+					RelativePath: "aliases.sh",
+					SourcePath:   "/dotfiles/bash/aliases.sh",
 				},
 				{
-					Pack:         "bash",
-					Path:         "functions.sh",
-					AbsolutePath: "/dotfiles/bash/functions.sh",
-					HandlerName:  "shell",
+					PackName:     "bash",
+					RelativePath: "functions.sh",
+					SourcePath:   "/dotfiles/bash/functions.sh",
 				},
 				{
-					Pack:         "zsh",
-					Path:         "config.zsh",
-					AbsolutePath: "/dotfiles/zsh/config.zsh",
-					HandlerName:  "shell",
+					PackName:     "zsh",
+					RelativePath: "config.zsh",
+					SourcePath:   "/dotfiles/zsh/config.zsh",
 				},
 			},
 			wantOps: 3,
@@ -80,7 +75,7 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name:    "empty matches returns empty operations",
-			matches: []types.RuleMatch{},
+			matches: []operations.FileInput{},
 			wantOps: 0,
 		},
 	}

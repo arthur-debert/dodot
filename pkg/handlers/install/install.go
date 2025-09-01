@@ -7,7 +7,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
@@ -29,28 +28,28 @@ func NewHandler() *Handler {
 	}
 }
 
-// ToOperations converts rule matches to install operations.
+// ToOperations converts file inputs to install operations.
 // Install scripts use RunCommand for execution with sentinel tracking.
-func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
-	for _, match := range matches {
+	for _, file := range files {
 		// Calculate checksum for idempotency
-		checksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
+		checksum, err := utils.CalculateFileChecksum(file.SourcePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
+			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", file.SourcePath, err)
 		}
 
 		// Create sentinel name from script filename
-		sentinelName := fmt.Sprintf("%s-%s", filepath.Base(match.Path), checksum)
+		sentinelName := fmt.Sprintf("%s-%s", filepath.Base(file.RelativePath), checksum)
 
 		// Install scripts are executed with RunCommand
 		// The executor will check the sentinel and skip if already run
 		ops = append(ops, operations.Operation{
 			Type:     operations.RunCommand,
-			Pack:     match.Pack,
+			Pack:     file.PackName,
 			Handler:  InstallHandlerName,
-			Command:  fmt.Sprintf("bash '%s'", match.AbsolutePath),
+			Command:  fmt.Sprintf("bash '%s'", file.SourcePath),
 			Sentinel: sentinelName,
 		})
 	}

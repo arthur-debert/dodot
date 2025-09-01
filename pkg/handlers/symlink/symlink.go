@@ -7,7 +7,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 const SymlinkHandlerName = "symlink"
@@ -25,43 +24,43 @@ func NewHandler() *Handler {
 	}
 }
 
-// ToOperations converts rule matches to symlink operations.
+// ToOperations converts file inputs to symlink operations.
 // Symlinks require two operations:
 // 1. CreateDataLink to store the link in the datastore
 // 2. CreateUserLink to create the user-visible symlink
-func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
-	// Get target directory from first match options or use home
-	targetDir := h.getTargetDir(matches)
+	// Get target directory from first file's options or use home
+	targetDir := h.getTargetDir(files)
 
 	// Track targets to detect conflicts early
 	targetMap := make(map[string]string)
 
-	for _, match := range matches {
+	for _, file := range files {
 		// Determine target path
-		targetPath := h.computeTargetPath(targetDir, match)
+		targetPath := h.computeTargetPath(targetDir, file)
 
 		// Check for conflicts
 		if existingSource, exists := targetMap[targetPath]; exists {
 			return nil, fmt.Errorf("symlink conflict: both %s and %s want to link to %s",
-				existingSource, match.AbsolutePath, targetPath)
+				existingSource, file.SourcePath, targetPath)
 		}
-		targetMap[targetPath] = match.AbsolutePath
+		targetMap[targetPath] = file.SourcePath
 
 		// Create operations
 		ops = append(ops,
 			operations.Operation{
 				Type:    operations.CreateDataLink,
-				Pack:    match.Pack,
+				Pack:    file.PackName,
 				Handler: SymlinkHandlerName,
-				Source:  match.AbsolutePath,
+				Source:  file.SourcePath,
 			},
 			operations.Operation{
 				Type:    operations.CreateUserLink,
-				Pack:    match.Pack,
+				Pack:    file.PackName,
 				Handler: SymlinkHandlerName,
-				Source:  match.AbsolutePath, // Will be resolved to datastore path
+				Source:  file.SourcePath, // Will be resolved to datastore path
 				Target:  targetPath,
 			},
 		)
@@ -92,10 +91,10 @@ func (h *Handler) FormatClearedItem(item operations.ClearedItem, dryRun bool) st
 	return fmt.Sprintf("Removed symlink %s", filepath.Base(item.Path))
 }
 
-// getTargetDir extracts the target directory from matches or returns default.
-func (h *Handler) getTargetDir(matches []types.RuleMatch) string {
-	if len(matches) > 0 && matches[0].HandlerOptions != nil {
-		if target, ok := matches[0].HandlerOptions["target"].(string); ok {
+// getTargetDir extracts the target directory from files or returns default.
+func (h *Handler) getTargetDir(files []operations.FileInput) string {
+	if len(files) > 0 && files[0].Options != nil {
+		if target, ok := files[0].Options["target"].(string); ok {
 			return os.ExpandEnv(target)
 		}
 	}
@@ -112,10 +111,10 @@ func (h *Handler) getTargetDir(matches []types.RuleMatch) string {
 }
 
 // computeTargetPath determines where a symlink should point.
-func (h *Handler) computeTargetPath(targetDir string, match types.RuleMatch) string {
+func (h *Handler) computeTargetPath(targetDir string, file operations.FileInput) string {
 	// Simple case: just join target directory with the relative path
 	// The executor will handle path mapping complexity
-	return filepath.Join(targetDir, match.Path)
+	return filepath.Join(targetDir, file.RelativePath)
 }
 
 // Verify interface compliance

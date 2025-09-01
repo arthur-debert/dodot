@@ -62,24 +62,21 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 	handler := shell.NewHandler()
 
 	// Create test matches
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "bash",
-			Path:         "aliases.sh",
-			AbsolutePath: "/dotfiles/bash/aliases.sh",
-			HandlerName:  "shell",
+			PackName:     "bash",
+			RelativePath: "aliases.sh",
+			SourcePath:   "/dotfiles/bash/aliases.sh",
 		},
 		{
-			Pack:         "bash",
-			Path:         "functions.sh",
-			AbsolutePath: "/dotfiles/bash/functions.sh",
-			HandlerName:  "shell",
+			PackName:     "bash",
+			RelativePath: "functions.sh",
+			SourcePath:   "/dotfiles/bash/functions.sh",
 		},
 		{
-			Pack:         "zsh",
-			Path:         "config.zsh",
-			AbsolutePath: "/dotfiles/zsh/config.zsh",
-			HandlerName:  "shell",
+			PackName:     "zsh",
+			RelativePath: "config.zsh",
+			SourcePath:   "/dotfiles/zsh/config.zsh",
 		},
 	}
 
@@ -92,8 +89,8 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 	for i, op := range ops {
 		assert.Equal(t, operations.CreateDataLink, op.Type)
 		assert.Equal(t, "shell", op.Handler)
-		assert.Equal(t, matches[i].Pack, op.Pack)
-		assert.Equal(t, matches[i].AbsolutePath, op.Source)
+		assert.Equal(t, matches[i].PackName, op.Pack)
+		assert.Equal(t, matches[i].SourcePath, op.Source)
 	}
 
 	// Test with executor in dry-run mode
@@ -117,12 +114,11 @@ func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
 
 	handler := shell.NewHandler()
 
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "bash",
-			Path:         "aliases.sh",
-			AbsolutePath: "/dotfiles/bash/aliases.sh",
-			HandlerName:  "shell",
+			PackName:     "bash",
+			RelativePath: "aliases.sh",
+			SourcePath:   "/dotfiles/bash/aliases.sh",
 		},
 	}
 
