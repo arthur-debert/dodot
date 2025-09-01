@@ -9,15 +9,15 @@ import (
 const (
 	// Command descriptions
 	MsgRootShort       = "A stateless dotfiles manager"
-	MsgStatusShort     = "Show deployment status of packs"
+	MsgStatusShort     = "Show pack status(es)"
 	MsgInitShort       = "Create a new pack with template files"
 	MsgFillShort       = "Add placeholder files to an existing pack"
 	MsgAddIgnoreShort  = "Create a .dodotignore file to ignore a pack"
 	MsgAdoptShort      = "Adopt existing files into a pack"
-	MsgTopicsShort     = "Display available documentation topics"
+	MsgTopicsShort     = "List all topics or show help for a topic"
 	MsgTopicsLong      = "Display a list of all available help topics that provide additional documentation beyond command help."
 	MsgCompletionShort = "Generate shell completion script"
-	MsgSnippetShort    = "Output shell integration snippet"
+	MsgSnippetShort    = "Output shell integration snippet for inclusion in profile"
 
 	// Status messages
 	MsgDryRunNotice      = "\nDRY RUN MODE - No changes were made"

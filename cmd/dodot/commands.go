@@ -100,29 +100,38 @@ func NewRootCmd() *cobra.Command {
 	// Define command groups
 	rootCmd.AddGroup(&cobra.Group{
 		ID:    "core",
-		Title: "COMMANDS:",
+		Title: "CORE:",
 	})
 	rootCmd.AddGroup(&cobra.Group{
-		ID:    "misc",
-		Title: "MISC:",
+		ID:    "single-pack",
+		Title: "SINGLE PACK CONVENIENCE:",
+	})
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "config",
+		Title: "CONFIG HELPERS:",
+	})
+	rootCmd.AddGroup(&cobra.Group{
+		ID:    "help",
+		Title: "HELP:",
 	})
 
 	// Set custom help template
 	rootCmd.SetUsageTemplate(MsgUsageTemplate)
 
-	// Add all commands
-	// Main commands
+	// Add all commands in the desired order
+	// Core commands
 	rootCmd.AddCommand(newOnCmd())
 	rootCmd.AddCommand(newOffCmd())
 	rootCmd.AddCommand(newStatusCmd())
-	// Pack management
+	// Single pack convenience commands
+	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
-	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newAdoptCmd())
-	// Misc
+	// Config helpers
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newGenConfigCmd())
+	// Help commands
 	rootCmd.AddCommand(newTopicsCmd())
 	// Completion command removed - use dodot-completions tool instead
 
@@ -325,7 +334,7 @@ func newInitCmd() *cobra.Command {
 		Long:    MsgInitLong,
 		Args:    cobra.ExactArgs(1),
 		Example: MsgInitExample,
-		GroupID: "core",
+		GroupID: "single-pack",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -398,7 +407,7 @@ func newFillCmd() *cobra.Command {
 		Long:    MsgFillLong,
 		Args:    cobra.ExactArgs(1),
 		Example: MsgFillExample,
-		GroupID: "core",
+		GroupID: "single-pack",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
 			p, err := initPaths()
@@ -472,7 +481,7 @@ func newAdoptCmd() *cobra.Command {
 		Long:              MsgAdoptLong,
 		Args:              cobra.MinimumNArgs(2),
 		Example:           MsgAdoptExample,
-		GroupID:           "core",
+		GroupID:           "single-pack",
 		ValidArgsFunction: adoptCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
@@ -574,7 +583,7 @@ func newAddIgnoreCmd() *cobra.Command {
 		Long:              MsgAddIgnoreLong,
 		Args:              cobra.ExactArgs(1),
 		Example:           MsgAddIgnoreExample,
-		GroupID:           "core",
+		GroupID:           "single-pack",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths (will show warning if using fallback)
@@ -652,7 +661,7 @@ func newTopicsCmd() *cobra.Command {
 		Use:     "topics",
 		Short:   MsgTopicsShort,
 		Long:    MsgTopicsLong,
-		GroupID: "misc",
+		GroupID: "help",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Find the help command and execute it with "topics" argument
 			if helpCmd, _, err := cmd.Root().Find([]string{"help"}); err == nil {
@@ -674,7 +683,7 @@ func newSnippetCmd() *cobra.Command {
 		Short:   MsgSnippetShort,
 		Long:    MsgSnippetLong,
 		Example: MsgSnippetExample,
-		GroupID: "misc",
+		GroupID: "config",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shell, _ := cmd.Flags().GetString("shell")
 			provision, _ := cmd.Flags().GetBool("provision")
@@ -764,10 +773,10 @@ func newGenConfigCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "gen-config [<pack>...]",
-		Short:   "Generate default configuration file",
+		Short:   "Generate default configuration file for a pack or root",
 		Long:    "Output the default configuration to stdout or write it to specified packs.\n\nWith no arguments and -w flag, writes to current directory.\nWith pack names and -w flag, writes to each pack directory.",
 		Example: "  dodot gen-config                    # Output to stdout\n  dodot gen-config -w                  # Write to ./.dodot.toml\n  dodot gen-config vim git -w          # Write to vim/.dodot.toml and git/.dodot.toml",
-		GroupID: "misc",
+		GroupID: "config",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize paths if writing to packs
 			var dotfilesRoot string
@@ -830,7 +839,7 @@ func newGenConfigCmd() *cobra.Command {
 func newOffCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "off [packs...]",
-		Short: "Remove pack deployments (the primary removal command)",
+		Short: "Remove and uninstall pack(s)",
 		Long:  "The 'off' command is dodot's primary removal command. It completely removes pack deployments:\n  - Removes all symlinks\n  - Clears shell integrations and PATH entries\n  - Removes all handler state from the data directory\n\nNote: This is a complete removal - no state is saved for restoration. Files in your dotfiles repository are never touched.",
 		Example: `  # Remove all pack deployments
   dodot off
@@ -943,7 +952,7 @@ func newOnCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "on [packs...]",
-		Short: "Deploy packs (the primary deployment command)",
+		Short: "Install and deploy pack(s)",
 		Long:  "The 'on' command is dodot's primary deployment command. It handles all aspects of pack deployment:\n  - Creates symlinks for configuration files\n  - Sets up shell integrations and PATH entries\n  - Runs installation scripts and package managers (unless --no-provision is used)\n\nBy default, provisioning handlers only run once per pack. Use options to control this behavior.\n\nProvisioning Options:\n  --no-provision: Skip provisioning handlers (only link files)\n  --provision-rerun: Force re-run provisioning even if already done",
 		Example: `  # Deploy all packs
   dodot on

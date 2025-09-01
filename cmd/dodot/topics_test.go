@@ -37,7 +37,7 @@ func TestTopicsCommand(t *testing.T) {
 		assert.Equal(t, "topics", topicsCmd.Use)
 		assert.Equal(t, MsgTopicsShort, topicsCmd.Short)
 		assert.Equal(t, MsgTopicsLong, topicsCmd.Long)
-		assert.Equal(t, "misc", topicsCmd.GroupID)
+		assert.Equal(t, "help", topicsCmd.GroupID)
 		assert.NotNil(t, topicsCmd.RunE, "topics command should have RunE function")
 	})
 
