@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/handlerpipeline"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/utils"
 )
@@ -148,7 +148,7 @@ func GetStatus(opts StatusOptions) (*StatusResult, error) {
 	}
 
 	// Get all rule matches for this pack
-	matches, err := rules.GetMatchesFS([]types.Pack{opts.Pack}, opts.FileSystem)
+	matches, err := handlerpipeline.GetMatchesFS([]types.Pack{opts.Pack}, opts.FileSystem)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process rules: %w", err)
 	}

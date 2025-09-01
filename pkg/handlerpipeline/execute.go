@@ -5,7 +5,6 @@ package handlerpipeline
 import (
 	"fmt"
 
-	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
@@ -104,23 +103,41 @@ func ExecuteHandlersForPack(pack types.Pack, filter FilterType, opts Options) (*
 
 // getMatchesForPack gets rule matches for a single pack
 func getMatchesForPack(pack types.Pack, fs types.FS) ([]types.RuleMatch, error) {
-	// Use existing core function but for a single pack
+	// Call our own GetMatchesFS directly
 	packs := []types.Pack{pack}
-	return core.GetMatchesFS(packs, fs)
+	return GetMatchesFS(packs, fs)
 }
 
 // filterMatches filters matches based on the filter type
 func filterMatches(matches []types.RuleMatch, filter FilterType) []types.RuleMatch {
 	switch filter {
 	case ConfigOnly:
-		return core.FilterMatchesByHandlerCategory(matches, true, false)
+		return FilterMatchesByHandlerCategory(matches, true, false)
 	case ProvisionOnly:
-		return core.FilterMatchesByHandlerCategory(matches, false, true)
+		return FilterMatchesByHandlerCategory(matches, false, true)
 	case All:
 		return matches
 	default:
 		return matches
 	}
+}
+
+// FilterMatchesByHandlerCategory filters rule matches based on handler category
+func FilterMatchesByHandlerCategory(matches []types.RuleMatch, allowConfiguration, allowCodeExecution bool) []types.RuleMatch {
+	var filtered []types.RuleMatch
+
+	for _, match := range matches {
+		// Check if handler is configuration type
+		if allowConfiguration && handlers.HandlerRegistry.IsConfigurationHandler(match.HandlerName) {
+			filtered = append(filtered, match)
+		}
+		// Check if handler is code execution type
+		if allowCodeExecution && handlers.HandlerRegistry.IsCodeExecutionHandler(match.HandlerName) {
+			filtered = append(filtered, match)
+		}
+	}
+
+	return filtered
 }
 
 // buildResultFromContext converts execution context to our result type

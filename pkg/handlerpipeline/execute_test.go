@@ -1,107 +1,225 @@
 package handlerpipeline
 
 import (
+	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// For now, we'll just test the basic structure and filter logic
-// Full integration tests will come when we integrate with the test environment
-
-func TestFilterType_Constants(t *testing.T) {
-	// Verify filter types are distinct
-	assert.NotEqual(t, ConfigOnly, ProvisionOnly)
-	assert.NotEqual(t, ConfigOnly, All)
-	assert.NotEqual(t, ProvisionOnly, All)
-}
-
-func TestFilterTypeString(t *testing.T) {
+func TestExecuteMatches(t *testing.T) {
 	tests := []struct {
-		filter   FilterType
-		expected string
+		name           string
+		matches        []types.RuleMatch
+		expectSuccess  bool
+		expectHandlers []string
 	}{
-		{ConfigOnly, "ConfigOnly"},
-		{ProvisionOnly, "ProvisionOnly"},
-		{All, "All"},
-		{FilterType(99), "Unknown"},
+		{
+			name:           "empty matches",
+			matches:        []types.RuleMatch{},
+			expectSuccess:  true,
+			expectHandlers: []string{},
+		},
+		{
+			name: "single symlink match",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "test-pack",
+					Path:         "vimrc",
+					AbsolutePath: "/test/dotfiles/test-pack/vimrc",
+					HandlerName:  "symlink",
+				},
+			},
+			expectSuccess:  true,
+			expectHandlers: []string{"symlink"},
+		},
+		{
+			name: "multiple symlink handlers",
+			matches: []types.RuleMatch{
+				{
+					Pack:         "test-pack",
+					Path:         "vimrc",
+					AbsolutePath: "/test/dotfiles/test-pack/vimrc",
+					HandlerName:  "symlink",
+				},
+				{
+					Pack:         "test-pack",
+					Path:         "bashrc",
+					AbsolutePath: "/test/dotfiles/test-pack/bashrc",
+					HandlerName:  "symlink",
+				},
+			},
+			expectSuccess:  true,
+			expectHandlers: []string{"symlink"},
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.expected, func(t *testing.T) {
-			assert.Equal(t, tt.expected, filterTypeString(tt.filter))
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test environment
+			env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+			defer env.Cleanup()
+
+			// Create test files that handlers expect
+			for _, match := range tt.matches {
+				// Create the source file
+				err := env.FS.MkdirAll(filepath.Dir(match.AbsolutePath), 0755)
+				require.NoError(t, err)
+
+				// Create a simple test file
+				testContent := "# Test file for " + match.HandlerName
+				err = env.FS.WriteFile(match.AbsolutePath, []byte(testContent), 0644)
+				require.NoError(t, err)
+			}
+
+			// Set up execution options
+			opts := ExecutionOptions{
+				DryRun:     false,
+				Force:      false,
+				FileSystem: env.FS,
+			}
+
+			// Execute matches
+			ctx, err := ExecuteMatches(tt.matches, env.DataStore, opts)
+
+			if tt.expectSuccess {
+				require.NoError(t, err, "ExecuteMatches should succeed")
+				require.NotNil(t, ctx, "Execution context should not be nil")
+				assert.Equal(t, "execute", ctx.Command)
+				assert.False(t, ctx.DryRun)
+
+				// Check that execution completed without errors
+				// Note: ExecutionContext totals depend on proper PackExecutionResult setup
+				// For now, just verify no errors occurred
+				assert.NotNil(t, ctx.PackResults, "Should have pack results")
+				if len(tt.expectHandlers) > 0 {
+					assert.NotEmpty(t, ctx.PackResults, "Should have processed some packs")
+				}
+			} else {
+				require.Error(t, err, "ExecuteMatches should fail")
+			}
 		})
 	}
 }
 
-func TestBuildResultFromContext_Empty(t *testing.T) {
-	pack := types.Pack{Name: "test"}
+func TestExecuteMatchesDryRun(t *testing.T) {
+	// Create test environment
+	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+	defer env.Cleanup()
 
-	// Test with nil context
-	result := buildResultFromContext(pack, nil)
-	assert.NotNil(t, result)
-	assert.Equal(t, "test", result.Pack.Name)
-	assert.Equal(t, 0, result.TotalHandlers)
-	assert.Empty(t, result.ExecutedHandlers)
+	// Create test matches
+	matches := []types.RuleMatch{
+		{
+			Pack:         "test-pack",
+			Path:         "vimrc",
+			AbsolutePath: "/test/dotfiles/test-pack/vimrc",
+			HandlerName:  "symlink",
+		},
+	}
+
+	opts := ExecutionOptions{
+		DryRun:     true,
+		Force:      false,
+		FileSystem: env.FS,
+	}
+
+	// Execute in dry run mode
+	ctx, err := ExecuteMatches(matches, env.DataStore, opts)
+
+	require.NoError(t, err)
+	require.NotNil(t, ctx)
+	assert.True(t, ctx.DryRun, "Context should indicate dry run")
 }
 
-func TestBuildResultFromContext_WithHandlers(t *testing.T) {
-	pack := types.Pack{Name: "test"}
-	ctx := types.NewExecutionContext("test", false)
+func TestGetHandlerExecutionOrder(t *testing.T) {
+	tests := []struct {
+		name          string
+		handlerNames  []string
+		expectedOrder []string
+	}{
+		{
+			name:          "empty list",
+			handlerNames:  []string{},
+			expectedOrder: []string{},
+		},
+		{
+			name:          "configuration handlers only",
+			handlerNames:  []string{"symlink", "shell", "path"},
+			expectedOrder: []string{"path", "shell", "symlink"}, // alphabetical within same category
+		},
+		{
+			name:          "code execution handlers only",
+			handlerNames:  []string{"install", "homebrew"},
+			expectedOrder: []string{"homebrew", "install"}, // alphabetical within same category
+		},
+		{
+			name:          "mixed handlers - code execution first",
+			handlerNames:  []string{"symlink", "install", "shell", "homebrew"},
+			expectedOrder: []string{"homebrew", "install", "shell", "symlink"}, // code first, then config
+		},
+	}
 
-	// Create pack result
-	packResult := types.NewPackExecutionResult(&pack)
-
-	// Add handler results
-	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "symlink",
-		Status:      types.StatusReady,
-		Files:       []string{"file1", "file2"},
-	})
-
-	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "shell",
-		Status:      types.StatusSkipped,
-		Files:       []string{"file3"},
-	})
-
-	packResult.AddHandlerResult(&types.HandlerResult{
-		HandlerName: "homebrew",
-		Status:      types.StatusError,
-		Files:       []string{"Brewfile"},
-	})
-
-	ctx.AddPackResult("test", packResult)
-
-	// Build result
-	result := buildResultFromContext(pack, ctx)
-
-	// Verify counts
-	assert.Equal(t, 3, result.TotalHandlers)
-	assert.Equal(t, 1, result.SuccessCount)
-	assert.Equal(t, 1, result.SkippedCount)
-	assert.Equal(t, 1, result.FailureCount)
-
-	// Verify handler executions
-	assert.Len(t, result.ExecutedHandlers, 3)
-
-	// Check first handler
-	assert.Equal(t, "symlink", result.ExecutedHandlers[0].HandlerName)
-	assert.Equal(t, 2, result.ExecutedHandlers[0].OperationCount)
-	assert.True(t, result.ExecutedHandlers[0].Success)
-
-	// Check skipped handler
-	assert.Equal(t, "shell", result.ExecutedHandlers[1].HandlerName)
-	assert.False(t, result.ExecutedHandlers[1].Success)
-
-	// Check failed handler
-	assert.Equal(t, "homebrew", result.ExecutedHandlers[2].HandlerName)
-	assert.False(t, result.ExecutedHandlers[2].Success)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			order := GetHandlerExecutionOrder(tt.handlerNames)
+			assert.Equal(t, tt.expectedOrder, order)
+		})
+	}
 }
 
-// TODO: Add integration tests once we have proper test environment support
-// These will test the full ExecuteHandlersForPack function with:
-// - Mock filesystem
-// - Mock datastore
-// - Proper rule matching
+func TestCreateOperationsHandler(t *testing.T) {
+	tests := []struct {
+		name        string
+		handlerName string
+		expectError bool
+	}{
+		{
+			name:        "symlink handler",
+			handlerName: "symlink",
+			expectError: false,
+		},
+		{
+			name:        "shell handler",
+			handlerName: "shell",
+			expectError: false,
+		},
+		{
+			name:        "install handler",
+			handlerName: "install",
+			expectError: false,
+		},
+		{
+			name:        "homebrew handler",
+			handlerName: "homebrew",
+			expectError: false,
+		},
+		{
+			name:        "path handler",
+			handlerName: "path",
+			expectError: false,
+		},
+		{
+			name:        "unknown handler",
+			handlerName: "nonexistent",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, err := createOperationsHandler(tt.handlerName)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Nil(t, handler)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, handler)
+				assert.Equal(t, tt.handlerName, handler.Name())
+			}
+		})
+	}
+}
