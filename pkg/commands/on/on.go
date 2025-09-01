@@ -111,7 +111,7 @@ func OnPacks(opts OnPacksOptions) (*types.PackCommandResult, error) {
 					logger.Info().Str("dataDir", dataDir).Msg("Shell integration installed successfully")
 
 					// Show user what was installed and how to enable it
-					snippet := types.GetShellIntegrationSnippet("bash", dataDir)
+					snippet := shell.GetShellIntegrationSnippet("bash", dataDir)
 
 					fmt.Println("✅ Shell integration installed successfully!")
 					fmt.Printf("📁 Scripts installed to: %s/shell/\n", dataDir)
