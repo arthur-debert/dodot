@@ -56,6 +56,9 @@ type ExecutionContext struct {
 
 	// SkippedHandlers is the count of skipped handlers
 	SkippedHandlers int
+
+	// Messages contains any user-facing messages to display after execution
+	Messages []string
 }
 
 // PackExecutionResult contains the execution results for a single pack

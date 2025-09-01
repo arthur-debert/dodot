@@ -41,6 +41,21 @@ func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
 	return args.Error(0)
 }
 
+func (m *MockSimpleDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
+	args := m.Called(pack, handlerName)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockSimpleDataStore) ListPackHandlers(pack string) ([]string, error) {
+	args := m.Called(pack)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
+	args := m.Called(pack, handlerName)
+	return args.Get(0).([]string), args.Error(1)
+}
+
 // MockHandler implements operations.Handler for testing
 type MockHandler struct {
 	operations.BaseHandler

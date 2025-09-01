@@ -382,6 +382,104 @@ func (m *MockSimpleDataStore) RemoveState(pack, handlerName string) error {
 	return nil
 }
 
+// HasHandlerState checks if any state exists for a handler in a pack
+func (m *MockSimpleDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
+	prefix := fmt.Sprintf("%s:%s:", pack, handlerName)
+
+	// Check if any sentinels exist for this pack/handler
+	for key := range m.sentinels {
+		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
+			return true, nil
+		}
+	}
+
+	// Check if any data links exist for this pack/handler
+	for key := range m.dataLinks {
+		if len(key) >= len(prefix) && key[:len(prefix)] == prefix {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// ListPackHandlers returns a list of all handlers that have state for a given pack
+func (m *MockSimpleDataStore) ListPackHandlers(pack string) ([]string, error) {
+	handlers := make(map[string]bool)
+	prefix := pack + ":"
+
+	// Check sentinels
+	for key := range m.sentinels {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			parts := splitSimpleKey(key)
+			if len(parts) >= 2 {
+				handlers[parts[1]] = true
+			}
+		}
+	}
+
+	// Check data links
+	for key := range m.dataLinks {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			parts := splitSimpleKey(key)
+			if len(parts) >= 2 {
+				handlers[parts[1]] = true
+			}
+		}
+	}
+
+	// Convert to slice
+	result := make([]string, 0, len(handlers))
+	for handler := range handlers {
+		result = append(result, handler)
+	}
+
+	return result, nil
+}
+
+// ListHandlerSentinels returns all sentinel files for a specific handler in a pack
+func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
+	var sentinels []string
+	prefix := fmt.Sprintf("%s:%s:", pack, handlerName)
+
+	for key := range m.sentinels {
+		if len(key) > len(prefix) && key[:len(prefix)] == prefix {
+			parts := splitSimpleKey(key)
+			if len(parts) >= 3 {
+				sentinels = append(sentinels, parts[2])
+			}
+		}
+	}
+
+	return sentinels, nil
+}
+
+// splitSimpleKey splits a colon-separated key into parts
+func splitSimpleKey(key string) []string {
+	var parts []string
+	start := 0
+	for i, ch := range key {
+		if ch == ':' {
+			parts = append(parts, key[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(key) {
+		parts = append(parts, key[start:])
+	}
+	return parts
+}
+
+// SetSentinel sets a sentinel value for testing
+func (m *MockSimpleDataStore) SetSentinel(pack, handlerName, sentinel string, exists bool) {
+	key := fmt.Sprintf("%s:%s:%s", pack, handlerName, sentinel)
+	if exists {
+		m.sentinels[key] = true
+	} else {
+		delete(m.sentinels, key)
+	}
+}
+
 // Helper methods for testing
 func (m *MockSimpleDataStore) GetDataLinks() map[string]string { return m.dataLinks }
 func (m *MockSimpleDataStore) GetUserLinks() map[string]string { return m.userLinks }
@@ -466,4 +564,81 @@ func (d *realDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, e
 func (d *realDataStore) RemoveState(pack, handlerName string) error {
 	stateDir := filepath.Join(d.dataDir, pack, handlerName)
 	return d.fs.RemoveAll(stateDir)
+}
+
+// HasHandlerState checks if any state exists for a handler in a pack
+func (d *realDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
+	stateDir := filepath.Join(d.dataDir, pack, handlerName)
+
+	// Check if directory exists
+	if _, err := d.fs.Stat(stateDir); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	// Check if directory has any contents
+	entries, err := d.fs.ReadDir(stateDir)
+	if err != nil {
+		return false, err
+	}
+
+	return len(entries) > 0, nil
+}
+
+// ListPackHandlers returns a list of all handlers that have state for a given pack
+func (d *realDataStore) ListPackHandlers(pack string) ([]string, error) {
+	packDir := filepath.Join(d.dataDir, pack)
+
+	// Check if pack directory exists
+	if _, err := d.fs.Stat(packDir); err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	// Read handler directories
+	entries, err := d.fs.ReadDir(packDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var handlers []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			handlers = append(handlers, entry.Name())
+		}
+	}
+
+	return handlers, nil
+}
+
+// ListHandlerSentinels returns all sentinel files for a specific handler in a pack
+func (d *realDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
+	stateDir := filepath.Join(d.dataDir, pack, handlerName)
+
+	// Check if directory exists
+	if _, err := d.fs.Stat(stateDir); err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	// Read all files
+	entries, err := d.fs.ReadDir(stateDir)
+	if err != nil {
+		return nil, err
+	}
+
+	var sentinels []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			sentinels = append(sentinels, entry.Name())
+		}
+	}
+
+	return sentinels, nil
 }

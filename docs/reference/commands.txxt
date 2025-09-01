@@ -24,11 +24,6 @@ Moves existing files from the system into a pack and creates symlinks back to th
 **Status**: Working  
 **Usage**: `dodot adopt <pack-name> <file-paths...> [--force]`
 
-### deprovision
-Removes provisioning state for specified packs by clearing code execution handlers (homebrew, provision scripts) while preserving linking handler state. Uses the clearable handler infrastructure for consistent state management.
-
-**Status**: Working  
-**Usage**: `dodot deprovision [pack-names...]`
 
 ### fill
 Adds template/placeholder files to an existing pack based on configured handlers. Creates example configuration files, scripts, and directories that users can customize for their specific needs.
@@ -48,11 +43,6 @@ Creates a new pack directory with initial structure including configuration file
 **Status**: Working  
 **Usage**: `dodot init <pack-name>`
 
-### link
-Deploys configuration handlers only (symlinks, shell profiles, PATH modifications) without running code execution handlers. Uses the simplified pipeline approach with command mode filtering.
-
-**Status**: Working  
-**Usage**: `dodot link [pack-names...]`
 
 ### list
 Discovers and lists all available packs in the dotfiles root directory. Simple command that uses the core pack discovery infrastructure.
@@ -61,22 +51,21 @@ Discovers and lists all available packs in the dotfiles root directory. Simple c
 **Usage**: `dodot list`
 
 ### off
-Comprehensive pack deactivation that runs deprovision followed by unlink to completely remove both provisioned resources and symlinks. Handles errors from each phase and reports combined results.
+The primary pack removal command. Completely removes pack deployments including all symlinks, shell integrations, PATH entries, and handler state from the data directory. This is a complete removal - no state is saved for restoration. Files in your dotfiles repository are never touched.
 
 **Status**: Working  
 **Usage**: `dodot off [pack-names...]`
 
 ### on
-Full pack activation that runs link followed by provision to deploy both symlinks and provisioned resources. Aggregates results from both phases and handles partial failures gracefully.
+The primary pack deployment command. Handles all aspects of pack deployment including creating symlinks for configuration files, setting up shell integrations and PATH entries, and running installation scripts and package managers. By default, provisioning handlers only run once per pack.
+
+**Options**:
+- `--no-provision`: Skip provisioning handlers (only link files)
+- `--provision-rerun`: Force re-run provisioning even if already done
 
 **Status**: Working  
-**Usage**: `dodot on [pack-names...]`
+**Usage**: `dodot on [pack-names...] [--no-provision | --provision-rerun]`
 
-### provision
-Runs both code execution and configuration handlers in two phases. After successful execution, automatically installs shell integration scripts and provides user instructions for enabling them in their shell configuration.
-
-**Status**: Working with Shell Integration  
-**Usage**: `dodot provision [pack-names...]`
 
 ### status
 Shows deployment state of packs including special files, handler matches, and current deployment status. Uses the datastore to check actual deployment state and provides detailed file-level status information.
@@ -84,25 +73,20 @@ Shows deployment state of packs including special files, handler matches, and cu
 **Status**: Working  
 **Usage**: `dodot status [pack-names...]`
 
-### unlink
-Removes deployments created by linking handlers (symlinks, PATH, shell profiles) while preserving provisioning state. Uses the clearable handler infrastructure to ensure proper cleanup and state management.
-
-**Status**: Working  
-**Usage**: `dodot unlink [pack-names...]`
 
 ## Command Relationships
 
 ### Activation Flow
-- `on` = `link` + `provision`
-- `init` → `fill` → `link` → `provision`
+- `init` → `fill` → `on`
+- `on` handles both configuration and provisioning
 
 ### Deactivation Flow
-- `off` = `deprovision` + `unlink`
-- Complete removal in reverse order
+- `off` performs complete removal
+- All handler state is cleared
 
 ### Handler Types
-- **Configuration Handlers**: symlink, shell_profile, path (handled by `link`/`unlink`)
-- **Code Execution Handlers**: homebrew, install, provision (handled by `provision`/`deprovision`)
+- **Configuration Handlers**: symlink, shell_profile, path (always run)
+- **Code Execution Handlers**: homebrew, install, provision (run once by default, controllable via options)
 
 ## Implementation Notes
 

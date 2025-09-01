@@ -44,18 +44,20 @@ including examples, configuration, and best practices, see:
 
 Handlers are divided into two categories based on their operation types:
 
-### Code Execution Handlers (`dodot provision`)
+### Code Execution Handlers (provisioning)
 - Generate **RunCommand** operations with sentinels
 - Install Handler: Runs setup scripts once
 - Homebrew Handler: Installs packages once
 - Operations are tracked to prevent re-execution
+- Run by default with `dodot on`, skip with `--no-provision`
 
-### Configuration Handlers (`dodot link`)
+### Configuration Handlers (always run)
 - Generate **CreateDataLink** and **CreateUserLink** operations
 - Symlink Handler: Creates configuration symlinks
 - Path Handler: Manages PATH entries
 - Shell Handler: Sources shell configuration
 - Operations are idempotent (safe to run multiple times)
+- Always run with `dodot on`
 
 ## Quick Reference
 
@@ -72,7 +74,7 @@ Handlers are divided into two categories based on their operation types:
 Each handler's doc.go file contains:
 
 1. **Overview**: What the handler does
-2. **When It Runs**: Link vs Provision mode
+2. **When It Runs**: Configuration vs Provisioning category
 3. **Standard Configuration**: Example rule configs
 4. **File Selection Process**: How files are matched
 5. **Execution Strategy**: How it works internally

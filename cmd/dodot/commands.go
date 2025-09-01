@@ -11,10 +11,8 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/cobrax/topics"
 	"github.com/arthur-debert/dodot/pkg/commands"
-	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/on"
-	"github.com/arthur-debert/dodot/pkg/commands/provision"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
@@ -48,12 +46,11 @@ func NewRootCmd() *cobra.Command {
 	initTemplateFormatting()
 
 	var (
-		verbosity          int
-		dryRun             bool
-		force              bool
-		configFile         string
-		formatStr          string
-		useSimplifiedRules bool
+		verbosity  int
+		dryRun     bool
+		force      bool
+		configFile string
+		formatStr  string
 	)
 
 	rootCmd := &cobra.Command{
@@ -94,7 +91,6 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().BoolVar(&force, "force", false, MsgFlagForce)
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to custom styles configuration file")
 	rootCmd.PersistentFlags().StringVar(&formatStr, "format", "auto", "Output format (auto|term|text|json)")
-	rootCmd.PersistentFlags().BoolVar(&useSimplifiedRules, "use-simplified-rules", false, "Use new simplified rule-based matching (experimental)")
 
 	// Disable automatic help command (we'll use our custom one from topics)
 	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true})
@@ -113,18 +109,17 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.SetUsageTemplate(MsgUsageTemplate)
 
 	// Add all commands
-	rootCmd.AddCommand(newLinkCmd())
-	rootCmd.AddCommand(newProvisionCmd())
-	rootCmd.AddCommand(newListCmd())
-	rootCmd.AddCommand(newStatusCmd())
-	rootCmd.AddCommand(newUnlinkCmd())
-	rootCmd.AddCommand(newDeprovisionCmd())
+	// Main commands
 	rootCmd.AddCommand(newOnCmd())
 	rootCmd.AddCommand(newOffCmd())
+	rootCmd.AddCommand(newListCmd())
+	rootCmd.AddCommand(newStatusCmd())
+	// Pack management
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newFillCmd())
 	rootCmd.AddCommand(newAddIgnoreCmd())
 	rootCmd.AddCommand(newAdoptCmd())
+	// Misc
 	rootCmd.AddCommand(newSnippetCmd())
 	rootCmd.AddCommand(newGenConfigCmd())
 	rootCmd.AddCommand(newTopicsCmd())
@@ -275,168 +270,6 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	// Return pack names and allow directory completion
 	// This lets users navigate the filesystem and also see available packs
 	return availablePacks, cobra.ShellCompDirectiveFilterDirs
-}
-
-func newLinkCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:               "link [packs...]",
-		Short:             MsgLinkShort,
-		Long:              MsgLinkLong,
-		Example:           MsgLinkExample,
-		GroupID:           "core",
-		ValidArgsFunction: packNamesCompletion,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize paths (will show warning if using fallback)
-			p, err := initPaths()
-			if err != nil {
-				return err
-			}
-
-			// Get dry-run flag value (it's a persistent flag)
-			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
-			useSimplified, _ := cmd.Root().PersistentFlags().GetBool("use-simplified-rules")
-
-			log.Info().
-				Str("dotfiles_root", p.DotfilesRoot()).
-				Bool("dry_run", dryRun).
-				Bool("use_simplified_rules", useSimplified).
-				Msg("Linking from dotfiles root")
-
-			// Link packs using the new implementation
-			var ctx *types.ExecutionContext
-			opts := link.LinkPacksOptions{
-				DotfilesRoot:       p.DotfilesRoot(),
-				PackNames:          args,
-				DryRun:             dryRun,
-				EnableHomeSymlinks: true,
-			}
-			if useSimplified {
-				ctx, err = link.LinkPacks(opts)
-			} else {
-				ctx, err = commands.LinkPacks(opts)
-			}
-			if err != nil {
-				// Check if this is a pack not found error and provide detailed help
-				var dodotErr *doerrors.DodotError
-				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "linking")
-				}
-				return fmt.Errorf(MsgErrLinkPacks, err)
-			}
-
-			// Create renderer and display results
-			renderer, err := createRenderer(cmd)
-			if err != nil {
-				return err
-			}
-
-			// Convert ExecutionContext to DisplayResult and wrap with CommandResult
-			displayResult := ctx.ToDisplayResult()
-
-			// Get pack names for the message
-			packNames := make([]string, 0, len(displayResult.Packs))
-			for _, pack := range displayResult.Packs {
-				packNames = append(packNames, pack.Name)
-			}
-
-			// Create CommandResult with appropriate message
-			cmdResult := &types.CommandResult{
-				Message: types.FormatCommandMessage("linked", packNames),
-				Result:  displayResult,
-			}
-
-			if err := renderer.RenderResult(cmdResult); err != nil {
-				return fmt.Errorf("failed to render results: %w", err)
-			}
-
-			return nil
-		},
-	}
-}
-
-func newProvisionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:               "provision [packs...]",
-		Short:             MsgProvisionShort,
-		Long:              MsgProvisionLong,
-		Example:           MsgProvisionExample,
-		GroupID:           "core",
-		ValidArgsFunction: packNamesCompletion,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize paths (will show warning if using fallback)
-			p, err := initPaths()
-			if err != nil {
-				return err
-			}
-
-			// Get flags (they're persistent flags)
-			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
-			force, _ := cmd.Root().PersistentFlags().GetBool("force")
-			useSimplified, _ := cmd.Root().PersistentFlags().GetBool("use-simplified-rules")
-
-			log.Info().
-				Str("dotfiles_root", p.DotfilesRoot()).
-				Bool("dry_run", dryRun).
-				Bool("force", force).
-				Bool("use_simplified_rules", useSimplified).
-				Msg("Provisioning from dotfiles root")
-
-			// Provision packs using the new implementation
-			var ctx *types.ExecutionContext
-			opts := provision.ProvisionPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-				Force:        force,
-			}
-			if useSimplified {
-				ctx, err = provision.ProvisionPacks(opts)
-			} else {
-				ctx, err = commands.ProvisionPacks(commands.ProvisionPacksOptions{
-					DotfilesRoot:       p.DotfilesRoot(),
-					PackNames:          args,
-					DryRun:             dryRun,
-					Force:              force,
-					EnableHomeSymlinks: true,
-				})
-			}
-			if err != nil {
-				// Check if this is a pack not found error and provide detailed help
-				var dodotErr *doerrors.DodotError
-				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "provisioning")
-				}
-				return fmt.Errorf(MsgErrProvisionPacks, err)
-			}
-
-			// Create renderer and display results
-			renderer, err := createRenderer(cmd)
-			if err != nil {
-				return err
-			}
-
-			// Convert ExecutionContext to DisplayResult and wrap with CommandResult
-			displayResult := ctx.ToDisplayResult()
-
-			// Get pack names for the message
-			packNames := make([]string, 0, len(displayResult.Packs))
-			for _, pack := range displayResult.Packs {
-				packNames = append(packNames, pack.Name)
-			}
-
-			// Create CommandResult with appropriate message
-			cmdResult := &types.CommandResult{
-				Message: types.FormatCommandMessage("provisioned", packNames),
-				Result:  displayResult,
-			}
-
-			if err := renderer.RenderResult(cmdResult); err != nil {
-				return fmt.Errorf("failed to render results: %w", err)
-			}
-
-			return nil
-		},
-	}
 }
 
 func newListCmd() *cobra.Command {
@@ -1049,208 +882,18 @@ func newGenConfigCmd() *cobra.Command {
 	return cmd
 }
 
-func newUnlinkCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:               "unlink [packs...]",
-		Short:             MsgUnlinkShort,
-		Long:              MsgUnlinkLong,
-		Example:           MsgUnlinkExample,
-		GroupID:           "core",
-		ValidArgsFunction: packNamesCompletion,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize paths (will show warning if using fallback)
-			p, err := initPaths()
-			if err != nil {
-				return err
-			}
-
-			// Get flags
-			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
-			force, _ := cmd.Root().PersistentFlags().GetBool("force")
-
-			log.Info().
-				Str("dotfiles_root", p.DotfilesRoot()).
-				Strs("packs", args).
-				Bool("dry_run", dryRun).
-				Bool("force", force).
-				Msg("Unlinking packs")
-
-			// Run unlink command
-			result, err := commands.UnlinkPacks(commands.UnlinkPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-			})
-			if err != nil {
-				// Check if this is a pack not found error and provide detailed help
-				var dodotErr *doerrors.DodotError
-				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "unlink")
-				}
-				return fmt.Errorf(MsgErrUnlinkPacks, err)
-			}
-
-			// Create renderer and display results
-			renderer, err := createRenderer(cmd)
-			if err != nil {
-				return err
-			}
-
-			// After unlinking, run status to get the current state
-			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				Paths:        p,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to get pack status: %w", err)
-			}
-
-			// Update command name to reflect unlink action
-			statusResult.Command = "unlink"
-			statusResult.DryRun = dryRun
-
-			// Get pack names for the message
-			packNames := make([]string, 0, len(result.Packs))
-			for _, pack := range result.Packs {
-				if len(pack.RemovedItems) > 0 {
-					packNames = append(packNames, pack.Name)
-				}
-			}
-
-			// Create CommandResult with appropriate message
-			cmdResult := &types.CommandResult{
-				Message: types.FormatCommandMessage("unlinked", packNames),
-				Result:  statusResult,
-			}
-
-			if err := renderer.RenderResult(cmdResult); err != nil {
-				return fmt.Errorf("failed to render results: %w", err)
-			}
-
-			return nil
-		},
-	}
-}
-
-func newDeprovisionCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:               "deprovision [packs...]",
-		Short:             MsgDeprovisionShort,
-		Long:              MsgDeprovisionLong,
-		Example:           MsgDeprovisionExample,
-		GroupID:           "core",
-		ValidArgsFunction: packNamesCompletion,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize paths (will show warning if using fallback)
-			p, err := initPaths()
-			if err != nil {
-				return err
-			}
-
-			// Get dry-run flag value (it's a persistent flag)
-			dryRun, _ := cmd.Root().PersistentFlags().GetBool("dry-run")
-
-			log.Info().
-				Str("dotfiles_root", p.DotfilesRoot()).
-				Bool("dry_run", dryRun).
-				Msg("Deprovisioning packs")
-
-			// Deprovision packs using the new implementation
-			result, err := commands.DeprovisionPacks(commands.DeprovisionPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-			})
-			if err != nil {
-				// Check if this is a pack not found error and provide detailed help
-				var dodotErr *doerrors.DodotError
-				if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-					return handlePackNotFoundError(dodotErr, p, "deprovisioning")
-				}
-				return fmt.Errorf(MsgErrDeprovisionPacks, err)
-			}
-
-			// Create renderer and display results
-			renderer, err := createRenderer(cmd)
-			if err != nil {
-				return err
-			}
-
-			// After deprovisioning, run status to get the current state
-			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				Paths:        p,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to get pack status: %w", err)
-			}
-
-			// Update command name to reflect deprovision action
-			statusResult.Command = "deprovision"
-			statusResult.DryRun = dryRun
-
-			// Get pack names for the message
-			// For deprovision command, we want to list packs that had items cleared
-			packNames := make([]string, 0)
-			for _, pack := range result.Packs {
-				if len(pack.HandlersRun) > 0 {
-					// Check if any handler actually cleared items
-					for _, handler := range pack.HandlersRun {
-						if len(handler.ClearedItems) > 0 || handler.StateRemoved {
-							packNames = append(packNames, pack.Name)
-							break
-						}
-					}
-				}
-			}
-
-			// Sort pack names for consistent output
-			sort.Strings(packNames)
-
-			// Create CommandResult with appropriate message
-			var message string
-			if result.TotalCleared == 0 {
-				message = "" // No message if nothing was cleared
-			} else {
-				message = types.FormatCommandMessage("deprovisioned", packNames)
-			}
-
-			cmdResult := &types.CommandResult{
-				Message: message,
-				Result:  statusResult,
-			}
-
-			if err := renderer.RenderResult(cmdResult); err != nil {
-				return fmt.Errorf("failed to render results: %w", err)
-			}
-
-			// Display any errors encountered
-			if len(result.Errors) > 0 {
-				fmt.Println("\nErrors encountered:")
-				for _, err := range result.Errors {
-					fmt.Printf("  - %v\n", err)
-				}
-			}
-
-			return nil
-		},
-	}
-}
-
 func newOffCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "off [packs...]",
-		Short: "Remove and uninstall packs completely",
-		Long:  "The off command completely removes pack deployments by running 'deprovision' followed by 'unlink'. This uninstalls all provisioned resources (homebrew packages, etc.) and removes all symlinks. Note: This is a complete removal - no state is saved for restoration.",
+		Short: "Remove pack deployments (the primary removal command)",
+		Long:  "The 'off' command is dodot's primary removal command. It completely removes pack deployments:\n  - Removes all symlinks\n  - Clears shell integrations and PATH entries\n  - Removes all handler state from the data directory\n\nNote: This is a complete removal - no state is saved for restoration. Files in your dotfiles repository are never touched.",
 		Example: `  # Remove all pack deployments
   dodot off
   
   # Remove specific packs
   dodot off vim zsh
   
-  # Preview what would be removed
+  # Preview what will be removed
   dodot off --dry-run vim`,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
@@ -1308,25 +951,10 @@ func newOffCmd() *cobra.Command {
 			// Get pack names for the message
 			// For off command, we want to list packs that had items removed
 			packNames := make([]string, 0)
-			processedPacks := make(map[string]bool)
-
-			if result.UnlinkResult != nil {
-				for _, pack := range result.UnlinkResult.Packs {
-					if len(pack.RemovedItems) > 0 {
-						processedPacks[pack.Name] = true
-					}
+			for _, pack := range result.Packs {
+				if len(pack.RemovedItems) > 0 {
+					packNames = append(packNames, pack.Name)
 				}
-			}
-			if result.DeprovisionResult != nil {
-				for _, pack := range result.DeprovisionResult.Packs {
-					if len(pack.HandlersRun) > 0 {
-						processedPacks[pack.Name] = true
-					}
-				}
-			}
-
-			for packName := range processedPacks {
-				packNames = append(packNames, packName)
 			}
 
 			// Sort pack names for consistent output
@@ -1363,18 +991,29 @@ func newOffCmd() *cobra.Command {
 }
 
 func newOnCmd() *cobra.Command {
-	return &cobra.Command{
+	var (
+		noProvision    bool
+		provisionRerun bool
+	)
+
+	cmd := &cobra.Command{
 		Use:   "on [packs...]",
-		Short: "Install and deploy packs",
-		Long:  "The on command deploys packs by running 'link' followed by 'provision'. This creates all symlinks and installs all provisioned resources (homebrew packages, etc.). This is equivalent to running 'dodot link' followed by 'dodot provision'.",
+		Short: "Deploy packs (the primary deployment command)",
+		Long:  "The 'on' command is dodot's primary deployment command. It handles all aspects of pack deployment:\n  - Creates symlinks for configuration files\n  - Sets up shell integrations and PATH entries\n  - Runs installation scripts and package managers (unless --no-provision is used)\n\nBy default, provisioning handlers only run once per pack. Use options to control this behavior.\n\nProvisioning Options:\n  --no-provision: Skip provisioning handlers (only link files)\n  --provision-rerun: Force re-run provisioning even if already done",
 		Example: `  # Deploy all packs
   dodot on
   
   # Deploy specific packs
   dodot on vim zsh
   
-  # Preview deployment
-  dodot on --dry-run vim`,
+  # Preview what will be deployed
+  dodot on --dry-run vim
+  
+  # Only create symlinks, skip installations
+  dodot on --no-provision vim
+  
+  # Force re-run provisioning handlers
+  dodot on --provision-rerun vim`,
 		GroupID:           "core",
 		ValidArgsFunction: packNamesCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -1397,10 +1036,12 @@ func newOnCmd() *cobra.Command {
 
 			// Turn on packs using the on command
 			result, err := on.OnPacks(on.OnPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    args,
-				DryRun:       dryRun,
-				Force:        force,
+				DotfilesRoot:   p.DotfilesRoot(),
+				PackNames:      args,
+				DryRun:         dryRun,
+				Force:          force,
+				NoProvision:    noProvision,
+				ProvisionRerun: provisionRerun,
 			})
 			if err != nil {
 				// Check if this is a pack not found error and provide detailed help
@@ -1482,6 +1123,15 @@ func newOnCmd() *cobra.Command {
 			return nil
 		},
 	}
+
+	// Add command-specific flags
+	cmd.Flags().BoolVar(&noProvision, "no-provision", false, "Skip provisioning handlers (only link files)")
+	cmd.Flags().BoolVar(&provisionRerun, "provision-rerun", false, "Force re-run provisioning even if already done")
+
+	// Mark mutually exclusive flags
+	cmd.MarkFlagsMutuallyExclusive("no-provision", "provision-rerun")
+
+	return cmd
 }
 
 // Completion command removed - use dodot-completions tool to generate shell completions

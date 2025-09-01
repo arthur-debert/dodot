@@ -118,3 +118,32 @@ func (p *Pack) HasIgnoreFile(fs FS, cfg *config.Config) (bool, error) {
 	ignoreFile := cfg.Patterns.SpecialFiles.IgnoreFile
 	return p.FileExists(fs, ignoreFile)
 }
+
+// IsHandlerProvisioned checks if a specific handler has been provisioned for this pack.
+// This is a business logic method that uses the DataStore's query capabilities.
+func (p *Pack) IsHandlerProvisioned(store DataStore, handlerName string) (bool, error) {
+	return store.HasHandlerState(p.Name, handlerName)
+}
+
+// GetProvisionedHandlers returns a list of all handlers that have been provisioned for this pack.
+// This helps identify which handlers have already been executed.
+func (p *Pack) GetProvisionedHandlers(store DataStore) ([]string, error) {
+	handlers, err := store.ListPackHandlers(p.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list provisioned handlers for pack %s: %w", p.Name, err)
+	}
+
+	// Filter to only include handlers that actually have state
+	var provisionedHandlers []string
+	for _, handler := range handlers {
+		hasState, err := store.HasHandlerState(p.Name, handler)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check handler state for %s/%s: %w", p.Name, handler, err)
+		}
+		if hasState {
+			provisionedHandlers = append(provisionedHandlers, handler)
+		}
+	}
+
+	return provisionedHandlers, nil
+}

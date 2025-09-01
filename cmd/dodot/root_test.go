@@ -24,8 +24,8 @@ func TestDeployCmd(t *testing.T) {
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
 
-	// Execute the deploy command
-	rootCmd.SetArgs([]string{"link"})
+	// Execute the on command
+	rootCmd.SetArgs([]string{"on"})
 	err := rootCmd.Execute()
 
 	// Assert no error occurred
@@ -55,8 +55,8 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
 
-	// Execute the deploy command - should succeed with fallback warning
-	rootCmd.SetArgs([]string{"link"})
+	// Execute the on command - should succeed with fallback warning
+	rootCmd.SetArgs([]string{"on"})
 	err = rootCmd.Execute()
 
 	// The command should succeed but with a fallback warning

@@ -5,14 +5,13 @@
 //
 // Each command is implemented in its own subdirectory:
 //   - list/     - ListPacks command
-//   - link/     - LinkPacks command
-//   - provision/  - ProvisionPacks command
 //   - status/   - StatusPacks command
 //   - fill/     - FillPack command
 //   - initialize/ - InitPack command
 //   - addignore/ - AddIgnore command
 //   - adopt/    - AdoptFiles command
-//   - internal/ - Shared execution pipeline logic
+//   - on/       - OnPacks command (primary deployment)
+//   - off/      - OffPacks command (primary removal)
 //
 // This file serves as the main entry point and re-exports all command functions
 // to maintain API compatibility.
@@ -21,15 +20,11 @@ package commands
 import (
 	"github.com/arthur-debert/dodot/pkg/commands/addignore"
 	"github.com/arthur-debert/dodot/pkg/commands/adopt"
-	"github.com/arthur-debert/dodot/pkg/commands/deprovision"
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/genconfig"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
-	"github.com/arthur-debert/dodot/pkg/commands/link"
 	"github.com/arthur-debert/dodot/pkg/commands/list"
-	"github.com/arthur-debert/dodot/pkg/commands/provision"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
-	"github.com/arthur-debert/dodot/pkg/commands/unlink"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -40,20 +35,6 @@ type ListPacksOptions = list.ListPacksOptions
 
 func ListPacks(opts ListPacksOptions) (*types.ListPacksResult, error) {
 	return list.ListPacks(opts)
-}
-
-// LinkPacks runs link logic using the direct executor approach.
-type LinkPacksOptions = link.LinkPacksOptions
-
-func LinkPacks(opts LinkPacksOptions) (*types.ExecutionContext, error) {
-	return link.LinkPacks(opts)
-}
-
-// ProvisionPacks runs provisioning + linking using the direct executor approach.
-type ProvisionPacksOptions = provision.ProvisionPacksOptions
-
-func ProvisionPacks(opts ProvisionPacksOptions) (*types.ExecutionContext, error) {
-	return provision.ProvisionPacks(opts)
 }
 
 // StatusPacks shows the link status of specified packs.
@@ -89,22 +70,6 @@ type AdoptFilesOptions = adopt.AdoptFilesOptions
 
 func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
 	return adopt.AdoptFiles(opts)
-}
-
-// UnlinkPacks removes links for specified packs.
-type UnlinkPacksOptions = unlink.UnlinkPacksOptions
-type UnlinkResult = unlink.UnlinkResult
-
-func UnlinkPacks(opts UnlinkPacksOptions) (*UnlinkResult, error) {
-	return unlink.UnlinkPacks(opts)
-}
-
-// DeprovisionPacks removes provisioning state for specified packs.
-type DeprovisionPacksOptions = deprovision.DeprovisionPacksOptions
-type DeprovisionResult = deprovision.DeprovisionResult
-
-func DeprovisionPacks(opts DeprovisionPacksOptions) (*DeprovisionResult, error) {
-	return deprovision.DeprovisionPacks(opts)
 }
 
 // GenConfig outputs or writes default configuration.
