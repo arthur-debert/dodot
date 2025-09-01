@@ -43,4 +43,4 @@
 //
 // Pack-specific rules are prepended to global rules to ensure they
 // match first.
-package rules
+package handlerpipeline

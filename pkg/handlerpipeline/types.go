@@ -1,4 +1,4 @@
-package rules
+package handlerpipeline
 
 // Match represents a file matched by a rule
 type Match struct {

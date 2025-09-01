@@ -1,4 +1,4 @@
-package rules
+package handlerpipeline
 
 import (
 	"fmt"
@@ -527,32 +527,6 @@ func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts E
 	return ctx, nil
 }
 
-// createOperationsHandler creates an operations.Handler instance by name
-func createOperationsHandler(name string) (operations.Handler, error) {
-	switch name {
-	case "symlink":
-		return symlink.NewHandler(), nil
-	case "shell":
-		return shell.NewHandler(), nil
-	case "homebrew":
-		return homebrew.NewHandler(), nil
-	case "install":
-		return install.NewHandler(), nil
-	case "path":
-		return path.NewHandler(), nil
-	default:
-		return nil, fmt.Errorf("unknown handler: %s", name)
-	}
-}
-
-// getHandlerNames extracts handler names from grouped matches
-func getHandlerNames(grouped map[string][]types.RuleMatch) []string {
-	names := make([]string, 0, len(grouped))
-	for name := range grouped {
-		names = append(names, name)
-	}
-	return names
-}
 
 // addOperationResultsToExecutionContext converts operation results to execution context data
 func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []types.RuleMatch) {
@@ -611,13 +585,3 @@ func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results 
 	}
 }
 
-// countSuccessfulResults counts how many operation results were successful
-func countSuccessfulResults(results []operations.OperationResult) int {
-	count := 0
-	for _, result := range results {
-		if result.Success {
-			count++
-		}
-	}
-	return count
-}

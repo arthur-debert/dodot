@@ -1,4 +1,4 @@
-package rules
+package handlerpipeline
 
 import (
 	"path/filepath"
