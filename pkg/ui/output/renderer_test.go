@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
 )
@@ -134,7 +135,7 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 				PackResults: map[string]*types.PackExecutionResult{
 					"vim": {
 						Pack:   &types.Pack{Name: "vim"},
-						Status: types.ExecutionStatusSuccess,
+						Status: execution.ExecutionStatusSuccess,
 						HandlerResults: []*types.HandlerResult{
 							{
 								HandlerName: "symlink",

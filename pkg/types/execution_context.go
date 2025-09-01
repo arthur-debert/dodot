@@ -6,26 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-)
 
-// ExecutionStatus represents the overall status of a pack's execution
-type ExecutionStatus string
-
-const (
-	// ExecutionStatusSuccess means all handlers succeeded
-	ExecutionStatusSuccess ExecutionStatus = "success"
-
-	// ExecutionStatusPartial means some handlers succeeded, some failed
-	ExecutionStatusPartial ExecutionStatus = "partial"
-
-	// ExecutionStatusError means all handlers failed
-	ExecutionStatusError ExecutionStatus = "error"
-
-	// ExecutionStatusSkipped means all handlers were skipped
-	ExecutionStatusSkipped ExecutionStatus = "skipped"
-
-	// ExecutionStatusPending means execution hasn't started
-	ExecutionStatusPending ExecutionStatus = "pending"
+	"github.com/arthur-debert/dodot/pkg/execution"
 )
 
 // ExecutionContext tracks the complete context and results of a command execution
@@ -70,7 +52,7 @@ type PackExecutionResult struct {
 	HandlerResults []*HandlerResult
 
 	// Status is the aggregated status for this pack
-	Status ExecutionStatus
+	Status execution.ExecutionStatus
 
 	// StartTime is when this pack's execution began
 	StartTime time.Time
@@ -167,7 +149,7 @@ func NewPackExecutionResult(pack *Pack) *PackExecutionResult {
 	return &PackExecutionResult{
 		Pack:           pack,
 		HandlerResults: make([]*HandlerResult, 0),
-		Status:         ExecutionStatusPending,
+		Status:         execution.ExecutionStatusPending,
 		StartTime:      time.Now(),
 	}
 }
@@ -193,18 +175,18 @@ func (per *PackExecutionResult) AddHandlerResult(result *HandlerResult) {
 // updateStatus recalculates the pack's aggregated status
 func (per *PackExecutionResult) updateStatus() {
 	if per.TotalHandlers == 0 {
-		per.Status = ExecutionStatusPending
+		per.Status = execution.ExecutionStatusPending
 		return
 	}
 
 	if per.FailedHandlers == per.TotalHandlers {
-		per.Status = ExecutionStatusError
+		per.Status = execution.ExecutionStatusError
 	} else if per.SkippedHandlers == per.TotalHandlers {
-		per.Status = ExecutionStatusSkipped
+		per.Status = execution.ExecutionStatusSkipped
 	} else if per.FailedHandlers > 0 {
-		per.Status = ExecutionStatusPartial
+		per.Status = execution.ExecutionStatusPartial
 	} else {
-		per.Status = ExecutionStatusSuccess
+		per.Status = execution.ExecutionStatusSuccess
 	}
 }
 
