@@ -13,8 +13,10 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands"
 	"github.com/arthur-debert/dodot/pkg/commands/off"
 	"github.com/arthur-debert/dodot/pkg/commands/on"
+	"github.com/arthur-debert/dodot/pkg/core"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/packs"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	shellpkg "github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -112,7 +114,6 @@ func NewRootCmd() *cobra.Command {
 	// Main commands
 	rootCmd.AddCommand(newOnCmd())
 	rootCmd.AddCommand(newOffCmd())
-	rootCmd.AddCommand(newListCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	// Pack management
 	rootCmd.AddCommand(newInitCmd())
@@ -235,20 +236,15 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
-	// Get list of packs
-	result, err := commands.ListPacks(commands.ListPacksOptions{
-		DotfilesRoot: p.DotfilesRoot(),
-	})
+	// Get list of packs using core.DiscoverAndSelectPacks
+	allPacks, err := core.DiscoverAndSelectPacks(p.DotfilesRoot(), nil)
 	if err != nil {
 		// If listing fails, still allow directory completion
 		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
 	// Extract pack names
-	var packNames []string
-	for _, pack := range result.Packs {
-		packNames = append(packNames, pack.Name)
-	}
+	packNames := packs.GetPackNames(allPacks)
 
 	// Filter out already specified packs
 	var availablePacks []string
@@ -270,57 +266,6 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 	// Return pack names and allow directory completion
 	// This lets users navigate the filesystem and also see available packs
 	return availablePacks, cobra.ShellCompDirectiveFilterDirs
-}
-
-func newListCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:     "list",
-		Short:   MsgListShort,
-		Long:    MsgListLong,
-		Example: MsgListExample,
-		GroupID: "core",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize paths (will show warning if using fallback)
-			p, err := initPaths()
-			if err != nil {
-				return err
-			}
-
-			log.Info().Str("dotfiles_root", p.DotfilesRoot()).Msg("Listing packs from dotfiles root")
-
-			// Create renderer and display results
-			renderer, err := createRenderer(cmd)
-			if err != nil {
-				return err
-			}
-
-			// Get the status of all packs (empty pack names means all packs)
-			statusResult, err := commands.StatusPacks(commands.StatusPacksOptions{
-				DotfilesRoot: p.DotfilesRoot(),
-				PackNames:    []string{}, // Empty means all packs
-				Paths:        p,
-			})
-			if err != nil {
-				return fmt.Errorf("failed to get pack status: %w", err)
-			}
-
-			// Update command name to reflect list action
-			statusResult.Command = "list"
-			statusResult.DryRun = false
-
-			// Create CommandResult without message (list command doesn't need one)
-			cmdResult := &types.CommandResult{
-				Message: "", // No message for list command
-				Result:  statusResult,
-			}
-
-			if err := renderer.RenderResult(cmdResult); err != nil {
-				return fmt.Errorf("failed to render results: %w", err)
-			}
-
-			return nil
-		},
-	}
 }
 
 func newStatusCmd() *cobra.Command {

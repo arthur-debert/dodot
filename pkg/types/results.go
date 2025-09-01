@@ -16,17 +16,6 @@ const (
 	StatusUnknown  OperationStatus = "unknown"
 )
 
-// ListPacksResult holds the result of the 'list' command.
-type ListPacksResult struct {
-	Packs []PackInfo `json:"packs"`
-}
-
-// PackInfo contains summary information about a single pack.
-type PackInfo struct {
-	Name string `json:"name"`
-	Path string `json:"path"`
-}
-
 // DisplayResult is the top-level structure for commands that produce rich output.
 // This replaces the old PackStatusResult and is used by status, deploy, and install commands.
 type DisplayResult struct {

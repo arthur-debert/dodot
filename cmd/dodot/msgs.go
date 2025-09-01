@@ -9,8 +9,6 @@ import (
 const (
 	// Command descriptions
 	MsgRootShort       = "A stateless dotfiles manager"
-	MsgListShort       = "List all available packs"
-	MsgListLong        = "List displays all packs found in your DOTFILES_ROOT directory."
 	MsgStatusShort     = "Show deployment status of packs"
 	MsgInitShort       = "Create a new pack with template files"
 	MsgFillShort       = "Add placeholder files to an existing pack"
@@ -67,10 +65,6 @@ var (
 	//go:embed msgs/root-long.txt
 	msgRootLongRaw string
 	MsgRootLong    = strings.TrimSpace(msgRootLongRaw)
-
-	//go:embed msgs/list-example.txt
-	msgListExampleRaw string
-	MsgListExample    = strings.TrimSpace(msgListExampleRaw)
 
 	//go:embed msgs/status-long.txt
 	msgStatusLongRaw string
