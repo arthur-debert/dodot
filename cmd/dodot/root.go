@@ -19,8 +19,9 @@ import (
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
 	topicspkg "github.com/arthur-debert/dodot/cmd/dodot/internal/topics"
 	"github.com/arthur-debert/dodot/internal/version"
-	"github.com/arthur-debert/dodot/pkg/commands"
+	genconfigpkg "github.com/arthur-debert/dodot/pkg/commands/genconfig"
 	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/dispatcher"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
@@ -298,7 +299,7 @@ func newStatusCmd() *cobra.Command {
 			Msg("Checking pack status")
 
 		// Run status command using the dispatcher
-		result, err := commands.Dispatch(commands.CommandStatus, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandStatus, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			Paths:        p,
@@ -344,7 +345,7 @@ func newInitCmd() *cobra.Command {
 			Msg("Creating new pack")
 
 		// Use the dispatcher for init command
-		result, err := commands.Dispatch(commands.CommandInit, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandInit, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackName:     packName,
 		})
@@ -385,7 +386,7 @@ func newFillCmd() *cobra.Command {
 			Msg("Filling pack with placeholder files")
 
 		// Use the dispatcher for fill command
-		result, err := commands.Dispatch(commands.CommandFill, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandFill, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    []string{packName},
 		})
@@ -433,7 +434,7 @@ func newAdoptCmd() *cobra.Command {
 			Msg("Adopting files into pack")
 
 		// Adopt files using the dispatcher
-		result, err := commands.Dispatch(commands.CommandAdopt, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandAdopt, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    []string{packName},
 			SourcePaths:  sourcePaths,
@@ -492,7 +493,7 @@ func newAddIgnoreCmd() *cobra.Command {
 			Msg("Adding ignore file to pack")
 
 		// Use the dispatcher for add-ignore command
-		result, err := commands.Dispatch(commands.CommandAddIgnore, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandAddIgnore, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    []string{packName},
 		})
@@ -634,7 +635,7 @@ func newGenConfigCmd() *cobra.Command {
 			dotfilesRoot = p.DotfilesRoot()
 		}
 
-		result, err := commands.GenConfig(commands.GenConfigOptions{
+		result, err := genconfigpkg.GenConfig(genconfigpkg.GenConfigOptions{
 			DotfilesRoot: dotfilesRoot,
 			PackNames:    args,
 			Write:        write,
@@ -698,7 +699,7 @@ func newOffCmd() *cobra.Command {
 			Msg("Turning off packs")
 
 		// Turn off packs using the dispatcher
-		result, err := commands.Dispatch(commands.CommandOff, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandOff, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			DryRun:       dryRun,
@@ -752,7 +753,7 @@ func newOnCmd() *cobra.Command {
 			Msg("Turning on packs")
 
 		// Turn on packs using the dispatcher
-		result, err := commands.Dispatch(commands.CommandOn, commands.DispatchOptions{
+		result, err := dispatcher.Dispatch(dispatcher.CommandOn, dispatcher.Options{
 			DotfilesRoot:   p.DotfilesRoot(),
 			PackNames:      args,
 			DryRun:         dryRun,
