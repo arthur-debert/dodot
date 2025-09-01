@@ -36,6 +36,52 @@ type CommandResult struct {
 	Result  *DisplayResult `json:"result"`            // The pack status display
 }
 
+// PackCommandResult is the unified result type for all pack-related commands.
+// It combines pack status display with command-specific metadata.
+type PackCommandResult struct {
+	// Command that was executed
+	Command string `json:"command"` // "on", "off", "status", "adopt", "fill", "add-ignore"
+
+	// Packs affected by the command with their current status
+	Packs []DisplayPack `json:"packs"`
+
+	// Optional message for the command (e.g., "The pack vim has been turned on.")
+	Message string `json:"message,omitempty"`
+
+	// Metadata specific to the command
+	Metadata CommandMetadata `json:"metadata,omitempty"`
+
+	// Whether this was a dry run
+	DryRun bool `json:"dryRun"`
+
+	// When the command was executed
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// CommandMetadata contains command-specific information
+type CommandMetadata struct {
+	// For 'on' command
+	TotalDeployed  int  `json:"totalDeployed,omitempty"`
+	NoProvision    bool `json:"noProvision,omitempty"`
+	ProvisionRerun bool `json:"provisionRerun,omitempty"`
+
+	// For 'off' command
+	TotalCleared int      `json:"totalCleared,omitempty"`
+	HandlersRun  []string `json:"handlersRun,omitempty"`
+
+	// For 'adopt' command
+	FilesAdopted int      `json:"filesAdopted,omitempty"`
+	AdoptedPaths []string `json:"adoptedPaths,omitempty"`
+
+	// For 'fill' command
+	FilesCreated int      `json:"filesCreated,omitempty"`
+	CreatedPaths []string `json:"createdPaths,omitempty"`
+
+	// For 'add-ignore' command
+	IgnoreCreated  bool `json:"ignoreCreated,omitempty"`
+	AlreadyExisted bool `json:"alreadyExisted,omitempty"`
+}
+
 // FormatCommandMessage generates a standard message for command results.
 // It handles pluralization and pack name listing appropriately.
 // Returns empty string if there are no packs (message will be omitted).
@@ -129,46 +175,11 @@ func (dp *DisplayPack) GetPackStatus() string {
 	return "queue"
 }
 
-// FillResult holds the result of the 'fill' command.
-type FillResult struct {
-	PackName     string   `json:"packName"`
-	FilesCreated []string `json:"filesCreated"`
-	// Operations field removed - part of Operation layer elimination
-}
-
-// InitResult holds the result of the 'init' command.
-type InitResult struct {
-	PackName     string   `json:"packName"`
-	Path         string   `json:"path"`
-	FilesCreated []string `json:"filesCreated"`
-	// Operations field removed - part of Operation layer elimination
-}
-
-// AddIgnoreResult holds the result of the 'add-ignore' command.
-type AddIgnoreResult struct {
-	PackName       string `json:"packName"`
-	IgnoreFilePath string `json:"ignoreFilePath"`
-	Created        bool   `json:"created"`
-	AlreadyExisted bool   `json:"alreadyExisted"`
-}
-
 // GenConfigResult holds the result of the 'gen-config' command.
+// This is kept separate as it doesn't follow the pack command pattern.
 type GenConfigResult struct {
 	ConfigContent string   `json:"configContent"`
 	FilesWritten  []string `json:"filesWritten"`
-}
-
-// AdoptResult holds the result of the 'adopt' command.
-type AdoptResult struct {
-	PackName     string        `json:"packName"`
-	AdoptedFiles []AdoptedFile `json:"adoptedFiles"`
-}
-
-// AdoptedFile represents a single file that was adopted.
-type AdoptedFile struct {
-	OriginalPath string `json:"originalPath"` // Original file path (e.g., ~/.gitconfig)
-	NewPath      string `json:"newPath"`      // New path in pack (e.g., /path/to/dotfiles/git/gitconfig)
-	SymlinkPath  string `json:"symlinkPath"`  // Symlink path (usually same as OriginalPath)
 }
 
 // GetHandlerSymbol returns the Unicode symbol for a given Handler

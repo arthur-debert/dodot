@@ -22,6 +22,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/commands/fill"
 	"github.com/arthur-debert/dodot/pkg/commands/genconfig"
 	"github.com/arthur-debert/dodot/pkg/commands/initialize"
+	"github.com/arthur-debert/dodot/pkg/commands/off"
+	"github.com/arthur-debert/dodot/pkg/commands/on"
 	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -31,35 +33,35 @@ import (
 // StatusPacks shows the link status of specified packs.
 type StatusPacksOptions = status.StatusPacksOptions
 
-func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
+func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
 	return status.StatusPacks(opts)
 }
 
 // FillPack adds missing template files to an existing pack.
 type FillPackOptions = fill.FillPackOptions
 
-func FillPack(opts FillPackOptions) (*types.FillResult, error) {
+func FillPack(opts FillPackOptions) (*types.PackCommandResult, error) {
 	return fill.FillPack(opts)
 }
 
 // InitPack creates a new pack directory with template files and configuration.
 type InitPackOptions = initialize.InitPackOptions
 
-func InitPack(opts InitPackOptions) (*types.InitResult, error) {
+func InitPack(opts InitPackOptions) (*types.PackCommandResult, error) {
 	return initialize.InitPack(opts)
 }
 
 // AddIgnore creates a .dodotignore file in the specified pack.
 type AddIgnoreOptions = addignore.AddIgnoreOptions
 
-func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
+func AddIgnore(opts AddIgnoreOptions) (*types.PackCommandResult, error) {
 	return addignore.AddIgnore(opts)
 }
 
 // AdoptFiles moves existing files into a pack and creates symlinks.
 type AdoptFilesOptions = adopt.AdoptFilesOptions
 
-func AdoptFiles(opts AdoptFilesOptions) (*types.AdoptResult, error) {
+func AdoptFiles(opts AdoptFilesOptions) (*types.PackCommandResult, error) {
 	return adopt.AdoptFiles(opts)
 }
 
@@ -68,4 +70,18 @@ type GenConfigOptions = genconfig.GenConfigOptions
 
 func GenConfig(opts GenConfigOptions) (*types.GenConfigResult, error) {
 	return genconfig.GenConfig(opts)
+}
+
+// OnPacks turns on the specified packs by deploying all handlers.
+type OnPacksOptions = on.OnPacksOptions
+
+func OnPacks(opts OnPacksOptions) (*types.PackCommandResult, error) {
+	return on.OnPacks(opts)
+}
+
+// OffPacks turns off the specified packs by removing all handler state.
+type OffPacksOptions = off.OffPacksOptions
+
+func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
+	return off.OffPacks(opts)
 }

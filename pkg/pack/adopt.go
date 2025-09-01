@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/statustype"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/rs/zerolog"
 )
@@ -21,23 +24,66 @@ type AdoptOptions struct {
 	Force bool
 	// DotfilesRoot is the root directory for dotfiles
 	DotfilesRoot string
+	// PackName is the name of the pack to adopt files into
+	PackName string
+	// FileSystem is the filesystem to use (optional, defaults to OS filesystem)
+	FileSystem types.FS
+	// GetPackStatus is a function to get pack status to avoid circular imports
+	GetPackStatus statustype.GetPackStatusFunc
+}
+
+// AdoptedFile represents a file that was adopted into a pack (local to pack package)
+type AdoptedFile struct {
+	OriginalPath string
+	NewPath      string
+	SymlinkPath  string
 }
 
 // Adopt moves existing files into the pack and creates symlinks back to their original locations.
 // This allows existing configuration files to be managed by dodot without disrupting their use.
-func (p *Pack) Adopt(fs types.FS, opts AdoptOptions) (*types.AdoptResult, error) {
+func Adopt(opts AdoptOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("pack.adopt")
 	logger.Info().
-		Str("pack", p.Name).
+		Str("pack", opts.PackName).
 		Strs("source_paths", opts.SourcePaths).
 		Bool("force", opts.Force).
 		Msg("Adopting files into pack")
 
-	// Prepare result
-	result := &types.AdoptResult{
-		PackName:     p.Name,
-		AdoptedFiles: []types.AdoptedFile{},
+	// Use provided filesystem or default
+	fs := opts.FileSystem
+	if fs == nil {
+		fs = filesystem.NewOS()
 	}
+
+	// Validate pack name
+	packName := strings.TrimRight(opts.PackName, "/")
+	if packName == "" {
+		return nil, errors.New(errors.ErrPackNotFound, "pack name cannot be empty")
+	}
+	if err := paths.ValidatePackName(packName); err != nil {
+		return nil, errors.Wrap(err, errors.ErrPackNotFound, "invalid pack name")
+	}
+
+	// Check if pack exists or create it
+	packPath := filepath.Join(opts.DotfilesRoot, packName)
+	if _, err := fs.Stat(packPath); os.IsNotExist(err) {
+		// Create pack directory
+		if err := fs.MkdirAll(packPath, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create pack directory: %w", err)
+		}
+		logger.Info().Str("pack", packName).Msg("Created pack directory")
+	}
+
+	// Create pack instance
+	p := &Pack{
+		Pack: &types.Pack{
+			Name: packName,
+			Path: packPath,
+		},
+	}
+
+	// Track adopted files
+	var adoptedFiles []AdoptedFile
 
 	// Process each source path
 	for _, sourcePath := range opts.SourcePaths {
@@ -46,20 +92,59 @@ func (p *Pack) Adopt(fs types.FS, opts AdoptOptions) (*types.AdoptResult, error)
 			return nil, fmt.Errorf("failed to adopt %s: %w", sourcePath, err)
 		}
 		if adopted != nil {
-			result.AdoptedFiles = append(result.AdoptedFiles, *adopted)
+			adoptedFiles = append(adoptedFiles, *adopted)
 		}
 	}
 
 	logger.Info().
 		Str("pack", p.Name).
-		Int("files_adopted", len(result.AdoptedFiles)).
+		Int("files_adopted", len(adoptedFiles)).
 		Msg("Adopt operation completed")
+
+	// Get current pack status if function provided
+	var packStatus []types.DisplayPack
+	if opts.GetPackStatus != nil {
+		var statusErr error
+		packStatus, statusErr = opts.GetPackStatus(opts.PackName, opts.DotfilesRoot, fs)
+		if statusErr != nil {
+			logger.Error().Err(statusErr).Msg("Failed to get pack status")
+		}
+	}
+
+	// Build result
+	result := &types.PackCommandResult{
+		Command:   "adopt",
+		Timestamp: time.Now(),
+		DryRun:    false,
+		Packs:     []types.DisplayPack{},
+		Metadata: types.CommandMetadata{
+			FilesAdopted: len(adoptedFiles),
+			AdoptedPaths: make([]string, 0, len(adoptedFiles)),
+		},
+	}
+
+	// Collect adopted paths
+	for _, file := range adoptedFiles {
+		result.Metadata.AdoptedPaths = append(result.Metadata.AdoptedPaths, file.OriginalPath)
+	}
+
+	// Copy packs from status if available
+	if packStatus != nil {
+		result.Packs = packStatus
+	}
+
+	// Generate message
+	if len(adoptedFiles) == 1 {
+		result.Message = "1 file has been adopted into the pack " + opts.PackName + "."
+	} else {
+		result.Message = fmt.Sprintf("%d files have been adopted into the pack %s.", len(adoptedFiles), opts.PackName)
+	}
 
 	return result, nil
 }
 
 // adoptSingleFile handles the adoption of a single file using the embedded Pack's guardian methods
-func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath string, force bool, dotfilesRoot string) (*types.AdoptedFile, error) {
+func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath string, force bool, dotfilesRoot string) (*AdoptedFile, error) {
 	// Expand the source path
 	expandedPath := paths.ExpandHome(sourcePath)
 
@@ -130,7 +215,7 @@ func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath st
 		Str("destination", destPath).
 		Msg("Successfully adopted file")
 
-	return &types.AdoptedFile{
+	return &AdoptedFile{
 		OriginalPath: expandedPath,
 		NewPath:      destPath,
 		SymlinkPath:  expandedPath,
@@ -139,7 +224,7 @@ func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath st
 
 // AdoptOrCreate creates a pack if it doesn't exist before adopting files.
 // This is a static method since we might need to create the pack first.
-func AdoptOrCreate(fs types.FS, dotfilesRoot, packName string, opts AdoptOptions) (*types.AdoptResult, error) {
+func AdoptOrCreate(fs types.FS, dotfilesRoot, packName string, opts AdoptOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("pack.adopt")
 
 	// Normalize and validate pack name
@@ -161,14 +246,14 @@ func AdoptOrCreate(fs types.FS, dotfilesRoot, packName string, opts AdoptOptions
 		logger.Info().Str("pack", packName).Msg("Created pack directory")
 	}
 
-	// Create pack instance
-	p := &Pack{
-		Pack: &types.Pack{
-			Name: packName,
-			Path: packPath,
-		},
+	// Delegate to Adopt function with updated options
+	updatedOpts := AdoptOptions{
+		SourcePaths:   opts.SourcePaths,
+		Force:         opts.Force,
+		DotfilesRoot:  dotfilesRoot,
+		PackName:      packName,
+		FileSystem:    fs,
+		GetPackStatus: opts.GetPackStatus,
 	}
-
-	// Delegate to Adopt method
-	return p.Adopt(fs, opts)
+	return Adopt(updatedOpts)
 }

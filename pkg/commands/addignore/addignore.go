@@ -1,9 +1,7 @@
 package addignore
 
 import (
-	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/pack"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -16,26 +14,31 @@ type AddIgnoreOptions struct {
 }
 
 // AddIgnore creates a .dodotignore file using proper abstractions
-func AddIgnore(opts AddIgnoreOptions) (*types.AddIgnoreResult, error) {
+func AddIgnore(opts AddIgnoreOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("commands.addignore")
 	logger.Info().
 		Str("pack", opts.PackName).
 		Str("dotfiles_root", opts.DotfilesRoot).
 		Msg("Creating ignore file for pack")
 
-	// Get configuration
-	cfg := config.Default()
-
-	// Initialize filesystem
-	fs := filesystem.NewOS()
-
-	// Find the pack using core abstraction
-	targetPack, err := core.FindPack(opts.DotfilesRoot, opts.PackName)
-	if err != nil {
-		return nil, err
+	// Create status function that wraps the status command
+	getStatusFunc := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
+		statusOpts := status.StatusPacksOptions{
+			DotfilesRoot: dotfilesRoot,
+			PackNames:    []string{packName},
+			FileSystem:   fs,
+		}
+		result, err := status.StatusPacks(statusOpts)
+		if err != nil {
+			return nil, err
+		}
+		return result.Packs, nil
 	}
 
-	// Wrap in our enhanced Pack type and delegate to AddIgnore method
-	p := pack.New(targetPack)
-	return p.AddIgnore(fs, cfg)
+	// Delegate to pack.AddIgnore
+	return pack.AddIgnore(pack.AddIgnoreOptions{
+		PackName:      opts.PackName,
+		DotfilesRoot:  opts.DotfilesRoot,
+		GetPackStatus: getStatusFunc,
+	})
 }
