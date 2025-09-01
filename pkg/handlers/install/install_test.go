@@ -9,7 +9,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,19 +27,18 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		matches  []types.RuleMatch
+		matches  []operations.FileInput
 		wantOps  int
 		wantErr  bool
 		checkOps func(*testing.T, []operations.Operation)
 	}{
 		{
 			name: "single install script creates one RunCommand operation",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "testpack",
-					Path:         "install.sh",
-					AbsolutePath: scriptPath,
-					HandlerName:  "install",
+					PackName:     "testpack",
+					RelativePath: "install.sh",
+					SourcePath:   scriptPath,
 				},
 			},
 			wantOps: 1,
@@ -56,18 +54,16 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "multiple scripts create multiple operations",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "pack1",
-					Path:         "install.sh",
-					AbsolutePath: scriptPath,
-					HandlerName:  "install",
+					PackName:     "pack1",
+					RelativePath: "install.sh",
+					SourcePath:   scriptPath,
 				},
 				{
-					Pack:         "pack2",
-					Path:         "setup.sh",
-					AbsolutePath: scriptPath,
-					HandlerName:  "install",
+					PackName:     "pack2",
+					RelativePath: "setup.sh",
+					SourcePath:   scriptPath,
 				},
 			},
 			wantOps: 2,
@@ -89,17 +85,16 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name:    "empty matches returns empty operations",
-			matches: []types.RuleMatch{},
+			matches: []operations.FileInput{},
 			wantOps: 0,
 		},
 		{
 			name: "non-existent script path returns error",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "badpack",
-					Path:         "missing.sh",
-					AbsolutePath: "/non/existent/script.sh",
-					HandlerName:  "install",
+					PackName:     "badpack",
+					RelativePath: "missing.sh",
+					SourcePath:   "/non/existent/script.sh",
 				},
 			},
 			wantErr: true,
@@ -144,18 +139,17 @@ func TestHandler_DeterministicSentinel(t *testing.T) {
 
 	handler := install.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "test",
-		Path:         "install.sh",
-		AbsolutePath: scriptPath,
-		HandlerName:  "install",
+	match := operations.FileInput{
+		PackName:     "test",
+		RelativePath: "install.sh",
+		SourcePath:   scriptPath,
 	}
 
 	// Generate operations multiple times
-	ops1, err := handler.ToOperations([]types.RuleMatch{match})
+	ops1, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
-	ops2, err := handler.ToOperations([]types.RuleMatch{match})
+	ops2, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Sentinels should be identical for same content
@@ -166,7 +160,7 @@ func TestHandler_DeterministicSentinel(t *testing.T) {
 	err = os.WriteFile(scriptPath, []byte(newContent), 0755)
 	require.NoError(t, err)
 
-	ops3, err := handler.ToOperations([]types.RuleMatch{match})
+	ops3, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Sentinel should be different after modification
@@ -183,14 +177,13 @@ func TestHandler_CommandFormat(t *testing.T) {
 
 	handler := install.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "test",
-		Path:         "my install script.sh",
-		AbsolutePath: scriptPath,
-		HandlerName:  "install",
+	match := operations.FileInput{
+		PackName:     "test",
+		RelativePath: "my install script.sh",
+		SourcePath:   scriptPath,
 	}
 
-	ops, err := handler.ToOperations([]types.RuleMatch{match})
+	ops, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Command should properly quote the path
@@ -238,14 +231,13 @@ func TestHandler_SentinelFormat(t *testing.T) {
 
 	handler := install.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "test",
-		Path:         "subdir/test.sh",
-		AbsolutePath: scriptPath,
-		HandlerName:  "install",
+	match := operations.FileInput{
+		PackName:     "test",
+		RelativePath: "subdir/test.sh",
+		SourcePath:   scriptPath,
 	}
 
-	ops, err := handler.ToOperations([]types.RuleMatch{match})
+	ops, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Sentinel should use basename of path, not full path

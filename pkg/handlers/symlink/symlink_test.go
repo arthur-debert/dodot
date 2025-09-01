@@ -6,7 +6,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,7 +20,7 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		matches     []types.RuleMatch
+		files       []operations.FileInput
 		wantOps     int
 		checkOps    func(*testing.T, []operations.Operation)
 		wantErr     bool
@@ -29,12 +28,11 @@ func TestHandler_ToOperations(t *testing.T) {
 	}{
 		{
 			name: "single file creates two operations",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:         "vim",
-					Path:         ".vimrc",
-					AbsolutePath: "/dotfiles/vim/.vimrc",
-					HandlerName:  "symlink",
+					PackName:     "vim",
+					RelativePath: ".vimrc",
+					SourcePath:   "/dotfiles/vim/.vimrc",
 				},
 			},
 			wantOps: 2,
@@ -53,18 +51,16 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "multiple files create paired operations",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:         "vim",
-					Path:         ".vimrc",
-					AbsolutePath: "/dotfiles/vim/.vimrc",
-					HandlerName:  "symlink",
+					PackName:     "vim",
+					RelativePath: ".vimrc",
+					SourcePath:   "/dotfiles/vim/.vimrc",
 				},
 				{
-					Pack:         "vim",
-					Path:         ".vim/colors/theme.vim",
-					AbsolutePath: "/dotfiles/vim/.vim/colors/theme.vim",
-					HandlerName:  "symlink",
+					PackName:     "vim",
+					RelativePath: ".vim/colors/theme.vim",
+					SourcePath:   "/dotfiles/vim/.vim/colors/theme.vim",
 				},
 			},
 			wantOps: 4, // 2 operations per file
@@ -82,13 +78,13 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "custom target directory",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:         "configs",
-					Path:         "app.conf",
-					AbsolutePath: "/dotfiles/configs/app.conf",
-					HandlerName:  "symlink",
-					HandlerOptions: map[string]interface{}{
+					PackName:     "configs",
+					RelativePath: "app.conf",
+					SourcePath:   "/dotfiles/configs/app.conf",
+
+					Options: map[string]interface{}{
 						"target": "/etc/myapp",
 					},
 				},
@@ -100,13 +96,13 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "environment variable expansion in target",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:         "configs",
-					Path:         "config.yml",
-					AbsolutePath: "/dotfiles/configs/config.yml",
-					HandlerName:  "symlink",
-					HandlerOptions: map[string]interface{}{
+					PackName:     "configs",
+					RelativePath: "config.yml",
+					SourcePath:   "/dotfiles/configs/config.yml",
+
+					Options: map[string]interface{}{
 						"target": "$HOME/.config",
 					},
 				},
@@ -118,18 +114,16 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "conflict detection",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:         "vim",
-					Path:         ".vimrc",
-					AbsolutePath: "/dotfiles/vim/.vimrc",
-					HandlerName:  "symlink",
+					PackName:     "vim",
+					RelativePath: ".vimrc",
+					SourcePath:   "/dotfiles/vim/.vimrc",
 				},
 				{
-					Pack:         "neovim",
-					Path:         ".vimrc",
-					AbsolutePath: "/dotfiles/neovim/.vimrc",
-					HandlerName:  "symlink",
+					PackName:     "neovim",
+					RelativePath: ".vimrc",
+					SourcePath:   "/dotfiles/neovim/.vimrc",
 				},
 			},
 			wantErr:     true,
@@ -139,7 +133,7 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := handler.ToOperations(tt.matches)
+			ops, err := handler.ToOperations(tt.files)
 
 			if tt.wantErr {
 				require.Error(t, err)

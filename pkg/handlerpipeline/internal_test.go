@@ -4,12 +4,11 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGroupMatchesByHandler(t *testing.T) {
-	matches := []types.RuleMatch{
+	matches := []RuleMatch{
 		{HandlerName: "symlink", Pack: "vim", Path: "vimrc"},
 		{HandlerName: "symlink", Pack: "vim", Path: "gvimrc"},
 		{HandlerName: "shell", Pack: "bash", Path: "profile.sh"},
@@ -38,4 +37,30 @@ func TestCountSuccessfulResults(t *testing.T) {
 	// Test empty results
 	assert.Equal(t, 0, countSuccessfulResults(nil))
 	assert.Equal(t, 0, countSuccessfulResults([]operations.OperationResult{}))
+}
+
+func TestRuleMatch_Structure(t *testing.T) {
+	match := RuleMatch{
+		RuleName:     "filename",
+		Pack:         "test-pack",
+		Path:         "file.txt",
+		AbsolutePath: "/test/file.txt",
+		Priority:     10,
+		Metadata: map[string]interface{}{
+			"pattern": "*.txt",
+		},
+		HandlerName:    "symlink",
+		HandlerOptions: map[string]interface{}{},
+	}
+
+	assert.Equal(t, "test-pack", match.Pack)
+	assert.Equal(t, "file.txt", match.Path)
+	assert.Equal(t, "/test/file.txt", match.AbsolutePath)
+	assert.Equal(t, 10, match.Priority)
+	assert.Equal(t, "filename", match.RuleName)
+	assert.Equal(t, "symlink", match.HandlerName)
+
+	// Check metadata
+	assert.Contains(t, match.Metadata, "pattern")
+	assert.Equal(t, "*.txt", match.Metadata["pattern"])
 }

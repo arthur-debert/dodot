@@ -20,7 +20,7 @@ import (
 )
 
 // GetMatches scans packs and returns all rule matches using the rule system
-func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
+func GetMatches(packs []types.Pack) ([]RuleMatch, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs")
 
@@ -35,7 +35,7 @@ func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
 		Msg("Loaded global rules")
 
 	scanner := NewScanner(globalRules)
-	var allRuleMatches []types.RuleMatch
+	var allRuleMatches []RuleMatch
 
 	// Process each pack
 	for _, pack := range packs {
@@ -63,7 +63,7 @@ func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
 
 		// Convert rule matches to RuleMatch type
 		for _, match := range matches {
-			ruleMatch := types.RuleMatch{
+			ruleMatch := RuleMatch{
 				RuleName:     "rule-based",
 				Pack:         pack.Name,
 				Path:         match.FilePath,
@@ -90,7 +90,7 @@ func GetMatches(packs []types.Pack) ([]types.RuleMatch, error) {
 
 // GetMatchesFS scans packs and returns all rule matches using the rule system with a custom filesystem
 // This function is used for testing and commands that need to use a different filesystem
-func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.RuleMatch, error) {
+func GetMatchesFS(packs []types.Pack, fs types.FS) ([]RuleMatch, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Debug().Int("packCount", len(packs)).Msg("Getting matches for packs with FS")
 
@@ -101,7 +101,7 @@ func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.RuleMatch, error) {
 	}
 
 	scanner := NewScannerWithFS(globalRules, fs)
-	var allRuleMatches []types.RuleMatch
+	var allRuleMatches []RuleMatch
 
 	// Process each pack
 	for _, pack := range packs {
@@ -129,7 +129,7 @@ func GetMatchesFS(packs []types.Pack, fs types.FS) ([]types.RuleMatch, error) {
 
 		// Convert rule matches to RuleMatch type
 		for _, match := range matches {
-			ruleMatch := types.RuleMatch{
+			ruleMatch := RuleMatch{
 				RuleName:     "rule-based",
 				Pack:         pack.Name,
 				Path:         match.FilePath,
@@ -185,8 +185,8 @@ func CreateHandler(name string, options map[string]interface{}) (interface{}, er
 }
 
 // GroupMatchesByHandler groups rule matches by their handler name
-func GroupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMatch {
-	grouped := make(map[string][]types.RuleMatch)
+func GroupMatchesByHandler(matches []RuleMatch) map[string][]RuleMatch {
+	grouped := make(map[string][]RuleMatch)
 	for _, match := range matches {
 		handler := match.HandlerName
 		grouped[handler] = append(grouped[handler], match)
@@ -431,7 +431,7 @@ type ExecutionOptions struct {
 
 // ExecuteMatches executes rule matches using handlers and the DataStore abstraction.
 // This is the core execution function that replaces the internal pipeline approach.
-func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts ExecutionOptions) (*types.ExecutionContext, error) {
+func ExecuteMatches(matches []RuleMatch, dataStore types.DataStore, opts ExecutionOptions) (*types.ExecutionContext, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Info().
 		Int("matches", len(matches)).
@@ -478,8 +478,11 @@ func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts E
 				"failed to create handler %s", handlerName)
 		}
 
-		// Convert matches to operations
-		operations, err := handler.ToOperations(handlerMatches)
+		// Transform matches to file inputs
+		fileInputs := transformMatches(handlerMatches)
+
+		// Convert file inputs to operations
+		operations, err := handler.ToOperations(fileInputs)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -527,9 +530,8 @@ func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts E
 	return ctx, nil
 }
 
-
 // addOperationResultsToExecutionContext converts operation results to execution context data
-func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []types.RuleMatch) {
+func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []RuleMatch) {
 	// Group results by pack
 	resultsByPack := make(map[string][]operations.OperationResult)
 	for _, result := range results {
@@ -584,4 +586,3 @@ func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results 
 		packResult.AddHandlerResult(handlerResult)
 	}
 }
-

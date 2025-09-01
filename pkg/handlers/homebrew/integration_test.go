@@ -75,12 +75,11 @@ cask "visual-studio-code"
 	handler := homebrew.NewHandler()
 
 	// Create test matches
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "dev-tools",
-			Path:         "Brewfile",
-			AbsolutePath: brewfilePath,
-			HandlerName:  "homebrew",
+			PackName:     "dev-tools",
+			RelativePath: "Brewfile",
+			SourcePath:   brewfilePath,
 		},
 	}
 
@@ -124,12 +123,11 @@ func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 
 	handler := homebrew.NewHandler()
 
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "tools",
-			Path:         "Brewfile",
-			AbsolutePath: brewfilePath,
-			HandlerName:  "homebrew",
+			PackName:     "tools",
+			RelativePath: "Brewfile",
+			SourcePath:   brewfilePath,
 		},
 	}
 
@@ -238,18 +236,16 @@ func TestHomebrewHandler_MultipleBrewfiles(t *testing.T) {
 
 	handler := homebrew.NewHandler()
 
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "tools",
-			Path:         "Brewfile",
-			AbsolutePath: brewfile1,
-			HandlerName:  "homebrew",
+			PackName:     "tools",
+			RelativePath: "Brewfile",
+			SourcePath:   brewfile1,
 		},
 		{
-			Pack:         "tools",
-			Path:         "apps/Brewfile",
-			AbsolutePath: brewfile2,
-			HandlerName:  "homebrew",
+			PackName:     "tools",
+			RelativePath: "apps/Brewfile",
+			SourcePath:   brewfile2,
 		},
 	}
 

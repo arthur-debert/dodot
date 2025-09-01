@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -62,8 +61,8 @@ type MockHandler struct {
 	mock.Mock
 }
 
-func (m *MockHandler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
-	args := m.Called(matches)
+func (m *MockHandler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
+	args := m.Called(files)
 	return args.Get(0).([]operations.Operation), args.Error(1)
 }
 

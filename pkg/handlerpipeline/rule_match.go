@@ -1,4 +1,4 @@
-package types
+package handlerpipeline
 
 // RuleMatch represents a successful rule match on a file or directory
 // This is the output from the rules system that gets passed to handlers

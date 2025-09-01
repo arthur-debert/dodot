@@ -8,7 +8,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
@@ -30,28 +29,28 @@ func NewHandler() *Handler {
 	}
 }
 
-// ToOperations converts rule matches to homebrew operations.
+// ToOperations converts file inputs to homebrew operations.
 // Brewfiles use RunCommand with brew bundle for installation.
-func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
-	for _, match := range matches {
+	for _, file := range files {
 		// Calculate checksum for idempotency
-		checksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
+		checksum, err := utils.CalculateFileChecksum(file.SourcePath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
+			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", file.SourcePath, err)
 		}
 
 		// Create sentinel name from Brewfile and checksum
-		sentinelName := fmt.Sprintf("%s_%s-%s", match.Pack, filepath.Base(match.Path), checksum)
+		sentinelName := fmt.Sprintf("%s_%s-%s", file.PackName, filepath.Base(file.RelativePath), checksum)
 
 		// Brewfiles are processed with brew bundle
 		// The executor will check the sentinel and skip if already run
 		ops = append(ops, operations.Operation{
 			Type:     operations.RunCommand,
-			Pack:     match.Pack,
+			Pack:     file.PackName,
 			Handler:  HomebrewHandlerName,
-			Command:  fmt.Sprintf("brew bundle --file='%s'", match.AbsolutePath),
+			Command:  fmt.Sprintf("brew bundle --file='%s'", file.SourcePath),
 			Sentinel: sentinelName,
 		})
 	}

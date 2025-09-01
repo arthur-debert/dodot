@@ -102,14 +102,14 @@ func ExecuteHandlersForPack(pack types.Pack, filter FilterType, opts Options) (*
 }
 
 // getMatchesForPack gets rule matches for a single pack
-func getMatchesForPack(pack types.Pack, fs types.FS) ([]types.RuleMatch, error) {
+func getMatchesForPack(pack types.Pack, fs types.FS) ([]RuleMatch, error) {
 	// Call our own GetMatchesFS directly
 	packs := []types.Pack{pack}
 	return GetMatchesFS(packs, fs)
 }
 
 // filterMatches filters matches based on the filter type
-func filterMatches(matches []types.RuleMatch, filter FilterType) []types.RuleMatch {
+func filterMatches(matches []RuleMatch, filter FilterType) []RuleMatch {
 	switch filter {
 	case ConfigOnly:
 		return FilterMatchesByHandlerCategory(matches, true, false)
@@ -123,8 +123,8 @@ func filterMatches(matches []types.RuleMatch, filter FilterType) []types.RuleMat
 }
 
 // FilterMatchesByHandlerCategory filters rule matches based on handler category
-func FilterMatchesByHandlerCategory(matches []types.RuleMatch, allowConfiguration, allowCodeExecution bool) []types.RuleMatch {
-	var filtered []types.RuleMatch
+func FilterMatchesByHandlerCategory(matches []RuleMatch, allowConfiguration, allowCodeExecution bool) []RuleMatch {
+	var filtered []RuleMatch
 
 	for _, match := range matches {
 		// Check if handler is configuration type
@@ -193,8 +193,22 @@ func filterTypeString(filter FilterType) string {
 	}
 }
 
+// transformMatches converts RuleMatch to FileInput for handlers
+func transformMatches(matches []RuleMatch) []operations.FileInput {
+	inputs := make([]operations.FileInput, len(matches))
+	for i, match := range matches {
+		inputs[i] = operations.FileInput{
+			PackName:     match.Pack,
+			SourcePath:   match.AbsolutePath,
+			RelativePath: match.Path,
+			Options:      match.HandlerOptions,
+		}
+	}
+	return inputs
+}
+
 // executeMatchesInternal handles the internal execution of matches
-func executeMatchesInternal(matches []types.RuleMatch, opts Options) (*types.ExecutionContext, error) {
+func executeMatchesInternal(matches []RuleMatch, opts Options) (*types.ExecutionContext, error) {
 	logger := logging.GetLogger("handlerpipeline.execute")
 	logger.Debug().
 		Int("matches", len(matches)).
@@ -241,8 +255,11 @@ func executeMatchesInternal(matches []types.RuleMatch, opts Options) (*types.Exe
 				"failed to create handler %s", handlerName)
 		}
 
-		// Convert matches to operations
-		ops, err := handler.ToOperations(handlerMatches)
+		// Convert matches to file inputs for the handler
+		fileInputs := transformMatches(handlerMatches)
+
+		// Convert file inputs to operations
+		ops, err := handler.ToOperations(fileInputs)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -291,8 +308,8 @@ func executeMatchesInternal(matches []types.RuleMatch, opts Options) (*types.Exe
 }
 
 // groupMatchesByHandler groups rule matches by their handler name
-func groupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMatch {
-	grouped := make(map[string][]types.RuleMatch)
+func groupMatchesByHandler(matches []RuleMatch) map[string][]RuleMatch {
+	grouped := make(map[string][]RuleMatch)
 	for _, match := range matches {
 		grouped[match.HandlerName] = append(grouped[match.HandlerName], match)
 	}
@@ -300,7 +317,7 @@ func groupMatchesByHandler(matches []types.RuleMatch) map[string][]types.RuleMat
 }
 
 // getHandlerNames extracts handler names from grouped matches
-func getHandlerNames(grouped map[string][]types.RuleMatch) []string {
+func getHandlerNames(grouped map[string][]RuleMatch) []string {
 	names := make([]string, 0, len(grouped))
 	for name := range grouped {
 		names = append(names, name)
@@ -331,7 +348,7 @@ func getHandlerExecutionOrder(handlerNames []string) []string {
 }
 
 // addOperationResultsToContext adds operation results to the execution context
-func addOperationResultsToContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []types.RuleMatch) {
+func addOperationResultsToContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []RuleMatch) {
 	if len(results) == 0 || len(matches) == 0 {
 		return
 	}

@@ -5,7 +5,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 const ShellHandlerName = "shell"
@@ -26,19 +25,19 @@ func NewHandler() *Handler {
 	}
 }
 
-// ToOperations converts rule matches to shell operations.
+// ToOperations converts file inputs to shell operations.
 // Shell scripts require only CreateDataLink - shell initialization handles sourcing.
-func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
-	for _, match := range matches {
+	for _, file := range files {
 		// Shell scripts only need to be linked in the datastore
 		// The shell initialization script will source them automatically
 		ops = append(ops, operations.Operation{
 			Type:    operations.CreateDataLink,
-			Pack:    match.Pack,
+			Pack:    file.PackName,
 			Handler: ShellHandlerName,
-			Source:  match.AbsolutePath,
+			Source:  file.SourcePath,
 		})
 	}
 

@@ -32,19 +32,18 @@ cask "visual-studio-code"
 
 	tests := []struct {
 		name     string
-		matches  []types.RuleMatch
+		matches  []operations.FileInput
 		wantOps  int
 		wantErr  bool
 		checkOps func(*testing.T, []operations.Operation)
 	}{
 		{
 			name: "single Brewfile creates one RunCommand operation",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "dev-tools",
-					Path:         "Brewfile",
-					AbsolutePath: brewfilePath,
-					HandlerName:  "homebrew",
+					PackName:     "dev-tools",
+					RelativePath: "Brewfile",
+					SourcePath:   brewfilePath,
 				},
 			},
 			wantOps: 1,
@@ -60,18 +59,16 @@ cask "visual-studio-code"
 		},
 		{
 			name: "multiple Brewfiles create multiple operations",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "dev-tools",
-					Path:         "Brewfile",
-					AbsolutePath: brewfilePath,
-					HandlerName:  "homebrew",
+					PackName:     "dev-tools",
+					RelativePath: "Brewfile",
+					SourcePath:   brewfilePath,
 				},
 				{
-					Pack:         "apps",
-					Path:         "apps/Brewfile",
-					AbsolutePath: brewfilePath,
-					HandlerName:  "homebrew",
+					PackName:     "apps",
+					RelativePath: "apps/Brewfile",
+					SourcePath:   brewfilePath,
 				},
 			},
 			wantOps: 2,
@@ -93,17 +90,16 @@ cask "visual-studio-code"
 		},
 		{
 			name:    "empty matches returns empty operations",
-			matches: []types.RuleMatch{},
+			matches: []operations.FileInput{},
 			wantOps: 0,
 		},
 		{
 			name: "non-existent Brewfile path returns error",
-			matches: []types.RuleMatch{
+			matches: []operations.FileInput{
 				{
-					Pack:         "badpack",
-					Path:         "missing/Brewfile",
-					AbsolutePath: "/non/existent/Brewfile",
-					HandlerName:  "homebrew",
+					PackName:     "badpack",
+					RelativePath: "missing/Brewfile",
+					SourcePath:   "/non/existent/Brewfile",
 				},
 			},
 			wantErr: true,
@@ -148,18 +144,17 @@ func TestHandler_DeterministicSentinel(t *testing.T) {
 
 	handler := homebrew.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "test",
-		Path:         "Brewfile",
-		AbsolutePath: brewfilePath,
-		HandlerName:  "homebrew",
+	match := operations.FileInput{
+		PackName:     "test",
+		RelativePath: "Brewfile",
+		SourcePath:   brewfilePath,
 	}
 
 	// Generate operations multiple times
-	ops1, err := handler.ToOperations([]types.RuleMatch{match})
+	ops1, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
-	ops2, err := handler.ToOperations([]types.RuleMatch{match})
+	ops2, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Sentinels should be identical for same content
@@ -170,7 +165,7 @@ func TestHandler_DeterministicSentinel(t *testing.T) {
 	err = os.WriteFile(brewfilePath, []byte(newContent), 0644)
 	require.NoError(t, err)
 
-	ops3, err := handler.ToOperations([]types.RuleMatch{match})
+	ops3, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Sentinel should be different after modification
@@ -187,14 +182,13 @@ func TestHandler_CommandFormat(t *testing.T) {
 
 	handler := homebrew.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "test",
-		Path:         "my brew file",
-		AbsolutePath: brewfilePath,
-		HandlerName:  "homebrew",
+	match := operations.FileInput{
+		PackName:     "test",
+		RelativePath: "my brew file",
+		SourcePath:   brewfilePath,
 	}
 
-	ops, err := handler.ToOperations([]types.RuleMatch{match})
+	ops, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Command should properly quote the path
@@ -277,14 +271,13 @@ func TestHandler_SentinelFormat(t *testing.T) {
 
 	handler := homebrew.NewHandler()
 
-	match := types.RuleMatch{
-		Pack:         "mypack",
-		Path:         "tools/Brewfile",
-		AbsolutePath: brewfilePath,
-		HandlerName:  "homebrew",
+	match := operations.FileInput{
+		PackName:     "mypack",
+		RelativePath: "tools/Brewfile",
+		SourcePath:   brewfilePath,
 	}
 
-	ops, err := handler.ToOperations([]types.RuleMatch{match})
+	ops, err := handler.ToOperations([]operations.FileInput{match})
 	require.NoError(t, err)
 
 	// Sentinel should include pack name and basename

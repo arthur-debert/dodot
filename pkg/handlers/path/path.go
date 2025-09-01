@@ -5,7 +5,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // Handler demonstrates how the path handler looks in the new architecture.
@@ -45,17 +44,17 @@ func (h *Handler) GetMetadata() operations.HandlerMetadata {
 	}
 }
 
-// ToOperations converts rule matches to operations.
+// ToOperations converts file inputs to operations.
 // This is the core simplification - the handler just declares what it wants,
 // not how to do it. The executor handles the complexity.
-func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
 	// Deduplicate paths - same logic as current handler but simpler
 	seen := make(map[string]bool)
 
-	for _, match := range matches {
-		key := fmt.Sprintf("%s:%s", match.Pack, match.Path)
+	for _, file := range files {
+		key := fmt.Sprintf("%s:%s", file.PackName, file.RelativePath)
 		if seen[key] {
 			continue // Skip duplicates
 		}
@@ -65,9 +64,9 @@ func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operatio
 		// Create a link in the datastore that shell init will read
 		ops = append(ops, operations.Operation{
 			Type:    operations.CreateDataLink,
-			Pack:    match.Pack,
+			Pack:    file.PackName,
 			Handler: "path",
-			Source:  match.Path,
+			Source:  file.RelativePath,
 			// No Target needed - shell init handles PATH management
 			// No Command needed - this is a linking operation
 			// No Sentinel needed - links are their own state

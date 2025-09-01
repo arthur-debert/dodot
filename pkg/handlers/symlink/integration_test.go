@@ -68,18 +68,16 @@ func TestSymlinkHandler_OperationIntegration(t *testing.T) {
 	handler := symlink.NewHandler()
 
 	// Create test matches
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "vim",
-			Path:         ".vimrc",
-			AbsolutePath: "/dotfiles/vim/.vimrc",
-			HandlerName:  "symlink",
+			PackName:     "vim",
+			RelativePath: ".vimrc",
+			SourcePath:   "/dotfiles/vim/.vimrc",
 		},
 		{
-			Pack:         "vim",
-			Path:         ".vim/colors/theme.vim",
-			AbsolutePath: "/dotfiles/vim/.vim/colors/theme.vim",
-			HandlerName:  "symlink",
+			PackName:     "vim",
+			RelativePath: ".vim/colors/theme.vim",
+			SourcePath:   "/dotfiles/vim/.vim/colors/theme.vim",
 		},
 	}
 
@@ -120,12 +118,11 @@ func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 
 	handler := symlink.NewHandler()
 
-	matches := []types.RuleMatch{
+	matches := []operations.FileInput{
 		{
-			Pack:         "vim",
-			Path:         ".vimrc",
-			AbsolutePath: "/dotfiles/vim/.vimrc",
-			HandlerName:  "symlink",
+			PackName:     "vim",
+			RelativePath: ".vimrc",
+			SourcePath:   "/dotfiles/vim/.vimrc",
 		},
 	}
 

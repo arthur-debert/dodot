@@ -6,7 +6,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/path"
 	"github.com/arthur-debert/dodot/pkg/operations"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -14,17 +13,17 @@ import (
 func TestHandler_ToOperations(t *testing.T) {
 	tests := []struct {
 		name        string
-		matches     []types.RuleMatch
+		files       []operations.FileInput
 		expectedOps int
 		checkFunc   func(*testing.T, []operations.Operation)
 	}{
 		{
 			name: "single directory creates one operation",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:        "tools",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/tools/bin",
 				},
 			},
 			expectedOps: 1,
@@ -37,21 +36,21 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "multiple directories create multiple operations",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:        "tools",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/tools/bin",
 				},
 				{
-					Pack:        "tools",
-					Path:        "scripts",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "scripts",
+					SourcePath:   "/dotfiles/tools/scripts",
 				},
 				{
-					Pack:        "dev",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "dev",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/dev/bin",
 				},
 			},
 			expectedOps: 3,
@@ -62,7 +61,7 @@ func TestHandler_ToOperations(t *testing.T) {
 					assert.Equal(t, "path", op.Handler)
 				}
 
-				// Check specific operations exist
+				// Check we have the right directories
 				foundToolsBin := false
 				foundToolsScripts := false
 				foundDevBin := false
@@ -86,21 +85,21 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "duplicate paths are deduplicated",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:        "tools",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/tools/bin",
 				},
 				{
-					Pack:        "tools",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/tools/bin",
 				},
 				{
-					Pack:        "tools",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/tools/bin",
 				},
 			},
 			expectedOps: 1, // Only one operation despite 3 matches
@@ -111,16 +110,16 @@ func TestHandler_ToOperations(t *testing.T) {
 		},
 		{
 			name: "same path in different packs creates separate operations",
-			matches: []types.RuleMatch{
+			files: []operations.FileInput{
 				{
-					Pack:        "tools",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "tools",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/tools/bin",
 				},
 				{
-					Pack:        "dev",
-					Path:        "bin",
-					HandlerName: "path",
+					PackName:     "dev",
+					RelativePath: "bin",
+					SourcePath:   "/dotfiles/dev/bin",
 				},
 			},
 			expectedOps: 2, // Same path but different packs
@@ -130,13 +129,14 @@ func TestHandler_ToOperations(t *testing.T) {
 					assert.Equal(t, "bin", op.Source)
 					packs[op.Pack] = true
 				}
-				assert.True(t, packs["tools"])
-				assert.True(t, packs["dev"])
+				assert.Len(t, packs, 2, "Should have two different packs")
+				assert.Contains(t, packs, "tools")
+				assert.Contains(t, packs, "dev")
 			},
 		},
 		{
-			name:        "empty matches creates empty operations",
-			matches:     []types.RuleMatch{},
+			name:        "empty matches create no operations",
+			files:       []operations.FileInput{},
 			expectedOps: 0,
 		},
 	}
@@ -145,7 +145,10 @@ func TestHandler_ToOperations(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			handler := path.NewHandler()
 
-			ops, err := handler.ToOperations(tt.matches)
+			// Execute
+			ops, err := handler.ToOperations(tt.files)
+
+			// Verify
 			require.NoError(t, err)
 			assert.Len(t, ops, tt.expectedOps)
 
@@ -159,41 +162,25 @@ func TestHandler_ToOperations(t *testing.T) {
 func TestHandler_Metadata(t *testing.T) {
 	handler := path.NewHandler()
 
-	// Test basic properties
+	// Test name
 	assert.Equal(t, "path", handler.Name())
+
+	// Test category
 	assert.Equal(t, handlers.CategoryConfiguration, handler.Category())
 
 	// Test metadata
-	metadata := handler.GetMetadata()
-	assert.Equal(t, "Adds directories to shell PATH", metadata.Description)
-	assert.False(t, metadata.RequiresConfirm) // PATH additions are safe
-	assert.True(t, metadata.CanRunMultiple)   // Can add multiple directories
-
-	// Test that optional methods use defaults
-	assert.Nil(t, handler.GetClearConfirmation(operations.ClearContext{}))
-	assert.Empty(t, handler.FormatClearedItem(operations.ClearedItem{}, false))
-	assert.NoError(t, handler.ValidateOperations(nil))
-	assert.Empty(t, handler.GetStateDirectoryName())
+	meta := handler.GetMetadata()
+	assert.Equal(t, "Adds directories to shell PATH", meta.Description)
+	assert.False(t, meta.RequiresConfirm)
+	assert.True(t, meta.CanRunMultiple)
 }
 
-func TestHandler_ComparisonWithCurrent(t *testing.T) {
-	// This test documents the simplification achieved
+func TestHandler_DefaultImplementations(t *testing.T) {
+	handler := path.NewHandler()
 
-	// Current handler has these responsibilities:
-	// 1. ProcessLinking with backward compatibility     - REMOVED (operation executor handles)
-	// 2. ProcessLinkingWithConfirmations              - REMOVED (operation executor handles)
-	// 3. Complex options parsing                      - REMOVED (not needed)
-	// 4. Path resolution and validation               - REMOVED (datastore handles)
-	// 5. Action creation with all fields              - SIMPLIFIED (just operations)
-	// 6. Logging throughout                           - REMOVED (executor handles)
-	// 7. State management                             - REMOVED (datastore handles)
-	// 8. Clear method implementation                  - REMOVED (generic reversal)
-
-	// New handler only has:
-	// 1. Name and category
-	// 2. Metadata for UI
-	// 3. Match to operation transformation
-	// 4. Optional customization points
-
-	// Result: ~185 lines → ~40 lines (78% reduction)
+	// These should use the base handler defaults
+	assert.Nil(t, handler.GetClearConfirmation(operations.ClearContext{}))
+	assert.Equal(t, "", handler.FormatClearedItem(operations.ClearedItem{}, false))
+	assert.NoError(t, handler.ValidateOperations(nil))
+	assert.Equal(t, "", handler.GetStateDirectoryName())
 }
