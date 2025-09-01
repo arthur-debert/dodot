@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
 // StatusState represents the state of a deployment
@@ -317,7 +317,7 @@ func getConfigurationHandlerStatus(match types.RuleMatch, pack types.Pack, dataS
 // getCodeExecutionHandlerStatus checks status for code execution handlers
 func getCodeExecutionHandlerStatus(match types.RuleMatch, pack types.Pack, dataStore types.DataStore, fs types.FS) (Status, error) {
 	// Calculate current checksum
-	currentChecksum, err := hashutil.CalculateFileChecksum(match.AbsolutePath)
+	currentChecksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
 	if err != nil {
 		return Status{}, fmt.Errorf("failed to calculate checksum: %w", err)
 	}

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
 const InstallHandlerName = "install"
@@ -36,7 +36,7 @@ func (h *Handler) ToOperations(matches []types.RuleMatch) ([]operations.Operatio
 
 	for _, match := range matches {
 		// Calculate checksum for idempotency
-		checksum, err := hashutil.CalculateFileChecksum(match.AbsolutePath)
+		checksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to calculate checksum for %s: %w", match.AbsolutePath, err)
 		}
