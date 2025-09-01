@@ -24,14 +24,6 @@ type OffPacksOptions struct {
 	DryRun bool
 }
 
-// PackRemovalResult tracks the removal results for a single pack
-type PackRemovalResult struct {
-	Name         string   `json:"name"`
-	HandlersRun  []string `json:"handlersRun"`
-	RemovedItems []string `json:"removedItems"`
-	Errors       []error  `json:"errors"`
-}
-
 // OffPacks turns off the specified packs by removing all handler state.
 // This completely removes the pack deployment (both symlinks and provisioned resources).
 //
@@ -69,10 +61,6 @@ func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 
 	// Process each pack
 	for _, pack := range selectedPacks {
-		packResult := PackRemovalResult{
-			Name: pack.Name,
-		}
-
 		// Get all handler types
 		allHandlers := append(
 			handlers.HandlerRegistry.GetConfigurationHandlers(),
@@ -97,8 +85,6 @@ func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 						Str("pack", pack.Name).
 						Str("handler", handlerName).
 						Msg("[DRY RUN] Would remove handler state")
-					packResult.HandlersRun = append(packResult.HandlersRun, handlerName)
-					packResult.RemovedItems = append(packResult.RemovedItems, fmt.Sprintf("%s handler state", handlerName))
 					allHandlersMap[handlerName] = true
 				} else {
 					logger.Debug().
@@ -107,21 +93,13 @@ func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 						Msg("Removing handler state")
 
 					if err := store.RemoveState(pack.Name, handlerName); err != nil {
-						packResult.Errors = append(packResult.Errors, fmt.Errorf("failed to remove %s handler state: %w", handlerName, err))
 						errors = append(errors, fmt.Errorf("pack %s: failed to remove %s handler state: %w", pack.Name, handlerName, err))
 					} else {
-						packResult.HandlersRun = append(packResult.HandlersRun, handlerName)
-						packResult.RemovedItems = append(packResult.RemovedItems, fmt.Sprintf("%s handler state", handlerName))
 						totalCleared++
 						allHandlersMap[handlerName] = true
 					}
 				}
 			}
-		}
-
-		// Track pack-level errors
-		if len(packResult.Errors) > 0 {
-			errors = append(errors, packResult.Errors...)
 		}
 	}
 
