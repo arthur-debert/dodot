@@ -170,8 +170,8 @@ func TestHandler_Metadata(t *testing.T) {
 	assert.True(t, metadata.CanRunMultiple)   // Can add multiple directories
 
 	// Test that optional methods use defaults
-	assert.Nil(t, handler.GetClearConfirmation(types.ClearContext{}))
-	assert.Empty(t, handler.FormatClearedItem(types.ClearedItem{}, false))
+	assert.Nil(t, handler.GetClearConfirmation(operations.ClearContext{}))
+	assert.Empty(t, handler.FormatClearedItem(operations.ClearedItem{}, false))
 	assert.NoError(t, handler.ValidateOperations(nil))
 	assert.Empty(t, handler.GetStateDirectoryName())
 }

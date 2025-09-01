@@ -172,7 +172,7 @@ func TestSymlinkHandler_Clear(t *testing.T) {
 	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
-	ctx := types.ClearContext{
+	ctx := operations.ClearContext{
 		Pack: types.Pack{
 			Name: "vim",
 		},

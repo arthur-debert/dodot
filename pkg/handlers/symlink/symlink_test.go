@@ -169,7 +169,7 @@ func TestHandler_GetMetadata(t *testing.T) {
 func TestHandler_FormatClearedItem(t *testing.T) {
 	handler := symlink.NewHandler()
 
-	item := types.ClearedItem{
+	item := operations.ClearedItem{
 		Type: "symlink",
 		Path: "/home/user/.vimrc",
 	}

@@ -32,7 +32,7 @@ func TestHomebrewHandler_Clear_Basic(t *testing.T) {
 		setup        func(t *testing.T, fs types.FS, dataDir string)
 		dryRun       bool
 		wantItems    int
-		checkResults func(t *testing.T, items []types.ClearedItem)
+		checkResults func(t *testing.T, items []operations.ClearedItem)
 	}{
 		{
 			name: "no state directory",
@@ -58,7 +58,7 @@ func TestHomebrewHandler_Clear_Basic(t *testing.T) {
 			},
 			dryRun:    false,
 			wantItems: 1,
-			checkResults: func(t *testing.T, items []types.ClearedItem) {
+			checkResults: func(t *testing.T, items []operations.ClearedItem) {
 				if items[0].Type != "homebrew_state" {
 					t.Errorf("Type = %q, want %q", items[0].Type, "homebrew_state")
 				}
@@ -108,7 +108,7 @@ func TestHomebrewHandler_Clear_Basic(t *testing.T) {
 			},
 			dryRun:    true,
 			wantItems: 1,
-			checkResults: func(t *testing.T, items []types.ClearedItem) {
+			checkResults: func(t *testing.T, items []operations.ClearedItem) {
 				if !strings.Contains(items[0].Description, "Would remove") {
 					t.Errorf("Description should contain 'Would remove' in dry run mode, got %q", items[0].Description)
 				}
@@ -155,7 +155,7 @@ func TestHomebrewHandler_Clear_Basic(t *testing.T) {
 			handler := NewHandler()
 
 			// Create clear context
-			ctx := types.ClearContext{
+			ctx := operations.ClearContext{
 				Pack:   types.Pack{Name: "testpack", Path: "/test/pack"},
 				FS:     fs,
 				Paths:  paths,
@@ -262,7 +262,7 @@ func TestHomebrewHandler_ClearWithUninstall_DryRun(t *testing.T) {
 	paths := testutil.NewMockPathResolver("/home/test", "/home/test/.config", "/test/data")
 
 	// Create clear context
-	ctx := types.ClearContext{
+	ctx := operations.ClearContext{
 		Pack:   types.Pack{Name: "testpack", Path: "test/pack"},
 		FS:     fs,
 		Paths:  paths,

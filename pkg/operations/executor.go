@@ -187,7 +187,7 @@ func (e *Executor) simulateOperation(op Operation) OperationResult {
 
 // ExecuteClear handles the clear operation for a handler.
 // Phase 3: Simplified to use generic state management.
-func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]types.ClearedItem, error) {
+func (e *Executor) ExecuteClear(handler Handler, ctx ClearContext) ([]ClearedItem, error) {
 	logger := logging.GetLogger("operations.executor").With().
 		Str("handler", handler.Name()).
 		Str("pack", ctx.Pack.Name).
@@ -205,7 +205,7 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 	}
 
 	// Phase 3: Generic implementation
-	var clearedItems []types.ClearedItem
+	var clearedItems []ClearedItem
 
 	// Get state directory name (handler can override)
 	stateDirName := handler.GetStateDirectoryName()
@@ -232,7 +232,7 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 		itemType = "provision_state"
 	}
 
-	clearedItem := types.ClearedItem{
+	clearedItem := ClearedItem{
 		Type:        itemType,
 		Path:        stateDir,
 		Description: fmt.Sprintf("%s state will be removed", handler.Name()),

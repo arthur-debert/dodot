@@ -80,12 +80,12 @@ func (h *Handler) GetMetadata() operations.HandlerMetadata {
 }
 
 // GetClearConfirmation returns nil - symlinks don't need clear confirmation.
-func (h *Handler) GetClearConfirmation(ctx types.ClearContext) *operations.ConfirmationRequest {
+func (h *Handler) GetClearConfirmation(ctx operations.ClearContext) *operations.ConfirmationRequest {
 	return nil
 }
 
 // FormatClearedItem formats how cleared symlinks are displayed.
-func (h *Handler) FormatClearedItem(item types.ClearedItem, dryRun bool) string {
+func (h *Handler) FormatClearedItem(item operations.ClearedItem, dryRun bool) string {
 	if dryRun {
 		return fmt.Sprintf("Would remove symlink %s", filepath.Base(item.Path))
 	}

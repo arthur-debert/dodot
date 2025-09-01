@@ -216,7 +216,7 @@ func TestHandler_GetTemplateContent(t *testing.T) {
 func TestHandler_GetClearConfirmation(t *testing.T) {
 	handler := homebrew.NewHandler()
 
-	ctx := types.ClearContext{
+	ctx := operations.ClearContext{
 		Pack: types.Pack{
 			Name: "test",
 		},
@@ -241,7 +241,7 @@ func TestHandler_GetClearConfirmation(t *testing.T) {
 func TestHandler_FormatClearedItem(t *testing.T) {
 	handler := homebrew.NewHandler()
 
-	item := types.ClearedItem{
+	item := operations.ClearedItem{
 		Type:        "homebrew_state",
 		Path:        "/some/path",
 		Description: "Default description",

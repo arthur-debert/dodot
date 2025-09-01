@@ -214,7 +214,7 @@ func TestHandler_GetTemplateContent(t *testing.T) {
 func TestHandler_FormatClearedItem(t *testing.T) {
 	handler := install.NewHandler()
 
-	item := types.ClearedItem{
+	item := operations.ClearedItem{
 		Type:        "provision_state",
 		Path:        "/some/path",
 		Description: "Default description",

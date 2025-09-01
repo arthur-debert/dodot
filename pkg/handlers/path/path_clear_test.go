@@ -55,7 +55,7 @@ func TestPathHandler_Clear_Success(t *testing.T) {
 			dataStore := testutil.NewMockDataStore()
 
 			// Create clear context
-			ctx := types.ClearContext{
+			ctx := operations.ClearContext{
 				Pack: types.Pack{
 					Name: "testpack",
 					Path: env.DotfilesRoot + "/testpack",
@@ -89,7 +89,7 @@ func TestPathHandler_Clear_EdgeCases(t *testing.T) {
 		defer env.Cleanup()
 
 		// Create clear context with empty pack name
-		ctx := types.ClearContext{
+		ctx := operations.ClearContext{
 			Pack: types.Pack{
 				Name: "",
 				Path: env.DotfilesRoot + "/testpack",
