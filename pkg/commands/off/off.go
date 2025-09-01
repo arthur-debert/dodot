@@ -6,11 +6,8 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -27,7 +24,7 @@ type OffPacksOptions struct {
 // OffPacks turns off the specified packs by removing all handler state.
 // This completely removes the pack deployment (both symlinks and provisioned resources).
 //
-// The command removes all handler state from the data directory for each pack.
+// The command uses core.Execute with unlink and deprovision commands to ensure consistent behavior.
 func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("commands.off")
 	logger.Debug().
@@ -36,69 +33,48 @@ func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 		Bool("dryRun", opts.DryRun).
 		Msg("Starting off command")
 
-	// Track execution details
+	// Track execution details for metadata
 	var totalCleared int
 	var errors []error
-	var handlersRun []string
-	allHandlersMap := make(map[string]bool)
 
-	// Initialize paths
-	pathsInstance, err := paths.New(opts.DotfilesRoot)
+	// Step 1: Unlink configuration handlers (symlink, shell, path)
+	unlinkResult, err := core.Execute(core.CommandUnlink, core.ExecuteOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		DryRun:       opts.DryRun,
+		Force:        false,
+		FileSystem:   filesystem.NewOS(),
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize paths: %w", err)
-	}
-
-	// Create filesystem and datastore
-	fs := filesystem.NewOS()
-	store := datastore.New(fs, pathsInstance)
-
-	// Discover and select packs
-	selectedPacks, err := core.DiscoverAndSelectPacksFS(pathsInstance.DotfilesRoot(), opts.PackNames, fs)
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to discover packs")
-		return nil, err
-	}
-
-	// Process each pack
-	for _, pack := range selectedPacks {
-		// Get all handler types
-		allHandlers := append(
-			handlers.HandlerRegistry.GetConfigurationHandlers(),
-			handlers.HandlerRegistry.GetCodeExecutionHandlers()...,
-		)
-
-		// Remove state for each handler type
-		for _, handlerName := range allHandlers {
-			// Check if handler has state
-			hasState, err := store.HasHandlerState(pack.Name, handlerName)
-			if err != nil {
-				logger.Warn().Err(err).
-					Str("pack", pack.Name).
-					Str("handler", handlerName).
-					Msg("Failed to check handler state")
-				continue
+		logger.Error().Err(err).Msg("Failed to unlink packs")
+		errors = append(errors, fmt.Errorf("unlink failed: %w", err))
+	} else {
+		totalCleared += unlinkResult.CompletedHandlers
+		// Check for errors in pack results
+		for packName, packResult := range unlinkResult.PackResults {
+			if packResult.FailedHandlers > 0 {
+				errors = append(errors, fmt.Errorf("pack %s had %d failed handlers during unlink", packName, packResult.FailedHandlers))
 			}
+		}
+	}
 
-			if hasState {
-				if opts.DryRun {
-					logger.Info().
-						Str("pack", pack.Name).
-						Str("handler", handlerName).
-						Msg("[DRY RUN] Would remove handler state")
-					allHandlersMap[handlerName] = true
-				} else {
-					logger.Debug().
-						Str("pack", pack.Name).
-						Str("handler", handlerName).
-						Msg("Removing handler state")
-
-					if err := store.RemoveState(pack.Name, handlerName); err != nil {
-						errors = append(errors, fmt.Errorf("pack %s: failed to remove %s handler state: %w", pack.Name, handlerName, err))
-					} else {
-						totalCleared++
-						allHandlersMap[handlerName] = true
-					}
-				}
+	// Step 2: Deprovision code execution handlers (install, homebrew)
+	deprovisionResult, err := core.Execute(core.CommandDeprovision, core.ExecuteOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		DryRun:       opts.DryRun,
+		Force:        false,
+		FileSystem:   filesystem.NewOS(),
+	})
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to deprovision packs")
+		errors = append(errors, fmt.Errorf("deprovision failed: %w", err))
+	} else {
+		totalCleared += deprovisionResult.CompletedHandlers
+		// Check for errors in pack results
+		for packName, packResult := range deprovisionResult.PackResults {
+			if packResult.FailedHandlers > 0 {
+				errors = append(errors, fmt.Errorf("pack %s had %d failed handlers during deprovision", packName, packResult.FailedHandlers))
 			}
 		}
 	}
@@ -109,21 +85,43 @@ func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 		Bool("dryRun", opts.DryRun).
 		Msg("Off command completed")
 
-	// Convert map to slice for handlers run
-	for handler := range allHandlersMap {
-		handlersRun = append(handlersRun, handler)
-	}
-
 	// Get current pack status
 	statusOpts := status.StatusPacksOptions{
 		DotfilesRoot: opts.DotfilesRoot,
 		PackNames:    opts.PackNames,
-		FileSystem:   fs,
+		FileSystem:   filesystem.NewOS(),
 	}
 	packStatus, err := status.StatusPacks(statusOpts)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to get pack status")
 		errors = append(errors, fmt.Errorf("failed to get pack status: %w", err))
+	}
+
+	// Collect handler names that were processed
+	handlersRun := make([]string, 0)
+	handlerMap := make(map[string]bool)
+
+	// Add handlers from unlink results
+	if unlinkResult != nil {
+		for _, packResult := range unlinkResult.PackResults {
+			for _, handlerResult := range packResult.HandlerResults {
+				handlerMap[handlerResult.HandlerName] = true
+			}
+		}
+	}
+
+	// Add handlers from deprovision results
+	if deprovisionResult != nil {
+		for _, packResult := range deprovisionResult.PackResults {
+			for _, handlerResult := range packResult.HandlerResults {
+				handlerMap[handlerResult.HandlerName] = true
+			}
+		}
+	}
+
+	// Convert map to slice
+	for handler := range handlerMap {
+		handlersRun = append(handlersRun, handler)
 	}
 
 	// Build result
