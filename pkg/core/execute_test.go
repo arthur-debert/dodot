@@ -19,13 +19,13 @@ func TestExecute(t *testing.T) {
 		{
 			name:        "link command orchestration",
 			commandType: CommandLink,
-			expectError: true, // Expected due to GetMatchesFS filesystem limitation
+			expectError: false, // Now works with memory filesystem
 			description: "Tests the orchestration flow for link commands",
 		},
 		{
 			name:        "provision command orchestration",
 			commandType: CommandProvision,
-			expectError: true, // Expected due to GetMatchesFS filesystem limitation
+			expectError: false, // Now works with memory filesystem
 			description: "Tests the orchestration flow for provision commands",
 		},
 		{
@@ -66,19 +66,13 @@ func TestExecute(t *testing.T) {
 
 			ctx, err := Execute(tt.commandType, opts)
 
-			if tt.expectError {
-				// We expect an error because GetMatchesFS doesn't support MemoryFS yet
-				// This tests that the orchestration works correctly and fails at the right step
-				require.Error(t, err, "Execute should fail due to filesystem limitation")
-			} else {
-				// For unlink/deprovision, no matches should be processed so it should succeed
-				require.NoError(t, err, "Execute should succeed")
-				require.NotNil(t, ctx, "Execution context should not be nil")
+			// All commands should succeed now with memory filesystem
+			require.NoError(t, err, "Execute should succeed with memory filesystem")
+			require.NotNil(t, ctx, "Execution context should not be nil")
 
-				assert.Equal(t, string(tt.commandType), ctx.Command)
-				assert.False(t, ctx.DryRun)
-				assert.NotNil(t, ctx.PackResults)
-			}
+			assert.Equal(t, string(tt.commandType), ctx.Command)
+			assert.False(t, ctx.DryRun)
+			assert.NotNil(t, ctx.PackResults)
 		})
 	}
 }
@@ -104,12 +98,14 @@ func TestExecuteDryRun(t *testing.T) {
 		FileSystem:   env.FS,
 	}
 
-	// Execute in dry run mode - this will fail due to GetMatchesFS filesystem limitation
-	_, err := Execute(CommandLink, opts)
+	// Execute in dry run mode - should work now with memory filesystem
+	ctx, err := Execute(CommandLink, opts)
 
-	// We expect an error because GetMatchesFS doesn't support MemoryFS yet
-	// This test verifies the orchestration works and fails at the expected step
-	require.Error(t, err, "Execute should fail due to filesystem limitation")
+	// Should succeed now that GetMatchesFS supports memory filesystem
+	require.NoError(t, err, "Execute should succeed with memory filesystem")
+	require.NotNil(t, ctx, "Execution context should not be nil")
+	assert.True(t, ctx.DryRun, "Should be in dry run mode")
+	assert.NotNil(t, ctx.PackResults)
 }
 
 func TestFilterMatchesByCommandType(t *testing.T) {

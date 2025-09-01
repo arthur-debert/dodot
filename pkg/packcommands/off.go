@@ -7,6 +7,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -27,7 +28,7 @@ type OffOptions struct {
 // TurnOff turns off the specified packs by removing all handler state.
 // This completely removes the pack deployment (both symlinks and provisioned resources).
 //
-// The function uses core.Execute with unlink and deprovision commands to ensure consistent behavior.
+// The function now directly manages pack state removal for cleaner separation.
 func TurnOff(opts OffOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("pack.off")
 	logger.Debug().
@@ -42,48 +43,80 @@ func TurnOff(opts OffOptions) (*types.PackCommandResult, error) {
 		fs = filesystem.NewOS()
 	}
 
-	// Track execution details for metadata
+	// Initialize paths and datastore
+	pathsInstance, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize paths: %w", err)
+	}
+	dataStore := datastore.New(fs, pathsInstance)
+
+	// Track execution details
 	var totalCleared int
 	var errors []error
+	handlersCleared := make(map[string]bool)
 
-	// Step 1: Unlink configuration handlers (symlink, shell, path)
-	unlinkResult, err := core.Execute(core.CommandUnlink, core.ExecuteOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		Force:        false,
-		FileSystem:   fs,
-	})
+	// Step 1: Discover packs
+	selectedPacks, err := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, fs)
 	if err != nil {
-		logger.Error().Err(err).Msg("Failed to unlink packs")
-		errors = append(errors, fmt.Errorf("unlink failed: %w", err))
-	} else {
-		totalCleared += unlinkResult.CompletedHandlers
-		// Check for errors in pack results
-		for packName, packResult := range unlinkResult.PackResults {
-			if packResult.FailedHandlers > 0 {
-				errors = append(errors, fmt.Errorf("pack %s had %d failed handlers during unlink", packName, packResult.FailedHandlers))
-			}
-		}
+		logger.Error().Err(err).Msg("Failed to discover packs")
+		return nil, fmt.Errorf("failed to discover packs: %w", err)
 	}
 
-	// Step 2: Deprovision code execution handlers (install, homebrew)
-	deprovisionResult, err := core.Execute(core.CommandDeprovision, core.ExecuteOptions{
-		DotfilesRoot: opts.DotfilesRoot,
-		PackNames:    opts.PackNames,
-		DryRun:       opts.DryRun,
-		Force:        false,
-		FileSystem:   fs,
-	})
-	if err != nil {
-		logger.Error().Err(err).Msg("Failed to deprovision packs")
-		errors = append(errors, fmt.Errorf("deprovision failed: %w", err))
-	} else {
-		totalCleared += deprovisionResult.CompletedHandlers
-		// Check for errors in pack results
-		for packName, packResult := range deprovisionResult.PackResults {
-			if packResult.FailedHandlers > 0 {
-				errors = append(errors, fmt.Errorf("pack %s had %d failed handlers during deprovision", packName, packResult.FailedHandlers))
+	logger.Debug().
+		Int("packCount", len(selectedPacks)).
+		Msg("Discovered packs for processing")
+
+	// Step 2: Process each pack
+	for _, pack := range selectedPacks {
+		logger.Debug().
+			Str("pack", pack.Name).
+			Msg("Turning off pack")
+
+		// Get all handler names (both configuration and code execution)
+		allHandlers := append(
+			handlers.HandlerRegistry.GetConfigurationHandlers(),
+			handlers.HandlerRegistry.GetCodeExecutionHandlers()...,
+		)
+
+		// Remove state for each handler
+		for _, handlerName := range allHandlers {
+			// Check if handler has state
+			hasState, err := dataStore.HasHandlerState(pack.Name, handlerName)
+			if err != nil {
+				logger.Warn().Err(err).
+					Str("pack", pack.Name).
+					Str("handler", handlerName).
+					Msg("Failed to check handler state")
+				continue
+			}
+
+			if !hasState {
+				continue
+			}
+
+			if opts.DryRun {
+				logger.Info().
+					Str("pack", pack.Name).
+					Str("handler", handlerName).
+					Msg("Would remove handler state (dry run)")
+				totalCleared++
+				handlersCleared[handlerName] = true
+			} else {
+				// Remove the handler state
+				if err := dataStore.RemoveState(pack.Name, handlerName); err != nil {
+					logger.Error().Err(err).
+						Str("pack", pack.Name).
+						Str("handler", handlerName).
+						Msg("Failed to remove handler state")
+					errors = append(errors, fmt.Errorf("failed to remove %s state for pack %s: %w", handlerName, pack.Name, err))
+				} else {
+					logger.Info().
+						Str("pack", pack.Name).
+						Str("handler", handlerName).
+						Msg("Removed handler state")
+					totalCleared++
+					handlersCleared[handlerName] = true
+				}
 			}
 		}
 	}
@@ -94,105 +127,68 @@ func TurnOff(opts OffOptions) (*types.PackCommandResult, error) {
 		Bool("dryRun", opts.DryRun).
 		Msg("Turn off operation completed")
 
-	// Collect handler names that were processed
-	handlersRun := make([]string, 0)
-	handlerMap := make(map[string]bool)
-
-	// Add handlers from unlink results
-	if unlinkResult != nil {
-		for _, packResult := range unlinkResult.PackResults {
-			for _, handlerResult := range packResult.HandlerResults {
-				handlerMap[handlerResult.HandlerName] = true
-			}
-		}
-	}
-
-	// Add handlers from deprovision results
-	if deprovisionResult != nil {
-		for _, packResult := range deprovisionResult.PackResults {
-			for _, handlerResult := range packResult.HandlerResults {
-				handlerMap[handlerResult.HandlerName] = true
-			}
-		}
-	}
-
-	// Convert map to slice
-	for handler := range handlerMap {
+	// Convert handler map to slice
+	handlersRun := make([]string, 0, len(handlersCleared))
+	for handler := range handlersCleared {
 		handlersRun = append(handlersRun, handler)
 	}
 
-	// Get current pack status using pkg/pack/status.go functionality
+	// Step 3: Get current pack status
 	statusPacks := make([]types.DisplayPack, 0)
 	if len(errors) == 0 || len(errors) <= 2 { // Allow some errors but not total failure
-		pathsInstance, pathErr := paths.New(opts.DotfilesRoot)
-		if pathErr != nil {
-			logger.Warn().Err(pathErr).Msg("Failed to create paths for status check")
-			// Don't add this to errors since status is supplementary
-		} else {
-			// Use core pack discovery - this will return empty list if no packs found
-			selectedPacks, discErr := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, fs)
-			if discErr != nil {
-				logger.Warn().Err(discErr).Msg("Failed to discover packs for status")
-				// Don't add this to errors since status is supplementary
-			} else {
-				// Create datastore for status checking
-				dataStore := datastore.New(fs, pathsInstance)
-
-				// Get status for each pack using pkg/pack/status.go
-				for _, p := range selectedPacks {
-					statusOpts := StatusOptions{
-						Pack:       p,
-						DataStore:  dataStore,
-						FileSystem: fs,
-						Paths:      pathsInstance,
-					}
-
-					packStatus, statusErr := GetStatus(statusOpts)
-					if statusErr != nil {
-						logger.Warn().Err(statusErr).Str("pack", p.Name).Msg("Failed to get individual pack status")
-						continue
-					}
-
-					// Convert to display format using the same logic as status command
-					displayPack := types.DisplayPack{
-						Name:      packStatus.Name,
-						HasConfig: packStatus.HasConfig,
-						IsIgnored: packStatus.IsIgnored,
-						Status:    packStatus.Status,
-						Files:     make([]types.DisplayFile, 0, len(packStatus.Files)),
-					}
-
-					// Convert each file status
-					for _, file := range packStatus.Files {
-						displayFile := types.DisplayFile{
-							Handler:        file.Handler,
-							Path:           file.Path,
-							Status:         statusStateToDisplayStatus(file.Status.State),
-							Message:        file.Status.Message,
-							LastExecuted:   file.Status.Timestamp,
-							HandlerSymbol:  types.GetHandlerSymbol(file.Handler),
-							AdditionalInfo: file.AdditionalInfo,
-						}
-						displayPack.Files = append(displayPack.Files, displayFile)
-					}
-
-					// Add special files if present
-					if packStatus.IsIgnored {
-						displayPack.Files = append([]types.DisplayFile{{
-							Path:   ".dodotignore",
-							Status: "ignored",
-						}}, displayPack.Files...)
-					}
-					if packStatus.HasConfig {
-						displayPack.Files = append([]types.DisplayFile{{
-							Path:   ".dodot.toml",
-							Status: "config",
-						}}, displayPack.Files...)
-					}
-
-					statusPacks = append(statusPacks, displayPack)
-				}
+		// Get status for each pack using pkg/pack/status.go
+		for _, p := range selectedPacks {
+			statusOpts := StatusOptions{
+				Pack:       p,
+				DataStore:  dataStore,
+				FileSystem: fs,
+				Paths:      pathsInstance,
 			}
+
+			packStatus, statusErr := GetStatus(statusOpts)
+			if statusErr != nil {
+				logger.Warn().Err(statusErr).Str("pack", p.Name).Msg("Failed to get individual pack status")
+				continue
+			}
+
+			// Convert to display format using the same logic as status command
+			displayPack := types.DisplayPack{
+				Name:      packStatus.Name,
+				HasConfig: packStatus.HasConfig,
+				IsIgnored: packStatus.IsIgnored,
+				Status:    packStatus.Status,
+				Files:     make([]types.DisplayFile, 0, len(packStatus.Files)),
+			}
+
+			// Convert each file status
+			for _, file := range packStatus.Files {
+				displayFile := types.DisplayFile{
+					Handler:        file.Handler,
+					Path:           file.Path,
+					Status:         statusStateToDisplayStatus(file.Status.State),
+					Message:        file.Status.Message,
+					LastExecuted:   file.Status.Timestamp,
+					HandlerSymbol:  types.GetHandlerSymbol(file.Handler),
+					AdditionalInfo: file.AdditionalInfo,
+				}
+				displayPack.Files = append(displayPack.Files, displayFile)
+			}
+
+			// Add special files if present
+			if packStatus.IsIgnored {
+				displayPack.Files = append([]types.DisplayFile{{
+					Path:   ".dodotignore",
+					Status: "ignored",
+				}}, displayPack.Files...)
+			}
+			if packStatus.HasConfig {
+				displayPack.Files = append([]types.DisplayFile{{
+					Path:   ".dodot.toml",
+					Status: "config",
+				}}, displayPack.Files...)
+			}
+
+			statusPacks = append(statusPacks, displayPack)
 		}
 	}
 
