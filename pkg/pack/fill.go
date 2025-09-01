@@ -10,10 +10,15 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// FillResult represents the result of filling a pack with template files
+type FillResult struct {
+	FilesCreated []string `json:"filesCreated"`
+}
+
 // Fill adds template files for handlers that need them in the pack.
 // It identifies which handlers need files but don't have them, and creates
 // appropriate template files for each handler.
-func (p *Pack) Fill(fs types.FS) (*types.FillResult, error) {
+func (p *Pack) Fill(fs types.FS) (*FillResult, error) {
 	log := logging.GetLogger("pack.fill")
 	log.Debug().Str("pack", p.Name).Msg("Starting fill operation")
 
@@ -120,8 +125,7 @@ func (p *Pack) Fill(fs types.FS) (*types.FillResult, error) {
 	}
 
 	// Return result
-	result := &types.FillResult{
-		PackName:     p.Name,
+	result := &FillResult{
 		FilesCreated: filesCreated,
 	}
 

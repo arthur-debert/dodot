@@ -23,9 +23,22 @@ type AdoptOptions struct {
 	DotfilesRoot string
 }
 
+// AdoptResult represents the result of adopting files into a pack
+type AdoptResult struct {
+	PackName     string        `json:"packName"`
+	AdoptedFiles []AdoptedFile `json:"adoptedFiles"`
+}
+
+// AdoptedFile represents a file that was adopted into a pack
+type AdoptedFile struct {
+	OriginalPath string `json:"originalPath"`
+	NewPath      string `json:"newPath"`
+	SymlinkPath  string `json:"symlinkPath"`
+}
+
 // Adopt moves existing files into the pack and creates symlinks back to their original locations.
 // This allows existing configuration files to be managed by dodot without disrupting their use.
-func (p *Pack) Adopt(fs types.FS, opts AdoptOptions) (*types.AdoptResult, error) {
+func (p *Pack) Adopt(fs types.FS, opts AdoptOptions) (*AdoptResult, error) {
 	logger := logging.GetLogger("pack.adopt")
 	logger.Info().
 		Str("pack", p.Name).
@@ -34,9 +47,9 @@ func (p *Pack) Adopt(fs types.FS, opts AdoptOptions) (*types.AdoptResult, error)
 		Msg("Adopting files into pack")
 
 	// Prepare result
-	result := &types.AdoptResult{
+	result := &AdoptResult{
 		PackName:     p.Name,
-		AdoptedFiles: []types.AdoptedFile{},
+		AdoptedFiles: []AdoptedFile{},
 	}
 
 	// Process each source path
@@ -59,7 +72,7 @@ func (p *Pack) Adopt(fs types.FS, opts AdoptOptions) (*types.AdoptResult, error)
 }
 
 // adoptSingleFile handles the adoption of a single file using the embedded Pack's guardian methods
-func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath string, force bool, dotfilesRoot string) (*types.AdoptedFile, error) {
+func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath string, force bool, dotfilesRoot string) (*AdoptedFile, error) {
 	// Expand the source path
 	expandedPath := paths.ExpandHome(sourcePath)
 
@@ -130,7 +143,7 @@ func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath st
 		Str("destination", destPath).
 		Msg("Successfully adopted file")
 
-	return &types.AdoptedFile{
+	return &AdoptedFile{
 		OriginalPath: expandedPath,
 		NewPath:      destPath,
 		SymlinkPath:  expandedPath,
@@ -139,7 +152,7 @@ func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath st
 
 // AdoptOrCreate creates a pack if it doesn't exist before adopting files.
 // This is a static method since we might need to create the pack first.
-func AdoptOrCreate(fs types.FS, dotfilesRoot, packName string, opts AdoptOptions) (*types.AdoptResult, error) {
+func AdoptOrCreate(fs types.FS, dotfilesRoot, packName string, opts AdoptOptions) (*AdoptResult, error) {
 	logger := logging.GetLogger("pack.adopt")
 
 	// Normalize and validate pack name

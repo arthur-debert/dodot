@@ -36,7 +36,7 @@ type StatusPacksOptions struct {
 }
 
 // StatusPacks shows the deployment status of specified packs
-func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
+func StatusPacks(opts StatusPacksOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("commands.status")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).
@@ -70,12 +70,14 @@ func StatusPacks(opts StatusPacksOptions) (*types.DisplayResult, error) {
 	// Create datastore for status checking
 	dataStore := datastore.New(opts.FileSystem, opts.Paths.(paths.Paths))
 
-	// Build display result
-	result := &types.DisplayResult{
+	// Build command result
+	result := &types.PackCommandResult{
 		Command:   "status",
 		DryRun:    false,
 		Timestamp: time.Now(),
 		Packs:     make([]types.DisplayPack, 0, len(selectedPacks)),
+		// Status command doesn't have a message
+		Message: "",
 	}
 
 	// Process each pack

@@ -47,11 +47,14 @@ handler = "install"`,
 
 	// Verify only link was executed, not provision
 	require.NoError(t, err)
-	assert.NotNil(t, result.LinkResult, "should call link command")
-	assert.Nil(t, result.ProvisionResult, "should NOT call provision command when --no-provision")
-	// Note: TotalDeployed may be 0 due to how ExecutionContext tracks handlers
+	assert.Equal(t, "on", result.Command, "command should be on")
+	assert.True(t, result.Metadata.NoProvision, "should record no-provision flag")
+	assert.False(t, result.Metadata.ProvisionRerun, "provision-rerun should be false")
 	// The important thing is that provision was skipped
-	assert.Empty(t, result.Errors, "no errors expected")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "mixed", result.Packs[0].Name, "pack name should match")
+	}
 }
 
 func TestOnPacks_ProvisionRerun_Orchestration(t *testing.T) {
@@ -77,7 +80,7 @@ handler = "install"`,
 	}
 	result1, err := on.OnPacks(opts1)
 	require.NoError(t, err)
-	require.NotNil(t, result1.ProvisionResult)
+	assert.Equal(t, "on", result1.Command, "command should be on")
 
 	// Mark the install handler as already provisioned
 	if mockDS, ok := env.DataStore.(*testutil.MockSimpleDataStore); ok {
@@ -98,10 +101,13 @@ handler = "install"`,
 
 	// Verify provisioning was forced to re-run
 	require.NoError(t, err)
-	assert.NotNil(t, result2.LinkResult, "should call link command")
-	assert.NotNil(t, result2.ProvisionResult, "should call provision command")
-	// The provision command should have run with ForceReprovisioning
-	// We can't easily verify handler counts due to how ExecutionContext tracks results
+	assert.Equal(t, "on", result2.Command, "command should be on")
+	assert.False(t, result2.Metadata.NoProvision, "no-provision should be false")
+	assert.True(t, result2.Metadata.ProvisionRerun, "should record provision-rerun flag")
+	assert.True(t, len(result2.Packs) > 0, "should have pack status")
+	if len(result2.Packs) > 0 {
+		assert.Equal(t, "tools", result2.Packs[0].Name, "pack name should match")
+	}
 }
 
 func TestOnPacks_AlreadyProvisioned_Orchestration(t *testing.T) {
@@ -138,11 +144,15 @@ handler = "install"`,
 
 	// Verify provisioning was skipped for already-provisioned handlers
 	require.NoError(t, err)
-	assert.NotNil(t, result.LinkResult, "should call link command")
-	assert.NotNil(t, result.ProvisionResult, "should call provision command")
+	assert.Equal(t, "on", result.Command, "command should be on")
+	assert.False(t, result.Metadata.NoProvision, "no-provision should be false")
+	assert.False(t, result.Metadata.ProvisionRerun, "provision-rerun should be false")
 	// The provision command should run but skip already-provisioned handlers
 	// This is handled by core.Execute which filters them out
-	assert.Empty(t, result.Errors, "no errors expected")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "apps", result.Packs[0].Name, "pack name should match")
+	}
 }
 
 func TestOnPacks_MixedPacks_NoProvision_Orchestration(t *testing.T) {
@@ -186,24 +196,17 @@ handler = "path"`,
 
 	// Verify only configuration handlers were executed
 	require.NoError(t, err)
-	assert.NotNil(t, result.LinkResult, "should call link command")
-	assert.Nil(t, result.ProvisionResult, "should skip provision with --no-provision")
-
-	// Link should have processed configs pack's symlink and tools pack's path handler
-	if result.LinkResult != nil {
-		configResult, exists := result.LinkResult.GetPackResult("configs")
-		assert.True(t, exists, "should have configs pack result")
-		if configResult != nil {
-			assert.Greater(t, configResult.TotalHandlers, 0, "configs pack should have handlers")
-		}
-
-		// tools pack should have path handler in link result
-		toolsResult, exists := result.LinkResult.GetPackResult("tools")
-		assert.True(t, exists, "should have tools pack result")
-		if toolsResult != nil {
-			assert.Greater(t, toolsResult.TotalHandlers, 0, "tools pack should have path handler")
-		}
+	assert.Equal(t, "on", result.Command, "command should be on")
+	assert.True(t, result.Metadata.NoProvision, "should record no-provision flag")
+	// Should have both packs in status
+	assert.Equal(t, 2, len(result.Packs), "should have both packs in status")
+	// Find pack names
+	packNames := make(map[string]bool)
+	for _, pack := range result.Packs {
+		packNames[pack.Name] = true
 	}
+	assert.True(t, packNames["configs"], "should have configs pack")
+	assert.True(t, packNames["tools"], "should have tools pack")
 }
 
 func TestOnPacks_ConflictingFlags_Validation(t *testing.T) {

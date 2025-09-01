@@ -2,7 +2,9 @@ package on
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -28,20 +30,11 @@ type OnPacksOptions struct {
 	ProvisionRerun bool
 }
 
-// OnResult represents the result of turning on packs
-type OnResult struct {
-	LinkResult      *types.ExecutionContext
-	ProvisionResult *types.ExecutionContext
-	TotalDeployed   int
-	DryRun          bool
-	Errors          []error
-}
-
 // OnPacks turns on the specified packs by deploying all handlers.
 // This creates symlinks, sets up shell integrations, and runs provisioning.
 //
 // The command uses core.Execute with appropriate options to control behavior.
-func OnPacks(opts OnPacksOptions) (*OnResult, error) {
+func OnPacks(opts OnPacksOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("commands.on")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).
@@ -52,9 +45,9 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 		Bool("provisionRerun", opts.ProvisionRerun).
 		Msg("Starting on command")
 
-	result := &OnResult{
-		DryRun: opts.DryRun,
-	}
+	// Track execution details for metadata
+	var totalDeployed int
+	var errors []error
 
 	// Step 1: Run link (configuration handlers only)
 	linkResult, err := core.Execute(core.CommandLink, core.ExecuteOptions{
@@ -66,14 +59,13 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 	})
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to link packs")
-		result.Errors = append(result.Errors, fmt.Errorf("link failed: %w", err))
+		errors = append(errors, fmt.Errorf("link failed: %w", err))
 	} else {
-		result.LinkResult = linkResult
-		result.TotalDeployed += linkResult.CompletedHandlers
+		totalDeployed += linkResult.CompletedHandlers
 		// Check for errors in pack results
 		for packName, packResult := range linkResult.PackResults {
 			if packResult.FailedHandlers > 0 {
-				result.Errors = append(result.Errors, fmt.Errorf("pack %s had %d failed handlers", packName, packResult.FailedHandlers))
+				errors = append(errors, fmt.Errorf("pack %s had %d failed handlers", packName, packResult.FailedHandlers))
 			}
 		}
 	}
@@ -90,14 +82,13 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 		})
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to provision packs")
-			result.Errors = append(result.Errors, fmt.Errorf("provision failed: %w", err))
+			errors = append(errors, fmt.Errorf("provision failed: %w", err))
 		} else {
-			result.ProvisionResult = provisionResult
-			result.TotalDeployed += provisionResult.CompletedHandlers
+			totalDeployed += provisionResult.CompletedHandlers
 			// Check for errors in pack results
 			for packName, packResult := range provisionResult.PackResults {
 				if packResult.FailedHandlers > 0 {
-					result.Errors = append(result.Errors, fmt.Errorf("pack %s had %d failed handlers during provisioning", packName, packResult.FailedHandlers))
+					errors = append(errors, fmt.Errorf("pack %s had %d failed handlers during provisioning", packName, packResult.FailedHandlers))
 				}
 			}
 		}
@@ -135,13 +126,50 @@ func OnPacks(opts OnPacksOptions) (*OnResult, error) {
 	}
 
 	logger.Info().
-		Int("totalDeployed", result.TotalDeployed).
-		Int("errors", len(result.Errors)).
+		Int("totalDeployed", totalDeployed).
+		Int("errors", len(errors)).
 		Bool("dryRun", opts.DryRun).
 		Msg("On command completed")
 
-	if len(result.Errors) > 0 {
-		return result, fmt.Errorf("on command encountered %d errors", len(result.Errors))
+	// Get current pack status
+	statusOpts := status.StatusPacksOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		FileSystem:   filesystem.NewOS(),
+	}
+	packStatus, err := status.StatusPacks(statusOpts)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to get pack status")
+		errors = append(errors, fmt.Errorf("failed to get pack status: %w", err))
+	}
+
+	// Build result
+	result := &types.PackCommandResult{
+		Command:   "on",
+		Timestamp: time.Now(),
+		DryRun:    opts.DryRun,
+		Packs:     []types.DisplayPack{},
+		Metadata: types.CommandMetadata{
+			TotalDeployed:  totalDeployed,
+			NoProvision:    opts.NoProvision,
+			ProvisionRerun: opts.ProvisionRerun,
+		},
+	}
+
+	// Copy packs from status if available
+	if packStatus != nil {
+		result.Packs = packStatus.Packs
+	}
+
+	// Generate message
+	packNames := make([]string, 0, len(result.Packs))
+	for _, pack := range result.Packs {
+		packNames = append(packNames, pack.Name)
+	}
+	result.Message = types.FormatCommandMessage("turned on", packNames)
+
+	if len(errors) > 0 {
+		return result, fmt.Errorf("on command encountered %d errors", len(errors))
 	}
 
 	return result, nil

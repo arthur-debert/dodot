@@ -111,14 +111,18 @@ func TestFillPack(t *testing.T) {
 			require.NotNil(t, result)
 
 			// Check result
-			assert.Equal(t, "testpack", result.PackName)
-			assert.Equal(t, len(tt.expectedFiles), len(result.FilesCreated),
-				"Expected %d files, got %d: %v", len(tt.expectedFiles), len(result.FilesCreated), result.FilesCreated)
+			assert.Equal(t, "fill", result.Command, "command should be fill")
+			assert.Equal(t, len(tt.expectedFiles), result.Metadata.FilesCreated,
+				"Expected %d files, got %d: %v", len(tt.expectedFiles), result.Metadata.FilesCreated, result.Metadata.CreatedPaths)
+			assert.True(t, len(result.Packs) > 0, "should have pack status")
+			if len(result.Packs) > 0 {
+				assert.Equal(t, "testpack", result.Packs[0].Name, "pack name should match")
+			}
 
 			// Verify files were created
 			for _, expectedFile := range tt.expectedFiles {
 				found := false
-				for _, createdFile := range result.FilesCreated {
+				for _, createdFile := range result.Metadata.CreatedPaths {
 					if createdFile == expectedFile {
 						found = true
 						break

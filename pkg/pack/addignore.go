@@ -8,9 +8,17 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
+// AddIgnoreResult represents the result of adding an ignore file to a pack
+type AddIgnoreResult struct {
+	PackName       string `json:"packName"`
+	IgnoreFilePath string `json:"ignoreFilePath"`
+	Created        bool   `json:"created"`
+	AlreadyExisted bool   `json:"alreadyExisted"`
+}
+
 // AddIgnore creates a .dodotignore file for the pack if it doesn't already exist.
 // Returns information about whether the file was created or already existed.
-func (p *Pack) AddIgnore(fs types.FS, cfg *config.Config) (*types.AddIgnoreResult, error) {
+func (p *Pack) AddIgnore(fs types.FS, cfg *config.Config) (*AddIgnoreResult, error) {
 	logger := logging.GetLogger("pack.addignore")
 	logger.Debug().
 		Str("pack", p.Name).
@@ -35,7 +43,7 @@ func (p *Pack) AddIgnore(fs types.FS, cfg *config.Config) (*types.AddIgnoreResul
 			Str("path", ignoreFilePath).
 			Msg("Ignore file already exists")
 
-		return &types.AddIgnoreResult{
+		return &AddIgnoreResult{
 			PackName:       p.Name,
 			IgnoreFilePath: ignoreFilePath,
 			Created:        false,
@@ -53,7 +61,7 @@ func (p *Pack) AddIgnore(fs types.FS, cfg *config.Config) (*types.AddIgnoreResul
 		Str("path", ignoreFilePath).
 		Msg("Successfully created ignore file")
 
-	return &types.AddIgnoreResult{
+	return &AddIgnoreResult{
 		PackName:       p.Name,
 		IgnoreFilePath: ignoreFilePath,
 		Created:        true,

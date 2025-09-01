@@ -80,18 +80,21 @@ func TestInitPack(t *testing.T) {
 			require.NotNil(t, result)
 
 			// Check result
-			assert.Equal(t, tt.packName, result.PackName)
-			assert.Equal(t, filepath.Join(env.DotfilesRoot, tt.packName), result.Path)
+			assert.Equal(t, "init", result.Command, "command should be init")
+			assert.True(t, len(result.Packs) > 0, "should have pack status")
+			if len(result.Packs) > 0 {
+				assert.Equal(t, tt.packName, result.Packs[0].Name, "pack name should match")
+			}
 
 			// Check expected files were created
-			assert.Equal(t, len(tt.expectedFiles), len(result.FilesCreated),
-				"Expected %d files, got %d: %v", len(tt.expectedFiles), len(result.FilesCreated), result.FilesCreated)
+			assert.Equal(t, len(tt.expectedFiles), result.Metadata.FilesCreated,
+				"Expected %d files, got %d: %v", len(tt.expectedFiles), result.Metadata.FilesCreated, result.Metadata.CreatedPaths)
 
 			// Verify each expected file
 			packPath := filepath.Join(env.DotfilesRoot, tt.packName)
 			for _, expectedFile := range tt.expectedFiles {
 				found := false
-				for _, createdFile := range result.FilesCreated {
+				for _, createdFile := range result.Metadata.CreatedPaths {
 					if createdFile == expectedFile {
 						found = true
 						break

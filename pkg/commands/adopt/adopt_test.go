@@ -35,8 +35,12 @@ func TestAdoptFiles_EmptySourcePaths_Orchestration(t *testing.T) {
 	// Verify empty sources handling
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "test-pack", result.PackName, "pack name should match")
-	assert.Len(t, result.AdoptedFiles, 0, "should adopt no files")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 0, result.Metadata.FilesAdopted, "should adopt no files")
+	assert.Len(t, result.Metadata.AdoptedPaths, 0, "should have no adopted paths")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "test-pack", result.Packs[0].Name, "pack name should match")
+	}
 }
 
 func TestAdoptFiles_SingleFile_Orchestration(t *testing.T) {
@@ -62,14 +66,14 @@ func TestAdoptFiles_SingleFile_Orchestration(t *testing.T) {
 	// Verify single file adoption orchestration
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "git", result.PackName, "pack name should match")
-
-	// Should have adopted one file
-	assert.Len(t, result.AdoptedFiles, 1, "should adopt one file")
-	adopted := result.AdoptedFiles[0]
-	assert.Equal(t, homeFile, adopted.OriginalPath, "original path should match")
-	assert.Equal(t, homeFile, adopted.SymlinkPath, "symlink path should match original")
-	assert.Contains(t, adopted.NewPath, "git/gitconfig", "new path should be in git pack")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt one file")
+	assert.Len(t, result.Metadata.AdoptedPaths, 1, "should have one adopted path")
+	assert.Equal(t, homeFile, result.Metadata.AdoptedPaths[0], "adopted path should match")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "git", result.Packs[0].Name, "pack name should match")
+	}
 
 	// Verify file was moved and symlinked (orchestration behavior)
 	// File should no longer exist at original location as regular file
@@ -77,8 +81,9 @@ func TestAdoptFiles_SingleFile_Orchestration(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, info.Mode()&os.ModeSymlink != 0, "original location should be symlink")
 
-	// File should exist at new location
-	_, err = env.FS.Stat(adopted.NewPath)
+	// File should exist at new location in the pack
+	newPath := filepath.Join(env.DotfilesRoot, "git", "gitconfig")
+	_, err = env.FS.Stat(newPath)
 	assert.NoError(t, err, "file should exist at new path")
 }
 
@@ -115,14 +120,18 @@ func TestAdoptFiles_MultipleFiles_Orchestration(t *testing.T) {
 	// Verify multiple file adoption orchestration
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "shell", result.PackName, "pack name should match")
-	assert.Len(t, result.AdoptedFiles, 3, "should adopt all three files")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 3, result.Metadata.FilesAdopted, "should adopt all three files")
+	assert.Len(t, result.Metadata.AdoptedPaths, 3, "should have three adopted paths")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "shell", result.Packs[0].Name, "pack name should match")
+	}
 
 	// Verify all files were processed
 	adoptedPaths := make(map[string]bool)
-	for _, adopted := range result.AdoptedFiles {
-		adoptedPaths[filepath.Base(adopted.OriginalPath)] = true
-		assert.Contains(t, adopted.NewPath, "shell/", "new path should be in shell pack")
+	for _, path := range result.Metadata.AdoptedPaths {
+		adoptedPaths[filepath.Base(path)] = true
 	}
 
 	for filename := range files {
@@ -177,8 +186,13 @@ func TestAdoptFiles_NewPackCreation_Orchestration(t *testing.T) {
 	// Verify new pack creation orchestration
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "newpack", result.PackName, "pack name should match")
-	assert.Len(t, result.AdoptedFiles, 1, "should adopt the file")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt the file")
+	assert.Len(t, result.Metadata.AdoptedPaths, 1, "should have one adopted path")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "newpack", result.Packs[0].Name, "pack name should match")
+	}
 
 	// Verify pack directory was created
 	packPath := filepath.Join(env.DotfilesRoot, "newpack")
@@ -187,8 +201,10 @@ func TestAdoptFiles_NewPackCreation_Orchestration(t *testing.T) {
 	assert.True(t, info.IsDir(), "pack directory should be created")
 
 	// Verify file was adopted into new pack
-	adopted := result.AdoptedFiles[0]
-	assert.Contains(t, adopted.NewPath, "newpack/vimrc", "file should be in new pack")
+	// The adopted file should be in the new pack directory
+	newPath := filepath.Join(env.DotfilesRoot, "newpack", "vimrc")
+	_, err = env.FS.Stat(newPath)
+	assert.NoError(t, err, "adopted file should exist in new pack")
 }
 
 func TestAdoptFiles_ForceOverwrite_Orchestration(t *testing.T) {
@@ -223,7 +239,8 @@ func TestAdoptFiles_ForceOverwrite_Orchestration(t *testing.T) {
 	// Verify force overwrite orchestration
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Len(t, result.AdoptedFiles, 1, "should adopt file with force")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt file with force")
 
 	// Verify new content was written
 	content, err := env.FS.ReadFile(existingFile)
@@ -324,8 +341,12 @@ func TestAdoptFiles_PackNameTrailingSlash_Orchestration(t *testing.T) {
 	// Verify trailing slash handling
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "test", result.PackName, "pack name should be normalized (no trailing slash)")
-	assert.Len(t, result.AdoptedFiles, 1, "should adopt the file")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt the file")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "test", result.Packs[0].Name, "pack name should be normalized (no trailing slash)")
+	}
 }
 
 func TestAdoptFiles_IdempotentBehavior_Orchestration(t *testing.T) {
@@ -363,8 +384,12 @@ func TestAdoptFiles_IdempotentBehavior_Orchestration(t *testing.T) {
 	// Verify idempotent behavior (already managed files are skipped)
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "git", result.PackName, "pack name should match")
-	assert.Len(t, result.AdoptedFiles, 0, "should not adopt already managed file")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 0, result.Metadata.FilesAdopted, "should not adopt already managed file")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "git", result.Packs[0].Name, "pack name should match")
+	}
 }
 
 func TestAdoptFiles_XDGConfigFile_Orchestration(t *testing.T) {
@@ -404,12 +429,17 @@ func TestAdoptFiles_XDGConfigFile_Orchestration(t *testing.T) {
 	// Verify XDG config adoption orchestration
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "starship", result.PackName, "pack name should match")
-	assert.Len(t, result.AdoptedFiles, 1, "should adopt XDG config file")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt XDG config file")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "starship", result.Packs[0].Name, "pack name should match")
+	}
 
 	// Verify XDG structure is preserved in pack
-	adopted := result.AdoptedFiles[0]
-	assert.Contains(t, adopted.NewPath, "starship/starship/starship.toml", "XDG structure should be preserved")
+	newPath := filepath.Join(env.DotfilesRoot, "starship", "starship", "starship.toml")
+	_, err = env.FS.Stat(newPath)
+	assert.NoError(t, err, "XDG structure should be preserved in pack")
 }
 
 func TestAdoptFiles_PartialFailure_Orchestration(t *testing.T) {
@@ -469,18 +499,20 @@ func TestAdoptFiles_ResultStructure_Orchestration(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result, "result should not be nil")
 
-	// Verify AdoptResult structure
-	assert.Equal(t, "structure-test", result.PackName, "pack name should match")
-	assert.NotNil(t, result.AdoptedFiles, "adopted files should not be nil")
-	assert.Len(t, result.AdoptedFiles, 1, "should have one adopted file")
+	// Verify PackCommandResult structure
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should have one adopted file")
+	assert.Len(t, result.Metadata.AdoptedPaths, 1, "should have one adopted path")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "structure-test", result.Packs[0].Name, "pack name should match")
+	}
 
-	// Verify AdoptedFile structure
-	adopted := result.AdoptedFiles[0]
-	assert.NotEmpty(t, adopted.OriginalPath, "original path should be populated")
-	assert.NotEmpty(t, adopted.NewPath, "new path should be populated")
-	assert.NotEmpty(t, adopted.SymlinkPath, "symlink path should be populated")
-	assert.Equal(t, sourceFile, adopted.OriginalPath, "original path should match source")
-	assert.Equal(t, sourceFile, adopted.SymlinkPath, "symlink path should match original")
+	// Verify adopted path structure
+	assert.Len(t, result.Metadata.AdoptedPaths, 1, "should have adopted path")
+	if len(result.Metadata.AdoptedPaths) > 0 {
+		assert.Equal(t, sourceFile, result.Metadata.AdoptedPaths[0], "adopted path should match source")
+	}
 }
 
 func TestAdoptFiles_FileSystemIntegration_Orchestration(t *testing.T) {
@@ -509,23 +541,26 @@ func TestAdoptFiles_FileSystemIntegration_Orchestration(t *testing.T) {
 	// Verify complex filesystem operation orchestration
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return adoption result")
-	assert.Len(t, result.AdoptedFiles, 1, "should adopt nested file")
+	assert.Equal(t, "adopt", result.Command, "command should be adopt")
+	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt nested file")
 
-	adopted := result.AdoptedFiles[0]
+	// The adopted file should be moved to the pack
+	// XDG structure is preserved as "app/app/deep/config.json" (since XDG_CONFIG_HOME mapping creates app/app structure)
+	newPath := filepath.Join(env.DotfilesRoot, "app", "app", "deep", "config.json")
 
 	// Verify directory structure was created in pack
-	packConfigDir := filepath.Dir(adopted.NewPath)
+	packConfigDir := filepath.Dir(newPath)
 	info, err := env.FS.Stat(packConfigDir)
 	require.NoError(t, err)
 	assert.True(t, info.IsDir(), "nested directory should be created in pack")
 
 	// Verify symlink chain works correctly
-	target, err := env.FS.Readlink(adopted.SymlinkPath)
+	target, err := env.FS.Readlink(nestedFile)
 	require.NoError(t, err)
-	assert.Equal(t, adopted.NewPath, target, "symlink should point to adopted file")
+	assert.Equal(t, newPath, target, "symlink should point to adopted file")
 
 	// Verify file content is preserved
-	content, err := env.FS.ReadFile(adopted.NewPath)
+	content, err := env.FS.ReadFile(newPath)
 	require.NoError(t, err)
 	assert.Equal(t, "{\"setting\": \"value\"}", string(content), "file content should be preserved")
 }

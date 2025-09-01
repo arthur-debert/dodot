@@ -2,13 +2,16 @@ package off
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/arthur-debert/dodot/pkg/commands/status"
 	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // OffPacksOptions defines the options for the OffPacks command
@@ -21,27 +24,19 @@ type OffPacksOptions struct {
 	DryRun bool
 }
 
-// OffResult represents the result of turning off packs
-type OffResult struct {
-	Packs        []PackRemovalResult
-	TotalCleared int
-	DryRun       bool
-	Errors       []error
-}
-
-// PackRemovalResult represents the result of removing a single pack
+// PackRemovalResult tracks the removal results for a single pack
 type PackRemovalResult struct {
-	Name         string
-	HandlersRun  []string
-	RemovedItems []string
-	Errors       []error
+	Name         string   `json:"name"`
+	HandlersRun  []string `json:"handlersRun"`
+	RemovedItems []string `json:"removedItems"`
+	Errors       []error  `json:"errors"`
 }
 
 // OffPacks turns off the specified packs by removing all handler state.
 // This completely removes the pack deployment (both symlinks and provisioned resources).
 //
 // The command removes all handler state from the data directory for each pack.
-func OffPacks(opts OffPacksOptions) (*OffResult, error) {
+func OffPacks(opts OffPacksOptions) (*types.PackCommandResult, error) {
 	logger := logging.GetLogger("commands.off")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).
@@ -49,10 +44,11 @@ func OffPacks(opts OffPacksOptions) (*OffResult, error) {
 		Bool("dryRun", opts.DryRun).
 		Msg("Starting off command")
 
-	result := &OffResult{
-		DryRun: opts.DryRun,
-		Packs:  []PackRemovalResult{},
-	}
+	// Track execution details
+	var totalCleared int
+	var errors []error
+	var handlersRun []string
+	allHandlersMap := make(map[string]bool)
 
 	// Initialize paths
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
@@ -103,6 +99,7 @@ func OffPacks(opts OffPacksOptions) (*OffResult, error) {
 						Msg("[DRY RUN] Would remove handler state")
 					packResult.HandlersRun = append(packResult.HandlersRun, handlerName)
 					packResult.RemovedItems = append(packResult.RemovedItems, fmt.Sprintf("%s handler state", handlerName))
+					allHandlersMap[handlerName] = true
 				} else {
 					logger.Debug().
 						Str("pack", pack.Name).
@@ -111,27 +108,74 @@ func OffPacks(opts OffPacksOptions) (*OffResult, error) {
 
 					if err := store.RemoveState(pack.Name, handlerName); err != nil {
 						packResult.Errors = append(packResult.Errors, fmt.Errorf("failed to remove %s handler state: %w", handlerName, err))
-						result.Errors = append(result.Errors, fmt.Errorf("pack %s: failed to remove %s handler state: %w", pack.Name, handlerName, err))
+						errors = append(errors, fmt.Errorf("pack %s: failed to remove %s handler state: %w", pack.Name, handlerName, err))
 					} else {
 						packResult.HandlersRun = append(packResult.HandlersRun, handlerName)
 						packResult.RemovedItems = append(packResult.RemovedItems, fmt.Sprintf("%s handler state", handlerName))
-						result.TotalCleared++
+						totalCleared++
+						allHandlersMap[handlerName] = true
 					}
 				}
 			}
 		}
 
-		result.Packs = append(result.Packs, packResult)
+		// Track pack-level errors
+		if len(packResult.Errors) > 0 {
+			for _, err := range packResult.Errors {
+				errors = append(errors, err)
+			}
+		}
 	}
 
 	logger.Info().
-		Int("totalCleared", result.TotalCleared).
-		Int("errors", len(result.Errors)).
+		Int("totalCleared", totalCleared).
+		Int("errors", len(errors)).
 		Bool("dryRun", opts.DryRun).
 		Msg("Off command completed")
 
-	if len(result.Errors) > 0 {
-		return result, fmt.Errorf("off command encountered %d errors", len(result.Errors))
+	// Convert map to slice for handlers run
+	for handler := range allHandlersMap {
+		handlersRun = append(handlersRun, handler)
+	}
+
+	// Get current pack status
+	statusOpts := status.StatusPacksOptions{
+		DotfilesRoot: opts.DotfilesRoot,
+		PackNames:    opts.PackNames,
+		FileSystem:   fs,
+	}
+	packStatus, err := status.StatusPacks(statusOpts)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to get pack status")
+		errors = append(errors, fmt.Errorf("failed to get pack status: %w", err))
+	}
+
+	// Build result
+	result := &types.PackCommandResult{
+		Command:   "off",
+		Timestamp: time.Now(),
+		DryRun:    opts.DryRun,
+		Packs:     []types.DisplayPack{},
+		Metadata: types.CommandMetadata{
+			TotalCleared: totalCleared,
+			HandlersRun:  handlersRun,
+		},
+	}
+
+	// Copy packs from status if available
+	if packStatus != nil {
+		result.Packs = packStatus.Packs
+	}
+
+	// Generate message
+	packNames := make([]string, 0, len(result.Packs))
+	for _, pack := range result.Packs {
+		packNames = append(packNames, pack.Name)
+	}
+	result.Message = types.FormatCommandMessage("turned off", packNames)
+
+	if len(errors) > 0 {
+		return result, fmt.Errorf("off command encountered %d errors", len(errors))
 	}
 
 	return result, nil

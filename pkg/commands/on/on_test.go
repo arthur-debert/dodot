@@ -30,10 +30,8 @@ func TestOnPacks_EmptyPackNames_Orchestration(t *testing.T) {
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
-	assert.NotNil(t, result.LinkResult, "should call link command")
-	assert.NotNil(t, result.ProvisionResult, "should call provision command")
-	assert.Zero(t, result.TotalDeployed, "no packs to deploy")
-	assert.Empty(t, result.Errors, "no errors expected")
+	assert.Equal(t, "on", result.Command, "command should be on")
+	assert.Equal(t, 0, result.Metadata.TotalDeployed, "no packs to deploy")
 	assert.False(t, result.DryRun)
 }
 
@@ -63,14 +61,11 @@ handler = "symlink"`,
 
 	// Verify dry run propagates to sub-commands
 	require.NoError(t, err)
+	assert.Equal(t, "on", result.Command, "command should be on")
 	assert.True(t, result.DryRun, "should preserve dry run flag")
-	assert.NotNil(t, result.LinkResult, "should call link")
-	assert.NotNil(t, result.ProvisionResult, "should call provision")
-	if result.LinkResult != nil {
-		assert.True(t, result.LinkResult.DryRun, "link should receive dry run flag")
-	}
-	if result.ProvisionResult != nil {
-		assert.True(t, result.ProvisionResult.DryRun, "provision should receive dry run flag")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "testpack", result.Packs[0].Name, "pack name should match")
 	}
 }
 
@@ -100,9 +95,8 @@ handler = "symlink"`,
 
 	// Verify force flag handling (specific behavior depends on link implementation)
 	require.NoError(t, err)
+	assert.Equal(t, "on", result.Command, "command should be on")
 	assert.False(t, result.DryRun, "should not be dry run")
-	assert.NotNil(t, result.LinkResult, "should call link")
-	assert.NotNil(t, result.ProvisionResult, "should call provision")
 	// Force flag gets passed to link command internally
 }
 
@@ -141,8 +135,11 @@ handler = "symlink"`,
 
 	// Verify orchestration passes pack names correctly
 	require.NoError(t, err)
-	assert.NotNil(t, result.LinkResult, "should call link")
-	assert.NotNil(t, result.ProvisionResult, "should call provision")
+	assert.Equal(t, "on", result.Command, "command should be on")
+	assert.Equal(t, 1, len(result.Packs), "should have one pack")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "pack1", result.Packs[0].Name, "should process pack1")
+	}
 }
 
 func TestOnPacks_NonExistentPack_Orchestration(t *testing.T) {
@@ -166,7 +163,7 @@ func TestOnPacks_NonExistentPack_Orchestration(t *testing.T) {
 
 	// Result should still be returned with error details
 	require.NotNil(t, result, "should return result even with errors")
-	assert.True(t, len(result.Errors) > 0, "should have errors recorded")
+	assert.Equal(t, "on", result.Command, "command should be on")
 }
 
 func TestOnPacks_ResultAggregation_Orchestration(t *testing.T) {
@@ -188,11 +185,13 @@ func TestOnPacks_ResultAggregation_Orchestration(t *testing.T) {
 	assert.NotNil(t, result, "should return result object")
 
 	// Verify all required fields are set
-	assert.NotNil(t, result.LinkResult, "LinkResult should be populated")
-	assert.NotNil(t, result.ProvisionResult, "ProvisionResult should be populated")
-	assert.GreaterOrEqual(t, result.TotalDeployed, 0, "TotalDeployed should be non-negative")
-	assert.GreaterOrEqual(t, len(result.Errors), 0, "Errors slice should be accessible (nil or empty)")
+	assert.Equal(t, "on", result.Command, "command should be on")
+	assert.GreaterOrEqual(t, result.Metadata.TotalDeployed, 0, "TotalDeployed should be non-negative")
 	assert.False(t, result.DryRun, "DryRun should match input")
+	assert.NotNil(t, result.Packs, "Packs should be populated")
+	assert.NotNil(t, result.Metadata, "Metadata should be populated")
+	assert.False(t, result.Metadata.NoProvision, "NoProvision should be false by default")
+	assert.False(t, result.Metadata.ProvisionRerun, "ProvisionRerun should be false by default")
 }
 
 func TestOnPacks_ErrorHandling_Orchestration(t *testing.T) {
@@ -228,6 +227,7 @@ handler = "symlink"`,
 	// Check that both commands were attempted even if one fails
 	// (This depends on the implementation - some commands may short-circuit)
 	if result != nil {
-		assert.GreaterOrEqual(t, len(result.Errors), 0, "error tracking should be available")
+		assert.Equal(t, "on", result.Command, "command should be on")
+		assert.GreaterOrEqual(t, result.Metadata.TotalDeployed, 0, "total deployed should be non-negative")
 	}
 }

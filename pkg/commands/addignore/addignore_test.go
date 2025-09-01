@@ -20,7 +20,6 @@ import (
 func TestAddIgnore_CreateIgnoreFile_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
-	cfg := config.Default()
 
 	// Create a pack directory with content
 	env.SetupPack("vim", testutil.PackConfig{
@@ -43,13 +42,15 @@ func TestAddIgnore_CreateIgnoreFile_Orchestration(t *testing.T) {
 	assert.NotNil(t, result, "should return result object")
 
 	// Verify result structure
-	assert.Equal(t, "vim", result.PackName, "pack name should match")
-	assert.True(t, result.Created, "ignore file should be created")
-	assert.False(t, result.AlreadyExisted, "should not already exist")
-
-	// Verify ignore file path
-	expectedPath := filepath.Join(env.DotfilesRoot, "vim", cfg.Patterns.SpecialFiles.IgnoreFile)
-	assert.Equal(t, expectedPath, result.IgnoreFilePath, "ignore file path should be correct")
+	assert.Equal(t, "add-ignore", result.Command, "command should be add-ignore")
+	assert.True(t, result.Metadata.IgnoreCreated, "ignore file should be created")
+	assert.False(t, result.Metadata.AlreadyExisted, "should not already exist")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "vim", result.Packs[0].Name, "pack name should match")
+		// The pack should show as ignored since we just created the ignore file
+		assert.True(t, result.Packs[0].IsIgnored, "pack should be marked as ignored")
+	}
 
 	// Command should complete successfully with expected orchestration
 	// (Filesystem operations are tested by implementation, orchestration tests focus on command behavior)
@@ -79,13 +80,14 @@ func TestAddIgnore_AlreadyExists_Orchestration(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return result object")
 
-	assert.Equal(t, "vim", result.PackName, "pack name should match")
-	assert.False(t, result.Created, "ignore file should not be created")
-	assert.True(t, result.AlreadyExisted, "should already exist")
-
-	// Verify ignore file path is still correct
-	expectedPath := filepath.Join(env.DotfilesRoot, "vim", cfg.Patterns.SpecialFiles.IgnoreFile)
-	assert.Equal(t, expectedPath, result.IgnoreFilePath, "ignore file path should be correct")
+	assert.Equal(t, "add-ignore", result.Command, "command should be add-ignore")
+	assert.False(t, result.Metadata.IgnoreCreated, "ignore file should not be created")
+	assert.True(t, result.Metadata.AlreadyExisted, "should already exist")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "vim", result.Packs[0].Name, "pack name should match")
+		assert.True(t, result.Packs[0].IsIgnored, "pack should be marked as ignored")
+	}
 }
 
 func TestAddIgnore_PackNameNormalization_Orchestration(t *testing.T) {
@@ -111,12 +113,13 @@ func TestAddIgnore_PackNameNormalization_Orchestration(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return result object")
 
-	assert.Equal(t, "vim", result.PackName, "pack name should be normalized (no trailing slash)")
-	assert.True(t, result.Created, "ignore file should be created")
-
-	// Verify file path uses normalized name
-	expectedPath := filepath.Join(env.DotfilesRoot, "vim", config.Default().Patterns.SpecialFiles.IgnoreFile)
-	assert.Equal(t, expectedPath, result.IgnoreFilePath, "should use normalized pack name in path")
+	assert.Equal(t, "add-ignore", result.Command, "command should be add-ignore")
+	assert.True(t, result.Metadata.IgnoreCreated, "ignore file should be created")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.Equal(t, "vim", result.Packs[0].Name, "pack name should be normalized (no trailing slash)")
+		assert.True(t, result.Packs[0].IsIgnored, "pack should be marked as ignored")
+	}
 }
 
 func TestAddIgnore_NonExistentPack_Orchestration(t *testing.T) {
@@ -220,13 +223,14 @@ func TestAddIgnore_ResultStructure_Orchestration(t *testing.T) {
 	require.NotNil(t, result, "result should not be nil")
 
 	// Verify all result fields are populated correctly
-	assert.NotEmpty(t, result.PackName, "pack name should be populated")
-	assert.NotEmpty(t, result.IgnoreFilePath, "ignore file path should be populated")
-	assert.Contains(t, result.IgnoreFilePath, result.PackName, "ignore file path should contain pack name")
-	assert.Contains(t, result.IgnoreFilePath, config.Default().Patterns.SpecialFiles.IgnoreFile, "ignore file path should contain ignore filename")
+	assert.Equal(t, "add-ignore", result.Command, "command should be add-ignore")
+	assert.True(t, len(result.Packs) > 0, "should have pack status")
+	if len(result.Packs) > 0 {
+		assert.NotEmpty(t, result.Packs[0].Name, "pack name should be populated")
+	}
 
 	// Created and AlreadyExisted should be mutually exclusive
-	assert.NotEqual(t, result.Created, result.AlreadyExisted, "Created and AlreadyExisted should be mutually exclusive")
+	assert.NotEqual(t, result.Metadata.IgnoreCreated, result.Metadata.AlreadyExisted, "Created and AlreadyExisted should be mutually exclusive")
 }
 
 func TestAddIgnore_MultiplePacksOrchestration_Integration(t *testing.T) {
@@ -256,11 +260,13 @@ func TestAddIgnore_MultiplePacksOrchestration_Integration(t *testing.T) {
 			// Verify each pack gets its own ignore file
 			require.NoError(t, err)
 			assert.NotNil(t, result, "should return result for pack %s", packName)
-			assert.Equal(t, packName, result.PackName, "pack name should match")
-			assert.True(t, result.Created, "ignore file should be created for pack %s", packName)
-
-			// Verify file path is unique per pack
-			assert.Contains(t, result.IgnoreFilePath, packName, "ignore file path should contain pack name")
+			assert.Equal(t, "add-ignore", result.Command, "command should be add-ignore")
+			assert.True(t, result.Metadata.IgnoreCreated, "ignore file should be created for pack %s", packName)
+			assert.True(t, len(result.Packs) > 0, "should have pack status")
+			if len(result.Packs) > 0 {
+				assert.Equal(t, packName, result.Packs[0].Name, "pack name should match")
+				assert.True(t, result.Packs[0].IsIgnored, "pack should be marked as ignored")
+			}
 
 			// Command should complete successfully for each pack
 			// (Individual file existence is handled by command implementation)
@@ -293,12 +299,13 @@ func TestAddIgnore_FileSystemIntegration_Orchestration(t *testing.T) {
 	// Verify ignore file creation integrates with pack structure
 	require.NoError(t, err)
 	assert.NotNil(t, result, "should return result object")
-
-	ignoreFilePath := result.IgnoreFilePath
+	assert.Equal(t, "add-ignore", result.Command, "command should be add-ignore")
+	assert.True(t, result.Metadata.IgnoreCreated, "ignore file should be created")
 
 	// Verify ignore file is placed correctly in pack directory
 	expectedPath := filepath.Join(env.DotfilesRoot, "complex-pack", cfg.Patterns.SpecialFiles.IgnoreFile)
-	assert.Equal(t, expectedPath, ignoreFilePath, "ignore file should be in pack root")
+	_, err = env.FS.Stat(expectedPath)
+	assert.NoError(t, err, "ignore file should exist in pack root")
 
 	// Command should complete successfully with proper orchestration
 	// Filesystem integration is handled by the command implementation

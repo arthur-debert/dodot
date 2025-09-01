@@ -19,9 +19,16 @@ type InitOptions struct {
 	DotfilesRoot string
 }
 
+// InitResult represents the result of initializing a new pack
+type InitResult struct {
+	PackName     string   `json:"packName"`
+	Path         string   `json:"path"`
+	FilesCreated []string `json:"filesCreated"`
+}
+
 // Initialize creates a new pack with the standard structure and template files.
 // This is a static method since we're creating a new pack, not operating on an existing one.
-func Initialize(fs types.FS, opts InitOptions) (*types.InitResult, error) {
+func Initialize(fs types.FS, opts InitOptions) (*InitResult, error) {
 	log := logging.GetLogger("pack.init")
 	log.Debug().Str("pack", opts.PackName).Msg("Initializing new pack")
 
@@ -93,7 +100,7 @@ func Initialize(fs types.FS, opts InitOptions) (*types.InitResult, error) {
 	filesCreated = append(filesCreated, fillResult.FilesCreated...)
 
 	// Return result
-	result := &types.InitResult{
+	result := &InitResult{
 		PackName:     opts.PackName,
 		Path:         packPath,
 		FilesCreated: filesCreated,
