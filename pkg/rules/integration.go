@@ -426,7 +426,6 @@ func GetHandlersNeedingFiles(pack types.Pack, optionalFS ...types.FS) ([]string,
 type ExecutionOptions struct {
 	DryRun     bool
 	Force      bool
-	Confirmer  operations.Confirmer
 	FileSystem types.FS
 }
 
@@ -458,7 +457,7 @@ func ExecuteMatches(matches []types.RuleMatch, dataStore types.DataStore, opts E
 		Msg("Handler execution order determined")
 
 	// Create operations executor
-	executor := operations.NewExecutor(dataStore, opts.FileSystem, opts.Confirmer, opts.DryRun)
+	executor := operations.NewExecutor(dataStore, opts.FileSystem, opts.DryRun)
 
 	// Execute each handler in order
 	for _, handlerName := range handlerNames {

@@ -75,14 +75,10 @@ func TestExecuteMatches(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			// Simple confirmer that always says yes
-			confirmer := &testConfirmer{}
-
 			// Set up execution options
 			opts := ExecutionOptions{
 				DryRun:     false,
 				Force:      false,
-				Confirmer:  confirmer,
 				FileSystem: env.FS,
 			}
 
@@ -127,7 +123,6 @@ func TestExecuteMatchesDryRun(t *testing.T) {
 	opts := ExecutionOptions{
 		DryRun:     true,
 		Force:      false,
-		Confirmer:  &testConfirmer{},
 		FileSystem: env.FS,
 	}
 
@@ -227,11 +222,4 @@ func TestCreateOperationsHandler(t *testing.T) {
 			}
 		})
 	}
-}
-
-// testConfirmer is a simple confirmer for testing that always approves
-type testConfirmer struct{}
-
-func (tc *testConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	return true
 }

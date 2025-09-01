@@ -7,7 +7,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,12 +50,7 @@ func TestPathHandler_OperationIntegration(t *testing.T) {
 
 	// Test with executor in dry-run mode
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, true)
-
-	// No validations should be called for path handler
-	confirmer.On("RequestConfirmation", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(true).Maybe()
+	executor := operations.NewExecutor(store, nil, true)
 
 	// Execute operations
 	results, err := executor.Execute(ops, handler)
@@ -76,8 +70,7 @@ func TestPathHandler_Clear(t *testing.T) {
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
 	ctx := types.ClearContext{

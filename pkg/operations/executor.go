@@ -14,16 +14,14 @@ import (
 type Executor struct {
 	store      types.DataStore
 	dryRun     bool
-	confirmer  Confirmer
 	fileSystem types.FS
 }
 
 // NewExecutor creates a new operation executor.
-func NewExecutor(store types.DataStore, fs types.FS, confirmer Confirmer, dryRun bool) *Executor {
+func NewExecutor(store types.DataStore, fs types.FS, dryRun bool) *Executor {
 	return &Executor{
 		store:      store,
 		fileSystem: fs,
-		confirmer:  confirmer,
 		dryRun:     dryRun,
 	}
 }
@@ -198,16 +196,12 @@ func (e *Executor) ExecuteClear(handler Handler, ctx types.ClearContext) ([]type
 
 	// Let handler decide if confirmation is needed
 	// For example, homebrew checks DODOT_HOMEBREW_UNINSTALL env var
+	// NOTE: Confirmation UI is not yet implemented, handlers must handle their own safety checks
 	if confirmation := handler.GetClearConfirmation(ctx); confirmation != nil {
-		if !e.confirmer.RequestConfirmation(
-			confirmation.ID,
-			confirmation.Title,
-			confirmation.Description,
-			confirmation.Items...,
-		) {
-			logger.Info().Msg("User cancelled clear operation")
-			return nil, fmt.Errorf("operation cancelled by user")
-		}
+		// TODO: Implement confirmation UI when needed
+		logger.Warn().
+			Str("confirmation_title", confirmation.Title).
+			Msg("Confirmation requested but UI not implemented - proceeding without confirmation")
 	}
 
 	// Phase 3: Generic implementation

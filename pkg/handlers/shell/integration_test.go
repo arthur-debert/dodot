@@ -55,15 +55,6 @@ func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]
 	return args.Get(0).([]string), args.Error(1)
 }
 
-type MockConfirmer struct {
-	mock.Mock
-}
-
-func (m *MockConfirmer) RequestConfirmation(id, title, description string, items ...string) bool {
-	args := m.Called(id, title, description, items)
-	return args.Bool(0)
-}
-
 func TestShellHandler_OperationIntegration(t *testing.T) {
 	// This test verifies the shell handler works with the operation system
 
@@ -107,8 +98,7 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 
 	// Test with executor in dry-run mode
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, true)
+	executor := operations.NewExecutor(store, nil, true)
 
 	// Execute operations
 	results, err := executor.Execute(ops, handler)
@@ -141,14 +131,13 @@ func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
 
 	// Create mock store and set expectations
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
 
 	// Expect CreateDataLink to be called
 	store.On("CreateDataLink", "bash", "shell", "/dotfiles/bash/aliases.sh").
 		Return("/datastore/bash/shell/aliases.sh", nil)
 
 	// Execute with real mode (not dry-run)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 	results, err := executor.Execute(ops, handler)
 
 	require.NoError(t, err)
@@ -168,8 +157,7 @@ func TestShellHandler_ClearIntegration(t *testing.T) {
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
-	confirmer := new(MockConfirmer)
-	executor := operations.NewExecutor(store, nil, confirmer, false)
+	executor := operations.NewExecutor(store, nil, false)
 
 	// Clear context
 	ctx := types.ClearContext{

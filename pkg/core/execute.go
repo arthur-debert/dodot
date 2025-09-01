@@ -8,7 +8,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -34,7 +33,6 @@ type ExecuteOptions struct {
 	PackNames    []string
 	DryRun       bool
 	Force        bool
-	Confirmer    operations.Confirmer
 	FileSystem   types.FS
 
 	// Provisioning control options
@@ -134,7 +132,6 @@ func Execute(commandType CommandType, opts ExecuteOptions) (*types.ExecutionCont
 	rulesOpts := rules.ExecutionOptions{
 		DryRun:     opts.DryRun,
 		Force:      opts.Force,
-		Confirmer:  opts.Confirmer,
 		FileSystem: fs,
 	}
 
