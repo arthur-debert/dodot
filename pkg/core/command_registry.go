@@ -85,6 +85,10 @@ func ExecuteRegisteredCommand(cmdName string, opts CommandExecuteOptions) (*type
 		packs, err = DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
 		if err != nil {
 			logger.Error().Err(err).Msg("Failed to discover packs")
+			// Special error message for adopt command
+			if cmdName == "adopt" {
+				return nil, fmt.Errorf("pack '%s' does not exist. Please use 'dodot init %s' to create it first", opts.PackNames[0], opts.PackNames[0])
+			}
 			return nil, fmt.Errorf("pack discovery failed: %w", err)
 		}
 	}

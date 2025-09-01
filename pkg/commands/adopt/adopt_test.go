@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/commands/adopt"
-	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +20,9 @@ import (
 func TestAdoptFiles_EmptySourcePaths_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create the pack first
+	env.SetupPack("test-pack", testutil.PackConfig{})
 
 	opts := adopt.AdoptFilesOptions{
 		DotfilesRoot: env.DotfilesRoot,
@@ -34,19 +36,17 @@ func TestAdoptFiles_EmptySourcePaths_Orchestration(t *testing.T) {
 	result, err := adopt.AdoptFiles(opts)
 
 	// Verify empty sources handling
-	require.NoError(t, err)
-	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "adopt", result.Command, "command should be adopt")
-	assert.Equal(t, 0, result.Metadata.FilesAdopted, "should adopt no files")
-	assert.Len(t, result.Metadata.AdoptedPaths, 0, "should have no adopted paths")
-	if len(result.Packs) > 0 {
-		assert.Equal(t, "test-pack", result.Packs[0].Name, "pack name should match")
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "source paths are required")
+	assert.Nil(t, result)
 }
 
 func TestAdoptFiles_SingleFile_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create the pack first
+	env.SetupPack("git", testutil.PackConfig{})
 
 	// Create a file to adopt in the mock home directory
 	homeFile := filepath.Join(env.HomeDir, ".gitconfig")
@@ -91,6 +91,9 @@ func TestAdoptFiles_SingleFile_Orchestration(t *testing.T) {
 func TestAdoptFiles_MultipleFiles_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create the pack first
+	env.SetupPack("shell", testutil.PackConfig{})
 
 	// Create multiple files to adopt
 	files := map[string]string{
@@ -144,6 +147,9 @@ func TestAdoptFiles_NonExistentFile_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
+	// Create the pack first
+	env.SetupPack("test", testutil.PackConfig{})
+
 	nonExistentFile := filepath.Join(env.HomeDir, ".nonexistent")
 
 	opts := adopt.AdoptFilesOptions{
@@ -184,28 +190,11 @@ func TestAdoptFiles_NewPackCreation_Orchestration(t *testing.T) {
 	// Execute
 	result, err := adopt.AdoptFiles(opts)
 
-	// Verify new pack creation orchestration
-	require.NoError(t, err)
-	assert.NotNil(t, result, "should return adoption result")
-	assert.Equal(t, "adopt", result.Command, "command should be adopt")
-	assert.Equal(t, 1, result.Metadata.FilesAdopted, "should adopt the file")
-	assert.Len(t, result.Metadata.AdoptedPaths, 1, "should have one adopted path")
-	assert.True(t, len(result.Packs) > 0, "should have pack status")
-	if len(result.Packs) > 0 {
-		assert.Equal(t, "newpack", result.Packs[0].Name, "pack name should match")
-	}
-
-	// Verify pack directory was created
-	packPath := filepath.Join(env.DotfilesRoot, "newpack")
-	info, err := env.FS.Stat(packPath)
-	require.NoError(t, err)
-	assert.True(t, info.IsDir(), "pack directory should be created")
-
-	// Verify file was adopted into new pack
-	// The adopted file should be in the new pack directory
-	newPath := filepath.Join(env.DotfilesRoot, "newpack", "vimrc")
-	_, err = env.FS.Stat(newPath)
-	assert.NoError(t, err, "adopted file should exist in new pack")
+	// Verify error for non-existent pack
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not exist")
+	assert.Contains(t, err.Error(), "dodot init newpack")
+	assert.Nil(t, result)
 }
 
 func TestAdoptFiles_ForceOverwrite_Orchestration(t *testing.T) {
@@ -312,16 +301,16 @@ func TestAdoptFiles_InvalidPackName_Orchestration(t *testing.T) {
 
 	// Verify pack name validation
 	assert.Error(t, err, "should return error for empty pack name")
-	var dodotErr *errors.DodotError
-	if assert.ErrorAs(t, err, &dodotErr) {
-		assert.Equal(t, errors.ErrPackNotFound, dodotErr.Code, "should have pack not found error code")
-	}
+	assert.Contains(t, err.Error(), "does not exist")
 	assert.Nil(t, result, "result should be nil on error")
 }
 
 func TestAdoptFiles_PackNameTrailingSlash_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create pack first (without trailing slash)
+	env.SetupPack("test", testutil.PackConfig{})
 
 	// Create file to adopt
 	sourceFile := filepath.Join(env.HomeDir, ".testrc")
@@ -397,6 +386,9 @@ func TestAdoptFiles_XDGConfigFile_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
+	// Create the pack first
+	env.SetupPack("starship", testutil.PackConfig{})
+
 	// Create XDG config file
 	configDir := filepath.Join(env.HomeDir, ".config", "starship")
 	configFile := filepath.Join(configDir, "starship.toml")
@@ -447,6 +439,9 @@ func TestAdoptFiles_PartialFailure_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
+	// Create the pack first
+	env.SetupPack("mixed", testutil.PackConfig{})
+
 	// Create one valid file and one invalid path
 	validFile := filepath.Join(env.HomeDir, ".gitconfig")
 	err := env.FS.WriteFile(validFile, []byte("valid content"), 0644)
@@ -479,6 +474,9 @@ func TestAdoptFiles_PartialFailure_Orchestration(t *testing.T) {
 func TestAdoptFiles_ResultStructure_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create the pack first
+	env.SetupPack("structure-test", testutil.PackConfig{})
 
 	// Create test file
 	sourceFile := filepath.Join(env.HomeDir, ".testrc")
@@ -519,6 +517,9 @@ func TestAdoptFiles_ResultStructure_Orchestration(t *testing.T) {
 func TestAdoptFiles_FileSystemIntegration_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
+
+	// Create the pack first
+	env.SetupPack("app", testutil.PackConfig{})
 
 	// Create nested directory structure
 	nestedDir := filepath.Join(env.HomeDir, ".config", "app", "deep")

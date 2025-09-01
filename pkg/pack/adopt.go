@@ -64,14 +64,10 @@ func Adopt(opts AdoptOptions) (*types.PackCommandResult, error) {
 		return nil, errors.Wrap(err, errors.ErrPackNotFound, "invalid pack name")
 	}
 
-	// Check if pack exists or create it
+	// Check if pack exists
 	packPath := filepath.Join(opts.DotfilesRoot, packName)
 	if _, err := fs.Stat(packPath); os.IsNotExist(err) {
-		// Create pack directory
-		if err := fs.MkdirAll(packPath, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create pack directory: %w", err)
-		}
-		logger.Info().Str("pack", packName).Msg("Created pack directory")
+		return nil, errors.Newf(errors.ErrPackNotFound, "pack '%s' does not exist. Use 'dodot init %s' to create it first", packName, packName)
 	}
 
 	// Create pack instance
@@ -220,40 +216,4 @@ func (p *Pack) adoptSingleFile(fs types.FS, logger zerolog.Logger, sourcePath st
 		NewPath:      destPath,
 		SymlinkPath:  expandedPath,
 	}, nil
-}
-
-// AdoptOrCreate creates a pack if it doesn't exist before adopting files.
-// This is a static method since we might need to create the pack first.
-func AdoptOrCreate(fs types.FS, dotfilesRoot, packName string, opts AdoptOptions) (*types.PackCommandResult, error) {
-	logger := logging.GetLogger("pack.adopt")
-
-	// Normalize and validate pack name
-	packName = strings.TrimRight(packName, "/")
-	if packName == "" {
-		return nil, errors.New(errors.ErrPackNotFound, "pack name cannot be empty")
-	}
-	if err := paths.ValidatePackName(packName); err != nil {
-		return nil, errors.Wrap(err, errors.ErrPackNotFound, "invalid pack name")
-	}
-
-	// Check if pack exists
-	packPath := filepath.Join(dotfilesRoot, packName)
-	if _, err := fs.Stat(packPath); os.IsNotExist(err) {
-		// Create pack directory
-		if err := fs.MkdirAll(packPath, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create pack directory: %w", err)
-		}
-		logger.Info().Str("pack", packName).Msg("Created pack directory")
-	}
-
-	// Delegate to Adopt function with updated options
-	updatedOpts := AdoptOptions{
-		SourcePaths:   opts.SourcePaths,
-		Force:         opts.Force,
-		DotfilesRoot:  dotfilesRoot,
-		PackName:      packName,
-		FileSystem:    fs,
-		GetPackStatus: opts.GetPackStatus,
-	}
-	return Adopt(updatedOpts)
 }
