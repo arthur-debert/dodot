@@ -78,7 +78,7 @@ func (h *Handler) GetStateDirectoryName() string {
 }
 
 // FormatClearedItem formats a cleared item for display.
-func (h *Handler) FormatClearedItem(item types.ClearedItem, dryRun bool) string {
+func (h *Handler) FormatClearedItem(item operations.ClearedItem, dryRun bool) string {
 	if dryRun {
 		return "Would remove install run records"
 	}

@@ -80,7 +80,7 @@ func (h *Handler) GetStateDirectoryName() string {
 
 // GetClearConfirmation returns confirmation request for clearing if needed.
 // Homebrew uninstalls require explicit confirmation via DODOT_HOMEBREW_UNINSTALL.
-func (h *Handler) GetClearConfirmation(ctx types.ClearContext) *operations.ConfirmationRequest {
+func (h *Handler) GetClearConfirmation(ctx operations.ClearContext) *operations.ConfirmationRequest {
 	if os.Getenv("DODOT_HOMEBREW_UNINSTALL") != "true" {
 		return nil
 	}
@@ -94,7 +94,7 @@ func (h *Handler) GetClearConfirmation(ctx types.ClearContext) *operations.Confi
 }
 
 // FormatClearedItem formats a cleared item for display.
-func (h *Handler) FormatClearedItem(item types.ClearedItem, dryRun bool) string {
+func (h *Handler) FormatClearedItem(item operations.ClearedItem, dryRun bool) string {
 	uninstallEnabled := os.Getenv("DODOT_HOMEBREW_UNINSTALL") == "true"
 
 	if dryRun {

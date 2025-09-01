@@ -75,8 +75,8 @@ type Handler interface {
 
 	// Optional customization points with sensible defaults.
 	// Most handlers won't need to implement these.
-	GetClearConfirmation(ctx types.ClearContext) *ConfirmationRequest
-	FormatClearedItem(item types.ClearedItem, dryRun bool) string
+	GetClearConfirmation(ctx ClearContext) *ConfirmationRequest
+	FormatClearedItem(item ClearedItem, dryRun bool) string
 	ValidateOperations(ops []Operation) error
 	GetStateDirectoryName() string
 }
@@ -88,6 +88,21 @@ type ConfirmationRequest struct {
 	Title       string   // Question to ask the user
 	Description string   // Additional context
 	Items       []string // List of items affected (e.g., packages to uninstall)
+}
+
+// ClearedItem represents something that was removed during a clear operation
+type ClearedItem struct {
+	Type        string // "symlink", "brew_package", "script_output", etc.
+	Path        string // What was removed/affected
+	Description string // Human-readable description
+}
+
+// ClearContext provides all the resources needed for a handler to clean up
+type ClearContext struct {
+	Pack   types.Pack   // The pack being cleared
+	FS     types.FS     // For file operations
+	Paths  types.Pather // For path resolution
+	DryRun bool         // Whether this is a dry run
 }
 
 // BaseHandler provides default implementations for optional handler methods.
@@ -109,9 +124,9 @@ func (h *BaseHandler) Name() string                       { return h.name }
 func (h *BaseHandler) Category() handlers.HandlerCategory { return h.category }
 
 // Default implementations return empty/nil to use system defaults
-func (h *BaseHandler) GetClearConfirmation(ctx types.ClearContext) *ConfirmationRequest {
+func (h *BaseHandler) GetClearConfirmation(ctx ClearContext) *ConfirmationRequest {
 	return nil
 }
-func (h *BaseHandler) FormatClearedItem(item types.ClearedItem, dryRun bool) string { return "" }
-func (h *BaseHandler) ValidateOperations(ops []Operation) error                     { return nil }
-func (h *BaseHandler) GetStateDirectoryName() string                                { return "" }
+func (h *BaseHandler) FormatClearedItem(item ClearedItem, dryRun bool) string { return "" }
+func (h *BaseHandler) ValidateOperations(ops []Operation) error               { return nil }
+func (h *BaseHandler) GetStateDirectoryName() string                          { return "" }
