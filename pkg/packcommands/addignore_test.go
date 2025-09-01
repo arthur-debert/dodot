@@ -3,13 +3,13 @@
 // DEPENDENCIES: Memory FS
 // PURPOSE: Test addignore command orchestration for creating ignore files
 
-package pack_test
+package packcommands_test
 
 import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/testutil"
@@ -29,14 +29,14 @@ func TestAddIgnore_CreateIgnoreFile_Orchestration(t *testing.T) {
 		},
 	})
 
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim",
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify orchestration behavior
 	require.NoError(t, err)
@@ -64,14 +64,14 @@ func TestAddIgnore_AlreadyExists_Orchestration(t *testing.T) {
 	}
 	env.SetupPack("vim", testutil.PackConfig{Files: packFiles})
 
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim",
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify already exists behavior
 	require.NoError(t, err)
@@ -94,14 +94,14 @@ func TestAddIgnore_PackNameNormalization_Orchestration(t *testing.T) {
 		},
 	})
 
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim/", // Trailing slash should be normalized
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify pack name normalization
 	require.NoError(t, err)
@@ -117,14 +117,14 @@ func TestAddIgnore_NonExistentPack_Orchestration(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
 	// Don't create any pack - test non-existent pack behavior
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "nonexistent",
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify error handling for non-existent pack
 	assert.Error(t, err, "should return error for non-existent pack")
@@ -140,14 +140,14 @@ func TestAddIgnore_EmptyPackName_Orchestration(t *testing.T) {
 	// Setup
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "", // Empty pack name
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify validation error for empty pack name
 	assert.Error(t, err, "should return error for empty pack name")
@@ -173,14 +173,14 @@ func TestAddIgnore_InvalidPackName_Orchestration(t *testing.T) {
 
 	for _, packName := range invalidPackNames {
 		t.Run("invalid_name_"+packName, func(t *testing.T) {
-			opts := pack.AddIgnoreOptions{
+			opts := packcommands.AddIgnoreOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     packName,
 				FileSystem:   env.FS,
 			}
 
 			// Execute
-			result, err := pack.AddIgnore(opts)
+			result, err := packcommands.AddIgnore(opts)
 
 			// Verify validation catches invalid pack names
 			assert.Error(t, err, "should return error for invalid pack name: %s", packName)
@@ -203,14 +203,14 @@ func TestAddIgnore_ResultStructure_Orchestration(t *testing.T) {
 		},
 	})
 
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "vim",
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify complete result structure
 	require.NoError(t, err)
@@ -241,13 +241,13 @@ func TestAddIgnore_MultiplePacksOrchestration_Integration(t *testing.T) {
 	// Execute addignore for each pack
 	for _, packName := range packNames {
 		t.Run("pack_"+packName, func(t *testing.T) {
-			opts := pack.AddIgnoreOptions{
+			opts := packcommands.AddIgnoreOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackName:     packName,
 				FileSystem:   env.FS,
 			}
 
-			result, err := pack.AddIgnore(opts)
+			result, err := packcommands.AddIgnore(opts)
 
 			// Verify each pack gets its own ignore file
 			require.NoError(t, err)
@@ -276,14 +276,14 @@ func TestAddIgnore_FileSystemIntegration_Orchestration(t *testing.T) {
 		},
 	})
 
-	opts := pack.AddIgnoreOptions{
+	opts := packcommands.AddIgnoreOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackName:     "complex-pack",
 		FileSystem:   env.FS,
 	}
 
 	// Execute
-	result, err := pack.AddIgnore(opts)
+	result, err := packcommands.AddIgnore(opts)
 
 	// Verify ignore file creation integrates with pack structure
 	require.NoError(t, err)

@@ -1,14 +1,14 @@
 // Test Type: Unit Test
 // Description: Tests for the hashutil package - checksum calculation with minimal filesystem dependency
 
-package hashutil_test
+package utils_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/internal/hashutil"
+	"github.com/arthur-debert/dodot/pkg/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,7 +57,7 @@ func TestCalculateFileChecksum_Success(t *testing.T) {
 			require.NoError(t, err)
 
 			// Calculate checksum
-			checksum, err := hashutil.CalculateFileChecksum(testFile)
+			checksum, err := utils.CalculateFileChecksum(testFile)
 			require.NoError(t, err)
 
 			// Verify checksum format
@@ -84,7 +84,7 @@ func TestCalculateFileChecksum_Consistency(t *testing.T) {
 	// Calculate checksum multiple times
 	checksums := make([]string, 5)
 	for i := 0; i < 5; i++ {
-		checksum, err := hashutil.CalculateFileChecksum(testFile)
+		checksum, err := utils.CalculateFileChecksum(testFile)
 		require.NoError(t, err)
 		checksums[i] = checksum
 	}
@@ -131,7 +131,7 @@ func TestCalculateFileChecksum_Errors(t *testing.T) {
 			}
 
 			// Attempt to calculate checksum
-			_, err := hashutil.CalculateFileChecksum(path)
+			_, err := utils.CalculateFileChecksum(path)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -163,7 +163,7 @@ func TestCalculateFileChecksum_LargeFile(t *testing.T) {
 	require.NoError(t, err)
 
 	// Calculate checksum
-	checksum, err := hashutil.CalculateFileChecksum(largeFile)
+	checksum, err := utils.CalculateFileChecksum(largeFile)
 	require.NoError(t, err)
 
 	// Verify format

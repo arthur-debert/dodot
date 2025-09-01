@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/pack"
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -71,7 +71,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 
 	switch cmdType {
 	case CommandOn:
-		result, err = pack.TurnOn(pack.OnOptions{
+		result, err = packcommands.TurnOn(packcommands.OnOptions{
 			DotfilesRoot:   opts.DotfilesRoot,
 			PackNames:      opts.PackNames,
 			DryRun:         opts.DryRun,
@@ -82,7 +82,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 		})
 
 	case CommandOff:
-		result, err = pack.TurnOff(pack.OffOptions{
+		result, err = packcommands.TurnOff(packcommands.OffOptions{
 			DotfilesRoot: opts.DotfilesRoot,
 			PackNames:    opts.PackNames,
 			DryRun:       opts.DryRun,
@@ -90,7 +90,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 		})
 
 	case CommandStatus:
-		result, err = pack.GetPacksStatus(pack.StatusCommandOptions{
+		result, err = packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
 			DotfilesRoot: opts.DotfilesRoot,
 			PackNames:    opts.PackNames,
 			Paths:        opts.Paths,
@@ -100,7 +100,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 	case CommandInit:
 		// For init, we need to create a status function
 		getPackStatus := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-			statusResult, err := pack.GetPacksStatus(pack.StatusCommandOptions{
+			statusResult, err := packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
 				DotfilesRoot: dotfilesRoot,
 				PackNames:    []string{packName},
 				FileSystem:   fs,
@@ -111,7 +111,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 			return statusResult.Packs, nil
 		}
 
-		result, err = pack.Initialize(pack.InitOptions{
+		result, err = packcommands.Initialize(packcommands.InitOptions{
 			PackName:      opts.PackName,
 			DotfilesRoot:  opts.DotfilesRoot,
 			FileSystem:    opts.FileSystem,
@@ -125,7 +125,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 			packName = opts.PackNames[0]
 		}
 
-		result, err = pack.Fill(pack.FillOptions{
+		result, err = packcommands.Fill(packcommands.FillOptions{
 			PackName:     packName,
 			DotfilesRoot: opts.DotfilesRoot,
 			FileSystem:   opts.FileSystem,
@@ -138,12 +138,12 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 			packName = opts.PackNames[0]
 		}
 
-		// Skip pack validation here - it will be handled by pack.Adopt
+		// Skip pack validation here - it will be handled by packcommands.Adopt
 		// This avoids circular dependency issues
 
 		// Create status function
 		getPackStatus := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-			statusResult, err := pack.GetPacksStatus(pack.StatusCommandOptions{
+			statusResult, err := packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
 				DotfilesRoot: dotfilesRoot,
 				PackNames:    []string{packName},
 				FileSystem:   fs,
@@ -154,7 +154,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 			return statusResult.Packs, nil
 		}
 
-		result, err = pack.Adopt(pack.AdoptOptions{
+		result, err = packcommands.Adopt(packcommands.AdoptOptions{
 			SourcePaths:   opts.SourcePaths,
 			Force:         opts.Force,
 			DotfilesRoot:  opts.DotfilesRoot,
@@ -172,7 +172,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 
 		// Create status function
 		getPackStatus := func(packName, dotfilesRoot string, fs types.FS) ([]types.DisplayPack, error) {
-			statusResult, err := pack.GetPacksStatus(pack.StatusCommandOptions{
+			statusResult, err := packcommands.GetPacksStatus(packcommands.StatusCommandOptions{
 				DotfilesRoot: dotfilesRoot,
 				PackNames:    []string{packName},
 				FileSystem:   fs,
@@ -183,7 +183,7 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 			return statusResult.Packs, nil
 		}
 
-		result, err = pack.AddIgnore(pack.AddIgnoreOptions{
+		result, err = packcommands.AddIgnore(packcommands.AddIgnoreOptions{
 			PackName:      packName,
 			DotfilesRoot:  opts.DotfilesRoot,
 			FileSystem:    opts.FileSystem,
