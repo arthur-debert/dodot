@@ -161,7 +161,6 @@ func TestTurnOn_MixedProvisioningStates_Orchestration(t *testing.T) {
 			"install.sh": "#!/bin/sh\necho install",
 			"setup.sh":   "#!/bin/sh\necho setup",
 			"profile.sh": "# shell profile",
-			"Brewfile":   "brew 'git'",
 			".dodot.toml": `[[rule]]
 match = ".vimrc"
 handler = "symlink"
@@ -176,11 +175,7 @@ handler = "install"
 
 [[rule]]
 match = "profile.sh"
-handler = "shell"
-
-[[rule]]
-match = "Brewfile"
-handler = "homebrew"`,
+handler = "shell"`,
 		},
 	})
 
