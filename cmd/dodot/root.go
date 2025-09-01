@@ -21,7 +21,6 @@ import (
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/commands"
 	offpkg "github.com/arthur-debert/dodot/pkg/commands/off"
-	onpkg "github.com/arthur-debert/dodot/pkg/commands/on"
 	"github.com/arthur-debert/dodot/pkg/core"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -753,8 +752,8 @@ func newOnCmd() *cobra.Command {
 			Strs("packs", args).
 			Msg("Turning on packs")
 
-		// Turn on packs using the on command
-		result, err := onpkg.OnPacks(onpkg.OnPacksOptions{
+		// Turn on packs using the dispatcher
+		result, err := commands.Dispatch(commands.CommandOn, commands.DispatchOptions{
 			DotfilesRoot:   p.DotfilesRoot(),
 			PackNames:      args,
 			DryRun:         dryRun,
