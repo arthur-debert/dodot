@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/utils"
 )
@@ -25,7 +24,7 @@ type Handler struct {
 // NewHandler creates a new simplified homebrew handler.
 func NewHandler() *Handler {
 	return &Handler{
-		BaseHandler: operations.NewBaseHandler(HomebrewHandlerName, handlers.CategoryCodeExecution),
+		BaseHandler: operations.NewBaseHandler(HomebrewHandlerName, operations.CategoryCodeExecution),
 	}
 }
 

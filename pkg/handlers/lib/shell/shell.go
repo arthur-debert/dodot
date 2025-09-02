@@ -3,7 +3,6 @@ package shell
 import (
 	_ "embed"
 
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
@@ -21,7 +20,7 @@ type Handler struct {
 // NewHandler creates a new simplified shell handler.
 func NewHandler() *Handler {
 	return &Handler{
-		BaseHandler: operations.NewBaseHandler(ShellHandlerName, handlers.CategoryConfiguration),
+		BaseHandler: operations.NewBaseHandler(ShellHandlerName, operations.CategoryConfiguration),
 	}
 }
 

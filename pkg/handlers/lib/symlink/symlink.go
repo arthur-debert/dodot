@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
@@ -20,7 +19,7 @@ type Handler struct {
 // NewHandler creates a new simplified symlink handler.
 func NewHandler() *Handler {
 	return &Handler{
-		BaseHandler: operations.NewBaseHandler(SymlinkHandlerName, handlers.CategoryConfiguration),
+		BaseHandler: operations.NewBaseHandler(SymlinkHandlerName, operations.CategoryConfiguration),
 	}
 }
 

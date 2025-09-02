@@ -3,7 +3,6 @@ package path
 import (
 	"fmt"
 
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
@@ -30,9 +29,9 @@ func (h *Handler) Name() string {
 }
 
 // Category returns the handler category.
-func (h *Handler) Category() handlers.HandlerCategory {
+func (h *Handler) Category() operations.HandlerCategory {
 	// Path handler is a configuration handler - it creates links that shell init reads
-	return handlers.CategoryConfiguration
+	return operations.CategoryConfiguration
 }
 
 // GetMetadata provides UI information about the handler.

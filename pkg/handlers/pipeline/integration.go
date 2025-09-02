@@ -82,7 +82,7 @@ func GroupMatchesByHandler(matches []rules.RuleMatch) map[string][]rules.RuleMat
 func GetHandlerExecutionOrder(handlerNames []string) []string {
 	type handlerInfo struct {
 		name     string
-		category handlers.HandlerCategory
+		category operations.HandlerCategory
 	}
 
 	var handlerList []handlerInfo
@@ -105,7 +105,7 @@ func GetHandlerExecutionOrder(handlerNames []string) []string {
 			return handlerList[i].name < handlerList[j].name // alphabetical within same category
 		}
 		// Code execution comes before configuration
-		return handlerList[i].category == handlers.CategoryCodeExecution
+		return handlerList[i].category == operations.CategoryCodeExecution
 	})
 
 	// Extract sorted names

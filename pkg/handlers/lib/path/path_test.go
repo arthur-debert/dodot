@@ -3,7 +3,6 @@ package path_test
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/lib/path"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/stretchr/testify/assert"
@@ -166,7 +165,7 @@ func TestHandler_Metadata(t *testing.T) {
 	assert.Equal(t, "path", handler.Name())
 
 	// Test category
-	assert.Equal(t, handlers.CategoryConfiguration, handler.Category())
+	assert.Equal(t, operations.CategoryConfiguration, handler.Category())
 
 	// Test metadata
 	meta := handler.GetMetadata()

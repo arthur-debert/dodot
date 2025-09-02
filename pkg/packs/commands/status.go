@@ -11,6 +11,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -224,10 +225,10 @@ func getHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastor
 	category := handlers.HandlerRegistry.GetHandlerCategory(match.HandlerName)
 
 	switch category {
-	case handlers.CategoryConfiguration:
+	case operations.CategoryConfiguration:
 		// For configuration handlers (symlink, path, shell), check intermediate links
 		return getConfigurationHandlerStatus(match, pack, dataStore, fs, pathsInstance)
-	case handlers.CategoryCodeExecution:
+	case operations.CategoryCodeExecution:
 		// For code execution handlers (install, homebrew), check sentinels
 		return getCodeExecutionHandlerStatus(match, pack, dataStore, fs)
 	default:

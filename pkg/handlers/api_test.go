@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
 func TestHandlerRegistry_IsConfigurationHandler(t *testing.T) {
@@ -114,42 +116,42 @@ func TestHandlerRegistry_GetHandlerCategory(t *testing.T) {
 	tests := []struct {
 		name        string
 		handlerName string
-		expected    HandlerCategory
+		expected    operations.HandlerCategory
 	}{
 		{
 			name:        "symlink returns configuration category",
 			handlerName: "symlink",
-			expected:    CategoryConfiguration,
+			expected:    operations.CategoryConfiguration,
 		},
 		{
 			name:        "shell returns configuration category",
 			handlerName: "shell",
-			expected:    CategoryConfiguration,
+			expected:    operations.CategoryConfiguration,
 		},
 		{
 			name:        "path returns configuration category",
 			handlerName: "path",
-			expected:    CategoryConfiguration,
+			expected:    operations.CategoryConfiguration,
 		},
 		{
 			name:        "homebrew returns code execution category",
 			handlerName: "homebrew",
-			expected:    CategoryCodeExecution,
+			expected:    operations.CategoryCodeExecution,
 		},
 		{
 			name:        "install returns code execution category",
 			handlerName: "install",
-			expected:    CategoryCodeExecution,
+			expected:    operations.CategoryCodeExecution,
 		},
 		{
 			name:        "unknown handler defaults to configuration category",
 			handlerName: "unknown",
-			expected:    CategoryConfiguration,
+			expected:    operations.CategoryConfiguration,
 		},
 		{
 			name:        "empty string defaults to configuration category",
 			handlerName: "",
-			expected:    CategoryConfiguration,
+			expected:    operations.CategoryConfiguration,
 		},
 	}
 
@@ -261,14 +263,14 @@ func TestHandlerRegistry_Consistency(t *testing.T) {
 		isConfig := HandlerRegistry.IsConfigurationHandler(handler)
 		category := HandlerRegistry.GetHandlerCategory(handler)
 
-		if isConfig && category != CategoryConfiguration {
+		if isConfig && category != operations.CategoryConfiguration {
 			t.Errorf("Handler %q: IsConfigurationHandler returns true but GetHandlerCategory returns %v", handler, category)
 		}
 
 		// Test that IsCodeExecutionHandler and GetHandlerCategory are consistent
 		isCodeExec := HandlerRegistry.IsCodeExecutionHandler(handler)
 
-		if isCodeExec && category != CategoryCodeExecution {
+		if isCodeExec && category != operations.CategoryCodeExecution {
 			t.Errorf("Handler %q: IsCodeExecutionHandler returns true but GetHandlerCategory returns %v", handler, category)
 		}
 
@@ -294,7 +296,7 @@ func TestHandlerRegistry_ConfigurationHandlersComplete(t *testing.T) {
 			t.Errorf("GetConfigurationHandlers() returned %q which is not identified as configuration handler", handler)
 		}
 		// Each should have configuration category
-		if HandlerRegistry.GetHandlerCategory(handler) != CategoryConfiguration {
+		if HandlerRegistry.GetHandlerCategory(handler) != operations.CategoryConfiguration {
 			t.Errorf("GetConfigurationHandlers() returned %q which has category %v", handler, HandlerRegistry.GetHandlerCategory(handler))
 		}
 		// Each should NOT be identified as code execution
@@ -314,7 +316,7 @@ func TestHandlerRegistry_CodeExecutionHandlersComplete(t *testing.T) {
 			t.Errorf("GetCodeExecutionHandlers() returned %q which is not identified as code execution handler", handler)
 		}
 		// Each should have code execution category
-		if HandlerRegistry.GetHandlerCategory(handler) != CategoryCodeExecution {
+		if HandlerRegistry.GetHandlerCategory(handler) != operations.CategoryCodeExecution {
 			t.Errorf("GetCodeExecutionHandlers() returned %q which has category %v", handler, HandlerRegistry.GetHandlerCategory(handler))
 		}
 		// Each should NOT be identified as configuration
@@ -329,56 +331,56 @@ func TestHandlerRegistry_EdgeCases(t *testing.T) {
 	edgeCases := []struct {
 		name     string
 		input    string
-		category HandlerCategory
+		category operations.HandlerCategory
 		isConfig bool
 		isCode   bool
 	}{
 		{
 			name:     "empty string",
 			input:    "",
-			category: CategoryConfiguration, // default
+			category: operations.CategoryConfiguration, // default
 			isConfig: false,
 			isCode:   false,
 		},
 		{
 			name:     "unknown handler",
 			input:    "unknown",
-			category: CategoryConfiguration, // default
+			category: operations.CategoryConfiguration, // default
 			isConfig: false,
 			isCode:   false,
 		},
 		{
 			name:     "uppercase variation",
 			input:    "SYMLINK",
-			category: CategoryConfiguration, // default
-			isConfig: false,                 // case sensitive
+			category: operations.CategoryConfiguration, // default
+			isConfig: false,                            // case sensitive
 			isCode:   false,
 		},
 		{
 			name:     "whitespace suffix",
 			input:    "symlink ",
-			category: CategoryConfiguration, // default
-			isConfig: false,                 // exact match
+			category: operations.CategoryConfiguration, // default
+			isConfig: false,                            // exact match
 			isCode:   false,
 		},
 		{
 			name:     "whitespace prefix",
 			input:    " symlink",
-			category: CategoryConfiguration, // default
-			isConfig: false,                 // exact match
+			category: operations.CategoryConfiguration, // default
+			isConfig: false,                            // exact match
 			isCode:   false,
 		},
 		{
 			name:     "similar but different",
 			input:    "sym-link",
-			category: CategoryConfiguration, // default
+			category: operations.CategoryConfiguration, // default
 			isConfig: false,
 			isCode:   false,
 		},
 		{
 			name:     "clearly non-existent",
 			input:    "nonexistent",
-			category: CategoryConfiguration, // default
+			category: operations.CategoryConfiguration, // default
 			isConfig: false,
 			isCode:   false,
 		},
