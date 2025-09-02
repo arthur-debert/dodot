@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Script to show git diff stats for Go files excluding test files
+# Usage: ./scripts/go-diff-stat-no-test [branch] [path-pattern]
+# Default branch: main
+# Default path: pkg
+
+BRANCH=${1:-main}
+PATH_PATTERN=${2:-pkg}
+
+# Find all .go files in the specified path that don't end with test.go
+# Use git ls-files to get tracked files and filter them
+git ls-files "${PATH_PATTERN}/**/*.go" | grep -v 'test\.go$' | xargs git --no-pager diff "$BRANCH" --stat --
