@@ -1,4 +1,4 @@
-package install_test
+package homebrew_test
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers/install"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/homebrew"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -58,25 +58,28 @@ func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func TestInstallHandler_OperationIntegration(t *testing.T) {
-	// This test verifies the install handler works with the operation system
+func TestHomebrewHandler_OperationIntegration(t *testing.T) {
+	// This test verifies the homebrew handler works with the operation system
 
-	// Create test script
+	// Create test Brewfile
 	tempDir := t.TempDir()
-	scriptContent := "#!/bin/bash\necho 'Installing test pack'\n"
-	scriptPath := filepath.Join(tempDir, "install.sh")
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	brewfileContent := `# Test Brewfile
+brew "git"
+cask "visual-studio-code"
+`
+	brewfilePath := filepath.Join(tempDir, "Brewfile")
+	err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644)
 	require.NoError(t, err)
 
 	// Create simplified handler
-	handler := install.NewHandler()
+	handler := homebrew.NewHandler()
 
 	// Create test matches
 	matches := []operations.FileInput{
 		{
-			PackName:     "testpack",
-			RelativePath: "install.sh",
-			SourcePath:   scriptPath,
+			PackName:     "dev-tools",
+			RelativePath: "Brewfile",
+			SourcePath:   brewfilePath,
 		},
 	}
 
@@ -88,9 +91,10 @@ func TestInstallHandler_OperationIntegration(t *testing.T) {
 	// Verify operation
 	op := ops[0]
 	assert.Equal(t, operations.RunCommand, op.Type)
-	assert.Equal(t, "testpack", op.Pack)
-	assert.Equal(t, "install", op.Handler)
-	assert.Contains(t, op.Command, scriptPath)
+	assert.Equal(t, "dev-tools", op.Pack)
+	assert.Equal(t, "homebrew", op.Handler)
+	assert.Contains(t, op.Command, "brew bundle")
+	assert.Contains(t, op.Command, brewfilePath)
 	assert.NotEmpty(t, op.Sentinel)
 
 	// Test with executor in dry-run mode
@@ -107,23 +111,23 @@ func TestInstallHandler_OperationIntegration(t *testing.T) {
 	assert.Contains(t, results[0].Message, "Would execute")
 }
 
-func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
+func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 	// This test verifies actual execution with the datastore
 
-	// Create test script
+	// Create test Brewfile
 	tempDir := t.TempDir()
-	scriptContent := "#!/bin/bash\necho 'Installing test pack'\n"
-	scriptPath := filepath.Join(tempDir, "install.sh")
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	brewfileContent := `brew "git"`
+	brewfilePath := filepath.Join(tempDir, "Brewfile")
+	err := os.WriteFile(brewfilePath, []byte(brewfileContent), 0644)
 	require.NoError(t, err)
 
-	handler := install.NewHandler()
+	handler := homebrew.NewHandler()
 
 	matches := []operations.FileInput{
 		{
-			PackName:     "testpack",
-			RelativePath: "install.sh",
-			SourcePath:   scriptPath,
+			PackName:     "tools",
+			RelativePath: "Brewfile",
+			SourcePath:   brewfilePath,
 		},
 	}
 
@@ -134,9 +138,9 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 	store := new(MockSimpleDataStore)
 
 	// Expect RunAndRecord to be called with the correct parameters
-	expectedCommand := fmt.Sprintf("bash '%s'", scriptPath)
-	store.On("RunAndRecord", "testpack", "install", expectedCommand, mock.MatchedBy(func(s string) bool {
-		// Sentinel should contain filename and checksum
+	expectedCommand := fmt.Sprintf("brew bundle --file='%s'", brewfilePath)
+	store.On("RunAndRecord", "tools", "homebrew", expectedCommand, mock.MatchedBy(func(s string) bool {
+		// Sentinel should contain pack, filename and checksum
 		return len(s) > 0
 	})).Return(nil)
 
@@ -155,48 +159,9 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 	store.AssertExpectations(t)
 }
 
-func TestInstallHandler_CheckSentinel(t *testing.T) {
-	// Test that CheckSentinel operations work correctly
-
-	handler := install.NewHandler()
-
-	// Create a CheckSentinel operation
-	op := operations.Operation{
-		Type:     operations.CheckSentinel,
-		Pack:     "testpack",
-		Handler:  "install",
-		Sentinel: "install.sh-abc123",
-	}
-
-	// Test when sentinel exists
-	store := new(MockSimpleDataStore)
-
-	store.On("HasSentinel", "testpack", "install", "install.sh-abc123").Return(true, nil)
-
-	executor := operations.NewExecutor(store, nil, false)
-	results, err := executor.Execute([]operations.Operation{op}, handler)
-
-	require.NoError(t, err)
-	assert.Len(t, results, 1)
-	assert.True(t, results[0].Success)
-	assert.Equal(t, "Already completed", results[0].Message)
-
-	// Test when sentinel doesn't exist
-	store2 := new(MockSimpleDataStore)
-	store2.On("HasSentinel", "testpack", "install", "install.sh-abc123").Return(false, nil)
-
-	executor2 := operations.NewExecutor(store2, nil, false)
-	results2, err := executor2.Execute([]operations.Operation{op}, handler)
-
-	require.NoError(t, err)
-	assert.Len(t, results2, 1)
-	assert.True(t, results2[0].Success)
-	assert.Equal(t, "Not completed", results2[0].Message)
-}
-
-func TestInstallHandler_ClearIntegration(t *testing.T) {
+func TestHomebrewHandler_ClearIntegration(t *testing.T) {
 	// Test clear functionality
-	handler := install.NewHandler()
+	handler := homebrew.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -205,7 +170,7 @@ func TestInstallHandler_ClearIntegration(t *testing.T) {
 	// Clear context
 	ctx := operations.ClearContext{
 		Pack: types.Pack{
-			Name: "testpack",
+			Name: "dev-tools",
 		},
 		DryRun: true,
 	}
@@ -217,36 +182,82 @@ func TestInstallHandler_ClearIntegration(t *testing.T) {
 
 	// Check cleared item
 	item := clearedItems[0]
-	assert.Equal(t, "provision_state", item.Type)
-	assert.Contains(t, item.Path, "testpack/install")
-	assert.Equal(t, "Would remove install run records", item.Description)
+	assert.Equal(t, "homebrew_state", item.Type)
+	assert.Contains(t, item.Path, "dev-tools/homebrew")
+	assert.Contains(t, item.Description, "Would remove Homebrew state")
+	assert.Contains(t, item.Description, "DODOT_HOMEBREW_UNINSTALL=true")
 }
 
-func TestInstallHandler_IdempotentExecution(t *testing.T) {
-	// Test that scripts with same content get same sentinel
+func TestHomebrewHandler_ClearWithUninstall(t *testing.T) {
+	// Test clear with uninstall enabled
+	_ = os.Setenv("DODOT_HOMEBREW_UNINSTALL", "true")
+	defer func() { _ = os.Unsetenv("DODOT_HOMEBREW_UNINSTALL") }()
 
-	// Create test script
-	tempDir := t.TempDir()
-	scriptContent := "#!/bin/bash\necho 'test'\n"
-	scriptPath := filepath.Join(tempDir, "install.sh")
-	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
-	require.NoError(t, err)
+	handler := homebrew.NewHandler()
 
-	handler := install.NewHandler()
+	// Create mock store and executor
+	store := new(MockSimpleDataStore)
+	executor := operations.NewExecutor(store, nil, false)
 
-	match := operations.FileInput{
-		PackName:     "test",
-		RelativePath: "install.sh",
-		SourcePath:   scriptPath,
+	// Clear context
+	ctx := operations.ClearContext{
+		Pack: types.Pack{
+			Name: "dev-tools",
+		},
+		DryRun: true,
 	}
 
-	// Generate operations twice
-	ops1, err := handler.ToOperations([]operations.FileInput{match})
+	// Execute clear
+	clearedItems, err := executor.ExecuteClear(handler, ctx)
+	require.NoError(t, err)
+	assert.Len(t, clearedItems, 1)
+
+	// Check cleared item reflects uninstall
+	item := clearedItems[0]
+	assert.Contains(t, item.Description, "Would uninstall Homebrew packages")
+}
+
+func TestHomebrewHandler_MultipleBrewfiles(t *testing.T) {
+	// Test handling multiple Brewfiles in different directories
+	tempDir := t.TempDir()
+
+	// Create multiple Brewfiles
+	brewfile1 := filepath.Join(tempDir, "Brewfile")
+	err := os.WriteFile(brewfile1, []byte("brew \"git\"\n"), 0644)
 	require.NoError(t, err)
 
-	ops2, err := handler.ToOperations([]operations.FileInput{match})
+	appsDir := filepath.Join(tempDir, "apps")
+	err = os.MkdirAll(appsDir, 0755)
 	require.NoError(t, err)
 
-	// Same content should produce same sentinel
-	assert.Equal(t, ops1[0].Sentinel, ops2[0].Sentinel)
+	brewfile2 := filepath.Join(appsDir, "Brewfile")
+	err = os.WriteFile(brewfile2, []byte("cask \"slack\"\n"), 0644)
+	require.NoError(t, err)
+
+	handler := homebrew.NewHandler()
+
+	matches := []operations.FileInput{
+		{
+			PackName:     "tools",
+			RelativePath: "Brewfile",
+			SourcePath:   brewfile1,
+		},
+		{
+			PackName:     "tools",
+			RelativePath: "apps/Brewfile",
+			SourcePath:   brewfile2,
+		},
+	}
+
+	ops, err := handler.ToOperations(matches)
+	require.NoError(t, err)
+	assert.Len(t, ops, 2)
+
+	// Each should have unique sentinel
+	assert.NotEqual(t, ops[0].Sentinel, ops[1].Sentinel)
+
+	// Both should use brew bundle
+	for _, op := range ops {
+		assert.Contains(t, op.Command, "brew bundle")
+	}
 }

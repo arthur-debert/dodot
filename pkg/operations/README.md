@@ -59,7 +59,7 @@ SimpleDataStore (4 methods)
 Run tests with:
 ```bash
 go test ./pkg/operations/...
-go test ./pkg/handlers/path/simplified_test.go
+go test ./pkg/handlers/lib/path/simplified_test.go
 ```
 
 ## Phase 2 Status ✅ COMPLETED

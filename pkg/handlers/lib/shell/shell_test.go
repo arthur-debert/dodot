@@ -3,7 +3,7 @@ package shell_test
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers/shell"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/shell"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

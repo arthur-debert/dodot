@@ -8,11 +8,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	// Import handler packages to register their factories
-	_ "github.com/arthur-debert/dodot/pkg/handlers/homebrew"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/install"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/path"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/shell"
-	_ "github.com/arthur-debert/dodot/pkg/handlers/symlink"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/lib/homebrew"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/lib/install"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/lib/path"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/lib/shell"
+	_ "github.com/arthur-debert/dodot/pkg/handlers/lib/symlink"
 )
 
 func TestTopicsCommand(t *testing.T) {

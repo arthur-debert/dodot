@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers/symlink"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/symlink"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

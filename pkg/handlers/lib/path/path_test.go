@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/handlers/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/path"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

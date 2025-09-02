@@ -1,9 +1,10 @@
-package shell_test
+package symlink_test
 
 import (
+	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers/shell"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/symlink"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -55,43 +56,41 @@ func (m *MockSimpleDataStore) ListHandlerSentinels(pack, handlerName string) ([]
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func TestShellHandler_OperationIntegration(t *testing.T) {
-	// This test verifies the shell handler works with the operation system
+func TestSymlinkHandler_OperationIntegration(t *testing.T) {
+	// This test verifies the symlink handler works with the operation system
+
+	// Set HOME for consistent tests
+	oldHome := os.Getenv("HOME")
+	_ = os.Setenv("HOME", "/home/testuser")
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
 
 	// Create simplified handler
-	handler := shell.NewHandler()
+	handler := symlink.NewHandler()
 
 	// Create test matches
 	matches := []operations.FileInput{
 		{
-			PackName:     "bash",
-			RelativePath: "aliases.sh",
-			SourcePath:   "/dotfiles/bash/aliases.sh",
+			PackName:     "vim",
+			RelativePath: ".vimrc",
+			SourcePath:   "/dotfiles/vim/.vimrc",
 		},
 		{
-			PackName:     "bash",
-			RelativePath: "functions.sh",
-			SourcePath:   "/dotfiles/bash/functions.sh",
-		},
-		{
-			PackName:     "zsh",
-			RelativePath: "config.zsh",
-			SourcePath:   "/dotfiles/zsh/config.zsh",
+			PackName:     "vim",
+			RelativePath: ".vim/colors/theme.vim",
+			SourcePath:   "/dotfiles/vim/.vim/colors/theme.vim",
 		},
 	}
 
 	// Convert to operations
 	ops, err := handler.ToOperations(matches)
 	require.NoError(t, err)
-	assert.Len(t, ops, 3) // One operation per script
+	assert.Len(t, ops, 4) // 2 operations per file
 
 	// Verify operations
-	for i, op := range ops {
-		assert.Equal(t, operations.CreateDataLink, op.Type)
-		assert.Equal(t, "shell", op.Handler)
-		assert.Equal(t, matches[i].PackName, op.Pack)
-		assert.Equal(t, matches[i].SourcePath, op.Source)
-	}
+	assert.Equal(t, operations.CreateDataLink, ops[0].Type)
+	assert.Equal(t, operations.CreateUserLink, ops[1].Type)
+	assert.Equal(t, operations.CreateDataLink, ops[2].Type)
+	assert.Equal(t, operations.CreateUserLink, ops[3].Type)
 
 	// Test with executor in dry-run mode
 	store := new(MockSimpleDataStore)
@@ -100,25 +99,30 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 	// Execute operations
 	results, err := executor.Execute(ops, handler)
 	require.NoError(t, err)
-	assert.Len(t, results, 3)
+	assert.Len(t, results, 4)
 
 	// All should be successful in dry run
 	for _, result := range results {
 		assert.True(t, result.Success)
-		assert.Contains(t, result.Message, "Would create data link")
+		assert.Contains(t, result.Message, "Would")
 	}
 }
 
-func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
+func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 	// This test verifies actual execution with the datastore
 
-	handler := shell.NewHandler()
+	// Set HOME for consistent tests
+	oldHome := os.Getenv("HOME")
+	_ = os.Setenv("HOME", "/home/testuser")
+	defer func() { _ = os.Setenv("HOME", oldHome) }()
+
+	handler := symlink.NewHandler()
 
 	matches := []operations.FileInput{
 		{
-			PackName:     "bash",
-			RelativePath: "aliases.sh",
-			SourcePath:   "/dotfiles/bash/aliases.sh",
+			PackName:     "vim",
+			RelativePath: ".vimrc",
+			SourcePath:   "/dotfiles/vim/.vimrc",
 		},
 	}
 
@@ -129,27 +133,36 @@ func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
 	store := new(MockSimpleDataStore)
 
 	// Expect CreateDataLink to be called
-	store.On("CreateDataLink", "bash", "shell", "/dotfiles/bash/aliases.sh").
-		Return("/datastore/bash/shell/aliases.sh", nil)
+	store.On("CreateDataLink", "vim", "symlink", "/dotfiles/vim/.vimrc").
+		Return("/datastore/vim/symlinks/.vimrc", nil)
+
+	// Expect CreateUserLink to be called
+	// NOTE: In the current implementation, the executor passes op.Source
+	// directly rather than the datastore path. This is a known issue
+	// that will be resolved in Phase 3 when we remove the adapters.
+	store.On("CreateUserLink", "/dotfiles/vim/.vimrc", "/home/testuser/.vimrc").
+		Return(nil)
 
 	// Execute with real mode (not dry-run)
 	executor := operations.NewExecutor(store, nil, false)
 	results, err := executor.Execute(ops, handler)
 
 	require.NoError(t, err)
-	assert.Len(t, results, 1)
+	assert.Len(t, results, 2)
 
-	// Operation should succeed
+	// Both operations should succeed
 	assert.True(t, results[0].Success)
 	assert.Contains(t, results[0].Message, "Created data link")
+	assert.True(t, results[1].Success)
+	assert.Contains(t, results[1].Message, "Created link")
 
 	// Verify all expectations were met
 	store.AssertExpectations(t)
 }
 
-func TestShellHandler_ClearIntegration(t *testing.T) {
+func TestSymlinkHandler_Clear(t *testing.T) {
 	// Test clear functionality
-	handler := shell.NewHandler()
+	handler := symlink.NewHandler()
 
 	// Create mock store and executor
 	store := new(MockSimpleDataStore)
@@ -158,7 +171,7 @@ func TestShellHandler_ClearIntegration(t *testing.T) {
 	// Clear context
 	ctx := operations.ClearContext{
 		Pack: types.Pack{
-			Name: "bash",
+			Name: "vim",
 		},
 		DryRun: true,
 	}
@@ -170,7 +183,7 @@ func TestShellHandler_ClearIntegration(t *testing.T) {
 
 	// Check cleared item
 	item := clearedItems[0]
-	assert.Equal(t, "shell_state", item.Type)
-	assert.Contains(t, item.Path, "bash/shell")
-	assert.Equal(t, "Would remove shell state", item.Description)
+	assert.Equal(t, "symlink_state", item.Type)
+	assert.Contains(t, item.Path, "vim/symlink")
+	assert.Contains(t, item.Description, "Would remove symlink")
 }

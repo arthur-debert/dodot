@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/handlers/install"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/install"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
