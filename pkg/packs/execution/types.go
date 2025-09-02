@@ -1,6 +1,6 @@
-// Package packpipeline provides orchestration for executing commands across multiple packs.
+// Package execution provides orchestration for executing commands across multiple packs.
 // It owns the outer loop: discover packs → execute command → aggregate results.
-package pipeline
+package execution
 
 import (
 	"github.com/arthur-debert/dodot/pkg/types"

@@ -1,4 +1,4 @@
-// Package commands provides Command implementations for the pack pipeline.
+// Package commands provides Command implementations for the pack execution.
 package commands
 
 import (
@@ -6,14 +6,14 @@ import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	handlerpipeline "github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OnCommand implements the "on" command using the pack pipeline.
+// OnCommand implements the "on" command using the pack execution.
 type OnCommand struct {
 	// NoProvision skips the provisioning phase
 	NoProvision bool
@@ -28,8 +28,8 @@ func (c *OnCommand) Name() string {
 }
 
 // ExecuteForPack executes the "on" command for a single pack.
-func (c *OnCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
-	logger := logging.GetLogger("pipeline.on")
+func (c *OnCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+	logger := logging.GetLogger("execution.on")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Bool("noProvision", c.NoProvision).
@@ -45,7 +45,7 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pip
 	// Initialize paths and datastore
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
-		return &pipeline.PackResult{
+		return &execution.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   err,
@@ -105,14 +105,14 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pip
 	}
 
 	// Get pack status for result (optional, for display purposes)
-	var packStatus *commands.StatusResult
-	statusOpts := commands.StatusOptions{
+	var packStatus *operations.StatusResult
+	statusOpts := operations.StatusOptions{
 		Pack:       pack,
 		DataStore:  ds,
 		FileSystem: fs,
 		Paths:      pathsInstance,
 	}
-	packStatus, err = commands.GetStatus(statusOpts)
+	packStatus, err = operations.GetStatus(statusOpts)
 	if err != nil {
 		logger.Warn().Err(err).Str("pack", pack.Name).Msg("Failed to get pack status")
 		// Continue without status - it's not critical for the command success
@@ -132,7 +132,7 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pip
 		Bool("success", success).
 		Msg("On command completed for pack")
 
-	return &pipeline.PackResult{
+	return &execution.PackResult{
 		Pack:                  pack,
 		Success:               success,
 		Error:                 nil,

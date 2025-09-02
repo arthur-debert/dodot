@@ -7,13 +7,13 @@ import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OffCommand implements the "off" command using the pack pipeline.
+// OffCommand implements the "off" command using the pack execution.
 type OffCommand struct{}
 
 // Name returns the command name.
@@ -22,8 +22,8 @@ func (c *OffCommand) Name() string {
 }
 
 // ExecuteForPack executes the "off" command for a single pack.
-func (c *OffCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
-	logger := logging.GetLogger("pipeline.off")
+func (c *OffCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+	logger := logging.GetLogger("execution.off")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Bool("dryRun", opts.DryRun).
@@ -38,7 +38,7 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pi
 	// Initialize paths and datastore
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
-		return &pipeline.PackResult{
+		return &execution.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   err,
@@ -97,15 +97,15 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pi
 	}
 
 	// Get pack status for result
-	var packStatus *commands.StatusResult
+	var packStatus *operations.StatusResult
 	if len(errors) == 0 || len(errors) <= 2 { // Allow some errors but not total failure
-		statusOpts := commands.StatusOptions{
+		statusOpts := operations.StatusOptions{
 			Pack:       pack,
 			DataStore:  dataStore,
 			FileSystem: fs,
 			Paths:      pathsInstance,
 		}
-		packStatus, err = commands.GetStatus(statusOpts)
+		packStatus, err = operations.GetStatus(statusOpts)
 		if err != nil {
 			logger.Warn().Err(err).Str("pack", pack.Name).Msg("Failed to get pack status")
 		}
@@ -127,7 +127,7 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pi
 		finalError = fmt.Errorf("encountered %d errors while turning off pack", len(errors))
 	}
 
-	return &pipeline.PackResult{
+	return &execution.PackResult{
 		Pack:                  pack,
 		Success:               success,
 		Error:                 finalError,

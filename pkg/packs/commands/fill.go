@@ -6,12 +6,12 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// FillCommand implements the "fill" command using the pack pipeline.
+// FillCommand implements the "fill" command using the pack execution.
 // It populates a pack with template files.
 type FillCommand struct{}
 
@@ -21,8 +21,8 @@ func (c *FillCommand) Name() string {
 }
 
 // ExecuteForPack fills a pack with template files.
-func (c *FillCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
-	logger := logging.GetLogger("pipeline.fill")
+func (c *FillCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+	logger := logging.GetLogger("execution.fill")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Msg("Executing fill command for pack")
@@ -71,7 +71,7 @@ func (c *FillCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*p
 				Err(err).
 				Str("file", file.name).
 				Msg("Failed to create file")
-			return &pipeline.PackResult{
+			return &execution.PackResult{
 				Pack:    pack,
 				Success: false,
 				Error:   fmt.Errorf("failed to create %s: %w", file.name, err),
@@ -85,18 +85,18 @@ func (c *FillCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*p
 	}
 
 	// We can create a minimal status result since fill doesn't interact with handlers
-	statusResult := &commands.StatusResult{
+	statusResult := &operations.StatusResult{
 		Name:      pack.Name,
 		HasConfig: true, // We just created the config
 		Status:    "success",
-		Files:     []commands.FileStatus{},
+		Files:     []operations.FileStatus{},
 	}
 
 	// Add created files to status
 	for _, fileName := range createdFiles {
-		statusResult.Files = append(statusResult.Files, commands.FileStatus{
+		statusResult.Files = append(statusResult.Files, operations.FileStatus{
 			Path:    fileName,
-			Status:  commands.Status{State: commands.StatusStateSuccess},
+			Status:  operations.Status{State: operations.StatusStateSuccess},
 			Handler: "none", // Template files don't have handlers
 		})
 	}
@@ -106,7 +106,7 @@ func (c *FillCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*p
 		Int("filesCreated", len(createdFiles)).
 		Msg("Fill command completed for pack")
 
-	return &pipeline.PackResult{
+	return &execution.PackResult{
 		Pack:                  pack,
 		Success:               true,
 		Error:                 nil,

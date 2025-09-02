@@ -1,14 +1,14 @@
-// pkg/packcommands/provisioning_test.go
+// pkg/packs/operations/provisioning_test.go
 // TEST TYPE: Unit Tests
 // DEPENDENCIES: pkg/testutil
 // PURPOSE: Test provisioning query functions
 
-package commands_test
+package operations_test
 
 import (
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -73,7 +73,7 @@ func TestIsPackHandlerProvisioned(t *testing.T) {
 			pack := &types.Pack{Name: tt.packName}
 
 			// Test
-			result, err := commands.IsPackHandlerProvisioned(pack, ds, tt.handler)
+			result, err := operations.IsPackHandlerProvisioned(pack, ds, tt.handler)
 
 			// Verify
 			if tt.expectError {
@@ -153,7 +153,7 @@ func TestGetPackProvisionedHandlers(t *testing.T) {
 			pack := &types.Pack{Name: tt.packName}
 
 			// Test
-			result, err := commands.GetPackProvisionedHandlers(pack, ds)
+			result, err := operations.GetPackProvisionedHandlers(pack, ds)
 
 			// Verify
 			if tt.expectError {

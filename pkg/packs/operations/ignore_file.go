@@ -1,4 +1,4 @@
-package commands
+package operations
 
 import (
 	"github.com/arthur-debert/dodot/pkg/config"

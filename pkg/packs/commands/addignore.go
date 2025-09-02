@@ -6,12 +6,12 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// AddIgnoreCommand implements the "add-ignore" command using the pack pipeline.
+// AddIgnoreCommand implements the "add-ignore" command using the pack execution.
 // It creates a .dodotignore file in a pack.
 type AddIgnoreCommand struct{}
 
@@ -21,8 +21,8 @@ func (c *AddIgnoreCommand) Name() string {
 }
 
 // ExecuteForPack creates a .dodotignore file in the pack.
-func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
-	logger := logging.GetLogger("pipeline.addignore")
+func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+	logger := logging.GetLogger("execution.addignore")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Msg("Executing add-ignore command for pack")
@@ -41,18 +41,18 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options
 			Str("pack", pack.Name).
 			Msg("Pack already has .dodotignore file")
 
-		return &pipeline.PackResult{
+		return &execution.PackResult{
 			Pack:    pack,
 			Success: true,
 			Error:   nil,
-			CommandSpecificResult: &commands.StatusResult{
+			CommandSpecificResult: &operations.StatusResult{
 				Name:      pack.Name,
 				IsIgnored: true,
 				Status:    "ignored",
-				Files: []commands.FileStatus{
+				Files: []operations.FileStatus{
 					{
 						Path:   ignoreFileName,
-						Status: commands.Status{State: commands.StatusStateIgnored},
+						Status: operations.Status{State: operations.StatusStateIgnored},
 					},
 				},
 			},
@@ -73,7 +73,7 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options
 			Str("pack", pack.Name).
 			Msg("Failed to create .dodotignore file")
 
-		return &pipeline.PackResult{
+		return &execution.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   fmt.Errorf("failed to create .dodotignore: %w", err),
@@ -86,19 +86,19 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options
 		Msg("Created .dodotignore file")
 
 	// Create status result
-	statusResult := &commands.StatusResult{
+	statusResult := &operations.StatusResult{
 		Name:      pack.Name,
 		IsIgnored: true,
 		Status:    "ignored",
-		Files: []commands.FileStatus{
+		Files: []operations.FileStatus{
 			{
 				Path:   ignoreFileName,
-				Status: commands.Status{State: commands.StatusStateIgnored},
+				Status: operations.Status{State: operations.StatusStateIgnored},
 			},
 		},
 	}
 
-	return &pipeline.PackResult{
+	return &execution.PackResult{
 		Pack:                  pack,
 		Success:               true,
 		Error:                 nil,

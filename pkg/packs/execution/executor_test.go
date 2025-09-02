@@ -1,10 +1,10 @@
-package pipeline_test
+package execution_test
 
 import (
 	"errors"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +14,7 @@ import (
 // mockCommand is a test command implementation
 type mockCommand struct {
 	name          string
-	executeFunc   func(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error)
+	executeFunc   func(pack types.Pack, opts execution.Options) (*execution.PackResult, error)
 	executedPacks []string
 }
 
@@ -22,12 +22,12 @@ func (m *mockCommand) Name() string {
 	return m.name
 }
 
-func (m *mockCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
+func (m *mockCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
 	m.executedPacks = append(m.executedPacks, pack.Name)
 	if m.executeFunc != nil {
 		return m.executeFunc(pack, opts)
 	}
-	return &pipeline.PackResult{
+	return &execution.PackResult{
 		Pack:    pack,
 		Success: true,
 	}, nil
@@ -55,7 +55,7 @@ func TestExecute_Success(t *testing.T) {
 	}
 
 	// Execute pipeline
-	result, err := pipeline.Execute(cmd, []string{"vim", "zsh"}, pipeline.Options{
+	result, err := execution.Execute(cmd, []string{"vim", "zsh"}, execution.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		DryRun:       false,
 		FileSystem:   env.FS,
@@ -90,15 +90,15 @@ func TestExecute_PartialFailure(t *testing.T) {
 	// Create mock command that fails for zsh
 	cmd := &mockCommand{
 		name: "test",
-		executeFunc: func(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
+		executeFunc: func(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
 			if pack.Name == "zsh" {
-				return &pipeline.PackResult{
+				return &execution.PackResult{
 					Pack:    pack,
 					Success: false,
 					Error:   errors.New("zsh failed"),
 				}, errors.New("zsh failed")
 			}
-			return &pipeline.PackResult{
+			return &execution.PackResult{
 				Pack:    pack,
 				Success: true,
 			}, nil
@@ -106,7 +106,7 @@ func TestExecute_PartialFailure(t *testing.T) {
 	}
 
 	// Execute pipeline
-	result, err := pipeline.Execute(cmd, []string{"vim", "zsh"}, pipeline.Options{
+	result, err := execution.Execute(cmd, []string{"vim", "zsh"}, execution.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		DryRun:       false,
 		FileSystem:   env.FS,
@@ -134,7 +134,7 @@ func TestExecute_AllPacks(t *testing.T) {
 	cmd := &mockCommand{name: "test"}
 
 	// Execute pipeline with empty pack names (all packs)
-	result, err := pipeline.Execute(cmd, []string{}, pipeline.Options{
+	result, err := execution.Execute(cmd, []string{}, execution.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		FileSystem:   env.FS,
 	})
@@ -159,7 +159,7 @@ func TestExecute_InvalidPack(t *testing.T) {
 	cmd := &mockCommand{name: "test"}
 
 	// Execute pipeline with non-existent pack
-	_, err := pipeline.Execute(cmd, []string{"nonexistent"}, pipeline.Options{
+	_, err := execution.Execute(cmd, []string{"nonexistent"}, execution.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		FileSystem:   env.FS,
 	})
@@ -182,8 +182,8 @@ func TestExecuteSingle_Success(t *testing.T) {
 	// Create mock command
 	cmd := &mockCommand{
 		name: "test",
-		executeFunc: func(p types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
-			return &pipeline.PackResult{
+		executeFunc: func(p types.Pack, opts execution.Options) (*execution.PackResult, error) {
+			return &execution.PackResult{
 				Pack:                  p,
 				Success:               true,
 				CommandSpecificResult: "test data",
@@ -192,7 +192,7 @@ func TestExecuteSingle_Success(t *testing.T) {
 	}
 
 	// Execute single pack
-	result, err := pipeline.ExecuteSingle(cmd, pack, pipeline.Options{
+	result, err := execution.ExecuteSingle(cmd, pack, execution.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		DryRun:       true,
 	})

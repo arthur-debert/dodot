@@ -1,11 +1,11 @@
-package commands_test
+package operations_test
 
 import (
 	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
@@ -16,7 +16,7 @@ import (
 func TestGetPacksStatus_NoPacksReturnsEmptyResult(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -36,7 +36,7 @@ func TestGetPacksStatus_SinglePackWithNoFiles(t *testing.T) {
 		Files: map[string]string{},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -60,7 +60,7 @@ func TestGetPacksStatus_PackWithIgnoredFile(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -86,7 +86,7 @@ func TestGetPacksStatus_PackWithConfigFile(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -112,7 +112,7 @@ func TestGetPacksStatus_PackWithUnlinkedSymlinkFiles(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -164,7 +164,7 @@ func TestGetPacksStatus_PackWithLinkedSymlinkFiles(t *testing.T) {
 	intermediateLinkPath := filepath.Join(intermediateLinkDir, ".vimrc")
 	require.NoError(t, env.FS.Symlink(vimrcPath, intermediateLinkPath))
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -203,7 +203,7 @@ func TestGetPacksStatus_PackWithPathHandlerFiles(t *testing.T) {
 	toolPath := filepath.Join(binDir, "tool1")
 	require.NoError(t, env.FS.WriteFile(toolPath, []byte("#!/bin/bash\necho tool1"), 0755))
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -247,7 +247,7 @@ func TestGetPacksStatus_PackWithShellProfileFiles(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -292,7 +292,7 @@ func TestGetPacksStatus_PackWithInstallScript(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -323,7 +323,7 @@ func TestGetPacksStatus_PackWithBrewfile(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -368,7 +368,7 @@ func TestGetPacksStatus_MixedPackWithMultipleHandlers(t *testing.T) {
 	// Note: In isolated environment, we could create actual symlinks, but following
 	// testing guidelines, we'll test without pre-existing links
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -421,7 +421,7 @@ func TestGetPacksStatus_SpecificPackSelection(t *testing.T) {
 		},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"vim"},
 		Paths:        env.Paths,
@@ -450,7 +450,7 @@ func TestGetPacksStatus_ErrorStatusWhenIntermediateLinkPointsToWrongSource(t *te
 	linkPath := filepath.Join(packHandlerDir, ".config")
 	require.NoError(t, env.FS.Symlink(wrongSource, linkPath))
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -491,7 +491,7 @@ func TestGetPacksStatus_ProvisioningStatusWithChangedFile(t *testing.T) {
 	err := env.FS.WriteFile(installPath, []byte("#!/bin/bash\necho v2"), 0755)
 	require.NoError(t, err)
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{},
 		Paths:        env.Paths,
@@ -536,7 +536,7 @@ func TestGetPacksStatus_Timestamp(t *testing.T) {
 	})
 
 	before := time.Now()
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		Paths:        env.Paths,
 		FileSystem:   env.FS,
@@ -554,7 +554,7 @@ func TestGetPacksStatus_WithInvalidPack(t *testing.T) {
 		Files: map[string]string{},
 	})
 
-	result, err := commands.GetPacksStatus(commands.StatusCommandOptions{
+	result, err := operations.GetPacksStatus(operations.StatusCommandOptions{
 		DotfilesRoot: env.DotfilesRoot,
 		PackNames:    []string{"valid", "nonexistent"},
 		Paths:        env.Paths,

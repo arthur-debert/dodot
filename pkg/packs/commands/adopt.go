@@ -7,13 +7,13 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
+	"github.com/arthur-debert/dodot/pkg/packs/operations"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// AdoptCommand implements the "adopt" command using the pack pipeline.
+// AdoptCommand implements the "adopt" command using the pack execution.
 // It moves files from the system into a pack.
 type AdoptCommand struct {
 	// SourcePaths are the files to adopt
@@ -28,8 +28,8 @@ func (c *AdoptCommand) Name() string {
 }
 
 // ExecuteForPack adopts files into a pack.
-func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*pipeline.PackResult, error) {
-	logger := logging.GetLogger("pipeline.adopt")
+func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+	logger := logging.GetLogger("execution.adopt")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Int("files", len(c.SourcePaths)).
@@ -123,17 +123,17 @@ func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*
 	}
 
 	// Create status result
-	statusResult := &commands.StatusResult{
+	statusResult := &operations.StatusResult{
 		Name:   pack.Name,
 		Status: "success",
-		Files:  []commands.FileStatus{},
+		Files:  []operations.FileStatus{},
 	}
 
 	// Add adopted files to status
 	for _, fileName := range adoptedFiles {
-		statusResult.Files = append(statusResult.Files, commands.FileStatus{
+		statusResult.Files = append(statusResult.Files, operations.FileStatus{
 			Path:   fileName,
-			Status: commands.Status{State: commands.StatusStateSuccess},
+			Status: operations.Status{State: operations.StatusStateSuccess},
 		})
 	}
 
@@ -144,7 +144,7 @@ func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts pipeline.Options) (*
 		Bool("success", success).
 		Msg("Adopt command completed")
 
-	return &pipeline.PackResult{
+	return &execution.PackResult{
 		Pack:                  pack,
 		Success:               success,
 		Error:                 finalError,
