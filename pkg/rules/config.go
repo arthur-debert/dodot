@@ -1,4 +1,4 @@
-package pipeline
+package rules
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ func LoadRules(k *koanf.Koanf) ([]config.Rule, error) {
 
 	// Use defaults if no configuration found
 	logger.Info().Msg("No rules configured, using defaults")
-	return getDefaultRules(), nil
+	return GetDefaultRules(), nil
 }
 
 // validateRules checks that rules are valid
@@ -86,9 +86,9 @@ func MergeRules(global, packSpecific []config.Rule) []config.Rule {
 	return append(packSpecific, global...)
 }
 
-// getDefaultRules returns the default set of rules
+// GetDefaultRules returns the default set of rules
 // Order matters: exclusions, exact matches, globs, directories, catchall
-func getDefaultRules() []config.Rule {
+func GetDefaultRules() []config.Rule {
 	return []config.Rule{
 		// Exclusions (processed first)
 		{Pattern: "!*.bak"},

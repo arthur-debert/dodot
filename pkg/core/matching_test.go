@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -97,15 +97,15 @@ handler = "symlink"`,
 
 func TestFilterMatchesByHandlerCategory(t *testing.T) {
 	// Create test matches
-	createMatch := func(pack, handler string) pipeline.RuleMatch {
-		return pipeline.RuleMatch{
+	createMatch := func(pack, handler string) rules.RuleMatch {
+		return rules.RuleMatch{
 			Pack:        pack,
 			HandlerName: handler,
 			Path:        "test",
 		}
 	}
 
-	allMatches := []pipeline.RuleMatch{
+	allMatches := []rules.RuleMatch{
 		createMatch("vim", "symlink"),    // configuration
 		createMatch("vim", "shell"),      // configuration
 		createMatch("vim", "path"),       // configuration

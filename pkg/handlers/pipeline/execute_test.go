@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -12,19 +13,19 @@ import (
 func TestExecuteMatches(t *testing.T) {
 	tests := []struct {
 		name           string
-		matches        []RuleMatch
+		matches        []rules.RuleMatch
 		expectSuccess  bool
 		expectHandlers []string
 	}{
 		{
 			name:           "empty matches",
-			matches:        []RuleMatch{},
+			matches:        []rules.RuleMatch{},
 			expectSuccess:  true,
 			expectHandlers: []string{},
 		},
 		{
 			name: "single symlink match",
-			matches: []RuleMatch{
+			matches: []rules.RuleMatch{
 				{
 					Pack:         "test-pack",
 					Path:         "vimrc",
@@ -37,7 +38,7 @@ func TestExecuteMatches(t *testing.T) {
 		},
 		{
 			name: "multiple symlink handlers",
-			matches: []RuleMatch{
+			matches: []rules.RuleMatch{
 				{
 					Pack:         "test-pack",
 					Path:         "vimrc",
@@ -110,7 +111,7 @@ func TestExecuteMatchesDryRun(t *testing.T) {
 	defer env.Cleanup()
 
 	// Create test matches
-	matches := []RuleMatch{
+	matches := []rules.RuleMatch{
 		{
 			Pack:         "test-pack",
 			Path:         "vimrc",

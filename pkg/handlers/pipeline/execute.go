@@ -18,6 +18,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers/lib/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -106,14 +107,14 @@ func ExecuteHandlersForPack(pack types.Pack, filter FilterType, opts Options) (*
 }
 
 // getMatchesForPack gets rule matches for a single pack
-func getMatchesForPack(pack types.Pack, fs types.FS) ([]RuleMatch, error) {
+func getMatchesForPack(pack types.Pack, fs types.FS) ([]rules.RuleMatch, error) {
 	// Call our own GetMatchesFS directly
 	packs := []types.Pack{pack}
 	return GetMatchesFS(packs, fs)
 }
 
 // filterMatches filters matches based on the filter type
-func filterMatches(matches []RuleMatch, filter FilterType) []RuleMatch {
+func filterMatches(matches []rules.RuleMatch, filter FilterType) []rules.RuleMatch {
 	switch filter {
 	case ConfigOnly:
 		return FilterMatchesByHandlerCategory(matches, true, false)
@@ -127,8 +128,8 @@ func filterMatches(matches []RuleMatch, filter FilterType) []RuleMatch {
 }
 
 // FilterMatchesByHandlerCategory filters rule matches based on handler category
-func FilterMatchesByHandlerCategory(matches []RuleMatch, allowConfiguration, allowCodeExecution bool) []RuleMatch {
-	var filtered []RuleMatch
+func FilterMatchesByHandlerCategory(matches []rules.RuleMatch, allowConfiguration, allowCodeExecution bool) []rules.RuleMatch {
+	var filtered []rules.RuleMatch
 
 	for _, match := range matches {
 		// Check if handler is configuration type
@@ -198,7 +199,7 @@ func filterTypeString(filter FilterType) string {
 }
 
 // transformMatches converts RuleMatch to FileInput for handlers
-func transformMatches(matches []RuleMatch) []operations.FileInput {
+func transformMatches(matches []rules.RuleMatch) []operations.FileInput {
 	inputs := make([]operations.FileInput, len(matches))
 	for i, match := range matches {
 		inputs[i] = operations.FileInput{
@@ -212,7 +213,7 @@ func transformMatches(matches []RuleMatch) []operations.FileInput {
 }
 
 // executeMatchesInternal handles the internal execution of matches
-func executeMatchesInternal(matches []RuleMatch, opts Options) (*types.ExecutionContext, error) {
+func executeMatchesInternal(matches []rules.RuleMatch, opts Options) (*types.ExecutionContext, error) {
 	logger := logging.GetLogger("handlerpipeline.execute")
 	logger.Debug().
 		Int("matches", len(matches)).
@@ -313,8 +314,8 @@ func executeMatchesInternal(matches []RuleMatch, opts Options) (*types.Execution
 }
 
 // groupMatchesByHandler groups rule matches by their handler name
-func groupMatchesByHandler(matches []RuleMatch) map[string][]RuleMatch {
-	grouped := make(map[string][]RuleMatch)
+func groupMatchesByHandler(matches []rules.RuleMatch) map[string][]rules.RuleMatch {
+	grouped := make(map[string][]rules.RuleMatch)
 	for _, match := range matches {
 		grouped[match.HandlerName] = append(grouped[match.HandlerName], match)
 	}
@@ -322,7 +323,7 @@ func groupMatchesByHandler(matches []RuleMatch) map[string][]RuleMatch {
 }
 
 // getHandlerNames extracts handler names from grouped matches
-func getHandlerNames(grouped map[string][]RuleMatch) []string {
+func getHandlerNames(grouped map[string][]rules.RuleMatch) []string {
 	names := make([]string, 0, len(grouped))
 	for name := range grouped {
 		names = append(names, name)
@@ -353,7 +354,7 @@ func getHandlerExecutionOrder(handlerNames []string) []string {
 }
 
 // addOperationResultsToContext adds operation results to the execution context
-func addOperationResultsToContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []RuleMatch, ctxManager *context.Manager) {
+func addOperationResultsToContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []rules.RuleMatch, ctxManager *context.Manager) {
 	if len(results) == 0 || len(matches) == 0 {
 		return
 	}

@@ -1,13 +1,13 @@
 // Test Type: Unit Test
 // Description: Tests for the rules package - configuration loading and rule management
 
-package pipeline_test
+package rules_test
 
 import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
@@ -39,7 +39,7 @@ func TestLoadRules(t *testing.T) {
 		err := k.Load(confmap.Provider(data, "."), nil)
 		require.NoError(t, err)
 
-		rules, err := pipeline.LoadRules(k)
+		rules, err := rules.LoadRules(k)
 		assert.NoError(t, err)
 		assert.Len(t, rules, 3)
 
@@ -57,7 +57,7 @@ func TestLoadRules(t *testing.T) {
 		k := koanf.New(".")
 		// Empty config
 
-		rules, err := pipeline.LoadRules(k)
+		rules, err := rules.LoadRules(k)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, rules)
 
@@ -94,7 +94,7 @@ func TestLoadRules(t *testing.T) {
 		err := k.Load(confmap.Provider(data, "."), nil)
 		require.NoError(t, err)
 
-		_, err = pipeline.LoadRules(k)
+		_, err = rules.LoadRules(k)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "empty pattern")
 
@@ -112,7 +112,7 @@ func TestLoadRules(t *testing.T) {
 		err = k.Load(confmap.Provider(data, "."), nil)
 		require.NoError(t, err)
 
-		_, err = pipeline.LoadRules(k)
+		_, err = rules.LoadRules(k)
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "empty handler")
 
@@ -130,7 +130,7 @@ func TestLoadRules(t *testing.T) {
 		err = k.Load(confmap.Provider(data, "."), nil)
 		require.NoError(t, err)
 
-		rules, err := pipeline.LoadRules(k)
+		rules, err := rules.LoadRules(k)
 		assert.NoError(t, err)
 		assert.Len(t, rules, 1)
 	})
@@ -148,7 +148,7 @@ func TestMergeRules(t *testing.T) {
 			{Pattern: "*.sh", Handler: "custom"},
 		}
 
-		merged := pipeline.MergeRules(global, packSpecific)
+		merged := rules.MergeRules(global, packSpecific)
 
 		// Pack rules should come first
 		assert.Equal(t, packSpecific[0], merged[0])
@@ -164,18 +164,18 @@ func TestMergeRules(t *testing.T) {
 		global := []config.Rule{
 			{Pattern: "*", Handler: "symlink"},
 		}
-		merged := pipeline.MergeRules(global, nil)
+		merged := rules.MergeRules(global, nil)
 		assert.Equal(t, global, merged)
 
 		// Empty global rules
 		packSpecific := []config.Rule{
 			{Pattern: "*.sh", Handler: "shell"},
 		}
-		merged = pipeline.MergeRules(nil, packSpecific)
+		merged = rules.MergeRules(nil, packSpecific)
 		assert.Equal(t, packSpecific, merged)
 
 		// Both empty
-		merged = pipeline.MergeRules(nil, nil)
+		merged = rules.MergeRules(nil, nil)
 		assert.Empty(t, merged)
 	})
 }
@@ -189,7 +189,7 @@ func TestLoadPackRulesFS(t *testing.T) {
 		fs := testutil.NewMemoryFS()
 		// Don't create any files, so Stat will fail
 
-		rules, err := pipeline.LoadPackRulesFS("/some/path", fs)
+		rules, err := rules.LoadPackRulesFS("/some/path", fs)
 		assert.NoError(t, err)
 		assert.Empty(t, rules)
 	})

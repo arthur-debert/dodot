@@ -12,6 +12,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/utils"
@@ -218,7 +219,7 @@ func checkSpecialFiles(pack types.Pack, result *StatusResult, fs types.FS) error
 }
 
 // getHandlerStatus checks the deployment status for a specific match
-func getHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
+func getHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	// Check handler category to determine how to check status
 	category := handlers.HandlerRegistry.GetHandlerCategory(match.HandlerName)
 
@@ -238,7 +239,7 @@ func getHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datas
 }
 
 // getConfigurationHandlerStatus checks status for configuration handlers
-func getConfigurationHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
+func getConfigurationHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	baseName := filepath.Base(match.Path)
 	intermediateLinkPath := filepath.Join(pathsInstance.PackHandlerDir(pack.Name, match.HandlerName), baseName)
 
@@ -317,7 +318,7 @@ func getConfigurationHandlerStatus(match pipeline.RuleMatch, pack types.Pack, da
 }
 
 // getCodeExecutionHandlerStatus checks status for code execution handlers
-func getCodeExecutionHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS) (Status, error) {
+func getCodeExecutionHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS) (Status, error) {
 	// Calculate current checksum
 	currentChecksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
 	if err != nil {

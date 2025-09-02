@@ -1,14 +1,14 @@
 // Test Type: Unit Test
 // Description: Tests for the rules package - scanner that matches files against rules
 
-package pipeline_test
+package rules_test
 
 import (
 	"path/filepath"
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +34,7 @@ func TestScanner_ScanPack(t *testing.T) {
 			{Pattern: "install.sh", Handler: "install"},
 			{Pattern: "*", Handler: "symlink"},
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		// Create pack struct
 		pack := types.Pack{
@@ -75,7 +75,7 @@ func TestScanner_ScanPack(t *testing.T) {
 			{Pattern: "*aliases.sh", Handler: "shell"},
 			{Pattern: "*", Handler: "symlink"},
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		pack := types.Pack{
 			Name: testPack.Name,
@@ -115,7 +115,7 @@ func TestScanner_ScanPack(t *testing.T) {
 			{Pattern: "bin/", Handler: "path"},
 			{Pattern: "*", Handler: "symlink"},
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		pack := types.Pack{
 			Name: testPack.Name,
@@ -155,7 +155,7 @@ func TestScanner_ScanPack(t *testing.T) {
 			{Pattern: "!.DS_Store"},
 			{Pattern: "*", Handler: "symlink"},
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		pack := types.Pack{
 			Name: testPack.Name,
@@ -193,7 +193,7 @@ func TestScanner_ScanPack(t *testing.T) {
 			{Pattern: "*.sh", Handler: "shell"},      // Glob pattern
 			{Pattern: "*", Handler: "symlink"},       // Catchall
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		pack := types.Pack{
 			Name: testPack.Name,
@@ -222,7 +222,7 @@ func TestScanner_ScanPack(t *testing.T) {
 			{Pattern: "*.sh", Handler: "shell"},
 			{Pattern: "*", Handler: "symlink"},
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		pack := types.Pack{
 			Name: testPack.Name,
@@ -263,7 +263,7 @@ func TestScanner_ScanPack(t *testing.T) {
 				},
 			},
 		}
-		scanner := pipeline.NewScannerWithFS(ruleList, env.FS)
+		scanner := rules.NewScannerWithFS(ruleList, env.FS)
 
 		pack := types.Pack{
 			Name: testPack.Name,
@@ -291,7 +291,7 @@ func TestScanner_HiddenFiles(t *testing.T) {
 	}
 	testPack := env.SetupPack("testpack", packConfig)
 
-	scanner := pipeline.NewScannerWithFS([]config.Rule{
+	scanner := rules.NewScannerWithFS([]config.Rule{
 		{Pattern: "*", Handler: "symlink"},
 	}, env.FS)
 
@@ -325,7 +325,7 @@ func TestScanner_EmptyPack(t *testing.T) {
 	// Create empty pack
 	testPack := env.SetupPack("empty", testutil.PackConfig{})
 
-	scanner := pipeline.NewScannerWithFS([]config.Rule{
+	scanner := rules.NewScannerWithFS([]config.Rule{
 		{Pattern: "*", Handler: "symlink"},
 	}, env.FS)
 
@@ -357,7 +357,7 @@ func TestScanner_ComplexExclusions(t *testing.T) {
 	testPack := env.SetupPack("testpack", packConfig)
 
 	// Use default-like exclusion rules
-	scanner := pipeline.NewScannerWithFS([]config.Rule{
+	scanner := rules.NewScannerWithFS([]config.Rule{
 		{Pattern: "!*.bak"},
 		{Pattern: "!*.swp"},
 		{Pattern: "!*~"},
@@ -396,7 +396,7 @@ func TestNewScanner(t *testing.T) {
 		{Pattern: "*", Handler: "symlink"},
 	}
 
-	scanner := pipeline.NewScanner(ruleList)
+	scanner := rules.NewScanner(ruleList)
 	assert.NotNil(t, scanner)
 }
 
@@ -411,7 +411,7 @@ func TestMatch_Fields(t *testing.T) {
 	}
 	testPack := env.SetupPack("mypack", packConfig)
 
-	scanner := pipeline.NewScannerWithFS([]config.Rule{
+	scanner := rules.NewScannerWithFS([]config.Rule{
 		{Pattern: "*", Handler: "symlink", Options: map[string]interface{}{"key": "value"}},
 	}, env.FS)
 

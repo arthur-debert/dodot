@@ -4,11 +4,12 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/operations"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestGroupMatchesByHandler(t *testing.T) {
-	matches := []RuleMatch{
+	matches := []rules.RuleMatch{
 		{HandlerName: "symlink", Pack: "vim", Path: "vimrc"},
 		{HandlerName: "symlink", Pack: "vim", Path: "gvimrc"},
 		{HandlerName: "shell", Pack: "bash", Path: "profile.sh"},
@@ -40,7 +41,7 @@ func TestCountSuccessfulResults(t *testing.T) {
 }
 
 func TestRuleMatch_Structure(t *testing.T) {
-	match := RuleMatch{
+	match := rules.RuleMatch{
 		RuleName:     "filename",
 		Pack:         "test-pack",
 		Path:         "file.txt",
