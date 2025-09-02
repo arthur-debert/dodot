@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -140,12 +140,12 @@ func TestJSONRenderer(t *testing.T) {
 
 	t.Run("render complex result", func(t *testing.T) {
 		buf.Reset()
-		complexData := &types.DisplayResult{
+		complexData := &display.DisplayResult{
 			Command: "test",
-			Packs: []types.DisplayPack{
+			Packs: []display.DisplayPack{
 				{
 					Name: "vim",
-					Files: []types.DisplayFile{
+					Files: []display.DisplayFile{
 						{
 							Path:    ".vimrc",
 							Handler: "symlink",
@@ -158,7 +158,7 @@ func TestJSONRenderer(t *testing.T) {
 		err := renderer.RenderResult(complexData)
 		assert.NoError(t, err)
 
-		var result types.DisplayResult
+		var result display.DisplayResult
 		err = json.Unmarshal(buf.Bytes(), &result)
 		assert.NoError(t, err)
 		assert.Equal(t, "test", result.Command)

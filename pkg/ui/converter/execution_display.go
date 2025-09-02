@@ -9,11 +9,12 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
 // ConvertToDisplay transforms the ExecutionContext into a DisplayResult suitable for rendering
-func ConvertToDisplay(ec *types.ExecutionContext) *types.DisplayResult {
-	displayPacks := make([]types.DisplayPack, 0, len(ec.PackResults))
+func ConvertToDisplay(ec *types.ExecutionContext) *display.DisplayResult {
+	displayPacks := make([]display.DisplayPack, 0, len(ec.PackResults))
 
 	// Sort pack names for consistent output
 	packNames := make([]string, 0, len(ec.PackResults))
@@ -36,16 +37,16 @@ func ConvertToDisplay(ec *types.ExecutionContext) *types.DisplayResult {
 		// Check for configuration files
 		hasConfig, isIgnored := checkPackConfiguration(packResult.Pack)
 
-		displayPack := types.DisplayPack{
+		displayPack := display.DisplayPack{
 			Name:      packName,
-			Files:     make([]types.DisplayFile, 0),
+			Files:     make([]display.DisplayFile, 0),
 			HasConfig: hasConfig,
 			IsIgnored: isIgnored,
 		}
 
 		// Add config files as display items (per display.txxt spec)
 		if hasConfig {
-			displayPack.Files = append(displayPack.Files, types.DisplayFile{
+			displayPack.Files = append(displayPack.Files, display.DisplayFile{
 				Handler: "config",
 				Path:    ".dodot.toml",
 				Status:  "config",
@@ -53,7 +54,7 @@ func ConvertToDisplay(ec *types.ExecutionContext) *types.DisplayResult {
 			})
 		}
 		if isIgnored {
-			displayPack.Files = append(displayPack.Files, types.DisplayFile{
+			displayPack.Files = append(displayPack.Files, display.DisplayFile{
 				Handler: ".dodotignore",
 				Path:    "",
 				Status:  "ignored",
@@ -84,7 +85,7 @@ func ConvertToDisplay(ec *types.ExecutionContext) *types.DisplayResult {
 				displayMessage := generateHandlerMessage(pur.HandlerName, filePath, displayStatus, lastExecuted)
 
 				// Get additional info based on Handler type and operation data
-				additionalInfo := types.GetHandlerAdditionalInfo(pur.HandlerName)
+				additionalInfo := display.GetHandlerAdditionalInfo(pur.HandlerName)
 
 				// Extract handler-specific information based on handler type
 				// This logic can be simplified once we have operations
@@ -111,14 +112,14 @@ func ConvertToDisplay(ec *types.ExecutionContext) *types.DisplayResult {
 					}
 				}
 
-				displayFile := types.DisplayFile{
+				displayFile := display.DisplayFile{
 					Handler:        pur.HandlerName,
 					Path:           filePath,
 					Status:         displayStatus,
 					Message:        displayMessage,
 					IsOverride:     isOverride,
 					LastExecuted:   lastExecuted,
-					HandlerSymbol:  types.GetHandlerSymbol(pur.HandlerName),
+					HandlerSymbol:  display.GetHandlerSymbol(pur.HandlerName),
 					AdditionalInfo: additionalInfo,
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
@@ -130,7 +131,7 @@ func ConvertToDisplay(ec *types.ExecutionContext) *types.DisplayResult {
 		displayPacks = append(displayPacks, displayPack)
 	}
 
-	return &types.DisplayResult{
+	return &display.DisplayResult{
 		Command:   ec.Command,
 		Packs:     displayPacks,
 		DryRun:    ec.DryRun,

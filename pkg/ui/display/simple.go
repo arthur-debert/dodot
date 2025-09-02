@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-
-	"github.com/arthur-debert/dodot/pkg/types"
-	"github.com/arthur-debert/dodot/pkg/ui/converter"
 )
 
 // TextRenderer provides minimal text output for dodot commands
@@ -22,7 +19,7 @@ func NewTextRenderer(w io.Writer) *TextRenderer {
 }
 
 // Render outputs the DisplayResult in a simple text format
-func (r *TextRenderer) Render(result *types.DisplayResult) error {
+func (r *TextRenderer) Render(result *DisplayResult) error {
 	if result == nil {
 		return nil
 	}
@@ -45,7 +42,7 @@ func (r *TextRenderer) Render(result *types.DisplayResult) error {
 	}
 
 	// Sort packs alphabetically
-	packs := make([]types.DisplayPack, len(result.Packs))
+	packs := make([]DisplayPack, len(result.Packs))
 	copy(packs, result.Packs)
 	sort.Slice(packs, func(i, j int) bool {
 		return packs[i].Name < packs[j].Name
@@ -62,7 +59,7 @@ func (r *TextRenderer) Render(result *types.DisplayResult) error {
 }
 
 // renderPack renders a single pack
-func (r *TextRenderer) renderPack(pack types.DisplayPack) error {
+func (r *TextRenderer) renderPack(pack DisplayPack) error {
 	// Pack header with status - include pack-level status for debugging
 	packStatus := pack.Status
 	if packStatus == "" {
@@ -108,7 +105,7 @@ func (r *TextRenderer) renderPack(pack types.DisplayPack) error {
 }
 
 // renderFile renders a single file
-func (r *TextRenderer) renderFile(file types.DisplayFile) error {
+func (r *TextRenderer) renderFile(file DisplayFile) error {
 	// Three-column format matching display.txxt spec:
 	// handler : path : message
 	// Add status indicators and file override markers
@@ -136,14 +133,4 @@ func (r *TextRenderer) renderFile(file types.DisplayFile) error {
 		filePath,
 		statusMessage)
 	return err
-}
-
-// RenderExecutionContext is a convenience method that transforms and renders an ExecutionContext
-func (r *TextRenderer) RenderExecutionContext(ctx *types.ExecutionContext) error {
-	if ctx == nil {
-		return nil
-	}
-
-	displayResult := converter.ConvertToDisplay(ctx)
-	return r.Render(displayResult)
 }

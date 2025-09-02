@@ -11,6 +11,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/converter"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/ui/lipbalm"
 	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
 	"github.com/charmbracelet/lipgloss"
@@ -88,7 +89,7 @@ func NewRenderer(w io.Writer, noColor bool) (*Renderer, error) {
 //  3. Writes the final output to the configured writer
 //
 // Returns an error if template execution or style expansion fails.
-func (r *Renderer) Render(result *types.DisplayResult) error {
+func (r *Renderer) Render(result *display.DisplayResult) error {
 	log := logging.GetLogger("output.Renderer")
 
 	// Execute the main result template

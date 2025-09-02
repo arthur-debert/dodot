@@ -5,6 +5,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
 // CommandExecutionType defines whether a command uses simple file operations or handler execution
@@ -24,7 +25,7 @@ type CommandConfig struct {
 	// Type indicates if this is a simple or handler-based command
 	Type CommandExecutionType
 	// Execute is the function that performs the command logic
-	Execute func(opts CommandExecuteOptions) (*types.PackCommandResult, error)
+	Execute func(opts CommandExecuteOptions) (*display.PackCommandResult, error)
 	// Validators are command-specific validation functions run before execution
 	Validators []ValidatorFunc
 }
@@ -58,7 +59,7 @@ func RegisterCommand(config CommandConfig) {
 }
 
 // ExecuteRegisteredCommand runs a command from the registry with standard flow
-func ExecuteRegisteredCommand(cmdName string, opts CommandExecuteOptions) (*types.PackCommandResult, error) {
+func ExecuteRegisteredCommand(cmdName string, opts CommandExecuteOptions) (*display.PackCommandResult, error) {
 	logger := logging.GetLogger("core.command_registry")
 	logger.Debug().
 		Str("command", cmdName).

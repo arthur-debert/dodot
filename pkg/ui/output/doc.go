@@ -29,9 +29,9 @@
 //	}
 //
 //	// Render a DisplayResult
-//	result := &types.DisplayResult{
+//	result := &display.DisplayResult{
 //	    Command: "status",
-//	    Packs: []types.DisplayPack{...},
+//	    Packs: []display.DisplayPack{...},
 //	}
 //	err = renderer.Render(result)
 //

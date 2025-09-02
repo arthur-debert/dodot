@@ -8,7 +8,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/testutil"
-	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -129,7 +129,7 @@ func TestGetPacksStatus_PackWithUnlinkedSymlinkFiles(t *testing.T) {
 	assert.Len(t, packResult.Files, 2)
 
 	// Check both files are present (order not guaranteed)
-	filesByPath := make(map[string]types.DisplayFile)
+	filesByPath := make(map[string]display.DisplayFile)
 	for _, f := range packResult.Files {
 		filesByPath[f.Path] = f
 	}
@@ -263,7 +263,7 @@ func TestGetPacksStatus_PackWithShellProfileFiles(t *testing.T) {
 	assert.Len(t, packResult.Files, 2)
 
 	// Check each file has the expected handler
-	filesByPath := make(map[string]types.DisplayFile)
+	filesByPath := make(map[string]display.DisplayFile)
 	for _, f := range packResult.Files {
 		filesByPath[f.Path] = f
 	}
@@ -384,7 +384,7 @@ func TestGetPacksStatus_MixedPackWithMultipleHandlers(t *testing.T) {
 	assert.Len(t, packResult.Files, 4)
 
 	// Verify each file
-	filesByPath := make(map[string]types.DisplayFile)
+	filesByPath := make(map[string]display.DisplayFile)
 	for _, f := range packResult.Files {
 		filesByPath[f.Path] = f
 	}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,8 +25,8 @@ func TestCommandRegistry(t *testing.T) {
 		testCommand := CommandConfig{
 			Name: "test-command",
 			Type: SimpleExecution,
-			Execute: func(opts CommandExecuteOptions) (*types.PackCommandResult, error) {
-				return &types.PackCommandResult{
+			Execute: func(opts CommandExecuteOptions) (*display.PackCommandResult, error) {
+				return &display.PackCommandResult{
 					Command:   "test-command",
 					Timestamp: time.Now(),
 				}, nil
@@ -58,12 +59,12 @@ func TestCommandRegistry(t *testing.T) {
 		RegisterCommand(CommandConfig{
 			Name: "simple-test",
 			Type: SimpleExecution,
-			Execute: func(opts CommandExecuteOptions) (*types.PackCommandResult, error) {
+			Execute: func(opts CommandExecuteOptions) (*display.PackCommandResult, error) {
 				executeCalled = true
-				return &types.PackCommandResult{
+				return &display.PackCommandResult{
 					Command:   "simple-test",
 					Timestamp: time.Now(),
-					Packs: []types.DisplayPack{
+					Packs: []display.DisplayPack{
 						{Name: "pack1"},
 					},
 				}, nil
@@ -93,8 +94,8 @@ func TestCommandRegistry(t *testing.T) {
 		RegisterCommand(CommandConfig{
 			Name: "validated-test",
 			Type: SimpleExecution,
-			Execute: func(opts CommandExecuteOptions) (*types.PackCommandResult, error) {
-				return &types.PackCommandResult{
+			Execute: func(opts CommandExecuteOptions) (*display.PackCommandResult, error) {
+				return &display.PackCommandResult{
 					Command: "validated-test",
 				}, nil
 			},
@@ -126,8 +127,8 @@ func TestCommandRegistry(t *testing.T) {
 		RegisterCommand(CommandConfig{
 			Name: "init",
 			Type: SimpleExecution,
-			Execute: func(opts CommandExecuteOptions) (*types.PackCommandResult, error) {
-				return &types.PackCommandResult{
+			Execute: func(opts CommandExecuteOptions) (*display.PackCommandResult, error) {
+				return &display.PackCommandResult{
 					Command: "init",
 				}, nil
 			},

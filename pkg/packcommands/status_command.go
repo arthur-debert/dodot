@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
 // StatusCommandOptions contains options for the status command
@@ -30,7 +31,7 @@ type StatusCommandOptions struct {
 
 // GetPacksStatus shows the deployment status of specified packs
 // This is a query operation that uses core pack discovery but doesn't execute handlers.
-func GetPacksStatus(opts StatusCommandOptions) (*types.PackCommandResult, error) {
+func GetPacksStatus(opts StatusCommandOptions) (*display.PackCommandResult, error) {
 	logger := logging.GetLogger("pack.status")
 	logger.Debug().
 		Str("dotfilesRoot", opts.DotfilesRoot).
@@ -69,11 +70,11 @@ func GetPacksStatus(opts StatusCommandOptions) (*types.PackCommandResult, error)
 	dataStore := datastore.New(opts.FileSystem, opts.Paths.(paths.Paths))
 
 	// Build command result
-	result := &types.PackCommandResult{
+	result := &display.PackCommandResult{
 		Command:   "status",
 		DryRun:    false, // Status is always a query, never a dry run
 		Timestamp: time.Now(),
-		Packs:     make([]types.DisplayPack, 0, len(selectedPacks)),
+		Packs:     make([]display.DisplayPack, 0, len(selectedPacks)),
 		// Status command doesn't have a message
 		Message: "",
 	}
@@ -117,25 +118,25 @@ func GetPacksStatus(opts StatusCommandOptions) (*types.PackCommandResult, error)
 	return result, nil
 }
 
-// convertStatusToDisplayPack converts pack.StatusResult to types.DisplayPack
-func convertStatusToDisplayPack(status *StatusResult) types.DisplayPack {
-	displayPack := types.DisplayPack{
+// convertStatusToDisplayPack converts pack.StatusResult to display.DisplayPack
+func convertStatusToDisplayPack(status *StatusResult) display.DisplayPack {
+	displayPack := display.DisplayPack{
 		Name:      status.Name,
 		HasConfig: status.HasConfig,
 		IsIgnored: status.IsIgnored,
 		Status:    status.Status,
-		Files:     make([]types.DisplayFile, 0, len(status.Files)),
+		Files:     make([]display.DisplayFile, 0, len(status.Files)),
 	}
 
 	// Convert each file status
 	for _, file := range status.Files {
-		displayFile := types.DisplayFile{
+		displayFile := display.DisplayFile{
 			Handler:        file.Handler,
 			Path:           file.Path,
 			Status:         statusStateToDisplayStatus(file.Status.State),
 			Message:        file.Status.Message,
 			LastExecuted:   file.Status.Timestamp,
-			HandlerSymbol:  types.GetHandlerSymbol(file.Handler),
+			HandlerSymbol:  display.GetHandlerSymbol(file.Handler),
 			AdditionalInfo: file.AdditionalInfo,
 		}
 		displayPack.Files = append(displayPack.Files, displayFile)
@@ -143,13 +144,13 @@ func convertStatusToDisplayPack(status *StatusResult) types.DisplayPack {
 
 	// Add special files if present
 	if status.IsIgnored {
-		displayPack.Files = append([]types.DisplayFile{{
+		displayPack.Files = append([]display.DisplayFile{{
 			Path:   ".dodotignore",
 			Status: "ignored",
 		}}, displayPack.Files...)
 	}
 	if status.HasConfig {
-		displayPack.Files = append([]types.DisplayFile{{
+		displayPack.Files = append([]display.DisplayFile{{
 			Path:   ".dodot.toml",
 			Status: "config",
 		}}, displayPack.Files...)
