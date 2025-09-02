@@ -2,8 +2,8 @@ package core
 
 import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
-	"github.com/arthur-debert/dodot/pkg/handler/pipeline"
 	"github.com/arthur-debert/dodot/pkg/handlers"
+	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 

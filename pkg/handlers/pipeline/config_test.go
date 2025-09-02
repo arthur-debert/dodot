@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/handler/pipeline"
+	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/knadh/koanf/providers/confmap"
 	"github.com/knadh/koanf/v2"
