@@ -3,6 +3,7 @@ package operations
 import (
 	"fmt"
 
+	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -12,13 +13,13 @@ import (
 // This is where the complexity lives - handlers just declare what they want,
 // the executor figures out how to make it happen.
 type Executor struct {
-	store      types.DataStore
+	store      datastore.DataStore
 	dryRun     bool
 	fileSystem types.FS
 }
 
 // NewExecutor creates a new operation executor.
-func NewExecutor(store types.DataStore, fs types.FS, dryRun bool) *Executor {
+func NewExecutor(store datastore.DataStore, fs types.FS, dryRun bool) *Executor {
 	return &Executor{
 		store:      store,
 		fileSystem: fs,

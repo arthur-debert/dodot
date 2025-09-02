@@ -19,7 +19,7 @@ import (
 )
 
 // setupTestEnvironment creates a real filesystem test environment
-func setupTestEnvironment(t *testing.T) (types.DataStore, types.FS, paths.Paths, string) {
+func setupTestEnvironment(t *testing.T) (datastore.DataStore, types.FS, paths.Paths, string) {
 	t.Helper()
 
 	tempDir := t.TempDir()
@@ -255,7 +255,7 @@ func TestUnlink_CompleteScenarios(t *testing.T) {
 	tests := []struct {
 		name         string
 		packName     string
-		setupFunc    func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string
+		setupFunc    func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string
 		wantErr      bool
 		errContains  string
 		validateFunc func(t *testing.T, fs types.FS, p paths.Paths, sourceFile string)
@@ -263,7 +263,7 @@ func TestUnlink_CompleteScenarios(t *testing.T) {
 		{
 			name:     "removes_existing_symlink",
 			packName: "vim",
-			setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+			setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 				sourceDir := filepath.Join(p.DotfilesRoot(), "vim")
 				require.NoError(t, fs.MkdirAll(sourceDir, 0755))
 				sourceFile := filepath.Join(sourceDir, ".vimrc")
@@ -289,7 +289,7 @@ func TestUnlink_CompleteScenarios(t *testing.T) {
 		{
 			name:     "handles_non_existent_symlink",
 			packName: "vim",
-			setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+			setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 				return filepath.Join(p.DotfilesRoot(), "vim", ".vimrc")
 			},
 			validateFunc: func(t *testing.T, fs types.FS, p paths.Paths, sourceFile string) {
@@ -299,7 +299,7 @@ func TestUnlink_CompleteScenarios(t *testing.T) {
 		{
 			name:     "handles_permission_error",
 			packName: "vim",
-			setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+			setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 				// Skip this test as RemoveState is designed to be idempotent
 				// and doesn't fail on permission errors
 				t.Skip("RemoveState is idempotent and doesn't fail on permission errors")
@@ -691,7 +691,7 @@ func TestProvisioning_CompleteScenarios(t *testing.T) {
 			packName     string
 			sentinelName string
 			checksum     string
-			setupFunc    func(t *testing.T, ds types.DataStore)
+			setupFunc    func(t *testing.T, ds datastore.DataStore)
 			wantNeeds    bool
 			wantErr      bool
 		}{
@@ -707,7 +707,7 @@ func TestProvisioning_CompleteScenarios(t *testing.T) {
 				packName:     "dev",
 				sentinelName: "install.sh.sentinel",
 				checksum:     "sha256:newchecksum",
-				setupFunc: func(t *testing.T, ds types.DataStore) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore) {
 					err := ds.RecordProvisioning("dev", "install.sh.sentinel", "sha256:oldchecksum")
 					require.NoError(t, err)
 				},
@@ -718,7 +718,7 @@ func TestProvisioning_CompleteScenarios(t *testing.T) {
 				packName:     "dev",
 				sentinelName: "install.sh.sentinel",
 				checksum:     "sha256:12345",
-				setupFunc: func(t *testing.T, ds types.DataStore) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore) {
 					err := ds.RecordProvisioning("dev", "install.sh.sentinel", "sha256:12345")
 					require.NoError(t, err)
 				},
@@ -729,7 +729,7 @@ func TestProvisioning_CompleteScenarios(t *testing.T) {
 				packName:     "dev",
 				sentinelName: "install.sh.sentinel",
 				checksum:     "sha256:12345",
-				setupFunc: func(t *testing.T, ds types.DataStore) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore) {
 					// This test needs special handling since we need to create
 					// a malformed file that the datastore API wouldn't normally create
 					// For simplicity, we'll skip this edge case test
@@ -741,7 +741,7 @@ func TestProvisioning_CompleteScenarios(t *testing.T) {
 				packName:     "dev",
 				sentinelName: "install.sh.sentinel",
 				checksum:     "sha256:12345",
-				setupFunc: func(t *testing.T, ds types.DataStore) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore) {
 					// Similar to malformed test, skip for simplicity
 				},
 				wantNeeds: true,
@@ -778,14 +778,14 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 		tests := []struct {
 			name        string
 			packName    string
-			setupFunc   func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string
+			setupFunc   func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string
 			wantState   types.StatusState
 			wantMessage string
 		}{
 			{
 				name:     "status_missing",
 				packName: "vim",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					sourceFile := filepath.Join(p.DotfilesRoot(), "vim", ".vimrc")
 					require.NoError(t, fs.MkdirAll(filepath.Dir(sourceFile), 0755))
 					require.NoError(t, fs.WriteFile(sourceFile, []byte("vim config"), 0644))
@@ -797,7 +797,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			{
 				name:     "status_ready",
 				packName: "vim",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					sourceFile := filepath.Join(p.DotfilesRoot(), "vim", ".vimrc")
 					require.NoError(t, fs.MkdirAll(filepath.Dir(sourceFile), 0755))
 					require.NoError(t, fs.WriteFile(sourceFile, []byte("vim config"), 0644))
@@ -813,7 +813,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			{
 				name:     "status_conflict",
 				packName: "vim",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					sourceFile := filepath.Join(p.DotfilesRoot(), "vim", ".vimrc")
 					require.NoError(t, fs.MkdirAll(filepath.Dir(sourceFile), 0755))
 					require.NoError(t, fs.WriteFile(sourceFile, []byte("vim config"), 0644))
@@ -832,7 +832,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			{
 				name:     "status_error_regular_file",
 				packName: "vim",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					sourceFile := filepath.Join(p.DotfilesRoot(), "vim", ".vimrc")
 					require.NoError(t, fs.MkdirAll(filepath.Dir(sourceFile), 0755))
 					require.NoError(t, fs.WriteFile(sourceFile, []byte("vim config"), 0644))
@@ -871,14 +871,14 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 		tests := []struct {
 			name        string
 			packName    string
-			setupFunc   func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string
+			setupFunc   func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string
 			wantState   types.StatusState
 			wantMessage string
 		}{
 			{
 				name:     "path_missing",
 				packName: "tools",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					dirPath := filepath.Join(p.DotfilesRoot(), "tools", "bin")
 					require.NoError(t, fs.MkdirAll(dirPath, 0755))
 					return dirPath
@@ -889,7 +889,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			{
 				name:     "path_ready",
 				packName: "tools",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					dirPath := filepath.Join(p.DotfilesRoot(), "tools", "bin")
 					require.NoError(t, fs.MkdirAll(dirPath, 0755))
 
@@ -924,14 +924,14 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 		tests := []struct {
 			name        string
 			packName    string
-			setupFunc   func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string
+			setupFunc   func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string
 			wantState   types.StatusState
 			wantMessage string
 		}{
 			{
 				name:     "shell_missing",
 				packName: "git",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					scriptPath := filepath.Join(p.DotfilesRoot(), "git", "aliases.sh")
 					require.NoError(t, fs.MkdirAll(filepath.Dir(scriptPath), 0755))
 					require.NoError(t, fs.WriteFile(scriptPath, []byte("alias g=git"), 0644))
@@ -943,7 +943,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			{
 				name:     "shell_ready",
 				packName: "git",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) string {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) string {
 					scriptPath := filepath.Join(p.DotfilesRoot(), "git", "aliases.sh")
 					require.NoError(t, fs.MkdirAll(filepath.Dir(scriptPath), 0755))
 					require.NoError(t, fs.WriteFile(scriptPath, []byte("alias g=git"), 0644))
@@ -981,7 +981,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			packName        string
 			sentinelName    string
 			currentChecksum string
-			setupFunc       func(t *testing.T, ds types.DataStore)
+			setupFunc       func(t *testing.T, ds datastore.DataStore)
 			wantState       types.StatusState
 			wantMessage     string
 		}{
@@ -998,7 +998,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 				packName:        "dev",
 				sentinelName:    "install.sh.sentinel",
 				currentChecksum: "sha256:12345",
-				setupFunc: func(t *testing.T, ds types.DataStore) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore) {
 					err := ds.RecordProvisioning("dev", "install.sh.sentinel", "sha256:12345")
 					require.NoError(t, err)
 				},
@@ -1010,7 +1010,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 				packName:        "dev",
 				sentinelName:    "install.sh.sentinel",
 				currentChecksum: "sha256:newchecksum",
-				setupFunc: func(t *testing.T, ds types.DataStore) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore) {
 					err := ds.RecordProvisioning("dev", "install.sh.sentinel", "sha256:oldchecksum")
 					require.NoError(t, err)
 				},
@@ -1041,7 +1041,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 			packName        string
 			brewfilePath    string
 			currentChecksum string
-			setupFunc       func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths)
+			setupFunc       func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths)
 			wantState       types.StatusState
 			wantMessage     string
 		}{
@@ -1058,7 +1058,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 				packName:        "tools",
 				brewfilePath:    "Brewfile",
 				currentChecksum: "sha256:brew123",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) {
 					// Create sentinel in homebrew directory
 					brewDir := filepath.Join(p.DataDir(), "packs", "tools", "homebrew")
 					require.NoError(t, fs.MkdirAll(brewDir, 0755))
@@ -1074,7 +1074,7 @@ func TestGetStatus_AllHandlerTypes(t *testing.T) {
 				packName:        "tools",
 				brewfilePath:    "Brewfile",
 				currentChecksum: "sha256:newbrew",
-				setupFunc: func(t *testing.T, ds types.DataStore, fs types.FS, p paths.Paths) {
+				setupFunc: func(t *testing.T, ds datastore.DataStore, fs types.FS, p paths.Paths) {
 					// Create outdated sentinel
 					brewDir := filepath.Join(p.DataDir(), "packs", "tools", "homebrew")
 					require.NoError(t, fs.MkdirAll(brewDir, 0755))

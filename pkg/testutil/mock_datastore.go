@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/datastore"
 )
 
-// MockDataStore is a mock implementation of types.DataStore for testing
+// MockDataStore is a mock implementation of datastore.DataStore for testing
 type MockDataStore struct {
 	mu            sync.RWMutex
 	dataLinks     map[string]string // pack:handler:source -> datastorePath
@@ -335,4 +335,4 @@ func (m *MockDataStore) SetSentinel(pack, handlerName, sentinel string, exists b
 }
 
 // Verify interface compliance
-var _ types.DataStore = (*MockDataStore)(nil)
+var _ datastore.DataStore = (*MockDataStore)(nil)

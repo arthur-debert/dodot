@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/paths"
-	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -64,7 +63,7 @@ func TestHasHandlerState(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			fs := testutil.NewMemoryFS()
+			fs := NewMemoryFS()
 			p, _ := paths.New("/home/user/.dotfiles")
 			ds := New(fs, p)
 
@@ -131,7 +130,7 @@ func TestListPackHandlers(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			fs := testutil.NewMemoryFS()
+			fs := NewMemoryFS()
 			p, _ := paths.New("/home/user/.dotfiles")
 			ds := New(fs, p)
 
@@ -228,7 +227,7 @@ func TestListHandlerSentinels(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
-			fs := testutil.NewMemoryFS()
+			fs := NewMemoryFS()
 			p, _ := paths.New("/home/user/.dotfiles")
 			ds := New(fs, p)
 

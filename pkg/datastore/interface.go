@@ -1,4 +1,4 @@
-package types
+package datastore
 
 // DataStore represents dodot's simplified storage interface.
 // This interface has only 5 operations instead of the previous 20+.

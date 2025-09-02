@@ -6,11 +6,10 @@ package testutil
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
+	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -32,7 +31,7 @@ type TestEnvironment struct {
 	XDGData      string
 
 	// Core dependencies
-	DataStore types.DataStore
+	DataStore datastore.DataStore
 	FS        types.FS
 	Paths     types.Pather
 
@@ -133,10 +132,7 @@ func (env *TestEnvironment) setupIsolatedEnvironment() {
 	env.Paths = pathsInstance
 
 	// Create real datastore
-	env.DataStore = &realDataStore{
-		fs:      env.FS,
-		dataDir: filepath.Join(env.XDGData, "dodot", "data"),
-	}
+	env.DataStore = datastore.New(env.FS, pathsInstance)
 }
 
 // Cleanup performs environment cleanup
@@ -485,160 +481,3 @@ func (m *MockSimpleDataStore) GetDataLinks() map[string]string { return m.dataLi
 func (m *MockSimpleDataStore) GetUserLinks() map[string]string { return m.userLinks }
 func (m *MockSimpleDataStore) GetSentinels() map[string]bool   { return m.sentinels }
 func (m *MockSimpleDataStore) GetCommands() map[string]string  { return m.commands }
-
-// realDataStore implements a minimal DataStore using real filesystem
-type realDataStore struct {
-	fs      types.FS
-	dataDir string
-}
-
-func (d *realDataStore) CreateDataLink(pack, handlerName, sourceFile string) (string, error) {
-	baseName := filepath.Base(sourceFile)
-	intermediateLinkDir := filepath.Join(d.dataDir, pack, handlerName)
-	intermediateLinkPath := filepath.Join(intermediateLinkDir, baseName)
-
-	if err := d.fs.MkdirAll(intermediateLinkDir, 0755); err != nil {
-		return "", err
-	}
-
-	// If the link already exists and points to the correct source, do nothing
-	if currentTarget, err := d.fs.Readlink(intermediateLinkPath); err == nil && currentTarget == sourceFile {
-		return intermediateLinkPath, nil
-	}
-
-	// If it exists but is wrong, remove it first
-	if _, err := d.fs.Lstat(intermediateLinkPath); err == nil {
-		if err := d.fs.Remove(intermediateLinkPath); err != nil {
-			return "", err
-		}
-	}
-
-	if err := d.fs.Symlink(sourceFile, intermediateLinkPath); err != nil {
-		return "", err
-	}
-
-	return intermediateLinkPath, nil
-}
-
-func (d *realDataStore) CreateUserLink(datastorePath, userPath string) error {
-	// Create parent directory if needed
-	if err := d.fs.MkdirAll(filepath.Dir(userPath), 0755); err != nil {
-		return err
-	}
-
-	// If link already exists, remove it
-	if _, err := d.fs.Lstat(userPath); err == nil {
-		if err := d.fs.Remove(userPath); err != nil {
-			return err
-		}
-	}
-
-	return d.fs.Symlink(datastorePath, userPath)
-}
-
-func (d *realDataStore) RunAndRecord(pack, handlerName, command, sentinel string) error {
-	// For test environment, just record the sentinel
-	sentinelDir := filepath.Join(d.dataDir, pack, handlerName)
-	sentinelPath := filepath.Join(sentinelDir, sentinel)
-
-	if err := d.fs.MkdirAll(sentinelDir, 0755); err != nil {
-		return err
-	}
-
-	content := fmt.Sprintf("completed|%s", time.Now().Format(time.RFC3339))
-	return d.fs.WriteFile(sentinelPath, []byte(content), 0644)
-}
-
-func (d *realDataStore) HasSentinel(pack, handlerName, sentinel string) (bool, error) {
-	sentinelPath := filepath.Join(d.dataDir, pack, handlerName, sentinel)
-	_, err := d.fs.Stat(sentinelPath)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
-func (d *realDataStore) RemoveState(pack, handlerName string) error {
-	stateDir := filepath.Join(d.dataDir, pack, handlerName)
-	return d.fs.RemoveAll(stateDir)
-}
-
-// HasHandlerState checks if any state exists for a handler in a pack
-func (d *realDataStore) HasHandlerState(pack, handlerName string) (bool, error) {
-	stateDir := filepath.Join(d.dataDir, pack, handlerName)
-
-	// Check if directory exists
-	if _, err := d.fs.Stat(stateDir); err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	// Check if directory has any contents
-	entries, err := d.fs.ReadDir(stateDir)
-	if err != nil {
-		return false, err
-	}
-
-	return len(entries) > 0, nil
-}
-
-// ListPackHandlers returns a list of all handlers that have state for a given pack
-func (d *realDataStore) ListPackHandlers(pack string) ([]string, error) {
-	packDir := filepath.Join(d.dataDir, pack)
-
-	// Check if pack directory exists
-	if _, err := d.fs.Stat(packDir); err != nil {
-		if os.IsNotExist(err) {
-			return []string{}, nil
-		}
-		return nil, err
-	}
-
-	// Read handler directories
-	entries, err := d.fs.ReadDir(packDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var handlers []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			handlers = append(handlers, entry.Name())
-		}
-	}
-
-	return handlers, nil
-}
-
-// ListHandlerSentinels returns all sentinel files for a specific handler in a pack
-func (d *realDataStore) ListHandlerSentinels(pack, handlerName string) ([]string, error) {
-	stateDir := filepath.Join(d.dataDir, pack, handlerName)
-
-	// Check if directory exists
-	if _, err := d.fs.Stat(stateDir); err != nil {
-		if os.IsNotExist(err) {
-			return []string{}, nil
-		}
-		return nil, err
-	}
-
-	// Read all files
-	entries, err := d.fs.ReadDir(stateDir)
-	if err != nil {
-		return nil, err
-	}
-
-	var sentinels []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			sentinels = append(sentinels, entry.Name())
-		}
-	}
-
-	return sentinels, nil
-}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	exec "github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/handlers"
@@ -432,7 +433,7 @@ type ExecutionOptions struct {
 
 // ExecuteMatches executes rule matches using handlers and the DataStore abstraction.
 // This is the core execution function that replaces the internal pipeline approach.
-func ExecuteMatches(matches []RuleMatch, dataStore types.DataStore, opts ExecutionOptions) (*types.ExecutionContext, error) {
+func ExecuteMatches(matches []RuleMatch, dataStore datastore.DataStore, opts ExecutionOptions) (*types.ExecutionContext, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Info().
 		Int("matches", len(matches)).

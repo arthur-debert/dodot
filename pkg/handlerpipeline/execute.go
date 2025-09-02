@@ -5,6 +5,7 @@ package handlerpipeline
 import (
 	"fmt"
 
+	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	exec "github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/handlers"
@@ -35,7 +36,7 @@ type Options struct {
 	DryRun     bool
 	Force      bool
 	FileSystem types.FS
-	DataStore  types.DataStore
+	DataStore  datastore.DataStore
 }
 
 // Result contains the execution results for a single pack
