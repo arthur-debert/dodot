@@ -83,7 +83,7 @@ type HandlerResult struct {
 	Files []string
 
 	// Status is the final status after execution
-	Status OperationStatus
+	Status execution.OperationStatus
 
 	// Error contains any error that occurred
 	Error error
@@ -160,11 +160,11 @@ func (per *PackExecutionResult) AddHandlerResult(result *HandlerResult) {
 	per.TotalHandlers++
 
 	switch result.Status {
-	case StatusReady:
+	case execution.StatusReady:
 		per.CompletedHandlers++
-	case StatusSkipped:
+	case execution.StatusSkipped:
 		per.SkippedHandlers++
-	case StatusError, StatusConflict:
+	case execution.StatusError, execution.StatusConflict:
 		per.FailedHandlers++
 	}
 
@@ -260,7 +260,7 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 
 				// Use HandlerResult EndTime as LastExecuted if execution completed
 				var lastExecuted *time.Time
-				if pur.Status == StatusReady && !pur.EndTime.IsZero() {
+				if pur.Status == execution.StatusReady && !pur.EndTime.IsZero() {
 					lastExecuted = &pur.EndTime
 				}
 
@@ -324,15 +324,15 @@ func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
 }
 
 // mapOperationStatusToDisplayStatus converts internal OperationStatus to display status string
-func mapOperationStatusToDisplayStatus(status OperationStatus) string {
+func mapOperationStatusToDisplayStatus(status execution.OperationStatus) string {
 	switch status {
-	case StatusReady:
+	case execution.StatusReady:
 		return "success"
-	case StatusError:
+	case execution.StatusError:
 		return "error"
-	case StatusSkipped:
+	case execution.StatusSkipped:
 		return "queue"
-	case StatusConflict:
+	case execution.StatusConflict:
 		return "error"
 	default:
 		return "queue"

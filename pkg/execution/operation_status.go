@@ -1,4 +1,4 @@
-package types
+package execution
 
 // OperationStatus defines the state of an operation execution
 type OperationStatus string

@@ -139,7 +139,7 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 						HandlerResults: []*types.HandlerResult{
 							{
 								HandlerName: "symlink",
-								Status:      types.StatusReady,
+								Status:      execution.StatusReady,
 								Files:       []string{".vimrc"},
 							},
 						},

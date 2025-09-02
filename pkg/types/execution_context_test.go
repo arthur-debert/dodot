@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -109,7 +110,7 @@ func TestHandlerResult_Structure(t *testing.T) {
 	hr := &types.HandlerResult{
 		HandlerName: "symlink",
 		Files:       []string{".vimrc", ".gvimrc"},
-		Status:      types.StatusReady,
+		Status:      execution.StatusReady,
 		Error:       nil,
 		StartTime:   time.Now(),
 		EndTime:     time.Now().Add(100 * time.Millisecond),
@@ -119,7 +120,7 @@ func TestHandlerResult_Structure(t *testing.T) {
 	assert.Len(t, hr.Files, 2)
 	assert.Contains(t, hr.Files, ".vimrc")
 	assert.Contains(t, hr.Files, ".gvimrc")
-	assert.Equal(t, types.StatusReady, hr.Status)
+	assert.Equal(t, execution.StatusReady, hr.Status)
 	assert.Nil(t, hr.Error)
 	assert.True(t, hr.EndTime.After(hr.StartTime))
 }
