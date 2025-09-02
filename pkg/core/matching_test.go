@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/core"
-	"github.com/arthur-debert/dodot/pkg/handlerpipeline"
+	"github.com/arthur-debert/dodot/pkg/handler/pipeline"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -97,15 +97,15 @@ handler = "symlink"`,
 
 func TestFilterMatchesByHandlerCategory(t *testing.T) {
 	// Create test matches
-	createMatch := func(pack, handler string) handlerpipeline.RuleMatch {
-		return handlerpipeline.RuleMatch{
+	createMatch := func(pack, handler string) pipeline.RuleMatch {
+		return pipeline.RuleMatch{
 			Pack:        pack,
 			HandlerName: handler,
 			Path:        "test",
 		}
 	}
 
-	allMatches := []handlerpipeline.RuleMatch{
+	allMatches := []pipeline.RuleMatch{
 		createMatch("vim", "symlink"),    // configuration
 		createMatch("vim", "shell"),      // configuration
 		createMatch("vim", "path"),       // configuration
@@ -115,7 +115,7 @@ func TestFilterMatchesByHandlerCategory(t *testing.T) {
 
 	t.Run("filter only configuration handlers", func(t *testing.T) {
 		// Execute
-		filtered := handlerpipeline.FilterMatchesByHandlerCategory(allMatches, true, false)
+		filtered := core.FilterMatchesByHandlerCategory(allMatches, true, false)
 
 		// Verify
 		assert.Len(t, filtered, 3)
@@ -126,7 +126,7 @@ func TestFilterMatchesByHandlerCategory(t *testing.T) {
 
 	t.Run("filter only code execution handlers", func(t *testing.T) {
 		// Execute
-		filtered := handlerpipeline.FilterMatchesByHandlerCategory(allMatches, false, true)
+		filtered := core.FilterMatchesByHandlerCategory(allMatches, false, true)
 
 		// Verify
 		assert.Len(t, filtered, 2)
@@ -137,7 +137,7 @@ func TestFilterMatchesByHandlerCategory(t *testing.T) {
 
 	t.Run("allow both categories", func(t *testing.T) {
 		// Execute
-		filtered := handlerpipeline.FilterMatchesByHandlerCategory(allMatches, true, true)
+		filtered := core.FilterMatchesByHandlerCategory(allMatches, true, true)
 
 		// Verify
 		assert.Equal(t, allMatches, filtered)
@@ -145,7 +145,7 @@ func TestFilterMatchesByHandlerCategory(t *testing.T) {
 
 	t.Run("filter none when both false", func(t *testing.T) {
 		// Execute
-		filtered := handlerpipeline.FilterMatchesByHandlerCategory(allMatches, false, false)
+		filtered := core.FilterMatchesByHandlerCategory(allMatches, false, false)
 
 		// Verify
 		assert.Empty(t, filtered)
@@ -156,7 +156,7 @@ func TestFilterMatchesByHandlerCategory(t *testing.T) {
 		matchesWithUnknown := append(allMatches, createMatch("test", "unknown"))
 
 		// Execute - unknown handlers should be filtered out
-		filtered := handlerpipeline.FilterMatchesByHandlerCategory(matchesWithUnknown, true, true)
+		filtered := core.FilterMatchesByHandlerCategory(matchesWithUnknown, true, true)
 
 		// Verify - should only include known handlers
 		assert.Len(t, filtered, len(allMatches))
