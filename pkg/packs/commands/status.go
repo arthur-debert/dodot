@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/handler/pipeline"
 	"github.com/arthur-debert/dodot/pkg/handlers"
+	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"

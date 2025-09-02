@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/config"
-	"github.com/arthur-debert/dodot/pkg/handler/pipeline"
+	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
