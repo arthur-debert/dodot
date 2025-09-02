@@ -14,15 +14,15 @@ import (
 func TestTextRenderer_Render(t *testing.T) {
 	tests := []struct {
 		name        string
-		result      *types.DisplayResult
+		result      *display.DisplayResult
 		expected    []string // Lines that should appear in output
 		notExpected []string // Lines that should NOT appear
 	}{
 		{
 			name: "empty result with no packs",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command:   "link",
-				Packs:     []types.DisplayPack{},
+				Packs:     []display.DisplayPack{},
 				Timestamp: time.Now(),
 			},
 			expected: []string{
@@ -32,10 +32,10 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "dry run mode indicator",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command:   "provision",
 				DryRun:    true,
-				Packs:     []types.DisplayPack{},
+				Packs:     []display.DisplayPack{},
 				Timestamp: time.Now(),
 			},
 			expected: []string{
@@ -45,13 +45,13 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "pack with successful files",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "link",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "vim",
 						Status: "success",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler: "symlink",
 								Path:    "vimrc",
@@ -80,13 +80,13 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "pack with error status",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "provision",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "tools",
 						Status: "alert",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler: "provision",
 								Path:    "install.sh",
@@ -107,13 +107,13 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "mixed status pack",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "shell",
 						Status: "alert",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler: "symlink",
 								Path:    "bashrc",
@@ -143,9 +143,9 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "ignored pack",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:      "temp",
 						Status:    "ignored",
@@ -161,14 +161,14 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "pack with config file",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:      "neovim",
 						Status:    "success",
 						HasConfig: true,
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler: "config",
 								Path:    ".dodot.toml",
@@ -189,13 +189,13 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "file with override marker",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "link",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "vim",
 						Status: "success",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler:    "provision",
 								Path:       "setup.sh",
@@ -217,13 +217,13 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "file with execution timestamp",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "vim",
 						Status: "success",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler:      "symlink",
 								Path:         ".vimrc",
@@ -245,13 +245,13 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "empty pack with no files",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "empty-pack",
 						Status: "success",
-						Files:  []types.DisplayFile{},
+						Files:  []display.DisplayFile{},
 					},
 				},
 			},
@@ -263,20 +263,20 @@ func TestTextRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "multiple packs sorted alphabetically",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "zsh",
 						Status: "success",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{Handler: "symlink", Path: ".zshrc", Status: "success", Message: "linked"},
 						},
 					},
 					{
 						Name:   "bash",
 						Status: "success",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{Handler: "symlink", Path: ".bashrc", Status: "success", Message: "linked"},
 						},
 					},
@@ -317,7 +317,7 @@ func TestTextRenderer_Render(t *testing.T) {
 	}
 }
 
-func TestTextRenderer_RenderExecutionContext(t *testing.T) {
+func TestTextRenderer_RenderWithComplexData(t *testing.T) {
 	// Create a sample execution context
 	ctx := types.NewExecutionContext("link", false)
 
@@ -348,7 +348,23 @@ func TestTextRenderer_RenderExecutionContext(t *testing.T) {
 	var buf bytes.Buffer
 	renderer := display.NewTextRenderer(&buf)
 
-	err := renderer.RenderExecutionContext(ctx)
+	// Convert to display result first
+	displayResult := &display.DisplayResult{
+		Command: ctx.Command,
+		Packs: []display.DisplayPack{{
+			Name:   "test-pack",
+			Status: "success",
+			Files: []display.DisplayFile{{
+				Handler: "symlink",
+				Path:    "testfile",
+				Status:  "success",
+				Message: "linked to $HOME/testfile",
+			}},
+		}},
+		DryRun:    ctx.DryRun,
+		Timestamp: ctx.EndTime,
+	}
+	err := renderer.Render(displayResult)
 	require.NoError(t, err)
 
 	output := buf.String()
@@ -371,9 +387,9 @@ func TestTextRenderer_NilHandling(t *testing.T) {
 		assert.Empty(t, buf.String())
 	})
 
-	t.Run("nil ExecutionContext", func(t *testing.T) {
+	t.Run("nil DisplayResult again", func(t *testing.T) {
 		buf.Reset()
-		err := renderer.RenderExecutionContext(nil)
+		err := renderer.Render(nil)
 		assert.NoError(t, err)
 		assert.Empty(t, buf.String())
 	})

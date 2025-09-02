@@ -12,6 +12,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/utils"
 )
 
@@ -415,7 +416,7 @@ func getHandlerAdditionalInfo(handlerName string, filePath string, pack types.Pa
 		// For symlinks, show the target path
 		targetPath := pathsInstance.MapPackFileToSystem(&pack, filePath)
 		homeDir := os.Getenv("HOME")
-		return types.FormatSymlinkForDisplay(targetPath, homeDir, 46)
+		return display.FormatSymlinkForDisplay(targetPath, homeDir, 46)
 	case "path":
 		return "add to $PATH"
 	case "shell":

@@ -10,28 +10,30 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
 )
 
 func TestRenderer_Render(t *testing.T) {
 	tests := []struct {
 		name        string
-		result      *types.DisplayResult
+		result      *display.DisplayResult
 		noColor     bool
 		wantStrings []string
 		skipStrings []string
 	}{
 		{
 			name: "successful_status_command",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "status",
 				DryRun:  false,
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "vim",
 						Status: "success",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler: "symlink",
 								Path:    ".vimrc",
@@ -56,14 +58,14 @@ func TestRenderer_Render(t *testing.T) {
 		},
 		{
 			name: "dry_run_shows_preview",
-			result: &types.DisplayResult{
+			result: &display.DisplayResult{
 				Command: "link",
 				DryRun:  true,
-				Packs: []types.DisplayPack{
+				Packs: []display.DisplayPack{
 					{
 						Name:   "git",
 						Status: "queue",
-						Files: []types.DisplayFile{
+						Files: []display.DisplayFile{
 							{
 								Handler: "symlink",
 								Path:    ".gitconfig",
@@ -134,11 +136,11 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 				PackResults: map[string]*types.PackExecutionResult{
 					"vim": {
 						Pack:   &types.Pack{Name: "vim"},
-						Status: types.ExecutionStatusSuccess,
+						Status: execution.ExecutionStatusSuccess,
 						HandlerResults: []*types.HandlerResult{
 							{
 								HandlerName: "symlink",
-								Status:      types.StatusReady,
+								Status:      execution.StatusReady,
 								Files:       []string{".vimrc"},
 							},
 						},
@@ -179,13 +181,13 @@ func TestRenderer_RenderExecutionContext(t *testing.T) {
 }
 
 func TestRenderer_ColorHandling(t *testing.T) {
-	result := &types.DisplayResult{
+	result := &display.DisplayResult{
 		Command: "status",
-		Packs: []types.DisplayPack{
+		Packs: []display.DisplayPack{
 			{
 				Name:   "vim",
 				Status: "success",
-				Files: []types.DisplayFile{
+				Files: []display.DisplayFile{
 					{
 						Handler: "symlink",
 						Path:    ".vimrc",

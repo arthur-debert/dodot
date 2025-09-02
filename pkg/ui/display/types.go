@@ -1,19 +1,8 @@
-package types
+package display
 
 import (
 	"strings"
 	"time"
-)
-
-// OperationStatus defines the state of an operation execution
-type OperationStatus string
-
-const (
-	StatusReady    OperationStatus = "ready"
-	StatusSkipped  OperationStatus = "skipped"
-	StatusConflict OperationStatus = "conflict"
-	StatusError    OperationStatus = "error"
-	StatusUnknown  OperationStatus = "unknown"
 )
 
 // DisplayResult is the top-level structure for commands that produce rich output.
@@ -82,34 +71,6 @@ type CommandMetadata struct {
 	AlreadyExisted bool `json:"alreadyExisted,omitempty"`
 }
 
-// FormatCommandMessage generates a standard message for command results.
-// It handles pluralization and pack name listing appropriately.
-// Returns empty string if there are no packs (message will be omitted).
-//
-// Examples:
-//   - FormatCommandMessage("linked", []string{"vim", "git"}) -> "The packs vim and git have been linked."
-//   - FormatCommandMessage("linked", []string{"vim"}) -> "The pack vim has been linked."
-//   - FormatCommandMessage("linked", []string{}) -> ""
-func FormatCommandMessage(verb string, packNames []string) string {
-	if len(packNames) == 0 {
-		return "" // No message for empty pack list
-	}
-
-	if len(packNames) == 1 {
-		return "The pack " + packNames[0] + " has been " + verb + "."
-	}
-
-	// Multiple packs
-	if len(packNames) == 2 {
-		return "The packs " + packNames[0] + " and " + packNames[1] + " have been " + verb + "."
-	}
-
-	// More than 2 packs
-	lastPack := packNames[len(packNames)-1]
-	otherPacks := strings.Join(packNames[:len(packNames)-1], ", ")
-	return "The packs " + otherPacks + ", and " + lastPack + " have been " + verb + "."
-}
-
 // DisplayPack represents a single pack for display.
 type DisplayPack struct {
 	Name      string        `json:"name"`
@@ -129,6 +90,13 @@ type DisplayFile struct {
 	LastExecuted   *time.Time `json:"lastExecuted"`   // When operation was last executed
 	HandlerSymbol  string     `json:"handlerSymbol"`  // Unicode symbol for the handler
 	AdditionalInfo string     `json:"additionalInfo"` // Additional context (e.g., symlink target, shell type)
+}
+
+// GenConfigResult holds the result of the 'gen-config' command.
+// This is kept separate as it doesn't follow the pack command pattern.
+type GenConfigResult struct {
+	ConfigContent string   `json:"configContent"`
+	FilesWritten  []string `json:"filesWritten"`
 }
 
 // GetPackStatus determines the pack-level status based on its files.
@@ -175,11 +143,32 @@ func (dp *DisplayPack) GetPackStatus() string {
 	return "queue"
 }
 
-// GenConfigResult holds the result of the 'gen-config' command.
-// This is kept separate as it doesn't follow the pack command pattern.
-type GenConfigResult struct {
-	ConfigContent string   `json:"configContent"`
-	FilesWritten  []string `json:"filesWritten"`
+// FormatCommandMessage generates a standard message for command results.
+// It handles pluralization and pack name listing appropriately.
+// Returns empty string if there are no packs (message will be omitted).
+//
+// Examples:
+//   - FormatCommandMessage("linked", []string{"vim", "git"}) -> "The packs vim and git have been linked."
+//   - FormatCommandMessage("linked", []string{"vim"}) -> "The pack vim has been linked."
+//   - FormatCommandMessage("linked", []string{}) -> ""
+func FormatCommandMessage(verb string, packNames []string) string {
+	if len(packNames) == 0 {
+		return "" // No message for empty pack list
+	}
+
+	if len(packNames) == 1 {
+		return "The pack " + packNames[0] + " has been " + verb + "."
+	}
+
+	// Multiple packs
+	if len(packNames) == 2 {
+		return "The packs " + packNames[0] + " and " + packNames[1] + " have been " + verb + "."
+	}
+
+	// More than 2 packs
+	lastPack := packNames[len(packNames)-1]
+	otherPacks := strings.Join(packNames[:len(packNames)-1], ", ")
+	return "The packs " + otherPacks + ", and " + lastPack + " have been " + verb + "."
 }
 
 // GetHandlerSymbol returns the Unicode symbol for a given Handler

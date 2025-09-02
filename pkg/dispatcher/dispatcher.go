@@ -13,6 +13,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/packpipeline/commands"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
 // CommandType represents the type of pack command being executed
@@ -59,7 +60,7 @@ type Options struct {
 // Dispatch is the central dispatcher for all pack-related commands.
 // It replaces the individual command packages by directly calling the appropriate
 // pack functions based on the command type.
-func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, error) {
+func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, error) {
 	logger := logging.GetLogger("dispatcher")
 	logger.Debug().
 		Str("command", string(cmdType)).
@@ -182,35 +183,35 @@ func Dispatch(cmdType CommandType, opts Options) (*types.PackCommandResult, erro
 }
 
 // convertPipelineResult converts pack pipeline result to types.PackCommandResult
-func convertPipelineResult(pipelineResult *packpipeline.Result) *types.PackCommandResult {
-	result := &types.PackCommandResult{
+func convertPipelineResult(pipelineResult *packpipeline.Result) *display.PackCommandResult {
+	result := &display.PackCommandResult{
 		Command:   pipelineResult.Command,
 		Timestamp: time.Now(),
 		DryRun:    false,
-		Packs:     make([]types.DisplayPack, 0, len(pipelineResult.PackResults)),
+		Packs:     make([]display.DisplayPack, 0, len(pipelineResult.PackResults)),
 	}
 
 	// Convert each pack result
 	for _, pr := range pipelineResult.PackResults {
 		// Extract status result if available
 		if statusResult, ok := pr.CommandSpecificResult.(*packcommands.StatusResult); ok && statusResult != nil {
-			displayPack := types.DisplayPack{
+			displayPack := display.DisplayPack{
 				Name:      statusResult.Name,
 				HasConfig: statusResult.HasConfig,
 				IsIgnored: statusResult.IsIgnored,
 				Status:    statusResult.Status,
-				Files:     make([]types.DisplayFile, 0, len(statusResult.Files)),
+				Files:     make([]display.DisplayFile, 0, len(statusResult.Files)),
 			}
 
 			// Convert each file status
 			for _, file := range statusResult.Files {
-				displayFile := types.DisplayFile{
+				displayFile := display.DisplayFile{
 					Handler:        file.Handler,
 					Path:           file.Path,
 					Status:         statusStateToDisplayStatus(file.Status.State),
 					Message:        file.Status.Message,
 					LastExecuted:   file.Status.Timestamp,
-					HandlerSymbol:  types.GetHandlerSymbol(file.Handler),
+					HandlerSymbol:  display.GetHandlerSymbol(file.Handler),
 					AdditionalInfo: file.AdditionalInfo,
 				}
 				displayPack.Files = append(displayPack.Files, displayFile)
@@ -218,13 +219,13 @@ func convertPipelineResult(pipelineResult *packpipeline.Result) *types.PackComma
 
 			// Add special files if present
 			if statusResult.IsIgnored {
-				displayPack.Files = append([]types.DisplayFile{{
+				displayPack.Files = append([]display.DisplayFile{{
 					Path:   ".dodotignore",
 					Status: "ignored",
 				}}, displayPack.Files...)
 			}
 			if statusResult.HasConfig {
-				displayPack.Files = append([]types.DisplayFile{{
+				displayPack.Files = append([]display.DisplayFile{{
 					Path:   ".dodot.toml",
 					Status: "config",
 				}}, displayPack.Files...)
@@ -233,7 +234,7 @@ func convertPipelineResult(pipelineResult *packpipeline.Result) *types.PackComma
 			result.Packs = append(result.Packs, displayPack)
 		} else {
 			// Fallback for commands that don't return status
-			displayPack := types.DisplayPack{
+			displayPack := display.DisplayPack{
 				Name:   pr.Pack.Name,
 				Status: "unknown",
 			}
@@ -254,9 +255,9 @@ func convertPipelineResult(pipelineResult *packpipeline.Result) *types.PackComma
 
 	switch pipelineResult.Command {
 	case "on":
-		result.Message = types.FormatCommandMessage("turned on", packNames)
+		result.Message = display.FormatCommandMessage("turned on", packNames)
 	case "off":
-		result.Message = types.FormatCommandMessage("turned off", packNames)
+		result.Message = display.FormatCommandMessage("turned off", packNames)
 	case "status":
 		result.Message = "" // Status command doesn't have a message
 	}

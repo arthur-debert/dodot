@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/errors"
+	exec "github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
@@ -159,18 +160,18 @@ func buildResultFromContext(pack types.Pack, ctx *types.ExecutionContext) *Resul
 			execution := HandlerExecution{
 				HandlerName:    hr.HandlerName,
 				OperationCount: len(hr.Files),
-				Success:        hr.Status == types.StatusReady,
+				Success:        hr.Status == exec.StatusReady,
 				Error:          hr.Error,
 			}
 
 			result.ExecutedHandlers = append(result.ExecutedHandlers, execution)
 
 			switch hr.Status {
-			case types.StatusReady:
+			case exec.StatusReady:
 				result.SuccessCount++
-			case types.StatusError, types.StatusConflict:
+			case exec.StatusError, exec.StatusConflict:
 				result.FailureCount++
-			case types.StatusSkipped:
+			case exec.StatusSkipped:
 				result.SkippedCount++
 			}
 		}
@@ -369,7 +370,7 @@ func addOperationResultsToContext(ctx *types.ExecutionContext, results []operati
 				HandlerName: match.HandlerName,
 				Pack:        match.Pack,
 				Files:       []string{},
-				Status:      types.StatusReady,
+				Status:      exec.StatusReady,
 			}
 		}
 
@@ -378,12 +379,12 @@ func addOperationResultsToContext(ctx *types.ExecutionContext, results []operati
 
 		// Update status based on operation result
 		if result.Error != nil {
-			packResults[key].Status = types.StatusError
+			packResults[key].Status = exec.StatusError
 			packResults[key].Error = result.Error
 		} else if !result.Success {
 			// If not successful but no error, treat as skipped
-			if packResults[key].Status == types.StatusReady {
-				packResults[key].Status = types.StatusSkipped
+			if packResults[key].Status == exec.StatusReady {
+				packResults[key].Status = exec.StatusSkipped
 			}
 		}
 	}

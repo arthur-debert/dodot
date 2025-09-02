@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/converter"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
@@ -27,9 +28,9 @@ func New(output io.Writer) (*Renderer, error) {
 func (r *Renderer) RenderResult(result interface{}) error {
 	// For now, delegate to the legacy renderer based on type
 	switch v := result.(type) {
-	case *types.PackCommandResult:
+	case *display.PackCommandResult:
 		// Convert PackCommandResult to DisplayResult for rendering
-		displayResult := &types.DisplayResult{
+		displayResult := &display.DisplayResult{
 			Command:   v.Command,
 			Packs:     v.Packs,
 			DryRun:    v.DryRun,
@@ -48,7 +49,7 @@ func (r *Renderer) RenderResult(result interface{}) error {
 		}
 		// Then render the pack status
 		return r.legacyRenderer.Render(displayResult)
-	case *types.CommandResult:
+	case *display.CommandResult:
 		// Legacy CommandResult support
 		// Render the optional message first
 		if v.Message != "" {
@@ -67,9 +68,9 @@ func (r *Renderer) RenderResult(result interface{}) error {
 		return nil
 	case *types.ExecutionContext:
 		// Convert to DisplayResult first
-		displayResult := v.ToDisplayResult()
+		displayResult := converter.ConvertToDisplay(v)
 		return r.legacyRenderer.Render(displayResult)
-	case *types.DisplayResult:
+	case *display.DisplayResult:
 		return r.legacyRenderer.Render(v)
 	default:
 		// For unknown types, just print them

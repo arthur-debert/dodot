@@ -1,31 +1,9 @@
 package types
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
-)
 
-// ExecutionStatus represents the overall status of a pack's execution
-type ExecutionStatus string
-
-const (
-	// ExecutionStatusSuccess means all handlers succeeded
-	ExecutionStatusSuccess ExecutionStatus = "success"
-
-	// ExecutionStatusPartial means some handlers succeeded, some failed
-	ExecutionStatusPartial ExecutionStatus = "partial"
-
-	// ExecutionStatusError means all handlers failed
-	ExecutionStatusError ExecutionStatus = "error"
-
-	// ExecutionStatusSkipped means all handlers were skipped
-	ExecutionStatusSkipped ExecutionStatus = "skipped"
-
-	// ExecutionStatusPending means execution hasn't started
-	ExecutionStatusPending ExecutionStatus = "pending"
+	"github.com/arthur-debert/dodot/pkg/execution"
 )
 
 // ExecutionContext tracks the complete context and results of a command execution
@@ -70,7 +48,7 @@ type PackExecutionResult struct {
 	HandlerResults []*HandlerResult
 
 	// Status is the aggregated status for this pack
-	Status ExecutionStatus
+	Status execution.ExecutionStatus
 
 	// StartTime is when this pack's execution began
 	StartTime time.Time
@@ -101,7 +79,7 @@ type HandlerResult struct {
 	Files []string
 
 	// Status is the final status after execution
-	Status OperationStatus
+	Status execution.OperationStatus
 
 	// Error contains any error that occurred
 	Error error
@@ -167,7 +145,7 @@ func NewPackExecutionResult(pack *Pack) *PackExecutionResult {
 	return &PackExecutionResult{
 		Pack:           pack,
 		HandlerResults: make([]*HandlerResult, 0),
-		Status:         ExecutionStatusPending,
+		Status:         execution.ExecutionStatusPending,
 		StartTime:      time.Now(),
 	}
 }
@@ -178,11 +156,11 @@ func (per *PackExecutionResult) AddHandlerResult(result *HandlerResult) {
 	per.TotalHandlers++
 
 	switch result.Status {
-	case StatusReady:
+	case execution.StatusReady:
 		per.CompletedHandlers++
-	case StatusSkipped:
+	case execution.StatusSkipped:
 		per.SkippedHandlers++
-	case StatusError, StatusConflict:
+	case execution.StatusError, execution.StatusConflict:
 		per.FailedHandlers++
 	}
 
@@ -193,18 +171,18 @@ func (per *PackExecutionResult) AddHandlerResult(result *HandlerResult) {
 // updateStatus recalculates the pack's aggregated status
 func (per *PackExecutionResult) updateStatus() {
 	if per.TotalHandlers == 0 {
-		per.Status = ExecutionStatusPending
+		per.Status = execution.ExecutionStatusPending
 		return
 	}
 
 	if per.FailedHandlers == per.TotalHandlers {
-		per.Status = ExecutionStatusError
+		per.Status = execution.ExecutionStatusError
 	} else if per.SkippedHandlers == per.TotalHandlers {
-		per.Status = ExecutionStatusSkipped
+		per.Status = execution.ExecutionStatusSkipped
 	} else if per.FailedHandlers > 0 {
-		per.Status = ExecutionStatusPartial
+		per.Status = execution.ExecutionStatusPartial
 	} else {
-		per.Status = ExecutionStatusSuccess
+		per.Status = execution.ExecutionStatusSuccess
 	}
 }
 
@@ -212,248 +190,4 @@ func (per *PackExecutionResult) updateStatus() {
 func (per *PackExecutionResult) Complete() {
 	per.EndTime = time.Now()
 	per.updateStatus()
-}
-
-// ToDisplayResult transforms the ExecutionContext into a DisplayResult suitable for rendering
-func (ec *ExecutionContext) ToDisplayResult() *DisplayResult {
-	displayPacks := make([]DisplayPack, 0, len(ec.PackResults))
-
-	// Sort pack names for consistent output
-	packNames := make([]string, 0, len(ec.PackResults))
-	for name := range ec.PackResults {
-		packNames = append(packNames, name)
-	}
-	// Simple sort - could enhance with natural sort later
-	for i := 0; i < len(packNames); i++ {
-		for j := i + 1; j < len(packNames); j++ {
-			if packNames[i] > packNames[j] {
-				packNames[i], packNames[j] = packNames[j], packNames[i]
-			}
-		}
-	}
-
-	// Transform each pack
-	for _, packName := range packNames {
-		packResult := ec.PackResults[packName]
-
-		// Check for configuration files
-		hasConfig, isIgnored := checkPackConfiguration(packResult.Pack)
-
-		displayPack := DisplayPack{
-			Name:      packName,
-			Files:     make([]DisplayFile, 0),
-			HasConfig: hasConfig,
-			IsIgnored: isIgnored,
-		}
-
-		// Add config files as display items (per display.txxt spec)
-		if hasConfig {
-			displayPack.Files = append(displayPack.Files, DisplayFile{
-				Handler: "config",
-				Path:    ".dodot.toml",
-				Status:  "config",
-				Message: "dodot config file found",
-			})
-		}
-		if isIgnored {
-			displayPack.Files = append(displayPack.Files, DisplayFile{
-				Handler: ".dodotignore",
-				Path:    "",
-				Status:  "ignored",
-				Message: "dodot is ignoring this dir",
-			})
-		}
-
-		// Transform HandlerResults to DisplayFiles
-		for _, pur := range packResult.HandlerResults {
-			// Create a DisplayFile for each file in the HandlerResult
-			for _, filePath := range pur.Files {
-				// Check if this file has a handler override in .dodot.toml
-				fileName := filepath.Base(filePath)
-				isOverride := false
-				if packResult.Pack != nil {
-					override := packResult.Pack.Config.FindOverride(fileName)
-					isOverride = (override != nil)
-				}
-
-				// Use HandlerResult EndTime as LastExecuted if execution completed
-				var lastExecuted *time.Time
-				if pur.Status == StatusReady && !pur.EndTime.IsZero() {
-					lastExecuted = &pur.EndTime
-				}
-
-				// Generate Handler-aware display message
-				displayStatus := mapOperationStatusToDisplayStatus(pur.Status)
-				displayMessage := generateHandlerMessage(pur.HandlerName, filePath, displayStatus, lastExecuted)
-
-				// Get additional info based on Handler type and operation data
-				additionalInfo := GetHandlerAdditionalInfo(pur.HandlerName)
-
-				// Extract handler-specific information based on handler type
-				// This logic can be simplified once we have operations
-				switch pur.HandlerName {
-				case "symlink":
-					// For symlinks, show the target path with ~ for home
-					additionalInfo = fmt.Sprintf("→ ~/%s", filepath.Base(filePath))
-
-				case "path":
-					// For PATH entries, show the directory being added
-					additionalInfo = fmt.Sprintf("→ $PATH/%s", filepath.Base(filePath))
-
-				case "shell":
-					// For shell profile entries, indicate the shell type if detectable
-					fileName := filepath.Base(filePath)
-					if strings.Contains(fileName, "bash") {
-						additionalInfo = "→ bash profile"
-					} else if strings.Contains(fileName, "zsh") {
-						additionalInfo = "→ zsh profile"
-					} else if strings.Contains(fileName, "fish") {
-						additionalInfo = "→ fish config"
-					} else {
-						additionalInfo = "→ shell profile"
-					}
-				}
-
-				displayFile := DisplayFile{
-					Handler:        pur.HandlerName,
-					Path:           filePath,
-					Status:         displayStatus,
-					Message:        displayMessage,
-					IsOverride:     isOverride,
-					LastExecuted:   lastExecuted,
-					HandlerSymbol:  GetHandlerSymbol(pur.HandlerName),
-					AdditionalInfo: additionalInfo,
-				}
-				displayPack.Files = append(displayPack.Files, displayFile)
-			}
-		}
-
-		// Set pack status based on aggregation rules
-		displayPack.Status = displayPack.GetPackStatus()
-		displayPacks = append(displayPacks, displayPack)
-	}
-
-	return &DisplayResult{
-		Command:   ec.Command,
-		Packs:     displayPacks,
-		DryRun:    ec.DryRun,
-		Timestamp: ec.EndTime,
-	}
-}
-
-// mapOperationStatusToDisplayStatus converts internal OperationStatus to display status string
-func mapOperationStatusToDisplayStatus(status OperationStatus) string {
-	switch status {
-	case StatusReady:
-		return "success"
-	case StatusError:
-		return "error"
-	case StatusSkipped:
-		return "queue"
-	case StatusConflict:
-		return "error"
-	default:
-		return "queue"
-	}
-}
-
-// checkPackConfiguration checks for .dodot.toml and .dodotignore files in the pack directory
-func checkPackConfiguration(pack *Pack) (hasConfig bool, isIgnored bool) {
-	if pack == nil || pack.Path == "" {
-		return false, false
-	}
-
-	// Check for .dodot.toml file
-	configPath := filepath.Join(pack.Path, ".dodot.toml")
-	if _, err := os.Stat(configPath); err == nil {
-		hasConfig = true
-	}
-
-	// Check for .dodotignore file
-	ignorePath := filepath.Join(pack.Path, ".dodotignore")
-	if _, err := os.Stat(ignorePath); err == nil {
-		isIgnored = true
-	}
-
-	return hasConfig, isIgnored
-}
-
-// generateHandlerMessage creates Handler-specific display messages following display.txxt spec
-func generateHandlerMessage(handlerName, filePath, status string, lastExecuted *time.Time) string {
-	fileName := filepath.Base(filePath)
-
-	switch handlerName {
-	case "symlink":
-		switch status {
-		case "success":
-			if lastExecuted != nil {
-				return fmt.Sprintf("linked to $HOME/%s", fileName)
-			}
-			return fmt.Sprintf("linked to %s", fileName)
-		case "error":
-			return fmt.Sprintf("failed to link to $HOME/%s", fileName)
-		default: // queue
-			return fmt.Sprintf("will be linked to $HOME/%s", fileName)
-		}
-
-	case "shell", "shell_add_path":
-		switch status {
-		case "success":
-			if lastExecuted != nil {
-				return "included in shell profile"
-			}
-			return "added to shell profile"
-		case "error":
-			return "failed to add to shell profile"
-		default: // queue
-			return "to be included in shell profile"
-		}
-
-	case "homebrew":
-		switch status {
-		case "success":
-			if lastExecuted != nil {
-				return fmt.Sprintf("executed on %s", lastExecuted.Format("2006-01-02"))
-			}
-			return "packages installed"
-		case "error":
-			return "failed to install packages"
-		default: // queue
-			return "packages to be installed"
-		}
-
-	case "path":
-		switch status {
-		case "success":
-			return fmt.Sprintf("added %s to $PATH", fileName)
-		case "error":
-			return fmt.Sprintf("failed to add %s to $PATH", fileName)
-		default: // queue
-			return fmt.Sprintf("%s to be added to $PATH", fileName)
-		}
-
-	case "provision":
-		switch status {
-		case "success":
-			if lastExecuted != nil {
-				return fmt.Sprintf("executed during installation on %s", lastExecuted.Format("2006-01-02"))
-			}
-			return "installation completed"
-		case "error":
-			return "installation failed"
-		default: // queue
-			return "to be executed during installation"
-		}
-
-	default:
-		// Fallback for unknown Handler types
-		switch status {
-		case "success":
-			return "completed successfully"
-		case "error":
-			return "execution failed"
-		default: // queue
-			return "pending execution"
-		}
-	}
 }

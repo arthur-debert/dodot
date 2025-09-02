@@ -27,6 +27,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui"
+	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -673,7 +674,7 @@ func newGenConfigCmd() *cobra.Command {
 			message = fmt.Sprintf("Configuration written to %d files", len(outputResult.FilesWritten))
 		}
 
-		cmdResult := &types.CommandResult{
+		cmdResult := &display.CommandResult{
 			Message: message,
 		}
 

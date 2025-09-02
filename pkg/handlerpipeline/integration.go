@@ -8,6 +8,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
+	exec "github.com/arthur-debert/dodot/pkg/execution"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/install"
@@ -545,7 +546,7 @@ func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results 
 		handlerResult := &types.HandlerResult{
 			HandlerName: packResults[0].Operation.Handler,
 			Files:       make([]string, 0, len(packResults)),
-			Status:      types.StatusReady,
+			Status:      exec.StatusReady,
 		}
 
 		// Add files and check for errors
@@ -561,7 +562,7 @@ func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results 
 		}
 
 		if hasErrors {
-			handlerResult.Status = types.StatusError
+			handlerResult.Status = exec.StatusError
 		}
 
 		// Create or update pack result

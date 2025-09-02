@@ -1,40 +1,41 @@
-// pkg/types/pack_provisioning_test.go
+// pkg/packcommands/provisioning_test.go
 // TEST TYPE: Unit Tests
 // DEPENDENCIES: pkg/testutil
-// PURPOSE: Test Pack provisioning-related methods
+// PURPOSE: Test provisioning query functions
 
-package types_test
+package packcommands_test
 
 import (
 	"testing"
 
+	"github.com/arthur-debert/dodot/pkg/packcommands"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPackIsHandlerProvisioned(t *testing.T) {
+func TestIsPackHandlerProvisioned(t *testing.T) {
 	tests := []struct {
 		name        string
-		pack        *types.Pack
+		packName    string
 		handler     string
 		setupFunc   func(*testutil.MockDataStore)
 		expected    bool
 		expectError bool
 	}{
 		{
-			name:    "provisioned handler returns true",
-			pack:    &types.Pack{Name: "vim"},
-			handler: "homebrew",
+			name:     "provisioned handler returns true",
+			packName: "vim",
+			handler:  "homebrew",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				ds.SetSentinel("vim", "homebrew", "test-sentinel", true)
 			},
 			expected: true,
 		},
 		{
-			name:    "unprovisioned handler returns false",
-			pack:    &types.Pack{Name: "vim"},
-			handler: "install",
+			name:     "unprovisioned handler returns false",
+			packName: "vim",
+			handler:  "install",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				// No sentinels set means no state
 			},
@@ -42,16 +43,16 @@ func TestPackIsHandlerProvisioned(t *testing.T) {
 		},
 		{
 			name:        "non-existent handler returns false",
-			pack:        &types.Pack{Name: "vim"},
+			packName:    "vim",
 			handler:     "nonexistent",
 			setupFunc:   func(ds *testutil.MockDataStore) {},
 			expected:    false,
 			expectError: false,
 		},
 		{
-			name:    "error from datastore propagates",
-			pack:    &types.Pack{Name: "vim"},
-			handler: "homebrew",
+			name:     "error from datastore propagates",
+			packName: "vim",
+			handler:  "homebrew",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				ds.WithError("HasHandlerState", assert.AnError)
 			},
@@ -68,8 +69,11 @@ func TestPackIsHandlerProvisioned(t *testing.T) {
 				tt.setupFunc(ds)
 			}
 
+			// Create minimal pack - only needs Name
+			pack := &types.Pack{Name: tt.packName}
+
 			// Test
-			result, err := tt.pack.IsHandlerProvisioned(ds, tt.handler)
+			result, err := packcommands.IsPackHandlerProvisioned(pack, ds, tt.handler)
 
 			// Verify
 			if tt.expectError {
@@ -82,17 +86,17 @@ func TestPackIsHandlerProvisioned(t *testing.T) {
 	}
 }
 
-func TestPackGetProvisionedHandlers(t *testing.T) {
+func TestGetPackProvisionedHandlers(t *testing.T) {
 	tests := []struct {
 		name        string
-		pack        *types.Pack
+		packName    string
 		setupFunc   func(*testutil.MockDataStore)
 		expected    []string
 		expectError bool
 	}{
 		{
-			name: "returns only handlers with state",
-			pack: &types.Pack{Name: "vim"},
+			name:     "returns only handlers with state",
+			packName: "vim",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				ds.SetSentinel("vim", "symlink", "test1", true)
 				ds.SetSentinel("vim", "homebrew", "test2", true)
@@ -102,8 +106,8 @@ func TestPackGetProvisionedHandlers(t *testing.T) {
 			expected: []string{"symlink", "homebrew", "shell"},
 		},
 		{
-			name: "pack with no provisioned handlers",
-			pack: &types.Pack{Name: "tmux"},
+			name:     "pack with no provisioned handlers",
+			packName: "tmux",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				// No sentinels set for any handlers
 			},
@@ -111,13 +115,13 @@ func TestPackGetProvisionedHandlers(t *testing.T) {
 		},
 		{
 			name:      "non-existent pack returns empty list",
-			pack:      &types.Pack{Name: "nonexistent"},
+			packName:  "nonexistent",
 			setupFunc: func(ds *testutil.MockDataStore) {},
 			expected:  []string{},
 		},
 		{
-			name: "error from ListPackHandlers propagates",
-			pack: &types.Pack{Name: "vim"},
+			name:     "error from ListPackHandlers propagates",
+			packName: "vim",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				ds.WithError("ListPackHandlers", assert.AnError)
 			},
@@ -125,8 +129,8 @@ func TestPackGetProvisionedHandlers(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name: "mixed state handlers",
-			pack: &types.Pack{Name: "git"},
+			name:     "mixed state handlers",
+			packName: "git",
 			setupFunc: func(ds *testutil.MockDataStore) {
 				ds.SetSentinel("git", "symlink", "test1", true)
 				// shell handler has no sentinels (no state)
@@ -145,8 +149,11 @@ func TestPackGetProvisionedHandlers(t *testing.T) {
 				tt.setupFunc(ds)
 			}
 
+			// Create minimal pack - only needs Name
+			pack := &types.Pack{Name: tt.packName}
+
 			// Test
-			result, err := tt.pack.GetProvisionedHandlers(ds)
+			result, err := packcommands.GetPackProvisionedHandlers(pack, ds)
 
 			// Verify
 			if tt.expectError {
