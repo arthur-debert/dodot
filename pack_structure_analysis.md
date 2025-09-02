@@ -1,162 +1,196 @@
-# Pack-Related Structure and Dependencies Analysis
+# Execution Flow Refactoring Plan
 
-## Current Package Structure
+## Executive Summary
 
-### 1. Core Pack-Related Packages
+The current codebase has execution logic scattered across multiple packages with confusing naming conventions and mixed responsibilities. This document proposes a comprehensive refactoring to create a clearer, more maintainable architecture.
 
-#### `/pkg/types/`
-- **pack.go**: Defines the core `Pack` struct and basic methods
-- **Purpose**: Core type definitions without dependencies on higher-level packages
-- **Imports**: Only standard library and basic types
+## Current Problems
 
-#### `/pkg/packs/`
-- **Purpose**: Pack discovery, selection, and configuration handling
-- **Key files**:
-  - `discovery.go`: Finding pack directories
-  - `selection.go`: Selecting specific packs from discovered ones
-  - `config.go`: Pack configuration handling
-  - `ignore.go`: Pack ignore file handling
-  - `normalize.go`: Normalizing pack names
-- **Imports**: 
-  - `pkg/types` (for Pack type)
-  - `pkg/filesystem`
-  - `pkg/config`
-  - `pkg/errors`
-  - `pkg/logging`
+### 1. Scattered Execution Logic
+- **Dispatcher**: Redundant routing layer between CLI and pack pipeline
+- **Core**: Thin package with mostly utility functions
+- **Pack Pipeline**: Mixed with command implementations  
+- **Handler Pipeline**: Combines rule matching with execution
+- **Operations**: Low-level execution without clear boundaries
+- **Types**: Contains business logic that should be in executors
 
-#### `/pkg/packcommands/`
-- **Purpose**: Higher-level pack operations that require dependencies on other packages
-- **Key files**:
-  - `pack.go`: Wrapper around types.Pack to add higher-level methods
-  - `status.go`: Pack status checking operations
-  - `provisioning.go`: Pack provisioning operations
-  - `file_operations.go`: File-related pack operations
-  - `adopt_file.go`: File adoption operations
-  - `ignore_file.go`: Ignore file operations
-  - `status_command.go`: Status command implementation
-- **Imports**:
-  - `pkg/types`
-  - `pkg/datastore`
-  - `pkg/config`
-  - `pkg/handlerpipeline`
-  - `pkg/handlers`
-  - `pkg/paths`
-  - `pkg/ui/display`
-  - `pkg/utils`
-  - `pkg/core` (only in status_command.go)
-  - `pkg/filesystem` (only in status_command.go)
-  - **Does NOT import**: `pkg/packs` or `pkg/packpipeline`
+### 2. Confusing Naming
+- Two "pipeline" packages (pack and handler) with different purposes
+- Both `pkg/packs/commands/` and `pkg/packs/pipeline/commands/`
+- "Core" package that isn't really core to anything
 
-#### `/pkg/packpipeline/`
-- **Purpose**: Orchestration for executing commands across multiple packs
-- **Key files**:
-  - `types.go`: Command interface and result types
-  - `execute.go`: Main pipeline execution logic
-- **Structure**:
-  - `commands/` subdirectory for command implementations
-- **Imports**:
-  - `pkg/types`
-  - `pkg/core` (for DiscoverAndSelectPacksFS)
-  - `pkg/filesystem`
-  - `pkg/logging`
-  - **Does NOT import**: `pkg/packs` directly
+### 3. Mixed Responsibilities
+- ExecutionContext and PackExecutionResult have business logic methods
+- Handler pipeline does both rule matching AND execution
+- Pack commands mixed between pipeline and operations
 
-#### `/pkg/packpipeline/commands/`
-- **Purpose**: Individual command implementations for the pipeline
-- **Commands**:
-  - `on.go`: Enable pack command
-  - `off.go`: Disable pack command
-  - `status.go`: Status check command
-  - `init.go`: Initialize pack command
-  - `fill.go`: Fill pack command
-  - `adopt.go`: Adopt files command
-  - `addignore.go`: Add to ignore file command
-- **Imports**:
-  - `pkg/packcommands` (for higher-level pack operations)
-  - `pkg/packpipeline` (for types)
-  - `pkg/types`
-  - `pkg/datastore`
-  - `pkg/filesystem`
-  - `pkg/handlerpipeline`
-  - `pkg/handlers`
-  - `pkg/paths`
-  - `pkg/shell`
-  - **Does NOT import**: `pkg/packs`
+## Proposed Architecture
 
-#### `/pkg/core/`
-- **getpacks.go**: Helper functions for pack discovery and selection
-- **Purpose**: Bridge between low-level pack discovery and higher-level operations
-- **Imports**:
-  - `pkg/packs` (for discovery functions)
-  - `pkg/types`
-  - `pkg/filesystem`
-  - `pkg/errors`
-
-#### `/pkg/dispatcher/`
-- **dispatcher.go**: Central command dispatcher
-- **Purpose**: Entry point from CLI, routes to appropriate command implementations
-- **Imports**:
-  - `pkg/packcommands`
-  - `pkg/packpipeline`
-  - `pkg/packpipeline/commands`
-  - Various other packages
-
-## Dependency Flow
-
+### High-Level Flow
 ```
-CLI Layer (cmd/dodot)
+CLI Commands
     ↓
-dispatcher
+Execution Dispatcher (merged from pkg/dispatcher)
     ↓
-packpipeline + packpipeline/commands
+Pack Execution Engine
     ↓
-packcommands (for pack-specific operations)
+Handler Execution Engine
     ↓
-core (for pack discovery via getpacks.go)
+Operations Executor
     ↓
-packs (low-level discovery and selection)
-    ↓
-types (core Pack struct)
+DataStore
 ```
 
-## Key Observations
+### Package Structure
 
-1. **No Circular Dependencies**: The current structure avoids circular imports by having a clear hierarchy
-2. **Clear Separation of Concerns**:
-   - `types`: Core data structures
-   - `packs`: Low-level pack discovery and selection
-   - `packcommands`: Higher-level pack operations
-   - `packpipeline`: Command orchestration across multiple packs
-   - `core`: Bridge functions and helpers
-   - `dispatcher`: CLI routing
+```
+pkg/
+├── packs/
+│   ├── discovery/        # Finding and selecting packs
+│   ├── config/          # Pack configuration (.dodot.toml)
+│   ├── execution/       # Pack command execution
+│   ├── commands/        # Command implementations (on, off, status, etc.)
+│   └── operations/      # Reusable pack operations
+│
+├── rules/               # Rule matching system (from handlers/pipeline)
+│   ├── scanner.go      # File scanning
+│   ├── matcher.go      # Rule matching
+│   └── config.go       # Rule configuration
+│
+├── handlers/           # Handler registry and implementations
+│   ├── registry.go     # Handler registration
+│   ├── categories.go   # Handler categorization
+│   └── lib/           # Individual handlers
+│
+├── execution/          # Execution orchestration
+│   ├── dispatcher.go   # Command routing (from pkg/dispatcher)
+│   ├── pipeline/       # Handler execution pipeline
+│   ├── commands/       # Handler-specific commands
+│   └── context.go      # Execution context management
+│
+├── operations/         # Low-level operations (unchanged)
+│   ├── executor.go
+│   └── types.go
+│
+└── types/             # Pure data types (no business logic)
+    ├── pack.go
+    ├── handler.go
+    └── result.go
+```
 
-3. **Dependency Direction**:
-   - Higher-level packages import lower-level ones
-   - `packcommands` does NOT import `packpipeline` (avoiding circular dependency)
-   - `packpipeline/commands` imports `packcommands` for pack operations
-   - Only `core` and `packs` packages directly handle pack discovery
+## Refactoring Steps
 
-## Potential Risks for Circular Imports
+### Phase 1: Foundation (Week 1)
+1. **Extract business logic from types**
+   - Move ExecutionContext methods to execution/context.go
+   - Move PackExecutionResult methods to execution/results.go
+   - Keep types as pure data structures
 
-1. **If packcommands starts importing packpipeline**: This would create a circular dependency since packpipeline/commands already imports packcommands
-2. **If packs starts importing packcommands or packpipeline**: This would break the clean hierarchy
-3. **If types starts importing any higher-level package**: This would break the foundation
+2. **Create rules package**
+   - Move scanning/matching from handlers/pipeline
+   - Separate rule matching from execution
 
-## Safe Reorganization Guidelines
+3. **Fix HandlerCategory dependency**
+   - Move HandlerCategory type to where it belongs
+   - Resolve operations/handlers coupling
 
-1. **Keep types package minimal**: Only core data structures, no business logic
-2. **Keep packs focused on discovery**: Don't add dependencies on higher-level packages
-3. **Use packcommands for pack-specific operations**: Operations that work on a single pack
-4. **Use packpipeline for multi-pack orchestration**: Commands that need to work across multiple packs
-5. **Use core as a bridge**: When higher-level packages need low-level functionality
-6. **Keep dispatcher as the top-level router**: All CLI commands go through here
+### Phase 2: Pack Reorganization (Week 2)
+1. **Merge dispatcher into execution**
+   - Move dispatcher logic to `pkg/execution/dispatcher.go`
+   - Keep CLI thin - only user interaction
+   - Direct CLI → Execution (with dispatch) → Pack execution flow
 
-## Current Import Relationships Summary
+2. **Reorganize pack execution**
+   - Rename pipeline → execution
+   - Consolidate command implementations
+   - Move pack operations to operations/
 
-- `types` → (no pack-related imports)
-- `packs` → `types`
-- `packcommands` → `types` (not `packs` or `packpipeline`)
-- `packpipeline` → `types`, `core` (not `packs` directly)
-- `packpipeline/commands` → `packcommands`, `packpipeline`, `types`
-- `core` → `packs`, `types`
-- `dispatcher` → `packcommands`, `packpipeline`, `packpipeline/commands`
+3. **Move core utilities**
+   - Pack discovery → packs/discovery/
+   - Delete unnecessary core package
+
+### Phase 3: Handler Reorganization (Week 3)
+1. **Create execution package**
+   - Move handler execution from handlers/pipeline
+   - Create clear execution pipeline
+
+2. **Separate concerns**
+   - Rules: What files match
+   - Handlers: What operations to perform
+   - Execution: How to orchestrate
+   - Operations: Actual work
+
+### Phase 4: Cleanup (Week 4)
+1. **Remove old packages**
+   - Delete pkg/dispatcher (after merging into execution)
+   - Delete pkg/core
+   - Delete old pipeline packages
+
+2. **Update imports**
+   - Fix all import paths
+   - Run tests
+
+3. **Documentation**
+   - Update package docs
+   - Create architecture diagram
+
+## Benefits
+
+### 1. Clearer Architecture
+- Single responsibility per package
+- Clear data flow
+- No redundant layers
+
+### 2. Better Testability
+- Isolated components
+- Pure functions for business logic
+- Clear boundaries
+
+### 3. Easier Maintenance
+- Logical code organization
+- Consistent patterns
+- Less cognitive overhead
+
+### 4. No Import Cycles
+- Clear dependency hierarchy
+- Foundation → Service → Domain → Application layers
+- No circular dependencies
+
+## Migration Strategy
+
+### Compatibility
+- Create new packages alongside old
+- Maintain backward compatibility during transition
+- Gradual migration of features
+
+### Testing
+- Full test coverage before changes
+- Test each phase independently
+- Integration tests for entire flow
+
+### Rollback Plan
+- Each phase is reversible
+- Git branches for each phase
+- Feature flags if needed
+
+## Success Metrics
+1. Reduced code duplication
+2. Clearer import graph
+3. Faster development of new features
+4. Easier onboarding for new developers
+5. Better test coverage
+
+## Timeline
+- Phase 1: 1 week
+- Phase 2: 1 week  
+- Phase 3: 1 week
+- Phase 4: 1 week
+- Total: 4 weeks
+
+## Risks and Mitigations
+1. **Breaking changes**: Use compatibility layers
+2. **Import cycles**: Check dependencies before moving
+3. **Test failures**: Comprehensive test suite
+4. **Performance**: Benchmark before/after
+
+This refactoring will significantly improve code clarity and maintainability while preserving all existing functionality.

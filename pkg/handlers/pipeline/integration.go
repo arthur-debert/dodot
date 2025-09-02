@@ -10,6 +10,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	exec "github.com/arthur-debert/dodot/pkg/execution"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
+	execresults "github.com/arthur-debert/dodot/pkg/execution/results"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/handlers/lib/homebrew"
 	"github.com/arthur-debert/dodot/pkg/handlers/lib/install"
@@ -441,14 +443,15 @@ func ExecuteMatches(matches []RuleMatch, dataStore datastore.DataStore, opts Exe
 		Bool("force", opts.Force).
 		Msg("Executing rule matches")
 
-	// Create execution context
-	ctx := types.NewExecutionContext("execute", opts.DryRun)
+	// Create execution context using manager
+	ctxManager := context.NewManager()
+	ctx := ctxManager.CreateContext("execute", opts.DryRun)
 
 	// Group matches by handler type
 	groupedMatches := GroupMatchesByHandler(matches)
 	if len(groupedMatches) == 0 {
 		logger.Info().Msg("No matches to execute")
-		ctx.Complete()
+		ctxManager.CompleteContext(ctx)
 		return ctx, nil
 	}
 
@@ -513,7 +516,7 @@ func ExecuteMatches(matches []RuleMatch, dataStore datastore.DataStore, opts Exe
 		}
 
 		// Add results to execution context
-		addOperationResultsToExecutionContext(ctx, results, handlerMatches)
+		addOperationResultsToExecutionContext(ctx, results, handlerMatches, ctxManager)
 
 		logger.Info().
 			Str("handler", handlerName).
@@ -522,7 +525,7 @@ func ExecuteMatches(matches []RuleMatch, dataStore datastore.DataStore, opts Exe
 			Msg("Handler execution completed")
 	}
 
-	ctx.Complete()
+	ctxManager.CompleteContext(ctx)
 	logger.Info().
 		Int("totalHandlers", ctx.TotalHandlers).
 		Int("completedHandlers", ctx.CompletedHandlers).
@@ -533,7 +536,10 @@ func ExecuteMatches(matches []RuleMatch, dataStore datastore.DataStore, opts Exe
 }
 
 // addOperationResultsToExecutionContext converts operation results to execution context data
-func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []RuleMatch) {
+func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []RuleMatch, ctxManager *context.Manager) {
+	// Create results aggregator
+	aggregator := execresults.NewAggregator()
+
 	// Group results by pack
 	resultsByPack := make(map[string][]operations.OperationResult)
 	for _, result := range results {
@@ -581,10 +587,10 @@ func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results 
 				pack = &types.Pack{Name: packName, Path: ""}
 			}
 
-			packResult = types.NewPackExecutionResult(pack)
-			ctx.AddPackResult(packName, packResult)
+			packResult = aggregator.CreatePackResult(pack)
+			ctxManager.AddPackResult(ctx, packName, packResult)
 		}
 
-		packResult.AddHandlerResult(handlerResult)
+		aggregator.AddHandlerResult(packResult, handlerResult)
 	}
 }
