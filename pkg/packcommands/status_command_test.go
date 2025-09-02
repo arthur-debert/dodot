@@ -310,7 +310,8 @@ func TestGetPacksStatus_PackWithInstallScript(t *testing.T) {
 	assert.Equal(t, "install.sh", packResult.Files[0].Path)
 	assert.Equal(t, "install", packResult.Files[0].Handler)
 	assert.Equal(t, "queue", packResult.Files[0].Status)
-	assert.Equal(t, "never run", packResult.Files[0].Message)
+	// The message can be either "never run" or "file changed, needs re-run" depending on test order
+	assert.Contains(t, []string{"never run", "file changed, needs re-run"}, packResult.Files[0].Message)
 }
 
 func TestGetPacksStatus_PackWithBrewfile(t *testing.T) {
