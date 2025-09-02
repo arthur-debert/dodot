@@ -10,6 +10,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/converter"
 	"github.com/arthur-debert/dodot/pkg/ui/lipbalm"
 	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
 	"github.com/charmbracelet/lipgloss"
@@ -126,7 +127,7 @@ func (r *Renderer) Render(result *types.DisplayResult) error {
 
 // RenderExecutionContext is a convenience method that transforms ExecutionContext and renders it
 func (r *Renderer) RenderExecutionContext(ctx *types.ExecutionContext) error {
-	result := ctx.ToDisplayResult()
+	result := converter.ConvertToDisplay(ctx)
 	return r.Render(result)
 }
 

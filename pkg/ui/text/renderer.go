@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/converter"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
@@ -67,7 +68,7 @@ func (r *Renderer) RenderResult(result interface{}) error {
 		return nil
 	case *types.ExecutionContext:
 		// Convert to DisplayResult first
-		displayResult := v.ToDisplayResult()
+		displayResult := converter.ConvertToDisplay(v)
 		return r.legacyRenderer.Render(displayResult)
 	case *types.DisplayResult:
 		return r.legacyRenderer.Render(v)

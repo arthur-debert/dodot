@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/arthur-debert/dodot/pkg/ui/converter"
 )
 
 // TextRenderer provides minimal text output for dodot commands
@@ -143,6 +144,6 @@ func (r *TextRenderer) RenderExecutionContext(ctx *types.ExecutionContext) error
 		return nil
 	}
 
-	displayResult := ctx.ToDisplayResult()
+	displayResult := converter.ConvertToDisplay(ctx)
 	return r.Render(displayResult)
 }
