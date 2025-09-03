@@ -1,5 +1,5 @@
-// Package core provides core functionality for the dodot CLI
-package core
+// Package output provides output generation functionality
+package output
 
 import (
 	"fmt"

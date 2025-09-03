@@ -1,11 +1,11 @@
-package core_test
+package output_test
 
 import (
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,10 +16,10 @@ func TestGenerateOutput_Config(t *testing.T) {
 		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 		defer env.Cleanup()
 
-		result, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeConfig,
+		result, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeConfig,
 			Write: false,
-			Config: &core.ConfigOutputOptions{
+			Config: &output.ConfigOutputOptions{
 				DotfilesRoot: env.DotfilesRoot,
 			},
 			FileSystem: env.FS,
@@ -58,10 +58,10 @@ func TestGenerateOutput_Config(t *testing.T) {
 		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 		defer env.Cleanup()
 
-		result, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeConfig,
+		result, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeConfig,
 			Write: true,
-			Config: &core.ConfigOutputOptions{
+			Config: &output.ConfigOutputOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackNames:    []string{}, // Empty means current directory
 			},
@@ -89,10 +89,10 @@ func TestGenerateOutput_Config(t *testing.T) {
 		require.NoError(t, env.FS.MkdirAll(pack1, 0755))
 		require.NoError(t, env.FS.MkdirAll(pack2, 0755))
 
-		result, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeConfig,
+		result, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeConfig,
 			Write: true,
-			Config: &core.ConfigOutputOptions{
+			Config: &output.ConfigOutputOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackNames:    []string{"vim", "zsh"},
 			},
@@ -119,10 +119,10 @@ func TestGenerateOutput_Config(t *testing.T) {
 		existingContent := "# Existing config\n[pack]\n"
 		require.NoError(t, env.FS.WriteFile(".dodot.toml", []byte(existingContent), 0644))
 
-		result, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeConfig,
+		result, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeConfig,
 			Write: true,
-			Config: &core.ConfigOutputOptions{
+			Config: &output.ConfigOutputOptions{
 				DotfilesRoot: env.DotfilesRoot,
 				PackNames:    []string{},
 			},
@@ -144,10 +144,10 @@ func TestGenerateOutput_Snippet(t *testing.T) {
 		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 		defer env.Cleanup()
 
-		result, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeSnippet,
+		result, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeSnippet,
 			Write: false,
-			Snippet: &core.SnippetOutputOptions{
+			Snippet: &output.SnippetOutputOptions{
 				Shell:   "bash",
 				DataDir: "/home/user/.local/share/dodot",
 			},
@@ -169,10 +169,10 @@ func TestGenerateOutput_Snippet(t *testing.T) {
 		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 		defer env.Cleanup()
 
-		result, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeSnippet,
+		result, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeSnippet,
 			Write: false,
-			Snippet: &core.SnippetOutputOptions{
+			Snippet: &output.SnippetOutputOptions{
 				Shell:   "fish",
 				DataDir: "/home/user/.local/share/dodot",
 			},
@@ -194,8 +194,8 @@ func TestGenerateOutput_Snippet(t *testing.T) {
 
 func TestGenerateOutput_Errors(t *testing.T) {
 	t.Run("missing config options", func(t *testing.T) {
-		_, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeConfig,
+		_, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeConfig,
 			Write: false,
 			// Config is nil
 		})
@@ -204,8 +204,8 @@ func TestGenerateOutput_Errors(t *testing.T) {
 	})
 
 	t.Run("missing snippet options", func(t *testing.T) {
-		_, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeSnippet,
+		_, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeSnippet,
 			Write: false,
 			// Snippet is nil
 		})
@@ -214,7 +214,7 @@ func TestGenerateOutput_Errors(t *testing.T) {
 	})
 
 	t.Run("unknown output type", func(t *testing.T) {
-		_, err := core.GenerateOutput(core.OutputOptions{
+		_, err := output.GenerateOutput(output.OutputOptions{
 			Type: "unknown",
 		})
 		assert.Error(t, err)

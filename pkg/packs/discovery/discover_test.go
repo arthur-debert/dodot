@@ -1,11 +1,11 @@
-package core_test
+package discovery_test
 
 import (
 	"errors"
 	"os"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,7 +36,7 @@ func TestDiscoverAndSelectPacksFS(t *testing.T) {
 		})
 
 		// Execute
-		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, env.FS)
+		packs, err := discovery.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, env.FS)
 
 		// Verify
 		require.NoError(t, err)
@@ -65,7 +65,7 @@ func TestDiscoverAndSelectPacksFS(t *testing.T) {
 		})
 
 		// Execute
-		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"vim", "git"}, env.FS)
+		packs, err := discovery.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"vim", "git"}, env.FS)
 
 		// Verify
 		require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestDiscoverAndSelectPacksFS(t *testing.T) {
 		})
 
 		// Execute
-		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"vim", "nonexistent"}, env.FS)
+		packs, err := discovery.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"vim", "nonexistent"}, env.FS)
 
 		// Verify
 		assert.Error(t, err)
@@ -104,7 +104,7 @@ func TestDiscoverAndSelectPacksFS(t *testing.T) {
 		})
 
 		// Execute with trailing slash
-		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"vim/"}, env.FS)
+		packs, err := discovery.DiscoverAndSelectPacksFS(env.DotfilesRoot, []string{"vim/"}, env.FS)
 
 		// Verify
 		require.NoError(t, err)
@@ -127,7 +127,7 @@ func TestDiscoverAndSelectPacksFS(t *testing.T) {
 		})
 
 		// Execute
-		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, env.FS)
+		packs, err := discovery.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, env.FS)
 
 		// Verify
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestFindPackFS(t *testing.T) {
 		})
 
 		// Execute
-		pack, err := core.FindPackFS(env.DotfilesRoot, "vim", env.FS)
+		pack, err := discovery.FindPackFS(env.DotfilesRoot, "vim", env.FS)
 
 		// Verify
 		require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestFindPackFS(t *testing.T) {
 		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 
 		// Execute
-		pack, err := core.FindPackFS(env.DotfilesRoot, "nonexistent", env.FS)
+		pack, err := discovery.FindPackFS(env.DotfilesRoot, "nonexistent", env.FS)
 
 		// Verify
 		assert.Error(t, err)
@@ -180,7 +180,7 @@ func TestFindPackFS(t *testing.T) {
 		})
 
 		// Execute with trailing slash
-		pack, err := core.FindPackFS(env.DotfilesRoot, "vim/", env.FS)
+		pack, err := discovery.FindPackFS(env.DotfilesRoot, "vim/", env.FS)
 
 		// Verify
 		require.NoError(t, err)
@@ -195,7 +195,7 @@ func TestValidateDotfilesRoot(t *testing.T) {
 		tempDir := t.TempDir()
 
 		// Execute
-		err := core.ValidateDotfilesRoot(tempDir)
+		err := discovery.ValidateDotfilesRoot(tempDir)
 
 		// Verify
 		assert.NoError(t, err)
@@ -203,7 +203,7 @@ func TestValidateDotfilesRoot(t *testing.T) {
 
 	t.Run("rejects empty path", func(t *testing.T) {
 		// Execute
-		err := core.ValidateDotfilesRoot("")
+		err := discovery.ValidateDotfilesRoot("")
 
 		// Verify
 		assert.Error(t, err)
@@ -211,7 +211,7 @@ func TestValidateDotfilesRoot(t *testing.T) {
 
 	t.Run("rejects non-existent directory", func(t *testing.T) {
 		// Execute
-		err := core.ValidateDotfilesRoot("/non/existent/path")
+		err := discovery.ValidateDotfilesRoot("/non/existent/path")
 
 		// Verify
 		assert.Error(t, err)
@@ -224,7 +224,7 @@ func TestValidateDotfilesRoot(t *testing.T) {
 		require.NoError(t, err)
 
 		// Execute
-		err = core.ValidateDotfilesRoot(tempFile)
+		err = discovery.ValidateDotfilesRoot(tempFile)
 
 		// Verify
 		assert.Error(t, err)
@@ -255,7 +255,7 @@ func TestDiscoverAndSelectPacksFS_ErrorHandling(t *testing.T) {
 		}
 
 		// Execute
-		packs, err := core.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, errorFS)
+		packs, err := discovery.DiscoverAndSelectPacksFS(env.DotfilesRoot, nil, errorFS)
 
 		// Verify
 		assert.Error(t, err)
@@ -267,7 +267,7 @@ func TestDiscoverAndSelectPacksFS_ErrorHandling(t *testing.T) {
 		env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 
 		// Execute with non-existent root
-		packs, err := core.DiscoverAndSelectPacksFS("/non/existent", nil, env.FS)
+		packs, err := discovery.DiscoverAndSelectPacksFS("/non/existent", nil, env.FS)
 
 		// Verify
 		assert.Error(t, err)

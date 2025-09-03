@@ -1,4 +1,4 @@
-package core
+package discovery
 
 import (
 	"github.com/arthur-debert/dodot/pkg/errors"

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
@@ -56,7 +56,7 @@ func GetPacksStatus(opts StatusCommandOptions) (*display.PackCommandResult, erro
 	}
 
 	// Use core pack discovery (consistent with on/off commands)
-	selectedPacks, err := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
+	selectedPacks, err := discovery.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to discover packs")
 		return nil, err

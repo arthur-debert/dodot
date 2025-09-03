@@ -3,7 +3,7 @@ package execution
 import (
 	"fmt"
 
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -27,7 +27,7 @@ func Execute(command Command, packNames []string, opts Options) (*Result, error)
 	}
 
 	// Step 1: Discover and select packs
-	packs, err := core.DiscoverAndSelectPacksFS(opts.DotfilesRoot, packNames, fs)
+	packs, err := discovery.DiscoverAndSelectPacksFS(opts.DotfilesRoot, packNames, fs)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to discover packs")
 		return nil, fmt.Errorf("failed to discover packs: %w", err)
