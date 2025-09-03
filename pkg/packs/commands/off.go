@@ -7,7 +7,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -97,15 +96,15 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*e
 	}
 
 	// Get pack status for result
-	var packStatus *operations.StatusResult
+	var packStatus *StatusResult
 	if len(errors) == 0 || len(errors) <= 2 { // Allow some errors but not total failure
-		statusOpts := operations.StatusOptions{
+		statusOpts := StatusOptions{
 			Pack:       pack,
 			DataStore:  dataStore,
 			FileSystem: fs,
 			Paths:      pathsInstance,
 		}
-		packStatus, err = operations.GetStatus(statusOpts)
+		packStatus, err = GetStatus(statusOpts)
 		if err != nil {
 			logger.Warn().Err(err).Str("pack", pack.Name).Msg("Failed to get pack status")
 		}

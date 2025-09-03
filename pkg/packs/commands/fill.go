@@ -6,7 +6,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -85,18 +84,18 @@ func (c *FillCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*
 	}
 
 	// We can create a minimal status result since fill doesn't interact with handlers
-	statusResult := &operations.StatusResult{
+	statusResult := &StatusResult{
 		Name:      pack.Name,
 		HasConfig: true, // We just created the config
 		Status:    "success",
-		Files:     []operations.FileStatus{},
+		Files:     []FileStatus{},
 	}
 
 	// Add created files to status
 	for _, fileName := range createdFiles {
-		statusResult.Files = append(statusResult.Files, operations.FileStatus{
+		statusResult.Files = append(statusResult.Files, FileStatus{
 			Path:    fileName,
-			Status:  operations.Status{State: operations.StatusStateSuccess},
+			Status:  Status{State: StatusStateSuccess},
 			Handler: "none", // Template files don't have handlers
 		})
 	}

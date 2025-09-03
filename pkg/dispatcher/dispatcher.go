@@ -10,7 +10,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	packcommands "github.com/arthur-debert/dodot/pkg/packs/commands"
 	"github.com/arthur-debert/dodot/pkg/packs/execution"
-	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
@@ -194,7 +193,7 @@ func convertPipelineResult(pipelineResult *execution.Result) *display.PackComman
 	// Convert each pack result
 	for _, pr := range pipelineResult.PackResults {
 		// Extract status result if available
-		if statusResult, ok := pr.CommandSpecificResult.(*operations.StatusResult); ok && statusResult != nil {
+		if statusResult, ok := pr.CommandSpecificResult.(*packcommands.StatusResult); ok && statusResult != nil {
 			displayPack := display.DisplayPack{
 				Name:      statusResult.Name,
 				HasConfig: statusResult.HasConfig,
@@ -266,19 +265,19 @@ func convertPipelineResult(pipelineResult *execution.Result) *display.PackComman
 }
 
 // statusStateToDisplayStatus converts internal status states to display status strings
-func statusStateToDisplayStatus(state operations.StatusState) string {
+func statusStateToDisplayStatus(state packcommands.StatusState) string {
 	switch state {
-	case operations.StatusStateReady, operations.StatusStateSuccess:
+	case packcommands.StatusStateReady, packcommands.StatusStateSuccess:
 		return "success"
-	case operations.StatusStateMissing:
+	case packcommands.StatusStateMissing:
 		return "queue"
-	case operations.StatusStatePending:
+	case packcommands.StatusStatePending:
 		return "queue"
-	case operations.StatusStateError:
+	case packcommands.StatusStateError:
 		return "error"
-	case operations.StatusStateIgnored:
+	case packcommands.StatusStateIgnored:
 		return "ignored"
-	case operations.StatusStateConfig:
+	case packcommands.StatusStateConfig:
 		return "config"
 	default:
 		return "unknown"

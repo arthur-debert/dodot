@@ -3,11 +3,10 @@ package commands
 
 import (
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/filesystem"
 	handlerpipeline "github.com/arthur-debert/dodot/pkg/execution/pipeline"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs/execution"
-	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
@@ -105,14 +104,14 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*ex
 	}
 
 	// Get pack status for result (optional, for display purposes)
-	var packStatus *operations.StatusResult
-	statusOpts := operations.StatusOptions{
+	var packStatus *StatusResult
+	statusOpts := StatusOptions{
 		Pack:       pack,
 		DataStore:  ds,
 		FileSystem: fs,
 		Paths:      pathsInstance,
 	}
-	packStatus, err = operations.GetStatus(statusOpts)
+	packStatus, err = GetStatus(statusOpts)
 	if err != nil {
 		logger.Warn().Err(err).Str("pack", pack.Name).Msg("Failed to get pack status")
 		// Continue without status - it's not critical for the command success

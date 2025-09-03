@@ -6,7 +6,6 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/operations"
 	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -45,14 +44,14 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Option
 			Pack:    pack,
 			Success: true,
 			Error:   nil,
-			CommandSpecificResult: &operations.StatusResult{
+			CommandSpecificResult: &StatusResult{
 				Name:      pack.Name,
 				IsIgnored: true,
 				Status:    "ignored",
-				Files: []operations.FileStatus{
+				Files: []FileStatus{
 					{
 						Path:   ignoreFileName,
-						Status: operations.Status{State: operations.StatusStateIgnored},
+						Status: Status{State: StatusStateIgnored},
 					},
 				},
 			},
@@ -86,14 +85,14 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Option
 		Msg("Created .dodotignore file")
 
 	// Create status result
-	statusResult := &operations.StatusResult{
+	statusResult := &StatusResult{
 		Name:      pack.Name,
 		IsIgnored: true,
 		Status:    "ignored",
-		Files: []operations.FileStatus{
+		Files: []FileStatus{
 			{
 				Path:   ignoreFileName,
-				Status: operations.Status{State: operations.StatusStateIgnored},
+				Status: Status{State: StatusStateIgnored},
 			},
 		},
 	}
