@@ -1,4 +1,4 @@
-// Package handlerpipeline provides a focused pipeline for executing handlers on a single pack.
+// Package pipeline provides a focused pipeline for executing handlers on a single pack.
 // It encapsulates the flow: match files → filter handlers → create operations → execute.
 package pipeline
 

@@ -4,7 +4,7 @@ package commands
 import (
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
-	handlerpipeline "github.com/arthur-debert/dodot/pkg/handlers/pipeline"
+	handlerpipeline "github.com/arthur-debert/dodot/pkg/execution/pipeline"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/packs/operations"
