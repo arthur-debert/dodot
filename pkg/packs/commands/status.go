@@ -147,11 +147,18 @@ func GetStatus(opts StatusOptions) (*StatusResult, error) {
 		Str("pack", opts.Pack.Name).
 		Msg("Getting pack status")
 
+	// Check for special files
+	configPath := filepath.Join(opts.Pack.Path, ".dodot.toml")
+	ignorePath := filepath.Join(opts.Pack.Path, ".dodotignore")
+
+	_, hasConfig := opts.FileSystem.Stat(configPath)
+	_, hasIgnore := opts.FileSystem.Stat(ignorePath)
+
 	result := &StatusResult{
 		Name:      opts.Pack.Name,
 		Path:      opts.Pack.Path,
-		HasConfig: false, // TODO: Check for .dodot.toml file
-		IsIgnored: false, // TODO: Check for .dodotignore file
+		HasConfig: hasConfig == nil,
+		IsIgnored: hasIgnore == nil,
 		Status:    "unknown",
 		Files:     []FileStatus{},
 	}
@@ -209,15 +216,35 @@ func getHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastor
 
 		_, err := fs.Stat(targetPath)
 		if err == nil {
+			// TODO: Check if link points to correct source file
+			// Currently we only check if the link exists, not if it's correct
+			var message string
+			switch match.HandlerName {
+			case "shell":
+				message = "sourced in shell"
+			case "path":
+				message = "added to PATH"
+			default:
+				message = "linked"
+			}
 			return Status{
 				State:   StatusStateReady,
-				Message: "Linked",
+				Message: message,
 			}, nil
 		}
 
+		var message string
+		switch match.HandlerName {
+		case "shell":
+			message = "not sourced in shell"
+		case "path":
+			message = "not in PATH"
+		default:
+			message = "not linked"
+		}
 		return Status{
 			State:   StatusStatePending,
-			Message: "Not linked",
+			Message: message,
 		}, nil
 
 	case operations.CategoryCodeExecution:
@@ -242,13 +269,17 @@ func getHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastor
 		if exists {
 			return Status{
 				State:   StatusStateReady,
-				Message: "Installed",
+				Message: "installed",
 			}, nil
 		}
 
+		message := "never run"
+		if match.HandlerName == "homebrew" {
+			message = "never installed"
+		}
 		return Status{
 			State:   StatusStatePending,
-			Message: "Not installed",
+			Message: message,
 		}, nil
 
 	default:
@@ -278,7 +309,7 @@ func generateSentinel(match rules.RuleMatch) string {
 // determinePackStatus calculates the overall pack status from file statuses
 func determinePackStatus(files []FileStatus) string {
 	if len(files) == 0 {
-		return "empty"
+		return "queue"
 	}
 
 	hasError := false
@@ -300,7 +331,7 @@ func determinePackStatus(files []FileStatus) string {
 		return "error"
 	}
 	if hasPending && !hasSuccess {
-		return "pending"
+		return "queue"
 	}
 	if hasPending && hasSuccess {
 		return "partial"
