@@ -9,7 +9,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	packcommands "github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
@@ -76,7 +76,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 			NoProvision: opts.NoProvision,
 			Force:       opts.Force,
 		}
-		pipelineResult, err := execution.Execute(onCmd, opts.PackNames, execution.Options{
+		pipelineResult, err := orchestration.Execute(onCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -89,7 +89,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 	case CommandOff:
 		// Use pack pipeline for off command
 		offCmd := &packcommands.OffCommand{}
-		pipelineResult, err := execution.Execute(offCmd, opts.PackNames, execution.Options{
+		pipelineResult, err := orchestration.Execute(offCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -102,7 +102,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 	case CommandStatus:
 		// Use pack pipeline for status command
 		statusCmd := &packcommands.StatusCommand{}
-		pipelineResult, err := execution.Execute(statusCmd, opts.PackNames, execution.Options{
+		pipelineResult, err := orchestration.Execute(statusCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       false, // Status is always a query
 			FileSystem:   opts.FileSystem,
@@ -124,7 +124,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 		initCmd := &packcommands.InitCommand{
 			PackName: opts.PackName,
 		}
-		pipelineResult, err := execution.Execute(initCmd, []string{opts.PackName}, execution.Options{
+		pipelineResult, err := orchestration.Execute(initCmd, []string{opts.PackName}, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -137,7 +137,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 	case CommandFill:
 		// Use pack pipeline for fill command
 		fillCmd := &packcommands.FillCommand{}
-		pipelineResult, err := execution.Execute(fillCmd, opts.PackNames, execution.Options{
+		pipelineResult, err := orchestration.Execute(fillCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -153,7 +153,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 			SourcePaths: opts.SourcePaths,
 			Force:       opts.Force,
 		}
-		pipelineResult, err := execution.Execute(adoptCmd, opts.PackNames, execution.Options{
+		pipelineResult, err := orchestration.Execute(adoptCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -166,7 +166,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 	case CommandAddIgnore:
 		// Use pack pipeline for add-ignore command
 		addIgnoreCmd := &packcommands.AddIgnoreCommand{}
-		pipelineResult, err := execution.Execute(addIgnoreCmd, opts.PackNames, execution.Options{
+		pipelineResult, err := orchestration.Execute(addIgnoreCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -182,7 +182,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 }
 
 // convertPipelineResult converts pack pipeline result to types.PackCommandResult
-func convertPipelineResult(pipelineResult *execution.Result) *display.PackCommandResult {
+func convertPipelineResult(pipelineResult *orchestration.Result) *display.PackCommandResult {
 	result := &display.PackCommandResult{
 		Command:   pipelineResult.Command,
 		Timestamp: time.Now(),

@@ -1,6 +1,6 @@
-// Package pipeline provides a focused pipeline for executing handlers on a single pack.
+// Package handlers provides execution of handlers on a single pack.
 // It encapsulates the flow: match files → filter handlers → create operations → execute.
-package pipeline
+package handlers
 
 import (
 	"fmt"
@@ -146,7 +146,7 @@ func FilterMatchesByHandlerCategory(matches []rules.RuleMatch, allowConfiguratio
 }
 
 // buildResultFromContext converts execution context to our result type
-func buildResultFromContext(pack types.Pack, ctx *types.ExecutionContext) *Result {
+func buildResultFromContext(pack types.Pack, ctx *context.ExecutionContext) *Result {
 	result := &Result{
 		Pack:             pack,
 		ExecutedHandlers: make([]HandlerExecution, 0),
@@ -213,7 +213,7 @@ func transformMatches(matches []rules.RuleMatch) []operations.FileInput {
 }
 
 // executeMatchesInternal handles the internal execution of matches
-func executeMatchesInternal(matches []rules.RuleMatch, opts Options) (*types.ExecutionContext, error) {
+func executeMatchesInternal(matches []rules.RuleMatch, opts Options) (*context.ExecutionContext, error) {
 	logger := logging.GetLogger("handlerpipeline.execute")
 	logger.Debug().
 		Int("matches", len(matches)).
@@ -354,13 +354,13 @@ func getHandlerExecutionOrder(handlerNames []string) []string {
 }
 
 // addOperationResultsToContext adds operation results to the execution context
-func addOperationResultsToContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []rules.RuleMatch, ctxManager *context.Manager) {
+func addOperationResultsToContext(ctx *context.ExecutionContext, results []operations.OperationResult, matches []rules.RuleMatch, ctxManager *context.Manager) {
 	if len(results) == 0 || len(matches) == 0 {
 		return
 	}
 
 	// Group results by pack
-	packResults := make(map[string]*types.HandlerResult)
+	packResults := make(map[string]*context.HandlerResult)
 
 	for i, result := range results {
 		if i >= len(matches) {
@@ -371,7 +371,7 @@ func addOperationResultsToContext(ctx *types.ExecutionContext, results []operati
 		// Get or create handler result for this pack
 		key := match.Pack + ":" + match.HandlerName
 		if _, exists := packResults[key]; !exists {
-			packResults[key] = &types.HandlerResult{
+			packResults[key] = &context.HandlerResult{
 				HandlerName: match.HandlerName,
 				Pack:        match.Pack,
 				Files:       []string{},
@@ -400,7 +400,7 @@ func addOperationResultsToContext(ctx *types.ExecutionContext, results []operati
 	// Add all handler results to context
 	for _, handlerResult := range packResults {
 		// Find or create pack result
-		var packResult *types.PackExecutionResult
+		var packResult *context.PackExecutionResult
 		if pr, exists := ctx.GetPackResult(handlerResult.Pack); exists {
 			packResult = pr
 		} else {

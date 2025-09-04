@@ -1,4 +1,4 @@
-package pipeline
+package handlers
 
 import (
 	"fmt"
@@ -314,7 +314,7 @@ type ExecutionOptions struct {
 
 // ExecuteMatches executes rule matches using handlers and the DataStore abstraction.
 // This is the core execution function that replaces the internal pipeline approach.
-func ExecuteMatches(matches []rules.RuleMatch, dataStore datastore.DataStore, opts ExecutionOptions) (*types.ExecutionContext, error) {
+func ExecuteMatches(matches []rules.RuleMatch, dataStore datastore.DataStore, opts ExecutionOptions) (*context.ExecutionContext, error) {
 	logger := logging.GetLogger("rules.integration")
 	logger.Info().
 		Int("matches", len(matches)).
@@ -415,7 +415,7 @@ func ExecuteMatches(matches []rules.RuleMatch, dataStore datastore.DataStore, op
 }
 
 // addOperationResultsToExecutionContext converts operation results to execution context data
-func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results []operations.OperationResult, matches []rules.RuleMatch, ctxManager *context.Manager) {
+func addOperationResultsToExecutionContext(ctx *context.ExecutionContext, results []operations.OperationResult, matches []rules.RuleMatch, ctxManager *context.Manager) {
 	// Create results aggregator
 	aggregator := execresults.NewAggregator()
 
@@ -429,7 +429,7 @@ func addOperationResultsToExecutionContext(ctx *types.ExecutionContext, results 
 	// Convert to pack results
 	for packName, packResults := range resultsByPack {
 		// Create handler result
-		handlerResult := &types.HandlerResult{
+		handlerResult := &context.HandlerResult{
 			HandlerName: packResults[0].Operation.Handler,
 			Files:       make([]string, 0, len(packResults)),
 			Status:      exec.StatusReady,

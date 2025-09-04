@@ -1,4 +1,4 @@
-package results
+package results_test
 
 import (
 	"errors"
@@ -6,12 +6,14 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/execution"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
+	"github.com/arthur-debert/dodot/pkg/execution/results"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestAggregator_CreatePackResult(t *testing.T) {
-	a := NewAggregator()
+	a := results.NewAggregator()
 	pack := &types.Pack{
 		Name: "vim",
 		Path: "/dotfiles/vim",
@@ -30,7 +32,7 @@ func TestAggregator_CreatePackResult(t *testing.T) {
 func TestAggregator_AddHandlerResult(t *testing.T) {
 	tests := []struct {
 		name              string
-		handlerResults    []*types.HandlerResult
+		handlerResults    []*context.HandlerResult
 		expectedTotal     int
 		expectedCompleted int
 		expectedFailed    int
@@ -39,7 +41,7 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 	}{
 		{
 			name: "all handlers succeed",
-			handlerResults: []*types.HandlerResult{
+			handlerResults: []*context.HandlerResult{
 				{HandlerName: "symlink", Status: execution.StatusReady},
 				{HandlerName: "shell", Status: execution.StatusReady},
 			},
@@ -51,7 +53,7 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 		},
 		{
 			name: "all handlers fail",
-			handlerResults: []*types.HandlerResult{
+			handlerResults: []*context.HandlerResult{
 				{HandlerName: "symlink", Status: execution.StatusError},
 				{HandlerName: "shell", Status: execution.StatusConflict},
 			},
@@ -63,7 +65,7 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 		},
 		{
 			name: "all handlers skipped",
-			handlerResults: []*types.HandlerResult{
+			handlerResults: []*context.HandlerResult{
 				{HandlerName: "symlink", Status: execution.StatusSkipped},
 				{HandlerName: "shell", Status: execution.StatusSkipped},
 			},
@@ -75,7 +77,7 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 		},
 		{
 			name: "mixed results - partial success",
-			handlerResults: []*types.HandlerResult{
+			handlerResults: []*context.HandlerResult{
 				{HandlerName: "symlink", Status: execution.StatusReady},
 				{HandlerName: "shell", Status: execution.StatusError},
 				{HandlerName: "path", Status: execution.StatusSkipped},
@@ -88,7 +90,7 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 		},
 		{
 			name:              "no handlers",
-			handlerResults:    []*types.HandlerResult{},
+			handlerResults:    []*context.HandlerResult{},
 			expectedTotal:     0,
 			expectedCompleted: 0,
 			expectedFailed:    0,
@@ -99,7 +101,7 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := NewAggregator()
+			a := results.NewAggregator()
 			pack := &types.Pack{Name: "test-pack"}
 			result := a.CreatePackResult(pack)
 
@@ -119,12 +121,12 @@ func TestAggregator_AddHandlerResult(t *testing.T) {
 }
 
 func TestAggregator_CompletePackResult(t *testing.T) {
-	a := NewAggregator()
+	a := results.NewAggregator()
 	pack := &types.Pack{Name: "vim"}
 	result := a.CreatePackResult(pack)
 
 	// Add a handler result
-	a.AddHandlerResult(result, &types.HandlerResult{
+	a.AddHandlerResult(result, &context.HandlerResult{
 		HandlerName: "symlink",
 		Status:      execution.StatusReady,
 	})
@@ -145,13 +147,13 @@ func TestAggregator_CompletePackResult(t *testing.T) {
 func TestAggregator_StatusCalculation(t *testing.T) {
 	tests := []struct {
 		name           string
-		setupFunc      func(*types.PackExecutionResult)
+		setupFunc      func(*context.PackExecutionResult)
 		expectedStatus execution.ExecutionStatus
 	}{
 		{
 			name: "conflict status counts as failure",
-			setupFunc: func(per *types.PackExecutionResult) {
-				per.HandlerResults = []*types.HandlerResult{
+			setupFunc: func(per *context.PackExecutionResult) {
+				per.HandlerResults = []*context.HandlerResult{
 					{Status: execution.StatusReady},
 					{Status: execution.StatusConflict},
 				}
@@ -163,8 +165,8 @@ func TestAggregator_StatusCalculation(t *testing.T) {
 		},
 		{
 			name: "error with details",
-			setupFunc: func(per *types.PackExecutionResult) {
-				per.HandlerResults = []*types.HandlerResult{
+			setupFunc: func(per *context.PackExecutionResult) {
+				per.HandlerResults = []*context.HandlerResult{
 					{
 						Status: execution.StatusError,
 						Error:  errors.New("permission denied"),
@@ -179,13 +181,21 @@ func TestAggregator_StatusCalculation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			a := NewAggregator()
-			result := &types.PackExecutionResult{
-				Pack: &types.Pack{Name: "test"},
-			}
+			a := results.NewAggregator()
+			pack := &types.Pack{Name: "test"}
+			result := a.CreatePackResult(pack)
+
+			// Reset the initial state before applying test setup
+			result.TotalHandlers = 0
+			result.CompletedHandlers = 0
+			result.FailedHandlers = 0
+			result.SkippedHandlers = 0
+			result.HandlerResults = nil
 
 			tt.setupFunc(result)
-			a.updateStatus(result)
+
+			// Add a dummy handler result to trigger status update
+			a.CompletePackResult(result)
 
 			assert.Equal(t, tt.expectedStatus, result.Status)
 		})

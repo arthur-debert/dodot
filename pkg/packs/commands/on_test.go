@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/testutil"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
@@ -44,7 +44,7 @@ func TestOnCommand_ExecuteForPack_Success(t *testing.T) {
 	}
 
 	// Execute command
-	result, err := cmd.ExecuteForPack(pack, execution.Options{
+	result, err := cmd.ExecuteForPack(pack, orchestration.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		DryRun:       true,
 		FileSystem:   env.FS,
@@ -84,7 +84,7 @@ func TestOnCommand_ExecuteForPack_NoProvision(t *testing.T) {
 	}
 
 	// Execute command with dry run to avoid actual file operations
-	result, err := cmd.ExecuteForPack(pack, execution.Options{
+	result, err := cmd.ExecuteForPack(pack, orchestration.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		DryRun:       true,
 		FileSystem:   env.FS,
@@ -111,7 +111,7 @@ func TestOnCommand_ExecuteForPack_InvalidPack(t *testing.T) {
 	cmd := &commands.OnCommand{}
 
 	// Execute command
-	result, err := cmd.ExecuteForPack(pack, execution.Options{
+	result, err := cmd.ExecuteForPack(pack, orchestration.Options{
 		DotfilesRoot: env.DotfilesRoot,
 		DryRun:       true,
 		FileSystem:   env.FS,

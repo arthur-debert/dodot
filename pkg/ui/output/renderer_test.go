@@ -7,6 +7,7 @@ package output_test
 
 import (
 	"bytes"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
 	"strings"
 	"testing"
 
@@ -124,20 +125,20 @@ func TestRenderer_Render(t *testing.T) {
 func TestRenderer_RenderExecutionContext(t *testing.T) {
 	tests := []struct {
 		name        string
-		context     *types.ExecutionContext
+		context     *context.ExecutionContext
 		noColor     bool
 		wantStrings []string
 	}{
 		{
 			name: "basic_execution_context",
-			context: &types.ExecutionContext{
+			context: &context.ExecutionContext{
 				Command: "link",
 				DryRun:  false,
-				PackResults: map[string]*types.PackExecutionResult{
+				PackResults: map[string]*context.PackExecutionResult{
 					"vim": {
 						Pack:   &types.Pack{Name: "vim"},
 						Status: execution.ExecutionStatusSuccess,
-						HandlerResults: []*types.HandlerResult{
+						HandlerResults: []*context.HandlerResult{
 							{
 								HandlerName: "symlink",
 								Status:      execution.StatusReady,

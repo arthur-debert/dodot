@@ -11,14 +11,14 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/packs/discovery"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
-// StatusCommand implements the "status" command using the pack execution.
+// StatusCommand implements the "status" command using the pack orchestration.
 type StatusCommand struct{}
 
 // Name returns the command name.
@@ -80,8 +80,8 @@ type StatusResult struct {
 }
 
 // ExecuteForPack executes the "status" command for a single pack.
-func (c *StatusCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
-	logger := logging.GetLogger("execution.status")
+func (c *StatusCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.status")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Msg("Executing status command for pack")
@@ -95,7 +95,7 @@ func (c *StatusCommand) ExecuteForPack(pack types.Pack, opts execution.Options) 
 	// Initialize paths if not provided
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   err,
@@ -119,7 +119,7 @@ func (c *StatusCommand) ExecuteForPack(pack types.Pack, opts execution.Options) 
 			Err(err).
 			Str("pack", pack.Name).
 			Msg("Failed to get pack status")
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   err,
@@ -132,7 +132,7 @@ func (c *StatusCommand) ExecuteForPack(pack types.Pack, opts execution.Options) 
 		Int("fileCount", len(packStatus.Files)).
 		Msg("Status command completed for pack")
 
-	return &execution.PackResult{
+	return &orchestration.PackResult{
 		Pack:                  pack,
 		Success:               true,
 		Error:                 nil,

@@ -1,9 +1,10 @@
-package types
+package context
 
 import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/execution"
+	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // ExecutionContext tracks the complete context and results of a command execution
@@ -42,7 +43,7 @@ type ExecutionContext struct {
 // PackExecutionResult contains the execution results for a single pack
 type PackExecutionResult struct {
 	// Pack is the pack being executed
-	Pack *Pack
+	Pack *types.Pack
 
 	// HandlerResults contains all Handler results and their status
 	HandlerResults []*HandlerResult

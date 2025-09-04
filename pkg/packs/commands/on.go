@@ -1,18 +1,18 @@
-// Package commands provides Command implementations for the pack execution.
+// Package commands provides Command implementations for the pack orchestration.
 package commands
 
 import (
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	handlerpipeline "github.com/arthur-debert/dodot/pkg/execution/pipeline"
+	handlerpipeline "github.com/arthur-debert/dodot/pkg/execution/handlers"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/shell"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OnCommand implements the "on" command using the pack execution.
+// OnCommand implements the "on" command using the pack orchestration.
 type OnCommand struct {
 	// NoProvision skips the provisioning phase
 	NoProvision bool
@@ -27,8 +27,8 @@ func (c *OnCommand) Name() string {
 }
 
 // ExecuteForPack executes the "on" command for a single pack.
-func (c *OnCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
-	logger := logging.GetLogger("execution.on")
+func (c *OnCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.on")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Bool("noProvision", c.NoProvision).
@@ -44,7 +44,7 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*ex
 	// Initialize paths and datastore
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   err,
@@ -131,7 +131,7 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*ex
 		Bool("success", success).
 		Msg("On command completed for pack")
 
-	return &execution.PackResult{
+	return &orchestration.PackResult{
 		Pack:                  pack,
 		Success:               success,
 		Error:                 nil,

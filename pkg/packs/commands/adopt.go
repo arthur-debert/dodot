@@ -7,12 +7,12 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// AdoptCommand implements the "adopt" command using the pack execution.
+// AdoptCommand implements the "adopt" command using the pack orchestration.
 // It moves files from the system into a pack.
 type AdoptCommand struct {
 	// SourcePaths are the files to adopt
@@ -27,8 +27,8 @@ func (c *AdoptCommand) Name() string {
 }
 
 // ExecuteForPack adopts files into a pack.
-func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
-	logger := logging.GetLogger("execution.adopt")
+func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.adopt")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Int("files", len(c.SourcePaths)).
@@ -143,7 +143,7 @@ func (c *AdoptCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (
 		Bool("success", success).
 		Msg("Adopt command completed")
 
-	return &execution.PackResult{
+	return &orchestration.PackResult{
 		Pack:                  pack,
 		Success:               success,
 		Error:                 finalError,

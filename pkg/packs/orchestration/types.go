@@ -1,6 +1,6 @@
-// Package execution provides orchestration for executing commands across multiple packs.
+// Package orchestration provides orchestration for executing commands across multiple packs.
 // It owns the outer loop: discover packs → execute command → aggregate results.
-package execution
+package orchestration
 
 import (
 	"github.com/arthur-debert/dodot/pkg/types"

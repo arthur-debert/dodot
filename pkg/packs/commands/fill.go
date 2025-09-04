@@ -6,11 +6,11 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// FillCommand implements the "fill" command using the pack execution.
+// FillCommand implements the "fill" command using the pack orchestration.
 // It populates a pack with template files.
 type FillCommand struct{}
 
@@ -20,8 +20,8 @@ func (c *FillCommand) Name() string {
 }
 
 // ExecuteForPack fills a pack with template files.
-func (c *FillCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
-	logger := logging.GetLogger("execution.fill")
+func (c *FillCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.fill")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Msg("Executing fill command for pack")
@@ -70,7 +70,7 @@ func (c *FillCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*
 				Err(err).
 				Str("file", file.name).
 				Msg("Failed to create file")
-			return &execution.PackResult{
+			return &orchestration.PackResult{
 				Pack:    pack,
 				Success: false,
 				Error:   fmt.Errorf("failed to create %s: %w", file.name, err),
@@ -105,7 +105,7 @@ func (c *FillCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*
 		Int("filesCreated", len(createdFiles)).
 		Msg("Fill command completed for pack")
 
-	return &execution.PackResult{
+	return &orchestration.PackResult{
 		Pack:                  pack,
 		Success:               true,
 		Error:                 nil,

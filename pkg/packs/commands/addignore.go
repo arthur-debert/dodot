@@ -6,11 +6,11 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// AddIgnoreCommand implements the "add-ignore" command using the pack execution.
+// AddIgnoreCommand implements the "add-ignore" command using the pack orchestration.
 // It creates a .dodotignore file in a pack.
 type AddIgnoreCommand struct{}
 
@@ -20,8 +20,8 @@ func (c *AddIgnoreCommand) Name() string {
 }
 
 // ExecuteForPack creates a .dodotignore file in the pack.
-func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
-	logger := logging.GetLogger("execution.addignore")
+func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.addignore")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Msg("Executing add-ignore command for pack")
@@ -40,7 +40,7 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Option
 			Str("pack", pack.Name).
 			Msg("Pack already has .dodotignore file")
 
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: true,
 			Error:   nil,
@@ -72,7 +72,7 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Option
 			Str("pack", pack.Name).
 			Msg("Failed to create .dodotignore file")
 
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   fmt.Errorf("failed to create .dodotignore: %w", err),
@@ -97,7 +97,7 @@ func (c *AddIgnoreCommand) ExecuteForPack(pack types.Pack, opts execution.Option
 		},
 	}
 
-	return &execution.PackResult{
+	return &orchestration.PackResult{
 		Pack:                  pack,
 		Success:               true,
 		Error:                 nil,
