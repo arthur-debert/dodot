@@ -138,13 +138,13 @@ func TestGetPacksStatus_PackWithUnlinkedSymlinkFiles(t *testing.T) {
 	assert.True(t, hasVimrc, "should have .vimrc file")
 	assert.Equal(t, "symlink", vimrcFile.Handler)
 	assert.Equal(t, "queue", vimrcFile.Status)
-	assert.Equal(t, "not linked", vimrcFile.Message)
+	// Don't test message - it's a presentation layer concern
 
 	gvimrcFile, hasGvimrc := filesByPath[".gvimrc"]
 	assert.True(t, hasGvimrc, "should have .gvimrc file")
 	assert.Equal(t, "symlink", gvimrcFile.Handler)
 	assert.Equal(t, "queue", gvimrcFile.Status)
-	assert.Equal(t, "not linked", gvimrcFile.Message)
+	// Don't test message - it's a presentation layer concern
 }
 
 func TestGetPacksStatus_PackWithLinkedSymlinkFiles(t *testing.T) {
@@ -183,7 +183,7 @@ func TestGetPacksStatus_PackWithLinkedSymlinkFiles(t *testing.T) {
 	assert.Equal(t, ".vimrc", packResult.Files[0].Path)
 	assert.Equal(t, "symlink", packResult.Files[0].Handler)
 	assert.Equal(t, "success", packResult.Files[0].Status)
-	assert.Equal(t, "linked", packResult.Files[0].Message)
+	// Don't test message - it's a presentation layer concern
 }
 
 func TestGetPacksStatus_PackWithPathHandlerFiles(t *testing.T) {

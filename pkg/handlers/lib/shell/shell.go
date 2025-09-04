@@ -57,5 +57,31 @@ func (h *Handler) GetTemplateContent() string {
 	return aliasesTemplate
 }
 
+// CheckStatus checks if the shell config file has been linked
+func (h *Handler) CheckStatus(file operations.FileInput, checker operations.StatusChecker) (operations.HandlerStatus, error) {
+	// Check if the data link exists in the datastore
+	exists, err := checker.HasDataLink(file.PackName, h.Name(), file.RelativePath)
+	if err != nil {
+		return operations.HandlerStatus{
+			State:   operations.StatusStateError,
+			Message: "Failed to check shell config status",
+		}, err
+	}
+
+	if exists {
+		// Shell config is linked and will be sourced
+		return operations.HandlerStatus{
+			State:   operations.StatusStateReady,
+			Message: "sourced in shell",
+		}, nil
+	}
+
+	// Shell config not linked
+	return operations.HandlerStatus{
+		State:   operations.StatusStatePending,
+		Message: "not sourced in shell",
+	}, nil
+}
+
 // Verify interface compliance
 var _ operations.Handler = (*Handler)(nil)
