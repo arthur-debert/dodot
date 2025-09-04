@@ -8,11 +8,11 @@ import (
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// InitCommand implements the "init" command using the pack execution.
+// InitCommand implements the "init" command using the pack orchestration.
 // It creates a new pack and then uses FillCommand to populate it.
 type InitCommand struct {
 	// PackName is the name of the pack to create
@@ -26,10 +26,10 @@ func (c *InitCommand) Name() string {
 
 // ExecuteForPack creates a new pack and fills it with template files.
 // Note: This is special because it creates the pack first, then operates on it.
-func (c *InitCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+func (c *InitCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
 	// This should not be called with discovered packs - init creates its own
 	if pack.Name != c.PackName {
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   fmt.Errorf("init command called with wrong pack"),
@@ -43,9 +43,9 @@ func (c *InitCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*
 }
 
 // InitPreprocess creates the pack directory before the pipeline runs.
-// This should be called before executing the pack execution.
+// This should be called before executing the pack orchestration.
 func InitPreprocess(packName string, dotfilesRoot string, fs types.FS) error {
-	logger := logging.GetLogger("execution.init.preprocess")
+	logger := logging.GetLogger("orchestration.init.preprocess")
 	logger.Debug().
 		Str("pack", packName).
 		Str("dotfilesRoot", dotfilesRoot).

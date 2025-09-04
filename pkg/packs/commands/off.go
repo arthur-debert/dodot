@@ -7,12 +7,12 @@ import (
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/packs/execution"
+	"github.com/arthur-debert/dodot/pkg/packs/orchestration"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OffCommand implements the "off" command using the pack execution.
+// OffCommand implements the "off" command using the pack orchestration.
 type OffCommand struct{}
 
 // Name returns the command name.
@@ -21,8 +21,8 @@ func (c *OffCommand) Name() string {
 }
 
 // ExecuteForPack executes the "off" command for a single pack.
-func (c *OffCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
-	logger := logging.GetLogger("execution.off")
+func (c *OffCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.off")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Bool("dryRun", opts.DryRun).
@@ -37,7 +37,7 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*e
 	// Initialize paths and datastore
 	pathsInstance, err := paths.New(opts.DotfilesRoot)
 	if err != nil {
-		return &execution.PackResult{
+		return &orchestration.PackResult{
 			Pack:    pack,
 			Success: false,
 			Error:   err,
@@ -126,7 +126,7 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*e
 		finalError = fmt.Errorf("encountered %d errors while turning off pack", len(errors))
 	}
 
-	return &execution.PackResult{
+	return &orchestration.PackResult{
 		Pack:                  pack,
 		Success:               success,
 		Error:                 finalError,
