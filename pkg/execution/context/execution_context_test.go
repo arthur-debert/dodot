@@ -1,9 +1,9 @@
-// pkg/types/execution_context_test.go
+// pkg/execution/context/execution_context_test.go
 // TEST TYPE: Unit Tests
 // DEPENDENCIES: None
 // PURPOSE: Test ExecutionContext type methods
 
-package types_test
+package context_test
 
 import (
 	"testing"
@@ -62,7 +62,7 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 	ec := manager.CreateContext("link", false)
 
 	// Create pack results with different statuses
-	pack1Result := &types.PackExecutionResult{
+	pack1Result := &context.PackExecutionResult{
 		Pack:              &types.Pack{Name: "vim"},
 		TotalHandlers:     5,
 		CompletedHandlers: 3,
@@ -70,7 +70,7 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 		SkippedHandlers:   1,
 	}
 
-	pack2Result := &types.PackExecutionResult{
+	pack2Result := &context.PackExecutionResult{
 		Pack:              &types.Pack{Name: "zsh"},
 		TotalHandlers:     3,
 		CompletedHandlers: 2,
@@ -111,7 +111,7 @@ func TestExecutionContext_Complete(t *testing.T) {
 }
 
 func TestHandlerResult_Structure(t *testing.T) {
-	hr := &types.HandlerResult{
+	hr := &context.HandlerResult{
 		HandlerName: "symlink",
 		Files:       []string{".vimrc", ".gvimrc"},
 		Status:      execution.StatusReady,

@@ -2,8 +2,6 @@ package context
 
 import (
 	"time"
-
-	"github.com/arthur-debert/dodot/pkg/types"
 )
 
 // Manager handles the business logic for ExecutionContext operations.
@@ -17,28 +15,28 @@ func NewManager() *Manager {
 }
 
 // CreateContext creates a new execution context
-func (m *Manager) CreateContext(command string, dryRun bool) *types.ExecutionContext {
-	return &types.ExecutionContext{
+func (m *Manager) CreateContext(command string, dryRun bool) *ExecutionContext {
+	return &ExecutionContext{
 		Command:     command,
-		PackResults: make(map[string]*types.PackExecutionResult),
+		PackResults: make(map[string]*PackExecutionResult),
 		StartTime:   time.Now(),
 		DryRun:      dryRun,
 	}
 }
 
 // AddPackResult adds or updates a pack result and recalculates totals
-func (m *Manager) AddPackResult(ec *types.ExecutionContext, packName string, result *types.PackExecutionResult) {
+func (m *Manager) AddPackResult(ec *ExecutionContext, packName string, result *PackExecutionResult) {
 	ec.PackResults[packName] = result
 	m.recalculateTotals(ec)
 }
 
 // CompleteContext marks the execution as complete
-func (m *Manager) CompleteContext(ec *types.ExecutionContext) {
+func (m *Manager) CompleteContext(ec *ExecutionContext) {
 	ec.EndTime = time.Now()
 }
 
 // recalculateTotals updates the aggregated handler counts across all packs
-func (m *Manager) recalculateTotals(ec *types.ExecutionContext) {
+func (m *Manager) recalculateTotals(ec *ExecutionContext) {
 	ec.TotalHandlers = 0
 	ec.CompletedHandlers = 0
 	ec.FailedHandlers = 0

@@ -333,7 +333,7 @@ func TestTextRenderer_RenderWithComplexData(t *testing.T) {
 	packResult := aggregator.CreatePackResult(pack)
 
 	// Add a handler result
-	handlerResult := &types.HandlerResult{
+	handlerResult := &context.HandlerResult{
 		HandlerName: "symlink",
 		Files:       []string{"testfile"},
 		Status:      "success",

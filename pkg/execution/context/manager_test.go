@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,14 +45,14 @@ func TestManager_AddPackResult(t *testing.T) {
 	ctx := m.CreateContext("on", false)
 
 	// Create pack results with different stats
-	packResult1 := &types.PackExecutionResult{
+	packResult1 := &PackExecutionResult{
 		TotalHandlers:     5,
 		CompletedHandlers: 3,
 		FailedHandlers:    1,
 		SkippedHandlers:   1,
 	}
 
-	packResult2 := &types.PackExecutionResult{
+	packResult2 := &PackExecutionResult{
 		TotalHandlers:     3,
 		CompletedHandlers: 2,
 		FailedHandlers:    0,

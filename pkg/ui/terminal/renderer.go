@@ -3,9 +3,9 @@ package terminal
 
 import (
 	"fmt"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
 	"io"
 
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/ui/output"
 )
@@ -72,7 +72,7 @@ func (r *Renderer) RenderResult(result interface{}) error {
 			return r.legacyRenderer.Render(v.Result)
 		}
 		return nil
-	case *types.ExecutionContext:
+	case *context.ExecutionContext:
 		return r.legacyRenderer.RenderExecutionContext(v)
 	case *display.DisplayResult:
 		return r.legacyRenderer.Render(v)

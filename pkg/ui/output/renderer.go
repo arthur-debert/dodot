@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
 	"io"
 	"os"
 	"text/template"
 
 	"github.com/arthur-debert/dodot/pkg/logging"
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/converter"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/arthur-debert/dodot/pkg/ui/lipbalm"
@@ -127,7 +127,7 @@ func (r *Renderer) Render(result *display.DisplayResult) error {
 }
 
 // RenderExecutionContext is a convenience method that transforms ExecutionContext and renders it
-func (r *Renderer) RenderExecutionContext(ctx *types.ExecutionContext) error {
+func (r *Renderer) RenderExecutionContext(ctx *context.ExecutionContext) error {
 	result := converter.ConvertToDisplay(ctx)
 	return r.Render(result)
 }

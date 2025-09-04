@@ -3,9 +3,9 @@ package text
 
 import (
 	"fmt"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
 	"io"
 
-	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/converter"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
@@ -66,7 +66,7 @@ func (r *Renderer) RenderResult(result interface{}) error {
 			return r.legacyRenderer.Render(v.Result)
 		}
 		return nil
-	case *types.ExecutionContext:
+	case *context.ExecutionContext:
 		// Convert to DisplayResult first
 		displayResult := converter.ConvertToDisplay(v)
 		return r.legacyRenderer.Render(displayResult)

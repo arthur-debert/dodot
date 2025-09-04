@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/execution"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 )
 
 // ConvertToDisplay transforms the ExecutionContext into a DisplayResult suitable for rendering
-func ConvertToDisplay(ec *types.ExecutionContext) *display.DisplayResult {
+func ConvertToDisplay(ec *context.ExecutionContext) *display.DisplayResult {
 	displayPacks := make([]display.DisplayPack, 0, len(ec.PackResults))
 
 	// Sort pack names for consistent output
