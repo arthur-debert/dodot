@@ -5,13 +5,13 @@ import (
 	"os"
 
 	"github.com/arthur-debert/dodot/cmd/dodot"
-	"github.com/arthur-debert/dodot/pkg/core"
+	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/ui/output/styles"
 )
 
 func main() {
-	// Initialize core system (registers handlers, sets up config, etc.)
-	core.MustInitialize()
+	// Initialize handler system (registers handlers, sets up config, etc.)
+	handlers.MustInitialize()
 
 	rootCmd := dodot.NewRootCmd()
 	if err := rootCmd.Execute(); err != nil {

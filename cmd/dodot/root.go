@@ -19,8 +19,9 @@ import (
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
 	topicspkg "github.com/arthur-debert/dodot/cmd/dodot/internal/topics"
 	"github.com/arthur-debert/dodot/internal/version"
-	"github.com/arthur-debert/dodot/pkg/core"
 	"github.com/arthur-debert/dodot/pkg/dispatcher"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
+	"github.com/arthur-debert/dodot/pkg/ui/output"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
@@ -28,7 +29,6 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
-	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -248,8 +248,8 @@ func packNamesCompletion(cmd *cobra.Command, args []string, toComplete string) (
 		return nil, cobra.ShellCompDirectiveFilterDirs
 	}
 
-	// Get list of packs using core.DiscoverAndSelectPacks
-	allPacks, err := core.DiscoverAndSelectPacks(p.DotfilesRoot(), nil)
+	// Get list of packs using discovery.DiscoverAndSelectPacks
+	allPacks, err := discovery.DiscoverAndSelectPacks(p.DotfilesRoot(), nil)
 	if err != nil {
 		// If listing fails, still allow directory completion
 		return nil, cobra.ShellCompDirectiveFilterDirs
@@ -560,10 +560,10 @@ func newSnippetCmd() *cobra.Command {
 		}
 
 		// Use the new generic output command
-		outputResult, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeSnippet,
+		outputResult, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeSnippet,
 			Write: false, // Snippets are never written to files
-			Snippet: &core.SnippetOutputOptions{
+			Snippet: &output.SnippetOutputOptions{
 				Shell:     shell,
 				DataDir:   dataDir,
 				Provision: provision,
@@ -640,10 +640,10 @@ func newGenConfigCmd() *cobra.Command {
 		}
 
 		// Use the new generic output command
-		outputResult, err := core.GenerateOutput(core.OutputOptions{
-			Type:  core.OutputTypeConfig,
+		outputResult, err := output.GenerateOutput(output.OutputOptions{
+			Type:  output.OutputTypeConfig,
 			Write: write,
-			Config: &core.ConfigOutputOptions{
+			Config: &output.ConfigOutputOptions{
 				DotfilesRoot: dotfilesRoot,
 				PackNames:    args,
 			},

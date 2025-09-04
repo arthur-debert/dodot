@@ -1,8 +1,20 @@
 package operations
 
 import (
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/types"
+)
+
+// HandlerCategory represents the fundamental nature of a handler's operations
+type HandlerCategory string
+
+const (
+	// CategoryConfiguration handlers manage configuration files/links
+	// These are safe to run repeatedly without side effects
+	CategoryConfiguration HandlerCategory = "configuration"
+
+	// CategoryCodeExecution handlers run arbitrary code/scripts
+	// These require user consent for repeated execution
+	CategoryCodeExecution HandlerCategory = "code_execution"
 )
 
 // FileInput represents the minimal information handlers need about a file.
@@ -72,7 +84,7 @@ type HandlerMetadata struct {
 type Handler interface {
 	// Core identification
 	Name() string
-	Category() handlers.HandlerCategory
+	Category() HandlerCategory
 
 	// Core responsibility: transform file inputs to operations
 	// This is the heart of the simplification - handlers just declare
@@ -118,19 +130,19 @@ type ClearContext struct {
 // This is crucial for keeping handlers simple - they only override what they need.
 type BaseHandler struct {
 	name     string
-	category handlers.HandlerCategory
+	category HandlerCategory
 }
 
 // NewBaseHandler creates a new BaseHandler with the given name and category.
-func NewBaseHandler(name string, category handlers.HandlerCategory) BaseHandler {
+func NewBaseHandler(name string, category HandlerCategory) BaseHandler {
 	return BaseHandler{
 		name:     name,
 		category: category,
 	}
 }
 
-func (h *BaseHandler) Name() string                       { return h.name }
-func (h *BaseHandler) Category() handlers.HandlerCategory { return h.category }
+func (h *BaseHandler) Name() string              { return h.name }
+func (h *BaseHandler) Category() HandlerCategory { return h.category }
 
 // Default implementations return empty/nil to use system defaults
 func (h *BaseHandler) GetClearConfirmation(ctx ClearContext) *ConfirmationRequest {

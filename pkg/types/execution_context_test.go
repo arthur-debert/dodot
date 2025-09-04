@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/execution"
+	"github.com/arthur-debert/dodot/pkg/execution/context"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/stretchr/testify/assert"
 )
@@ -39,7 +40,8 @@ func TestNewExecutionContext(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ec := types.NewExecutionContext(tt.command, tt.dryRun)
+			manager := context.NewManager()
+			ec := manager.CreateContext(tt.command, tt.dryRun)
 
 			assert.Equal(t, tt.command, ec.Command)
 			assert.Equal(t, tt.dryRun, ec.DryRun)
@@ -56,7 +58,8 @@ func TestNewExecutionContext(t *testing.T) {
 }
 
 func TestExecutionContext_AddPackResult(t *testing.T) {
-	ec := types.NewExecutionContext("link", false)
+	manager := context.NewManager()
+	ec := manager.CreateContext("link", false)
 
 	// Create pack results with different statuses
 	pack1Result := &types.PackExecutionResult{
@@ -76,7 +79,7 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 	}
 
 	// Add first pack
-	ec.AddPackResult("vim", pack1Result)
+	manager.AddPackResult(ec, "vim", pack1Result)
 	assert.Equal(t, 1, len(ec.PackResults))
 	assert.Equal(t, 5, ec.TotalHandlers)
 	assert.Equal(t, 3, ec.CompletedHandlers)
@@ -84,7 +87,7 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 	assert.Equal(t, 1, ec.SkippedHandlers)
 
 	// Add second pack
-	ec.AddPackResult("zsh", pack2Result)
+	manager.AddPackResult(ec, "zsh", pack2Result)
 	assert.Equal(t, 2, len(ec.PackResults))
 	assert.Equal(t, 8, ec.TotalHandlers)
 	assert.Equal(t, 5, ec.CompletedHandlers)
@@ -93,13 +96,14 @@ func TestExecutionContext_AddPackResult(t *testing.T) {
 }
 
 func TestExecutionContext_Complete(t *testing.T) {
-	ec := types.NewExecutionContext("status", false)
+	manager := context.NewManager()
+	ec := manager.CreateContext("status", false)
 
 	// Initially end time should be zero
 	assert.True(t, ec.EndTime.IsZero())
 
 	// Complete the context
-	ec.Complete()
+	manager.CompleteContext(ec)
 
 	// End time should be set
 	assert.False(t, ec.EndTime.IsZero())

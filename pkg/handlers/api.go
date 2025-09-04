@@ -1,17 +1,6 @@
 package handlers
 
-// HandlerCategory represents the fundamental nature of a handler's operations
-type HandlerCategory string
-
-const (
-	// CategoryConfiguration handlers manage configuration files/links
-	// These are safe to run repeatedly without side effects
-	CategoryConfiguration HandlerCategory = "configuration"
-
-	// CategoryCodeExecution handlers run arbitrary code/scripts
-	// These require user consent for repeated execution
-	CategoryCodeExecution HandlerCategory = "code_execution"
-)
+import "github.com/arthur-debert/dodot/pkg/operations"
 
 // HandlerRegistry provides a minimal API for handler categorization
 // This replaces the need for RunMode throughout the codebase
@@ -23,7 +12,7 @@ var HandlerRegistry = struct {
 	IsCodeExecutionHandler func(handlerName string) bool
 
 	// GetHandlerCategory returns the category for a handler
-	GetHandlerCategory func(handlerName string) HandlerCategory
+	GetHandlerCategory func(handlerName string) operations.HandlerCategory
 
 	// GetConfigurationHandlers returns all configuration handler names
 	GetConfigurationHandlers func() []string
@@ -52,14 +41,14 @@ var HandlerRegistry = struct {
 		}
 	},
 
-	GetHandlerCategory: func(handlerName string) HandlerCategory {
+	GetHandlerCategory: func(handlerName string) operations.HandlerCategory {
 		switch handlerName {
 		case "symlink", "shell", "path":
-			return CategoryConfiguration
+			return operations.CategoryConfiguration
 		case "homebrew", "install":
-			return CategoryCodeExecution
+			return operations.CategoryCodeExecution
 		default:
-			return CategoryConfiguration // Safe default
+			return operations.CategoryConfiguration // Safe default
 		}
 	},
 

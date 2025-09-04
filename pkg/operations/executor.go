@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	"github.com/arthur-debert/dodot/pkg/handlers"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -229,7 +228,7 @@ func (e *Executor) ExecuteClear(handler Handler, ctx ClearContext) ([]ClearedIte
 		itemType = "homebrew_state"
 	} else if handler.Name() == HandlerInstall {
 		itemType = "provision_state"
-	} else if handler.Category() == handlers.CategoryCodeExecution {
+	} else if handler.Category() == CategoryCodeExecution {
 		itemType = "provision_state"
 	}
 

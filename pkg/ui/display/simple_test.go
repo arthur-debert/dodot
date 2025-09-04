@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arthur-debert/dodot/pkg/execution/context"
+	"github.com/arthur-debert/dodot/pkg/execution/results"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
 	"github.com/stretchr/testify/assert"
@@ -319,14 +321,16 @@ func TestTextRenderer_Render(t *testing.T) {
 
 func TestTextRenderer_RenderWithComplexData(t *testing.T) {
 	// Create a sample execution context
-	ctx := types.NewExecutionContext("link", false)
+	ctxManager := context.NewManager()
+	ctx := ctxManager.CreateContext("link", false)
 
 	// Add a pack result
 	pack := &types.Pack{
 		Name: "test-pack",
 		Path: "/path/to/test-pack",
 	}
-	packResult := types.NewPackExecutionResult(pack)
+	aggregator := results.NewAggregator()
+	packResult := aggregator.CreatePackResult(pack)
 
 	// Add a handler result
 	handlerResult := &types.HandlerResult{
@@ -338,11 +342,11 @@ func TestTextRenderer_RenderWithComplexData(t *testing.T) {
 		StartTime:   time.Now(),
 		EndTime:     time.Now(),
 	}
-	packResult.AddHandlerResult(handlerResult)
-	packResult.Complete()
+	aggregator.AddHandlerResult(packResult, handlerResult)
+	aggregator.CompletePackResult(packResult)
 
-	ctx.AddPackResult("test-pack", packResult)
-	ctx.Complete()
+	ctxManager.AddPackResult(ctx, "test-pack", packResult)
+	ctxManager.CompleteContext(ctx)
 
 	// Render
 	var buf bytes.Buffer

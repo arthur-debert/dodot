@@ -9,8 +9,7 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/logging"
 	packcommands "github.com/arthur-debert/dodot/pkg/packs/commands"
-	"github.com/arthur-debert/dodot/pkg/packs/pipeline"
-	pipelinecommands "github.com/arthur-debert/dodot/pkg/packs/pipeline/commands"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
@@ -73,11 +72,11 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 	switch cmdType {
 	case CommandOn:
 		// Use pack pipeline for on command
-		onCmd := &pipelinecommands.OnCommand{
+		onCmd := &packcommands.OnCommand{
 			NoProvision: opts.NoProvision,
 			Force:       opts.Force,
 		}
-		pipelineResult, err := pipeline.Execute(onCmd, opts.PackNames, pipeline.Options{
+		pipelineResult, err := execution.Execute(onCmd, opts.PackNames, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -89,8 +88,8 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 
 	case CommandOff:
 		// Use pack pipeline for off command
-		offCmd := &pipelinecommands.OffCommand{}
-		pipelineResult, err := pipeline.Execute(offCmd, opts.PackNames, pipeline.Options{
+		offCmd := &packcommands.OffCommand{}
+		pipelineResult, err := execution.Execute(offCmd, opts.PackNames, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -102,8 +101,8 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 
 	case CommandStatus:
 		// Use pack pipeline for status command
-		statusCmd := &pipelinecommands.StatusCommand{}
-		pipelineResult, err := pipeline.Execute(statusCmd, opts.PackNames, pipeline.Options{
+		statusCmd := &packcommands.StatusCommand{}
+		pipelineResult, err := execution.Execute(statusCmd, opts.PackNames, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       false, // Status is always a query
 			FileSystem:   opts.FileSystem,
@@ -116,16 +115,16 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 	case CommandInit:
 		// Init is special - it creates the pack first, then fills it
 		// Step 1: Create the pack directory
-		err := pipelinecommands.InitPreprocess(opts.PackName, opts.DotfilesRoot, opts.FileSystem)
+		err := packcommands.InitPreprocess(opts.PackName, opts.DotfilesRoot, opts.FileSystem)
 		if err != nil {
 			return nil, err
 		}
 
 		// Step 2: Use pack pipeline with InitCommand (which internally uses FillCommand)
-		initCmd := &pipelinecommands.InitCommand{
+		initCmd := &packcommands.InitCommand{
 			PackName: opts.PackName,
 		}
-		pipelineResult, err := pipeline.Execute(initCmd, []string{opts.PackName}, pipeline.Options{
+		pipelineResult, err := execution.Execute(initCmd, []string{opts.PackName}, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -137,8 +136,8 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 
 	case CommandFill:
 		// Use pack pipeline for fill command
-		fillCmd := &pipelinecommands.FillCommand{}
-		pipelineResult, err := pipeline.Execute(fillCmd, opts.PackNames, pipeline.Options{
+		fillCmd := &packcommands.FillCommand{}
+		pipelineResult, err := execution.Execute(fillCmd, opts.PackNames, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -150,11 +149,11 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 
 	case CommandAdopt:
 		// Use pack pipeline for adopt command
-		adoptCmd := &pipelinecommands.AdoptCommand{
+		adoptCmd := &packcommands.AdoptCommand{
 			SourcePaths: opts.SourcePaths,
 			Force:       opts.Force,
 		}
-		pipelineResult, err := pipeline.Execute(adoptCmd, opts.PackNames, pipeline.Options{
+		pipelineResult, err := execution.Execute(adoptCmd, opts.PackNames, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -166,8 +165,8 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 
 	case CommandAddIgnore:
 		// Use pack pipeline for add-ignore command
-		addIgnoreCmd := &pipelinecommands.AddIgnoreCommand{}
-		pipelineResult, err := pipeline.Execute(addIgnoreCmd, opts.PackNames, pipeline.Options{
+		addIgnoreCmd := &packcommands.AddIgnoreCommand{}
+		pipelineResult, err := execution.Execute(addIgnoreCmd, opts.PackNames, execution.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
 			FileSystem:   opts.FileSystem,
@@ -183,7 +182,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 }
 
 // convertPipelineResult converts pack pipeline result to types.PackCommandResult
-func convertPipelineResult(pipelineResult *pipeline.Result) *display.PackCommandResult {
+func convertPipelineResult(pipelineResult *execution.Result) *display.PackCommandResult {
 	result := &display.PackCommandResult{
 		Command:   pipelineResult.Command,
 		Timestamp: time.Now(),

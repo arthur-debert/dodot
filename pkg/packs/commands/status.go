@@ -2,20 +2,37 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/arthur-debert/dodot/pkg/datastore"
+	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/handlers"
-	"github.com/arthur-debert/dodot/pkg/handlers/pipeline"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/operations"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
+	"github.com/arthur-debert/dodot/pkg/packs/execution"
 	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/rules"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
-	"github.com/arthur-debert/dodot/pkg/utils"
 )
+
+// StatusCommand implements the "status" command using the pack execution.
+type StatusCommand struct{}
+
+// Name returns the command name.
+func (c *StatusCommand) Name() string {
+	return "status"
+}
+
+// StatusOptions contains options for getting pack status
+type StatusOptions struct {
+	Pack       types.Pack
+	DataStore  datastore.DataStore
+	FileSystem types.FS
+	Paths      paths.Paths
+}
 
 // StatusState represents the state of a deployment
 type StatusState string
@@ -23,345 +40,236 @@ type StatusState string
 const (
 	// StatusStatePending indicates the action has not been executed yet
 	StatusStatePending StatusState = "pending"
-
-	// StatusStateReady indicates the item is correctly deployed
+	// StatusStateReady indicates the action was executed and is ready
 	StatusStateReady StatusState = "ready"
-
-	// StatusStateMissing indicates the item is not deployed
-	StatusStateMissing StatusState = "missing"
-
-	// StatusStateSuccess indicates the action was executed successfully
+	// StatusStateSuccess indicates success
 	StatusStateSuccess StatusState = "success"
-
-	// StatusStateError indicates the action failed or is broken
+	// StatusStateMissing indicates missing files
+	StatusStateMissing StatusState = "missing"
+	// StatusStateError indicates an error occurred
 	StatusStateError StatusState = "error"
-
-	// StatusStateIgnored indicates the item is explicitly ignored
+	// StatusStateIgnored indicates the file/pack is ignored
 	StatusStateIgnored StatusState = "ignored"
-
-	// StatusStateConfig indicates this is a configuration file
+	// StatusStateConfig indicates this is a config file
 	StatusStateConfig StatusState = "config"
-
-	// StatusStateUnknown indicates the status could not be determined
-	StatusStateUnknown StatusState = "unknown"
 )
 
-// Status represents the deployment status of an action
+// Status represents the status of a single item
 type Status struct {
-	// State is the current status state
-	State StatusState
-
-	// Message is a human-readable status message
-	Message string
-
-	// Timestamp is when the action was last executed (optional)
+	State     StatusState
+	Message   string
 	Timestamp *time.Time
-
-	// ErrorDetails provides additional information about errors (optional)
-	ErrorDetails *StatusErrorDetails
 }
 
-// StatusErrorDetails provides detailed information about status errors
-type StatusErrorDetails struct {
-	// ErrorType describes the type of error (e.g., "missing_source", "missing_intermediate")
-	ErrorType string
-
-	// DeployedPath is the user-facing path that has an issue
-	DeployedPath string
-
-	// IntermediatePath is the dodot state path involved
-	IntermediatePath string
-
-	// SourcePath is the source file path
-	SourcePath string
-}
-
-// StatusOptions contains options for getting pack status
-type StatusOptions struct {
-	// Pack is the pack to get status for
-	Pack types.Pack
-
-	// DataStore is used to check deployment state
-	DataStore datastore.DataStore
-
-	// FileSystem to use for file operations
-	FileSystem types.FS
-
-	// Paths provides system paths
-	Paths paths.Paths
-}
-
-// StatusResult contains the status information for a pack
-type StatusResult struct {
-	// Pack name
-	Name string
-
-	// Whether pack has .dodot.toml configuration
-	HasConfig bool
-
-	// Whether pack is ignored via .dodotignore
-	IsIgnored bool
-
-	// Overall pack status
-	Status string
-
-	// Status of individual files
-	Files []FileStatus
-}
-
-// FileStatus contains status information for a single file
+// FileStatus represents the status of a single file
 type FileStatus struct {
-	// Handler that would process this file
-	Handler string
-
-	// Relative path within the pack
-	Path string
-
-	// Absolute path to the file
-	AbsolutePath string
-
-	// Current deployment status
-	Status Status
-
-	// Additional handler-specific information
+	Handler        string
+	Path           string
+	Status         Status
 	AdditionalInfo string
 }
 
-// GetStatus returns the deployment status for a pack
+// StatusResult represents the complete status of a pack
+type StatusResult struct {
+	Name      string
+	Path      string
+	HasConfig bool
+	IsIgnored bool
+	Status    string
+	Files     []FileStatus
+}
+
+// ExecuteForPack executes the "status" command for a single pack.
+func (c *StatusCommand) ExecuteForPack(pack types.Pack, opts execution.Options) (*execution.PackResult, error) {
+	logger := logging.GetLogger("execution.status")
+	logger.Debug().
+		Str("pack", pack.Name).
+		Msg("Executing status command for pack")
+
+	// Initialize filesystem
+	fs := opts.FileSystem
+	if fs == nil {
+		fs = filesystem.NewOS()
+	}
+
+	// Initialize paths if not provided
+	pathsInstance, err := paths.New(opts.DotfilesRoot)
+	if err != nil {
+		return &execution.PackResult{
+			Pack:    pack,
+			Success: false,
+			Error:   err,
+		}, err
+	}
+
+	// Create datastore for status checking
+	dataStore := datastore.New(fs, pathsInstance)
+
+	// Get pack status
+	statusOpts := StatusOptions{
+		Pack:       pack,
+		DataStore:  dataStore,
+		FileSystem: fs,
+		Paths:      pathsInstance,
+	}
+
+	packStatus, err := GetStatus(statusOpts)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("pack", pack.Name).
+			Msg("Failed to get pack status")
+		return &execution.PackResult{
+			Pack:    pack,
+			Success: false,
+			Error:   err,
+		}, err
+	}
+
+	logger.Info().
+		Str("pack", pack.Name).
+		Str("status", packStatus.Status).
+		Int("fileCount", len(packStatus.Files)).
+		Msg("Status command completed for pack")
+
+	return &execution.PackResult{
+		Pack:                  pack,
+		Success:               true,
+		Error:                 nil,
+		CommandSpecificResult: packStatus,
+	}, nil
+}
+
+// GetStatus retrieves the status of a pack
 func GetStatus(opts StatusOptions) (*StatusResult, error) {
-	logger := logging.GetLogger("pack.status").With().
+	logger := logging.GetLogger("commands.status")
+	logger.Debug().
 		Str("pack", opts.Pack.Name).
-		Logger()
+		Msg("Getting pack status")
+
+	// Check for special files
+	configPath := filepath.Join(opts.Pack.Path, ".dodot.toml")
+	ignorePath := filepath.Join(opts.Pack.Path, ".dodotignore")
+
+	_, hasConfig := opts.FileSystem.Stat(configPath)
+	_, hasIgnore := opts.FileSystem.Stat(ignorePath)
 
 	result := &StatusResult{
-		Name:  opts.Pack.Name,
-		Files: []FileStatus{},
+		Name:      opts.Pack.Name,
+		Path:      opts.Pack.Path,
+		HasConfig: hasConfig == nil,
+		IsIgnored: hasIgnore == nil,
+		Status:    "unknown",
+		Files:     []FileStatus{},
 	}
 
-	// Check for special files (.dodot.toml, .dodotignore)
-	if err := checkSpecialFiles(opts.Pack, result, opts.FileSystem); err != nil {
-		return nil, err
-	}
-
-	// If pack is ignored, no need to process handlers
+	// If pack is ignored, return early
 	if result.IsIgnored {
 		result.Status = "ignored"
 		return result, nil
 	}
 
-	// Get all rule matches for this pack
-	matches, err := pipeline.GetMatchesFS([]types.Pack{opts.Pack}, opts.FileSystem)
+	// Get matches for this pack
+	matches, err := rules.NewMatcher().GetMatchesFS([]types.Pack{opts.Pack}, opts.FileSystem)
 	if err != nil {
-		return nil, fmt.Errorf("failed to process rules: %w", err)
+		return nil, fmt.Errorf("failed to get matches: %w", err)
 	}
 
-	logger.Debug().
-		Int("matchCount", len(matches)).
-		Msg("Got rule matches for pack")
-
-	// Process each match to get status
+	// Check status for each match
 	for _, match := range matches {
-		// Get handler status from datastore
-		status, err := getHandlerStatus(match, opts.Pack, opts.DataStore, opts.FileSystem, opts.Paths)
+		fileStatus, err := getHandlerStatus(match, opts.Pack, opts.DataStore, opts.FileSystem, opts.Paths)
 		if err != nil {
 			logger.Error().
 				Err(err).
 				Str("file", match.Path).
 				Str("handler", match.HandlerName).
 				Msg("Failed to get handler status")
-			// Add error status for this file
-			status = Status{
-				State:   StatusStateError,
-				Message: fmt.Sprintf("status check failed: %v", err),
-			}
+			continue
 		}
 
-		fileStatus := FileStatus{
+		result.Files = append(result.Files, FileStatus{
 			Handler:        match.HandlerName,
 			Path:           match.Path,
-			AbsolutePath:   match.AbsolutePath,
-			Status:         status,
-			AdditionalInfo: getHandlerAdditionalInfo(match.HandlerName, match.Path, opts.Pack, opts.Paths),
-		}
-
-		result.Files = append(result.Files, fileStatus)
+			Status:         fileStatus,
+			AdditionalInfo: "",
+		})
 	}
 
-	// Calculate aggregated pack status
-	result.Status = calculatePackStatus(result.Files)
-
-	logger.Debug().
-		Str("status", result.Status).
-		Int("fileCount", len(result.Files)).
-		Msg("Pack status determined")
+	// Determine overall pack status based on file statuses
+	result.Status = determinePackStatus(result.Files)
 
 	return result, nil
 }
 
-// checkSpecialFiles checks for .dodot.toml and .dodotignore files
-func checkSpecialFiles(pack types.Pack, result *StatusResult, fs types.FS) error {
-	// Check for .dodotignore
-	ignorePath := filepath.Join(pack.Path, ".dodotignore")
-	if _, err := fs.Stat(ignorePath); err == nil {
-		result.IsIgnored = true
-	}
-
-	// Check for .dodot.toml
-	configPath := filepath.Join(pack.Path, ".dodot.toml")
-	if _, err := fs.Stat(configPath); err == nil {
-		result.HasConfig = true
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed to check config file: %w", err)
-	}
-
-	return nil
-}
-
 // getHandlerStatus checks the deployment status for a specific match
-func getHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
-	// Check handler category to determine how to check status
+func getHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
+	logger := logging.GetLogger("commands.status.handler")
+
+	// Get handler category to determine how to check status
 	category := handlers.HandlerRegistry.GetHandlerCategory(match.HandlerName)
 
 	switch category {
-	case handlers.CategoryConfiguration:
-		// For configuration handlers (symlink, path, shell), check intermediate links
-		return getConfigurationHandlerStatus(match, pack, dataStore, fs, pathsInstance)
-	case handlers.CategoryCodeExecution:
-		// For code execution handlers (install, homebrew), check sentinels
-		return getCodeExecutionHandlerStatus(match, pack, dataStore, fs)
-	default:
-		return Status{
-			State:   StatusStateUnknown,
-			Message: "unknown handler type",
-		}, nil
-	}
-}
+	case operations.CategoryConfiguration:
+		// For configuration handlers, check if intermediate links exist
+		linkPath := pathsInstance.PackHandlerDir(pack.Name, match.HandlerName)
+		targetPath := filepath.Join(linkPath, match.Path)
 
-// getConfigurationHandlerStatus checks status for configuration handlers
-func getConfigurationHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
-	baseName := filepath.Base(match.Path)
-	intermediateLinkPath := filepath.Join(pathsInstance.PackHandlerDir(pack.Name, match.HandlerName), baseName)
+		_, err := fs.Stat(targetPath)
+		if err == nil {
+			// TODO: Check if link points to correct source file
+			// Currently we only check if the link exists, not if it's correct
+			var message string
+			switch match.HandlerName {
+			case "shell":
+				message = "sourced in shell"
+			case "path":
+				message = "added to PATH"
+			default:
+				message = "linked"
+			}
+			return Status{
+				State:   StatusStateReady,
+				Message: message,
+			}, nil
+		}
 
-	// Check if intermediate link exists and is valid
-	exists, valid, err := checkIntermediateLink(fs, intermediateLinkPath, match.AbsolutePath)
-	if err != nil {
-		return Status{}, err
-	}
-
-	if !exists {
-		message := "not deployed"
+		var message string
 		switch match.HandlerName {
-		case "symlink":
-			message = "not linked"
-		case "path":
-			message = "not in PATH"
 		case "shell":
 			message = "not sourced in shell"
-		}
-		return Status{
-			State:   StatusStateMissing,
-			Message: message,
-		}, nil
-	}
-
-	if !valid {
-		message := "link points to wrong source"
-		switch match.HandlerName {
 		case "path":
-			message = "PATH link points to wrong directory"
-		case "shell":
-			message = "shell profile link points to wrong script"
+			message = "not in PATH"
+		default:
+			message = "not linked"
 		}
 		return Status{
-			State:   StatusStateError,
+			State:   StatusStatePending,
 			Message: message,
-			ErrorDetails: &StatusErrorDetails{
-				ErrorType:        "invalid_intermediate",
-				IntermediatePath: intermediateLinkPath,
-				SourcePath:       match.AbsolutePath,
-			},
 		}, nil
-	}
 
-	// Check if source file still exists (for symlinks)
-	if match.HandlerName == "symlink" {
-		if _, err := fs.Stat(match.AbsolutePath); err != nil {
-			if os.IsNotExist(err) {
-				return Status{
-					State:   StatusStateError,
-					Message: "source file missing",
-					ErrorDetails: &StatusErrorDetails{
-						ErrorType:        "missing_source",
-						IntermediatePath: intermediateLinkPath,
-						SourcePath:       match.AbsolutePath,
-					},
-				}, nil
-			}
-		}
-	}
+	case operations.CategoryCodeExecution:
+		// For code execution handlers, check sentinels in datastore
+		// Generate sentinel based on handler type and match
+		sentinel := generateSentinel(match)
 
-	message := "deployed"
-	switch match.HandlerName {
-	case "symlink":
-		message = "linked"
-	case "path":
-		message = "added to PATH"
-	case "shell":
-		message = "sourced in shell profile"
-	}
-
-	return Status{
-		State:   StatusStateReady,
-		Message: message,
-	}, nil
-}
-
-// getCodeExecutionHandlerStatus checks status for code execution handlers
-func getCodeExecutionHandlerStatus(match pipeline.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS) (Status, error) {
-	// Calculate current checksum
-	currentChecksum, err := utils.CalculateFileChecksum(match.AbsolutePath)
-	if err != nil {
-		return Status{}, fmt.Errorf("failed to calculate checksum: %w", err)
-	}
-
-	// Determine sentinel name based on handler type
-	var sentinelName string
-	switch match.HandlerName {
-	case "install":
-		sentinelName = fmt.Sprintf("%s-%s", filepath.Base(match.Path), currentChecksum)
-	case "homebrew":
-		sentinelName = fmt.Sprintf("%s_%s-%s", pack.Name, filepath.Base(match.Path), currentChecksum)
-	default:
-		sentinelName = fmt.Sprintf("%s.sentinel", match.Path)
-	}
-
-	// Check if sentinel exists
-	hasSentinel, err := dataStore.HasSentinel(pack.Name, match.HandlerName, sentinelName)
-	if err != nil {
-		return Status{}, err
-	}
-
-	if !hasSentinel {
-		// Check if there's an old sentinel with different checksum
-		sentinels, err := dataStore.ListHandlerSentinels(pack.Name, match.HandlerName)
+		exists, err := dataStore.HasSentinel(pack.Name, match.HandlerName, sentinel)
 		if err != nil {
-			return Status{}, err
-		}
-
-		// Look for any sentinel for this file
-		fileBaseName := filepath.Base(match.Path)
-		var oldSentinelFound bool
-		for _, s := range sentinels {
-			if strings.Contains(s, fileBaseName) && s != sentinelName {
-				oldSentinelFound = true
-				break
-			}
-		}
-
-		if oldSentinelFound {
+			logger.Error().
+				Err(err).
+				Str("pack", pack.Name).
+				Str("handler", match.HandlerName).
+				Str("sentinel", sentinel).
+				Msg("Failed to check sentinel")
 			return Status{
-				State:   StatusStatePending,
-				Message: "file changed, needs re-run",
+				State:   StatusStateError,
+				Message: fmt.Sprintf("Failed to check status: %v", err),
+			}, nil
+		}
+
+		if exists {
+			return Status{
+				State:   StatusStateReady,
+				Message: "installed",
 			}, nil
 		}
 
@@ -370,116 +278,215 @@ func getCodeExecutionHandlerStatus(match pipeline.RuleMatch, pack types.Pack, da
 			message = "never installed"
 		}
 		return Status{
-			State:   StatusStateMissing,
+			State:   StatusStatePending,
 			Message: message,
 		}, nil
-	}
 
-	message := "provisioned"
-	if match.HandlerName == "homebrew" {
-		message = "packages installed"
-	}
-
-	return Status{
-		State:     StatusStateReady,
-		Message:   message,
-		Timestamp: nil,
-	}, nil
-}
-
-// checkIntermediateLink checks if an intermediate link exists and is valid
-func checkIntermediateLink(fs types.FS, intermediateLinkPath, expectedTarget string) (exists bool, valid bool, err error) {
-	info, err := fs.Lstat(intermediateLinkPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, false, nil
-		}
-		return false, false, fmt.Errorf("failed to stat intermediate link: %w", err)
-	}
-
-	if info.Mode()&os.ModeSymlink == 0 {
-		// File exists but is not a symlink
-		return true, false, nil
-	}
-
-	target, err := fs.Readlink(intermediateLinkPath)
-	if err != nil {
-		return true, false, fmt.Errorf("failed to read link target: %w", err)
-	}
-
-	return true, target == expectedTarget, nil
-}
-
-// getHandlerAdditionalInfo returns additional display information based on handler type
-func getHandlerAdditionalInfo(handlerName string, filePath string, pack types.Pack, pathsInstance paths.Paths) string {
-	switch handlerName {
-	case "symlink":
-		// For symlinks, show the target path
-		targetPath := pathsInstance.MapPackFileToSystem(&pack, filePath)
-		homeDir := os.Getenv("HOME")
-		return display.FormatSymlinkForDisplay(targetPath, homeDir, 46)
-	case "path":
-		return "add to $PATH"
-	case "shell":
-		// Detect shell type from filename
-		fileName := filepath.Base(filePath)
-		if strings.Contains(fileName, "bash") {
-			return "bash profile"
-		} else if strings.Contains(fileName, "zsh") {
-			return "zsh profile"
-		} else if strings.Contains(fileName, "fish") {
-			return "fish config"
-		}
-		return "shell source"
-	case "install":
-		return "run script"
-	case "homebrew":
-		return "brew install"
 	default:
-		return ""
+		return Status{
+			State:   StatusStateError,
+			Message: fmt.Sprintf("Unknown handler category for %s", match.HandlerName),
+		}, nil
 	}
 }
 
-// calculatePackStatus calculates the overall pack status based on file statuses
-func calculatePackStatus(files []FileStatus) string {
+// generateSentinel generates a sentinel key for a code execution handler match
+func generateSentinel(match rules.RuleMatch) string {
+	// For homebrew, use the Brewfile path
+	if match.HandlerName == "homebrew" {
+		return match.Path
+	}
+
+	// For install scripts, use the script path
+	if match.HandlerName == "install" {
+		return match.Path
+	}
+
+	// Default: use the file path
+	return match.Path
+}
+
+// determinePackStatus calculates the overall pack status from file statuses
+func determinePackStatus(files []FileStatus) string {
 	if len(files) == 0 {
 		return "queue"
 	}
 
 	hasError := false
-	hasWarning := false
-	allSuccess := true
+	hasSuccess := false
+	hasPending := false
 
 	for _, file := range files {
-		// Map internal states to display statuses
-		displayStatus := statusStateToDisplayStatus(file.Status.State)
-
-		// Skip config files in status calculation
-		if displayStatus == "config" {
-			continue
-		}
-
-		if displayStatus == "error" {
+		switch file.Status.State {
+		case StatusStateError:
 			hasError = true
-		}
-		if displayStatus == "warning" {
-			hasWarning = true
-		}
-		if displayStatus != "success" {
-			allSuccess = false
+		case StatusStateReady, StatusStateSuccess:
+			hasSuccess = true
+		case StatusStatePending, StatusStateMissing:
+			hasPending = true
 		}
 	}
 
 	if hasError {
-		return "alert" // Will be displayed with ALERT styling
+		return "error"
 	}
-	if hasWarning {
-		return "partial" // Has warnings but no errors
+	if hasPending && !hasSuccess {
+		return "queue"
 	}
-	if allSuccess {
+	if hasPending && hasSuccess {
+		return "partial"
+	}
+	if hasSuccess {
 		return "success"
 	}
-	return "queue"
+
+	return "unknown"
+}
+
+// StatusCommandOptions contains options for the status command
+type StatusCommandOptions struct {
+	// DotfilesRoot is the root directory containing packs
+	DotfilesRoot string
+
+	// PackNames specifies which packs to check status for
+	// If empty, all packs are checked
+	PackNames []string
+
+	// Paths provides system paths (optional, will be created if not provided)
+	Paths types.Pather
+
+	// FileSystem to use (optional, defaults to OS filesystem)
+	FileSystem types.FS
+}
+
+// GetPacksStatus shows the deployment status of specified packs
+// This is a query operation that uses core pack discovery but doesn't execute handlers.
+func GetPacksStatus(opts StatusCommandOptions) (*display.PackCommandResult, error) {
+	logger := logging.GetLogger("pack.status")
+	logger.Debug().
+		Str("dotfilesRoot", opts.DotfilesRoot).
+		Strs("packNames", opts.PackNames).
+		Msg("Starting status command")
+
+	// Track any errors encountered
+	var errors []error
+
+	// Initialize filesystem if not provided
+	if opts.FileSystem == nil {
+		opts.FileSystem = filesystem.NewOS()
+	}
+
+	// Initialize paths if not provided
+	if opts.Paths == nil {
+		p, err := paths.New(opts.DotfilesRoot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize paths: %w", err)
+		}
+		opts.Paths = p
+	}
+
+	// Use core pack discovery (consistent with on/off commands)
+	selectedPacks, err := discovery.DiscoverAndSelectPacksFS(opts.DotfilesRoot, opts.PackNames, opts.FileSystem)
+	if err != nil {
+		logger.Error().Err(err).Msg("Failed to discover packs")
+		return nil, err
+	}
+
+	logger.Info().
+		Int("packCount", len(selectedPacks)).
+		Msg("Found packs to check")
+
+	// Create datastore for status checking
+	dataStore := datastore.New(opts.FileSystem, opts.Paths.(paths.Paths))
+
+	// Build command result
+	result := &display.PackCommandResult{
+		Command:   "status",
+		DryRun:    false, // Status is always a query, never a dry run
+		Timestamp: time.Now(),
+		Packs:     make([]display.DisplayPack, 0, len(selectedPacks)),
+		// Status command doesn't have a message
+		Message: "",
+	}
+
+	// Process each pack using centralized status logic
+	for _, p := range selectedPacks {
+		// Get pack status using the centralized GetStatus function
+		statusOpts := StatusOptions{
+			Pack:       p,
+			DataStore:  dataStore,
+			FileSystem: opts.FileSystem,
+			Paths:      opts.Paths.(paths.Paths),
+		}
+
+		packStatus, err := GetStatus(statusOpts)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("pack", p.Name).
+				Msg("Failed to get pack status")
+			errors = append(errors, fmt.Errorf("pack %s: status check failed: %w", p.Name, err))
+			// Continue with other packs even if one fails
+			continue
+		}
+
+		// Convert to display format using existing conversion logic
+		displayPack := convertStatusToDisplayPack(packStatus)
+		result.Packs = append(result.Packs, displayPack)
+	}
+
+	logger.Info().
+		Int("packsProcessed", len(result.Packs)).
+		Int("errors", len(errors)).
+		Msg("Status command completed")
+
+	// Return error if any packs failed (but still return partial results)
+	if len(errors) > 0 {
+		return result, fmt.Errorf("status command encountered %d errors", len(errors))
+	}
+
+	return result, nil
+}
+
+// convertStatusToDisplayPack converts StatusResult to display.DisplayPack
+func convertStatusToDisplayPack(status *StatusResult) display.DisplayPack {
+	displayPack := display.DisplayPack{
+		Name:      status.Name,
+		HasConfig: status.HasConfig,
+		IsIgnored: status.IsIgnored,
+		Status:    status.Status,
+		Files:     make([]display.DisplayFile, 0, len(status.Files)),
+	}
+
+	// Convert each file status
+	for _, file := range status.Files {
+		displayFile := display.DisplayFile{
+			Handler:        file.Handler,
+			Path:           file.Path,
+			Status:         statusStateToDisplayStatus(file.Status.State),
+			Message:        file.Status.Message,
+			LastExecuted:   file.Status.Timestamp,
+			HandlerSymbol:  display.GetHandlerSymbol(file.Handler),
+			AdditionalInfo: file.AdditionalInfo,
+		}
+		displayPack.Files = append(displayPack.Files, displayFile)
+	}
+
+	// Add special files if present
+	if status.IsIgnored {
+		displayPack.Files = append([]display.DisplayFile{{
+			Path:   ".dodotignore",
+			Status: "ignored",
+		}}, displayPack.Files...)
+	}
+	if status.HasConfig {
+		displayPack.Files = append([]display.DisplayFile{{
+			Path:   ".dodot.toml",
+			Status: "config",
+		}}, displayPack.Files...)
+	}
+
+	return displayPack
 }
 
 // statusStateToDisplayStatus converts internal status states to display status strings

@@ -14,27 +14,27 @@ including examples, configuration, and best practices, see:
 
 1. **SymlinkHandler** (`symlink`)
    - Creates symlinks from dotfiles to target locations
-   - See: `pkg/handlers/symlink/doc.go`
+   - See: `pkg/handlers/lib/symlink/doc.go`
    - Use for: Configuration files, dotfiles
 
 2. **ProvisionScriptHandler** (`provision`)
    - Executes shell scripts for one-time setup
-   - See: `pkg/handlers/install/doc.go`
+   - See: `pkg/handlers/lib/install/doc.go`
    - Use for: Installing tools, initial setup
 
 3. **BrewHandler** (`brew`)
    - Processes Brewfiles to manage Homebrew packages
-   - See: `pkg/handlers/homebrew/doc.go`
+   - See: `pkg/handlers/lib/homebrew/doc.go`
    - Use for: System packages, GUI apps (macOS)
 
 4. **ShellProfileHandler** (`shell`)
    - Sources shell scripts into your environment
-   - See: `pkg/handlers/shell/doc.go`
+   - See: `pkg/handlers/lib/shell/doc.go`
    - Use for: Aliases, functions, shell customization
 
 5. **PathHandler** (`path`)
    - Adds directories to system PATH
-   - See: `pkg/handlers/path/doc.go`
+   - See: `pkg/handlers/lib/path/doc.go`
    - Use for: Personal scripts, tools directories
 
 
