@@ -116,5 +116,31 @@ func (h *Handler) computeTargetPath(targetDir string, file operations.FileInput)
 	return filepath.Join(targetDir, file.RelativePath)
 }
 
+// CheckStatus checks if the symlink has been created for the given file
+func (h *Handler) CheckStatus(file operations.FileInput, checker operations.StatusChecker) (operations.HandlerStatus, error) {
+	// Check if the data link exists in the datastore
+	exists, err := checker.HasDataLink(file.PackName, h.Name(), file.RelativePath)
+	if err != nil {
+		return operations.HandlerStatus{
+			State:   operations.StatusStateError,
+			Message: fmt.Sprintf("Failed to check link status: %v", err),
+		}, err
+	}
+
+	if exists {
+		// Link exists in datastore
+		return operations.HandlerStatus{
+			State:   operations.StatusStateReady,
+			Message: fmt.Sprintf("linked to $HOME/%s", filepath.Base(file.RelativePath)),
+		}, nil
+	}
+
+	// Link doesn't exist
+	return operations.HandlerStatus{
+		State:   operations.StatusStatePending,
+		Message: fmt.Sprintf("will be linked to $HOME/%s", filepath.Base(file.RelativePath)),
+	}, nil
+}
+
 // Verify interface compliance
 var _ operations.Handler = (*Handler)(nil)

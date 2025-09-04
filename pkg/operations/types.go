@@ -91,6 +91,9 @@ type Handler interface {
 	// what operations they need, not how to perform them.
 	ToOperations(files []FileInput) ([]Operation, error)
 
+	// Status checking: handlers know how to check their own status
+	CheckStatus(file FileInput, checker StatusChecker) (HandlerStatus, error)
+
 	// Metadata for UI/UX
 	GetMetadata() HandlerMetadata
 
@@ -126,6 +129,38 @@ type ClearContext struct {
 	DryRun bool         // Whether this is a dry run
 }
 
+// StatusState represents the state of a handler's operations
+type StatusState string
+
+const (
+	StatusStatePending StatusState = "pending" // Operations not yet applied
+	StatusStateReady   StatusState = "ready"   // Operations successfully applied
+	StatusStateError   StatusState = "error"   // Error checking or applying operations
+	StatusStateUnknown StatusState = "unknown" // Status cannot be determined
+)
+
+// HandlerStatus represents the status of a handler's operations for a file
+type HandlerStatus struct {
+	State   StatusState // Current state of the handler's operations
+	Message string      // Human-readable status message
+	Details interface{} // Optional handler-specific details
+}
+
+// StatusChecker provides an interface for handlers to check their status
+// without direct filesystem access or datastore implementation knowledge
+type StatusChecker interface {
+	// HasDataLink checks if a data link exists in the datastore
+	// Used by configuration handlers (symlink, shell, path)
+	HasDataLink(packName, handlerName, relativePath string) (bool, error)
+
+	// HasSentinel checks if a sentinel exists for tracking operation completion
+	// Used by code execution handlers (install, homebrew)
+	HasSentinel(packName, handlerName, sentinel string) (bool, error)
+
+	// GetMetadata retrieves metadata for future extensibility
+	GetMetadata(packName, handlerName, key string) (string, error)
+}
+
 // BaseHandler provides default implementations for optional handler methods.
 // This is crucial for keeping handlers simple - they only override what they need.
 type BaseHandler struct {
@@ -151,3 +186,12 @@ func (h *BaseHandler) GetClearConfirmation(ctx ClearContext) *ConfirmationReques
 func (h *BaseHandler) FormatClearedItem(item ClearedItem, dryRun bool) string { return "" }
 func (h *BaseHandler) ValidateOperations(ops []Operation) error               { return nil }
 func (h *BaseHandler) GetStateDirectoryName() string                          { return "" }
+
+// CheckStatus provides a default implementation that returns unknown status
+// Handlers should override this to provide specific status checking logic
+func (h *BaseHandler) CheckStatus(file FileInput, checker StatusChecker) (HandlerStatus, error) {
+	return HandlerStatus{
+		State:   StatusStateUnknown,
+		Message: "Status checking not implemented for this handler",
+	}, nil
+}

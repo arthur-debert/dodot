@@ -108,5 +108,44 @@ func (h *Handler) FormatClearedItem(item operations.ClearedItem, dryRun bool) st
 	return "Removing Homebrew state (set DODOT_HOMEBREW_UNINSTALL=true to uninstall packages)"
 }
 
+// CheckStatus checks if the Brewfile has been installed
+func (h *Handler) CheckStatus(file operations.FileInput, checker operations.StatusChecker) (operations.HandlerStatus, error) {
+	// Calculate checksum for sentinel
+	checksum, err := utils.CalculateFileChecksum(file.SourcePath)
+	if err != nil {
+		// If we can't calculate checksum, we can't determine status
+		return operations.HandlerStatus{
+			State:   operations.StatusStateError,
+			Message: fmt.Sprintf("Failed to calculate checksum: %v", err),
+		}, err
+	}
+
+	// Generate sentinel name (same as in ToOperations)
+	sentinelName := fmt.Sprintf("%s_%s-%s", file.PackName, filepath.Base(file.RelativePath), checksum)
+
+	// Check if sentinel exists
+	exists, err := checker.HasSentinel(file.PackName, h.Name(), sentinelName)
+	if err != nil {
+		return operations.HandlerStatus{
+			State:   operations.StatusStateError,
+			Message: "Failed to check installation status",
+		}, err
+	}
+
+	if exists {
+		// Brewfile has been installed
+		return operations.HandlerStatus{
+			State:   operations.StatusStateReady,
+			Message: "installed",
+		}, nil
+	}
+
+	// Brewfile has not been installed
+	return operations.HandlerStatus{
+		State:   operations.StatusStatePending,
+		Message: "never installed",
+	}, nil
+}
+
 // Verify interface compliance
 var _ operations.Handler = (*Handler)(nil)

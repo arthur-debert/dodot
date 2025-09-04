@@ -75,6 +75,32 @@ func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Opera
 	return ops, nil
 }
 
+// CheckStatus checks if the PATH entry has been linked
+func (h *Handler) CheckStatus(file operations.FileInput, checker operations.StatusChecker) (operations.HandlerStatus, error) {
+	// Check if the data link exists in the datastore
+	exists, err := checker.HasDataLink(file.PackName, h.Name(), file.RelativePath)
+	if err != nil {
+		return operations.HandlerStatus{
+			State:   operations.StatusStateError,
+			Message: "Failed to check PATH entry status",
+		}, err
+	}
+
+	if exists {
+		// PATH entry is linked
+		return operations.HandlerStatus{
+			State:   operations.StatusStateReady,
+			Message: "added to PATH",
+		}, nil
+	}
+
+	// PATH entry not linked
+	return operations.HandlerStatus{
+		State:   operations.StatusStatePending,
+		Message: "not in PATH",
+	}, nil
+}
+
 // The following methods use the BaseHandler defaults:
 // - GetClearConfirmation: returns nil (no confirmation needed)
 // - FormatClearedItem: returns "" (use default formatting)

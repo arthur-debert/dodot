@@ -7,7 +7,11 @@ import (
 
 	"github.com/arthur-debert/dodot/pkg/datastore"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
-	"github.com/arthur-debert/dodot/pkg/handlers"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/homebrew"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/install"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/path"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/shell"
+	"github.com/arthur-debert/dodot/pkg/handlers/lib/symlink"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/operations"
 	"github.com/arthur-debert/dodot/pkg/packs/discovery"
@@ -205,105 +209,84 @@ func GetStatus(opts StatusOptions) (*StatusResult, error) {
 func getHandlerStatus(match rules.RuleMatch, pack types.Pack, dataStore datastore.DataStore, fs types.FS, pathsInstance paths.Paths) (Status, error) {
 	logger := logging.GetLogger("commands.status.handler")
 
-	// Get handler category to determine how to check status
-	category := handlers.HandlerRegistry.GetHandlerCategory(match.HandlerName)
-
-	switch category {
-	case operations.CategoryConfiguration:
-		// For configuration handlers, check if intermediate links exist
-		linkPath := pathsInstance.PackHandlerDir(pack.Name, match.HandlerName)
-		targetPath := filepath.Join(linkPath, match.Path)
-
-		_, err := fs.Stat(targetPath)
-		if err == nil {
-			// TODO: Check if link points to correct source file
-			// Currently we only check if the link exists, not if it's correct
-			var message string
-			switch match.HandlerName {
-			case "shell":
-				message = "sourced in shell"
-			case "path":
-				message = "added to PATH"
-			default:
-				message = "linked"
-			}
-			return Status{
-				State:   StatusStateReady,
-				Message: message,
-			}, nil
-		}
-
-		var message string
-		switch match.HandlerName {
-		case "shell":
-			message = "not sourced in shell"
-		case "path":
-			message = "not in PATH"
-		default:
-			message = "not linked"
-		}
-		return Status{
-			State:   StatusStatePending,
-			Message: message,
-		}, nil
-
-	case operations.CategoryCodeExecution:
-		// For code execution handlers, check sentinels in datastore
-		// Generate sentinel based on handler type and match
-		sentinel := generateSentinel(match)
-
-		exists, err := dataStore.HasSentinel(pack.Name, match.HandlerName, sentinel)
-		if err != nil {
-			logger.Error().
-				Err(err).
-				Str("pack", pack.Name).
-				Str("handler", match.HandlerName).
-				Str("sentinel", sentinel).
-				Msg("Failed to check sentinel")
-			return Status{
-				State:   StatusStateError,
-				Message: fmt.Sprintf("Failed to check status: %v", err),
-			}, nil
-		}
-
-		if exists {
-			return Status{
-				State:   StatusStateReady,
-				Message: "installed",
-			}, nil
-		}
-
-		message := "never run"
-		if match.HandlerName == "homebrew" {
-			message = "never installed"
-		}
-		return Status{
-			State:   StatusStatePending,
-			Message: message,
-		}, nil
-
-	default:
+	// Create handler instance
+	handler, err := createHandler(match.HandlerName)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("handler", match.HandlerName).
+			Msg("Failed to create handler")
 		return Status{
 			State:   StatusStateError,
-			Message: fmt.Sprintf("Unknown handler category for %s", match.HandlerName),
-		}, nil
+			Message: "Unknown handler",
+		}, err
+	}
+
+	// Create status checker
+	statusChecker := operations.NewDataStoreStatusChecker(dataStore, fs, pathsInstance)
+
+	// Prepare file input
+	fileInput := operations.FileInput{
+		PackName:     pack.Name,
+		SourcePath:   match.AbsolutePath,
+		RelativePath: match.Path,
+		Options:      match.HandlerOptions,
+	}
+
+	// Delegate status checking to handler
+	handlerStatus, err := handler.CheckStatus(fileInput, statusChecker)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Str("file", match.Path).
+			Str("handler", match.HandlerName).
+			Msg("Handler status check failed")
+		return Status{
+			State:   StatusStateError,
+			Message: handlerStatus.Message,
+		}, err
+	}
+
+	// Convert handler status to command status
+	return Status{
+		State:   mapHandlerStatusToCommandStatus(handlerStatus.State),
+		Message: handlerStatus.Message,
+	}, nil
+}
+
+// mapHandlerStatusToCommandStatus converts handler status to command status
+func mapHandlerStatusToCommandStatus(handlerState operations.StatusState) StatusState {
+	switch handlerState {
+	case operations.StatusStatePending:
+		return StatusStatePending
+	case operations.StatusStateReady:
+		return StatusStateReady
+	case operations.StatusStateError:
+		return StatusStateError
+	case operations.StatusStateUnknown:
+		return StatusStateError
+	default:
+		return StatusStateError
 	}
 }
 
-// generateSentinel generates a sentinel key for a code execution handler match
-func generateSentinel(match rules.RuleMatch) string {
-	// For homebrew, use the Brewfile path
-	if match.HandlerName == "homebrew" {
-		return match.Path
+// createHandler creates a handler instance by name
+func createHandler(name string) (operations.Handler, error) {
+	// Import the handler creation logic from integration.go
+	switch name {
+	case "symlink":
+		return symlink.NewHandler(), nil
+	case "shell":
+		return shell.NewHandler(), nil
+	case "homebrew":
+		return homebrew.NewHandler(), nil
+	case "install":
+		return install.NewHandler(), nil
+	case "path":
+		return path.NewHandler(), nil
+	default:
+		return nil, fmt.Errorf("unknown handler: %s", name)
 	}
-
-	// For install scripts, use the script path
-	if match.HandlerName == "install" {
-		return match.Path
-	}
-
-	// Default: use the file path
-	return match.Path
 }
 
 // determinePackStatus calculates the overall pack status from file statuses
