@@ -1,0 +1,102 @@
+dodot: Up and Running in 5 Minutes
+===================================
+
+dodot aims to give you the full benefit of a dotfile manager: centralized
+control, versioning, deployment and modularity while minimizing its costs:
+- Impose minimal structure on your dotfiles.
+- No change to your workflow on editing your configs: edit them as you please.
+- Changes are always live, there is no "apply" step.
+- Git is the source of truth, no extra database or state files.
+- Requires minimal setup or migration.
+- On/off/status, nothing more to learn.
+
+Prerequisites:
+- Your dotfiles in a git repository
+- Files organized in directories (or willing to organize them)
+- 2 minutes to try it out
+
+How does dodot achieve this? The core principle is that the structure of your
+dotfiles is the configuration itself, as long as a few simple rules are
+followed:
+
+- Organize your dotfiles in directories. The criteria is up to you: by
+  application, usage, environment, whatever you like. These form "packs" and are
+  turned on or off as a unit.
+- Inside each pack, dodot follows a common naming convention to determine what
+  to do with each file.
+
+Note: dodot automatically discovers all directories in your dotfiles root as packs.
+
+Let's see an example pack for git:
+
+    git/
+    ├── Brewfile    -> includes git, gh and lazygit installs
+    ├── alias.sh    -> common aliases for git (e.g. gco: git checkout)
+    ├── bin/        -> custom git-related scripts
+    └── gitconfig   -> symlinked to ~/.gitconfig
+
+    $ cd ~/dotfiles
+    $ dodot status git
+
+    git
+        alias.sh    ⚙  source by shell     queued
+        bin         +  add to PATH         queued
+        gitconfig   ➞  ~/.gitconfig        queued
+        Brewfile    📦 brew install        queued
+
+    Legend: ⚙ shell config, + PATH addition, ➞ symlink, 📦 package install
+    Status: queued (ready to deploy), deployed (active)
+
+dodot status not only shows you what dodot did, but what it will do on
+running. At this point, double check that everything looks good, that this
+is what you expect to happen from these files. If not, you can rename the
+files, or remap dodot:
+
+    $ dodot genconfig -w git
+    $ cat git/.dodot.toml
+    [mappings]
+    # path = "bin"
+    # install = "install.sh"
+    # shell = ["aliases.sh", "profile.sh", "login.sh"]
+    # homebrew = "Brewfile"
+    # ignore = []
+
+Now that everything looks good, we're ready:
+
+    # Preview what will happen without making changes
+    $ dodot on git --dry-run
+
+    $ dodot on git
+    ... homebrew:  git/Brewfile: installed
+    ... shell:     git/alias.sh: sourced
+    ... symlink:   git/gitconfig -> ~/.gitconfig: linked
+    
+    git
+        alias.sh    ⚙  source by shell        deployed
+        bin         +  add to PATH           deployed
+        gitconfig   ➞  ~/.gitconfig          deployed
+        Brewfile    📦 brew install          deployed
+
+    # Edit your config - changes are immediate!
+    $ vim ~/.gitconfig  # or ~/dotfiles/git/gitconfig - same file!
+
+And $ dodot off git would do the reverse.
+
+All dodot commands can specify one or more packs ($ dodot on git nvim) or,
+when run without arguments, all packs.
+
+By using directory grouping into packs, and file naming conventions, dodot can
+get a lot done without setup. If the name convention doesn't match your files
+you can either rename them or remap them.
+
+Quick Start Guide:
+1. cd ~/dotfiles (or wherever your dotfiles live)
+2. Run `dodot status` to see what dodot will do
+3. Fine-tune by renaming files or creating .dodot.toml configs
+4. Run `dodot on [pack]` to deploy (or `dodot on` for all packs)
+5. Use `dodot off [pack]` to cleanly remove
+
+What's Next?
+- Run `dodot --help` for all commands
+- Check out examples at github.com/arthur-debert/dodot/examples
+- Learn about advanced features in the docs
