@@ -3,7 +3,7 @@ package commands
 
 import (
 	"github.com/arthur-debert/dodot/pkg/datastore"
-	handlerpipeline "github.com/arthur-debert/dodot/pkg/execution/pipeline"
+	handlerpipeline "github.com/arthur-debert/dodot/pkg/execution/handlers"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs/orchestration"

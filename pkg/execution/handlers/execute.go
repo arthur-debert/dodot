@@ -1,6 +1,6 @@
-// Package pipeline provides a focused pipeline for executing handlers on a single pack.
+// Package handlers provides execution of handlers on a single pack.
 // It encapsulates the flow: match files → filter handlers → create operations → execute.
-package pipeline
+package handlers
 
 import (
 	"fmt"
