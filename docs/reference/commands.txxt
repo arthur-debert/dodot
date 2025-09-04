@@ -85,16 +85,17 @@ Shows deployment state of packs including special files, handler matches, and cu
 - All handler state is cleared
 
 ### Handler Types
-- **Configuration Handlers**: symlink, shell_profile, path (always run)
-- **Code Execution Handlers**: homebrew, install, provision (run once by default, controllable via options)
+- **Configuration Handlers**: symlink, shell, path (always run)
+- **Code Execution Handlers**: homebrew, install (run once by default, controllable via options)
 
 ## Implementation Notes
 
 All commands share common infrastructure:
-- Pack discovery and selection via `pkg/core`
+- Pack discovery and selection via `pkg/packs/discovery`
+- Command execution through `pkg/packs/orchestration`
 - Handler execution through the rules system
 - State persistence using the datastore
 - Consistent error handling with error codes
 - Structured logging with verbosity levels
 
-The codebase maintains good separation between command logic (in `pkg/commands`) and core functionality (in `pkg/core`, `pkg/handlers`, `pkg/rules`).
+The codebase maintains good separation between command logic (in `pkg/packs/commands`) and core functionality (in `pkg/packs`, `pkg/handlers`, `pkg/rules`).

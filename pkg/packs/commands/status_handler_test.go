@@ -21,6 +21,13 @@ func TestGetStatus_WithHandlerStatusChecking(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvIsolated)
 	defer env.Cleanup()
 
+	// Clean up any existing state from the datastore
+	_ = env.DataStore.RemoveState("tools", "symlink")
+	_ = env.DataStore.RemoveState("tools", "shell")
+	_ = env.DataStore.RemoveState("tools", "path")
+	_ = env.DataStore.RemoveState("tools", "install")
+	_ = env.DataStore.RemoveState("tools", "homebrew")
+
 	// Create a pack with different handler files
 	env.SetupPack("tools", testutil.PackConfig{
 		Files: map[string]string{
@@ -45,7 +52,7 @@ func TestGetStatus_WithHandlerStatusChecking(t *testing.T) {
 		Path: filepath.Join(env.DotfilesRoot, "tools"),
 	}
 
-	// Create paths and datastore
+	// Create paths and datastore for this specific test
 	pathsInstance, err := paths.New(env.DotfilesRoot)
 	require.NoError(t, err)
 	ds := datastore.New(env.FS, pathsInstance)
@@ -81,11 +88,8 @@ func TestGetStatus_WithHandlerStatusChecking(t *testing.T) {
 		}
 	}
 
-	// Simulate linking the vimrc file
-	linkPath2 := pathsInstance.PackHandlerDir("tools", "symlink")
-	err = env.FS.MkdirAll(linkPath2, 0755)
-	require.NoError(t, err)
-	err = env.FS.WriteFile(filepath.Join(linkPath2, "vimrc"), []byte("link"), 0644)
+	// Simulate linking the vimrc file by creating proper symlinks
+	_, err = ds.CreateDataLink("tools", "symlink", filepath.Join(env.DotfilesRoot, "tools", "vimrc"))
 	require.NoError(t, err)
 
 	// Simulate running the install script

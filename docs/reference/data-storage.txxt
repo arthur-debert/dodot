@@ -68,12 +68,15 @@ All handlers now use just 4 operation types through a minimal DataStore API:
    • Content: "completed|timestamp"
    • State = sentinel existence (idempotent execution)
 
-DataStore API (5 methods):
+DataStore API (8 methods):
 • CreateDataLink(pack, handler, source) → datastorePath
 • CreateUserLink(datastorePath, userPath) → error
 • RunAndRecord(pack, handler, command, sentinel) → error
 • HasSentinel(pack, handler, sentinel) → bool
 • RemoveState(pack, handler) → error
+• HasHandlerState(pack, handler) → bool
+• ListPackHandlers(pack) → []string
+• ListHandlerSentinels(pack, handler) → []string
 
 File Deployment Mapping
 -----------------------

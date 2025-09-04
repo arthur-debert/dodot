@@ -16,7 +16,7 @@ dodot is built on a set of core principles that drive every design decision.
 **Packs** → **Handlers** → **Operations**
 
 - **Packs**: Directories of related dotfiles (vim/, zsh/, git/)
-- **Handlers**: Convert file matches to operations (symlink, provision, brew, shell, path)
+- **Handlers**: Convert file matches to operations (symlink, install, homebrew, shell, path)
 - **Operations**: Four types - CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
 
 ## Design Philosophy
@@ -52,10 +52,16 @@ Each layer is independent and testable.
 
 ## The Execution Flow
 
-Every dodot command follows the same pipeline:
+Most dodot commands follow a unified pipeline:
 
 ```
-Discover Packs → Match Rules → Generate Operations → Execute Operations
+Discover Packs → Execute Command per Pack → Aggregate Results
+```
+
+For handler-based commands (on/off), each pack execution follows:
+
+```
+Match Rules → Generate Operations → Execute Operations
 ```
 
 This predictability means:

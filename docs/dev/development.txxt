@@ -30,10 +30,12 @@ Prerequisites: Go 1.23+, Git, Unix-like environment
 ```
 cmd/dodot/         # Thin CLI layer (Cobra)
 pkg/
-├── core/          # Core pipeline (GetPacks, GetMatches, etc.)
+├── packs/         # Pack discovery and orchestration
 ├── handlers/      # Action generators
 ├── rules/         # Rule-based matching system
 ├── types/         # Type definitions
+├── operations/    # Operation types and execution
+├── datastore/     # State management
 ├── errors/        # Error codes and types
 ├── logging/       # Structured logging
 └── testutil/      # Test helpers

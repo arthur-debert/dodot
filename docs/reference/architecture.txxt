@@ -8,57 +8,51 @@ This document describes dodot's technical architecture and implementation detail
 - **Dotfiles Root**: Base directory containing all dotfile packs (defaults to ~/dotfiles)
 - **Pack**: A directory containing related dotfiles (vim/, git/, zsh/)
 - **Rule**: Pattern-to-handler mapping with priority
-- **Handler**: Converts matched files to operations (symlink, provision, brew, shell)
+- **Handler**: Converts matched files to operations (symlink, install, homebrew, shell, path)
 - **Operation**: Atomic unit of work (CreateDataLink, CreateUserLink, RunCommand, CheckSentinel)
-- **DataStore**: Minimal 5-method API for state management
+- **DataStore**: Minimal 8-method API for state management
 
 ## Processing Pipeline
 
-dodot follows a unified execution pipeline through core.Execute():
+dodot follows a unified execution pipeline through orchestration.Execute():
 
 ```
-Commands → core.Execute() → rules → handlers → operations → DataStore
+Commands → orchestration.Execute() → rules → handlers → operations → DataStore
 ```
 
 ### Unified Execution Flow
 
-The `core.Execute()` function provides a single entry point for all handler-based commands:
+The `orchestration.Execute()` function provides a single entry point for all pack-based commands:
 
 1. **Pack Discovery** - Scans DOTFILES_ROOT for packs
-2. **Rule Matching** - Matches files against rules  
-3. **Command Filtering** - Filters matches by command type (link, provision, etc.)
-4. **Handler Execution** - Executes handlers via rules.ExecuteMatches()
-5. **DataStore Operations** - Performs actual filesystem changes
+2. **Command Execution** - Executes the command for each pack via ExecuteForPack()
+3. **Result Aggregation** - Collects and reports results across all packs
 
-### Command Types
-
-- **CommandLink**: Configuration handlers only (symlink, shell, path)
-- **CommandProvision**: All handlers (code execution first, then configuration)
-- **CommandUnlink**: Removes configuration state via DataStore.RemoveState()
-- **CommandDeprovision**: Removes provisioning state via DataStore.RemoveState()
+Each command implementation decides how to process its pack:
+- Rule matching and handler execution (for on/off commands)
+- Direct file operations (for adopt/init/fill)
+- Status checking (for status command)
 
 ### Stage Details
 
-#### Stage 1: Discovery (DiscoverAndSelectPacks)
-- Scans DOTFILES_ROOT for pack directories
-- Applies ignore patterns from configuration
-- Returns ordered list of packs with metadata
+### Command Execution Details
 
-#### Stage 2: Matching (GetMatches)
-- For each pack, scans files against rules
-- Rules use simple patterns: *.sh, bin/, !*.tmp
-- Returns list of matches with handler assignments
+Each command implementation handles its own logic:
 
-#### Stage 3: Generation (rules.ExecuteMatches)
-- Groups matches by handler type
-- Determines execution order (code handlers before config handlers)
-- Converts matches to operations via handler.ToOperations()
-- Executes operations through DataStore
+#### On Command Flow
+1. **Rule Matching** - Scans pack files against rules
+2. **Handler Grouping** - Groups matches by handler
+3. **Operation Generation** - Handlers convert matches to operations
+4. **Execution** - Operations execute through DataStore
 
-#### Stage 4: Execution (DataStore)
-- Operations execute through minimal DataStore API
-- Only 4 operation types: CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
-- Results are tracked and reported
+#### Off Command Flow
+1. **State Discovery** - Lists handlers with state for the pack
+2. **State Removal** - Calls RemoveState for each handler
+
+#### Status Command Flow
+1. **Rule Matching** - Scans pack files against rules
+2. **Status Checking** - Handlers check their own status via StatusChecker
+3. **Display** - Shows current state for each file
 
 ## State Management
 
@@ -66,7 +60,7 @@ dodot uses a "double-link" architecture for state:
 
 ```
 Repository File → DataStore Link → Target Location
-~/dotfiles/vim/.vimrc → ~/.local/share/dodot/links/.vimrc → ~/.vimrc
+~/dotfiles/vim/.vimrc → ~/.local/share/dodot/data/vim/symlink/.vimrc → ~/.vimrc
 ```
 
 This provides:
@@ -81,13 +75,15 @@ This provides:
 
 ```
 pkg/
-├── core/          # Pipeline functions (Execute, DiscoverAndSelectPacks, GetMatches)
+├── packs/         # Pack discovery, commands, and orchestration
+│   ├── commands/  # Pack command implementations
+│   └── orchestration/ # Pipeline execution
 ├── types/         # Type definitions and interfaces
-├── rules/         # Rule-based matching system with ExecuteMatches
+├── rules/         # Rule-based matching system
 ├── handlers/      # Handler implementations (50-100 lines each)
 ├── operations/    # Operation types and executor
-├── datastore/     # Minimal state management (5 methods)
-├── commands/      # Command implementations (thin orchestrators)
+├── datastore/     # Minimal state management (8 methods)
+├── dispatcher/    # Command dispatch logic
 └── config/        # Configuration management
 ```
 
@@ -122,6 +118,9 @@ type DataStore interface {
     RunAndRecord(pack, handlerName, command, sentinel string) error
     HasSentinel(pack, handlerName, sentinel string) (bool, error)
     RemoveState(pack, handlerName string) error
+    HasHandlerState(pack, handlerName string) (bool, error)
+    ListPackHandlers(pack string) ([]string, error)
+    ListHandlerSentinels(pack, handlerName string) ([]string, error)
 }
 ```
 
@@ -168,44 +167,48 @@ The CLI layer follows strict design principles:
 
 ### Thin CLI Layer
 
-- **Commands** only parse arguments and call core.Execute() or domain methods
-- **Business logic** lives in pkg/core, pkg/rules, and handlers
-- **No direct handler knowledge** in commands
+- **Commands** only parse arguments and call the dispatcher
+- **Business logic** lives in pkg/packs/commands and handlers
+- **No direct handler knowledge** in CLI commands
 - **Clear boundaries** between layers
 
 ### Command Flow
 
 ```go
-// Handler-based commands use core.Execute()
-ctx, err := core.Execute(core.CommandLink, core.ExecuteOptions{
+// Handler-based commands use orchestration.Execute()
+result, err := orchestration.Execute(command, packNames, orchestration.Options{
     DotfilesRoot: opts.DotfilesRoot,
-    PackNames:    opts.PackNames,
     DryRun:       opts.DryRun,
     Force:        opts.Force,
-    Confirmer:    confirmer,
     FileSystem:   filesystem.NewOS(),
+    DataStore:    dataStore,
+    Paths:        paths.New(),
 })
 
 // Non-handler commands use domain methods
 pack.AdoptFile(sourceFile, targetName)  // For adopt command
-dataStore.RemoveState(pack, handler)     // For unlink/deprovision
+dataStore.RemoveState(pack, handler)     // For removal operations
 ```
 
 ### Package Organization
 
 ```
 cmd/dodot/          # Cobra CLI layer
-├── commands.go     # Command registration
-└── root.go         # Root command setup
+├── commands/       # CLI command definitions
+│   ├── on/         # Command structure and help
+│   ├── off/
+│   ├── status/
+│   └── ...
+└── root.go         # Command routing to dispatcher
 
-pkg/commands/       # Command implementations
-├── link/           # Uses core.Execute(CommandLink)
-├── provision/      # Uses core.Execute(CommandProvision)
-├── unlink/         # Uses DataStore.RemoveState()
-├── deprovision/    # Uses DataStore.RemoveState()
-├── adopt/          # Uses Pack.AdoptFile()
-├── init/           # Uses Pack methods
-└── ...             # Other commands
+pkg/
+├── dispatcher/     # Routes CLI to implementations
+└── packs/
+    └── commands/   # Command implementations
+        ├── on.go       # Implements orchestration.Command
+        ├── off.go
+        ├── status.go
+        └── ...
 ```
 
 ### Unified Output System
@@ -223,18 +226,29 @@ renderer := output.NewTextRenderer()
 
 ## Component Responsibilities
 
-### Commands (pkg/commands)
-- **Role**: Thin orchestration layer
-- **Responsibilities**: Parse/validate options, call core.Execute() or domain methods
-- **Handler commands**: Use core.Execute() with appropriate CommandType
-- **Non-handler commands**: Use Pack guardian methods or DataStore directly
-- **What they DON'T do**: Contain business logic, know handler internals, bypass abstractions
+### CLI Commands (cmd/dodot/commands)
+- **Role**: Command structure and help text
+- **Responsibilities**: Define cobra commands with usage/examples
+- **What they DON'T do**: Contain any business logic
 
-### Core (pkg/core)
+### Dispatcher (pkg/dispatcher)
+- **Role**: Bridge between CLI and command implementations
+- **Responsibilities**: Route CLI commands to appropriate implementations
+- **Key function**: Creates command instances based on command name
+- **What it does**: Decouples CLI from business logic implementations
+
+### Command Implementations (pkg/packs/commands)
+- **Role**: Business logic for pack commands
+- **Responsibilities**: Implement orchestration.Command interface
+- **Handler commands**: Execute operations via handlers
+- **Non-handler commands**: Use Pack methods or DataStore directly
+- **What they DON'T do**: Handle CLI parsing, know about cobra
+
+### Packs/Orchestration (pkg/packs/orchestration)
 - **Role**: Unified execution pipeline
-- **Key function**: core.Execute() orchestrates the entire flow
-- **Responsibilities**: Pack discovery, rule matching, command filtering, delegation to rules
-- **Components**: Execute, DiscoverAndSelectPacks, GetMatches, FilterMatchesByHandlerCategory
+- **Key function**: orchestration.Execute() orchestrates the entire flow
+- **Responsibilities**: Pack discovery, command execution per pack
+- **Components**: Execute, ExecuteSingle
 
 ### Rules (pkg/rules)
 - **Role**: Bridge between matches and execution
@@ -244,7 +258,7 @@ renderer := output.NewTextRenderer()
 
 ### Handlers (pkg/handlers)  
 - **Role**: File-specific operation generators
-- **Responsibilities**: Convert file matches to operations (symlink, homebrew, shell_profile, etc.)
+- **Responsibilities**: Convert file matches to operations (symlink, homebrew, shell, path, install)
 - **Used by**: Handler-related commands (on/off/link/unlink/provision/deprovision)
 - **Size**: 50-100 lines each, focused on single concern
 
@@ -256,8 +270,8 @@ renderer := output.NewTextRenderer()
 
 ### DataStore (pkg/datastore)
 - **Role**: Operations execution abstraction
-- **Responsibilities**: Execute operations via 5-method API, state management
-- **Interface**: CreateDataLink, CreateUserLink, RunAndRecord, HasSentinel, RemoveState
+- **Responsibilities**: Execute operations via 8-method API, state management
+- **Interface**: CreateDataLink, CreateUserLink, RunAndRecord, HasSentinel, RemoveState, HasHandlerState, ListPackHandlers, ListHandlerSentinels
 - **Used by**: All commands that need file operations
 
 ### Operations & Executor
@@ -274,13 +288,13 @@ renderer := output.NewTextRenderer()
 ## Architectural Principles
 
 ### Unified Execution
-- **Single entry point**: All handler-based commands use core.Execute()
-- **No business logic in commands**: Commands are thin orchestrators only
-- **Proper abstractions**: Commands → Core → Rules → Handlers → Operations → DataStore
+- **Single entry point**: All pack-based commands use orchestration.Execute()
+- **No business logic in CLI**: Commands are thin orchestrators only
+- **Proper abstractions**: Commands → Orchestration → Rules → Handlers → Operations → DataStore
 - **No bypassing**: Never skip abstraction layers or access handlers directly
 
 ### Separation of Concerns
-- **Handler commands**: link, provision use core.Execute() for handler operations
+- **Handler commands**: on, off use orchestration.Execute() for handler operations
 - **Pack commands**: init, fill, adopt use Pack guardian methods
 - **State commands**: unlink, deprovision use DataStore.RemoveState()
 - **Query commands**: list, status use discovery functions

@@ -17,12 +17,12 @@ including examples, configuration, and best practices, see:
    - See: `pkg/handlers/lib/symlink/doc.go`
    - Use for: Configuration files, dotfiles
 
-2. **ProvisionScriptHandler** (`provision`)
+2. **InstallHandler** (`install`)
    - Executes shell scripts for one-time setup
    - See: `pkg/handlers/lib/install/doc.go`
    - Use for: Installing tools, initial setup
 
-3. **BrewHandler** (`brew`)
+3. **HomebrewHandler** (`homebrew`)
    - Processes Brewfiles to manage Homebrew packages
    - See: `pkg/handlers/lib/homebrew/doc.go`
    - Use for: System packages, GUI apps (macOS)
@@ -112,7 +112,7 @@ interface definition.
 
 - **Not running?** Check rule patterns and priorities
 - **Errors?** Each doc.go lists common error codes
-- **Wrong phase?** Verify RunModeOnce vs RunModeMany
+- **Wrong phase?** Verify handler category (Configuration vs Code Execution)
 - **Conflicts?** Use --force flag when appropriate
 
 For comprehensive details on any handler, read its doc.go file in the

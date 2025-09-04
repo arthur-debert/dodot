@@ -31,7 +31,7 @@ func (d *DataStoreStatusChecker) HasDataLink(packName, handlerName, relativePath
 	pathsInstance, ok := d.paths.(paths.Paths)
 	if !ok {
 		// Fallback: construct path manually if not paths.Paths
-		linkPath := filepath.Join(d.paths.DataDir(), "deployed", packName, handlerName)
+		linkPath := filepath.Join(d.paths.DataDir(), "packs", packName, handlerName)
 		targetPath := filepath.Join(linkPath, relativePath)
 
 		// Check if the file exists

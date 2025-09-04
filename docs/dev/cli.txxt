@@ -15,16 +15,16 @@ The core API in `pkg/` returns complete data structures. The CLI layer in `cmd/d
 ## Separation of Concerns
 
 ```go
-// CORE API (pkg/core/)
-func GetPacks(fs synthfs.FS, dir string) ([]types.Pack, error) {
+// DISCOVERY API (pkg/packs/discovery/)
+func DiscoverPacks(fs types.FS, dir string) ([]types.Pack, error) {
     // Returns full data structures
     return packs, nil
 }
 
 // CLI LAYER (cmd/dodot/)  
 func runStatus(cmd *cobra.Command, args []string) error {
-    // 1. Call core API
-    packs, err := core.GetPacks(fs, dir)
+    // 1. Call discovery API
+    packs, err := discovery.DiscoverPacks(fs, dir)
     
     // 2. Format for display
     renderer.RenderPacks(packs)
