@@ -15,9 +15,13 @@ func ResolveShellScriptPath(scriptName string) (string, error) {
 	if err == nil {
 		// Look for shell scripts in various installed locations
 		installedPaths := []string{
-			filepath.Join(filepath.Dir(exePath), "..", "share", "shell", scriptName), // Standard Unix layout
-			filepath.Join(filepath.Dir(exePath), "shell", scriptName),                // Same directory as binary
-			filepath.Join(filepath.Dir(exePath), "..", "shell", scriptName),          // Parent directory
+			// Homebrew installs to pkgshare: /opt/homebrew/share/dodot/shell/
+			"/opt/homebrew/share/dodot/shell/" + scriptName,
+			"/usr/local/share/dodot/shell/" + scriptName,                                      // Intel Mac homebrew
+			filepath.Join(filepath.Dir(exePath), "..", "share", "dodot", "shell", scriptName), // Standard Unix layout
+			filepath.Join(filepath.Dir(exePath), "..", "share", "shell", scriptName),          // Alternative Unix layout
+			filepath.Join(filepath.Dir(exePath), "shell", scriptName),                         // Same directory as binary
+			filepath.Join(filepath.Dir(exePath), "..", "shell", scriptName),                   // Parent directory
 		}
 
 		for _, path := range installedPaths {
