@@ -1,14 +1,16 @@
 # dodot
 
-A dotfile manager that respects your workflow.
+A dotfile manager that works *for* you. Little to learn, little to configure,
+brings joy.
 
 ## What is dodot?
 
-dodot manages your dotfiles through symlinks and simple conventions. Edit your configs as you always have - changes are live, no syncing or rebuilding required.
+dodot manages your dotfiles. Edit your configs as you always have - changes are live, no syncing or rebuilding required.
 
 ## Key Features
 
-- **No configuration required** - File naming conventions handle most cases
+- **No configuration required** - File naming conventions , overridable by
+mapping.
 - **Live editing** - Edit anywhere, changes apply immediately  
 - **Modular packs** - Group related configs, enable/disable together
 - **Git-based** - Your repo structure is the only state
@@ -28,7 +30,7 @@ Or download from [releases](https://github.com/arthur-debert/dodot/releases).
 cd ~/dotfiles
 dodot status          # See what dodot will do
 dodot up              # Deploy all packs
-dodot down git         # Remove git pack
+dodot down git         # All commands can specify pack(s) or run on all if none
 ```
 
 ## How It Works
