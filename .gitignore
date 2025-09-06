@@ -19,3 +19,6 @@ coverage.out
 .todos
 test-results.xml
 GEMINI.md
+
+# Prevent nested shell directory
+pkg/shell/shell/
