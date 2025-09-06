@@ -78,6 +78,8 @@ type Mappings struct {
 	Shell []string `koanf:"shell"`
 	// Homebrew specifies the filename pattern for Homebrew files
 	Homebrew string `koanf:"homebrew"`
+	// Ignore specifies patterns for files to exclude from processing
+	Ignore []string `koanf:"ignore"`
 }
 
 // Config is the main configuration structure
@@ -241,6 +243,14 @@ func (c *Config) GenerateRulesFromMapping() []Rule {
 		rules = append(rules, Rule{
 			Pattern: c.Mappings.Homebrew,
 			Handler: "homebrew",
+		})
+	}
+
+	// Ignore rules (exclusion patterns start with !)
+	for _, pattern := range c.Mappings.Ignore {
+		rules = append(rules, Rule{
+			Pattern: "!" + pattern,
+			Handler: "exclude",
 		})
 	}
 

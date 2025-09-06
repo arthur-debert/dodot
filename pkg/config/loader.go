@@ -404,6 +404,9 @@ func configToMap(cfg *Config) map[string]interface{} {
 	if cfg.Mappings.Shell != nil {
 		mappings["shell"] = cfg.Mappings.Shell
 	}
+	if cfg.Mappings.Ignore != nil {
+		mappings["ignore"] = cfg.Mappings.Ignore
+	}
 	m["mappings"] = mappings
 
 	// Convert rules
