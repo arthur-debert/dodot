@@ -55,3 +55,6 @@ path = "bin"
 install = "install.sh"
 shell = ["aliases.sh", "profile.sh", "login.sh"]
 homebrew = "Brewfile"
+# Files to ignore during pack processing (in addition to dodot's defaults)
+# Examples: [".env.local", "secrets.json", "private/*", "*.key"]
+ignore = []

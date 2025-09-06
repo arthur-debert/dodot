@@ -20,13 +20,12 @@ import (
 // This function should be called at application startup before
 // using any handlers functionality.
 func Initialize() error {
-	logger := logging.GetLogger("handlers.init")
+	logging.GetLogger("handlers.init")
 
 	// Initialize configuration - this will trigger loading of
 	// configuration files and setting up the global config
 	config.Initialize(nil)
 
-	logger.Debug().Msg("Handler initialization completed")
 	return nil
 }
 

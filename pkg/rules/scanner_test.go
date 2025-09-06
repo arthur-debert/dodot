@@ -390,6 +390,58 @@ func TestScanner_ComplexExclusions(t *testing.T) {
 	assert.False(t, matchedFiles[".DS_Store"]) // Skipped by scanner, not rules
 }
 
+func TestScanner_UserConfigurableExclusions(t *testing.T) {
+	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
+	defer env.Cleanup()
+
+	packConfig := testutil.PackConfig{
+		Files: map[string]string{
+			"config.json":      "main config",
+			".env.local":       "local env vars",
+			"secrets.json":     "sensitive data",
+			"private/keys.txt": "private keys",
+			"public.key":       "public key",
+			"data.key":         "data key",
+			"normal.txt":       "normal file",
+		},
+	}
+	testPack := env.SetupPack("testpack", packConfig)
+
+	// Simulate user-configured ignore patterns
+	scanner := rules.NewScannerWithFS([]config.Rule{
+		{Pattern: "!.env.local", Handler: "exclude"},
+		{Pattern: "!secrets.json", Handler: "exclude"},
+		{Pattern: "!private/*", Handler: "exclude"},
+		{Pattern: "!*.key", Handler: "exclude"},
+		{Pattern: "*", Handler: "symlink"},
+	}, env.FS)
+
+	pack := types.Pack{
+		Name: testPack.Name,
+		Path: testPack.Path,
+	}
+
+	matches, err := scanner.ScanPack(pack)
+	require.NoError(t, err)
+
+	matchedFiles := make(map[string]bool)
+	for _, m := range matches {
+		matchedFiles[m.FileName] = true
+	}
+
+	// Only config.json and normal.txt should be matched
+	assert.Len(t, matches, 2)
+	assert.True(t, matchedFiles["config.json"])
+	assert.True(t, matchedFiles["normal.txt"])
+
+	// All these should be excluded
+	assert.False(t, matchedFiles[".env.local"])
+	assert.False(t, matchedFiles["secrets.json"])
+	assert.False(t, matchedFiles["private"]) // Directory doesn't match *
+	assert.False(t, matchedFiles["public.key"])
+	assert.False(t, matchedFiles["data.key"])
+}
+
 func TestNewScanner(t *testing.T) {
 	// Test that NewScanner creates a scanner without filesystem
 	ruleList := []config.Rule{

@@ -182,6 +182,69 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			},
 		},
 		{
+			name: "ignore_mapping_single_pattern",
+			config: &config.Config{
+				Mappings: config.Mappings{
+					Ignore: []string{".env.local"},
+				},
+			},
+			expected: 1,
+			validate: func(t *testing.T, rules []config.Rule) {
+				assert.Equal(t, "!.env.local", rules[0].Pattern)
+				assert.Equal(t, "exclude", rules[0].Handler)
+			},
+		},
+		{
+			name: "ignore_mapping_multiple_patterns",
+			config: &config.Config{
+				Mappings: config.Mappings{
+					Ignore: []string{".env.local", "secrets.json", "private/*", "*.key"},
+				},
+			},
+			expected: 4,
+			validate: func(t *testing.T, rules []config.Rule) {
+				expectedPatterns := []string{"!.env.local", "!secrets.json", "!private/*", "!*.key"}
+				for i, rule := range rules {
+					assert.Equal(t, expectedPatterns[i], rule.Pattern)
+					assert.Equal(t, "exclude", rule.Handler)
+				}
+			},
+		},
+		{
+			name: "all_mappings_with_ignore",
+			config: &config.Config{
+				Mappings: config.Mappings{
+					Path:     "bin",
+					Install:  "install.sh",
+					Shell:    []string{"bashrc"},
+					Homebrew: "Brewfile",
+					Ignore:   []string{".env", "*.secret"},
+				},
+			},
+			expected: 6,
+			validate: func(t *testing.T, rules []config.Rule) {
+				// First 4 are the regular mappings
+				assert.Equal(t, "bin/", rules[0].Pattern)
+				assert.Equal(t, "path", rules[0].Handler)
+
+				assert.Equal(t, "install.sh", rules[1].Pattern)
+				assert.Equal(t, "install", rules[1].Handler)
+
+				assert.Equal(t, "bashrc", rules[2].Pattern)
+				assert.Equal(t, "shell", rules[2].Handler)
+
+				assert.Equal(t, "Brewfile", rules[3].Pattern)
+				assert.Equal(t, "homebrew", rules[3].Handler)
+
+				// Last 2 are the ignore patterns
+				assert.Equal(t, "!.env", rules[4].Pattern)
+				assert.Equal(t, "exclude", rules[4].Handler)
+
+				assert.Equal(t, "!*.secret", rules[5].Pattern)
+				assert.Equal(t, "exclude", rules[5].Handler)
+			},
+		},
+		{
 			name: "shell_placement_detection_complex",
 			config: &config.Config{
 				Mappings: config.Mappings{

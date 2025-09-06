@@ -547,41 +547,6 @@ func stripOverridePrefix(relPath string) string {
 	return relPath
 }
 
-// expandMapping expands variables in mapping targets ($HOME, $XDG_CONFIG_HOME)
-// Release E: Layer 4 - Configuration File
-func expandMapping(mapping string, homeDir string) string {
-	// Replace $HOME
-	result := strings.ReplaceAll(mapping, "$HOME", homeDir)
-
-	// Replace $XDG_CONFIG_HOME
-	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	if xdgConfigHome == "" {
-		xdgConfigHome = filepath.Join(homeDir, ".config")
-	}
-	result = strings.ReplaceAll(result, "$XDG_CONFIG_HOME", xdgConfigHome)
-
-	return result
-}
-
-// findMapping checks if a file matches any custom mapping patterns
-// Returns the expanded target path if a match is found, or empty string if no match
-// Release E: Layer 4 - Configuration File
-func findMapping(relPath string, mappings map[string]string, homeDir string) string {
-	// First check for exact match
-	if target, ok := mappings[relPath]; ok {
-		return expandMapping(target, homeDir)
-	}
-
-	// Then check for glob patterns
-	for pattern, target := range mappings {
-		if matched, _ := filepath.Match(pattern, relPath); matched {
-			return expandMapping(target, homeDir)
-		}
-	}
-
-	return ""
-}
-
 // MapPackFileToSystem maps a file from a pack to its deployment location.
 // Release E: Implements Layer 4 - Configuration File (with Layer 3, 2, and 1 fallback)
 func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
@@ -591,12 +556,7 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		homeDir = "~" // Fallback for safety, though GetHomeDirectory is robust
 	}
 
-	// Layer 4: Check for custom mappings in pack config
-	if len(pack.Config.Mappings) > 0 {
-		if target := findMapping(relPath, pack.Config.Mappings, homeDir); target != "" {
-			return target
-		}
-	}
+	// Layer 4: Custom mappings in pack config - removed as pack config now only supports handler mappings
 
 	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix)
 	if hasOverride, overrideType := hasExplicitOverride(relPath); hasOverride {
