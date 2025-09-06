@@ -7,14 +7,14 @@ import (
 	// Import messages from command packages
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/addignore"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/adopt"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/down"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/fill"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/genconfig"
 	initcmd "github.com/arthur-debert/dodot/cmd/dodot/commands/init"
-	"github.com/arthur-debert/dodot/cmd/dodot/commands/off"
-	"github.com/arthur-debert/dodot/cmd/dodot/commands/on"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/snippet"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/status"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/up"
 )
 
 // Re-export command messages for backward compatibility
@@ -49,11 +49,11 @@ var (
 	// Gen-config command
 	MsgGenConfigShort = genconfig.MsgShort
 
-	// Off command (not currently used, but imported to avoid "imported and not used" error)
-	_ = off.MsgShort
+	// Down command (not currently used, but imported to avoid "imported and not used" error)
+	_ = down.MsgShort
 
-	// On command (not currently used, but imported to avoid "imported and not used" error)
-	_ = on.MsgShort
+	// Up command (not currently used, but imported to avoid "imported and not used" error)
+	_ = up.MsgShort
 )
 
 // General messages (not command-specific)

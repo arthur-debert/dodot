@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOnCommand_Name(t *testing.T) {
-	cmd := &commands.OnCommand{}
-	assert.Equal(t, "on", cmd.Name())
+func TestUpCommand_Name(t *testing.T) {
+	cmd := &commands.UpCommand{}
+	assert.Equal(t, "up", cmd.Name())
 }
 
-func TestOnCommand_ExecuteForPack_Success(t *testing.T) {
+func TestUpCommand_ExecuteForPack_Success(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	defer env.Cleanup()
 
@@ -38,7 +38,7 @@ func TestOnCommand_ExecuteForPack_Success(t *testing.T) {
 		Path: env.DotfilesRoot + "/vim",
 	}
 
-	cmd := &commands.OnCommand{
+	cmd := &commands.UpCommand{
 		NoProvision: false,
 		Force:       false,
 	}
@@ -57,7 +57,7 @@ func TestOnCommand_ExecuteForPack_Success(t *testing.T) {
 	assert.Equal(t, "vim", result.Pack.Name)
 }
 
-func TestOnCommand_ExecuteForPack_NoProvision(t *testing.T) {
+func TestUpCommand_ExecuteForPack_NoProvision(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	defer env.Cleanup()
 
@@ -78,7 +78,7 @@ func TestOnCommand_ExecuteForPack_NoProvision(t *testing.T) {
 		Path: env.DotfilesRoot + "/config",
 	}
 
-	cmd := &commands.OnCommand{
+	cmd := &commands.UpCommand{
 		NoProvision: true, // Skip provisioning
 		Force:       false,
 	}
@@ -98,7 +98,7 @@ func TestOnCommand_ExecuteForPack_NoProvision(t *testing.T) {
 	assert.True(t, result.Success)
 }
 
-func TestOnCommand_ExecuteForPack_InvalidPack(t *testing.T) {
+func TestUpCommand_ExecuteForPack_InvalidPack(t *testing.T) {
 	env := testutil.NewTestEnvironment(t, testutil.EnvMemoryOnly)
 	defer env.Cleanup()
 
@@ -108,7 +108,7 @@ func TestOnCommand_ExecuteForPack_InvalidPack(t *testing.T) {
 		Path: "/nonexistent/path",
 	}
 
-	cmd := &commands.OnCommand{}
+	cmd := &commands.UpCommand{}
 
 	// Execute command
 	result, err := cmd.ExecuteForPack(pack, orchestration.Options{

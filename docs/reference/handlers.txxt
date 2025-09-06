@@ -49,7 +49,7 @@ Handlers are divided into two categories based on their operation types:
 - Install Handler: Runs setup scripts once
 - Homebrew Handler: Installs packages once
 - Operations are tracked to prevent re-execution
-- Run by default with `dodot on`, skip with `--no-provision`
+- Run by default with `dodot up`, skip with `--no-provision`
 
 ### Configuration Handlers (always run)
 - Generate **CreateDataLink** and **CreateUserLink** operations
@@ -57,7 +57,7 @@ Handlers are divided into two categories based on their operation types:
 - Path Handler: Manages PATH entries
 - Shell Handler: Sources shell configuration
 - Operations are idempotent (safe to run multiple times)
-- Always run with `dodot on`
+- Always run with `dodot up`
 
 ## Quick Reference
 

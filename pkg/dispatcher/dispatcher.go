@@ -20,8 +20,8 @@ type CommandType string
 
 const (
 	// Core commands
-	CommandOn     CommandType = "on"
-	CommandOff    CommandType = "off"
+	CommandUp     CommandType = "up"
+	CommandDown   CommandType = "down"
 	CommandStatus CommandType = "status"
 
 	// Single pack convenience commands
@@ -70,9 +70,9 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 		Msg("Dispatching pack command")
 
 	switch cmdType {
-	case CommandOn:
+	case CommandUp:
 		// Use pack pipeline for on command
-		onCmd := &packcommands.OnCommand{
+		onCmd := &packcommands.UpCommand{
 			NoProvision: opts.NoProvision,
 			Force:       opts.Force,
 		}
@@ -86,9 +86,9 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 		}
 		return convertPipelineResult(pipelineResult), nil
 
-	case CommandOff:
+	case CommandDown:
 		// Use pack pipeline for off command
-		offCmd := &packcommands.OffCommand{}
+		offCmd := &packcommands.DownCommand{}
 		pipelineResult, err := orchestration.Execute(offCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
 			DryRun:       opts.DryRun,
@@ -253,9 +253,9 @@ func convertPipelineResult(pipelineResult *orchestration.Result) *display.PackCo
 	}
 
 	switch pipelineResult.Command {
-	case "on":
+	case "up":
 		result.Message = display.FormatCommandMessage("turned on", packNames)
-	case "off":
+	case "down":
 		result.Message = display.FormatCommandMessage("turned off", packNames)
 	case "status":
 		result.Message = "" // Status command doesn't have a message

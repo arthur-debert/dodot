@@ -12,21 +12,21 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OffCommand implements the "off" command using the pack orchestration.
-type OffCommand struct{}
+// DownCommand implements the "down" command using the pack orchestration.
+type DownCommand struct{}
 
 // Name returns the command name.
-func (c *OffCommand) Name() string {
-	return "off"
+func (c *DownCommand) Name() string {
+	return "down"
 }
 
-// ExecuteForPack executes the "off" command for a single pack.
-func (c *OffCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
-	logger := logging.GetLogger("orchestration.off")
+// ExecuteForPack executes the "down" command for a single pack.
+func (c *DownCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.down")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Bool("dryRun", opts.DryRun).
-		Msg("Executing off command for pack")
+		Msg("Executing down command for pack")
 
 	// Initialize filesystem
 	fs := opts.FileSystem
@@ -118,7 +118,7 @@ func (c *OffCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options)
 		Int("totalCleared", totalCleared).
 		Int("errors", len(errors)).
 		Bool("success", success).
-		Msg("Off command completed for pack")
+		Msg("Down command completed for pack")
 
 	// Aggregate errors if any
 	var finalError error

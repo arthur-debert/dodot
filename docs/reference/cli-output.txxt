@@ -30,7 +30,7 @@ The message describes what action was taken, while the pack status shows the res
 Example Output
 ==============
 
-After running ``dodot on vim``::
+After running ``dodot up vim``::
 
     The pack vim has been turned on.
 

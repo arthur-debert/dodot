@@ -1,13 +1,13 @@
-package on
+package up
 
 import (
 	"github.com/spf13/cobra"
 )
 
-// NewCommand creates the on command
+// NewCommand creates the up command
 func NewCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "on [packs...]",
+		Use:     "up [packs...]",
 		Short:   MsgShort,
 		Long:    MsgLong,
 		Example: MsgExample,
