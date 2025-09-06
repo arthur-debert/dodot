@@ -24,7 +24,7 @@ func TestDeployCmd(t *testing.T) {
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
 
-	// Execute the on command
+	// Execute the up command
 	rootCmd.SetArgs([]string{"up"})
 	err := rootCmd.Execute()
 
@@ -55,7 +55,7 @@ func TestDeployCmd_NoDotfilesRoot(t *testing.T) {
 	// Create a new root command for testing
 	rootCmd := NewRootCmd()
 
-	// Execute the on command - should succeed with fallback warning
+	// Execute the up command - should succeed with fallback warning
 	rootCmd.SetArgs([]string{"up"})
 	err = rootCmd.Execute()
 

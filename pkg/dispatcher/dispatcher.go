@@ -42,7 +42,7 @@ type Options struct {
 	FileSystem   types.FS
 
 	// Command-specific fields
-	// For on command
+	// For up command
 	NoProvision    bool
 	ProvisionRerun bool
 
@@ -71,7 +71,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 
 	switch cmdType {
 	case CommandUp:
-		// Use pack pipeline for on command
+		// Use pack pipeline for up command
 		onCmd := &packcommands.UpCommand{
 			NoProvision: opts.NoProvision,
 			Force:       opts.Force,
@@ -87,7 +87,7 @@ func Dispatch(cmdType CommandType, opts Options) (*display.PackCommandResult, er
 		return convertPipelineResult(pipelineResult), nil
 
 	case CommandDown:
-		// Use pack pipeline for off command
+		// Use pack pipeline for down command
 		offCmd := &packcommands.DownCommand{}
 		pipelineResult, err := orchestration.Execute(offCmd, opts.PackNames, orchestration.Options{
 			DotfilesRoot: opts.DotfilesRoot,
@@ -254,9 +254,9 @@ func convertPipelineResult(pipelineResult *orchestration.Result) *display.PackCo
 
 	switch pipelineResult.Command {
 	case "up":
-		result.Message = display.FormatCommandMessage("turned on", packNames)
+		result.Message = display.FormatCommandMessage("activated", packNames)
 	case "down":
-		result.Message = display.FormatCommandMessage("turned off", packNames)
+		result.Message = display.FormatCommandMessage("deactivated", packNames)
 	case "status":
 		result.Message = "" // Status command doesn't have a message
 	}

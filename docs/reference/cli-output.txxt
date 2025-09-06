@@ -32,7 +32,7 @@ Example Output
 
 After running ``dodot up vim``::
 
-    The pack vim has been turned on.
+    The pack vim has been activated.
 
     vim:
       ➞ .vimrc → ~/.vimrc [linked]
@@ -84,14 +84,14 @@ Commands create a CommandResult with:
 1. An optional message describing the action
 2. The current pack status from the status command
 
-Example from the on command::
+Example from the up command::
 
-    // Get pack status after turning on
+    // Get pack status after activating
     statusResult, err := commands.StatusPacks(...)
     
     // Create result with message
     cmdResult := &types.CommandResult{
-        Message: types.FormatCommandMessage("turned on", packNames),
+        Message: types.FormatCommandMessage("activated", packNames),
         Result:  statusResult,
     }
     
@@ -112,8 +112,8 @@ Commands and Their Messages
 
 Pack-altering commands::
 
-    on         - "The pack(s) X have been turned on."
-    off        - "The pack(s) X have been turned off."
+    up         - "The pack(s) X have been activated."
+    down       - "The pack(s) X have been deactivated."
 
 Pack creation/modification::
 

@@ -14,7 +14,7 @@ func TestManager_CreateContext(t *testing.T) {
 		dryRun  bool
 	}{
 		{
-			name:    "create context for on command",
+			name:    "create context for up command",
 			command: "up",
 			dryRun:  false,
 		},

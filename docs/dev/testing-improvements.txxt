@@ -74,8 +74,8 @@ Each command has tests for:
 - **init**: Tests pack creation with templates
 - **link**: Tests configuration deployment
 - **list**: Tests pack discovery
-- **off**: Tests combined deprovision + unlink
-- **on**: Tests combined link + provision
+- **down**: Tests combined deprovision + unlink
+- **up**: Tests combined link + provision
 - **provision**: Tests two-phase execution
 - **status**: Tests state inspection
 - **unlink**: Tests cleanup operations

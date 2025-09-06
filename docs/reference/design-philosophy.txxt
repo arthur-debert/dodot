@@ -58,7 +58,7 @@ Most dodot commands follow a unified pipeline:
 Discover Packs → Execute Command per Pack → Aggregate Results
 ```
 
-For handler-based commands (on/off), each pack execution follows:
+For handler-based commands (up/down), each pack execution follows:
 
 ```
 Match Rules → Generate Operations → Execute Operations

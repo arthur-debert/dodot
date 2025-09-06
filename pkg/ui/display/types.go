@@ -34,7 +34,7 @@ type PackCommandResult struct {
 	// Packs affected by the command with their current status
 	Packs []DisplayPack `json:"packs"`
 
-	// Optional message for the command (e.g., "The pack vim has been turned on.")
+	// Optional message for the command (e.g., "The pack vim has been activated.")
 	Message string `json:"message,omitempty"`
 
 	// Metadata specific to the command
@@ -49,12 +49,12 @@ type PackCommandResult struct {
 
 // CommandMetadata contains command-specific information
 type CommandMetadata struct {
-	// For 'on' command
+	// For 'up' command
 	TotalDeployed  int  `json:"totalDeployed,omitempty"`
 	NoProvision    bool `json:"noProvision,omitempty"`
 	ProvisionRerun bool `json:"provisionRerun,omitempty"`
 
-	// For 'off' command
+	// For 'down' command
 	TotalCleared int      `json:"totalCleared,omitempty"`
 	HandlersRun  []string `json:"handlersRun,omitempty"`
 

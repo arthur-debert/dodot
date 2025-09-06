@@ -29,7 +29,7 @@ The `orchestration.Execute()` function provides a single entry point for all pac
 3. **Result Aggregation** - Collects and reports results across all packs
 
 Each command implementation decides how to process its pack:
-- Rule matching and handler execution (for on/off commands)
+- Rule matching and handler execution (for up/down commands)
 - Direct file operations (for adopt/init/fill)
 - Status checking (for status command)
 
@@ -39,13 +39,13 @@ Each command implementation decides how to process its pack:
 
 Each command implementation handles its own logic:
 
-#### On Command Flow
+#### Up Command Flow
 1. **Rule Matching** - Scans pack files against rules
 2. **Handler Grouping** - Groups matches by handler
 3. **Operation Generation** - Handlers convert matches to operations
 4. **Execution** - Operations execute through DataStore
 
-#### Off Command Flow
+#### Down Command Flow
 1. **State Discovery** - Lists handlers with state for the pack
 2. **State Removal** - Calls RemoveState for each handler
 
@@ -195,8 +195,8 @@ dataStore.RemoveState(pack, handler)     // For removal operations
 ```
 cmd/dodot/          # Cobra CLI layer
 ├── commands/       # CLI command definitions
-│   ├── on/         # Command structure and help
-│   ├── off/
+│   ├── up/         # Command structure and help
+│   ├── down/
 │   ├── status/
 │   └── ...
 └── root.go         # Command routing to dispatcher
@@ -205,8 +205,8 @@ pkg/
 ├── dispatcher/     # Routes CLI to implementations
 └── packs/
     └── commands/   # Command implementations
-        ├── on.go       # Implements orchestration.Command
-        ├── off.go
+        ├── up.go       # Implements orchestration.Command
+        ├── down.go
         ├── status.go
         └── ...
 ```
@@ -259,7 +259,7 @@ renderer := output.NewTextRenderer()
 ### Handlers (pkg/handlers)  
 - **Role**: File-specific operation generators
 - **Responsibilities**: Convert file matches to operations (symlink, homebrew, shell, path, install)
-- **Used by**: Handler-related commands (on/off/link/unlink/provision/deprovision)
+- **Used by**: Handler-related commands (up/down/link/unlink/provision/deprovision)
 - **Size**: 50-100 lines each, focused on single concern
 
 ### Packs (pkg/types/pack.go)
@@ -294,7 +294,7 @@ renderer := output.NewTextRenderer()
 - **No bypassing**: Never skip abstraction layers or access handlers directly
 
 ### Separation of Concerns
-- **Handler commands**: on, off use orchestration.Execute() for handler operations
+- **Handler commands**: up, down use orchestration.Execute() for handler operations
 - **Pack commands**: init, fill, adopt use Pack guardian methods
 - **State commands**: unlink, deprovision use DataStore.RemoveState()
 - **Query commands**: list, status use discovery functions
