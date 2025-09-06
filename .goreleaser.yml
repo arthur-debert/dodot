@@ -39,6 +39,8 @@ archives:
         dst: "man/man1"
       - src: "pkg/shell/*"
         dst: "shell"
+      - src: "pkg/ui/output/styles/styles.yaml"
+        dst: "styles/styles.yaml"
 
 checksum:
   name_template: "checksums.txt"
@@ -83,6 +85,12 @@ brews:
       
       # Install man page
       man1.install "man/man1/dodot.1.gz" if File.exist?("man/man1/dodot.1.gz")
+      
+      # Install shell integration scripts
+      pkgshare.install "shell" if Dir.exist?("shell")
+      
+      # Install styles configuration
+      pkgshare.install "styles" if Dir.exist?("styles")
 
 # nFPM packages (deb, rpm, etc.)
 # https://goreleaser.com/customization/nfpm/
@@ -117,6 +125,20 @@ nfpms:
       # Fish completion
       - src: completions/dodot.fish
         dst: /usr/share/fish/vendor_completions.d/dodot.fish
+        file_info:
+          mode: 0644
+      # Shell integration scripts
+      - src: shell/dodot-init.sh
+        dst: /usr/share/dodot/shell/dodot-init.sh
+        file_info:
+          mode: 0755
+      - src: shell/dodot-init.fish
+        dst: /usr/share/dodot/shell/dodot-init.fish
+        file_info:
+          mode: 0755
+      # Styles configuration
+      - src: styles/styles.yaml
+        dst: /usr/share/dodot/styles/styles.yaml
         file_info:
           mode: 0644
 

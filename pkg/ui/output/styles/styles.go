@@ -13,10 +13,10 @@
 package styles
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 
 	"github.com/charmbracelet/lipgloss"
 	"gopkg.in/yaml.v3"
@@ -56,79 +56,92 @@ var StyleRegistry map[string]lipgloss.Style
 // Adaptive colors loaded from YAML
 var colors map[string]lipgloss.AdaptiveColor
 
-// defaultStylesPath is set during init based on source file location
-var defaultStylesPath string
+//go:embed styles.yaml
+var embeddedStyles []byte
 
 // getLogger returns a logger for the styles package
 
 func init() {
-	// Try to determine the path to styles.yaml
-	// This handles both runtime and test scenarios
+	// Try to load styles with multiple fallbacks
+	var err error
 
-	// Strategy 1: Use runtime.Caller to find this source file
-	_, filename, _, ok := runtime.Caller(0)
-	if ok {
-		// We know this file is in pkg/output/styles/
-		dir := filepath.Dir(filename)
-		stylesPath := filepath.Join(dir, "styles.yaml")
-		if _, err := os.Stat(stylesPath); err == nil {
-			defaultStylesPath = stylesPath
+	// 1. Try embedded data first (this should always work in production)
+	if len(embeddedStyles) > 0 {
+		if err = LoadStylesFromData(embeddedStyles); err == nil {
+			return
 		}
 	}
 
-	// Strategy 2: Check executable path
-	if defaultStylesPath == "" {
-		exePath, err := os.Executable()
-		if err == nil {
-			// Try paths relative to the binary
-			exeDir := filepath.Dir(exePath)
-			possiblePaths := []string{
-				// Same directory as binary
-				filepath.Join(exeDir, "styles.yaml"),
-				// Development: binary in bin/, styles in pkg/
-				filepath.Join(exeDir, "..", "pkg", "output", "styles", "styles.yaml"),
-				// Alternative development path
-				filepath.Join(exeDir, "..", "..", "pkg", "output", "styles", "styles.yaml"),
-			}
-
-			for _, path := range possiblePaths {
-				if _, err = os.Stat(path); err == nil {
-					defaultStylesPath = path
-					break
-				}
-			}
+	// 2. In development, try loading from file
+	if devPath := findDevStylesPath(); devPath != "" {
+		if err = LoadStyles(devPath); err == nil {
+			return
 		}
 	}
 
-	// Strategy 3: Try working directory paths
-	if defaultStylesPath == "" {
-		workingDirPaths := []string{
-			// Development/test path (when running from repo root)
-			"pkg/output/styles/styles.yaml",
-			// Test path (when running from package directory)
-			"styles.yaml",
-			// Test path when running go test from a subdirectory
-			"../styles/styles.yaml",
-			"../../styles/styles.yaml",
-			"../../../pkg/output/styles/styles.yaml",
-		}
-
-		for _, path := range workingDirPaths {
-			if _, err := os.Stat(path); err == nil {
-				defaultStylesPath = path
-				break
-			}
+	// 3. If all fails, try some common paths as last resort
+	for _, path := range getCommonStylesPaths() {
+		if err = LoadStyles(path); err == nil {
+			return
 		}
 	}
 
-	if defaultStylesPath == "" {
-		// Last resort - assume we're in development
-		defaultStylesPath = "pkg/output/styles/styles.yaml"
+	// If we get here, we couldn't load styles from anywhere
+	// Use default styles instead of panicking
+	initDefaultStyles()
+}
+
+// findDevStylesPath looks for styles.yaml in development environment
+func findDevStylesPath() string {
+	// Check if we're in development by looking for the file
+	devPaths := []string{
+		"pkg/ui/output/styles/styles.yaml", // From repo root
+		"styles.yaml",                      // From package directory
 	}
 
-	// Load styles configuration from file
-	if err := LoadStyles(defaultStylesPath); err != nil {
-		panic(fmt.Sprintf("failed to load styles: %v", err))
+	for _, path := range devPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	return ""
+}
+
+// getCommonStylesPaths returns common installation paths for styles.yaml
+func getCommonStylesPaths() []string {
+	paths := []string{
+		// Homebrew locations
+		"/opt/homebrew/share/dodot/styles/styles.yaml", // Apple Silicon Mac
+		"/usr/local/share/dodot/styles/styles.yaml",    // Intel Mac
+	}
+
+	// Add paths relative to binary
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		paths = append(paths,
+			filepath.Join(exeDir, "..", "share", "dodot", "styles", "styles.yaml"),
+			filepath.Join(exeDir, "..", "share", "styles", "styles.yaml"),
+			filepath.Join(exeDir, "styles", "styles.yaml"),
+		)
+	}
+
+	return paths
+}
+
+// initDefaultStyles initializes a minimal set of default styles
+// This ensures the program can run even if styles.yaml is missing
+func initDefaultStyles() {
+	colors = make(map[string]lipgloss.AdaptiveColor)
+	StyleRegistry = make(map[string]lipgloss.Style)
+
+	// Define minimal styles to prevent crashes
+	defaultStyle := lipgloss.NewStyle()
+	for _, name := range []string{
+		"Header", "Success", "Error", "Warning", "Info",
+		"Bold", "Italic", "Muted", "Handler", "FilePath",
+	} {
+		StyleRegistry[name] = defaultStyle
 	}
 }
 
@@ -144,6 +157,33 @@ func LoadStyles(path string) error {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse styles.yaml: %w", err)
+	}
+
+	// Initialize colors
+	colors = make(map[string]lipgloss.AdaptiveColor)
+	for name, def := range config.Colors {
+		colors[name] = lipgloss.AdaptiveColor{
+			Light: def.Light,
+			Dark:  def.Dark,
+		}
+	}
+
+	// Initialize style registry
+	StyleRegistry = make(map[string]lipgloss.Style)
+	for name, def := range config.Styles {
+		style := buildStyle(def)
+		StyleRegistry[name] = style
+	}
+
+	return nil
+}
+
+// LoadStylesFromData loads style configuration from byte data
+func LoadStylesFromData(data []byte) error {
+	// Parse YAML configuration
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse styles data: %w", err)
 	}
 
 	// Initialize colors
