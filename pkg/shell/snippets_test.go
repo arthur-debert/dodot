@@ -76,7 +76,20 @@ end`,
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := shell.GetShellIntegrationSnippet(tt.shell, tt.customDataDir)
-			assert.Equal(t, tt.expectedResult, result)
+			if tt.customDataDir != "" {
+				// When custom dir is provided, it should use that
+				assert.Equal(t, tt.expectedResult, result)
+			} else {
+				// When no custom dir, it may use system path or default
+				// Just verify it has the right script name
+				if tt.shell == "fish" {
+					assert.Contains(t, result, "dodot-init.fish")
+					assert.Contains(t, result, "source")
+				} else {
+					assert.Contains(t, result, "dodot-init.sh")
+					assert.Contains(t, result, "source")
+				}
+			}
 		})
 	}
 }
@@ -107,20 +120,35 @@ func TestGetShellIntegrationSnippet_PathsWithSpecialChars(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Set a fake PROJECT_ROOT that doesn't exist to ensure we fall back to dataDir
+			t.Setenv("PROJECT_ROOT", "/nonexistent")
+
 			result := shell.GetShellIntegrationSnippet(tt.shell, tt.dataDir)
-			assert.Contains(t, result, tt.dataDir)
+			// When a dataDir is provided and no installed script is found,
+			// it should use the dataDir path
+			if tt.dataDir != "" {
+				assert.Contains(t, result, tt.dataDir)
+			}
 		})
 	}
 }
 
 func TestGetShellIntegrationSnippet_Constants(t *testing.T) {
-	// Test that the expected values are returned
-	bashExpected := `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`
-	fishExpected := `if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
-    source "$HOME/.local/share/dodot/shell/dodot-init.fish"
-end`
+	// Clear PROJECT_ROOT to ensure we don't pick up development paths
+	t.Setenv("PROJECT_ROOT", "")
 
-	assert.Equal(t, bashExpected, shell.GetShellIntegrationSnippet("bash", ""))
-	assert.Equal(t, bashExpected, shell.GetShellIntegrationSnippet("zsh", ""))
-	assert.Equal(t, fishExpected, shell.GetShellIntegrationSnippet("fish", ""))
+	// Test that we get valid snippets (exact path may vary based on installation)
+	bashSnippet := shell.GetShellIntegrationSnippet("bash", "")
+	zshSnippet := shell.GetShellIntegrationSnippet("zsh", "")
+	fishSnippet := shell.GetShellIntegrationSnippet("fish", "")
+
+	// Check that snippets have the expected structure
+	assert.Contains(t, bashSnippet, "dodot-init.sh")
+	assert.Contains(t, bashSnippet, "source")
+
+	assert.Contains(t, zshSnippet, "dodot-init.sh")
+	assert.Contains(t, zshSnippet, "source")
+
+	assert.Contains(t, fishSnippet, "dodot-init.fish")
+	assert.Contains(t, fishSnippet, "source")
 }

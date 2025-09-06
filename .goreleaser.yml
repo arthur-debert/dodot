@@ -37,8 +37,10 @@ archives:
         dst: "completions"
       - src: "man/man1/*"
         dst: "man/man1"
-      - src: "pkg/shell/*"
-        dst: "shell"
+      - src: "pkg/shell/dodot-init.sh"
+        dst: "shell/dodot-init.sh"
+      - src: "pkg/shell/dodot-init.fish"
+        dst: "shell/dodot-init.fish"
       - src: "pkg/ui/output/styles/styles.yaml"
         dst: "styles/styles.yaml"
 

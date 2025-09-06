@@ -10,7 +10,17 @@ import (
 // ResolveShellScriptPath finds the shell integration script with fallback logic
 // It first tries the installed location, then falls back to development location
 func ResolveShellScriptPath(scriptName string) (string, error) {
-	// Try installed location first (relative to binary)
+	// Try development location first if PROJECT_ROOT is set
+	// This ensures tests and development work correctly
+	if projectRoot := os.Getenv("PROJECT_ROOT"); projectRoot != "" {
+		devPath := filepath.Join(projectRoot, "pkg", "shell", scriptName)
+		if _, err := os.Stat(devPath); err == nil {
+			log.Debug().Str("path", devPath).Str("script", scriptName).Msg("Found shell script in development location")
+			return devPath, nil
+		}
+	}
+
+	// Try installed location (relative to binary)
 	exePath, err := os.Executable()
 	if err == nil {
 		// Look for shell scripts in various installed locations
