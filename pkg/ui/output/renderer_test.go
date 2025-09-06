@@ -82,7 +82,7 @@ func TestRenderer_Render(t *testing.T) {
 				"DRY RUN",
 				"git",
 				".gitconfig",
-				"queued",
+				"pending",
 			},
 			skipStrings: []string{
 				"ERROR",

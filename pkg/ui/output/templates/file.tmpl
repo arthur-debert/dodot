@@ -4,7 +4,7 @@
 <Filename>{{printf "%-20s" .Path}}</Filename> {{if .HandlerSymbol}}{{.HandlerSymbol}} {{else}}  {{end}}{{- if eq .Handler "symlink" -}}<SymlinkPath>{{printf "%-46s" .AdditionalInfo}}</SymlinkPath>{{- else -}}<HandlerAdditionalInfo>{{printf "%-46s" .AdditionalInfo}}</HandlerAdditionalInfo>{{- end -}} {{- if eq .Status "success" -}}<StatusSuccess>{{if or (eq .Handler "homebrew") (eq .Handler "install")}}{{printf "%-8s" "installed"}}{{else}}{{printf "%-8s" "deployed"}}{{end}}</StatusSuccess>
 {{- else if eq .Status "error" -}}<StatusError>{{printf "%-8s" "error"}}</StatusError>
 {{- else if eq .Status "warning" -}}<StatusWarning>{{printf "%-8s" "warning"}}</StatusWarning>
-{{- else if eq .Status "queue" -}}<StatusQueued>{{printf "%-8s" "queued"}}</StatusQueued>
+{{- else if eq .Status "queue" -}}<StatusPending>{{printf "%-8s" "pending"}}</StatusPending>
 {{- else if eq .Status "ignored" -}}<StatusIgnored>{{printf "%-8s" "ignored"}}</StatusIgnored>
 {{- end -}}{{- if .IsOverride -}}<TableSeparator> </TableSeparator><Override>[override]</Override>{{- end -}}
 {{- end -}}</Indent>

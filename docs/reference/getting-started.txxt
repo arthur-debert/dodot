@@ -41,13 +41,13 @@ Let's see an example pack for git:
     $ dodot status git
 
     git
-        alias.sh    ⚙  source by shell     queued
-        bin         +  add to PATH         queued
-        gitconfig   ➞  ~/.gitconfig        queued
-        Brewfile    📦 brew install        queued
+        alias.sh    ⚙  source by shell     pending
+        bin         +  add to PATH         pending
+        gitconfig   ➞  ~/.gitconfig        pending
+        Brewfile    📦 brew install        pending
 
     Legend: ⚙ shell config, + PATH addition, ➞ symlink, 📦 package install
-    Status: queued (ready to deploy), deployed (active)
+    Status: pending (ready to deploy), deployed (active)
 -- shell
 
 dodot status not only shows you what dodot did, but what it will do on

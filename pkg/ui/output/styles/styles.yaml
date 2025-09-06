@@ -26,7 +26,7 @@ colors:
   info:
     light: "#0087AF"
     dark: "#00AFFF"
-  queued:
+  pending:
     light: "#5F5F87"
     dark: "#8787AF"
   ignored:
@@ -43,7 +43,7 @@ colors:
   warningBg:
     light: "#AF8700"
     dark: "#AF8700"
-  queuedBg:
+  pendingBg:
     light: "238"
     dark: "238"
   ignoredBg:
@@ -83,8 +83,8 @@ styles:
     bold: true
   Info:
     # foreground: info
-  Queued:
-    # foreground: queued
+  Pending:
+    # foreground: pending
   Ignored:
     # foreground: ignored
     italic: true
@@ -108,9 +108,9 @@ styles:
     bold: true
     paddingLeft: 1
     paddingRight: 1
-  QueuedBadge:
+  PendingBadge:
     # foreground: white
-    background: queued
+    background: pending
     bold: true
     paddingLeft: 1
     paddingRight: 1
@@ -210,9 +210,9 @@ styles:
     italic: true
     paddingLeft: 1
     paddingRight: 1
-  StatusQueued:
+  StatusPending:
     foreground: white
-    background: queuedBg
+    background: pendingBg
     italic: true
     paddingLeft: 1
     paddingRight: 1
