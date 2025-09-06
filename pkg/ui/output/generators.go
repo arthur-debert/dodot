@@ -163,6 +163,12 @@ func generateSnippetContent(opts *SnippetOutputOptions, fs types.FS) (string, ma
 		metadata["installMessage"] = installMessage
 	}
 
+	// If no dataDir was specified but snippet was generated,
+	// it means we're using installed scripts
+	if opts.DataDir == "" && snippetText != "" {
+		metadata["usingInstalled"] = true
+	}
+
 	return snippetText, metadata, nil
 }
 

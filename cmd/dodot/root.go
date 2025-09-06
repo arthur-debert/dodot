@@ -550,8 +550,12 @@ func newSnippetCmd() *cobra.Command {
 			return err
 		}
 
-		// Always use the actual data directory for the snippet
-		dataDir := p.DataDir()
+		// Only use data directory if provisioning
+		var dataDir string
+		if provision {
+			dataDir = p.DataDir()
+		}
+		// Otherwise leave empty to use installed scripts
 
 		// Create renderer for output
 		renderer, err := createRenderer(cmd)
