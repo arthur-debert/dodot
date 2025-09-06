@@ -18,14 +18,14 @@ func TestPack_Structure(t *testing.T) {
 		Name: "test-pack",
 		Path: "/path/to/pack",
 		Config: config.PackConfig{
-			Ignore: []config.IgnoreRule{
-				{Path: "*.bak"},
+			Mappings: config.Mappings{
+				Ignore: []string{"*.bak"},
 			},
 		},
 	}
 
 	assert.Equal(t, "test-pack", pack.Name)
 	assert.Equal(t, "/path/to/pack", pack.Path)
-	assert.Len(t, pack.Config.Ignore, 1)
-	assert.Equal(t, "*.bak", pack.Config.Ignore[0].Path)
+	assert.Len(t, pack.Config.Mappings.Ignore, 1)
+	assert.Equal(t, "*.bak", pack.Config.Mappings.Ignore[0])
 }

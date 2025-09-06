@@ -67,13 +67,8 @@ func ConvertToDisplay(ec *context.ExecutionContext) *display.DisplayResult {
 		for _, pur := range packResult.HandlerResults {
 			// Create a DisplayFile for each file in the HandlerResult
 			for _, filePath := range pur.Files {
-				// Check if this file has a handler override in .dodot.toml
-				fileName := filepath.Base(filePath)
+				// Handler overrides are no longer supported in pack config
 				isOverride := false
-				if packResult.Pack != nil {
-					override := packResult.Pack.Config.FindOverride(fileName)
-					isOverride = (override != nil)
-				}
 
 				// Use HandlerResult EndTime as LastExecuted if execution completed
 				var lastExecuted *time.Time

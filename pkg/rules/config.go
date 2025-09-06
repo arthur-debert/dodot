@@ -51,13 +51,22 @@ func LoadPackRules(packPath string) ([]config.Rule, error) {
 		return nil, nil
 	}
 
-	// For now, we'll just return empty rules until we migrate pack configs
-	// In the future, we'll load rules directly from the pack config
+	// Load the pack configuration
+	packConfig, err := config.LoadPackConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load pack config: %w", err)
+	}
+
+	// Generate rules from the pack's mappings
+	baseConfig := config.Config{Mappings: packConfig.Mappings}
+	rules := baseConfig.GenerateRulesFromMapping()
+
 	logger.Debug().
 		Str("pack", packPath).
-		Msg("Pack config exists but rules loading not yet implemented")
+		Int("ruleCount", len(rules)).
+		Msg("Loaded pack-specific rules from mappings")
 
-	return nil, nil
+	return rules, nil
 }
 
 // LoadPackRulesFS loads pack-specific rules from a pack's .dodot.toml using the provided filesystem
@@ -70,13 +79,23 @@ func LoadPackRulesFS(packPath string, fs types.FS) ([]config.Rule, error) {
 		return nil, nil
 	}
 
-	// For now, we'll just return empty rules until we migrate pack configs
-	// In the future, we'll load rules directly from the pack config
+	// For filesystem-based loading, we still use LoadPackConfig which reads from disk
+	// This is a limitation that could be improved in the future
+	packConfig, err := config.LoadPackConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load pack config: %w", err)
+	}
+
+	// Generate rules from the pack's mappings
+	baseConfig := config.Config{Mappings: packConfig.Mappings}
+	rules := baseConfig.GenerateRulesFromMapping()
+
 	logger.Debug().
 		Str("pack", packPath).
-		Msg("Pack config exists but rules loading not yet implemented")
+		Int("ruleCount", len(rules)).
+		Msg("Loaded pack-specific rules from mappings")
 
-	return nil, nil
+	return rules, nil
 }
 
 // MergeRules merges pack-specific rules with global rules
