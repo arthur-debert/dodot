@@ -33,9 +33,9 @@ archives:
     files:
       - "README.md"
       - "LICENSE"
-      - src: "dist/build/completions/*"
+      - src: "completions/*"
         dst: "completions"
-      - src: "dist/build/man/man1/*"
+      - src: "man/man1/*"
         dst: "man/man1"
       - src: "pkg/shell/*"
         dst: "shell"
@@ -128,16 +128,16 @@ nfpms:
         file_info:
           mode: 0644
       # Shell integration scripts
-      - src: shell/dodot-init.sh
+      - src: pkg/shell/dodot-init.sh
         dst: /usr/share/dodot/shell/dodot-init.sh
         file_info:
           mode: 0755
-      - src: shell/dodot-init.fish
+      - src: pkg/shell/dodot-init.fish
         dst: /usr/share/dodot/shell/dodot-init.fish
         file_info:
           mode: 0755
       # Styles configuration
-      - src: styles/styles.yaml
+      - src: pkg/ui/output/styles/styles.yaml
         dst: /usr/share/dodot/styles/styles.yaml
         file_info:
           mode: 0644
