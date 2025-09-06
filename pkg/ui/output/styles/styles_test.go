@@ -31,7 +31,7 @@ func TestStyleRegistry(t *testing.T) {
 		// Headers
 		"Header", "SubHeader", "PackHeader", "CommandHeader",
 		// Status styles
-		"Success", "Error", "Warning", "Info", "Queued", "Ignored",
+		"Success", "Error", "Warning", "Info", "Pending", "Ignored",
 		// Badge styles
 		"SuccessBadge", "ErrorBadge", "WarningBadge",
 		// Text formatting

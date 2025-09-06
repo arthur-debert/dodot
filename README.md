@@ -62,11 +62,15 @@ Each directory is a "pack" that can be enabled or disabled as a unit.
 
 ## Commands
 
-- `dodot status [pack...]` - Show current state and pending changes
-- `dodot on [pack...]` - Enable packs
-- `dodot off [pack...]` - Disable packs
-- `dodot init <pack>` - Create a new pack
-- `dodot adopt <pack> <file>` - Move existing dotfiles into a pack
+Core Commands: 
+    - `dodot status [pack...]` - Show current state and pending changes
+    - `dodot on [pack...]` - Enable packs
+    - `dodot off [pack...]` - Disable packs
+Convenience Commands: 
+    - `dodot init <pack>` - Create a new pack
+    - dodot fill <pack> - Populate a pack with existing dotfiles
+    - `dodot adopt <pack> <file>` - Move existing file into a pack for
+management
 
 Run `dodot --help` for all commands.
 
