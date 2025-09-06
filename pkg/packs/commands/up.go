@@ -12,8 +12,8 @@ import (
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
-// OnCommand implements the "on" command using the pack orchestration.
-type OnCommand struct {
+// UpCommand implements the "up" command using the pack orchestration.
+type UpCommand struct {
 	// NoProvision skips the provisioning phase
 	NoProvision bool
 
@@ -22,18 +22,18 @@ type OnCommand struct {
 }
 
 // Name returns the command name.
-func (c *OnCommand) Name() string {
-	return "on"
+func (c *UpCommand) Name() string {
+	return "up"
 }
 
-// ExecuteForPack executes the "on" command for a single pack.
-func (c *OnCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
-	logger := logging.GetLogger("orchestration.on")
+// ExecuteForPack executes the "up" command for a single pack.
+func (c *UpCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) (*orchestration.PackResult, error) {
+	logger := logging.GetLogger("orchestration.up")
 	logger.Debug().
 		Str("pack", pack.Name).
 		Bool("noProvision", c.NoProvision).
 		Bool("force", c.Force).
-		Msg("Executing on command for pack")
+		Msg("Executing up command for pack")
 
 	// Initialize filesystem
 	fs := opts.FileSystem
@@ -129,7 +129,7 @@ func (c *OnCommand) ExecuteForPack(pack types.Pack, opts orchestration.Options) 
 		Int("provisionSuccess", provisionSuccessCount).
 		Int("provisionFailure", provisionFailureCount).
 		Bool("success", success).
-		Msg("On command completed for pack")
+		Msg("Up command completed for pack")
 
 	return &orchestration.PackResult{
 		Pack:                  pack,

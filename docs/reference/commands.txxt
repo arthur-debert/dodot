@@ -50,13 +50,13 @@ Discovers and lists all available packs in the dotfiles root directory. Simple c
 **Status**: Working  
 **Usage**: `dodot list`
 
-### off
+### down
 The primary pack removal command. Completely removes pack deployments including all symlinks, shell integrations, PATH entries, and handler state from the data directory. This is a complete removal - no state is saved for restoration. Files in your dotfiles repository are never touched.
 
 **Status**: Working  
-**Usage**: `dodot off [pack-names...]`
+**Usage**: `dodot down [pack-names...]`
 
-### on
+### up
 The primary pack deployment command. Handles all aspects of pack deployment including creating symlinks for configuration files, setting up shell integrations and PATH entries, and running installation scripts and package managers. By default, provisioning handlers only run once per pack.
 
 **Options**:
@@ -64,7 +64,7 @@ The primary pack deployment command. Handles all aspects of pack deployment incl
 - `--provision-rerun`: Force re-run provisioning even if already done
 
 **Status**: Working  
-**Usage**: `dodot on [pack-names...] [--no-provision | --provision-rerun]`
+**Usage**: `dodot up [pack-names...] [--no-provision | --provision-rerun]`
 
 
 ### status
@@ -77,11 +77,11 @@ Shows deployment state of packs including special files, handler matches, and cu
 ## Command Relationships
 
 ### Activation Flow
-- `init` → `fill` → `on`
-- `on` handles both configuration and provisioning
+- `init` → `fill` → `up`
+- `up` handles both configuration and provisioning
 
 ### Deactivation Flow
-- `off` performs complete removal
+- `down` performs complete removal
 - All handler state is cleared
 
 ### Handler Types

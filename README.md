@@ -12,7 +12,7 @@ dodot manages your dotfiles through symlinks and simple conventions. Edit your c
 - **Live editing** - Edit anywhere, changes apply immediately  
 - **Modular packs** - Group related configs, enable/disable together
 - **Git-based** - Your repo structure is the only state
-- **Minimal commands** - Just `on`, `off`, and `status`
+- **Minimal commands** - Just `up`, `down`, and `status`
 
 ## Installation
 
@@ -27,8 +27,8 @@ Or download from [releases](https://github.com/arthur-debert/dodot/releases).
 ```bash
 cd ~/dotfiles
 dodot status          # See what dodot will do
-dodot on              # Deploy all packs
-dodot off git         # Remove git pack
+dodot up              # Deploy all packs
+dodot down git         # Remove git pack
 ```
 
 ## How It Works

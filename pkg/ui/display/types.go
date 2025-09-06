@@ -29,7 +29,7 @@ type CommandResult struct {
 // It combines pack status display with command-specific metadata.
 type PackCommandResult struct {
 	// Command that was executed
-	Command string `json:"command"` // "on", "off", "status", "adopt", "fill", "add-ignore"
+	Command string `json:"command"` // "up", "down", "status", "adopt", "fill", "add-ignore"
 
 	// Packs affected by the command with their current status
 	Packs []DisplayPack `json:"packs"`

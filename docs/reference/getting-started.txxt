@@ -64,9 +64,9 @@ files, or remap dodot:
 Now that everything looks good, we're ready:
 
     # Preview what will happen without making changes
-    $ dodot on git --dry-run
+    $ dodot up git --dry-run
 
-    $ dodot on git
+    $ dodot up git
     ... homebrew:  git/Brewfile: installed
     ... shell:     git/alias.sh: sourced
     ... symlink:   git/gitconfig -> ~/.gitconfig: linked
@@ -80,9 +80,9 @@ Now that everything looks good, we're ready:
     # Edit your config - changes are immediate!
     $ vim ~/.gitconfig  # or ~/dotfiles/git/gitconfig - same file!
 
-And $ dodot off git would do the reverse.
+And $ dodot down git would do the reverse.
 
-All dodot commands can specify one or more packs ($ dodot on git nvim) or,
+All dodot commands can specify one or more packs ($ dodot up git nvim) or,
 when run without arguments, all packs.
 
 By using directory grouping into packs, and file naming conventions, dodot can
@@ -93,8 +93,8 @@ Quick Start Guide:
 1. cd ~/dotfiles (or wherever your dotfiles live)
 2. Run `dodot status` to see what dodot will do
 3. Fine-tune by renaming files or creating .dodot.toml configs
-4. Run `dodot on [pack]` to deploy (or `dodot on` for all packs)
-5. Use `dodot off [pack]` to cleanly remove
+4. Run `dodot up [pack]` to deploy (or `dodot up` for all packs)
+5. Use `dodot down [pack]` to cleanly remove
 
 What's Next?
 - Run `dodot --help` for all commands

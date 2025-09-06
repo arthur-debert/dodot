@@ -9,26 +9,26 @@ import (
 
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/addignore"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/adopt"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/down"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/fill"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/genconfig"
 	initcmd "github.com/arthur-debert/dodot/cmd/dodot/commands/init"
-	"github.com/arthur-debert/dodot/cmd/dodot/commands/off"
-	"github.com/arthur-debert/dodot/cmd/dodot/commands/on"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/snippet"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/status"
 	"github.com/arthur-debert/dodot/cmd/dodot/commands/topics"
+	"github.com/arthur-debert/dodot/cmd/dodot/commands/up"
 	topicspkg "github.com/arthur-debert/dodot/cmd/dodot/internal/topics"
 	"github.com/arthur-debert/dodot/internal/version"
 	"github.com/arthur-debert/dodot/pkg/dispatcher"
-	"github.com/arthur-debert/dodot/pkg/packs/discovery"
-	"github.com/arthur-debert/dodot/pkg/ui/output"
 	doerrors "github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/packs"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
 	"github.com/arthur-debert/dodot/pkg/paths"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/arthur-debert/dodot/pkg/ui"
 	"github.com/arthur-debert/dodot/pkg/ui/display"
+	"github.com/arthur-debert/dodot/pkg/ui/output"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -123,8 +123,8 @@ func NewRootCmd() *cobra.Command {
 
 	// Add all commands in the desired order
 	// Core commands
-	rootCmd.AddCommand(newOnCmd())
-	rootCmd.AddCommand(newOffCmd())
+	rootCmd.AddCommand(newUpCmd())
+	rootCmd.AddCommand(newDownCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	// Single pack convenience commands
 	rootCmd.AddCommand(newAddIgnoreCmd())
@@ -687,8 +687,8 @@ func newGenConfigCmd() *cobra.Command {
 	return cmd
 }
 
-func newOffCmd() *cobra.Command {
-	cmd := off.NewCommand()
+func newDownCmd() *cobra.Command {
+	cmd := down.NewCommand()
 	cmd.ValidArgsFunction = packNamesCompletion
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		// Initialize paths (will show warning if using fallback)
@@ -704,10 +704,10 @@ func newOffCmd() *cobra.Command {
 			Str("dotfiles_root", p.DotfilesRoot()).
 			Bool("dry_run", dryRun).
 			Strs("packs", args).
-			Msg("Turning off packs")
+			Msg("Turning down packs")
 
 		// Turn off packs using the dispatcher
-		result, err := dispatcher.Dispatch(dispatcher.CommandOff, dispatcher.Options{
+		result, err := dispatcher.Dispatch(dispatcher.CommandDown, dispatcher.Options{
 			DotfilesRoot: p.DotfilesRoot(),
 			PackNames:    args,
 			DryRun:       dryRun,
@@ -716,7 +716,7 @@ func newOffCmd() *cobra.Command {
 			// Check if this is a pack not found error and provide detailed help
 			var dodotErr *doerrors.DodotError
 			if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-				return handlePackNotFoundError(dodotErr, p, "off")
+				return handlePackNotFoundError(dodotErr, p, "down")
 			}
 			return fmt.Errorf("failed to turn off packs: %w", err)
 		}
@@ -737,8 +737,8 @@ func newOffCmd() *cobra.Command {
 	return cmd
 }
 
-func newOnCmd() *cobra.Command {
-	cmd := on.NewCommand()
+func newUpCmd() *cobra.Command {
+	cmd := up.NewCommand()
 	cmd.ValidArgsFunction = packNamesCompletion
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		// Initialize paths (will show warning if using fallback)
@@ -758,10 +758,10 @@ func newOnCmd() *cobra.Command {
 			Bool("dry_run", dryRun).
 			Bool("force", force).
 			Strs("packs", args).
-			Msg("Turning on packs")
+			Msg("Turning up packs")
 
 		// Turn on packs using the dispatcher
-		result, err := dispatcher.Dispatch(dispatcher.CommandOn, dispatcher.Options{
+		result, err := dispatcher.Dispatch(dispatcher.CommandUp, dispatcher.Options{
 			DotfilesRoot:   p.DotfilesRoot(),
 			PackNames:      args,
 			DryRun:         dryRun,
@@ -773,7 +773,7 @@ func newOnCmd() *cobra.Command {
 			// Check if this is a pack not found error and provide detailed help
 			var dodotErr *doerrors.DodotError
 			if errors.As(err, &dodotErr) && dodotErr.Code == doerrors.ErrPackNotFound {
-				return handlePackNotFoundError(dodotErr, p, "on")
+				return handlePackNotFoundError(dodotErr, p, "up")
 			}
 			return fmt.Errorf("failed to turn on packs: %w", err)
 		}

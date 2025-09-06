@@ -1,9 +1,9 @@
-package on
+package up
 
 // Message constants
 const (
 	MsgShort = "Install and deploy pack(s)"
-	MsgLong  = `The 'on' command is dodot's primary deployment command. It handles all aspects of pack deployment:
+	MsgLong  = `The 'up' command is dodot's primary deployment command. It handles all aspects of pack deployment:
   - Creates symlinks for configuration files
   - Sets up shell integrations and PATH entries
   - Runs installation scripts and package managers (unless --no-provision is used)
@@ -15,17 +15,17 @@ Provisioning Options:
   --provision-rerun: Force re-run provisioning even if already done`
 
 	MsgExample = `  # Deploy all packs
-  dodot on
+  dodot up
   
   # Deploy specific packs
-  dodot on vim zsh
+  dodot up vim zsh
   
   # Preview what will be deployed
-  dodot on --dry-run vim
+  dodot up --dry-run vim
   
   # Only create symlinks, skip installations
-  dodot on --no-provision vim
+  dodot up --no-provision vim
   
   # Force re-run provisioning handlers
-  dodot on --provision-rerun vim`
+  dodot up --provision-rerun vim`
 )

@@ -339,7 +339,7 @@ func TestPackCommandResult(t *testing.T) {
 	now := time.Now()
 
 	result := display.PackCommandResult{
-		Command: "on",
+		Command: "up",
 		Packs: []display.DisplayPack{
 			{
 				Name:   "vim",
@@ -354,7 +354,7 @@ func TestPackCommandResult(t *testing.T) {
 		Timestamp: now,
 	}
 
-	assert.Equal(t, "on", result.Command)
+	assert.Equal(t, "up", result.Command)
 	assert.Len(t, result.Packs, 1)
 	assert.Equal(t, "vim", result.Packs[0].Name)
 	assert.Equal(t, "The pack vim has been turned on.", result.Message)

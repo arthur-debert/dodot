@@ -15,7 +15,7 @@ func TestManager_CreateContext(t *testing.T) {
 	}{
 		{
 			name:    "create context for on command",
-			command: "on",
+			command: "up",
 			dryRun:  false,
 		},
 		{
@@ -42,7 +42,7 @@ func TestManager_CreateContext(t *testing.T) {
 
 func TestManager_AddPackResult(t *testing.T) {
 	m := NewManager()
-	ctx := m.CreateContext("on", false)
+	ctx := m.CreateContext("up", false)
 
 	// Create pack results with different stats
 	packResult1 := &PackExecutionResult{
@@ -91,7 +91,7 @@ func TestManager_AddPackResult(t *testing.T) {
 
 func TestManager_CompleteContext(t *testing.T) {
 	m := NewManager()
-	ctx := m.CreateContext("on", false)
+	ctx := m.CreateContext("up", false)
 
 	// Initially EndTime should be zero
 	assert.Zero(t, ctx.EndTime)
