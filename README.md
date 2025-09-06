@@ -1,19 +1,20 @@
 # dodot
 
-A dotfile manager that works *for* you. Little to learn, little to configure,
-brings joy.
+A dotfile manager that works *for* you.
+Little to learn, little to configure, brings joy.
 
 ## What is dodot?
 
-dodot manages your dotfiles. Edit your configs as you always have - changes are live, no syncing or rebuilding required.
+dodot is a dotfiles manager. Edit your configs as you always have - changes are live, no syncing or rebuilding required.
 
 ## Key Features
 
-- **No configuration required** - File naming conventions , overridable by
-mapping.
-- **Live editing** - Edit anywhere, changes apply immediately  
-- **Modular packs** - Group related configs, enable/disable together
-- **Git-based** - Your repo structure is the only state
+- **No configuration required** - File naming conventions , (custom mappings if needed)
+- **Live editing** - Edit anywhere, changes apply immediately, no workflow
+changes.
+- **Flexible Organization** - Group your dotfiles in directories any way you
+like
+- **Git-based** - Your repo structure is the only source of truth.
 - **Minimal commands** - Just `up`, `down`, and `status`
 
 ## Installation
@@ -26,11 +27,54 @@ Or download from [releases](https://github.com/arthur-debert/dodot/releases).
 
 ## Quick Start
 
+See exactly what dodot will do before making any changes:
+
 ```bash
 cd ~/dotfiles
-dodot status          # See what dodot will do
-dodot up              # Deploy all packs
-dodot down git         # All commands can specify pack(s) or run on all if none
+dodot status git
+```
+
+```bash
+git
+  gitconfig   ➞  ~/.gitconfig        pending
+  aliases.sh  ⚙  source by shell     pending
+  bin         +  add to PATH         pending
+  Brewfile    📦 brew install        pending
+```
+
+dodot shows you what will happen before you run up.
+Happy with the plan? Deploy it:
+
+```bash
+dodot up git         # Deploy the git pack
+git
+  gitconfig   ➞  ~/.gitconfig        deployed
+  aliases.sh  ⚙  source by shell     deployed
+  bin         +  add to PATH         deployed
+  Brewfile    📦 brew install        deployed
+```
+
+If dodot will do something different than you expect, either rename the file or
+change the mappings:
+``` bash
+    $ dodot gen-config -w git
+    $ cat git/.dodot.toml
+    [mappings]
+    # path = "bin"
+    # install = "install.sh"
+    # shell = ["aliases.sh", "profile.sh", "login.sh"]
+    # homebrew = "Brewfile"
+    # ignore = []
+
+```
+```
+
+```
+Need to disable a pack? Just as easy:
+```bash
+dodot down git       # Cleanly remove the git pack
+# Exclude a directory from dodot
+dodot add-ignore <directory_name> # adds a .dodot-ignore file in it
 ```
 
 ## How It Works
@@ -62,15 +106,15 @@ Each directory is a "pack" that can be enabled or disabled as a unit.
 
 ## Commands
 
-Core Commands: 
-    - `dodot status [pack...]` - Show current state and pending changes
-    - `dodot on [pack...]` - Enable packs
-    - `dodot off [pack...]` - Disable packs
-Convenience Commands: 
-    - `dodot init <pack>` - Create a new pack
-    - dodot fill <pack> - Populate a pack with existing dotfiles
-    - `dodot adopt <pack> <file>` - Move existing file into a pack for
-management
+**Core Commands:**
+- `dodot status [pack...]` - Show current state and pending changes
+- `dodot up [pack...]` - Deploy and enable packs
+- `dodot down [pack...]` - Remove and disable packs
+
+**Convenience Commands:**
+- `dodot init <pack>` - Create a new pack
+- `dodot fill <pack>` - Populate a pack with existing dotfiles
+- `dodot adopt <pack> <file>` - Move existing file into a pack
 
 Run `dodot --help` for all commands.
 
