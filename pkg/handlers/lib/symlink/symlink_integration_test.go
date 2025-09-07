@@ -187,6 +187,13 @@ force_home = ["myapp", "custom"]
 		require.NoError(t, os.Setenv("HOME", originalHome))
 	}()
 
+	// Also set XDG_CONFIG_HOME for consistent testing
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	defer func() {
+		require.NoError(t, os.Setenv("XDG_CONFIG_HOME", originalXDG))
+	}()
+
 	// Test symlink handler with this config
 	handler := symlink.NewHandler()
 
