@@ -162,7 +162,7 @@ func TestMapPackFileToSystem_PackLevelForceHome(t *testing.T) {
 
 func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 	// This test verifies the layer priority:
-	// Layer 4 (pack force_home) > Layer 3 (explicit) > Layer 2 (root force_home) > Layer 1 (smart default)
+	// Layer 3 (explicit) > Layer 2 (pack force_home) > Layer 4 (root force_home) > Layer 1 (smart default)
 
 	homeDir, err := paths.GetHomeDirectory()
 	require.NoError(t, err)
@@ -194,11 +194,11 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 		activeLayer   string
 	}{
 		{
-			name:          "layer_4_pack_force_home",
+			name:          "layer_2_pack_force_home",
 			packForceHome: []string{"nvim/*"},
 			relPath:       "nvim/init.lua",
 			expectedPath:  filepath.Join(homeDir, ".nvim", "init.lua"),
-			activeLayer:   "Layer 4 - Pack force_home",
+			activeLayer:   "Layer 2 - Pack force_home",
 		},
 		{
 			name:          "layer_3_explicit_home",
@@ -215,11 +215,11 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 			activeLayer:   "Layer 3 - Explicit _xdg/",
 		},
 		{
-			name:          "layer_2_root_force_home",
+			name:          "layer_4_root_force_home",
 			packForceHome: []string{},
 			relPath:       "vim/vimrc",
 			expectedPath:  filepath.Join(homeDir, ".vim", "vimrc"),
-			activeLayer:   "Layer 2 - Root force_home",
+			activeLayer:   "Layer 4 - Root force_home",
 		},
 		{
 			name:          "layer_1_smart_default_toplevel",
@@ -251,6 +251,97 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 
 			result := p.MapPackFileToSystem(pack, tt.relPath)
 			assert.Equal(t, tt.expectedPath, result, "Active layer: "+tt.activeLayer)
+		})
+	}
+}
+
+func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
+	// This test specifically verifies that pack-level force_home
+	// takes precedence over root-level force_home exceptions
+
+	homeDir, err := paths.GetHomeDirectory()
+	require.NoError(t, err)
+
+	// Set XDG_CONFIG_HOME
+	xdgConfigHome := filepath.Join(homeDir, ".config")
+	err = os.Setenv("XDG_CONFIG_HOME", xdgConfigHome)
+	require.NoError(t, err)
+
+	// Initialize with root-level force_home that does NOT include myapp
+	// This simulates the case where root config doesn't force myapp to home
+	testConfig := &config.Config{
+		LinkPaths: config.LinkPaths{
+			CoreUnixExceptions: map[string]bool{
+				"vim":  true, // vim is in root exceptions
+				"bash": true, // bash is in root exceptions
+				// myapp is NOT in root exceptions
+			},
+		},
+	}
+	config.Initialize(testConfig)
+	defer config.Initialize(config.Default())
+
+	p, err := paths.New("")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name          string
+		packForceHome []string
+		relPath       string
+		expectedPath  string
+		description   string
+	}{
+		{
+			name:          "myapp_without_pack_override_goes_to_xdg",
+			packForceHome: []string{},
+			relPath:       "myapp/config.toml",
+			expectedPath:  filepath.Join(xdgConfigHome, "myapp", "config.toml"),
+			description:   "Without pack override, myapp should go to XDG (not in root exceptions)",
+		},
+		{
+			name:          "pack_forces_myapp_to_home",
+			packForceHome: []string{"myapp/*"},
+			relPath:       "myapp/config.toml",
+			expectedPath:  filepath.Join(homeDir, ".myapp", "config.toml"),
+			description:   "Pack force_home should override default and force myapp to HOME",
+		},
+		{
+			name:          "pack_can_force_specific_files",
+			packForceHome: []string{"myapp/special.conf"},
+			relPath:       "myapp/special.conf",
+			expectedPath:  filepath.Join(homeDir, ".myapp", "special.conf"),
+			description:   "Pack can force specific files to HOME",
+		},
+		{
+			name:          "other_myapp_files_still_go_to_xdg",
+			packForceHome: []string{"myapp/special.conf"},
+			relPath:       "myapp/regular.conf",
+			expectedPath:  filepath.Join(xdgConfigHome, "myapp", "regular.conf"),
+			description:   "Other files not in pack force_home go to XDG",
+		},
+		{
+			name:          "root_exceptions_still_work",
+			packForceHome: []string{},
+			relPath:       "vim/vimrc",
+			expectedPath:  filepath.Join(homeDir, ".vim", "vimrc"),
+			description:   "Root exceptions (vim) still work when pack has no overrides",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pack := &types.Pack{
+				Name: "testpack",
+				Path: "/test/pack",
+				Config: config.PackConfig{
+					Symlink: config.Symlink{
+						ForceHome: tt.packForceHome,
+					},
+				},
+			}
+
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expectedPath, result, tt.description)
 		})
 	}
 }

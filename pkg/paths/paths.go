@@ -550,8 +550,8 @@ func stripOverridePrefix(relPath string) string {
 // MapPackFileToSystem maps a file from a pack to its deployment location.
 // Priority order (highest to lowest):
 // Layer 3: Explicit overrides (_home/ or _xdg/ prefix)
-// Layer 4: Pack-level force_home configuration
-// Layer 2: Root-level force_home exceptions
+// Layer 2: Pack-level force_home configuration
+// Layer 4: Root-level force_home exceptions
 // Layer 1: Smart default mapping
 func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
@@ -582,7 +582,7 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		}
 	}
 
-	// Layer 4: Check pack-level force_home configuration
+	// Layer 2: Check pack-level force_home configuration
 	if pack.Config.IsForceHome(relPath) {
 		// Pack-level force_home items always go to $HOME
 		// Reconstruct the path with dot prefix on first segment
@@ -593,7 +593,7 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		return filepath.Join(homeDir, filepath.Join(parts...))
 	}
 
-	// Layer 2: Check exception list based on first path segment
+	// Layer 4: Check exception list based on first path segment
 	firstSegment := getFirstSegment(relPath)
 	cleanSegment := stripDotPrefix(firstSegment)
 
