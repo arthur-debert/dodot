@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
@@ -33,10 +35,18 @@ func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Opera
 	// Get target directory from first file's options or use home
 	targetDir := h.getTargetDir(files)
 
+	// Get protected paths configuration
+	protectedPaths := config.GetSecurity().ProtectedPaths
+
 	// Track targets to detect conflicts early
 	targetMap := make(map[string]string)
 
 	for _, file := range files {
+		// Check if this file path is protected
+		if isProtected(file.RelativePath, protectedPaths) {
+			return nil, fmt.Errorf("cannot symlink protected file: %s", file.RelativePath)
+		}
+
 		// Determine target path
 		targetPath := h.computeTargetPath(targetDir, file)
 
@@ -140,6 +150,35 @@ func (h *Handler) CheckStatus(file operations.FileInput, checker operations.Stat
 		State:   operations.StatusStatePending,
 		Message: fmt.Sprintf("will be linked to $HOME/%s", filepath.Base(file.RelativePath)),
 	}, nil
+}
+
+// isProtected checks if a file path matches any protected path pattern
+func isProtected(filePath string, protectedPaths map[string]bool) bool {
+	// Normalize the path by removing leading dots and slashes
+	normalizedPath := strings.TrimPrefix(filePath, "./")
+	normalizedPath = strings.TrimPrefix(normalizedPath, ".")
+
+	// Check exact match
+	if protectedPaths[normalizedPath] {
+		return true
+	}
+
+	// Check with dot prefix (e.g., "ssh/id_rsa" matches ".ssh/id_rsa")
+	if protectedPaths["."+normalizedPath] {
+		return true
+	}
+
+	// Check if any parent directory is protected
+	// This handles cases like ".gnupg/private-keys-v1.d/..." being protected by ".gnupg"
+	parts := strings.Split(normalizedPath, string(filepath.Separator))
+	for i := 1; i <= len(parts); i++ {
+		parentPath := strings.Join(parts[:i], string(filepath.Separator))
+		if protectedPaths[parentPath] || protectedPaths["."+parentPath] {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Verify interface compliance
