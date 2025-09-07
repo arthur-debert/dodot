@@ -48,7 +48,14 @@ func (h *Handler) ToOperations(files []operations.FileInput, config interface{})
 		}
 
 		// Determine target path
-		targetPath := h.computeTargetPath(targetDir, file)
+		// If file has explicit target in options, use that directly
+		var targetPath string
+		if file.Options != nil && file.Options["target"] != nil {
+			targetBase := os.ExpandEnv(file.Options["target"].(string))
+			targetPath = filepath.Join(targetBase, file.RelativePath)
+		} else {
+			targetPath = h.computeTargetPath(targetDir, file, config)
+		}
 
 		// Check for conflicts
 		if existingSource, exists := targetMap[targetPath]; exists {
@@ -120,10 +127,86 @@ func (h *Handler) getTargetDir(files []operations.FileInput) string {
 }
 
 // computeTargetPath determines where a symlink should point.
-func (h *Handler) computeTargetPath(targetDir string, file operations.FileInput) string {
-	// Simple case: just join target directory with the relative path
-	// The executor will handle path mapping complexity
-	return filepath.Join(targetDir, file.RelativePath)
+// It implements the 3-layer priority system for path mapping:
+// Layer 3: Explicit overrides (_home/ or _xdg/ prefix)
+// Layer 2: Force home configuration
+// Layer 1: Smart default mapping
+func (h *Handler) computeTargetPath(targetDir string, file operations.FileInput, cfg interface{}) string {
+	relPath := file.RelativePath
+
+	// Get home directory (used by multiple layers)
+	homeDir := os.Getenv("HOME")
+	if homeDir == "" {
+		homeDir, _ = os.UserHomeDir()
+		if homeDir == "" {
+			homeDir = targetDir // fallback to targetDir
+		}
+	}
+
+	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix) - HIGHEST PRIORITY
+	if strings.HasPrefix(relPath, "_home/") {
+		strippedPath := strings.TrimPrefix(relPath, "_home/")
+		parts := strings.Split(strippedPath, string(filepath.Separator))
+		if len(parts) > 0 && parts[0] != "" && !strings.HasPrefix(parts[0], ".") {
+			parts[0] = "." + parts[0]
+		}
+		return filepath.Join(homeDir, filepath.Join(parts...))
+	}
+	if strings.HasPrefix(relPath, "_xdg/") {
+		strippedPath := strings.TrimPrefix(relPath, "_xdg/")
+		xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+		if xdgConfigHome == "" {
+			xdgConfigHome = filepath.Join(homeDir, ".config")
+		}
+		return filepath.Join(xdgConfigHome, strippedPath)
+	}
+
+	// Layer 2: Check force_home configuration
+	if isForceHome(relPath, cfg) {
+		// Force to $HOME with dot prefix
+		filename := filepath.Base(relPath)
+		if !strings.HasPrefix(filename, ".") && !strings.Contains(relPath, "/") {
+			// Only add dot prefix for top-level files
+			filename = "." + filename
+		} else if strings.Contains(relPath, "/") {
+			// For subdirectory files that are forced to home (like ssh/config)
+			// Add dot prefix to first part if needed
+			parts := strings.Split(relPath, string(filepath.Separator))
+			if len(parts) > 0 && !strings.HasPrefix(parts[0], ".") {
+				parts[0] = "." + parts[0]
+			}
+			return filepath.Join(homeDir, filepath.Join(parts...))
+		}
+		return filepath.Join(homeDir, filename)
+	}
+
+	// Layer 1: Smart default mapping
+	if !strings.Contains(relPath, string(filepath.Separator)) {
+		// Top-level files go to $HOME with dot prefix
+		filename := filepath.Base(relPath)
+		if !strings.HasPrefix(filename, ".") {
+			filename = "." + filename
+		}
+		return filepath.Join(homeDir, filename)
+	}
+
+	// Check if the path already starts with a dot (like .vim/colors/theme.vim)
+	// These should go directly to $HOME, not XDG_CONFIG_HOME
+	if strings.HasPrefix(relPath, ".") {
+		return filepath.Join(homeDir, relPath)
+	}
+
+	// Subdirectory files go to XDG_CONFIG_HOME
+	xdgConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	if xdgConfigHome == "" {
+		xdgConfigHome = filepath.Join(homeDir, ".config")
+	}
+
+	// Special case: strip .config or config prefix to avoid duplication
+	relPath = strings.TrimPrefix(relPath, ".config/")
+	relPath = strings.TrimPrefix(relPath, "config/")
+
+	return filepath.Join(xdgConfigHome, relPath)
 }
 
 // CheckStatus checks if the symlink has been created for the given file
@@ -175,6 +258,49 @@ func isProtected(filePath string, protectedPaths map[string]bool) bool {
 		parentPath := strings.Join(parts[:i], string(filepath.Separator))
 		if protectedPaths[parentPath] || protectedPaths["."+parentPath] {
 			return true
+		}
+	}
+
+	return false
+}
+
+// isForceHome checks if a file path should be forced to $HOME based on config
+func isForceHome(relPath string, cfg interface{}) bool {
+	if cfg == nil {
+		return false
+	}
+
+	// Try to cast to config.Config
+	if configData, ok := cfg.(*config.Config); ok && configData != nil {
+		// Check CoreUnixExceptions (force_home patterns)
+		if configData.LinkPaths.CoreUnixExceptions != nil {
+			// Check exact match
+			if configData.LinkPaths.CoreUnixExceptions[relPath] {
+				return true
+			}
+
+			// Check without leading dot
+			withoutDot := strings.TrimPrefix(relPath, ".")
+			if configData.LinkPaths.CoreUnixExceptions[withoutDot] {
+				return true
+			}
+
+			// Check base name
+			baseName := filepath.Base(relPath)
+			baseWithoutDot := strings.TrimPrefix(baseName, ".")
+			if configData.LinkPaths.CoreUnixExceptions[baseName] ||
+				configData.LinkPaths.CoreUnixExceptions[baseWithoutDot] {
+				return true
+			}
+
+			// For patterns like "ssh" matching "ssh/config"
+			parts := strings.Split(relPath, string(filepath.Separator))
+			if len(parts) > 0 {
+				firstPart := strings.TrimPrefix(parts[0], ".")
+				if configData.LinkPaths.CoreUnixExceptions[firstPart] {
+					return true
+				}
+			}
 		}
 	}
 

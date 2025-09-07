@@ -152,3 +152,92 @@ protected_paths = [".pack/secret"]
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot symlink protected file")
 }
+
+func TestSymlinkHandler_ForceHomeWithRealConfig(t *testing.T) {
+	// Create a temporary directory structure
+	tmpDir := t.TempDir()
+
+	// Create a root config with custom force_home patterns
+	rootConfig := `
+[symlink]
+force_home = ["myapp", "custom"]
+`
+	configPath := filepath.Join(tmpDir, "dodot.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(rootConfig), 0644))
+
+	// Load the config
+	cfg, err := config.GetRootConfig(tmpDir)
+	require.NoError(t, err)
+
+	// Verify config loaded correctly
+	assert.NotNil(t, cfg.LinkPaths.CoreUnixExceptions)
+	t.Logf("CoreUnixExceptions: %v", cfg.LinkPaths.CoreUnixExceptions)
+	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["myapp"])
+	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["custom"])
+	// Should also have defaults
+	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["ssh"])
+	// Note: gitconfig is in defaults.toml, not embedded dodot.toml
+	// assert.True(t, cfg.LinkPaths.CoreUnixExceptions["gitconfig"])
+
+	// Set up HOME for consistent testing
+	originalHome := os.Getenv("HOME")
+	testHome := "/test/home"
+	require.NoError(t, os.Setenv("HOME", testHome))
+	defer func() {
+		require.NoError(t, os.Setenv("HOME", originalHome))
+	}()
+
+	// Test symlink handler with this config
+	handler := symlink.NewHandler()
+
+	tests := []struct {
+		name           string
+		file           string
+		expectedTarget string
+		reason         string
+	}{
+		{
+			name:           "default_force_home_ssh",
+			file:           "ssh/config",
+			expectedTarget: filepath.Join(testHome, ".ssh/config"),
+			reason:         "ssh is in default force_home",
+		},
+		{
+			name:           "custom_force_home_myapp",
+			file:           "myapp/settings.json",
+			expectedTarget: filepath.Join(testHome, ".myapp/settings.json"),
+			reason:         "myapp is in custom force_home",
+		},
+		{
+			name:           "custom_force_home_custom",
+			file:           "custom",
+			expectedTarget: filepath.Join(testHome, ".custom"),
+			reason:         "custom is in custom force_home",
+		},
+		{
+			name:           "normal_xdg_placement",
+			file:           "nvim/init.vim",
+			expectedTarget: filepath.Join(testHome, ".config/nvim/init.vim"),
+			reason:         "nvim is not in force_home, should use XDG",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := []operations.FileInput{
+				{
+					RelativePath: tt.file,
+					PackName:     "test-pack",
+					SourcePath:   "/source/" + tt.file,
+				},
+			}
+
+			ops, err := handler.ToOperations(files, cfg)
+			require.NoError(t, err)
+			require.Len(t, ops, 2) // CreateDataLink and CreateUserLink
+
+			// Check the target path in CreateUserLink operation
+			assert.Equal(t, tt.expectedTarget, ops[1].Target, tt.reason)
+		})
+	}
+}
