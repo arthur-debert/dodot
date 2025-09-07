@@ -10,6 +10,7 @@ import (
 	"github.com/arthur-debert/dodot/pkg/logging"
 	"github.com/arthur-debert/dodot/pkg/types"
 	"github.com/knadh/koanf/v2"
+	toml "github.com/pelletier/go-toml/v2"
 )
 
 // LoadRules loads rules from configuration
@@ -59,12 +60,20 @@ func LoadPackRules(packPath string) ([]config.Rule, error) {
 
 	// Generate rules from the pack's mappings
 	baseConfig := config.Config{Mappings: packConfig.Mappings}
-	rules := baseConfig.GenerateRulesFromMapping()
+	mappingRules := baseConfig.GenerateRulesFromMapping()
+
+	// Generate ignore rules from pack's [pack] ignore patterns
+	ignoreRules := packConfig.GenerateIgnoreRules()
+
+	// Combine rules - ignore rules should come first to exclude files early
+	rules := append(ignoreRules, mappingRules...)
 
 	logger.Debug().
 		Str("pack", packPath).
-		Int("ruleCount", len(rules)).
-		Msg("Loaded pack-specific rules from mappings")
+		Int("mappingRules", len(mappingRules)).
+		Int("ignoreRules", len(ignoreRules)).
+		Int("totalRules", len(rules)).
+		Msg("Loaded pack-specific rules")
 
 	return rules, nil
 }
@@ -79,21 +88,34 @@ func LoadPackRulesFS(packPath string, fs types.FS) ([]config.Rule, error) {
 		return nil, nil
 	}
 
-	// For filesystem-based loading, we still use LoadPackConfig which reads from disk
-	// This is a limitation that could be improved in the future
-	packConfig, err := config.LoadPackConfig(configPath)
+	// Read config using filesystem
+	data, err := fs.ReadFile(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load pack config: %w", err)
+		return nil, fmt.Errorf("failed to read pack config: %w", err)
+	}
+
+	// Parse the config
+	var packConfig config.PackConfig
+	if err := toml.Unmarshal(data, &packConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse pack config: %w", err)
 	}
 
 	// Generate rules from the pack's mappings
 	baseConfig := config.Config{Mappings: packConfig.Mappings}
-	rules := baseConfig.GenerateRulesFromMapping()
+	mappingRules := baseConfig.GenerateRulesFromMapping()
+
+	// Generate ignore rules from pack's [pack] ignore patterns
+	ignoreRules := packConfig.GenerateIgnoreRules()
+
+	// Combine rules - ignore rules should come first to exclude files early
+	rules := append(ignoreRules, mappingRules...)
 
 	logger.Debug().
 		Str("pack", packPath).
-		Int("ruleCount", len(rules)).
-		Msg("Loaded pack-specific rules from mappings")
+		Int("mappingRules", len(mappingRules)).
+		Int("ignoreRules", len(ignoreRules)).
+		Int("totalRules", len(rules)).
+		Msg("Loaded pack-specific rules")
 
 	return rules, nil
 }

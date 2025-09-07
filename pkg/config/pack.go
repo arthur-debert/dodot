@@ -10,8 +10,15 @@ import (
 
 // PackConfig represents configuration options for a pack from .dodot.toml
 type PackConfig struct {
+	Pack     Pack     `toml:"pack"`
 	Mappings Mappings `toml:"mappings"`
 	Symlink  Symlink  `toml:"symlink"`
+}
+
+// Pack holds pack-specific configuration
+type Pack struct {
+	// Ignore lists additional patterns to ignore during pack scanning
+	Ignore []string `toml:"ignore"`
 }
 
 // Symlink holds symlink-specific configuration
@@ -82,4 +89,16 @@ func (pc *PackConfig) GetMergedProtectedPaths(rootProtected map[string]bool) map
 	}
 
 	return merged
+}
+
+// GenerateIgnoreRules creates exclusion rules from pack ignore patterns
+func (pc *PackConfig) GenerateIgnoreRules() []Rule {
+	rules := []Rule{}
+	for _, pattern := range pc.Pack.Ignore {
+		rules = append(rules, Rule{
+			Pattern: "!" + pattern,
+			Handler: "exclude",
+		})
+	}
+	return rules
 }

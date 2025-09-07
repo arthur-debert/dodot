@@ -392,3 +392,80 @@ protected_paths = [".myapp/secret.key", "private/*", "credentials.json"]
 	assert.Equal(t, []string{"*.conf"}, cfg.Symlink.ForceHome)
 	assert.Equal(t, []string{".myapp/secret.key", "private/*", "credentials.json"}, cfg.Symlink.ProtectedPaths)
 }
+
+func TestLoadPackConfig_WithPackIgnore(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[pack]
+ignore = ["*.log", "tmp/*", "cache/", "build"]
+
+[mappings]
+ignore = ["*.env"]
+
+[symlink]
+force_home = ["config.toml"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify all sections loaded correctly
+	assert.Equal(t, []string{"*.log", "tmp/*", "cache/", "build"}, cfg.Pack.Ignore)
+	assert.Equal(t, []string{"*.env"}, cfg.Mappings.Ignore)
+	assert.Equal(t, []string{"config.toml"}, cfg.Symlink.ForceHome)
+}
+
+func TestPackConfig_GenerateIgnoreRules(t *testing.T) {
+	tests := []struct {
+		name           string
+		ignorePatterns []string
+		expectedRules  []config.Rule
+	}{
+		{
+			name:           "single_pattern",
+			ignorePatterns: []string{"*.log"},
+			expectedRules: []config.Rule{
+				{Pattern: "!*.log", Handler: "exclude"},
+			},
+		},
+		{
+			name:           "multiple_patterns",
+			ignorePatterns: []string{"*.tmp", "cache/*", "node_modules"},
+			expectedRules: []config.Rule{
+				{Pattern: "!*.tmp", Handler: "exclude"},
+				{Pattern: "!cache/*", Handler: "exclude"},
+				{Pattern: "!node_modules", Handler: "exclude"},
+			},
+		},
+		{
+			name:           "empty_patterns",
+			ignorePatterns: []string{},
+			expectedRules:  []config.Rule{},
+		},
+		{
+			name:           "directory_patterns",
+			ignorePatterns: []string{"build/", "dist/"},
+			expectedRules: []config.Rule{
+				{Pattern: "!build/", Handler: "exclude"},
+				{Pattern: "!dist/", Handler: "exclude"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &config.PackConfig{
+				Pack: config.Pack{
+					Ignore: tt.ignorePatterns,
+				},
+			}
+
+			rules := pc.GenerateIgnoreRules()
+			assert.Equal(t, tt.expectedRules, rules)
+		})
+	}
+}
