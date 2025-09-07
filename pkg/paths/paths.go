@@ -570,9 +570,13 @@ func isForceHome(cfg interface{}, relPath string) bool {
 
 	// Check common core unix exceptions
 	coreExceptions := map[string]bool{
-		"ssh":   true,
-		"aws":   true,
-		"gnupg": true,
+		"ssh":          true,
+		"aws":          true,
+		"gnupg":        true,
+		"bashrc":       true,
+		"bash_profile": true,
+		"zshrc":        true,
+		"vim":          true,
 	}
 
 	if coreExceptions[firstSegment] {

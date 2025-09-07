@@ -81,7 +81,7 @@ func TestInstallHandler_OperationIntegration(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 	assert.Len(t, ops, 1)
 
@@ -127,7 +127,7 @@ func TestInstallHandler_ExecuteWithDataStore(t *testing.T) {
 		},
 	}
 
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 
 	// Create mock store and set expectations
@@ -241,10 +241,10 @@ func TestInstallHandler_IdempotentExecution(t *testing.T) {
 	}
 
 	// Generate operations twice
-	ops1, err := handler.ToOperations([]operations.FileInput{match})
+	ops1, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
-	ops2, err := handler.ToOperations([]operations.FileInput{match})
+	ops2, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
 	// Same content should produce same sentinel

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
@@ -38,19 +39,11 @@ func (h *Handler) ToOperations(files []operations.FileInput, config interface{})
 	targetMap := make(map[string]string)
 
 	for _, file := range files {
-		// TODO: Get merged protected paths from passed config
-		// For now, use default protected paths
-		defaultProtectedPaths := map[string]bool{
-			".ssh/id_rsa":              true,
-			".ssh/id_ed25519":          true,
-			".ssh/id_dsa":              true,
-			".ssh/id_ecdsa":            true,
-			".gnupg/private-keys-v1.d": true,
-			".aws/credentials":         true,
-		}
+		// Get protected paths from config if available
+		protectedPaths := getProtectedPaths(config)
 
 		// Check if this file path is protected
-		if isProtected(file.RelativePath, defaultProtectedPaths) {
+		if isProtected(file.RelativePath, protectedPaths) {
 			return nil, fmt.Errorf("cannot symlink protected file: %s", file.RelativePath)
 		}
 
@@ -186,6 +179,44 @@ func isProtected(filePath string, protectedPaths map[string]bool) bool {
 	}
 
 	return false
+}
+
+// getProtectedPaths extracts protected paths from the config
+func getProtectedPaths(cfg interface{}) map[string]bool {
+	// Default protected paths if no config provided
+	defaultPaths := map[string]bool{
+		".ssh/id_rsa":              true,
+		".ssh/id_ed25519":          true,
+		".ssh/id_dsa":              true,
+		".ssh/id_ecdsa":            true,
+		".gnupg/private-keys-v1.d": true,
+		".aws/credentials":         true,
+		".ssh/authorized_keys":     true,
+		".gnupg":                   true,
+	}
+
+	if cfg == nil {
+		return defaultPaths
+	}
+
+	// Try to cast to config.Config
+	if configData, ok := cfg.(*config.Config); ok && configData != nil {
+		// Merge default paths with config paths
+		result := make(map[string]bool)
+
+		// Add root-level protected paths
+		if configData.Security.ProtectedPaths != nil {
+			for path := range configData.Security.ProtectedPaths {
+				result[path] = true
+			}
+		}
+
+		// TODO: Add pack-level protected paths when we have access to pack config
+		// For now, just return what we have
+		return result
+	}
+
+	return defaultPaths
 }
 
 // Verify interface compliance

@@ -36,7 +36,7 @@ func TestPathHandler_OperationIntegration(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := handler.ToOperations(files)
+	ops, err := handler.ToOperations(files, nil)
 	require.NoError(t, err)
 	assert.Len(t, ops, 3)
 

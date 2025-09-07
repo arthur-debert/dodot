@@ -82,7 +82,7 @@ func TestSymlinkHandler_OperationIntegration(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 	assert.Len(t, ops, 4) // 2 operations per file
 
@@ -126,7 +126,7 @@ func TestSymlinkHandler_ExecuteWithDataStore(t *testing.T) {
 		},
 	}
 
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 
 	// Create mock store and set expectations

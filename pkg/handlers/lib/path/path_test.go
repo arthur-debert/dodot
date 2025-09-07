@@ -145,7 +145,7 @@ func TestHandler_ToOperations(t *testing.T) {
 			handler := path.NewHandler()
 
 			// Execute
-			ops, err := handler.ToOperations(tt.files)
+			ops, err := handler.ToOperations(tt.files, nil)
 
 			// Verify
 			require.NoError(t, err)

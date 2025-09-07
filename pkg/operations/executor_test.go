@@ -61,8 +61,8 @@ type MockHandler struct {
 	mock.Mock
 }
 
-func (m *MockHandler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
-	args := m.Called(files)
+func (m *MockHandler) ToOperations(files []operations.FileInput, config interface{}) ([]operations.Operation, error) {
+	args := m.Called(files, config)
 	return args.Get(0).([]operations.Operation), args.Error(1)
 }
 

@@ -84,7 +84,7 @@ cask "visual-studio-code"
 	}
 
 	// Convert to operations
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 	assert.Len(t, ops, 1)
 
@@ -131,7 +131,7 @@ func TestHomebrewHandler_ExecuteWithDataStore(t *testing.T) {
 		},
 	}
 
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 
 	// Create mock store and set expectations
@@ -249,7 +249,7 @@ func TestHomebrewHandler_MultipleBrewfiles(t *testing.T) {
 		},
 	}
 
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 	assert.Len(t, ops, 2)
 

@@ -133,7 +133,7 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := handler.ToOperations(tt.files)
+			ops, err := handler.ToOperations(tt.files, nil)
 
 			if tt.wantErr {
 				require.Error(t, err)
