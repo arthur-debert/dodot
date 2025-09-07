@@ -1,11 +1,10 @@
-package config_test
+package config
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,11 +67,11 @@ homebrew = "Brewfile.myapp"
 	require.NoError(t, os.WriteFile(filepath.Join(pack2Dir, "dodot.toml"), []byte(myappConfig), 0644))
 
 	// Load root config
-	rootCfg, err := config.GetRootConfig(tmpDir)
+	rootCfg, err := GetRootConfig(tmpDir)
 	require.NoError(t, err)
 
 	t.Run("vim_pack_config", func(t *testing.T) {
-		cfg, err := config.GetPackConfig(rootCfg, pack1Dir)
+		cfg, err := GetPackConfig(rootCfg, pack1Dir)
 		require.NoError(t, err)
 
 		// Pack ignore should include root + vim patterns
@@ -101,7 +100,7 @@ homebrew = "Brewfile.myapp"
 	})
 
 	t.Run("myapp_pack_config", func(t *testing.T) {
-		cfg, err := config.GetPackConfig(rootCfg, pack2Dir)
+		cfg, err := GetPackConfig(rootCfg, pack2Dir)
 		require.NoError(t, err)
 
 		// Pack ignore should include root + myapp patterns
@@ -131,7 +130,7 @@ homebrew = "Brewfile.myapp"
 		noConfigPack := filepath.Join(tmpDir, "noconfig")
 		require.NoError(t, os.MkdirAll(noConfigPack, 0755))
 
-		cfg, err := config.GetPackConfig(rootCfg, noConfigPack)
+		cfg, err := GetPackConfig(rootCfg, noConfigPack)
 		require.NoError(t, err)
 
 		// Should have same values as root config
@@ -186,14 +185,14 @@ homebrew = "Brewfile.local"   # Homebrew dependencies
 	require.NoError(t, os.WriteFile(filepath.Join(packDir, ".dodot.toml"), []byte(packConfig), 0644))
 
 	// Minimal root config
-	rootCfg := &config.Config{
-		Patterns: config.Patterns{
+	rootCfg := &Config{
+		Patterns: Patterns{
 			PackIgnore: []string{".git"},
 		},
 	}
 
 	// Load pack config
-	cfg, err := config.GetPackConfig(rootCfg, packDir)
+	cfg, err := GetPackConfig(rootCfg, packDir)
 	require.NoError(t, err)
 
 	// Verify all sections were loaded and transformed correctly
