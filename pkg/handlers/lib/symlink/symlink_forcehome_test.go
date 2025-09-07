@@ -181,6 +181,13 @@ func TestHandler_ForceHome_Integration(t *testing.T) {
 		require.NoError(t, os.Setenv("HOME", originalHome))
 	}()
 
+	// Also set XDG_CONFIG_HOME for consistent testing
+	originalXDG := os.Getenv("XDG_CONFIG_HOME")
+	require.NoError(t, os.Setenv("XDG_CONFIG_HOME", filepath.Join(testHome, ".config")))
+	defer func() {
+		require.NoError(t, os.Setenv("XDG_CONFIG_HOME", originalXDG))
+	}()
+
 	handler := NewHandler()
 
 	cfg := &config.Config{
