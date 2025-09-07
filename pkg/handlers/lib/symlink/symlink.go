@@ -183,40 +183,29 @@ func isProtected(filePath string, protectedPaths map[string]bool) bool {
 
 // getProtectedPaths extracts protected paths from the config
 func getProtectedPaths(cfg interface{}) map[string]bool {
-	// Default protected paths if no config provided
-	defaultPaths := map[string]bool{
-		".ssh/id_rsa":              true,
-		".ssh/id_ed25519":          true,
-		".ssh/id_dsa":              true,
-		".ssh/id_ecdsa":            true,
-		".gnupg/private-keys-v1.d": true,
-		".aws/credentials":         true,
-		".ssh/authorized_keys":     true,
-		".gnupg":                   true,
-	}
-
-	if cfg == nil {
-		return defaultPaths
-	}
-
 	// Try to cast to config.Config
 	if configData, ok := cfg.(*config.Config); ok && configData != nil {
-		// Merge default paths with config paths
-		result := make(map[string]bool)
-
-		// Add root-level protected paths
+		// Return the protected paths from config (which already includes defaults)
 		if configData.Security.ProtectedPaths != nil {
-			for path := range configData.Security.ProtectedPaths {
-				result[path] = true
-			}
+			return configData.Security.ProtectedPaths
 		}
-
-		// TODO: Add pack-level protected paths when we have access to pack config
-		// For now, just return what we have
-		return result
 	}
 
-	return defaultPaths
+	// Fallback to hardcoded defaults if no config available
+	// This should rarely happen as config should always be provided
+	return map[string]bool{
+		".ssh/id_rsa":          true,
+		".ssh/id_ed25519":      true,
+		".ssh/id_dsa":          true,
+		".ssh/id_ecdsa":        true,
+		".gnupg":               true,
+		".aws/credentials":     true,
+		".ssh/authorized_keys": true,
+		".password-store":      true,
+		".config/gh/hosts.yml": true,
+		".kube/config":         true,
+		".docker/config.json":  true,
+	}
 }
 
 // Verify interface compliance

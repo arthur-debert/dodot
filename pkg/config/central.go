@@ -8,7 +8,6 @@ import (
 // Security holds security-related configuration
 type Security struct {
 	// ProtectedPaths defines paths that should not be symlinked for security reasons
-	// TODO: Implement in pkg/handlers/lib/symlink/symlink.go ProcessLinking()
 	ProtectedPaths map[string]bool `koanf:"protected_paths"`
 }
 
