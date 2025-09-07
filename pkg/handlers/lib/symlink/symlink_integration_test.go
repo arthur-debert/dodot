@@ -124,6 +124,13 @@ protected_paths = [".pack/secret"]
 	rootCfg, err := config.GetRootConfig(tmpDir)
 	require.NoError(t, err)
 
+	// Set DOTFILES_ROOT for pack config loading
+	oldRoot := os.Getenv("DOTFILES_ROOT")
+	require.NoError(t, os.Setenv("DOTFILES_ROOT", tmpDir))
+	defer func() {
+		require.NoError(t, os.Setenv("DOTFILES_ROOT", oldRoot))
+	}()
+
 	// Load pack config
 	packCfg, err := config.GetPackConfig(rootCfg, packDir)
 	require.NoError(t, err)
