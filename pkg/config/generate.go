@@ -6,11 +6,11 @@ import (
 
 // GenerateConfigContent generates the configuration file content with commented values
 func GenerateConfigContent() string {
-	// Get the user defaults content
-	userDefaultsContent := GetUserDefaultsContent()
+	// Get the app config content
+	appConfigContent := GetAppConfigContent()
 
 	// Comment out the configuration values
-	return commentOutConfigValues(userDefaultsContent)
+	return commentOutConfigValues(appConfigContent)
 }
 
 // commentOutConfigValues takes the TOML content and comments out all non-comment, non-blank lines

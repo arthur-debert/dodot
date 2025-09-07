@@ -310,6 +310,7 @@ type ExecutionOptions struct {
 	DryRun     bool
 	Force      bool
 	FileSystem types.FS
+	Config     interface{} // Pack-specific config
 }
 
 // ExecuteMatches executes rule matches using handlers and the DataStore abstraction.
@@ -366,7 +367,7 @@ func ExecuteMatches(matches []rules.RuleMatch, dataStore datastore.DataStore, op
 		fileInputs := transformMatches(handlerMatches)
 
 		// Convert file inputs to operations
-		operations, err := handler.ToOperations(fileInputs)
+		operations, err := handler.ToOperations(fileInputs, opts.Config)
 		if err != nil {
 			logger.Error().
 				Err(err).

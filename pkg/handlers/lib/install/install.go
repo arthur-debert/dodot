@@ -29,7 +29,7 @@ func NewHandler() *Handler {
 
 // ToOperations converts file inputs to install operations.
 // Install scripts use RunCommand for execution with sentinel tracking.
-func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput, config interface{}) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
 	for _, file := range files {

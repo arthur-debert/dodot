@@ -187,8 +187,7 @@ func loadPack(packPath string) (types.Pack, error) {
 				WithDetail("configPath", configPath)
 		}
 		pack.Config = packConfig
-		// Register pack config for global access
-		config.RegisterPackConfig(packName, packConfig)
+		// TODO: Remove once fully migrated to dependency injection
 	}
 
 	logger.Trace().
@@ -398,8 +397,7 @@ func loadPackFS(packPath string, filesystem types.FS) (types.Pack, error) {
 				WithDetail("configPath", configPath)
 		}
 		pack.Config = packConfig
-		// Register pack config for global access
-		config.RegisterPackConfig(packName, packConfig)
+		// TODO: Remove once fully migrated to dependency injection
 	}
 
 	logger.Trace().

@@ -30,7 +30,7 @@ func NewHandler() *Handler {
 
 // ToOperations converts file inputs to homebrew operations.
 // Brewfiles use RunCommand with brew bundle for installation.
-func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput, config interface{}) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
 	for _, file := range files {

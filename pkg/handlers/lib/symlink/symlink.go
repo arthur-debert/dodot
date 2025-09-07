@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/operations"
 )
 
@@ -29,7 +28,7 @@ func NewHandler() *Handler {
 // Symlinks require two operations:
 // 1. CreateDataLink to store the link in the datastore
 // 2. CreateUserLink to create the user-visible symlink
-func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput, config interface{}) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
 	// Get target directory from first file's options or use home
@@ -39,11 +38,19 @@ func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Opera
 	targetMap := make(map[string]string)
 
 	for _, file := range files {
-		// Get merged protected paths for this pack (root + pack-level)
-		mergedProtectedPaths := config.GetMergedProtectedPaths(file.PackName)
+		// TODO: Get merged protected paths from passed config
+		// For now, use default protected paths
+		defaultProtectedPaths := map[string]bool{
+			".ssh/id_rsa":              true,
+			".ssh/id_ed25519":          true,
+			".ssh/id_dsa":              true,
+			".ssh/id_ecdsa":            true,
+			".gnupg/private-keys-v1.d": true,
+			".aws/credentials":         true,
+		}
 
 		// Check if this file path is protected
-		if isProtected(file.RelativePath, mergedProtectedPaths) {
+		if isProtected(file.RelativePath, defaultProtectedPaths) {
 			return nil, fmt.Errorf("cannot symlink protected file: %s", file.RelativePath)
 		}
 

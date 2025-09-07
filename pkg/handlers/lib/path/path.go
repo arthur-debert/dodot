@@ -46,7 +46,7 @@ func (h *Handler) GetMetadata() operations.HandlerMetadata {
 // ToOperations converts file inputs to operations.
 // This is the core simplification - the handler just declares what it wants,
 // not how to do it. The executor handles the complexity.
-func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput, config interface{}) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
 	// Deduplicate paths - same logic as current handler but simpler

@@ -26,7 +26,7 @@ func NewHandler() *Handler {
 
 // ToOperations converts file inputs to shell operations.
 // Shell scripts require only CreateDataLink - shell initialization handles sourcing.
-func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Operation, error) {
+func (h *Handler) ToOperations(files []operations.FileInput, config interface{}) ([]operations.Operation, error) {
 	var ops []operations.Operation
 
 	for _, file := range files {

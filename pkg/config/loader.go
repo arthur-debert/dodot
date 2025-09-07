@@ -12,7 +12,6 @@ import (
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/knadh/koanf/parsers/toml"
 	"github.com/knadh/koanf/providers/confmap"
-	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/file"
 	"github.com/knadh/koanf/v2"
 )
@@ -20,12 +19,12 @@ import (
 //go:embed embedded/defaults.toml
 var defaultConfig []byte
 
-//go:embed embedded/user-defaults.toml
-var userDefaultConfig []byte
+//go:embed embedded/dodot.toml
+var appConfig []byte
 
-// GetUserDefaultsContent returns the content of the user defaults configuration file
-func GetUserDefaultsContent() string {
-	return string(userDefaultConfig)
+// GetAppConfigContent returns the content of the app configuration file
+func GetAppConfigContent() string {
+	return string(appConfig)
 }
 
 type rawBytesProvider struct{ bytes []byte }
@@ -38,10 +37,10 @@ func (r *rawBytesProvider) Read() (map[string]interface{}, error) {
 func LoadConfiguration() (*Config, error) {
 	k := koanf.New(".")
 
-	// 1. Manually merge defaults
+	// 1. Manually merge app defaults and app config
 	baseConfig := getSystemDefaults()
-	userDefaults := parseUserDefaults()
-	mergeMaps(baseConfig, userDefaults)
+	appConfigMap := parseAppConfig()
+	mergeMaps(baseConfig, appConfigMap)
 
 	if err := k.Load(confmap.Provider(baseConfig, "."), nil); err != nil {
 		return nil, fmt.Errorf("failed to load base config: %w", err)
@@ -59,17 +58,9 @@ func LoadConfiguration() (*Config, error) {
 		mergeMaps(k.All(), userConfig)
 	}
 
-	// 3. Load env vars
-	tempK := koanf.New(".")
-	err := tempK.Load(env.Provider("DODOT_", ".", func(s string) string {
-		return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s, "DODOT_")), "_", ".")
-	}), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load env vars: %w", err)
-	}
-	mergeMaps(k.All(), tempK.All())
+	// 3. Skip env vars loading (only DOTFILES_ROOT is used, and that's handled separately)
 
-	// 4. Unmarshal
+	// 3. Unmarshal
 	var cfg Config
 	unmarshalConf := koanf.UnmarshalConf{
 		Tag: "koanf",
@@ -87,7 +78,7 @@ func LoadConfiguration() (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal configuration: %w", err)
 	}
 
-	// 5. Post-process
+	// 4. Post-process
 	if err := postProcessConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("failed to post-process configuration: %w", err)
 	}
@@ -97,7 +88,20 @@ func LoadConfiguration() (*Config, error) {
 
 // LoadPackConfiguration loads a pack-specific config and merges it with the base config
 func LoadPackConfiguration(baseConfig *Config, packPath string) (*Config, error) {
-	packConfigPath := filepath.Join(packPath, ".dodot.toml")
+	// Try both .dodot.toml and dodot.toml
+	packConfigPath := ""
+	for _, filename := range []string{".dodot.toml", "dodot.toml"} {
+		path := filepath.Join(packPath, filename)
+		if _, err := os.Stat(path); err == nil {
+			packConfigPath = path
+			break
+		}
+	}
+
+	// If neither exists, default to .dodot.toml
+	if packConfigPath == "" {
+		packConfigPath = filepath.Join(packPath, ".dodot.toml")
+	}
 
 	// If no pack config exists, return the base config as-is
 	if _, err := os.Stat(packConfigPath); err != nil {
@@ -204,11 +208,21 @@ func mapToBoolMapHookFunc() mapstructure.DecodeHookFunc {
 
 func getRootConfigPath() string {
 	// Look for config in dotfiles root
-	if dotfilesRoot := os.Getenv("DOTFILES_ROOT"); dotfilesRoot != "" {
-		return filepath.Join(dotfilesRoot, ".dodot.toml")
+	dotfilesRoot := os.Getenv("DOTFILES_ROOT")
+	if dotfilesRoot == "" {
+		dotfilesRoot = "."
 	}
-	// Fall back to current directory
-	return ".dodot.toml"
+
+	// Try both .dodot.toml and dodot.toml
+	for _, filename := range []string{".dodot.toml", "dodot.toml"} {
+		path := filepath.Join(dotfilesRoot, filename)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+
+	// Default to .dodot.toml if neither exists
+	return filepath.Join(dotfilesRoot, ".dodot.toml")
 }
 
 func getSystemDefaults() map[string]interface{} {
@@ -219,14 +233,14 @@ func getSystemDefaults() map[string]interface{} {
 	return k.All()
 }
 
-func parseUserDefaults() map[string]interface{} {
-	if len(userDefaultConfig) == 0 {
+func parseAppConfig() map[string]interface{} {
+	if len(appConfig) == 0 {
 		// If embedded is empty for some reason, return empty map
 		return map[string]interface{}{}
 	}
 
 	k := koanf.New(".")
-	if err := k.Load(&rawBytesProvider{bytes: userDefaultConfig}, toml.Parser()); err != nil {
+	if err := k.Load(&rawBytesProvider{bytes: appConfig}, toml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
 

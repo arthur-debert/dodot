@@ -106,3 +106,22 @@
     # files to ignore during pack processing (in addition to dodot's defaults)
     # examples: [".env.local", "secrets.json", "private/*", "*.key"]
     ignore = []
+
+
+4. Architecture
+
+    The code should have a consistent patter that does , in pseudo code:
+
+        GetRootConfig(<the /pkg/config path/object for dep injection, dotfile
+        root path, pack path or none)
+    
+    This code will search for the .dodot.toml files if present and do the
+    merging. So all executions should get a RootConfig object (merged with the
+    default) at the execution start, and that should be passed to the main
+    command pipeline.
+
+    When running pack pipelines, the loop should create a pack config for each
+    pack (using the central function) and pass that down so that the actions
+    can run (these will use this config object)
+
+
