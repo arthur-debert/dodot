@@ -103,7 +103,7 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := handler.ToOperations(tt.matches)
+			ops, err := handler.ToOperations(tt.matches, nil)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -146,10 +146,10 @@ func TestHandler_DeterministicSentinel(t *testing.T) {
 	}
 
 	// Generate operations multiple times
-	ops1, err := handler.ToOperations([]operations.FileInput{match})
+	ops1, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
-	ops2, err := handler.ToOperations([]operations.FileInput{match})
+	ops2, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
 	// Sentinels should be identical for same content
@@ -160,7 +160,7 @@ func TestHandler_DeterministicSentinel(t *testing.T) {
 	err = os.WriteFile(scriptPath, []byte(newContent), 0755)
 	require.NoError(t, err)
 
-	ops3, err := handler.ToOperations([]operations.FileInput{match})
+	ops3, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
 	// Sentinel should be different after modification
@@ -183,7 +183,7 @@ func TestHandler_CommandFormat(t *testing.T) {
 		SourcePath:   scriptPath,
 	}
 
-	ops, err := handler.ToOperations([]operations.FileInput{match})
+	ops, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
 	// Command should properly quote the path
@@ -237,7 +237,7 @@ func TestHandler_SentinelFormat(t *testing.T) {
 		SourcePath:   scriptPath,
 	}
 
-	ops, err := handler.ToOperations([]operations.FileInput{match})
+	ops, err := handler.ToOperations([]operations.FileInput{match}, nil)
 	require.NoError(t, err)
 
 	// Sentinel should use basename of path, not full path

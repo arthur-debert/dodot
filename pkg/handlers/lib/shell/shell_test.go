@@ -82,7 +82,7 @@ func TestHandler_ToOperations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ops, err := handler.ToOperations(tt.matches)
+			ops, err := handler.ToOperations(tt.matches, nil)
 
 			require.NoError(t, err)
 			assert.Len(t, ops, tt.wantOps)

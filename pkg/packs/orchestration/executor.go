@@ -3,9 +3,10 @@ package orchestration
 import (
 	"fmt"
 
-	"github.com/arthur-debert/dodot/pkg/packs/discovery"
+	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/filesystem"
 	"github.com/arthur-debert/dodot/pkg/logging"
+	"github.com/arthur-debert/dodot/pkg/packs/discovery"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
 
@@ -26,8 +27,19 @@ func Execute(command Command, packNames []string, opts Options) (*Result, error)
 		fs = filesystem.NewOS()
 	}
 
+	// Load root config if not provided
+	rootConfig := opts.RootConfig
+	if rootConfig == nil {
+		cfg, err := config.GetRootConfig(opts.DotfilesRoot)
+		if err != nil {
+			logger.Error().Err(err).Msg("Failed to load root configuration")
+			return nil, fmt.Errorf("failed to load root configuration: %w", err)
+		}
+		rootConfig = cfg
+	}
+
 	// Step 1: Discover and select packs
-	packs, err := discovery.DiscoverAndSelectPacksFS(opts.DotfilesRoot, packNames, fs)
+	packs, err := discovery.DiscoverAndSelectPacksFSWithConfig(opts.DotfilesRoot, packNames, fs, rootConfig)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to discover packs")
 		return nil, fmt.Errorf("failed to discover packs: %w", err)
@@ -50,7 +62,28 @@ func Execute(command Command, packNames []string, opts Options) (*Result, error)
 			Str("pack", pack.Name).
 			Msg("Executing command for pack")
 
-		packResult, err := command.ExecuteForPack(pack, opts)
+		// Create pack-specific config by merging root config with pack config
+		packConfig, err := config.GetPackConfig(rootConfig.(*config.Config), pack.Path)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Str("pack", pack.Name).
+				Msg("Failed to load pack configuration")
+
+			result.FailedPacks++
+			result.PackResults = append(result.PackResults, PackResult{
+				Pack:    pack,
+				Success: false,
+				Error:   fmt.Errorf("failed to load pack configuration: %w", err),
+			})
+			continue
+		}
+
+		// Create pack-specific options with merged config
+		packOpts := opts
+		packOpts.RootConfig = packConfig
+
+		packResult, err := command.ExecuteForPack(pack, packOpts)
 		if err != nil {
 			logger.Error().
 				Err(err).

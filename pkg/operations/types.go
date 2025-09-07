@@ -89,7 +89,8 @@ type Handler interface {
 	// Core responsibility: transform file inputs to operations
 	// This is the heart of the simplification - handlers just declare
 	// what operations they need, not how to perform them.
-	ToOperations(files []FileInput) ([]Operation, error)
+	// The config parameter provides merged configuration for the current pack.
+	ToOperations(files []FileInput, config interface{}) ([]Operation, error)
 
 	// Status checking: handlers know how to check their own status
 	CheckStatus(file FileInput, checker StatusChecker) (HandlerStatus, error)

@@ -81,7 +81,7 @@ func TestShellHandler_OperationIntegration(t *testing.T) {
 	}
 
 	// Convert to operations
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 	assert.Len(t, ops, 3) // One operation per script
 
@@ -122,7 +122,7 @@ func TestShellHandler_ExecuteWithDataStore(t *testing.T) {
 		},
 	}
 
-	ops, err := handler.ToOperations(matches)
+	ops, err := handler.ToOperations(matches, nil)
 	require.NoError(t, err)
 
 	// Create mock store and set expectations

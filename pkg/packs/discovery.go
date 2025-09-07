@@ -22,6 +22,11 @@ import (
 // the centralized helper core.DiscoverAndSelectPacks which properly handles
 // pack discovery, loading, and selection in a consistent way.
 func GetPackCandidates(dotfilesRoot string) ([]string, error) {
+	return GetPackCandidatesWithConfig(dotfilesRoot, nil)
+}
+
+// GetPackCandidatesWithConfig returns all potential pack directories using provided config
+func GetPackCandidatesWithConfig(dotfilesRoot string, cfg *config.Config) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates")
 
@@ -59,7 +64,7 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 		}
 
 		// Skip ignored patterns
-		if shouldIgnore(name) {
+		if shouldIgnoreWithConfig(name, cfg) {
 			logger.Trace().Str("name", name).Msg("Skipping ignored pattern")
 			continue
 		}
@@ -81,8 +86,20 @@ func GetPackCandidates(dotfilesRoot string) ([]string, error) {
 
 // shouldIgnore checks if a name matches any ignore pattern
 func shouldIgnore(name string) bool {
-	cfg := config.Default()
-	return shouldIgnoreWithPatterns(name, cfg.Patterns.PackIgnore)
+	patterns := config.GetPatterns().PackIgnore
+	return shouldIgnoreWithPatterns(name, patterns)
+}
+
+// shouldIgnoreWithConfig checks if a name matches any ignore pattern using provided config
+func shouldIgnoreWithConfig(name string, cfg *config.Config) bool {
+	var patterns []string
+	if cfg != nil {
+		patterns = cfg.Patterns.PackIgnore
+	} else {
+		// Fallback to global config
+		patterns = config.GetPatterns().PackIgnore
+	}
+	return shouldIgnoreWithPatterns(name, patterns)
 }
 
 // shouldIgnoreWithPatterns is a testable version that accepts patterns as parameter
@@ -187,6 +204,7 @@ func loadPack(packPath string) (types.Pack, error) {
 				WithDetail("configPath", configPath)
 		}
 		pack.Config = packConfig
+		// TODO: Remove once fully migrated to dependency injection
 	}
 
 	logger.Trace().
@@ -259,6 +277,11 @@ func ValidatePack(packPath string) error {
 // the centralized helper core.DiscoverAndSelectPacks which properly handles
 // pack discovery, loading, and selection in a consistent way.
 func GetPackCandidatesFS(dotfilesRoot string, filesystem types.FS) ([]string, error) {
+	return GetPackCandidatesFSWithConfig(dotfilesRoot, filesystem, nil)
+}
+
+// GetPackCandidatesFSWithConfig returns all potential pack directories using provided config and filesystem
+func GetPackCandidatesFSWithConfig(dotfilesRoot string, filesystem types.FS, cfg *config.Config) ([]string, error) {
 	logger := logging.GetLogger("packs.discovery")
 	logger.Trace().Str("root", dotfilesRoot).Msg("Getting pack candidates with FS")
 
@@ -292,7 +315,7 @@ func GetPackCandidatesFS(dotfilesRoot string, filesystem types.FS) ([]string, er
 		}
 
 		// Skip ignored patterns
-		if shouldIgnore(name) {
+		if shouldIgnoreWithConfig(name, cfg) {
 			logger.Trace().Str("name", name).Msg("Skipping ignored pattern")
 			continue
 		}
@@ -396,6 +419,7 @@ func loadPackFS(packPath string, filesystem types.FS) (types.Pack, error) {
 				WithDetail("configPath", configPath)
 		}
 		pack.Config = packConfig
+		// TODO: Remove once fully migrated to dependency injection
 	}
 
 	logger.Trace().

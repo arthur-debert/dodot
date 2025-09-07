@@ -40,6 +40,7 @@ type Options struct {
 	Force      bool
 	FileSystem types.FS
 	DataStore  datastore.DataStore
+	Config     interface{} // Pack-specific config
 }
 
 // Result contains the execution results for a single pack
@@ -265,7 +266,7 @@ func executeMatchesInternal(matches []rules.RuleMatch, opts Options) (*context.E
 		fileInputs := transformMatches(handlerMatches)
 
 		// Convert file inputs to operations
-		ops, err := handler.ToOperations(fileInputs)
+		ops, err := handler.ToOperations(fileInputs, opts.Config)
 		if err != nil {
 			logger.Error().
 				Err(err).

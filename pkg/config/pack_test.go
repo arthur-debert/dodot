@@ -3,6 +3,9 @@
 
 package config_test
 
+// Note: Some tests in this file use package config directly for testing
+// unexported functions
+
 import (
 	"os"
 	"path/filepath"
@@ -155,6 +158,314 @@ func TestFileExists(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := config.FileExists(tt.path)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestPackConfig_IsForceHome(t *testing.T) {
+	tests := []struct {
+		name      string
+		forceHome []string
+		relPath   string
+		expected  bool
+	}{
+		{
+			name:      "exact_match",
+			forceHome: []string{"myconfig", "otherconfig"},
+			relPath:   "myconfig",
+			expected:  true,
+		},
+		{
+			name:      "no_match",
+			forceHome: []string{"myconfig", "otherconfig"},
+			relPath:   "someconfig",
+			expected:  false,
+		},
+		{
+			name:      "glob_match_star",
+			forceHome: []string{"*.conf", "*.ini"},
+			relPath:   "app.conf",
+			expected:  true,
+		},
+		{
+			name:      "glob_match_question",
+			forceHome: []string{"config?", "test?"},
+			relPath:   "config1",
+			expected:  true,
+		},
+		{
+			name:      "subdirectory_exact",
+			forceHome: []string{"configs/app.conf"},
+			relPath:   "configs/app.conf",
+			expected:  true,
+		},
+		{
+			name:      "subdirectory_glob",
+			forceHome: []string{"configs/*.conf"},
+			relPath:   "configs/app.conf",
+			expected:  true,
+		},
+		{
+			name:      "basename_match",
+			forceHome: []string{"*.conf"},
+			relPath:   "some/deep/path/app.conf",
+			expected:  true,
+		},
+		{
+			name:      "empty_force_home",
+			forceHome: []string{},
+			relPath:   "anything",
+			expected:  false,
+		},
+		{
+			name:      "multiple_patterns",
+			forceHome: []string{"*.conf", "special", "configs/*"},
+			relPath:   "configs/something",
+			expected:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &config.PackConfig{
+				Symlink: config.Symlink{
+					ForceHome: tt.forceHome,
+				},
+			}
+			result := pc.IsForceHome(tt.relPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestLoadPackConfig_WithSymlink(t *testing.T) {
+	// Create temp directory and config file
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[mappings]
+ignore = ["test-file.txt"]
+
+[symlink]
+force_home = ["*.conf", "special-config", "configs/*"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify mappings still work
+	assert.Equal(t, []string{"test-file.txt"}, cfg.Mappings.Ignore)
+
+	// Verify symlink configuration loaded
+	assert.Equal(t, []string{"*.conf", "special-config", "configs/*"}, cfg.Symlink.ForceHome)
+}
+
+func TestLoadPackConfig_NoSymlink(t *testing.T) {
+	// Create temp directory and config file without symlink section
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[mappings]
+ignore = ["test-file.txt"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify mappings work
+	assert.Equal(t, []string{"test-file.txt"}, cfg.Mappings.Ignore)
+
+	// Verify symlink.force_home is empty (default)
+	assert.Empty(t, cfg.Symlink.ForceHome)
+}
+
+func TestGetMergedProtectedPaths(t *testing.T) {
+	tests := []struct {
+		name            string
+		rootProtected   map[string]bool
+		packProtected   []string
+		expectedPaths   []string
+		unexpectedPaths []string
+	}{
+		{
+			name: "merge_root_and_pack_protected",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa":      true,
+				".aws/credentials": true,
+			},
+			packProtected: []string{
+				".myapp/secret.key",
+				".config/app/token",
+			},
+			expectedPaths: []string{
+				".ssh/id_rsa",
+				".aws/credentials",
+				".myapp/secret.key",
+				".config/app/token",
+			},
+		},
+		{
+			name:          "pack_only_protected",
+			rootProtected: map[string]bool{},
+			packProtected: []string{
+				"private.key",
+				"secrets/*",
+			},
+			expectedPaths: []string{
+				"private.key",
+				"secrets/*",
+			},
+		},
+		{
+			name: "root_only_protected",
+			rootProtected: map[string]bool{
+				".gnupg":               true,
+				".ssh/authorized_keys": true,
+			},
+			packProtected: []string{},
+			expectedPaths: []string{
+				".gnupg",
+				".ssh/authorized_keys",
+			},
+		},
+		{
+			name: "duplicate_entries",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa": true,
+			},
+			packProtected: []string{
+				".ssh/id_rsa", // Duplicate - should still only appear once
+			},
+			expectedPaths: []string{
+				".ssh/id_rsa",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &config.PackConfig{
+				Symlink: config.Symlink{
+					ProtectedPaths: tt.packProtected,
+				},
+			}
+
+			merged := pc.GetMergedProtectedPaths(tt.rootProtected)
+
+			// Check expected paths are in merged
+			for _, path := range tt.expectedPaths {
+				assert.True(t, merged[path], "Expected %s to be in merged protected paths", path)
+			}
+
+			// Check we have the right number of entries
+			assert.Equal(t, len(tt.expectedPaths), len(merged))
+		})
+	}
+}
+
+func TestLoadPackConfig_WithProtectedPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[mappings]
+ignore = ["test-file.txt"]
+
+[symlink]
+force_home = ["*.conf"]
+protected_paths = [".myapp/secret.key", "private/*", "credentials.json"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify all sections loaded correctly
+	assert.Equal(t, []string{"test-file.txt"}, cfg.Mappings.Ignore)
+	assert.Equal(t, []string{"*.conf"}, cfg.Symlink.ForceHome)
+	assert.Equal(t, []string{".myapp/secret.key", "private/*", "credentials.json"}, cfg.Symlink.ProtectedPaths)
+}
+
+func TestLoadPackConfig_WithPackIgnore(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[pack]
+ignore = ["*.log", "tmp/*", "cache/", "build"]
+
+[mappings]
+ignore = ["*.env"]
+
+[symlink]
+force_home = ["config.toml"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify all sections loaded correctly
+	assert.Equal(t, []string{"*.log", "tmp/*", "cache/", "build"}, cfg.Pack.Ignore)
+	assert.Equal(t, []string{"*.env"}, cfg.Mappings.Ignore)
+	assert.Equal(t, []string{"config.toml"}, cfg.Symlink.ForceHome)
+}
+
+func TestPackConfig_GenerateIgnoreRules(t *testing.T) {
+	tests := []struct {
+		name           string
+		ignorePatterns []string
+		expectedRules  []config.Rule
+	}{
+		{
+			name:           "single_pattern",
+			ignorePatterns: []string{"*.log"},
+			expectedRules: []config.Rule{
+				{Pattern: "!*.log", Handler: "exclude"},
+			},
+		},
+		{
+			name:           "multiple_patterns",
+			ignorePatterns: []string{"*.tmp", "cache/*", "node_modules"},
+			expectedRules: []config.Rule{
+				{Pattern: "!*.tmp", Handler: "exclude"},
+				{Pattern: "!cache/*", Handler: "exclude"},
+				{Pattern: "!node_modules", Handler: "exclude"},
+			},
+		},
+		{
+			name:           "empty_patterns",
+			ignorePatterns: []string{},
+			expectedRules:  []config.Rule{},
+		},
+		{
+			name:           "directory_patterns",
+			ignorePatterns: []string{"build/", "dist/"},
+			expectedRules: []config.Rule{
+				{Pattern: "!build/", Handler: "exclude"},
+				{Pattern: "!dist/", Handler: "exclude"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &config.PackConfig{
+				Pack: config.Pack{
+					Ignore: tt.ignorePatterns,
+				},
+			}
+
+			rules := pc.GenerateIgnoreRules()
+			assert.Equal(t, tt.expectedRules, rules)
 		})
 	}
 }

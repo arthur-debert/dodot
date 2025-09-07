@@ -28,6 +28,10 @@ type Options struct {
 	// FileSystem to use (optional, defaults to OS filesystem)
 	FileSystem types.FS
 
+	// RootConfig is the merged root configuration (app defaults + app config + root config)
+	// If nil, it will be loaded automatically from DotfilesRoot
+	RootConfig interface{}
+
 	// Additional command-specific options can be embedded
 	CommandOptions interface{}
 }

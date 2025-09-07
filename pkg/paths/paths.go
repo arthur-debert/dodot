@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/adrg/xdg"
-	"github.com/arthur-debert/dodot/pkg/config"
 	"github.com/arthur-debert/dodot/pkg/errors"
 	"github.com/arthur-debert/dodot/pkg/types"
 )
@@ -512,16 +511,6 @@ func stripDotPrefix(filename string) string {
 	return filename
 }
 
-// getFirstSegment extracts the first path segment from a relative path
-// Examples: "ssh/config" → "ssh", "gitconfig" → "gitconfig"
-func getFirstSegment(relPath string) string {
-	parts := strings.Split(relPath, string(filepath.Separator))
-	if len(parts) > 0 {
-		return parts[0]
-	}
-	return relPath
-}
-
 // hasExplicitOverride checks for _home/ or _xdg/ prefix
 // Returns true if an override is found, along with the override type ("home" or "xdg")
 // Release D: Layer 3 - Explicit Overrides
@@ -547,8 +536,13 @@ func stripOverridePrefix(relPath string) string {
 	return relPath
 }
 
+// getFirstSegment returns the first path segment
+
 // MapPackFileToSystem maps a file from a pack to its deployment location.
-// Release E: Implements Layer 4 - Configuration File (with Layer 3, 2, and 1 fallback)
+// Priority order (highest to lowest):
+// Layer 3: Explicit overrides (_home/ or _xdg/ prefix)
+// Layer 2: Force home configuration (pack overrides root)
+// Layer 1: Smart default mapping
 func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
 	homeDir, err := GetHomeDirectory()
@@ -556,9 +550,7 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		homeDir = "~" // Fallback for safety, though GetHomeDirectory is robust
 	}
 
-	// Layer 4: Custom mappings in pack config - removed as pack config now only supports handler mappings
-
-	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix)
+	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix) - HIGHEST PRIORITY
 	if hasOverride, overrideType := hasExplicitOverride(relPath); hasOverride {
 		strippedPath := stripOverridePrefix(relPath)
 
@@ -580,19 +572,8 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		}
 	}
 
-	// Layer 2: Check exception list based on first path segment
-	firstSegment := getFirstSegment(relPath)
-	cleanSegment := stripDotPrefix(firstSegment)
-
-	if config.GetLinkPaths().CoreUnixExceptions[cleanSegment] {
-		// Exception list items always go to $HOME
-		// Reconstruct the path with dot prefix on first segment
-		parts := strings.Split(relPath, string(filepath.Separator))
-		if len(parts) > 0 && !strings.HasPrefix(parts[0], ".") {
-			parts[0] = "." + parts[0]
-		}
-		return filepath.Join(homeDir, filepath.Join(parts...))
-	}
+	// Layer 2: No force_home check here - that's a config concern
+	// The caller should handle force_home logic if needed
 
 	// Layer 1: Smart default mapping
 	if isTopLevel(relPath) {
@@ -648,12 +629,10 @@ func (p *paths) MapSystemFileToPack(pack *types.Pack, systemPath string) string 
 			if len(parts) > 0 {
 				firstSegment := stripDotPrefix(parts[0])
 
-				// Layer 2: Check exception list
-				if config.GetLinkPaths().CoreUnixExceptions[firstSegment] {
-					// Exception list items are stored without dot prefix
-					parts[0] = firstSegment
-					return filepath.Join(pack.Path, filepath.Join(parts...))
-				}
+				// Exception list items are stored without dot prefix
+				// The caller should check force_home/exceptions if needed
+				parts[0] = firstSegment
+				return filepath.Join(pack.Path, filepath.Join(parts...))
 			}
 		}
 	}
