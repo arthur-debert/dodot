@@ -4,6 +4,7 @@
 package paths_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -18,7 +19,10 @@ import (
 func TestMapPackFileToSystem_PackLevelForceHome(t *testing.T) {
 	// Save original config and restore after test
 	originalConfig := config.Get()
-	defer config.Initialize(originalConfig)
+	defer func() {
+		config.Initialize(originalConfig)
+		config.ClearPackConfigs()
+	}()
 
 	// Initialize config with some root-level force_home exceptions
 	testConfig := &config.Config{
@@ -141,17 +145,25 @@ func TestMapPackFileToSystem_PackLevelForceHome(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create pack with force_home config
-			pack := &types.Pack{
-				Name: "testpack",
-				Path: "/test/pack",
-				Config: config.PackConfig{
+			// Use unique pack name for each test
+			packName := fmt.Sprintf("testpack-%d", i)
+
+			// Register pack config if it has force_home
+			if len(tt.packForceHome) > 0 {
+				packConfig := config.PackConfig{
 					Symlink: config.Symlink{
 						ForceHome: tt.packForceHome,
 					},
-				},
+				}
+				config.RegisterPackConfig(packName, packConfig)
+			}
+
+			// Create pack without config (config comes from registry)
+			pack := &types.Pack{
+				Name: packName,
+				Path: "/test/pack",
 			}
 
 			result := p.MapPackFileToSystem(pack, tt.relPath)
@@ -162,7 +174,7 @@ func TestMapPackFileToSystem_PackLevelForceHome(t *testing.T) {
 
 func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 	// This test verifies the layer priority:
-	// Layer 3 (explicit) > Layer 2 (pack force_home) > Layer 4 (root force_home) > Layer 1 (smart default)
+	// Layer 3 (explicit) > Layer 2 (force_home - pack overrides root) > Layer 1 (smart default)
 
 	homeDir, err := paths.GetHomeDirectory()
 	require.NoError(t, err)
@@ -181,13 +193,17 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 		},
 	}
 	config.Initialize(testConfig)
-	defer config.Initialize(config.Default())
+	defer func() {
+		config.Initialize(config.Default())
+		config.ClearPackConfigs()
+	}()
 
 	p, err := paths.New("")
 	require.NoError(t, err)
 
 	tests := []struct {
 		name          string
+		packName      string
 		packForceHome []string
 		relPath       string
 		expectedPath  string
@@ -195,6 +211,7 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 	}{
 		{
 			name:          "layer_2_pack_force_home",
+			packName:      "testpack1",
 			packForceHome: []string{"nvim/*"},
 			relPath:       "nvim/init.lua",
 			expectedPath:  filepath.Join(homeDir, ".nvim", "init.lua"),
@@ -202,6 +219,7 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 		},
 		{
 			name:          "layer_3_explicit_home",
+			packName:      "testpack2",
 			packForceHome: []string{},
 			relPath:       "_home/myconfig",
 			expectedPath:  filepath.Join(homeDir, ".myconfig"),
@@ -209,20 +227,23 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 		},
 		{
 			name:          "layer_3_explicit_xdg",
+			packName:      "testpack3",
 			packForceHome: []string{},
 			relPath:       "_xdg/app/config",
 			expectedPath:  filepath.Join(xdgConfigHome, "app", "config"),
 			activeLayer:   "Layer 3 - Explicit _xdg/",
 		},
 		{
-			name:          "layer_4_root_force_home",
+			name:          "layer_2_root_force_home",
+			packName:      "testpack4",
 			packForceHome: []string{},
 			relPath:       "vim/vimrc",
 			expectedPath:  filepath.Join(homeDir, ".vim", "vimrc"),
-			activeLayer:   "Layer 4 - Root force_home",
+			activeLayer:   "Layer 2 - Root force_home (no pack override)",
 		},
 		{
 			name:          "layer_1_smart_default_toplevel",
+			packName:      "testpack5",
 			packForceHome: []string{},
 			relPath:       "tmux.conf",
 			expectedPath:  filepath.Join(homeDir, ".tmux.conf"),
@@ -230,6 +251,7 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 		},
 		{
 			name:          "layer_1_smart_default_subdir",
+			packName:      "testpack6",
 			packForceHome: []string{},
 			relPath:       "app/config.toml",
 			expectedPath:  filepath.Join(xdgConfigHome, "app", "config.toml"),
@@ -239,14 +261,19 @@ func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pack := &types.Pack{
-				Name: "testpack",
-				Path: "/test/pack",
-				Config: config.PackConfig{
+			// Register pack config if it has force_home
+			if len(tt.packForceHome) > 0 {
+				packConfig := config.PackConfig{
 					Symlink: config.Symlink{
 						ForceHome: tt.packForceHome,
 					},
-				},
+				}
+				config.RegisterPackConfig(tt.packName, packConfig)
+			}
+
+			pack := &types.Pack{
+				Name: tt.packName,
+				Path: "/test/pack",
 			}
 
 			result := p.MapPackFileToSystem(pack, tt.relPath)
@@ -279,13 +306,17 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 		},
 	}
 	config.Initialize(testConfig)
-	defer config.Initialize(config.Default())
+	defer func() {
+		config.Initialize(config.Default())
+		config.ClearPackConfigs()
+	}()
 
 	p, err := paths.New("")
 	require.NoError(t, err)
 
 	tests := []struct {
 		name          string
+		packName      string
 		packForceHome []string
 		relPath       string
 		expectedPath  string
@@ -293,6 +324,7 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 	}{
 		{
 			name:          "myapp_without_pack_override_goes_to_xdg",
+			packName:      "myapp-pack",
 			packForceHome: []string{},
 			relPath:       "myapp/config.toml",
 			expectedPath:  filepath.Join(xdgConfigHome, "myapp", "config.toml"),
@@ -300,6 +332,7 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 		},
 		{
 			name:          "pack_forces_myapp_to_home",
+			packName:      "myapp-pack-forced",
 			packForceHome: []string{"myapp/*"},
 			relPath:       "myapp/config.toml",
 			expectedPath:  filepath.Join(homeDir, ".myapp", "config.toml"),
@@ -307,6 +340,7 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 		},
 		{
 			name:          "pack_can_force_specific_files",
+			packName:      "myapp-pack-specific",
 			packForceHome: []string{"myapp/special.conf"},
 			relPath:       "myapp/special.conf",
 			expectedPath:  filepath.Join(homeDir, ".myapp", "special.conf"),
@@ -314,6 +348,7 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 		},
 		{
 			name:          "other_myapp_files_still_go_to_xdg",
+			packName:      "myapp-pack-partial",
 			packForceHome: []string{"myapp/special.conf"},
 			relPath:       "myapp/regular.conf",
 			expectedPath:  filepath.Join(xdgConfigHome, "myapp", "regular.conf"),
@@ -321,6 +356,7 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 		},
 		{
 			name:          "root_exceptions_still_work",
+			packName:      "vim-pack",
 			packForceHome: []string{},
 			relPath:       "vim/vimrc",
 			expectedPath:  filepath.Join(homeDir, ".vim", "vimrc"),
@@ -330,14 +366,19 @@ func TestMapPackFileToSystem_PackOverridesRoot(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pack := &types.Pack{
-				Name: "testpack",
-				Path: "/test/pack",
-				Config: config.PackConfig{
+			// Register pack config if it has force_home
+			if len(tt.packForceHome) > 0 {
+				packConfig := config.PackConfig{
 					Symlink: config.Symlink{
 						ForceHome: tt.packForceHome,
 					},
-				},
+				}
+				config.RegisterPackConfig(tt.packName, packConfig)
+			}
+
+			pack := &types.Pack{
+				Name: tt.packName,
+				Path: "/test/pack",
 			}
 
 			result := p.MapPackFileToSystem(pack, tt.relPath)

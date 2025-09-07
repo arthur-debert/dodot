@@ -512,16 +512,6 @@ func stripDotPrefix(filename string) string {
 	return filename
 }
 
-// getFirstSegment extracts the first path segment from a relative path
-// Examples: "ssh/config" → "ssh", "gitconfig" → "gitconfig"
-func getFirstSegment(relPath string) string {
-	parts := strings.Split(relPath, string(filepath.Separator))
-	if len(parts) > 0 {
-		return parts[0]
-	}
-	return relPath
-}
-
 // hasExplicitOverride checks for _home/ or _xdg/ prefix
 // Returns true if an override is found, along with the override type ("home" or "xdg")
 // Release D: Layer 3 - Explicit Overrides
@@ -550,8 +540,7 @@ func stripOverridePrefix(relPath string) string {
 // MapPackFileToSystem maps a file from a pack to its deployment location.
 // Priority order (highest to lowest):
 // Layer 3: Explicit overrides (_home/ or _xdg/ prefix)
-// Layer 2: Pack-level force_home configuration
-// Layer 4: Root-level force_home exceptions
+// Layer 2: Force home configuration (pack overrides root)
 // Layer 1: Smart default mapping
 func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
@@ -582,23 +571,9 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		}
 	}
 
-	// Layer 2: Check pack-level force_home configuration
-	if pack.Config.IsForceHome(relPath) {
-		// Pack-level force_home items always go to $HOME
-		// Reconstruct the path with dot prefix on first segment
-		parts := strings.Split(relPath, string(filepath.Separator))
-		if len(parts) > 0 && !strings.HasPrefix(parts[0], ".") {
-			parts[0] = "." + parts[0]
-		}
-		return filepath.Join(homeDir, filepath.Join(parts...))
-	}
-
-	// Layer 4: Check exception list based on first path segment
-	firstSegment := getFirstSegment(relPath)
-	cleanSegment := stripDotPrefix(firstSegment)
-
-	if config.GetLinkPaths().CoreUnixExceptions[cleanSegment] {
-		// Exception list items always go to $HOME
+	// Layer 2: Check force_home configuration (pack overrides root)
+	if config.IsForceHome(pack.Name, relPath) {
+		// Force home items always go to $HOME
 		// Reconstruct the path with dot prefix on first segment
 		parts := strings.Split(relPath, string(filepath.Separator))
 		if len(parts) > 0 && !strings.HasPrefix(parts[0], ".") {

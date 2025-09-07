@@ -88,4 +88,105 @@ func TestPackRegistry(t *testing.T) {
 		mergedNoConfig := config.GetMergedProtectedPaths("noconfig")
 		assert.Equal(t, rootConfig.Security.ProtectedPaths, mergedNoConfig)
 	})
+
+	t.Run("get_force_home_patterns", func(t *testing.T) {
+		// Clear registry
+		config.ClearPackConfigs()
+
+		// Save original config
+		originalConfig := config.Get()
+		defer config.Initialize(originalConfig)
+
+		// Set up root config with CoreUnixExceptions
+		rootConfig := &config.Config{
+			LinkPaths: config.LinkPaths{
+				CoreUnixExceptions: map[string]bool{
+					"vim":  true,
+					"bash": true,
+				},
+			},
+		}
+		config.Initialize(rootConfig)
+
+		t.Run("pack_without_force_home_uses_root", func(t *testing.T) {
+			// Register pack without force_home
+			packConfig := config.PackConfig{}
+			config.RegisterPackConfig("mypack", packConfig)
+
+			patterns := config.GetForceHomePatterns("mypack")
+			// Should have patterns for vim and bash with wildcards
+			assert.Contains(t, patterns, "vim")
+			assert.Contains(t, patterns, "vim/*")
+			assert.Contains(t, patterns, "bash")
+			assert.Contains(t, patterns, "bash/*")
+		})
+
+		t.Run("pack_with_force_home_extends_root", func(t *testing.T) {
+			// Register pack with its own force_home
+			packConfig := config.PackConfig{
+				Symlink: config.Symlink{
+					ForceHome: []string{"myapp/*", "config.toml"},
+				},
+			}
+			config.RegisterPackConfig("otherpack", packConfig)
+
+			patterns := config.GetForceHomePatterns("otherpack")
+			// Should have both root and pack patterns
+			assert.Contains(t, patterns, "vim")
+			assert.Contains(t, patterns, "vim/*")
+			assert.Contains(t, patterns, "bash")
+			assert.Contains(t, patterns, "bash/*")
+			assert.Contains(t, patterns, "myapp/*")
+			assert.Contains(t, patterns, "config.toml")
+		})
+	})
+
+	t.Run("is_force_home", func(t *testing.T) {
+		// Clear registry
+		config.ClearPackConfigs()
+
+		// Save original config
+		originalConfig := config.Get()
+		defer config.Initialize(originalConfig)
+
+		// Set up root config
+		rootConfig := &config.Config{
+			LinkPaths: config.LinkPaths{
+				CoreUnixExceptions: map[string]bool{
+					"vim": true,
+				},
+			},
+		}
+		config.Initialize(rootConfig)
+
+		// Register pack with force_home
+		packConfig := config.PackConfig{
+			Symlink: config.Symlink{
+				ForceHome: []string{"*.conf", "myapp/*"},
+			},
+		}
+		config.RegisterPackConfig("mypack", packConfig)
+
+		tests := []struct {
+			packName string
+			relPath  string
+			expected bool
+		}{
+			// Pack with its own force_home
+			{"mypack", "app.conf", true},        // matches *.conf
+			{"mypack", "myapp/config", true},    // matches myapp/*
+			{"mypack", "other/file.txt", false}, // no match
+			{"mypack", "vim/vimrc", true},       // root exceptions still apply even when pack has force_home
+
+			// Pack without force_home falls back to root
+			{"nopack", "vim/vimrc", true},        // matches root exception
+			{"nopack", "vim/colors/theme", true}, // matches root exception with wildcard
+			{"nopack", "other/file", false},      // no match
+		}
+
+		for _, tt := range tests {
+			result := config.IsForceHome(tt.packName, tt.relPath)
+			assert.Equal(t, tt.expected, result, "IsForceHome(%q, %q) should be %v", tt.packName, tt.relPath, tt.expected)
+		}
+	})
 }
