@@ -16,17 +16,12 @@ import (
 // dotfilesRoot: path to dotfiles root directory (required)
 // Returns the merged configuration
 func GetRootConfig(dotfilesRoot string) (*Config, error) {
-	k := koanf.New(".")
+	// Start with app defaults
+	mergedConfig := getAppDefaults()
 
-	// 1. Load app defaults (embedded defaults.toml)
-	appDefaults := getAppDefaults()
-	if err := k.Load(confmap.Provider(appDefaults, "."), nil); err != nil {
-		return nil, fmt.Errorf("failed to load app defaults: %w", err)
-	}
-
-	// 2. Load app config (embedded dodot.toml)
+	// Merge app config (embedded dodot.toml)
 	appConfigMap := getAppConfig()
-	mergeMaps(k.All(), appConfigMap)
+	mergeMaps(mergedConfig, appConfigMap)
 
 	// 3. Load root config if it exists
 	// Try both .dodot.toml and dodot.toml
@@ -46,7 +41,13 @@ func GetRootConfig(dotfilesRoot string) (*Config, error) {
 		}
 		// Transform user format to internal format
 		userConfig := transformUserToInternal(tempK.All())
-		mergeMaps(k.All(), userConfig)
+		mergeMaps(mergedConfig, userConfig)
+	}
+
+	// Load the fully merged config into koanf
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(mergedConfig, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to load merged config: %w", err)
 	}
 
 	// 4. Unmarshal to Config struct
@@ -80,15 +81,8 @@ func GetRootConfig(dotfilesRoot string) (*Config, error) {
 // packPath: path to the pack directory
 // Returns the merged configuration for the pack
 func GetPackConfig(rootConfig *Config, packPath string) (*Config, error) {
-	// Start with a copy of root config
-	k := koanf.New(".")
-
 	// Convert root config to map for merging
-	rootMap := configToMap(rootConfig)
-
-	if err := k.Load(confmap.Provider(rootMap, "."), nil); err != nil {
-		return nil, fmt.Errorf("failed to load root config map: %w", err)
-	}
+	mergedConfig := configToMap(rootConfig)
 
 	// Load pack config if it exists
 	// Try both .dodot.toml and dodot.toml
@@ -108,7 +102,13 @@ func GetPackConfig(rootConfig *Config, packPath string) (*Config, error) {
 		}
 		// Transform user format to internal format
 		packConfig := transformUserToInternal(tempK.All())
-		mergeMaps(k.All(), packConfig)
+		mergeMaps(mergedConfig, packConfig)
+	}
+
+	// Load the fully merged config into koanf
+	k := koanf.New(".")
+	if err := k.Load(confmap.Provider(mergedConfig, "."), nil); err != nil {
+		return nil, fmt.Errorf("failed to load merged config: %w", err)
 	}
 
 	// Unmarshal to Config struct
@@ -143,7 +143,8 @@ func getAppDefaults() map[string]interface{} {
 	if err := k.Load(&rawBytesProvider{bytes: defaultConfig}, toml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
-	return k.All()
+	// Unflatten the map to ensure proper nesting for merging
+	return unflattenMap(k.All())
 }
 
 // getAppConfig returns the app config from embedded dodot.toml

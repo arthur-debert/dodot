@@ -39,7 +39,7 @@ func Execute(command Command, packNames []string, opts Options) (*Result, error)
 	}
 
 	// Step 1: Discover and select packs
-	packs, err := discovery.DiscoverAndSelectPacksFS(opts.DotfilesRoot, packNames, fs)
+	packs, err := discovery.DiscoverAndSelectPacksFSWithConfig(opts.DotfilesRoot, packNames, fs, rootConfig)
 	if err != nil {
 		logger.Error().Err(err).Msg("Failed to discover packs")
 		return nil, fmt.Errorf("failed to discover packs: %w", err)

@@ -178,6 +178,17 @@ func mergeMaps(dest, src map[string]interface{}) {
 			}
 		}
 
+		// Handle map[string]bool specifically (for force_home, protected_paths)
+		if srcBoolMap, srcOk := srcVal.(map[string]bool); srcOk {
+			if destBoolMap, destOk := destVal.(map[string]bool); destOk {
+				// Merge bool maps
+				for k, v := range srcBoolMap {
+					destBoolMap[k] = v
+				}
+				continue
+			}
+		}
+
 		// Append slices - handle various type combinations
 		if isSlice(srcVal) && isSlice(destVal) {
 			dest[key] = appendSlices(destVal, srcVal)
@@ -230,7 +241,8 @@ func getSystemDefaults() map[string]interface{} {
 	if err := k.Load(&rawBytesProvider{bytes: defaultConfig}, toml.Parser()); err != nil {
 		return map[string]interface{}{}
 	}
-	return k.All()
+	// Unflatten the map to ensure proper nesting for merging
+	return unflattenMap(k.All())
 }
 
 func parseAppConfig() map[string]interface{} {

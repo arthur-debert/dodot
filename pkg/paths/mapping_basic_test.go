@@ -64,24 +64,24 @@ func TestMapPackFileToSystem_BasicBehavior(t *testing.T) {
 			description:  ".config/ prefix should be stripped",
 		},
 
-		// Layer 2: Hardcoded force_home (with nil config)
+		// Layer 2: No force_home in paths package anymore
 		{
-			name:         "ssh_forced_to_home",
+			name:         "ssh_goes_to_xdg",
 			relPath:      "ssh/config",
-			expectedPath: filepath.Join(homeDir, ".ssh", "config"),
-			description:  "ssh files should be forced to $HOME",
+			expectedPath: filepath.Join(xdgConfigHome, "ssh", "config"),
+			description:  "ssh files now go to XDG (force_home is a config concern)",
 		},
 		{
-			name:         "vim_forced_to_home",
+			name:         "vim_goes_to_xdg",
 			relPath:      "vim/vimrc",
-			expectedPath: filepath.Join(homeDir, ".vim", "vimrc"),
-			description:  "vim files should be forced to $HOME",
+			expectedPath: filepath.Join(xdgConfigHome, "vim", "vimrc"),
+			description:  "vim files now go to XDG (force_home is a config concern)",
 		},
 		{
-			name:         "bashrc_forced_to_home",
+			name:         "bashrc_still_goes_to_home",
 			relPath:      "bashrc",
 			expectedPath: filepath.Join(homeDir, ".bashrc"),
-			description:  "bashrc should be forced to $HOME",
+			description:  "top-level bashrc still goes to $HOME by default",
 		},
 
 		// Layer 3: Explicit overrides (highest priority)
@@ -112,7 +112,7 @@ func TestMapPackFileToSystem_BasicBehavior(t *testing.T) {
 				Path: "/test/pack",
 			}
 
-			result := p.MapPackFileToSystem(pack, tt.relPath, nil)
+			result := p.MapPackFileToSystem(pack, tt.relPath)
 			assert.Equal(t, tt.expectedPath, result, tt.description)
 		})
 	}
@@ -155,8 +155,8 @@ func TestMapSystemFileToPack_BasicBehavior(t *testing.T) {
 		{
 			name:         "xdg_config_file",
 			systemPath:   filepath.Join(xdgConfigHome, "nvim", "init.lua"),
-			expectedPath: "/test/pack/nvim/init.lua",
-			description:  "XDG config files should preserve structure",
+			expectedPath: "/test/pack/config/nvim/init.lua",
+			description:  "XDG config files preserve structure (config dir without dot)",
 		},
 
 		// Hardcoded exceptions (still stored without dot)
@@ -181,7 +181,7 @@ func TestMapSystemFileToPack_BasicBehavior(t *testing.T) {
 				Path: "/test/pack",
 			}
 
-			result := p.MapSystemFileToPack(pack, tt.systemPath, nil)
+			result := p.MapSystemFileToPack(pack, tt.systemPath)
 			assert.Equal(t, tt.expectedPath, result, tt.description)
 		})
 	}
