@@ -35,15 +35,15 @@ func (h *Handler) ToOperations(files []operations.FileInput) ([]operations.Opera
 	// Get target directory from first file's options or use home
 	targetDir := h.getTargetDir(files)
 
-	// Get protected paths configuration
-	protectedPaths := config.GetSecurity().ProtectedPaths
-
 	// Track targets to detect conflicts early
 	targetMap := make(map[string]string)
 
 	for _, file := range files {
+		// Get merged protected paths for this pack (root + pack-level)
+		mergedProtectedPaths := config.GetMergedProtectedPaths(file.PackName)
+
 		// Check if this file path is protected
-		if isProtected(file.RelativePath, protectedPaths) {
+		if isProtected(file.RelativePath, mergedProtectedPaths) {
 			return nil, fmt.Errorf("cannot symlink protected file: %s", file.RelativePath)
 		}
 

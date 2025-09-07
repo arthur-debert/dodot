@@ -18,6 +18,8 @@ type PackConfig struct {
 type Symlink struct {
 	// ForceHome lists files that should always deploy to $HOME
 	ForceHome []string `toml:"force_home"`
+	// ProtectedPaths lists additional paths that should not be symlinked
+	ProtectedPaths []string `toml:"protected_paths"`
 }
 
 // LoadPackConfig reads and parses a pack's .dodot.toml configuration file
@@ -64,4 +66,20 @@ func (pc *PackConfig) IsForceHome(relPath string) bool {
 		}
 	}
 	return false
+}
+
+// GetMergedProtectedPaths returns a merged map of protected paths from both root and pack configs
+func (pc *PackConfig) GetMergedProtectedPaths(rootProtected map[string]bool) map[string]bool {
+	// Start with a copy of root protected paths
+	merged := make(map[string]bool)
+	for path := range rootProtected {
+		merged[path] = true
+	}
+
+	// Add pack-level protected paths
+	for _, path := range pc.Symlink.ProtectedPaths {
+		merged[path] = true
+	}
+
+	return merged
 }

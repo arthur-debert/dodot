@@ -284,3 +284,111 @@ ignore = ["test-file.txt"]
 	// Verify symlink.force_home is empty (default)
 	assert.Empty(t, cfg.Symlink.ForceHome)
 }
+
+func TestGetMergedProtectedPaths(t *testing.T) {
+	tests := []struct {
+		name            string
+		rootProtected   map[string]bool
+		packProtected   []string
+		expectedPaths   []string
+		unexpectedPaths []string
+	}{
+		{
+			name: "merge_root_and_pack_protected",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa":      true,
+				".aws/credentials": true,
+			},
+			packProtected: []string{
+				".myapp/secret.key",
+				".config/app/token",
+			},
+			expectedPaths: []string{
+				".ssh/id_rsa",
+				".aws/credentials",
+				".myapp/secret.key",
+				".config/app/token",
+			},
+		},
+		{
+			name:          "pack_only_protected",
+			rootProtected: map[string]bool{},
+			packProtected: []string{
+				"private.key",
+				"secrets/*",
+			},
+			expectedPaths: []string{
+				"private.key",
+				"secrets/*",
+			},
+		},
+		{
+			name: "root_only_protected",
+			rootProtected: map[string]bool{
+				".gnupg":               true,
+				".ssh/authorized_keys": true,
+			},
+			packProtected: []string{},
+			expectedPaths: []string{
+				".gnupg",
+				".ssh/authorized_keys",
+			},
+		},
+		{
+			name: "duplicate_entries",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa": true,
+			},
+			packProtected: []string{
+				".ssh/id_rsa", // Duplicate - should still only appear once
+			},
+			expectedPaths: []string{
+				".ssh/id_rsa",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &config.PackConfig{
+				Symlink: config.Symlink{
+					ProtectedPaths: tt.packProtected,
+				},
+			}
+
+			merged := pc.GetMergedProtectedPaths(tt.rootProtected)
+
+			// Check expected paths are in merged
+			for _, path := range tt.expectedPaths {
+				assert.True(t, merged[path], "Expected %s to be in merged protected paths", path)
+			}
+
+			// Check we have the right number of entries
+			assert.Equal(t, len(tt.expectedPaths), len(merged))
+		})
+	}
+}
+
+func TestLoadPackConfig_WithProtectedPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[mappings]
+ignore = ["test-file.txt"]
+
+[symlink]
+force_home = ["*.conf"]
+protected_paths = [".myapp/secret.key", "private/*", "credentials.json"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify all sections loaded correctly
+	assert.Equal(t, []string{"test-file.txt"}, cfg.Mappings.Ignore)
+	assert.Equal(t, []string{"*.conf"}, cfg.Symlink.ForceHome)
+	assert.Equal(t, []string{".myapp/secret.key", "private/*", "credentials.json"}, cfg.Symlink.ProtectedPaths)
+}

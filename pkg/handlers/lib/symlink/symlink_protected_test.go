@@ -14,6 +14,10 @@ func TestHandler_ToOperations_ProtectedPaths(t *testing.T) {
 	originalConfig := config.Get()
 	defer config.Initialize(originalConfig)
 
+	// Clear pack configs
+	config.ClearPackConfigs()
+	defer config.ClearPackConfigs()
+
 	tests := []struct {
 		name           string
 		protectedPaths map[string]bool
@@ -153,6 +157,139 @@ func TestHandler_ToOperations_ProtectedPaths(t *testing.T) {
 				require.NoError(t, err)
 				assert.NotNil(t, ops)
 				// Should create 2 operations per file (data link + user link)
+				assert.Len(t, ops, len(tt.files)*2)
+			}
+		})
+	}
+}
+
+func TestHandler_ToOperations_PackLevelProtectedPaths(t *testing.T) {
+	// Save original config and restore after test
+	originalConfig := config.Get()
+	defer config.Initialize(originalConfig)
+
+	// Clear pack configs
+	config.ClearPackConfigs()
+	defer config.ClearPackConfigs()
+
+	tests := []struct {
+		name          string
+		rootProtected map[string]bool
+		packProtected []string
+		files         []operations.FileInput
+		expectError   bool
+		errorContains string
+	}{
+		{
+			name: "pack_protected_path_blocked",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa": true,
+			},
+			packProtected: []string{".myapp/secret.key", "private/*"},
+			files: []operations.FileInput{
+				{
+					PackName:     "mypack",
+					RelativePath: ".myapp/secret.key",
+					SourcePath:   "/pack/myapp/.myapp/secret.key",
+				},
+			},
+			expectError:   true,
+			errorContains: "cannot symlink protected file: .myapp/secret.key",
+		},
+		{
+			name: "root_and_pack_both_work",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa": true,
+			},
+			packProtected: []string{".myapp/secret.key"},
+			files: []operations.FileInput{
+				{
+					PackName:     "mypack",
+					RelativePath: ".ssh/id_rsa", // Root protected
+					SourcePath:   "/pack/mypack/.ssh/id_rsa",
+				},
+			},
+			expectError:   true,
+			errorContains: "cannot symlink protected file: .ssh/id_rsa",
+		},
+		{
+			name: "non_protected_allowed_with_pack_config",
+			rootProtected: map[string]bool{
+				".ssh/id_rsa": true,
+			},
+			packProtected: []string{".myapp/secret.key"},
+			files: []operations.FileInput{
+				{
+					PackName:     "mypack",
+					RelativePath: "config.toml",
+					SourcePath:   "/pack/mypack/config.toml",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "different_pack_different_rules",
+			rootProtected: map[string]bool{
+				".gnupg": true,
+			},
+			packProtected: []string{}, // Pack1 has no extra protected paths
+			files: []operations.FileInput{
+				{
+					PackName:     "pack1",
+					RelativePath: ".myapp/secret.key", // Not protected for pack1
+					SourcePath:   "/pack/pack1/.myapp/secret.key",
+				},
+				{
+					PackName:     "pack2",
+					RelativePath: ".myapp/secret.key", // Protected for pack2
+					SourcePath:   "/pack/pack2/.myapp/secret.key",
+				},
+			},
+			expectError:   true,
+			errorContains: "cannot symlink protected file: .myapp/secret.key",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up root config
+			testConfig := &config.Config{
+				Security: config.Security{
+					ProtectedPaths: tt.rootProtected,
+				},
+			}
+			config.Initialize(testConfig)
+
+			// Register pack configs
+			if tt.name == "different_pack_different_rules" {
+				// Pack1 has no extra protected paths
+				config.RegisterPackConfig("pack1", config.PackConfig{})
+				// Pack2 has protected paths
+				config.RegisterPackConfig("pack2", config.PackConfig{
+					Symlink: config.Symlink{
+						ProtectedPaths: []string{".myapp/secret.key"},
+					},
+				})
+			} else {
+				// Register config for mypack
+				config.RegisterPackConfig("mypack", config.PackConfig{
+					Symlink: config.Symlink{
+						ProtectedPaths: tt.packProtected,
+					},
+				})
+			}
+
+			handler := NewHandler()
+			ops, err := handler.ToOperations(tt.files)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+				assert.Nil(t, ops)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, ops)
+				// Should create 2 operations per file
 				assert.Len(t, ops, len(tt.files)*2)
 			}
 		})
