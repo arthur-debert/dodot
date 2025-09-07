@@ -3,6 +3,9 @@
 
 package config_test
 
+// Note: Some tests in this file use package config directly for testing
+// unexported functions
+
 import (
 	"os"
 	"path/filepath"
@@ -157,4 +160,127 @@ func TestFileExists(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestPackConfig_IsForceHome(t *testing.T) {
+	tests := []struct {
+		name      string
+		forceHome []string
+		relPath   string
+		expected  bool
+	}{
+		{
+			name:      "exact_match",
+			forceHome: []string{"myconfig", "otherconfig"},
+			relPath:   "myconfig",
+			expected:  true,
+		},
+		{
+			name:      "no_match",
+			forceHome: []string{"myconfig", "otherconfig"},
+			relPath:   "someconfig",
+			expected:  false,
+		},
+		{
+			name:      "glob_match_star",
+			forceHome: []string{"*.conf", "*.ini"},
+			relPath:   "app.conf",
+			expected:  true,
+		},
+		{
+			name:      "glob_match_question",
+			forceHome: []string{"config?", "test?"},
+			relPath:   "config1",
+			expected:  true,
+		},
+		{
+			name:      "subdirectory_exact",
+			forceHome: []string{"configs/app.conf"},
+			relPath:   "configs/app.conf",
+			expected:  true,
+		},
+		{
+			name:      "subdirectory_glob",
+			forceHome: []string{"configs/*.conf"},
+			relPath:   "configs/app.conf",
+			expected:  true,
+		},
+		{
+			name:      "basename_match",
+			forceHome: []string{"*.conf"},
+			relPath:   "some/deep/path/app.conf",
+			expected:  true,
+		},
+		{
+			name:      "empty_force_home",
+			forceHome: []string{},
+			relPath:   "anything",
+			expected:  false,
+		},
+		{
+			name:      "multiple_patterns",
+			forceHome: []string{"*.conf", "special", "configs/*"},
+			relPath:   "configs/something",
+			expected:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pc := &config.PackConfig{
+				Symlink: config.Symlink{
+					ForceHome: tt.forceHome,
+				},
+			}
+			result := pc.IsForceHome(tt.relPath)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestLoadPackConfig_WithSymlink(t *testing.T) {
+	// Create temp directory and config file
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[mappings]
+ignore = ["test-file.txt"]
+
+[symlink]
+force_home = ["*.conf", "special-config", "configs/*"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify mappings still work
+	assert.Equal(t, []string{"test-file.txt"}, cfg.Mappings.Ignore)
+
+	// Verify symlink configuration loaded
+	assert.Equal(t, []string{"*.conf", "special-config", "configs/*"}, cfg.Symlink.ForceHome)
+}
+
+func TestLoadPackConfig_NoSymlink(t *testing.T) {
+	// Create temp directory and config file without symlink section
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, ".dodot.toml")
+
+	configContent := `[mappings]
+ignore = ["test-file.txt"]
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Load the config
+	cfg, err := config.LoadPackConfig(configPath)
+	require.NoError(t, err)
+
+	// Verify mappings work
+	assert.Equal(t, []string{"test-file.txt"}, cfg.Mappings.Ignore)
+
+	// Verify symlink.force_home is empty (default)
+	assert.Empty(t, cfg.Symlink.ForceHome)
 }

@@ -548,7 +548,11 @@ func stripOverridePrefix(relPath string) string {
 }
 
 // MapPackFileToSystem maps a file from a pack to its deployment location.
-// Release E: Implements Layer 4 - Configuration File (with Layer 3, 2, and 1 fallback)
+// Priority order (highest to lowest):
+// Layer 3: Explicit overrides (_home/ or _xdg/ prefix)
+// Layer 4: Pack-level force_home configuration
+// Layer 2: Root-level force_home exceptions
+// Layer 1: Smart default mapping
 func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 	// Get home directory first (used by multiple layers)
 	homeDir, err := GetHomeDirectory()
@@ -556,9 +560,7 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 		homeDir = "~" // Fallback for safety, though GetHomeDirectory is robust
 	}
 
-	// Layer 4: Custom mappings in pack config - removed as pack config now only supports handler mappings
-
-	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix)
+	// Layer 3: Check for explicit overrides (_home/ or _xdg/ prefix) - HIGHEST PRIORITY
 	if hasOverride, overrideType := hasExplicitOverride(relPath); hasOverride {
 		strippedPath := stripOverridePrefix(relPath)
 
@@ -578,6 +580,17 @@ func (p *paths) MapPackFileToSystem(pack *types.Pack, relPath string) string {
 			}
 			return filepath.Join(xdgConfigHome, strippedPath)
 		}
+	}
+
+	// Layer 4: Check pack-level force_home configuration
+	if pack.Config.IsForceHome(relPath) {
+		// Pack-level force_home items always go to $HOME
+		// Reconstruct the path with dot prefix on first segment
+		parts := strings.Split(relPath, string(filepath.Separator))
+		if len(parts) > 0 && !strings.HasPrefix(parts[0], ".") {
+			parts[0] = "." + parts[0]
+		}
+		return filepath.Join(homeDir, filepath.Join(parts...))
 	}
 
 	// Layer 2: Check exception list based on first path segment

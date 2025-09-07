@@ -1,0 +1,256 @@
+// Test Type: Business Logic Test
+// Description: Tests for pack file mapping with force_home support
+
+package paths_test
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/arthur-debert/dodot/pkg/config"
+	"github.com/arthur-debert/dodot/pkg/paths"
+	"github.com/arthur-debert/dodot/pkg/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestMapPackFileToSystem_PackLevelForceHome(t *testing.T) {
+	// Save original config and restore after test
+	originalConfig := config.Get()
+	defer config.Initialize(originalConfig)
+
+	// Initialize config with some root-level force_home exceptions
+	testConfig := &config.Config{
+		LinkPaths: config.LinkPaths{
+			CoreUnixExceptions: map[string]bool{
+				"ssh":    true,
+				"bashrc": true,
+			},
+		},
+	}
+	config.Initialize(testConfig)
+
+	// Get home directory for tests
+	homeDir, err := paths.GetHomeDirectory()
+	require.NoError(t, err)
+
+	// Set XDG_CONFIG_HOME for predictable tests
+	oldXDG := os.Getenv("XDG_CONFIG_HOME")
+	xdgConfigHome := filepath.Join(homeDir, ".config")
+	err = os.Setenv("XDG_CONFIG_HOME", xdgConfigHome)
+	require.NoError(t, err)
+	defer func() {
+		_ = os.Setenv("XDG_CONFIG_HOME", oldXDG)
+	}()
+
+	// Create paths instance
+	p, err := paths.New("")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name          string
+		packForceHome []string
+		relPath       string
+		expectedPath  string
+		description   string
+	}{
+		// Pack-level force_home tests
+		{
+			name:          "pack_force_home_exact_match",
+			packForceHome: []string{"myconfig", "special.conf"},
+			relPath:       "myconfig",
+			expectedPath:  filepath.Join(homeDir, ".myconfig"),
+			description:   "Pack force_home should place file in $HOME with dot prefix",
+		},
+		{
+			name:          "pack_force_home_glob_match",
+			packForceHome: []string{"*.conf"},
+			relPath:       "app.conf",
+			expectedPath:  filepath.Join(homeDir, ".app.conf"),
+			description:   "Pack force_home glob should match and place in $HOME",
+		},
+		{
+			name:          "pack_force_home_subdirectory",
+			packForceHome: []string{"configs/*"},
+			relPath:       "configs/app.conf",
+			expectedPath:  filepath.Join(homeDir, ".configs", "app.conf"),
+			description:   "Pack force_home should work for subdirectory files",
+		},
+		{
+			name:          "pack_force_home_overrides_smart_default",
+			packForceHome: []string{"nvim/*"},
+			relPath:       "nvim/init.lua",
+			expectedPath:  filepath.Join(homeDir, ".nvim", "init.lua"),
+			description:   "Pack force_home should override smart default (XDG)",
+		},
+		{
+			name:          "no_pack_force_home_uses_smart_default",
+			packForceHome: []string{},
+			relPath:       "nvim/init.lua",
+			expectedPath:  filepath.Join(xdgConfigHome, "nvim", "init.lua"),
+			description:   "Without pack force_home, should use smart default",
+		},
+
+		// Interaction with root-level force_home
+		{
+			name:          "root_force_home_still_works",
+			packForceHome: []string{"myconfig"},
+			relPath:       "ssh/config",
+			expectedPath:  filepath.Join(homeDir, ".ssh", "config"),
+			description:   "Root-level force_home should still work",
+		},
+		{
+			name:          "pack_overrides_for_same_file",
+			packForceHome: []string{"bashrc"},
+			relPath:       "bashrc",
+			expectedPath:  filepath.Join(homeDir, ".bashrc"),
+			description:   "Both pack and root have same file - should still work",
+		},
+
+		// Explicit overrides still take precedence
+		{
+			name:          "explicit_home_override_beats_pack_force",
+			packForceHome: []string{"*"},
+			relPath:       "_home/myconfig",
+			expectedPath:  filepath.Join(homeDir, ".myconfig"),
+			description:   "Explicit _home/ should take precedence over pack force_home",
+		},
+		{
+			name:          "explicit_xdg_override_beats_pack_force",
+			packForceHome: []string{"*"},
+			relPath:       "_xdg/app/config",
+			expectedPath:  filepath.Join(xdgConfigHome, "app", "config"),
+			description:   "Explicit _xdg/ should take precedence over pack force_home",
+		},
+
+		// Edge cases
+		{
+			name:          "empty_force_home_patterns",
+			packForceHome: []string{},
+			relPath:       "topfile",
+			expectedPath:  filepath.Join(homeDir, ".topfile"),
+			description:   "Top-level files should still go to $HOME by default",
+		},
+		{
+			name:          "multiple_patterns_match",
+			packForceHome: []string{"*.conf", "configs/*", "special"},
+			relPath:       "configs/app.conf",
+			expectedPath:  filepath.Join(homeDir, ".configs", "app.conf"),
+			description:   "Multiple patterns can match same file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create pack with force_home config
+			pack := &types.Pack{
+				Name: "testpack",
+				Path: "/test/pack",
+				Config: config.PackConfig{
+					Symlink: config.Symlink{
+						ForceHome: tt.packForceHome,
+					},
+				},
+			}
+
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expectedPath, result, tt.description)
+		})
+	}
+}
+
+func TestMapPackFileToSystem_LayerPriority(t *testing.T) {
+	// This test verifies the layer priority:
+	// Layer 4 (pack force_home) > Layer 3 (explicit) > Layer 2 (root force_home) > Layer 1 (smart default)
+
+	homeDir, err := paths.GetHomeDirectory()
+	require.NoError(t, err)
+
+	// Set XDG_CONFIG_HOME
+	xdgConfigHome := filepath.Join(homeDir, ".config")
+	err = os.Setenv("XDG_CONFIG_HOME", xdgConfigHome)
+	require.NoError(t, err)
+
+	// Initialize with root-level force_home
+	testConfig := &config.Config{
+		LinkPaths: config.LinkPaths{
+			CoreUnixExceptions: map[string]bool{
+				"vim": true,
+			},
+		},
+	}
+	config.Initialize(testConfig)
+	defer config.Initialize(config.Default())
+
+	p, err := paths.New("")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name          string
+		packForceHome []string
+		relPath       string
+		expectedPath  string
+		activeLayer   string
+	}{
+		{
+			name:          "layer_4_pack_force_home",
+			packForceHome: []string{"nvim/*"},
+			relPath:       "nvim/init.lua",
+			expectedPath:  filepath.Join(homeDir, ".nvim", "init.lua"),
+			activeLayer:   "Layer 4 - Pack force_home",
+		},
+		{
+			name:          "layer_3_explicit_home",
+			packForceHome: []string{},
+			relPath:       "_home/myconfig",
+			expectedPath:  filepath.Join(homeDir, ".myconfig"),
+			activeLayer:   "Layer 3 - Explicit _home/",
+		},
+		{
+			name:          "layer_3_explicit_xdg",
+			packForceHome: []string{},
+			relPath:       "_xdg/app/config",
+			expectedPath:  filepath.Join(xdgConfigHome, "app", "config"),
+			activeLayer:   "Layer 3 - Explicit _xdg/",
+		},
+		{
+			name:          "layer_2_root_force_home",
+			packForceHome: []string{},
+			relPath:       "vim/vimrc",
+			expectedPath:  filepath.Join(homeDir, ".vim", "vimrc"),
+			activeLayer:   "Layer 2 - Root force_home",
+		},
+		{
+			name:          "layer_1_smart_default_toplevel",
+			packForceHome: []string{},
+			relPath:       "tmux.conf",
+			expectedPath:  filepath.Join(homeDir, ".tmux.conf"),
+			activeLayer:   "Layer 1 - Smart default (top-level)",
+		},
+		{
+			name:          "layer_1_smart_default_subdir",
+			packForceHome: []string{},
+			relPath:       "app/config.toml",
+			expectedPath:  filepath.Join(xdgConfigHome, "app", "config.toml"),
+			activeLayer:   "Layer 1 - Smart default (subdirectory)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pack := &types.Pack{
+				Name: "testpack",
+				Path: "/test/pack",
+				Config: config.PackConfig{
+					Symlink: config.Symlink{
+						ForceHome: tt.packForceHome,
+					},
+				},
+			}
+
+			result := p.MapPackFileToSystem(pack, tt.relPath)
+			assert.Equal(t, tt.expectedPath, result, "Active layer: "+tt.activeLayer)
+		})
+	}
+}

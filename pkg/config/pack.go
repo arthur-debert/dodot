@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -10,6 +11,13 @@ import (
 // PackConfig represents configuration options for a pack from .dodot.toml
 type PackConfig struct {
 	Mappings Mappings `toml:"mappings"`
+	Symlink  Symlink  `toml:"symlink"`
+}
+
+// Symlink holds symlink-specific configuration
+type Symlink struct {
+	// ForceHome lists files that should always deploy to $HOME
+	ForceHome []string `toml:"force_home"`
 }
 
 // LoadPackConfig reads and parses a pack's .dodot.toml configuration file
@@ -34,4 +42,26 @@ func FileExists(path string) bool {
 		return false
 	}
 	return !info.IsDir()
+}
+
+// IsForceHome checks if a file path matches any force_home pattern in the pack config
+func (pc *PackConfig) IsForceHome(relPath string) bool {
+	for _, pattern := range pc.Symlink.ForceHome {
+		// Support both exact matches and glob patterns
+		if pattern == relPath {
+			return true
+		}
+
+		// Try glob matching
+		matched, err := filepath.Match(pattern, relPath)
+		if err == nil && matched {
+			return true
+		}
+
+		// Also check the base name for patterns like "*.conf"
+		if matched, err := filepath.Match(pattern, filepath.Base(relPath)); err == nil && matched {
+			return true
+		}
+	}
+	return false
 }
