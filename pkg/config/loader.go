@@ -180,7 +180,7 @@ func mergeMaps(dest, src map[string]interface{}) {
 
 		// Handle map[string]bool specifically (for force_home, protected_paths)
 		if srcBoolMap, srcOk := srcVal.(map[string]bool); srcOk {
-			if destBoolMap, destOk := destVal.(map[string]bool); destOk {
+			if destBoolMap, destOk := destVal.(map[string]bool); destOk && destBoolMap != nil {
 				// Merge bool maps
 				for k, v := range srcBoolMap {
 					destBoolMap[k] = v
@@ -317,7 +317,38 @@ func appendSlices(dest, src interface{}) interface{} {
 	// Convert both to []interface{} for uniform handling
 	destSlice := toInterfaceSlice(dest)
 	srcSlice := toInterfaceSlice(src)
-	return append(destSlice, srcSlice...)
+
+	// Use a map to track unique values and preserve order
+	seen := make(map[string]bool)
+	result := make([]interface{}, 0, len(destSlice)+len(srcSlice))
+
+	// Add dest values first (preserving order)
+	for _, v := range destSlice {
+		if str, ok := v.(string); ok {
+			if !seen[str] {
+				seen[str] = true
+				result = append(result, v)
+			}
+		} else {
+			// Non-string values are kept as-is
+			result = append(result, v)
+		}
+	}
+
+	// Add src values (skipping duplicates)
+	for _, v := range srcSlice {
+		if str, ok := v.(string); ok {
+			if !seen[str] {
+				seen[str] = true
+				result = append(result, v)
+			}
+		} else {
+			// Non-string values are kept as-is
+			result = append(result, v)
+		}
+	}
+
+	return result
 }
 
 func toInterfaceSlice(v interface{}) []interface{} {

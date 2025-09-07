@@ -106,6 +106,18 @@ func TestMergeMaps(t *testing.T) {
 			},
 		},
 		{
+			name: "slices_deduplicate",
+			dest: map[string]interface{}{
+				"shell": []interface{}{"profile.sh", "aliases.sh"},
+			},
+			src: map[string]interface{}{
+				"shell": []interface{}{"aliases.sh", "functions.sh"},
+			},
+			expected: map[string]interface{}{
+				"shell": []interface{}{"profile.sh", "aliases.sh", "functions.sh"},
+			},
+		},
+		{
 			name: "overwrite_non_slice_with_slice",
 			dest: map[string]interface{}{
 				"value": "string",
@@ -215,6 +227,18 @@ func TestAppendSlices(t *testing.T) {
 			dest:     []string{"a", "b"},
 			src:      []interface{}{},
 			expected: []interface{}{"a", "b"},
+		},
+		{
+			name:     "deduplicate_strings",
+			dest:     []string{"a", "b", "c"},
+			src:      []string{"b", "d", "a", "e"},
+			expected: []interface{}{"a", "b", "c", "d", "e"},
+		},
+		{
+			name:     "preserve_order_with_dedup",
+			dest:     []interface{}{"profile.sh", "aliases.sh"},
+			src:      []interface{}{"aliases.sh", "functions.sh", "profile.sh"},
+			expected: []interface{}{"profile.sh", "aliases.sh", "functions.sh"},
 		},
 	}
 
