@@ -162,6 +162,8 @@ func LoadPackConfiguration(baseConfig *Config, packPath string) (*Config, error)
 	return &cfg, nil
 }
 
+// Force CI rebuild
+
 func mergeMaps(dest, src map[string]interface{}) {
 	for key, srcVal := range src {
 		destVal, destOk := dest[key]
