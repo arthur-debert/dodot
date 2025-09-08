@@ -139,8 +139,13 @@ func (c *Config) GenerateRulesFromMapping() []Rule {
 
 	// Path handler (for directories like bin/)
 	if c.Mappings.Path != "" {
+		pattern := c.Mappings.Path
+		// Ensure trailing slash for directory patterns
+		if !strings.HasSuffix(pattern, "/") {
+			pattern += "/"
+		}
 		rules = append(rules, Rule{
-			Pattern: c.Mappings.Path,
+			Pattern: pattern,
 			Handler: "path",
 		})
 	}
@@ -175,8 +180,8 @@ func (c *Config) GenerateRulesFromMapping() []Rule {
 	for _, pattern := range c.Mappings.Ignore {
 		if pattern != "" {
 			rules = append(rules, Rule{
-				Pattern: pattern,
-				Handler: "ignore",
+				Pattern: "!" + pattern,
+				Handler: "exclude",
 			})
 		}
 	}

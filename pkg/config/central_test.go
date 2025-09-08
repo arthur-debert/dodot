@@ -71,7 +71,7 @@ func TestDefault(t *testing.T) {
 	// Test mappings - should have defaults from embedded config
 	assert.Equal(t, "bin", cfg.Mappings.Path)
 	assert.Equal(t, "install.sh", cfg.Mappings.Install)
-	assert.Equal(t, []string{"aliases.sh", "profile.sh", "login.sh"}, cfg.Mappings.Shell)
+	assert.Equal(t, []string{"*aliases.sh", "profile.sh", "login.sh"}, cfg.Mappings.Shell)
 	assert.Equal(t, "Brewfile", cfg.Mappings.Homebrew)
 }
 
@@ -98,7 +98,7 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			},
 			expected: 1,
 			validate: func(t *testing.T, rules []config.Rule) {
-				assert.Equal(t, "bin", rules[0].Pattern)
+				assert.Equal(t, "bin/", rules[0].Pattern)
 				assert.Equal(t, "path", rules[0].Handler)
 			},
 		},
@@ -156,7 +156,7 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			},
 			expected: 4,
 			validate: func(t *testing.T, rules []config.Rule) {
-				assert.Equal(t, "bin", rules[0].Pattern)
+				assert.Equal(t, "bin/", rules[0].Pattern)
 				assert.Equal(t, "path", rules[0].Handler)
 
 				assert.Equal(t, "install.sh", rules[1].Pattern)
@@ -178,8 +178,8 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			},
 			expected: 1,
 			validate: func(t *testing.T, rules []config.Rule) {
-				assert.Equal(t, ".env.local", rules[0].Pattern)
-				assert.Equal(t, "ignore", rules[0].Handler)
+				assert.Equal(t, "!.env.local", rules[0].Pattern)
+				assert.Equal(t, "exclude", rules[0].Handler)
 			},
 		},
 		{
@@ -191,10 +191,10 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			},
 			expected: 4,
 			validate: func(t *testing.T, rules []config.Rule) {
-				expectedPatterns := []string{".env.local", "secrets.json", "private/*", "*.key"}
+				expectedPatterns := []string{"!.env.local", "!secrets.json", "!private/*", "!*.key"}
 				for i, rule := range rules {
 					assert.Equal(t, expectedPatterns[i], rule.Pattern)
-					assert.Equal(t, "ignore", rule.Handler)
+					assert.Equal(t, "exclude", rule.Handler)
 				}
 			},
 		},
@@ -212,7 +212,7 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			expected: 6,
 			validate: func(t *testing.T, rules []config.Rule) {
 				// First 4 are the regular mappings
-				assert.Equal(t, "bin", rules[0].Pattern)
+				assert.Equal(t, "bin/", rules[0].Pattern)
 				assert.Equal(t, "path", rules[0].Handler)
 
 				assert.Equal(t, "install.sh", rules[1].Pattern)
@@ -225,11 +225,11 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 				assert.Equal(t, "homebrew", rules[3].Handler)
 
 				// Last 2 are the ignore patterns
-				assert.Equal(t, ".env", rules[4].Pattern)
-				assert.Equal(t, "ignore", rules[4].Handler)
+				assert.Equal(t, "!.env", rules[4].Pattern)
+				assert.Equal(t, "exclude", rules[4].Handler)
 
-				assert.Equal(t, "*.secret", rules[5].Pattern)
-				assert.Equal(t, "ignore", rules[5].Handler)
+				assert.Equal(t, "!*.secret", rules[5].Pattern)
+				assert.Equal(t, "exclude", rules[5].Handler)
 			},
 		},
 		{

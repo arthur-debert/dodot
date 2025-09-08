@@ -192,9 +192,9 @@ func postProcessConfig(cfg *Config) (*Config, error) {
 	}
 
 	// Generate rules from mappings
-	cfg.Rules = cfg.GenerateRulesFromMapping()
-	// Add default rules
-	cfg.Rules = append(defaultRules(), cfg.Rules...)
+	mappingRules := cfg.GenerateRulesFromMapping()
+	// Put mapping rules first, then default rules
+	cfg.Rules = append(mappingRules, defaultRules()...)
 
 	// Set catchall exclude
 	cfg.Patterns.CatchallExclude = []string{
