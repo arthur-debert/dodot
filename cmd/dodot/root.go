@@ -144,9 +144,9 @@ func NewRootCmd() *cobra.Command {
 	if err == nil {
 		// Look for help topics in various locations
 		possiblePaths := []string{
-			filepath.Join(filepath.Dir(exe), "topics"),                             // Same directory as binary (production)
-			filepath.Join(filepath.Dir(exe), "..", "..", "cmd", "dodot", "topics"), // Development
-			"cmd/dodot/topics", // Current directory fallback
+			filepath.Join(filepath.Dir(exe), "topics"),                        // Same directory as binary (production)
+			filepath.Join(filepath.Dir(exe), "..", "..", "docs", "reference"), // Development - reference docs
+			"docs/reference", // Current directory fallback
 		}
 
 		for _, helpPath := range possiblePaths {
