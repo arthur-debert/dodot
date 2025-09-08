@@ -15,20 +15,6 @@ type PackConfig struct {
 	Symlink  Symlink  `toml:"symlink"`
 }
 
-// Pack holds pack-specific configuration
-type Pack struct {
-	// Ignore lists additional patterns to ignore during pack scanning
-	Ignore []string `toml:"ignore"`
-}
-
-// Symlink holds symlink-specific configuration
-type Symlink struct {
-	// ForceHome lists files that should always deploy to $HOME
-	ForceHome []string `toml:"force_home"`
-	// ProtectedPaths lists additional paths that should not be symlinked
-	ProtectedPaths []string `toml:"protected_paths"`
-}
-
 // LoadPackConfig reads and parses a pack's .dodot.toml configuration file
 func LoadPackConfig(configPath string) (PackConfig, error) {
 	data, err := os.ReadFile(configPath)

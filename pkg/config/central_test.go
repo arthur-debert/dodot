@@ -45,7 +45,7 @@ func TestDefault(t *testing.T) {
 	assert.NotEmpty(t, cfg.LinkPaths.CoreUnixExceptions)
 	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["ssh"])
 	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["bashrc"])
-	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["gitconfig"])
+	assert.True(t, cfg.LinkPaths.CoreUnixExceptions["zshrc"])
 
 	// Test rules exist
 	assert.NotEmpty(t, cfg.Rules)
@@ -68,11 +68,11 @@ func TestDefault(t *testing.T) {
 	assert.True(t, hasBrewfileRule, "Should have Brewfile rule")
 	assert.True(t, hasCatchallRule, "Should have catchall symlink rule")
 
-	// Test mappings - should be empty by default
-	assert.Empty(t, cfg.Mappings.Path)
-	assert.Empty(t, cfg.Mappings.Install)
-	assert.Empty(t, cfg.Mappings.Shell)
-	assert.Empty(t, cfg.Mappings.Homebrew)
+	// Test mappings - should have defaults from embedded config
+	assert.Equal(t, "bin", cfg.Mappings.Path)
+	assert.Equal(t, "install.sh", cfg.Mappings.Install)
+	assert.Equal(t, []string{"*aliases.sh", "profile.sh", "login.sh"}, cfg.Mappings.Shell)
+	assert.Equal(t, "Brewfile", cfg.Mappings.Homebrew)
 }
 
 func TestGenerateRulesFromMapping(t *testing.T) {
@@ -125,20 +125,9 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			expected: 3,
 			validate: func(t *testing.T, rules []config.Rule) {
 				// Check all are shell handlers
+				// Verify all rules have shell handler
 				for _, rule := range rules {
 					assert.Equal(t, "shell", rule.Handler)
-				}
-
-				// Check specific placements
-				for _, rule := range rules {
-					switch rule.Pattern {
-					case "*aliases.sh":
-						assert.Equal(t, "aliases", rule.Options["placement"])
-					case "login.sh":
-						assert.Equal(t, "login", rule.Options["placement"])
-					default:
-						assert.Equal(t, "environment", rule.Options["placement"])
-					}
 				}
 			},
 		},
@@ -175,7 +164,6 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 
 				assert.Equal(t, "bashrc", rules[2].Pattern)
 				assert.Equal(t, "shell", rules[2].Handler)
-				assert.Equal(t, "environment", rules[2].Options["placement"])
 
 				assert.Equal(t, "Brewfile", rules[3].Pattern)
 				assert.Equal(t, "homebrew", rules[3].Handler)
@@ -260,20 +248,10 @@ func TestGenerateRulesFromMapping(t *testing.T) {
 			},
 			expected: 6,
 			validate: func(t *testing.T, rules []config.Rule) {
-				placements := map[string]string{
-					"profile":      "environment",
-					"bash_profile": "environment",
-					"bash_aliases": "aliases",
-					"zshrc":        "environment",
-					"bash_login":   "login",
-					"random.sh":    "environment", // default
-				}
-
+				// Just verify all rules have shell handler
+				assert.Len(t, rules, 6)
 				for _, rule := range rules {
-					expectedPlacement, ok := placements[rule.Pattern]
-					assert.True(t, ok, "Unexpected pattern: %s", rule.Pattern)
-					assert.Equal(t, expectedPlacement, rule.Options["placement"],
-						"Pattern %s should have placement %s", rule.Pattern, expectedPlacement)
+					assert.Equal(t, "shell", rule.Handler)
 				}
 			},
 		},

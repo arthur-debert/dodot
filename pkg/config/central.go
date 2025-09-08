@@ -70,148 +70,87 @@ type LinkPaths struct {
 // Mappings holds file name to handler mappings
 type Mappings struct {
 	// Path specifies directory names that should be added to PATH
-	Path string `koanf:"path"`
+	Path string `koanf:"path" toml:"path"`
 	// Install specifies the filename pattern for install scripts
-	Install string `koanf:"install"`
+	Install string `koanf:"install" toml:"install"`
 	// Shell specifies filename patterns for shell scripts
-	Shell []string `koanf:"shell"`
+	Shell []string `koanf:"shell" toml:"shell"`
 	// Homebrew specifies the filename pattern for Homebrew files
-	Homebrew string `koanf:"homebrew"`
+	Homebrew string `koanf:"homebrew" toml:"homebrew"`
 	// Ignore specifies patterns for files to exclude from processing
-	Ignore []string `koanf:"ignore"`
+	Ignore []string `koanf:"ignore" toml:"ignore"`
+}
+
+// Symlink holds symlink-specific configuration that matches TOML structure
+type Symlink struct {
+	ProtectedPaths []string `koanf:"protected_paths" toml:"protected_paths"`
+	ForceHome      []string `koanf:"force_home" toml:"force_home"`
+}
+
+// Pack holds pack-specific configuration that matches TOML structure
+type Pack struct {
+	Ignore []string `koanf:"ignore" toml:"ignore"`
 }
 
 // Config is the main configuration structure
 type Config struct {
-	Security         Security         `koanf:"security"`
-	Patterns         Patterns         `koanf:"patterns"`
-	Rules            []Rule           `koanf:"rules"`
+	// Direct TOML sections
+	Pack             Pack             `koanf:"pack"`
+	Symlink          Symlink          `koanf:"symlink"`
 	FilePermissions  FilePermissions  `koanf:"file_permissions"`
 	ShellIntegration ShellIntegration `koanf:"shell_integration"`
-	Paths            Paths            `koanf:"paths"`
-	LinkPaths        LinkPaths        `koanf:"link_paths"`
 	Mappings         Mappings         `koanf:"mappings"`
+
+	// Derived/internal structures
+	Security  Security  `koanf:"-"`
+	Patterns  Patterns  `koanf:"-"`
+	Rules     []Rule    `koanf:"-"`
+	Paths     Paths     `koanf:"-"`
+	LinkPaths LinkPaths `koanf:"-"`
 }
 
 // Default returns the default configuration
 func Default() *Config {
-	cfg := &Config{
-		Security: Security{
-			ProtectedPaths: map[string]bool{
-				".ssh/authorized_keys": true,
-				".ssh/id_rsa":          true,
-				".ssh/id_ed25519":      true,
-				".gnupg":               true,
-				".password-store":      true,
-				".config/gh/hosts.yml": true, // GitHub CLI auth
-				".aws/credentials":     true,
-				".kube/config":         true,
-				".docker/config.json":  true,
+	// Load the actual defaults from embedded files
+	cfg, err := LoadConfiguration()
+	if err != nil {
+		// Fallback to minimal config if loading fails
+		return &Config{
+			Security: Security{
+				ProtectedPaths: make(map[string]bool),
 			},
-		},
-		Patterns: Patterns{
-			PackIgnore: []string{
-				".git",
-				".svn",
-				".hg",
-				"node_modules",
-				".DS_Store",
-				"*.swp",
-				"*~",
-				"#*#",
+			Patterns: Patterns{
+				SpecialFiles: SpecialFiles{
+					PackConfig: ".dodot.toml",
+					IgnoreFile: ".dodotignore",
+				},
 			},
-			// CatchallExclude is now derived from SpecialFiles
-			CatchallExclude: []string{},
-			SpecialFiles: SpecialFiles{
-				PackConfig: ".dodot.toml",
-				IgnoreFile: ".dodotignore",
+			LinkPaths: LinkPaths{
+				CoreUnixExceptions: make(map[string]bool),
 			},
-		},
-		Rules: defaultRules(),
-		FilePermissions: FilePermissions{
-			Directory:  0755,
-			File:       0644,
-			Executable: 0755,
-		},
-		ShellIntegration: ShellIntegration{
-			BashZshSnippet:           `[ -f "$HOME/.local/share/dodot/shell/dodot-init.sh" ] && source "$HOME/.local/share/dodot/shell/dodot-init.sh"`,
-			BashZshSnippetWithCustom: `[ -f "%s/shell/dodot-init.sh" ] && source "%s/shell/dodot-init.sh"`,
-			FishSnippet: `if test -f "$HOME/.local/share/dodot/shell/dodot-init.fish"
-    source "$HOME/.local/share/dodot/shell/dodot-init.fish"
-end`,
-		},
-		Paths: Paths{
-			// Reserved for future user-configurable paths
-		},
-		LinkPaths: LinkPaths{
-			// These files/dirs always deploy to $HOME for security or compatibility reasons
-			CoreUnixExceptions: map[string]bool{
-				"ssh":       true, // .ssh/ - security critical, expects $HOME
-				"gnupg":     true, // .gnupg/ - security critical, expects $HOME
-				"aws":       true, // .aws/ - credentials, expects $HOME
-				"kube":      true, // .kube/ - kubernetes config
-				"docker":    true, // .docker/ - docker config
-				"gitconfig": true, // .gitconfig - git expects in $HOME
-				"bashrc":    true, // .bashrc - shell expects in $HOME
-				"zshrc":     true, // .zshrc - shell expects in $HOME
-				"profile":   true, // .profile - shell expects in $HOME
-			},
-		},
+		}
 	}
-
-	// Derive CatchallExclude from SpecialFiles to avoid redundancy
-	cfg.Patterns.CatchallExclude = []string{
-		cfg.Patterns.SpecialFiles.PackConfig,
-		cfg.Patterns.SpecialFiles.IgnoreFile,
-	}
-
 	return cfg
 }
 
-func defaultRules() []Rule {
-	return []Rule{
-		// Exclusions
-		{Pattern: "!*.bak"},
-		{Pattern: "!*.tmp"},
-		{Pattern: "!*.swp"},
-		{Pattern: "!.DS_Store"},
-		{Pattern: "!#*#"},
-		{Pattern: "!*~"},
-
-		// Exact matches
-		{Pattern: "install.sh", Handler: "install"},
-		{Pattern: "Brewfile", Handler: "homebrew"},
-		{Pattern: "profile.sh", Handler: "shell",
-			Options: map[string]interface{}{"placement": "environment"}},
-		{Pattern: "login.sh", Handler: "shell",
-			Options: map[string]interface{}{"placement": "login"}},
-
-		// Glob patterns
-		{Pattern: "*aliases.sh", Handler: "shell",
-			Options: map[string]interface{}{"placement": "aliases"}},
-
-		// Directory patterns
-		{Pattern: "bin/", Handler: "path"},
-		{Pattern: ".local/bin/", Handler: "path"},
-
-		// Catchall
-		{Pattern: "*", Handler: "symlink"},
-	}
-}
-
-// GenerateRulesFromMapping creates rules based on mappings configuration
+// GenerateRulesFromMapping generates rules based on current mappings
 func (c *Config) GenerateRulesFromMapping() []Rule {
 	var rules []Rule
 
-	// Path rule for bin directories
+	// Path handler (for directories like bin/)
 	if c.Mappings.Path != "" {
+		pattern := c.Mappings.Path
+		// Ensure trailing slash for directory patterns
+		if !strings.HasSuffix(pattern, "/") {
+			pattern += "/"
+		}
 		rules = append(rules, Rule{
-			Pattern: c.Mappings.Path + "/",
+			Pattern: pattern,
 			Handler: "path",
 		})
 	}
 
-	// Install script rule
+	// Install handler
 	if c.Mappings.Install != "" {
 		rules = append(rules, Rule{
 			Pattern: c.Mappings.Install,
@@ -219,25 +158,17 @@ func (c *Config) GenerateRulesFromMapping() []Rule {
 		})
 	}
 
-	// Shell script rules
+	// Shell handler
 	for _, pattern := range c.Mappings.Shell {
-		placement := "environment" // Default placement
-		if strings.Contains(pattern, "aliases") {
-			placement = "aliases"
-		} else if strings.Contains(pattern, "login") {
-			placement = "login"
+		if pattern != "" {
+			rules = append(rules, Rule{
+				Pattern: pattern,
+				Handler: "shell",
+			})
 		}
-
-		rules = append(rules, Rule{
-			Pattern: pattern,
-			Handler: "shell",
-			Options: map[string]interface{}{
-				"placement": placement,
-			},
-		})
 	}
 
-	// Homebrew rule
+	// Homebrew handler
 	if c.Mappings.Homebrew != "" {
 		rules = append(rules, Rule{
 			Pattern: c.Mappings.Homebrew,
@@ -245,13 +176,81 @@ func (c *Config) GenerateRulesFromMapping() []Rule {
 		})
 	}
 
-	// Ignore rules (exclusion patterns start with !)
+	// Create ignore rules for each ignore pattern
 	for _, pattern := range c.Mappings.Ignore {
-		rules = append(rules, Rule{
-			Pattern: "!" + pattern,
-			Handler: "exclude",
-		})
+		if pattern != "" {
+			rules = append(rules, Rule{
+				Pattern: "!" + pattern,
+				Handler: "exclude",
+			})
+		}
 	}
 
 	return rules
+}
+
+// IsProtectedPath checks if a path is protected from symlinking
+func (c *Config) IsProtectedPath(path string) bool {
+	if c.Security.ProtectedPaths == nil {
+		return false
+	}
+
+	// Direct match
+	if c.Security.ProtectedPaths[path] {
+		return true
+	}
+
+	// Check if path is under a protected directory
+	for protectedPath := range c.Security.ProtectedPaths {
+		// If protected path doesn't end with /, check if our path starts with it plus /
+		if !strings.HasSuffix(protectedPath, "/") {
+			if strings.HasPrefix(path, protectedPath+"/") {
+				return true
+			}
+		} else if strings.HasPrefix(path, protectedPath) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// defaultRules returns the set of built-in rules
+func defaultRules() []Rule {
+	return []Rule{
+		{
+			Pattern: "bin",
+			Handler: "path",
+		},
+		{
+			Pattern: "install.sh",
+			Handler: "install",
+		},
+		{
+			Pattern: "aliases.sh",
+			Handler: "shell",
+		},
+		{
+			Pattern: "profile.sh",
+			Handler: "shell",
+		},
+		{
+			Pattern: "login.sh",
+			Handler: "shell",
+		},
+		{
+			Pattern: "Brewfile",
+			Handler: "homebrew",
+		},
+		{
+			Pattern: "*",
+			Handler: "symlink",
+			Options: map[string]interface{}{
+				"exclude": []interface{}{
+					".dodot.toml",
+					".dodotignore",
+				},
+			},
+		},
+	}
 }
