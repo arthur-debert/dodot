@@ -1,6 +1,7 @@
 pub mod config;
 pub mod datastore;
 pub mod error;
+pub mod execution;
 pub mod fs;
 pub mod handlers;
 pub mod operations;
