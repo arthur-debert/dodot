@@ -8,6 +8,7 @@ pub mod operations;
 pub mod packs;
 pub mod paths;
 pub mod rules;
+pub mod shell;
 
 // The testing module is available:
 // - Always during `cargo test` (dev-dependencies provide tempfile)
