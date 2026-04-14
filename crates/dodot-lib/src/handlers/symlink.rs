@@ -83,10 +83,35 @@ impl Handler for SymlinkHandler {
     }
 }
 
+/// Strip the `dot.` prefix from a filename, returning the dotted version.
+/// `dot.bashrc` → `.bashrc`, `dot.vimrc` → `.vimrc`.
+/// Only applies to top-level files (no `/` in path).
+fn strip_dot_prefix(rel_path: &str) -> Option<String> {
+    if !rel_path.contains('/') {
+        if let Some(rest) = rel_path.strip_prefix("dot.") {
+            return Some(format!(".{rest}"));
+        }
+    }
+    None
+}
+
 /// Resolve the target path for a symlink using the 3-layer system.
 fn resolve_target(rel_path: &str, config: &HandlerConfig, paths: &dyn Pather) -> PathBuf {
     let home = paths.home_dir();
     let xdg_config = paths.xdg_config_home();
+
+    // dot. prefix convention: dot.bashrc → .bashrc (top-level only)
+    // Applied before all layers so it works with force_home and defaults.
+    if let Some(dotted) = strip_dot_prefix(rel_path) {
+        // Treat as if the file were already named with a dot prefix.
+        // force_home still applies to the stripped name.
+        let base = dotted.strip_prefix('.').unwrap_or(&dotted);
+        if is_force_home(base, &config.force_home) {
+            return home.join(&dotted);
+        }
+        // Default: top-level dot-prefixed file goes to $HOME
+        return home.join(&dotted);
+    }
 
     // Layer 3: Explicit overrides
     if let Some(stripped) = rel_path.strip_prefix("_home/") {
@@ -329,5 +354,44 @@ mod tests {
     #[test]
     fn force_home_does_not_match_unrelated() {
         assert!(!is_force_home("vimrc", &["ssh".into(), "bashrc".into()]));
+    }
+
+    // ── dot. prefix convention ──────────────────────────────────
+
+    #[test]
+    fn dot_prefix_stripped_for_top_level() {
+        let target = resolve_target("dot.bashrc", &default_config(), &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
+    }
+
+    #[test]
+    fn dot_prefix_with_force_home() {
+        let target = resolve_target("dot.zshrc", &default_config(), &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.zshrc"));
+    }
+
+    #[test]
+    fn dot_prefix_non_forced_file() {
+        let config = HandlerConfig::default(); // no force_home
+        let target = resolve_target("dot.vimrc", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
+    }
+
+    #[test]
+    fn dot_prefix_not_applied_to_subdirs() {
+        // dot. prefix only works for top-level files
+        let config = HandlerConfig::default();
+        let target = resolve_target("subdir/dot.conf", &config, &test_pather());
+        // Should NOT strip dot. — it's not top-level
+        assert_eq!(target, PathBuf::from("/home/alice/.config/subdir/dot.conf"));
+    }
+
+    #[test]
+    fn strip_dot_prefix_unit() {
+        assert_eq!(strip_dot_prefix("dot.bashrc"), Some(".bashrc".into()));
+        assert_eq!(strip_dot_prefix("dot.vimrc"), Some(".vimrc".into()));
+        assert_eq!(strip_dot_prefix("vimrc"), None);
+        assert_eq!(strip_dot_prefix(".bashrc"), None);
+        assert_eq!(strip_dot_prefix("sub/dot.conf"), None); // not top-level
     }
 }
