@@ -1,0 +1,196 @@
+Data Storage and Organization
+
+    This guide explains dodot's approach to state management, how it stores link information, and the rationale behind its design decisions.
+
+1. The Double-Link Architecture
+
+    dodot could simply create direct symlinks from linked paths (e.g., `~/.zshrc`) to source files (e.g., `$DOTFILES_ROOT/shell/zshrc`). Instead, it uses a double-link structure where the linked file points to an intermediate symlink in dodot's state directory, which then points to the source file.
+
+    The double-link structure provides atomic state management: the link IS the state. No separate database to sync. Missing source files show as broken symlinks.
+
+2. State Storage Structure
+
+    Here's what dodot's state storage looks like with the operations-based architecture.
+
+    Storage layout:
+
+        ~/.local/share/dodot/
+        +-- data/                # All handler state organized by pack
+        |   +-- vim/
+        |   |   +-- symlink/     # Intermediate symlinks
+        |   |   |   +-- .vimrc -> ~/dotfiles/vim/vimrc
+        |   |   |   +-- .gvimrc -> ~/dotfiles/vim/gvimrc
+        |   |   +-- shell/       # Shell scripts to source
+        |   |       +-- aliases.sh -> ~/dotfiles/vim/aliases.sh
+        |   |
+        |   +-- git/
+        |   |   +-- symlink/
+        |   |       +-- .gitconfig -> ~/dotfiles/git/gitconfig
+        |   |
+        |   +-- tools/
+        |   |   +-- path/        # Directories to add to PATH
+        |   |   |   +-- bin -> ~/dotfiles/tools/bin
+        |   |   +-- homebrew/    # Brew execution tracking
+        |   |   |   +-- Brewfile.sentinel
+        |   |   +-- install/     # Provision script tracking
+        |   |       +-- setup.sh.sentinel
+        |   |
+        |   +-- dev/
+        |       +-- install/
+        |           +-- install.sh.sentinel
+        |
+        +-- shell/
+            +-- dodot-init.sh   # Sources shell scripts and adds directories to PATH
+
+    :: text ::
+
+    State is organized by pack first, then handler. Each pack owns its state directory.
+
+3. How Each Handler Stores State
+
+    All handlers use just 4 operation types through a minimal DataStore API.
+
+    3.1. Configuration Handlers (symlink, shell, path)
+
+        - Use CreateDataLink operation
+        - Create intermediate symlink in `data/<pack>/<handler>/`
+        - Links point to source files in pack
+        - State = existence of these symlinks
+
+    3.2. Code Execution Handlers (homebrew, install)
+
+        - Use RunCommand operation with sentinels
+        - Create sentinel files in `data/<pack>/<handler>/`
+        - Content: "completed|timestamp"
+        - State = sentinel existence (idempotent execution)
+
+    3.3. DataStore API (8 methods)
+
+        - `CreateDataLink(pack, handler, source)` returns datastorePath
+        - `CreateUserLink(datastorePath, userPath)` returns error
+        - `RunAndRecord(pack, handler, command, sentinel)` returns error
+        - `HasSentinel(pack, handler, sentinel)` returns (bool, error)
+        - `RemoveState(pack, handler)` returns error
+        - `HasHandlerState(pack, handler)` returns bool
+        - `ListPackHandlers(pack)` returns []string
+        - `ListHandlerSentinels(pack, handler)` returns []string
+
+4. File Deployment Mapping
+
+    The relationship between source files and linked locations follows intelligent mapping rules.
+
+    Default Mapping:
+        - Pack root files map to home with dot prefix (`vimrc` becomes `~/.vimrc`)
+        - Pack subdirectories map to XDG directories or home subdirectories
+        - Special handling for known directories (ssh, vim, etc.)
+
+    Mapping can be customized via:
+        - Pack configuration in `.dodot.toml`
+        - Explicit `_home/` or `_xdg/` prefixes in paths
+        - Handler options like `target_dir`
+
+5. The Pack Concept
+
+    dodot organizes configurations into "packs": directories containing related files that get linked together. This provides logical grouping and makes it easy to enable/disable related configurations.
+
+    Example pack structure:
+
+        DOTFILES_ROOT/
+        +-- vim/                    # vim pack
+        |   +-- vimrc              # -> ~/.vimrc
+        |   +-- gvimrc             # -> ~/.gvimrc
+        |   +-- .dodot.toml        # pack configuration
+        +-- git/                   # git pack
+        |   +-- gitconfig          # -> ~/.gitconfig
+        |   +-- gitignore_global   # -> ~/.gitignore_global
+        |   +-- aliases.sh         # sourced in shell profile
+        +-- development/           # development pack
+            +-- bin/               # added to PATH
+            |   +-- dev-scripts
+            +-- Brewfile           # processed by Homebrew
+            +-- install.sh         # executed once
+
+    :: text ::
+
+6. Shell Integration
+
+    dodot uses a single shell integration point: `dodot-init.sh`. This script:
+
+    - Sources all files in `data/*/shell/`
+    - Adds all directories in `data/*/path/` to PATH
+    - Exports environment variables for tracking
+    - Provides helper functions for status checking
+
+    Your shell profile (`.zshrc`, `.bashrc`) only needs one line to source `dodot-init.sh`, avoiding multiple integration points.
+
+7. Storage Limitations
+
+    Structural Changes:
+        If you add new files to a pack after linking, they won't be active until relinking. Use `dodot fill` to create placeholder files that get linked immediately.
+
+    Binary Files:
+        dodot works best with text configuration files. Binary files can be stored but don't benefit from live editing.
+
+    Secrets Management:
+        dodot doesn't provide built-in secrets management. Use external tools like pass, 1Password CLI, or environment variables for sensitive data.
+
+    Platform Differences:
+        Some files may be platform-specific. Use separate packs or conditional logic in `install.sh` scripts to handle differences.
+
+8. Data Recovery
+
+    Since everything is in git:
+
+    - Your configurations are versioned and backed up
+    - You can restore to any previous state via git
+    - No special recovery procedures needed
+    - Symlinks will continue working even without dodot
+
+    To completely remove dodot traces:
+
+    - Remove symlinks: replace with actual files if desired
+    - Remove shell integration line from profiles
+    - Clean up `DODOT_DATA_DIR` if desired
+    - Your dotfiles repository remains intact and usable
+
+9. Understanding State Through Examples
+
+    To check what's linked.
+
+    Check state:
+
+        # See all state for a pack
+        ls -la ~/.local/share/dodot/data/vim/
+
+        # See symlinks for a specific handler
+        ls -la ~/.local/share/dodot/data/vim/symlink/
+
+        # Check if a Brewfile was processed
+        ls ~/.local/share/dodot/data/tools/homebrew/
+
+        # See all packs with state
+        ls ~/.local/share/dodot/data/
+
+    :: shell ::
+
+    To understand a link.
+
+    Follow symlinks:
+
+        # Follow the symlink chain for .vimrc
+        readlink ~/.vimrc
+        # -> /Users/you/.local/share/dodot/data/vim/symlink/.vimrc
+
+        readlink /Users/you/.local/share/dodot/data/vim/symlink/.vimrc
+        # -> /Users/you/dotfiles/vim/vimrc
+
+    :: shell ::
+
+    The beauty is that the link structure tells you everything:
+
+    - What's linked (symlinks exist)
+    - Where it came from (follow the symlinks)
+    - What's broken (dangling symlinks)
+    - What changed (checksum mismatches in sentinels)
+
+    No database queries, no state files to parse, just `ls` and `readlink`.
