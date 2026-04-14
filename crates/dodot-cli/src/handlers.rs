@@ -120,6 +120,16 @@ pub fn init_handler(
     Ok(Output::Render(result))
 }
 
+pub fn fill_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::fill::FillResult> {
+    let ctx = build_readonly_ctx()?;
+    let pack_name = matches.get_one::<String>("pack").expect("pack is required");
+    let result = commands::fill::fill(pack_name, &ctx)?;
+    Ok(Output::Render(result))
+}
+
 pub fn adopt_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,

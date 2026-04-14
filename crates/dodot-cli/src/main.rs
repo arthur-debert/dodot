@@ -39,6 +39,8 @@ fn main() {
         .expect("register list")
         .command("init", handlers::init_handler, "message")
         .expect("register init")
+        .command("fill", handlers::fill_handler, "message")
+        .expect("register fill")
         .command("adopt", handlers::adopt_handler, "message")
         .expect("register adopt")
         .command("addignore", handlers::addignore_handler, "message")
@@ -121,6 +123,11 @@ fn build_clap_command() -> ClapCommand {
         .subcommand(
             ClapCommand::new("init")
                 .about("Create a new pack")
+                .arg(Arg::new("pack").help("Pack name").required(true)),
+        )
+        .subcommand(
+            ClapCommand::new("fill")
+                .about("Add placeholder files to an existing pack")
                 .arg(Arg::new("pack").help("Pack name").required(true)),
         )
         .subcommand(
