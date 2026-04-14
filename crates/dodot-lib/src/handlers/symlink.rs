@@ -95,10 +95,27 @@ fn strip_dot_prefix(rel_path: &str) -> Option<String> {
     None
 }
 
-/// Resolve the target path for a symlink using the 3-layer system.
+/// Resolve the target path for a symlink using the layered system.
+///
+/// Priority (highest first):
+/// 0. Custom target override from config (`[symlink.targets]`)
+/// 1. `dot.` prefix convention (top-level only)
+/// 2. Layer 3: Explicit `_home/` or `_xdg/` directory prefix
+/// 3. Layer 2: `force_home` config list
+/// 4. Layer 1: Smart defaults (top-level → `$HOME`, subdirs → `$XDG_CONFIG_HOME`)
 fn resolve_target(rel_path: &str, config: &HandlerConfig, paths: &dyn Pather) -> PathBuf {
     let home = paths.home_dir();
     let xdg_config = paths.xdg_config_home();
+
+    // Priority 0: Custom target override from [symlink.targets]
+    if let Some(target) = config.targets.get(rel_path) {
+        if target.starts_with('/') {
+            // Absolute path — use as-is
+            return PathBuf::from(target);
+        }
+        // Relative path — resolve from XDG_CONFIG_HOME
+        return xdg_config.join(target);
+    }
 
     // dot. prefix convention: dot.bashrc → .bashrc (top-level only)
     // Applied before all layers so it works with force_home and defaults.
@@ -254,6 +271,7 @@ mod tests {
                 ".ssh/id_ed25519".into(),
                 ".gnupg".into(),
             ],
+            targets: std::collections::HashMap::new(),
         }
     }
 
@@ -393,5 +411,52 @@ mod tests {
         assert_eq!(strip_dot_prefix("vimrc"), None);
         assert_eq!(strip_dot_prefix(".bashrc"), None);
         assert_eq!(strip_dot_prefix("sub/dot.conf"), None); // not top-level
+    }
+
+    // ── Custom target overrides ─────────────────────────────────
+
+    #[test]
+    fn custom_target_absolute_path() {
+        let mut config = HandlerConfig::default();
+        config
+            .targets
+            .insert("misterious.conf".into(), "/var/etc/misterious.conf".into());
+
+        let target = resolve_target("misterious.conf", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/var/etc/misterious.conf"));
+    }
+
+    #[test]
+    fn custom_target_relative_path() {
+        let mut config = HandlerConfig::default();
+        config
+            .targets
+            .insert("home-bound.conf".into(), "my-documents/home-bound.conf".into());
+
+        let target = resolve_target("home-bound.conf", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/.config/my-documents/home-bound.conf")
+        );
+    }
+
+    #[test]
+    fn custom_target_overrides_all_layers() {
+        // Even a force_home file can be overridden
+        let mut config = default_config();
+        config
+            .targets
+            .insert("bashrc".into(), "/custom/bashrc".into());
+
+        let target = resolve_target("bashrc", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/custom/bashrc"));
+    }
+
+    #[test]
+    fn no_custom_target_falls_through() {
+        let config = HandlerConfig::default();
+        // No targets configured — should use default behavior
+        let target = resolve_target("vimrc", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
     }
 }

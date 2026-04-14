@@ -61,6 +61,13 @@ pub struct SymlinkSection {
         ".kube/config", ".docker/config.json"
     ])]
     pub protected_paths: Vec<String>,
+
+    /// Custom per-file symlink target overrides.
+    /// Maps relative pack filename to absolute or relative target path.
+    /// Absolute paths are used as-is; relative paths are resolved from
+    /// `$XDG_CONFIG_HOME`.
+    #[config(default = {})]
+    pub targets: std::collections::HashMap<String, String>,
 }
 
 /// File-to-handler mapping patterns.
@@ -95,6 +102,7 @@ impl DodotConfig {
         HandlerConfig {
             force_home: self.symlink.force_home.clone(),
             protected_paths: self.symlink.protected_paths.clone(),
+            targets: self.symlink.targets.clone(),
         }
     }
 }

@@ -88,15 +88,18 @@ pub trait Handler: Send + Sync {
 
 /// Configuration subset relevant to handlers.
 ///
-/// This is a temporary stand-in that will be replaced by `DodotConfig`
-/// once the clapfig-based config system is in place (PR 4). It carries
-/// exactly what handlers need without coupling them to the full config.
+/// Populated from `DodotConfig::to_handler_config()`. Carries exactly
+/// what handlers need without coupling them to the full config.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct HandlerConfig {
     /// Paths that must be forced to `$HOME` (e.g. `["ssh", "bashrc"]`).
     pub force_home: Vec<String>,
     /// Paths that must not be symlinked (e.g. `[".ssh/id_rsa"]`).
     pub protected_paths: Vec<String>,
+    /// Per-file custom symlink target overrides.
+    /// Key = relative path in pack, Value = target path.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub targets: std::collections::HashMap<String, String>,
 }
 
 /// Well-known handler names.
