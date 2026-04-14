@@ -24,20 +24,20 @@ Architecture
 
 2. Processing Pipeline
 
-    dodot follows a unified execution pipeline through `orchestration.Execute()`.
+    dodot follows a unified execution pipeline through `packs::orchestration::execute()`.
 
     Pipeline:
 
-        Commands -> orchestration.Execute() -> rules -> handlers -> operations -> DataStore
+        Commands -> packs::orchestration::execute() -> rules -> handlers -> intents -> operations -> DataStore
 
     :: text ::
 
     2.1. Unified Execution Flow
 
-        The `orchestration.Execute()` function provides a single entry point for all pack-based commands:
+        The `packs::orchestration::execute()` function provides a single entry point for all pack-based commands:
 
         - Pack Discovery: scans DOTFILES_ROOT for packs
-        - Command Execution: executes the command for each pack via `ExecuteForPack()`
+        - Command Execution: executes the command for each pack via `execute_for_pack()`
         - Result Aggregation: collects and reports results across all packs
 
         Each command implementation decides how to process its pack:
@@ -53,8 +53,8 @@ Architecture
         Up Command Flow:
             - Rule Matching: scans pack files against rules
             - Handler Grouping: groups matches by handler
-            - Operation Generation: handlers convert matches to operations
-            - Execution: operations execute through DataStore
+            - Operation Generation: handlers convert matches to HandlerIntents
+            - Execution: executor converts intents to DataStore calls
 
         Down Command Flow:
             - State Discovery: lists handlers with state for the pack
@@ -85,21 +85,30 @@ Architecture
 
 4. Implementation Details
 
-    4.1. Package Organization
+    4.1. Crate Organization
 
-        Package layout:
+        Workspace layout:
 
-            pkg/
-            +-- packs/         # Pack discovery, commands, and orchestration
-            |   +-- commands/  # Pack command implementations
-            |   +-- orchestration/ # Pipeline execution
-            +-- types/         # Type definitions and interfaces
-            +-- rules/         # Rule-based matching system
-            +-- handlers/      # Handler implementations (50-100 lines each)
-            +-- operations/    # Operation types and executor
-            +-- datastore/     # Minimal state management (8 methods)
-            +-- dispatcher/    # Command dispatch logic
-            +-- config/        # Configuration management
+            dodot-lib/src/           # Core library crate (no terminal deps)
+            +-- commands/            # Public API: up, down, status, list, init, fill, adopt, addignore, genconfig
+            +-- config/              # DodotConfig via clapfig/confique
+            +-- datastore/           # DataStore trait + FilesystemDataStore
+            +-- execution/           # Executor: intent -> DataStore dispatch
+            +-- fs/                  # Fs trait + OsFs
+            +-- handlers/            # symlink, shell, path, install, homebrew
+            +-- operations/          # Operation enum, HandlerIntent
+            +-- packs/               # Pack, discovery, orchestration pipeline
+            +-- paths/               # Pather trait + XdgPather
+            +-- render/              # standout theme + templates
+            +-- rules/               # Rule, Scanner, pattern matching
+            +-- shell/               # init script generation
+            +-- testing/             # TempEnvironment builder
+
+            dodot-cli/src/           # Thin CLI layer crate
+            +-- main.rs              # clap command definitions + standout App wiring
+            +-- handlers.rs          # Thin wrappers calling dodot-lib
+            +-- templates/           # MiniJinja .jinja files
+            +-- styles/              # CSS stylesheet
 
         :: text ::
 
@@ -107,52 +116,61 @@ Architecture
 
         Rule:
 
-            type Rule struct {
-                Pattern  string                 // e.g., "*.sh", "bin/", "!*.tmp"
-                Handler  string                 // handler name
-                Priority int                    // higher priority matches first
-                Options  map[string]interface{} // handler-specific options
+            pub struct Rule {
+                pub pattern: String,                       // e.g., "*.sh", "bin/", "!*.tmp"
+                pub handler: String,                       // handler name
+                pub priority: i32,                         // higher priority matches first
+                pub options: HashMap<String, toml::Value>, // handler-specific options
             }
 
-        :: go ::
+        :: rust ::
 
         Handler:
 
-            type Handler interface {
-                Name() string
-                Category() HandlerCategory
-                ToOperations(matches []RuleMatch) ([]Operation, error)
+            pub trait Handler {
+                fn name(&self) -> &str;
+                fn category(&self) -> HandlerCategory;
+                fn to_intents(&self, matches: &[RuleMatch]) -> Result<Vec<HandlerIntent>>;
+                fn check_status(&self, matches: &[RuleMatch], ds: &dyn DataStore) -> Result<Vec<Status>>;
             }
 
-        :: go ::
+        :: rust ::
+
+        HandlerIntent:
+
+            pub enum HandlerIntent {
+                Link { source: PathBuf, target: PathBuf },
+                Stage { source: PathBuf },
+                Run { command: String, sentinel: String },
+            }
+
+        :: rust ::
 
         Operation:
 
-            type Operation struct {
-                Type    OperationType // CreateDataLink, CreateUserLink, RunCommand, CheckSentinel
-                Pack    string
-                Handler string
-                Source  string
-                Target  string
-                Command string
+            pub enum Operation {
+                CreateDataLink { pack: String, handler: String, source: PathBuf },
+                CreateUserLink { datastore_path: PathBuf, user_path: PathBuf },
+                RunCommand { pack: String, handler: String, command: String, sentinel: String },
+                CheckSentinel { pack: String, handler: String, sentinel: String },
             }
 
-        :: go ::
+        :: rust ::
 
         DataStore:
 
-            type DataStore interface {
-                CreateDataLink(pack, handlerName, sourceFile string) (string, error)
-                CreateUserLink(datastorePath, userPath string) error
-                RunAndRecord(pack, handlerName, command, sentinel string) error
-                HasSentinel(pack, handlerName, sentinel string) (bool, error)
-                RemoveState(pack, handlerName string) error
-                HasHandlerState(pack, handlerName string) (bool, error)
-                ListPackHandlers(pack string) ([]string, error)
-                ListHandlerSentinels(pack, handlerName string) ([]string, error)
+            pub trait DataStore {
+                fn create_data_link(&self, pack: &str, handler: &str, source: &Path) -> Result<PathBuf>;
+                fn create_user_link(&self, datastore_path: &Path, user_path: &Path) -> Result<()>;
+                fn run_and_record(&self, pack: &str, handler: &str, command: &str, sentinel: &str) -> Result<()>;
+                fn has_sentinel(&self, pack: &str, handler: &str, sentinel: &str) -> Result<bool>;
+                fn remove_state(&self, pack: &str, handler: &str) -> Result<()>;
+                fn has_handler_state(&self, pack: &str, handler: &str) -> Result<bool>;
+                fn list_pack_handlers(&self, pack: &str) -> Result<Vec<String>>;
+                fn list_handler_sentinels(&self, pack: &str, handler: &str) -> Result<Vec<String>>;
             }
 
-        :: go ::
+        :: rust ::
 
 5. Rules System
 
@@ -199,8 +217,8 @@ Architecture
 
     6.1. Thin CLI Layer
 
-        - Commands only parse arguments and call the dispatcher
-        - Business logic lives in `pkg/packs/commands` and handlers
+        - Commands only parse arguments and call dodot-lib command functions
+        - Business logic lives in `dodot_lib::commands` and handlers
         - No direct handler knowledge in CLI commands
         - Clear boundaries between layers
 
@@ -208,99 +226,67 @@ Architecture
 
         Handler-based commands:
 
-            // Handler-based commands use orchestration.Execute()
-            result, err := orchestration.Execute(command, packNames, orchestration.Options{
-                DotfilesRoot: opts.DotfilesRoot,
-                DryRun:       opts.DryRun,
-                Force:        opts.Force,
-                FileSystem:   filesystem.NewOS(),
-                DataStore:    dataStore,
-                Paths:        paths.New(),
-            })
+            // Handler-based commands build a production context and call command functions
+            let ctx = ExecutionContext::production(config, fs, datastore, pather);
+            let result = commands::up::up(&ctx, &pack_names)?;
 
-        :: go ::
+        :: rust ::
 
         Non-handler commands:
 
             // Non-handler commands use domain methods
-            pack.AdoptFile(sourceFile, targetName)  // For adopt command
-            dataStore.RemoveState(pack, handler)     // For removal operations
+            commands::adopt::adopt(&ctx, source_file, target_name)?;
+            datastore.remove_state(pack, handler)?;
 
-        :: go ::
+        :: rust ::
 
-    6.3. Package Organization
+    6.3. Crate Organization
 
-        CLI layer:
+        CLI crate:
 
-            cmd/dodot/          # Cobra CLI layer
-            +-- commands/       # CLI command definitions
-            |   +-- up/         # Command structure and help
-            |   +-- down/
-            |   +-- status/
-            |   +-- ...
-            +-- root.go         # Command routing to dispatcher
+            dodot-cli/src/
+            +-- main.rs         # clap command definitions + standout App wiring
+            +-- handlers.rs     # Thin wrappers calling dodot-lib command functions
+            +-- templates/      # MiniJinja .jinja files for output rendering
+            +-- styles/         # CSS stylesheet for standout themes
 
         :: text ::
 
-        Implementations:
+        Library crate:
 
-            pkg/
-            +-- dispatcher/     # Routes CLI to implementations
-            +-- packs/
-                +-- commands/   # Command implementations
-                    +-- up.go       # Implements orchestration.Command
-                    +-- down.go
-                    +-- status.go
-                    +-- ...
+            dodot-lib/src/
+            +-- commands/       # Command implementations
+            |   +-- up.rs       # Implements orchestration::Command trait
+            |   +-- down.rs
+            |   +-- status.rs
+            |   +-- ...
 
         :: text ::
 
     6.4. Unified Output System
 
-        Output renderers:
-
-            // Terminal output with colors/tables
-            renderer := output.NewTerminalRenderer()
-
-            // JSON output for scripting
-            renderer := output.NewJSONRenderer()
-
-            // Text output for logs
-            renderer := output.NewTextRenderer()
-
-        :: go ::
+        The CLI uses *standout* for all output rendering. The `App::builder()` wires MiniJinja templates from `templates/` and CSS stylesheets from `styles/` into a unified rendering pipeline. The `--output` flag selects the output format (terminal, json, text).
 
 7. Component Responsibilities
 
-    7.1. CLI Commands (`cmd/dodot/commands`)
+    7.1. CLI Commands (`dodot-cli`)
 
         Role:
             Command structure and help text.
 
         Responsibilities:
-            Define cobra commands with usage/examples.
+            Define clap commands with usage/examples, wire standout App for output rendering.
 
         What they don't do:
             Contain any business logic.
 
-    7.2. Dispatcher (`pkg/dispatcher`)
-
-        Role:
-            Bridge between CLI and command implementations.
-
-        Responsibilities:
-            Route CLI commands to appropriate implementations.
-
-        Key function:
-            Creates command instances based on command name. Decouples CLI from business logic implementations.
-
-    7.3. Command Implementations (`pkg/packs/commands`)
+    7.2. Command Implementations (`dodot_lib::commands`)
 
         Role:
             Business logic for pack commands.
 
         Responsibilities:
-            Implement `orchestration.Command` interface.
+            Implement `orchestration::Command` trait.
 
         Handler commands:
             Execute operations via handlers.
@@ -309,37 +295,37 @@ Architecture
             Use Pack methods or DataStore directly.
 
         What they don't do:
-            Handle CLI parsing, know about cobra.
+            Handle CLI parsing, know about clap.
 
-    7.4. Packs/Orchestration (`pkg/packs/orchestration`)
+    7.3. Packs/Orchestration (`dodot_lib::packs::orchestration`)
 
         Role:
             Unified execution pipeline.
 
         Key function:
-            `orchestration.Execute()` orchestrates the entire flow.
+            `packs::orchestration::execute()` orchestrates the entire flow.
 
         Responsibilities:
             Pack discovery, command execution per pack.
 
-    7.5. Rules (`pkg/rules`)
+    7.4. Rules (`dodot_lib::rules`)
 
         Role:
             Bridge between matches and execution.
 
-        Key function:
-            `rules.ExecuteMatches()` converts matches to operations.
+        Key type:
+            `Scanner` scans pack files against rules and produces matches.
 
         Responsibilities:
-            Group matches by handler, determine execution order, invoke handlers, execute via DataStore.
+            Group matches by handler, determine execution order, invoke handlers.
 
-    7.6. Handlers (`pkg/handlers`)
+    7.5. Handlers (`dodot_lib::handlers`)
 
         Role:
-            File-specific operation generators.
+            File-specific intent generators.
 
         Responsibilities:
-            Convert file matches to operations (symlink, homebrew, shell, path, install).
+            Convert file matches to HandlerIntents (symlink, homebrew, shell, path, install).
 
         Used by:
             Handler-related commands (up/down).
@@ -347,7 +333,7 @@ Architecture
         Size:
             50-100 lines each, focused on single concern.
 
-    7.7. Packs (`pkg/types/pack.go`)
+    7.6. Packs (`dodot_lib::packs`)
 
         Role:
             Pack management domain object.
@@ -358,24 +344,24 @@ Architecture
         Used by:
             Pack-related commands (init, fill, adopt, addignore).
 
-    7.8. DataStore (`pkg/datastore`)
+    7.7. DataStore (`dodot_lib::datastore`)
 
         Role:
             Operations execution abstraction.
 
         Responsibilities:
-            Execute operations via 8-method API, state management.
+            Execute operations via 8-method trait API, state management.
 
-        Interface:
-            CreateDataLink, CreateUserLink, RunAndRecord, HasSentinel, RemoveState, HasHandlerState, ListPackHandlers, ListHandlerSentinels.
+        Trait methods:
+            create_data_link, create_user_link, run_and_record, has_sentinel, remove_state, has_handler_state, list_pack_handlers, list_handler_sentinels.
 
-    7.9. Operations and Executor
+    7.8. Executor (`dodot_lib::execution`)
 
-        Operations:
-            Data structures with type, pack, handler, source, target, command.
+        Role:
+            Intent-to-operation conversion and dispatch.
 
-        Executor:
-            Orchestrate operation execution with dry-run support.
+        Responsibilities:
+            Convert HandlerIntents to Operations, dispatch Operations to DataStore, dry-run support.
 
 8. Performance Considerations
 
@@ -388,16 +374,16 @@ Architecture
 
     9.1. Unified Execution
 
-        - Single entry point: all pack-based commands use `orchestration.Execute()`
+        - Single entry point: all pack-based commands use `packs::orchestration::execute()`
         - No business logic in CLI: commands are thin orchestrators only
-        - Proper abstractions: Commands, Orchestration, Rules, Handlers, Operations, DataStore
+        - Proper abstractions: Commands, Orchestration, Rules, Handlers, Intents, Operations, DataStore
         - No bypassing: never skip abstraction layers or access handlers directly
 
     9.2. Separation of Concerns
 
-        - Handler commands: up, down use `orchestration.Execute()` for handler operations
+        - Handler commands: up, down use `packs::orchestration::execute()` for handler operations
         - Pack commands: init, fill, adopt use Pack guardian methods
-        - State commands: down uses `DataStore.RemoveState()`
+        - State commands: down uses `DataStore::remove_state()`
         - Query commands: list, status use discovery functions
 
 10. Error Philosophy

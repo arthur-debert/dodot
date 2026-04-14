@@ -43,10 +43,10 @@ CLI Output
 
 4. Output Formats
 
-    dodot supports three output formats via the `--format` flag:
+    dodot supports multiple output formats via the `--output` flag:
 
-    terminal (default):
-        Rich output with colors and styling, automatically detected based on terminal capabilities.
+    term (default):
+        Rich output with colors and styling via standout-render.
 
     text:
         Plain text without styling, used when piping output or when NO_COLOR is set.
@@ -54,27 +54,32 @@ CLI Output
     json:
         Machine-readable JSON for programmatic access.
 
+    term-debug:
+        Terminal output with debug annotations showing template and theme resolution.
+
+    yaml:
+        Machine-readable YAML for programmatic access.
+
     4.1. Format Selection
 
-        The format is determined by:
+        The `--output` flag is added automatically by standout's `App` builder. Format selection is handled by standout's automatic detection:
 
-        - Explicit `--format` flag
-        - NO_COLOR environment variable (forces text)
-        - Terminal capability detection (falls back to text if no color support)
-        - Pipe detection (uses text when output is piped)
+        - Explicit `--output` flag overrides everything
+        - NO_COLOR environment variable forces text mode
+        - Terminal capability detection falls back to text if no color support
+        - Pipe detection switches to text when output is piped
 
 5. Architecture
 
     The output system consists of:
 
-    `pkg/types/results.go`:
-        Defines CommandResult and DisplayResult types.
+    `dodot_lib::commands`:
+        Result types are defined per command (e.g. `PackStatusResult`).
 
-    `pkg/ui/ui.go`:
-        Renderer interface and factory.
+    `dodot_lib::render`:
+        Theme and template definitions.
 
-    `pkg/ui/terminal/`, `pkg/ui/text/`, `pkg/ui/json/`:
-        Format-specific renderer implementations.
+    Output modes (term, text, json, term-debug) are handled by standout-render's `OutputMode` enum. The CLI uses standout's `App` builder with embedded MiniJinja templates and CSS stylesheets.
 
 6. Command Integration
 
@@ -83,21 +88,7 @@ CLI Output
     - An optional message describing the action
     - The current pack status from the status command
 
-    Example from the up command:
-
-        // Get pack status after activating
-        statusResult, err := commands.StatusPacks(...)
-
-        // Create result with message
-        cmdResult := &types.CommandResult{
-            Message: types.FormatCommandMessage("deployed", packNames),
-            Result:  statusResult,
-        }
-
-        // Render through unified system
-        renderer.RenderResult(cmdResult)
-
-    :: go ::
+    Commands return serializable result types (e.g. `PackStatusResult`). The CLI handler wraps the result in `Output::Render(result)`, and standout renders it via the registered MiniJinja template with the configured theme. This keeps command logic free of formatting concerns: commands produce data, and the render layer decides how to display it.
 
 7. Message Formatting
 

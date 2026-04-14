@@ -129,11 +129,11 @@ dodot Commands Reference
 
     All commands share common infrastructure:
 
-    - Pack discovery and selection via `pkg/packs/discovery`
-    - Command execution through `pkg/packs/orchestration`
-    - Handler execution through the rules system
+    - Pack discovery and selection via `dodot_lib::packs::discover_packs()`
+    - Command execution through `dodot_lib::packs::orchestration`
+    - Handler execution through the rules system (`dodot_lib::rules`)
     - State persistence using the datastore
     - Consistent error handling with error codes
-    - Structured logging with verbosity levels
+    - Additional commands: `dodot config` (via clapfig relay) for inspecting resolved configuration, and `dodot init-sh` for generating the shell integration script
 
-    The codebase maintains good separation between command logic (in `pkg/packs/commands`) and core functionality (in `pkg/packs`, `pkg/handlers`, `pkg/rules`).
+    The codebase maintains clear separation between the thin CLI layer (dodot-cli) and core functionality (dodot-lib).

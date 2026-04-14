@@ -26,7 +26,7 @@ Configuration System
         - *Scalars*: override (last value wins)
         - *Maps*: deep merge recursively
 
-        Should be done through the koanf library.
+        Configuration is managed through the clapfig crate, which provides layered config resolution with compiled defaults, file discovery, and per-pack merging via its Resolver.
 
 3. Configuration Files
 
@@ -109,16 +109,10 @@ Configuration System
 
 4. Architecture
 
-    The code should have a consistent pattern that does, in pseudo code:
+    The configuration system is built around a `ConfigManager` that wraps a clapfig `Resolver`.
 
-    Config loading:
+    `ConfigManager::new(dotfiles_root)` builds a clapfig Resolver that knows the dotfiles root and the locations of default and user-facing config files. `config_manager.root_config()` loads the root-level config by merging compiled defaults with any `$DOTFILES_ROOT/.dodot.toml` file. `config_manager.config_for_pack(pack_path)` resolves the fully merged config for a specific pack, layering the pack's `.dodot.toml` on top of the root config.
 
-        GetRootConfig(<the /pkg/config path/object for dep injection,
-                       dotfile root path,
-                       pack path or none>)
+    The `DodotConfig` struct uses `#[derive(confique::Config)]` to declare fields with compiled defaults, so every config key has a known default value even when no TOML files are present.
 
-    :: text ::
-
-    This code will search for the `.dodot.toml` files if present and do the merging. All executions should get a RootConfig object (merged with the default) at the execution start, and that should be passed to the main command pipeline.
-
-    When running pack pipelines, the loop should create a pack config for each pack (using the central function) and pass that down so that the actions can run (these will use this config object).
+    All executions should get a root config at startup and pass it into the main command pipeline. When running pack pipelines, the loop calls `config_for_pack` for each pack to produce a merged config that handlers consume.

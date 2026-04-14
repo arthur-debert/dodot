@@ -1,40 +1,40 @@
 Handlers Guide
 
-    Handlers are operation generators in dodot that process matched files and convert them into simple operations (CreateDataLink, CreateUserLink, RunCommand). Each handler serves a specific purpose in managing your dotfiles.
+    Handlers are operation generators in dodot that process matched files and convert them into HandlerIntents (Link, Stage, Run) which the executor converts to DataStore calls. Each handler serves a specific purpose in managing your dotfiles.
 
 1. Available Handlers
 
-    dodot includes several built-in handlers, each with comprehensive documentation in their respective packages. For detailed end-to-end documentation of each handler, including examples, configuration, and best practices, see the doc.go files referenced below.
+    dodot includes several built-in handlers, each with comprehensive documentation in their respective packages. For detailed end-to-end documentation of each handler, including examples, configuration, and best practices, see the module documentation referenced below.
 
     1.1. SymlinkHandler (`symlink`)
 
         Creates symlinks from dotfiles to target locations. Use for configuration files and dotfiles.
 
-        See `pkg/handlers/lib/symlink/doc.go`.
+        See `dodot_lib::handlers::symlink`.
 
     1.2. InstallHandler (`install`)
 
         Executes shell scripts for one-time setup. Use for installing tools and initial setup.
 
-        See `pkg/handlers/lib/install/doc.go`.
+        See `dodot_lib::handlers::install`.
 
     1.3. HomebrewHandler (`homebrew`)
 
         Processes Brewfiles to manage Homebrew packages. Use for system packages and GUI apps (macOS).
 
-        See `pkg/handlers/lib/homebrew/doc.go`.
+        See `dodot_lib::handlers::homebrew`.
 
     1.4. ShellProfileHandler (`shell`)
 
         Sources shell scripts into your environment. Use for aliases, functions, and shell customization.
 
-        See `pkg/handlers/lib/shell/doc.go`.
+        See `dodot_lib::handlers::shell`.
 
     1.5. PathHandler (`path`)
 
         Adds directories to system PATH. Use for personal scripts and tools directories.
 
-        See `pkg/handlers/lib/path/doc.go`.
+        See `dodot_lib::handlers::path`.
 
 2. Handler Categories
 
@@ -70,7 +70,7 @@ Handlers Guide
 
 4. Handler Documentation Structure
 
-    Each handler's `doc.go` file contains:
+    Each handler's module documentation contains:
 
     - Overview: what the handler does
     - When It Runs: Configuration vs Provisioning category
@@ -89,16 +89,16 @@ Handlers Guide
 
     While dodot includes comprehensive built-in handlers, you can create custom ones:
 
-    - Implement the `operations.Handler` interface (just 50-100 lines)
-    - Add handler creation in `pkg/rules/integration.go`
-    - Implement `ToOperations()` to convert matches to operations
+    - Implement the `handlers::Handler` trait
+    - Register the handler in `handlers::create_registry()`
+    - Implement `to_intents()` to convert matches to `HandlerIntent` values
     - Add rules to your configuration
 
-    Handlers are simple data transformers: they just declare what operations they need, not how to perform them. See `pkg/operations/types.go` for the interface definition.
+    Handlers are simple data transformers: they just declare what intents they need, not how to perform them. See `dodot_lib::handlers::Handler` trait and `dodot_lib::operations::HandlerIntent`.
 
 6. Best Practices
 
-    - Read the `doc.go` files: each handler has extensive documentation
+    - Read the handler module docs: each handler has extensive documentation
     - Use the right tool: each handler has a specific purpose
     - Check run modes: understand when handlers execute
     - Test with `--dry-run`: preview changes before applying
@@ -108,8 +108,8 @@ Handlers Guide
 7. Troubleshooting
 
     - Not running? Check rule patterns and priorities.
-    - Errors? Each `doc.go` lists common error codes.
+    - Errors? Each handler module lists common error codes.
     - Wrong phase? Verify handler category (Configuration vs Code Execution).
     - Conflicts? Use `--force` flag when appropriate.
 
-    For comprehensive details on any handler, read its `doc.go` file in the `pkg/handlers/<name>/` directory.
+    For comprehensive details on any handler, read its module documentation in `dodot_lib::handlers::<name>`.
