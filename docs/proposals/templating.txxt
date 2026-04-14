@@ -1,0 +1,71 @@
+Design Specification: Templating
+                   ==================================
+
+This document outlines the design for a templating feature in dodot. It is a
+concrete implementation of a **Generative (One-Way) Transformation** as
+defined in the master [./transformation-pipeline.txxt] design.
+
+1. Feature Overview
+-------------------
+
+The templating feature allows users to create template files (e.g.,
+`config.tmpl`) that are rendered into final configuration files during
+deployment. This is ideal for managing environment-specific settings.
+
+As a generative transform, the `.tmpl` file is the canonical source of truth.
+The rendered output is a build artifact and must not be edited directly
+without a manual merge step.
+
+2. Core Implementation
+----------------------
+
+The implementation will be a new handler within the transformation pipeline.
+
+    2.1. The `template` Handler
+
+        - Transformation Type: Generative (One-Way).
+        - Trigger: Files with `.tmpl` or `.template` extensions.
+        - Action: Generates a `WriteFileAction` to write the rendered content
+          to the destination file (e.g., `install.sh.tmpl` -> `install.sh`).
+        - Rendering Engine: `Sprig v3` library, a 100% compatible superset of
+          Go's standard `text/template` package.
+
+    2.2. Template Context
+
+        The following automated variables will be available in templates:
+
+            - `OS`, `Arch`, `Hostname`, `Username`, `HomeDir`, `Date`,
+              `IsExecutable`.
+
+        User-defined variables are out of scope for the initial implementation.
+
+3. User Workflow and Safety
+---------------------------
+
+The user workflow is centered around the proactive `pre-commit` hook to
+prevent data loss.
+
+    1. The user edits a `.tmpl` source file.
+    2. The user runs `dodot deploy` to "recompile" and deploy the changes.
+    3. (Optional) The user manually edits a rendered file (e.g., `~/.zshrc`).
+    4. On `git commit`, the `pre-commit` hook runs `dodot transform check`,
+       detects the manual edit, and blocks the commit with a warning.
+    5. The user runs `dodot transform resolve ~/.zshrc`, which opens a
+       three-way merge tool, allowing them to safely merge their changes back
+       into the `.tmpl` source file.
+
+    3.1. Onboarding
+
+        The first time a template is deployed, dodot will prompt the user to
+        run `dodot install-git-hook` to set up this safety mechanism.
+
+    3.2. Baseline Cache
+
+        The `resolve` command relies on a baseline cache of the last rendered
+        version, stored safely in `$XDG_DATA_HOME/dodot/template_cache/`.
+
+    3.3. Merge Tool Strategy
+
+        The `resolve` command will find a merge tool by checking for dodot
+        config, `git` config, and common environment variables, with a safe
+        fallback.

@@ -1,0 +1,18 @@
+target/
+gen/
+node_modules/
+
+# WASM build output
+seer-viewer-wasm/pkg/
+seer-editor-wasm/pkg/
+
+# Env
+.env
+.env.*
+!.env.example
+.DS_Store
+.todos.db
+.git-trees
+.padz/
+temp-images/
+.vscode/

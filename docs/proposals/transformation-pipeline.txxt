@@ -1,0 +1,105 @@
+Design Specification: Transformation Pipeline
+                   =========================================
+
+This document outlines the master architecture for a transformation pipeline
+in dodot. This pipeline provides a generic framework for managing files where
+the version-controlled source is not identical to the deployed destination.
+
+Proposals for `templating` and `plists` are the first two concrete
+implementations of this master design.
+
+1. The Core Problem: Source vs. Destination
+-------------------------------------------
+
+dodot's core strength is its simple symlink-based model. However, many
+advanced use cases require a "build" or "transformation" step:
+
+    - Templating: A `.tmpl` source file is rendered into a plain text file.
+    - Plists: A human-readable XML representation is converted to a binary
+      plist for use by macOS applications.
+    - Secrets: An encrypted source file could be decrypted on deployment.
+
+This pipeline provides a unified architecture to handle all such cases.
+
+2. Transformation Types
+-----------------------
+
+The pipeline recognizes two distinct types of transformations, each with a
+different user workflow and safety model.
+
+    2.1. Generative (One-Way) Transformations
+
+        These are transformations where the source "generates" a destination
+        artifact, and the process cannot be safely or reliably reversed.
+
+            - Example: Templating (`.tmpl` -> `.zshrc`). It is impossible to
+              reliably "un-render" a file to get the original template back.
+            - Source of Truth: The source file (e.g., `.tmpl`) is the
+              unquestionable source of truth.
+            - Workflow: The user *must* edit the source file. Edits to the
+              destination file are considered temporary and must be manually
+              merged back.
+
+    2.2. Representational (Two-Way) Transformations
+
+        These are transformations where the source and destination are merely
+        different formats representing the exact same underlying data. The
+        transformation is lossless and perfectly reversible.
+
+            - Example: Plists (XML <-> Binary). `plutil` can convert between
+              formats without data loss.
+            - Source of Truth: The "live" destination file (e.g., the binary
+              plist) is the source of truth, as it's what applications modify.
+              The source file (e.g., the XML version) is a git-friendly
+              representation.
+            - Workflow: The user can edit the destination file directly (e.g.,
+              via a GUI app). The transformation back to the source format can
+              be safely automated.
+
+3. Unified Workflow: The `git` Integration
+------------------------------------------
+
+To create a safe and proactive user experience for both transformation types,
+the pipeline's workflow is centered around an optional `pre-commit` hook. This
+hook acts as the primary "sync" and safety mechanism.
+
+    3.1. `dodot install-git-hook`
+
+        This is the primary entry point for the user. This command will
+        install a smart `pre-commit` hook in the user's `.git/hooks`
+        directory. It will never overwrite an existing hook, instead providing
+        instructions for manual integration if needed.
+
+    3.2. The Smart `pre-commit` Hook
+
+        On `git commit`, the hook will run a check (`dodot transform check`)
+        that behaves differently based on the transformation type:
+
+            - For Generative transforms (templates): It detects divergence
+              (manual edits to destination) and staleness (source edited but
+              not deployed). It then *warns the user* and blocks the commit,
+              instructing them to run `dodot transform resolve`.
+            - For Representational transforms (plists): It primarily ensures
+              the necessary `git` filters are correctly installed. It lets
+              `git`'s `clean`/`smudge` filters handle the automatic, safe
+              conversion in the background.
+
+4. The `dodot transform` Command Suite
+---------------------------------------
+
+A generic command suite will provide the necessary tooling for users.
+
+    - `dodot transform check`: The non-interactive command run by the hook.
+    - `dodot transform diff <path>`: Shows a diff for a transformed file.
+    - `dodot transform resolve <path>`: The interactive resolution tool. For
+      generative transforms, this will launch a three-way merge tool. For
+      representational transforms, this may simply re-run the conversion.
+
+5. Conclusion
+-------------
+
+This pipeline architecture provides a robust and extensible foundation for all
+current and future file transformation needs. It correctly identifies the
+critical difference between generative and representational transforms and
+provides a safe, consistent, and user-friendly workflow for both, centered
+around a proactive `git` hook.
