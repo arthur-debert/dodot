@@ -54,9 +54,9 @@ Symlink Deployment Paths
 
     This will link `<pack>/misterious.conf` to `/var/etc/misterious.conf`. If the path is a relative path, it will be relative to your `XDG_CONFIG_HOME`. In the example above, `<pack>/home-bound.conf` will be linked to `$XDG_CONFIG_HOME/my-documents/home-bound.conf`.
 
-5. Explicit `$HOME` or `XDG_CONFIG_HOME` Without Configuration
+5. Explicit `$HOME` or `XDG_CONFIG_HOME` via Directory Prefix
 
-    If you want to explicitly link to one of the above you can also do so by inserting links inside `<pack>/__home` or `<pack>/__xdg_config_home`. For example, `some-pack/__home/aconf.ini` will be linked to `$HOME/.aconfig.ini` regardless of the `XDG_CONFIG_HOME` setting. Likewise, `some-pack/__xdg_config_home/aconfig.ini` will be linked to `$XDG_CONFIG_HOME/aconfig.ini` always.
+    If you want to explicitly link to one of the above you can also do so by inserting links inside `<pack>/_home` or `<pack>/_xdg`. For example, `some-pack/_home/aconf.ini` will be linked to `$HOME/.aconf.ini` regardless of the `XDG_CONFIG_HOME` setting. Likewise, `some-pack/_xdg/aconfig.ini` will be linked to `$XDG_CONFIG_HOME/aconfig.ini` always.
 
 6. Security Restricted Symlink File Names
 

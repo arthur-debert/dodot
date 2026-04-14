@@ -38,9 +38,9 @@ dodot: Up and Running in 5 Minutes
             alias.sh    ⚙  source by shell     pending
             bin         +  add to PATH         pending
             gitconfig   ➞  ~/.gitconfig        pending
-            Brewfile    📦 brew install        pending
+            Brewfile    ⚙ brew install        pending
 
-        Legend: ⚙ shell config, + PATH addition, ➞ symlink, 📦 package install
+        Legend: ⚙ shell/brew config, + PATH addition, ➞ symlink, × install script
         Status: pending (ready to deploy), deployed (active)
 
     :: shell ::
@@ -70,7 +70,7 @@ dodot: Up and Running in 5 Minutes
             alias.sh    ⚙  source by shell        deployed
             bin         +  add to PATH           deployed
             gitconfig   ➞  ~/.gitconfig          deployed
-            Brewfile    📦 brew install          deployed
+            Brewfile    ⚙ brew install          deployed
 
         # Edit your config - changes are immediate!
         $ vim ~/.gitconfig  # or ~/dotfiles/git/gitconfig - same file!

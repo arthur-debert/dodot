@@ -15,7 +15,7 @@ Data Storage and Organization
     Storage layout:
 
         ~/.local/share/dodot/
-        +-- data/                # All handler state organized by pack
+        +-- packs/               # All handler state organized by pack
         |   +-- vim/
         |   |   +-- symlink/     # Intermediate symlinks
         |   |   |   +-- .vimrc -> ~/dotfiles/vim/vimrc
@@ -53,14 +53,14 @@ Data Storage and Organization
     3.1. Configuration Handlers (symlink, shell, path)
 
         - Use CreateDataLink operation
-        - Create intermediate symlink in `data/<pack>/<handler>/`
+        - Create intermediate symlink in `packs/<pack>/<handler>/`
         - Links point to source files in pack
         - State = existence of these symlinks
 
     3.2. Code Execution Handlers (homebrew, install)
 
         - Use RunCommand operation with sentinels
-        - Create sentinel files in `data/<pack>/<handler>/`
+        - Create sentinel files in `packs/<pack>/<handler>/`
         - Content: "completed|timestamp"
         - State = sentinel existence (idempotent execution)
 
@@ -155,16 +155,16 @@ Data Storage and Organization
     Check state:
 
         # See all state for a pack
-        ls -la ~/.local/share/dodot/data/vim/
+        ls -la ~/.local/share/dodot/packs/vim/
 
         # See symlinks for a specific handler
-        ls -la ~/.local/share/dodot/data/vim/symlink/
+        ls -la ~/.local/share/dodot/packs/vim/symlink/
 
         # Check if a Brewfile was processed
-        ls ~/.local/share/dodot/data/tools/homebrew/
+        ls ~/.local/share/dodot/packs/tools/homebrew/
 
         # See all packs with state
-        ls ~/.local/share/dodot/data/
+        ls ~/.local/share/dodot/packs/
 
     :: shell ::
 
@@ -174,9 +174,9 @@ Data Storage and Organization
 
         # Follow the symlink chain for .vimrc
         readlink ~/.vimrc
-        # -> /Users/you/.local/share/dodot/data/vim/symlink/.vimrc
+        # -> /Users/you/.local/share/dodot/packs/vim/symlink/.vimrc
 
-        readlink /Users/you/.local/share/dodot/data/vim/symlink/.vimrc
+        readlink /Users/you/.local/share/dodot/packs/vim/symlink/.vimrc
         # -> /Users/you/dotfiles/vim/vimrc
 
     :: shell ::
