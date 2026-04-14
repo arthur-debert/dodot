@@ -32,6 +32,38 @@ pub struct ExecutionContext {
     pub provision_rerun: bool,
 }
 
+impl ExecutionContext {
+    /// Create a default production context from a dotfiles root path.
+    ///
+    /// Wires up the real filesystem, XDG paths, filesystem-backed
+    /// datastore with shell command runner, and clapfig config manager.
+    /// Callers only need to override specific fields (e.g. `dry_run`).
+    pub fn production(dotfiles_root: &std::path::Path) -> crate::Result<Self> {
+        let paths = Arc::new(
+            crate::paths::XdgPather::builder()
+                .dotfiles_root(dotfiles_root)
+                .build()?,
+        );
+        let fs: Arc<dyn Fs> = Arc::new(crate::fs::OsFs::new());
+        let runner: Arc<dyn crate::datastore::CommandRunner> =
+            Arc::new(crate::datastore::ShellCommandRunner);
+        let datastore: Arc<dyn DataStore> = Arc::new(
+            crate::datastore::FilesystemDataStore::new(fs.clone(), paths.clone(), runner),
+        );
+        let config_manager = Arc::new(ConfigManager::new(dotfiles_root)?);
+
+        Ok(Self {
+            fs,
+            datastore,
+            paths,
+            config_manager,
+            dry_run: false,
+            no_provision: false,
+            provision_rerun: false,
+        })
+    }
+}
+
 /// Result for a single pack.
 #[derive(Debug, Serialize)]
 pub struct PackResult {

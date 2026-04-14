@@ -32,11 +32,11 @@ Example Output
 
 After running ``dodot up vim``::
 
-    The pack vim has been activated.
+    The pack vim has been deployed.
 
     vim:
-      ➞ .vimrc → ~/.vimrc [linked]
-      ➞ .vim/colors/theme.vim → ~/.vim/colors/theme.vim [linked]
+      ➞ .vimrc → ~/.vimrc [deployed]
+      ➞ .vim/colors/theme.vim → ~/.vim/colors/theme.vim [deployed]
 
 Output Formats
 =============
@@ -91,7 +91,7 @@ Example from the up command::
     
     // Create result with message
     cmdResult := &types.CommandResult{
-        Message: types.FormatCommandMessage("activated", packNames),
+        Message: types.FormatCommandMessage("deployed", packNames),
         Result:  statusResult,
     }
     
@@ -103,8 +103,8 @@ Message Formatting
 
 The ``FormatCommandMessage`` helper provides consistent messaging:
 
-- Single pack: "The pack vim has been linked."
-- Multiple packs: "The packs vim and git have been linked."
+- Single pack: "The pack vim has been deployed."
+- Multiple packs: "The packs vim and git have been deployed."
 - Empty result: No message shown
 
 Commands and Their Messages
@@ -112,28 +112,20 @@ Commands and Their Messages
 
 Pack-altering commands::
 
-    up         - "The pack(s) X have been activated."
-    down       - "The pack(s) X have been deactivated."
+    up         - "The pack(s) X have been deployed."
+    down       - "The pack(s) X have been removed."
 
 Pack creation/modification::
 
     init       - "The pack X has been initialized with N files."
     fill       - "The pack X has been filled with N placeholder files."
     adopt      - "N files have been adopted into the pack X."
-    add-ignore - "A .dodotignore file has been added to the pack X."
+    addignore - "A .dodotignore file has been added to the pack X."
 
 Information commands::
 
     list       - No message, shows all pack statuses
     status     - No message, shows requested pack statuses
-
-Special Commands
-================
-
-The ``snippet`` command supports the output system but behaves differently:
-
-- In text/terminal mode: outputs the shell snippet directly
-- In JSON mode: returns structured data with shell type, snippet content, and metadata
 
 Implementation Guidelines
 ========================

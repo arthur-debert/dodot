@@ -259,7 +259,7 @@ renderer := output.NewTextRenderer()
 ### Handlers (pkg/handlers)  
 - **Role**: File-specific operation generators
 - **Responsibilities**: Convert file matches to operations (symlink, homebrew, shell, path, install)
-- **Used by**: Handler-related commands (up/down/link/unlink/provision/deprovision)
+- **Used by**: Handler-related commands (up/down)
 - **Size**: 50-100 lines each, focused on single concern
 
 ### Packs (pkg/types/pack.go)
@@ -296,7 +296,7 @@ renderer := output.NewTextRenderer()
 ### Separation of Concerns
 - **Handler commands**: up, down use orchestration.Execute() for handler operations
 - **Pack commands**: init, fill, adopt use Pack guardian methods
-- **State commands**: unlink, deprovision use DataStore.RemoveState()
+- **State commands**: down uses DataStore.RemoveState()
 - **Query commands**: list, status use discovery functions
 
 ## Error Philosophy

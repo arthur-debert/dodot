@@ -6,6 +6,7 @@ use thiserror::Error;
 /// Each variant carries enough context to produce a useful error message
 /// without needing to inspect the source chain.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum DodotError {
     #[error("filesystem error at {path}: {source}")]
     Fs {

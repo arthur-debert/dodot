@@ -54,6 +54,11 @@ pub trait DataStore: Send + Sync {
     ///
     /// Idempotent: if the sentinel already exists, the command is not
     /// re-run. The sentinel file stores `completed|{timestamp}`.
+    ///
+    /// **Edge case**: if the command succeeds but the sentinel write
+    /// fails, a subsequent call will re-run the command. This is by
+    /// design — re-running is safer than falsely marking as complete.
+    /// Install scripts should be idempotent to handle this.
     fn run_and_record(
         &self,
         pack: &str,

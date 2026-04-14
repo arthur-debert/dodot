@@ -72,7 +72,7 @@ DataStore API (8 methods):
 • CreateDataLink(pack, handler, source) → datastorePath
 • CreateUserLink(datastorePath, userPath) → error
 • RunAndRecord(pack, handler, command, sentinel) → error
-• HasSentinel(pack, handler, sentinel) → bool
+• HasSentinel(pack, handler, sentinel) → (bool, error)
 • RemoveState(pack, handler) → error
 • HasHandlerState(pack, handler) → bool
 • ListPackHandlers(pack) → []string

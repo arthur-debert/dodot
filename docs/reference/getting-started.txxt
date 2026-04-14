@@ -56,7 +56,7 @@ is what you expect to happen from these files. If not, you can rename the
 files, or remap dodot:
 
 -- 
-    $ dodot genconfig -w git
+    $ dodot genconfig --write git
     $ cat git/.dodot.toml
     [mappings]
     # path = "bin"
@@ -71,7 +71,7 @@ files, or remap dodot:
     $ dodot up git
     ... homebrew:  git/Brewfile: installed
     ... shell:     git/alias.sh: sourced
-    ... symlink:   git/gitconfig -> ~/.gitconfig: linked
+    ... symlink:   git/gitconfig -> ~/.gitconfig: deployed
     
     git
         alias.sh    ⚙  source by shell        deployed
