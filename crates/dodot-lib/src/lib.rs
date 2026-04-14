@@ -1,3 +1,4 @@
+pub mod commands;
 pub mod config;
 pub mod datastore;
 pub mod error;
@@ -7,6 +8,7 @@ pub mod handlers;
 pub mod operations;
 pub mod packs;
 pub mod paths;
+pub mod render;
 pub mod rules;
 pub mod shell;
 
