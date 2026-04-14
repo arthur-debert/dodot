@@ -1,7 +1,11 @@
 pub mod datastore;
 pub mod error;
 pub mod fs;
+pub mod handlers;
+pub mod operations;
+pub mod packs;
 pub mod paths;
+pub mod rules;
 
 // The testing module is available:
 // - Always during `cargo test` (dev-dependencies provide tempfile)

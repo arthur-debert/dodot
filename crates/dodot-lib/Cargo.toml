@@ -5,10 +5,12 @@ edition = "2021"
 description = "Core library for dodot dotfiles manager"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 tempfile = { version = "3", optional = true }
 thiserror = "2"
 
 [dev-dependencies]
+serde_json = "1"
 tempfile = "3"
 
 [features]
