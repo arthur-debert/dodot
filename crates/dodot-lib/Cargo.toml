@@ -9,6 +9,7 @@ clapfig = "0.15"
 confique = "0.4"
 glob = "0.3"
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 tempfile = { version = "3", optional = true }
 thiserror = "2"
 toml = "0.8"

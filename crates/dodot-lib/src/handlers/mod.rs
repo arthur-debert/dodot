@@ -1,4 +1,4 @@
-//! Handler trait and types.
+//! Handler trait, types, and implementations.
 //!
 //! Handlers are the bridge between file matching (rules) and execution
 //! (operations). Each handler knows how to transform a set of matched
@@ -7,11 +7,19 @@
 //! Handlers are pure data transformers — they declare what operations
 //! they need without performing any I/O themselves.
 
+pub mod homebrew;
+pub mod install;
+pub mod path;
+pub mod shell;
+pub mod symlink;
+
+use std::collections::HashMap;
 use std::path::Path;
 
 use serde::Serialize;
 
 use crate::datastore::DataStore;
+use crate::fs::Fs;
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
 use crate::rules::RuleMatch;
@@ -97,6 +105,21 @@ pub const HANDLER_SHELL: &str = "shell";
 pub const HANDLER_PATH: &str = "path";
 pub const HANDLER_INSTALL: &str = "install";
 pub const HANDLER_HOMEBREW: &str = "homebrew";
+
+/// Create the default handler registry.
+///
+/// Returns a map from handler name to handler instance. The `fs`
+/// reference is needed by install and homebrew handlers for checksum
+/// computation.
+pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
+    let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
+    registry.insert(HANDLER_SYMLINK.into(), Box::new(symlink::SymlinkHandler));
+    registry.insert(HANDLER_SHELL.into(), Box::new(shell::ShellHandler));
+    registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
+    registry.insert(HANDLER_INSTALL.into(), Box::new(install::InstallHandler::new(fs)));
+    registry.insert(HANDLER_HOMEBREW.into(), Box::new(homebrew::HomebrewHandler::new(fs)));
+    registry
+}
 
 #[cfg(test)]
 mod tests {
