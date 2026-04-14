@@ -1,0 +1,8 @@
+[package]
+name = "dodot-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI for dodot dotfiles manager"
+
+[dependencies]
+dodot-lib = { path = "../dodot-lib" }
