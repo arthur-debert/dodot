@@ -592,10 +592,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0688c2a7f92e427f44895cd63841bff7b29f8d7a1648b9e7e07a4a365b2e1257"
 
 [[package]]
-name = "dodot-cli"
+name = "dodot"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "dodot-lib",
+ "serde",
+ "standout",
 ]
 
 [[package]]
@@ -1562,12 +1566,72 @@ dependencies = [
 ]
 
 [[package]]
+name = "standout"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2daffd3b267c1cac56ebccae3760e52abd15d83d52be972a9dd4c8c4c8e4b824"
+dependencies = [
+ "anyhow",
+ "clap",
+ "console",
+ "csv",
+ "deunicode",
+ "minijinja",
+ "quick-xml",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "standout-bbparser",
+ "standout-dispatch",
+ "standout-macros",
+ "standout-pipe",
+ "standout-render",
+ "standout-seeker",
+ "terminal_size",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "standout-bbparser"
 version = "7.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0190ea0867acc753144473777cc43c1adcb4379eb8ad3e4884332e0f2278517f"
 dependencies = [
  "console",
+]
+
+[[package]]
+name = "standout-dispatch"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da15dec1161c04677341ad3ad16714f4440feb29849ab2be094ccae944e58373"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "standout-macros"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8a53a128beb6edcb2dd877f6c3f89231d979a9c67fdc9c273ed79e137d74533"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "standout-pipe"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62bf44dcd81aa125fb3846461bce17b1fce8a757f92534f761c18c17444e3141"
+dependencies = [
+ "thiserror 2.0.18",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -1589,6 +1653,16 @@ dependencies = [
  "serde_yaml",
  "standout-bbparser",
  "unicode-width",
+]
+
+[[package]]
+name = "standout-seeker"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6dd75faf92dc219c297884e9bf02a76a3f4d21407f295a518719f5c9b8a582b"
+dependencies = [
+ "regex",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1634,6 +1708,16 @@ dependencies = [
  "fastrand 2.4.1",
  "getrandom 0.4.2",
  "once_cell",
+ "rustix 1.1.4",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "terminal_size"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
+dependencies = [
  "rustix 1.1.4",
  "windows-sys 0.61.2",
 ]
@@ -1852,6 +1936,15 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "wait-timeout"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "waker-fn"

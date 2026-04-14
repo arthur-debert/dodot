@@ -1,8 +1,16 @@
 [package]
-name = "dodot-cli"
+name = "dodot"
 version = "0.1.0"
 edition = "2021"
-description = "CLI for dodot dotfiles manager"
+description = "A dotfiles manager that uses symlinks for live editing"
+
+[[bin]]
+name = "dodot"
+path = "src/main.rs"
 
 [dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
 dodot-lib = { path = "../dodot-lib" }
+serde = { version = "1", features = ["derive"] }
+standout = "7.0"

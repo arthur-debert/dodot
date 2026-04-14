@@ -1,0 +1,49 @@
+/* dodot CLI theme — semantic styles for all output */
+
+.pack-name {
+    color: #005F87;
+    font-weight: bold;
+}
+
+.handler-symbol {
+    color: #875F00;
+    font-weight: bold;
+}
+
+.description {
+    opacity: 0.6;
+}
+
+.deployed {
+    color: #008700;
+}
+
+.pending {
+    color: #5F5F87;
+}
+
+.error {
+    color: #D70000;
+    font-weight: bold;
+}
+
+.warning {
+    color: #AF8700;
+}
+
+.message {
+    color: #005F87;
+}
+
+.dry-run {
+    color: #AF8700;
+    font-style: italic;
+}
+
+.dim {
+    opacity: 0.6;
+}
+
+.header {
+    font-weight: bold;
+}
