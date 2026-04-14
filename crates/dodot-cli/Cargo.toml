@@ -10,7 +10,9 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+clapfig = "0.15"
 clap = { version = "4", features = ["derive"] }
+confique = "0.4"
 dodot-lib = { path = "../dodot-lib" }
 serde = { version = "1", features = ["derive"] }
 standout = "7.0"

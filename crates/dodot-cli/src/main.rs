@@ -5,7 +5,27 @@ mod handlers;
 
 fn main() {
     let cmd = build_clap_command();
+    let matches = cmd.get_matches();
 
+    // Handle `config` subcommand via clapfig (bypasses standout)
+    if let Some(("config", sub_matches)) = matches.subcommand() {
+        if let Err(e) = handlers::handle_config(sub_matches) {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // Handle `init-sh` directly (raw stdout, no rendering)
+    if matches.subcommand_matches("init-sh").is_some() {
+        if let Err(e) = handlers::handle_init_sh() {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // All other commands go through standout dispatch
     let app = App::builder()
         .templates(standout::embed_templates!("src/templates"))
         .styles(standout::embed_styles!("src/styles"))
@@ -28,6 +48,8 @@ fn main() {
         .build()
         .expect("app build");
 
+    // Re-parse for standout dispatch (standout needs to parse args itself)
+    let cmd = build_clap_command();
     let handled = app.run(cmd, std::env::args());
     if !handled {
         let _ = build_clap_command().print_help();
@@ -36,6 +58,8 @@ fn main() {
 }
 
 fn build_clap_command() -> ClapCommand {
+    let config_cmd = clapfig::ConfigCommand::new();
+
     ClapCommand::new("dodot")
         .about("A dotfiles manager that uses symlinks for live editing")
         .version(env!("CARGO_PKG_VERSION"))
@@ -124,12 +148,17 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("genconfig")
-                .about("Generate default configuration")
+                .about("Generate default configuration (use `config gen` instead)")
                 .arg(
                     Arg::new("write")
                         .long("write")
                         .help("Write config to dotfiles root")
                         .action(ArgAction::SetTrue),
                 ),
+        )
+        .subcommand(config_cmd.as_command("config").about("Manage configuration"))
+        .subcommand(
+            ClapCommand::new("init-sh")
+                .about("Print shell init script for eval in .zshrc/.bashrc"),
         )
 }

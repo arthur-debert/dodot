@@ -597,6 +597,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "clapfig",
+ "confique",
  "dodot-lib",
  "serde",
  "standout",

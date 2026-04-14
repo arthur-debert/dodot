@@ -155,3 +155,38 @@ pub fn genconfig_handler(
     let result = commands::genconfig::genconfig(write, &ctx)?;
     Ok(Output::Render(result))
 }
+
+// ── Special handlers (bypass standout dispatch) ─────────────────
+
+/// Handle `dodot config` subcommand via clapfig.
+///
+/// Clapfig handles its own output (printing config values, generating
+/// templates, etc.) so this bypasses standout's rendering pipeline.
+pub fn handle_config(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
+    let dotfiles_root = discover_dotfiles_root()?;
+    let config_cmd = clapfig::ConfigCommand::new();
+    let action = config_cmd.parse(matches)?;
+
+    clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()
+        .app_name("dodot")
+        .file_name(".dodot.toml")
+        .search_paths(vec![
+            clapfig::SearchPath::Path(dotfiles_root),
+        ])
+        .search_mode(clapfig::SearchMode::Merge)
+        .no_env()
+        .handle_and_print(&action)?;
+
+    Ok(())
+}
+
+/// Handle `dodot init-sh` — print the shell init script to stdout.
+///
+/// Designed to be used as: `eval "$(dodot init-sh)"`
+pub fn handle_init_sh() -> Result<(), anyhow::Error> {
+    let dotfiles_root = discover_dotfiles_root()?;
+    let ctx = ExecutionContext::production(&dotfiles_root)?;
+    let script = dodot_lib::shell::generate_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    print!("{script}");
+    Ok(())
+}
