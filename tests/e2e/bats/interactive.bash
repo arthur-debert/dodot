@@ -110,7 +110,8 @@ cat << 'WELCOME'
 │  Try:                                            │
 │    dodot status                                  │
 │    dodot up --dry-run                            │
-│    dodot init tmux && dodot adopt tmux ~/.tmux.conf│
+│    dodot init tmux &&                            │
+│    dodot adopt tmux ~/.tmux.conf                 │
 │    dodot init mypack                             │
 │    eval "$(dodot init-sh)"                       │
 │                                                  │

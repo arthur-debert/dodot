@@ -10,8 +10,9 @@ use crate::Result;
 /// Run the `down` command: remove all state for specified (or all) packs.
 pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     // Validate pack names before doing anything
+    let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
-        orchestration::validate_pack_names(names, ctx)?;
+        warnings = orchestration::validate_pack_names(names, ctx)?;
     }
 
     let root_config = ctx.config_manager.root_config()?;
@@ -43,23 +44,22 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
             // For symlink handler, list individual files (#14)
             if handler == HANDLER_SYMLINK {
                 let handler_dir = ctx.paths.handler_data_dir(&pack.name, handler);
-                if let Ok(entries) = ctx.fs.read_dir(&handler_dir) {
-                    for entry in entries {
-                        let label = if ctx.dry_run {
-                            "[dry-run] would remove"
-                        } else {
-                            "removed"
-                        };
-                        let status = if ctx.dry_run { "pending" } else { "deployed" };
-                        files.push(DisplayFile {
-                            name: entry.name.clone(),
-                            symbol: handler_symbol(handler).into(),
-                            description: "unlinked".into(),
-                            status: status.into(),
-                            status_label: label.into(),
-                            handler: handler.clone(),
-                        });
-                    }
+                let entries = ctx.fs.read_dir(&handler_dir)?;
+                for entry in entries {
+                    let label = if ctx.dry_run {
+                        "[dry-run] would remove"
+                    } else {
+                        "removed"
+                    };
+                    let status = if ctx.dry_run { "pending" } else { "deployed" };
+                    files.push(DisplayFile {
+                        name: entry.name.clone(),
+                        symbol: handler_symbol(handler).into(),
+                        description: "state removed".into(),
+                        status: status.into(),
+                        status_label: label.into(),
+                        handler: handler.clone(),
+                    });
                 }
             } else {
                 // Non-symlink handlers: show handler name
@@ -110,5 +110,6 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         message: Some(message.into()),
         dry_run: ctx.dry_run,
         packs: display_packs,
+        warnings,
     })
 }

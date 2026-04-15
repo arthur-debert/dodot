@@ -93,7 +93,7 @@ Symlink targets are resolved smartly:
 - Files already starting with `.` keep their name as-is
 - `dot.` prefix convention: `dot.bashrc` -> `~/.bashrc` (avoids hidden files in your repo)
 
-dodot uses a double-symlink architecture (`source → datastore → ~`) for clean state management. Edits still flow through both links instantly.
+dodot uses a double-symlink architecture (`~/.file → datastore/... → ~/dotfiles/...`) for clean state management. Edits still flow through both links instantly.
 
 All conventions can be overridden via `.dodot.toml` in the pack or the dotfiles root.
 

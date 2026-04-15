@@ -24,9 +24,9 @@ pub fn adopt(
     let pack_path = ctx.paths.pack_path(pack_name);
 
     if !ctx.fs.exists(&pack_path) {
-        return Err(DodotError::Other(format!(
-            "pack not found: {pack_name}\n  Hint: run 'dodot init {pack_name}' first to create it"
-        )));
+        return Err(DodotError::PackNotFound {
+            name: pack_name.into(),
+        });
     }
 
     let mut details = Vec::new();

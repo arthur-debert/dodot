@@ -37,7 +37,10 @@ impl<'a> Executor<'a> {
     /// Execute a list of handler intents, returning one result per
     /// atomic operation performed.
     ///
-    /// In normal mode, execution stops on the first error.
+    /// Conflicts (pre-existing files at target paths) are returned as
+    /// failed `OperationResult`s — non-fatal, so other intents still
+    /// execute. Hard errors (I/O failures, command failures) stop
+    /// execution immediately via `?`.
     /// In dry-run mode, all intents are simulated regardless of errors.
     pub fn execute(&self, intents: Vec<HandlerIntent>) -> Result<Vec<OperationResult>> {
         let mut results = Vec::new();
@@ -68,8 +71,12 @@ impl<'a> Executor<'a> {
                 // dangling state when the user link would fail.
                 if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
                     if self.force {
-                        // Back up by removing the existing file
-                        self.fs.remove_file(user_path)?;
+                        // Remove the existing path before creating the symlink
+                        if self.fs.is_dir(user_path) {
+                            self.fs.remove_dir_all(user_path)?;
+                        } else {
+                            self.fs.remove_file(user_path)?;
+                        }
                     } else {
                         // Return a failed result — non-fatal so other files
                         // in the pack can still be processed.

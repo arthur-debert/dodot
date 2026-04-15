@@ -89,6 +89,7 @@ pub fn status_handler(
     let ctx = build_readonly_ctx()?;
     let filter = pack_filter(matches);
     let result = commands::status::status(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
 }
 
@@ -99,6 +100,7 @@ pub fn up_handler(
     let ctx = build_ctx(matches)?;
     let filter = pack_filter(matches);
     let result = commands::up::up(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
 }
 
@@ -109,7 +111,14 @@ pub fn down_handler(
     let ctx = build_ctx(matches)?;
     let filter = pack_filter(matches);
     let result = commands::down::down(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
+}
+
+fn print_warnings(warnings: &[String]) {
+    for w in warnings {
+        eprintln!("{w}");
+    }
 }
 
 pub fn list_handler(
@@ -153,7 +162,13 @@ pub fn adopt_handler(
         .map(PathBuf::from)
         .collect();
     let force = matches.get_flag("force");
-    let result = commands::adopt::adopt(pack_name, &files, force, &ctx)?;
+    let result = commands::adopt::adopt(pack_name, &files, force, &ctx).map_err(|e| {
+        if matches!(e, dodot_lib::DodotError::PackNotFound { .. }) {
+            anyhow::anyhow!("{e}\n  Hint: run 'dodot init {pack_name}' first to create it")
+        } else {
+            e.into()
+        }
+    })?;
     Ok(Output::Render(result))
 }
 

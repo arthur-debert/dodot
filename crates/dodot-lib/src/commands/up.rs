@@ -20,6 +20,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     }
 
     // Convert to display format
+    let home = ctx.paths.home_dir();
     let packs: Vec<DisplayPack> = result
         .pack_results
         .iter()
@@ -28,25 +29,19 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
                 .operations
                 .iter()
                 .map(|op| {
-                    let (handler, source) = extract_op_info(&op.operation);
-                    if op.success {
-                        DisplayFile {
-                            name: source.clone(),
-                            symbol: handler_symbol(&handler).into(),
-                            description: handler_description(&handler, &source, None),
-                            status: status_style(true).into(),
-                            status_label: op.message.clone(),
-                            handler,
-                        }
+                    let (handler, name, user_target) = extract_op_info(&op.operation, home);
+                    let status = if op.success {
+                        status_style(true).into()
                     } else {
-                        DisplayFile {
-                            name: source.clone(),
-                            symbol: handler_symbol(&handler).into(),
-                            description: handler_description(&handler, &source, None),
-                            status: "error".into(),
-                            status_label: op.message.clone(),
-                            handler,
-                        }
+                        "error".into()
+                    };
+                    DisplayFile {
+                        name: name.clone(),
+                        symbol: handler_symbol(&handler).into(),
+                        description: handler_description(&handler, &name, user_target.as_deref()),
+                        status,
+                        status_label: op.message.clone(),
+                        handler,
                     }
                 })
                 .collect();
@@ -86,11 +81,15 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         message: Some(message),
         dry_run: ctx.dry_run,
         packs,
+        warnings: Vec::new(),
     })
 }
 
-/// Extract handler name and source info from an operation.
-fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
+/// Extract handler name, display name, and optional user target from an operation.
+fn extract_op_info(
+    op: &crate::operations::Operation,
+    home: &std::path::Path,
+) -> (String, String, Option<String>) {
     match op {
         crate::operations::Operation::CreateDataLink {
             handler, source, ..
@@ -101,10 +100,28 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned(),
+            None,
         ),
         crate::operations::Operation::CreateUserLink {
-            handler, user_path, ..
-        } => (handler.clone(), user_path.to_string_lossy().into_owned()),
+            handler,
+            datastore_path,
+            user_path,
+            ..
+        } => {
+            // Name: filename from the datastore path (pack-relative name)
+            let name = datastore_path
+                .file_name()
+                .unwrap_or_else(|| user_path.file_name().unwrap_or_default())
+                .to_string_lossy()
+                .into_owned();
+            // Target: user_path displayed relative to ~ for readability
+            let target = if let Ok(rel) = user_path.strip_prefix(home) {
+                format!("~/{}", rel.display())
+            } else {
+                user_path.display().to_string()
+            };
+            (handler.clone(), name, Some(target))
+        }
         crate::operations::Operation::RunCommand {
             handler,
             executable,
@@ -113,10 +130,11 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
         } => (
             handler.clone(),
             format_command_for_display(executable, arguments),
+            None,
         ),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
-        } => (handler.clone(), sentinel.clone()),
+        } => (handler.clone(), sentinel.clone(), None),
     }
 }
 

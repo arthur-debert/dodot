@@ -15,8 +15,9 @@ use crate::Result;
 /// Run the `status` command: scan packs and check handler deployment state.
 pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     // Validate pack names before doing anything
+    let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
-        orchestration::validate_pack_names(names, ctx)?;
+        warnings = orchestration::validate_pack_names(names, ctx)?;
     }
 
     let root_config = ctx.config_manager.root_config()?;
@@ -94,5 +95,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         message: None,
         dry_run: false,
         packs: display_packs,
+        warnings,
     })
 }

@@ -375,7 +375,7 @@ Architecture
     9.1. Unified Execution
 
         - Single entry point: all pack-based commands use `packs::orchestration::execute()`
-        - No business logic in CLI: commands are thin orchestrator's only
+        - No business logic in CLI: commands are thin orchestrators only
         - Proper abstractions: Commands, Orchestration, Rules, Handlers, Intents, Operations, DataStore
         - No bypassing: never skip abstraction layers or access handlers directly
 

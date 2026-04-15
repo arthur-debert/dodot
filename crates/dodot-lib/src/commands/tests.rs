@@ -553,7 +553,7 @@ fn addignore_on_deployed_pack_warns() {
 // ── adopt: pack not found hint ─────────────────────────────
 
 #[test]
-fn adopt_nonexistent_pack_suggests_init() {
+fn adopt_nonexistent_pack_returns_pack_not_found() {
     let env = TempEnvironment::builder()
         .home_file(".vimrc", "set nocompatible")
         .build();
@@ -562,10 +562,9 @@ fn adopt_nonexistent_pack_suggests_init() {
     let source = env.home.join(".vimrc");
     let err =
         commands::adopt::adopt("newpack", std::slice::from_ref(&source), false, &ctx).unwrap_err();
-    let msg = err.to_string();
     assert!(
-        msg.contains("dodot init"),
-        "should suggest dodot init, got: {msg}"
+        matches!(err, crate::DodotError::PackNotFound { .. }),
+        "expected PackNotFound, got: {err}"
     );
 }
 
