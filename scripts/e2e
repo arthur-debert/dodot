@@ -25,6 +25,10 @@ while [[ $# -gt 0 ]]; do
             mode="shell"
             shift
             ;;
+        --explore)
+            mode="explore"
+            shift
+            ;;
         --local)
             mode="local"
             shift
@@ -37,7 +41,8 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: scripts/e2e [OPTIONS] [TEST_FILE]"
             echo ""
             echo "Options:"
-            echo "  --shell     Drop into interactive container with dodot on PATH"
+            echo "  --explore   Pre-built sandbox with fixtures + pre-existing home files"
+            echo "  --shell     Bare interactive container (for helper/BATS development)"
             echo "  --local     Run locally without Docker (temp-dir isolation)"
             echo "  --rebuild   Force rebuild of Docker image"
             echo "  -h, --help  Show this help"
@@ -47,7 +52,8 @@ while [[ $# -gt 0 ]]; do
             echo "  scripts/e2e test_up.bats           Run specific test file in Docker"
             echo "  scripts/e2e --local                Run all tests locally"
             echo "  scripts/e2e --local test_up.bats   Run specific test file locally"
-            echo "  scripts/e2e --shell                Interactive container shell"
+            echo "  scripts/e2e --explore              Explore sandbox with conflicts/adoptable files"
+            echo "  scripts/e2e --shell                Bare container shell"
             exit 0
             ;;
         *.bats)
@@ -118,10 +124,20 @@ run_shell() {
         "$IMAGE_NAME"
 }
 
+run_explore() {
+    ensure_image
+
+    docker run --rm -it \
+        --entrypoint bash \
+        "$IMAGE_NAME" \
+        /tests/interactive.bash
+}
+
 # ── Dispatch ────────────────────────────────────────────────────
 
 case "$mode" in
     local)  run_local ;;
     docker) run_docker ;;
     shell)  run_shell ;;
+    explore) run_explore ;;
 esac
