@@ -42,6 +42,12 @@ pub trait Fs: Send + Sync {
     fn lstat(&self, path: &Path) -> Result<FsMetadata>;
 
     /// Opens the file for reading in a streaming fashion.
+    ///
+    /// Errors that occur while opening the file are returned through this
+    /// method's [`Result`] and include path context. Once opened, the
+    /// returned reader is a raw [`std::io::Read`], so any later `read()`
+    /// errors are reported as plain [`std::io::Error`] values and are not
+    /// automatically wrapped with the path.
     fn open_read(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send + Sync>>;
 
     /// Reads the entire file into bytes.

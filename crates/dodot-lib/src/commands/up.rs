@@ -77,7 +77,11 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
             ..
         } => (
             handler.clone(),
-            format!("{} {}", executable, arguments.join(" ")),
+            if arguments.is_empty() {
+                executable.clone()
+            } else {
+                format!("{} {}", executable, arguments.join(" "))
+            },
         ),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..

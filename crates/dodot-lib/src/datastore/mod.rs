@@ -101,13 +101,36 @@ pub struct CommandOutput {
 /// [`CommandRunner`] that spawns a real shell process.
 pub struct ShellCommandRunner;
 
+fn format_command_for_display(executable: &str, arguments: &[String]) -> String {
+    if arguments.is_empty() {
+        return executable.to_string();
+    }
+
+    let args = arguments
+        .iter()
+        .map(|arg| {
+            if arg.is_empty()
+                || arg.chars().any(char::is_whitespace)
+                || arg.contains('"')
+                || arg.contains('\'')
+            {
+                format!("{arg:?}")
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("{executable} {args}")
+}
+
 impl CommandRunner for ShellCommandRunner {
     fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
         let output = std::process::Command::new(executable)
             .args(arguments)
             .output()
             .map_err(|e| crate::DodotError::CommandFailed {
-                command: format!("{} {}", executable, arguments.join(" ")),
+                command: format_command_for_display(executable, arguments),
                 exit_code: -1,
                 stderr: e.to_string(),
             })?;
@@ -118,7 +141,7 @@ impl CommandRunner for ShellCommandRunner {
 
         if !output.status.success() {
             return Err(crate::DodotError::CommandFailed {
-                command: format!("{} {}", executable, arguments.join(" ")),
+                command: format_command_for_display(executable, arguments),
                 exit_code,
                 stderr,
             });

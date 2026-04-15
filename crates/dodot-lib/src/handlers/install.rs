@@ -57,7 +57,7 @@ impl Handler for InstallHandler<'_> {
                 pack: m.pack.clone(),
                 handler: HANDLER_INSTALL.into(),
                 executable: "bash".into(),
-                arguments: vec![m.absolute_path.to_string_lossy().into_owned()],
+                arguments: vec!["--".into(), m.absolute_path.to_string_lossy().into_owned()],
                 sentinel,
             });
         }
@@ -187,7 +187,8 @@ mod tests {
                 ..
             } => {
                 assert_eq!(executable, "bash");
-                assert!(arguments[0].contains("install.sh"));
+                assert_eq!(arguments[0], "--");
+                assert!(arguments[1].contains("install.sh"));
                 assert!(sentinel.starts_with("install.sh-"));
                 assert_eq!(sentinel.len(), "install.sh-".len() + 16);
             }
