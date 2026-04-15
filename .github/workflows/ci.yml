@@ -28,3 +28,26 @@ jobs:
 
       - name: Run checks
         run: scripts/check
+
+  e2e:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: ./.github/actions/rust-setup
+
+      - name: Build dodot
+        run: cargo build --release -p dodot
+
+      - name: Install BATS
+        run: |
+          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats
+          sudo /tmp/bats/install.sh /usr/local
+
+      - name: Run E2E tests
+        run: |
+          export DODOT_BIN="$PWD/target/release/dodot"
+          bats tests/e2e/bats/

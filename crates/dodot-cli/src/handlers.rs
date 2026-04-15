@@ -95,7 +95,9 @@ pub fn down_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_ctx(matches)?;
+    let dotfiles_root = discover_dotfiles_root()?;
+    let mut ctx = ExecutionContext::production(&dotfiles_root)?;
+    ctx.dry_run = matches.get_flag("dry-run");
     let filter = pack_filter(matches);
     let result = commands::down::down(filter.as_deref(), &ctx)?;
     Ok(Output::Render(result))
