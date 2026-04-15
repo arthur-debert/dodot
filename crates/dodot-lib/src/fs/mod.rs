@@ -41,6 +41,9 @@ pub trait Fs: Send + Sync {
     /// Returns metadata for the path without following symlinks.
     fn lstat(&self, path: &Path) -> Result<FsMetadata>;
 
+    /// Opens the file for reading in a streaming fashion.
+    fn open_read(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send + Sync>>;
+
     /// Reads the entire file into bytes.
     fn read_file(&self, path: &Path) -> Result<Vec<u8>>;
 
