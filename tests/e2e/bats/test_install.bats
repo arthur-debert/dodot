@@ -29,7 +29,7 @@ echo done'
 
 @test "install.sh does not re-run on second up" {
     create_pack_script "tools" "install.sh" '#!/bin/sh
-echo "$(date +%s%N)" > "$HOME/.install-timestamp"'
+echo "$(date +%s)" > "$HOME/.install-timestamp"'
 
     dodot up
     local first_ts
@@ -52,7 +52,7 @@ echo "$(date +%s%N)" > "$HOME/.install-timestamp"'
     skip "provision_rerun not yet implemented in execution layer"
 
     create_pack_script "tools" "install.sh" '#!/bin/sh
-echo "$(date +%s%N)" > "$HOME/.install-timestamp"'
+echo "$(date +%s)" > "$HOME/.install-timestamp"'
 
     dodot up
     local first_ts

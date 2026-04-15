@@ -124,7 +124,7 @@ assert_sentinel_exists() {
 
     # shellcheck disable=SC2086
     local matches
-    matches=$(find "$sentinel_dir" -name "$pattern" -maxdepth 1 2>/dev/null)
+    matches=$(find "$sentinel_dir" -maxdepth 1 -name "$pattern" 2>/dev/null)
     if [[ -z "$matches" ]]; then
         echo "no sentinel matching '$pattern' in $sentinel_dir" >&2
         echo "contents:" >&2

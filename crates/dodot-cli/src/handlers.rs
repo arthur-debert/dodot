@@ -11,19 +11,29 @@ use standout::cli::{CommandContext, HandlerResult, Output};
 use dodot_lib::commands;
 use dodot_lib::packs::orchestration::ExecutionContext;
 
+/// Read a boolean flag, returning false if the flag is not defined
+/// for this subcommand.
+fn flag_or_false(matches: &clap::ArgMatches, name: &str) -> bool {
+    matches
+        .try_get_one::<bool>(name)
+        .ok()
+        .flatten()
+        .copied()
+        .unwrap_or(false)
+}
+
 /// Build an ExecutionContext from the current environment.
 ///
 /// Uses `ExecutionContext::production()` with the dotfiles root
-/// discovered from env/git. Overrides dry_run and no_provision
-/// based on CLI flags.
+/// discovered from env/git. Reads CLI flags when present, defaulting
+/// to false for flags not defined on the current subcommand.
 fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
-    // Discover dotfiles root from environment
     let dotfiles_root = discover_dotfiles_root()?;
     let mut ctx = ExecutionContext::production(&dotfiles_root)?;
 
-    ctx.dry_run = matches.get_flag("dry-run");
-    ctx.no_provision = matches.get_flag("no-provision");
-    ctx.provision_rerun = matches.get_flag("provision-rerun");
+    ctx.dry_run = flag_or_false(matches, "dry-run");
+    ctx.no_provision = flag_or_false(matches, "no-provision");
+    ctx.provision_rerun = flag_or_false(matches, "provision-rerun");
 
     Ok(ctx)
 }
@@ -95,9 +105,7 @@ pub fn down_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let dotfiles_root = discover_dotfiles_root()?;
-    let mut ctx = ExecutionContext::production(&dotfiles_root)?;
-    ctx.dry_run = matches.get_flag("dry-run");
+    let ctx = build_ctx(matches)?;
     let filter = pack_filter(matches);
     let result = commands::down::down(filter.as_deref(), &ctx)?;
     Ok(Output::Render(result))
