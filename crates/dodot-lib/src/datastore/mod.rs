@@ -58,7 +58,8 @@ pub trait DataStore: Send + Sync {
         &self,
         pack: &str,
         handler: &str,
-        command: &str,
+        executable: &str,
+        arguments: &[String],
         sentinel: &str,
     ) -> Result<()>;
 
@@ -86,7 +87,7 @@ pub trait DataStore: Send + Sync {
 /// [`run_and_record`](DataStore::run_and_record). Tests can provide a
 /// mock that records calls without spawning processes.
 pub trait CommandRunner: Send + Sync {
-    fn run(&self, command: &str) -> Result<CommandOutput>;
+    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput>;
 }
 
 /// Output from a command execution.
@@ -101,13 +102,12 @@ pub struct CommandOutput {
 pub struct ShellCommandRunner;
 
 impl CommandRunner for ShellCommandRunner {
-    fn run(&self, command: &str) -> Result<CommandOutput> {
-        let output = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(command)
+    fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+        let output = std::process::Command::new(executable)
+            .args(arguments)
             .output()
             .map_err(|e| crate::DodotError::CommandFailed {
-                command: command.to_string(),
+                command: format!("{} {}", executable, arguments.join(" ")),
                 exit_code: -1,
                 stderr: e.to_string(),
             })?;
@@ -118,7 +118,7 @@ impl CommandRunner for ShellCommandRunner {
 
         if !output.status.success() {
             return Err(crate::DodotError::CommandFailed {
-                command: command.to_string(),
+                command: format!("{} {}", executable, arguments.join(" ")),
                 exit_code,
                 stderr,
             });

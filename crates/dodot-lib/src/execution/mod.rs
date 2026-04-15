@@ -106,7 +106,8 @@ impl<'a> Executor<'a> {
             HandlerIntent::Run {
                 pack,
                 handler,
-                command,
+                executable,
+                arguments,
                 sentinel,
             } => {
                 // Check sentinel first
@@ -123,18 +124,21 @@ impl<'a> Executor<'a> {
 
                 // Run the command
                 self.datastore
-                    .run_and_record(pack, handler, command, sentinel)?;
+                    .run_and_record(pack, handler, executable, arguments, sentinel)?;
+
+                let cmd_str = format!("{} {}", executable, arguments.join(" "));
 
                 let op = Operation::RunCommand {
                     pack: pack.clone(),
                     handler: handler.clone(),
-                    command: command.clone(),
+                    executable: executable.clone(),
+                    arguments: arguments.clone(),
                     sentinel: sentinel.clone(),
                 };
 
                 Ok(vec![OperationResult::ok(
                     op,
-                    format!("executed: {command}"),
+                    format!("executed: {}", cmd_str.trim()),
                 )])
             }
         }
@@ -188,17 +192,20 @@ impl<'a> Executor<'a> {
             HandlerIntent::Run {
                 pack,
                 handler,
-                command,
+                executable,
+                arguments,
                 sentinel,
             } => {
+                let cmd_str = format!("{} {}", executable, arguments.join(" "));
                 vec![OperationResult::ok(
                     Operation::RunCommand {
                         pack: pack.clone(),
                         handler: handler.clone(),
-                        command: command.clone(),
+                        executable: executable.clone(),
+                        arguments: arguments.clone(),
                         sentinel: sentinel.clone(),
                     },
-                    format!("[dry-run] would execute: {command}"),
+                    format!("[dry-run] would execute: {}", cmd_str.trim()),
                 )]
             }
         }
@@ -227,8 +234,9 @@ mod tests {
     }
 
     impl CommandRunner for MockCommandRunner {
-        fn run(&self, command: &str) -> Result<CommandOutput> {
-            self.calls.lock().unwrap().push(command.to_string());
+        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+            let cmd_str = format!("{} {}", executable, arguments.join(" "));
+            self.calls.lock().unwrap().push(cmd_str.trim().to_string());
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),
@@ -314,7 +322,8 @@ mod tests {
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
                 handler: "install".into(),
-                command: "echo hello".into(),
+                executable: "echo".into(),
+                arguments: vec!["hello".into()],
                 sentinel: "install.sh-abc123".into(),
             }])
             .unwrap();
@@ -342,7 +351,8 @@ mod tests {
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
                 handler: "install".into(),
-                command: "echo should-not-run".into(),
+                executable: "echo".into(),
+                arguments: vec!["should-not-run".into()],
                 sentinel: "install.sh-abc123".into(),
             }])
             .unwrap();
@@ -379,7 +389,8 @@ mod tests {
                 HandlerIntent::Run {
                     pack: "vim".into(),
                     handler: "install".into(),
-                    command: "echo hi".into(),
+                    executable: "echo".into(),
+                    arguments: vec!["hi".into()],
                     sentinel: "s1".into(),
                 },
             ])

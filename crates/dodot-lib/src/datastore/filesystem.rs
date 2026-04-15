@@ -87,7 +87,8 @@ impl DataStore for FilesystemDataStore {
         &self,
         pack: &str,
         handler: &str,
-        command: &str,
+        executable: &str,
+        arguments: &[String],
         sentinel: &str,
     ) -> Result<()> {
         // Idempotent: skip if sentinel exists
@@ -96,7 +97,7 @@ impl DataStore for FilesystemDataStore {
         }
 
         // Run the command
-        self.runner.run(command)?;
+        self.runner.run(executable, arguments)?;
 
         // Record sentinel
         let sentinel_dir = self.paths.handler_data_dir(pack, handler);
@@ -195,11 +196,12 @@ mod tests {
     }
 
     impl CommandRunner for MockCommandRunner {
-        fn run(&self, command: &str) -> Result<CommandOutput> {
-            self.calls.lock().unwrap().push(command.to_string());
+        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+            let cmd_str = format!("{} {}", executable, arguments.join(" "));
+            self.calls.lock().unwrap().push(cmd_str.trim().to_string());
             if self.should_fail {
                 Err(crate::DodotError::CommandFailed {
-                    command: command.to_string(),
+                    command: cmd_str.trim().to_string(),
                     exit_code: 1,
                     stderr: "mock failure".to_string(),
                 })
@@ -400,8 +402,14 @@ mod tests {
 
         assert!(!ds.has_sentinel("vim", "install", "install.sh-abc").unwrap());
 
-        ds.run_and_record("vim", "install", "echo hello", "install.sh-abc")
-            .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            "echo",
+            &["hello".into()],
+            "install.sh-abc",
+        )
+        .unwrap();
 
         assert!(ds.has_sentinel("vim", "install", "install.sh-abc").unwrap());
         assert_eq!(runner.calls(), vec!["echo hello"]);
@@ -420,9 +428,9 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo first", "s1")
+        ds.run_and_record("vim", "install", "echo", &["first".into()], "s1")
             .unwrap();
-        ds.run_and_record("vim", "install", "echo second", "s1")
+        ds.run_and_record("vim", "install", "echo", &["second".into()], "s1")
             .unwrap();
 
         // Command only ran once
@@ -436,7 +444,7 @@ mod tests {
         let ds = FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), runner);
 
         let err = ds
-            .run_and_record("vim", "install", "bad-cmd", "s1")
+            .run_and_record("vim", "install", "bad-cmd", &[], "s1")
             .unwrap_err();
 
         assert!(
@@ -550,9 +558,9 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo a", "install.sh-aaa")
+        ds.run_and_record("vim", "install", "echo", &["a".into()], "install.sh-aaa")
             .unwrap();
-        ds.run_and_record("vim", "install", "echo b", "install.sh-bbb")
+        ds.run_and_record("vim", "install", "echo", &["b".into()], "install.sh-bbb")
             .unwrap();
 
         let mut sentinels = ds.list_handler_sentinels("vim", "install").unwrap();

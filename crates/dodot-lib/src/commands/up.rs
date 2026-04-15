@@ -71,8 +71,14 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
             handler, user_path, ..
         } => (handler.clone(), user_path.to_string_lossy().into_owned()),
         crate::operations::Operation::RunCommand {
-            handler, command, ..
-        } => (handler.clone(), command.clone()),
+            handler,
+            executable,
+            arguments,
+            ..
+        } => (
+            handler.clone(),
+            format!("{} {}", executable, arguments.join(" ")),
+        ),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
         } => (handler.clone(), sentinel.clone()),
