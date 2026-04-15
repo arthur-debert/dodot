@@ -79,6 +79,9 @@ pub trait DataStore: Send + Sync {
 
     /// Lists sentinel file names for a pack/handler.
     fn list_handler_sentinels(&self, pack: &str, handler: &str) -> Result<Vec<String>>;
+
+    /// Returns the absolute path where a sentinel file would be stored.
+    fn sentinel_path(&self, pack: &str, handler: &str, sentinel: &str) -> std::path::PathBuf;
 }
 
 /// Abstraction over process execution.

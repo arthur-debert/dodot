@@ -4,24 +4,43 @@
 //! what they want; the executor figures out how to make it happen.
 
 use crate::datastore::DataStore;
+use crate::fs::Fs;
 use crate::operations::{HandlerIntent, Operation, OperationResult};
 use crate::Result;
 
 /// Executes handler intents by dispatching to the DataStore.
 pub struct Executor<'a> {
     datastore: &'a dyn DataStore,
+    fs: &'a dyn Fs,
     dry_run: bool,
+    force: bool,
+    provision_rerun: bool,
 }
 
 impl<'a> Executor<'a> {
-    pub fn new(datastore: &'a dyn DataStore, dry_run: bool) -> Self {
-        Self { datastore, dry_run }
+    pub fn new(
+        datastore: &'a dyn DataStore,
+        fs: &'a dyn Fs,
+        dry_run: bool,
+        force: bool,
+        provision_rerun: bool,
+    ) -> Self {
+        Self {
+            datastore,
+            fs,
+            dry_run,
+            force,
+            provision_rerun,
+        }
     }
 
     /// Execute a list of handler intents, returning one result per
     /// atomic operation performed.
     ///
-    /// In normal mode, execution stops on the first error.
+    /// Conflicts (pre-existing files at target paths) are returned as
+    /// failed `OperationResult`s — non-fatal, so other intents still
+    /// execute. Hard errors (I/O failures, command failures) stop
+    /// execution immediately via `?`.
     /// In dry-run mode, all intents are simulated regardless of errors.
     pub fn execute(&self, intents: Vec<HandlerIntent>) -> Result<Vec<OperationResult>> {
         let mut results = Vec::new();
@@ -47,37 +66,58 @@ impl<'a> Executor<'a> {
                 source,
                 user_path,
             } => {
+                // Pre-check: does a non-symlink file exist at user_path?
+                // We check BEFORE creating the data link to avoid leaving
+                // dangling state when the user link would fail.
+                if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
+                    if self.force {
+                        // Remove the existing path before creating the symlink
+                        if self.fs.is_dir(user_path) {
+                            self.fs.remove_dir_all(user_path)?;
+                        } else {
+                            self.fs.remove_file(user_path)?;
+                        }
+                    } else {
+                        // Return a failed result — non-fatal so other files
+                        // in the pack can still be processed.
+                        let op = Operation::CreateUserLink {
+                            pack: pack.clone(),
+                            handler: handler.clone(),
+                            datastore_path: Default::default(),
+                            user_path: user_path.clone(),
+                        };
+                        return Ok(vec![OperationResult::fail(
+                            op,
+                            format!(
+                                "conflict: {} already exists (use --force to overwrite)",
+                                user_path.display()
+                            ),
+                        )]);
+                    }
+                }
+
                 // Step 1: Create data link (source → datastore)
                 let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
-
-                let op1 = Operation::CreateDataLink {
-                    pack: pack.clone(),
-                    handler: handler.clone(),
-                    source: source.clone(),
-                };
 
                 // Step 2: Create user link (datastore → user location)
                 self.datastore
                     .create_user_link(&datastore_path, user_path)?;
 
-                let op2 = Operation::CreateUserLink {
+                let op = Operation::CreateUserLink {
                     pack: pack.clone(),
                     handler: handler.clone(),
                     datastore_path: datastore_path.clone(),
                     user_path: user_path.clone(),
                 };
 
-                Ok(vec![
-                    OperationResult::ok(op1, format!("data link created: {}", source.display())),
-                    OperationResult::ok(
-                        op2,
-                        format!(
-                            "linked {} → {}",
-                            user_path.display(),
-                            datastore_path.display()
-                        ),
+                Ok(vec![OperationResult::ok(
+                    op,
+                    format!(
+                        "{} → {}",
+                        source.file_name().unwrap_or_default().to_string_lossy(),
+                        user_path.display()
                     ),
-                ])
+                )])
             }
 
             HandlerIntent::Stage {
@@ -85,7 +125,7 @@ impl<'a> Executor<'a> {
                 handler,
                 source,
             } => {
-                let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
+                self.datastore.create_data_link(pack, handler, source)?;
 
                 let op = Operation::CreateDataLink {
                     pack: pack.clone(),
@@ -96,9 +136,8 @@ impl<'a> Executor<'a> {
                 Ok(vec![OperationResult::ok(
                     op,
                     format!(
-                        "staged: {} → {}",
-                        source.display(),
-                        datastore_path.display()
+                        "staged {}",
+                        source.file_name().unwrap_or_default().to_string_lossy(),
                     ),
                 )])
             }
@@ -110,16 +149,26 @@ impl<'a> Executor<'a> {
                 arguments,
                 sentinel,
             } => {
-                // Check sentinel first
-                let already_done = self.datastore.has_sentinel(pack, handler, sentinel)?;
+                // Check sentinel first — unless provision_rerun is set
+                if !self.provision_rerun {
+                    let already_done = self.datastore.has_sentinel(pack, handler, sentinel)?;
 
-                if already_done {
-                    let op = Operation::CheckSentinel {
-                        pack: pack.clone(),
-                        handler: handler.clone(),
-                        sentinel: sentinel.clone(),
-                    };
-                    return Ok(vec![OperationResult::ok(op, "already completed")]);
+                    if already_done {
+                        let op = Operation::CheckSentinel {
+                            pack: pack.clone(),
+                            handler: handler.clone(),
+                            sentinel: sentinel.clone(),
+                        };
+                        return Ok(vec![OperationResult::ok(op, "already completed")]);
+                    }
+                }
+
+                // Remove existing sentinel so run_and_record will re-run
+                if self.provision_rerun {
+                    let sentinel_path = self.datastore.sentinel_path(pack, handler, sentinel);
+                    if self.fs.exists(&sentinel_path) {
+                        self.fs.remove_file(&sentinel_path)?;
+                    }
                 }
 
                 // Run the command
@@ -153,25 +202,51 @@ impl<'a> Executor<'a> {
                 source,
                 user_path,
             } => {
-                vec![
-                    OperationResult::ok(
-                        Operation::CreateDataLink {
-                            pack: pack.clone(),
-                            handler: handler.clone(),
-                            source: source.clone(),
-                        },
-                        format!("[dry-run] would create data link: {}", source.display()),
+                // Check for conflicts even in dry-run
+                if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
+                    if self.force {
+                        return vec![OperationResult::ok(
+                            Operation::CreateUserLink {
+                                pack: pack.clone(),
+                                handler: handler.clone(),
+                                datastore_path: Default::default(),
+                                user_path: user_path.clone(),
+                            },
+                            format!(
+                                "[dry-run] would overwrite {} → {}",
+                                source.file_name().unwrap_or_default().to_string_lossy(),
+                                user_path.display()
+                            ),
+                        )];
+                    } else {
+                        return vec![OperationResult::fail(
+                            Operation::CreateUserLink {
+                                pack: pack.clone(),
+                                handler: handler.clone(),
+                                datastore_path: Default::default(),
+                                user_path: user_path.clone(),
+                            },
+                            format!(
+                                "conflict: {} already exists (use --force to overwrite)",
+                                user_path.display()
+                            ),
+                        )];
+                    }
+                }
+
+                vec![OperationResult::ok(
+                    Operation::CreateUserLink {
+                        pack: pack.clone(),
+                        handler: handler.clone(),
+                        datastore_path: Default::default(),
+                        user_path: user_path.clone(),
+                    },
+                    format!(
+                        "[dry-run] would link {} → {}",
+                        source.file_name().unwrap_or_default().to_string_lossy(),
+                        user_path.display()
                     ),
-                    OperationResult::ok(
-                        Operation::CreateUserLink {
-                            pack: pack.clone(),
-                            handler: handler.clone(),
-                            datastore_path: Default::default(),
-                            user_path: user_path.clone(),
-                        },
-                        format!("[dry-run] would link {} → datastore", user_path.display()),
-                    ),
-                ]
+                )]
             }
 
             HandlerIntent::Stage {
@@ -185,7 +260,10 @@ impl<'a> Executor<'a> {
                         handler: handler.clone(),
                         source: source.clone(),
                     },
-                    format!("[dry-run] would stage: {}", source.display()),
+                    format!(
+                        "[dry-run] would stage: {}",
+                        source.file_name().unwrap_or_default().to_string_lossy()
+                    ),
                 )]
             }
 
@@ -216,7 +294,6 @@ impl<'a> Executor<'a> {
 mod tests {
     use super::*;
     use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
-    use crate::fs::Fs;
     use crate::paths::Pather;
     use crate::testing::TempEnvironment;
     use std::sync::{Arc, Mutex};
@@ -259,7 +336,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -273,12 +350,133 @@ mod tests {
             }])
             .unwrap();
 
-        assert_eq!(results.len(), 2);
+        assert_eq!(results.len(), 1);
         assert!(results[0].success);
-        assert!(results[1].success);
 
         // Verify the double-link chain
         env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
+    }
+
+    #[test]
+    fn execute_link_conflict_returns_failed_result() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .home_file(".vimrc", "existing content")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+
+        let source = env.dotfiles_root.join("vim/vimrc");
+        let user_path = env.home.join(".vimrc");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "should report conflict");
+        assert!(
+            results[0].message.contains("conflict"),
+            "msg: {}",
+            results[0].message
+        );
+        assert!(
+            results[0].message.contains("--force"),
+            "msg: {}",
+            results[0].message
+        );
+
+        // Data link should NOT have been created (pre-check prevents it)
+        env.assert_no_handler_state("vim", "symlink");
+
+        // Original file should be untouched
+        env.assert_file_contents(&user_path, "existing content");
+    }
+
+    #[test]
+    fn execute_link_force_overwrites_existing_file() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .home_file(".vimrc", "existing content")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, true, false);
+
+        let source = env.dotfiles_root.join("vim/vimrc");
+        let user_path = env.home.join(".vimrc");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success, "force should succeed");
+
+        // Verify the double-link chain was created
+        env.assert_double_link("vim", "symlink", "vimrc", &source, &user_path);
+
+        // Content should now be from the pack
+        let content = env.fs.read_to_string(&user_path).unwrap();
+        assert_eq!(content, "set nocompatible");
+    }
+
+    #[test]
+    fn execute_link_conflict_does_not_block_other_intents() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .file("gvimrc", "set guifont=Mono")
+            .done()
+            .home_file(".vimrc", "existing content")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+
+        let results = executor
+            .execute(vec![
+                HandlerIntent::Link {
+                    pack: "vim".into(),
+                    handler: "symlink".into(),
+                    source: env.dotfiles_root.join("vim/vimrc"),
+                    user_path: env.home.join(".vimrc"),
+                },
+                HandlerIntent::Link {
+                    pack: "vim".into(),
+                    handler: "symlink".into(),
+                    source: env.dotfiles_root.join("vim/gvimrc"),
+                    user_path: env.home.join(".gvimrc"),
+                },
+            ])
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        // First should fail (conflict)
+        assert!(!results[0].success);
+        // Second should succeed (no conflict)
+        assert!(results[1].success);
+
+        // gvimrc should be deployed despite vimrc conflict
+        env.assert_double_link(
+            "vim",
+            "symlink",
+            "gvimrc",
+            &env.dotfiles_root.join("vim/gvimrc"),
+            &env.home.join(".gvimrc"),
+        );
     }
 
     #[test]
@@ -289,7 +487,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
 
         let source = env.dotfiles_root.join("vim/aliases.sh");
 
@@ -316,7 +514,7 @@ mod tests {
     fn execute_run_creates_sentinel() {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
 
         let results = executor
             .execute(vec![HandlerIntent::Run {
@@ -346,7 +544,7 @@ mod tests {
             .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
         let results = executor
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
@@ -364,6 +562,39 @@ mod tests {
     }
 
     #[test]
+    fn provision_rerun_ignores_sentinel() {
+        let env = TempEnvironment::builder().build();
+        let (ds, runner) = make_datastore(&env);
+
+        // Pre-create sentinel
+        let sentinel_dir = env.paths.handler_data_dir("vim", "install");
+        env.fs.mkdir_all(&sentinel_dir).unwrap();
+        env.fs
+            .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
+            .unwrap();
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Run {
+                pack: "vim".into(),
+                handler: "install".into(),
+                executable: "echo".into(),
+                arguments: vec!["rerun".into()],
+                sentinel: "install.sh-abc123".into(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert!(
+            results[0].message.contains("executed"),
+            "msg: {}",
+            results[0].message
+        );
+        assert_eq!(runner.calls.lock().unwrap().as_slice(), &["echo rerun"]);
+    }
+
+    #[test]
     fn dry_run_does_not_modify_filesystem() {
         let env = TempEnvironment::builder()
             .pack("vim")
@@ -371,7 +602,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, true);
+        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false);
 
         let results = executor
             .execute(vec![
@@ -397,7 +628,7 @@ mod tests {
             .unwrap();
 
         // All should succeed with dry-run messages
-        assert_eq!(results.len(), 4); // Link=2 ops, Stage=1, Run=1
+        assert_eq!(results.len(), 3); // Link=1, Stage=1, Run=1
         for r in &results {
             assert!(r.success);
             assert!(r.message.contains("[dry-run]"), "msg: {}", r.message);
@@ -411,6 +642,31 @@ mod tests {
     }
 
     #[test]
+    fn dry_run_detects_conflict() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "x")
+            .done()
+            .home_file(".vimrc", "existing")
+            .build();
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false);
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                source: env.dotfiles_root.join("vim/vimrc"),
+                user_path: env.home.join(".vimrc"),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(results[0].message.contains("conflict"));
+    }
+
+    #[test]
     fn execute_multiple_intents_sequentially() {
         let env = TempEnvironment::builder()
             .pack("vim")
@@ -419,7 +675,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
 
         let results = executor
             .execute(vec![
@@ -438,7 +694,7 @@ mod tests {
             ])
             .unwrap();
 
-        assert_eq!(results.len(), 4); // 2 ops per link
+        assert_eq!(results.len(), 2); // 1 op per link
         assert!(results.iter().all(|r| r.success));
 
         env.assert_double_link(

@@ -96,7 +96,8 @@ cat << 'WELCOME'
 │                                                  │
 │  Packs available:                                │
 │    vim/    git/    zsh/    nvim/    tools/        │
-│    ssh/    shell/  disabled/                      │
+│    ssh/    shell/                                 │
+│    disabled/ (ignored — for testing .dodotignore) │
 │                                                  │
 │  Pre-existing files (will cause conflicts):      │
 │    ~/.bashrc  ~/.gitconfig  ~/.ssh/config         │
@@ -109,7 +110,8 @@ cat << 'WELCOME'
 │  Try:                                            │
 │    dodot status                                  │
 │    dodot up --dry-run                            │
-│    dodot adopt vim ~/.tmux.conf                  │
+│    dodot init tmux &&                            │
+│    dodot adopt tmux ~/.tmux.conf                 │
 │    dodot init mypack                             │
 │    eval "$(dodot init-sh)"                       │
 │                                                  │

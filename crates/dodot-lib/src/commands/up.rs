@@ -20,26 +20,43 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     }
 
     // Convert to display format
+    let home = ctx.paths.home_dir();
     let packs: Vec<DisplayPack> = result
         .pack_results
         .iter()
         .map(|pr| {
-            let files: Vec<DisplayFile> = pr
+            let mut files: Vec<DisplayFile> = pr
                 .operations
                 .iter()
-                .filter(|op| op.success)
                 .map(|op| {
-                    let (handler, source) = extract_op_info(&op.operation);
+                    let (handler, name, user_target) = extract_op_info(&op.operation, home);
+                    let status = if op.success {
+                        status_style(true).into()
+                    } else {
+                        "error".into()
+                    };
                     DisplayFile {
-                        name: source.clone(),
+                        name: name.clone(),
                         symbol: handler_symbol(&handler).into(),
-                        description: handler_description(&handler, &source, None),
-                        status: status_style(true).into(),
+                        description: handler_description(&handler, &name, user_target.as_deref()),
+                        status,
                         status_label: op.message.clone(),
                         handler,
                     }
                 })
                 .collect();
+
+            // Include error from orchestration (e.g. pack-level config error)
+            if let Some(err) = &pr.error {
+                files.push(DisplayFile {
+                    name: String::new(),
+                    symbol: "×".into(),
+                    description: String::new(),
+                    status: "error".into(),
+                    status_label: err.clone(),
+                    handler: String::new(),
+                });
+            }
 
             DisplayPack {
                 name: pr.pack_name.clone(),
@@ -48,15 +65,31 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         })
         .collect();
 
+    // Message reflects actual results
+    let has_failures = result.failed_packs > 0
+        || result
+            .pack_results
+            .iter()
+            .any(|pr| pr.operations.iter().any(|op| !op.success));
+    let message = if has_failures {
+        "Packs deployed with errors.".into()
+    } else {
+        "Packs deployed.".into()
+    };
+
     Ok(PackStatusResult {
-        message: Some("Packs deployed.".into()),
+        message: Some(message),
         dry_run: ctx.dry_run,
         packs,
+        warnings: Vec::new(),
     })
 }
 
-/// Extract handler name and source info from an operation.
-fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
+/// Extract handler name, display name, and optional user target from an operation.
+fn extract_op_info(
+    op: &crate::operations::Operation,
+    home: &std::path::Path,
+) -> (String, String, Option<String>) {
     match op {
         crate::operations::Operation::CreateDataLink {
             handler, source, ..
@@ -67,10 +100,28 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into_owned(),
+            None,
         ),
         crate::operations::Operation::CreateUserLink {
-            handler, user_path, ..
-        } => (handler.clone(), user_path.to_string_lossy().into_owned()),
+            handler,
+            datastore_path,
+            user_path,
+            ..
+        } => {
+            // Name: filename from the datastore path (pack-relative name)
+            let name = datastore_path
+                .file_name()
+                .unwrap_or_else(|| user_path.file_name().unwrap_or_default())
+                .to_string_lossy()
+                .into_owned();
+            // Target: user_path displayed relative to ~ for readability
+            let target = if let Ok(rel) = user_path.strip_prefix(home) {
+                format!("~/{}", rel.display())
+            } else {
+                user_path.display().to_string()
+            };
+            (handler.clone(), name, Some(target))
+        }
         crate::operations::Operation::RunCommand {
             handler,
             executable,
@@ -79,10 +130,11 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
         } => (
             handler.clone(),
             format_command_for_display(executable, arguments),
+            None,
         ),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
-        } => (handler.clone(), sentinel.clone()),
+        } => (handler.clone(), sentinel.clone(), None),
     }
 }
 

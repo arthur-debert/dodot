@@ -41,6 +41,7 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         dry_run: false,
         no_provision: true,
         provision_rerun: false,
+        force: false,
     }
 }
 
@@ -91,6 +92,57 @@ fn status_renders_with_standout() {
     // Render as JSON
     let json = render::render("pack-status", &result, OutputMode::Json).unwrap();
     assert!(json.contains("\"packs\""), "json: {json}");
+}
+
+// ── status: correct target paths ────────────────────────────
+
+#[test]
+fn status_shows_xdg_target_for_subdirectory_files() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("nvim/init.lua", "-- nvim config")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let nvim_pack = &result.packs[0];
+    let init_file = nvim_pack
+        .files
+        .iter()
+        .find(|f| f.name.contains("init.lua"))
+        .expect("should have init.lua");
+
+    // Should show ~/.config/nvim/init.lua, not ~/.nvim/init.lua
+    assert!(
+        init_file.description.contains(".config/nvim"),
+        "expected XDG path, got: {}",
+        init_file.description
+    );
+}
+
+#[test]
+fn status_does_not_list_directories() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("nvim/init.lua", "-- nvim config")
+        .file("nvim/lua/plugins.lua", "return {}")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let nvim_pack = &result.packs[0];
+    // Should not have directory entries like "nvim" or "nvim/lua"
+    for file in &nvim_pack.files {
+        assert!(
+            file.name.contains('.'),
+            "expected only files (with extensions), got directory entry: {}",
+            file.name
+        );
+    }
 }
 
 // ── up ──────────────────────────────────────────────────────
@@ -163,6 +215,78 @@ fn up_dry_run_no_changes() {
     for file in &status.packs[0].files {
         assert_eq!(file.status, "pending", "dry run should not deploy");
     }
+}
+
+// ── up: conflict handling ──────────────────────────────────
+
+#[test]
+fn up_reports_conflict_when_file_exists() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = new")
+        .done()
+        .home_file(".gitconfig", "[user]\n  name = old")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    // Should report errors
+    assert!(
+        result.message.as_deref() == Some("Packs deployed with errors."),
+        "msg: {:?}",
+        result.message
+    );
+
+    // The conflict file should show as error
+    let error_files: Vec<&commands::DisplayFile> = result.packs[0]
+        .files
+        .iter()
+        .filter(|f| f.status == "error")
+        .collect();
+    assert!(
+        !error_files.is_empty(),
+        "should have error files for conflicts"
+    );
+    assert!(
+        error_files[0].status_label.contains("conflict"),
+        "should mention conflict: {}",
+        error_files[0].status_label
+    );
+
+    // Original file should be untouched
+    env.assert_file_contents(&env.home.join(".gitconfig"), "[user]\n  name = old");
+
+    // Status should NOT show deployed (no dangling data link)
+    let status = commands::status::status(None, &ctx).unwrap();
+    for file in &status.packs[0].files {
+        assert_eq!(
+            file.status, "pending",
+            "conflicted file {} should be pending, not deployed",
+            file.name
+        );
+    }
+}
+
+#[test]
+fn up_force_overwrites_existing_files() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = new")
+        .done()
+        .home_file(".gitconfig", "[user]\n  name = old")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.force = true;
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    // Should succeed
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+
+    // File should now be a symlink with new content
+    let content = env.fs.read_to_string(&env.home.join(".gitconfig")).unwrap();
+    assert_eq!(content, "[user]\n  name = new");
 }
 
 // ── down ────────────────────────────────────────────────────
@@ -339,6 +463,109 @@ fn genconfig_write_creates_file() {
     let result = commands::genconfig::genconfig(true, &ctx).unwrap();
     assert!(result.message.is_some());
     env.assert_exists(&env.dotfiles_root.join(".dodot.toml"));
+}
+
+// ── nonexistent pack ───────────────────────────────────────
+
+#[test]
+fn status_on_nonexistent_pack_returns_error() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["nonexistent".into()];
+    let err = commands::status::status(Some(&filter), &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::PackNotFound { .. }),
+        "expected PackNotFound, got: {err}"
+    );
+}
+
+#[test]
+fn up_on_nonexistent_pack_returns_error() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["typo".into()];
+    let err = commands::up::up(Some(&filter), &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::PackNotFound { .. }),
+        "expected PackNotFound, got: {err}"
+    );
+}
+
+// ── down: already down ─────────────────────────────────────
+
+#[test]
+fn down_on_already_down_pack_says_nothing_to_do() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    // vim was never deployed — should not print misleading output
+    let result = commands::down::down(None, &ctx).unwrap();
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Nothing to deactivate."),
+        "should say nothing to deactivate"
+    );
+    assert!(result.packs.is_empty(), "should have no pack entries");
+}
+
+// ── addignore: warns about deployed ────────────────────────
+
+#[test]
+fn addignore_on_deployed_pack_warns() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    // Deploy first
+    commands::up::up(None, &ctx).unwrap();
+
+    // Now addignore should warn
+    let result = commands::addignore::addignore("git", &ctx).unwrap();
+    assert!(result.message.contains("ignored"));
+    let has_warning = result
+        .details
+        .iter()
+        .any(|d| d.contains("currently deployed"));
+    assert!(
+        has_warning,
+        "should warn about deployed pack: {:?}",
+        result.details
+    );
+}
+
+// ── adopt: pack not found hint ─────────────────────────────
+
+#[test]
+fn adopt_nonexistent_pack_returns_pack_not_found() {
+    let env = TempEnvironment::builder()
+        .home_file(".vimrc", "set nocompatible")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err =
+        commands::adopt::adopt("newpack", std::slice::from_ref(&source), false, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::PackNotFound { .. }),
+        "expected PackNotFound, got: {err}"
+    );
 }
 
 // ── full lifecycle ──────────────────────────────────────────

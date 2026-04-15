@@ -159,6 +159,10 @@ impl DataStore for FilesystemDataStore {
             .map(|e| e.name)
             .collect())
     }
+
+    fn sentinel_path(&self, pack: &str, handler: &str, sentinel: &str) -> PathBuf {
+        self.paths.handler_data_dir(pack, handler).join(sentinel)
+    }
 }
 
 #[cfg(test)]
