@@ -34,6 +34,7 @@ fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Err
     ctx.dry_run = flag_or_false(matches, "dry-run");
     ctx.no_provision = flag_or_false(matches, "no-provision");
     ctx.provision_rerun = flag_or_false(matches, "provision-rerun");
+    ctx.force = flag_or_false(matches, "force");
 
     Ok(ctx)
 }
@@ -88,6 +89,7 @@ pub fn status_handler(
     let ctx = build_readonly_ctx()?;
     let filter = pack_filter(matches);
     let result = commands::status::status(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
 }
 
@@ -98,6 +100,7 @@ pub fn up_handler(
     let ctx = build_ctx(matches)?;
     let filter = pack_filter(matches);
     let result = commands::up::up(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
 }
 
@@ -108,7 +111,14 @@ pub fn down_handler(
     let ctx = build_ctx(matches)?;
     let filter = pack_filter(matches);
     let result = commands::down::down(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
+}
+
+fn print_warnings(warnings: &[String]) {
+    for w in warnings {
+        eprintln!("{w}");
+    }
 }
 
 pub fn list_handler(
@@ -152,7 +162,13 @@ pub fn adopt_handler(
         .map(PathBuf::from)
         .collect();
     let force = matches.get_flag("force");
-    let result = commands::adopt::adopt(pack_name, &files, force, &ctx)?;
+    let result = commands::adopt::adopt(pack_name, &files, force, &ctx).map_err(|e| {
+        if matches!(e, dodot_lib::DodotError::PackNotFound { .. }) {
+            anyhow::anyhow!("{e}\n  Hint: run 'dodot init {pack_name}' first to create it")
+        } else {
+            e.into()
+        }
+    })?;
     Ok(Output::Render(result))
 }
 
@@ -163,16 +179,6 @@ pub fn addignore_handler(
     let ctx = build_readonly_ctx()?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::addignore::addignore(pack_name, &ctx)?;
-    Ok(Output::Render(result))
-}
-
-pub fn genconfig_handler(
-    matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
-) -> HandlerResult<commands::genconfig::GenConfigResult> {
-    let ctx = build_readonly_ctx()?;
-    let write = matches.get_flag("write");
-    let result = commands::genconfig::genconfig(write, &ctx)?;
     Ok(Output::Render(result))
 }
 
@@ -188,13 +194,34 @@ pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Erro
     let output = clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()
         .app_name("dodot")
         .file_name(".dodot.toml")
-        .search_paths(vec![clapfig::SearchPath::Path(dotfiles_root)])
+        .search_paths(vec![clapfig::SearchPath::Path(dotfiles_root.clone())])
         .search_mode(clapfig::SearchMode::Merge)
+        .persist_scope("local", clapfig::SearchPath::Path(dotfiles_root))
         .no_env()
         .handle_to_string(&action)?;
 
-    print!("{output}");
+    // Clean up clapfig's Debug-format leak: String("value") → "value"
+    let cleaned = clean_debug_format(&output);
+    print!("{cleaned}");
     Ok(())
+}
+
+/// Remove Rust Debug format wrappers from clapfig output.
+/// Replaces `String("value")` with `"value"` in config list output.
+fn clean_debug_format(input: &str) -> String {
+    let mut result = input.to_string();
+    // Iteratively replace String("...") with "..."
+    while let Some(start) = result.find("String(\"") {
+        let after_prefix = start + 8; // skip 'String("'
+        if let Some(end_quote) = result[after_prefix..].find("\")") {
+            let value = &result[after_prefix..after_prefix + end_quote];
+            let replacement = format!("\"{value}\"");
+            result.replace_range(start..after_prefix + end_quote + 2, &replacement);
+        } else {
+            break;
+        }
+    }
+    result
 }
 
 /// `dodot init-sh` — prints shell init script for `eval "$(dodot init-sh)"`.

@@ -10,6 +10,20 @@ fn main() {
 
     // Passthrough: config (clapfig handles its own output)
     if let Some(("config", sub_matches)) = matches.subcommand() {
+        // If no config subcommand given, show config help instead of
+        // falling through to config list (#20)
+        if sub_matches.subcommand().is_none() {
+            let cmd = build_clap_command();
+            let config_cmd = cmd
+                .get_subcommands()
+                .find(|c| c.get_name() == "config")
+                .cloned();
+            if let Some(mut c) = config_cmd {
+                let _ = c.print_help();
+                println!();
+            }
+            return;
+        }
         if let Err(e) = handlers::config_passthrough(sub_matches) {
             eprintln!("error: {e}");
             std::process::exit(1);
@@ -46,8 +60,6 @@ fn main() {
         .expect("register adopt")
         .command("addignore", handlers::addignore_handler, "message")
         .expect("register addignore")
-        .command("genconfig", handlers::genconfig_handler, "config")
-        .expect("register genconfig")
         .build()
         .expect("app build");
 
@@ -69,6 +81,7 @@ fn build_clap_command() -> ClapCommand {
         .subcommand(
             ClapCommand::new("status")
                 .about("Show deployment status of packs")
+                .after_help("Icons: ➞ symlink  ⚙ shell/homebrew  + path  × install script")
                 .arg(
                     Arg::new("packs")
                         .help("Pack names to show (all if omitted)")
@@ -101,6 +114,12 @@ fn build_clap_command() -> ClapCommand {
                     Arg::new("provision-rerun")
                         .long("provision-rerun")
                         .help("Force re-run of install scripts")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .long("force")
+                        .help("Overwrite pre-existing files at target locations")
                         .action(ArgAction::SetTrue),
                 ),
         )
@@ -153,16 +172,6 @@ fn build_clap_command() -> ClapCommand {
             ClapCommand::new("addignore")
                 .about("Mark a pack as ignored")
                 .arg(Arg::new("pack").help("Pack name").required(true)),
-        )
-        .subcommand(
-            ClapCommand::new("genconfig")
-                .about("Generate default configuration (use `config gen` instead)")
-                .arg(
-                    Arg::new("write")
-                        .long("write")
-                        .help("Write config to dotfiles root")
-                        .action(ArgAction::SetTrue),
-                ),
         )
         .subcommand(
             config_cmd

@@ -30,6 +30,7 @@ pub struct ExecutionContext {
     pub dry_run: bool,
     pub no_provision: bool,
     pub provision_rerun: bool,
+    pub force: bool,
 }
 
 impl ExecutionContext {
@@ -62,6 +63,7 @@ impl ExecutionContext {
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
+            force: false,
         })
     }
 }
@@ -130,8 +132,10 @@ pub fn execute(
         &root_config.pack.ignore,
     )?;
 
-    // Apply name filter
+    // Validate and apply name filter
     if let Some(names) = pack_filter {
+        let _warnings = validate_pack_names(names, ctx)?;
+        // Warnings are handled by the calling command (status/up/down)
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));
     }
 
@@ -229,8 +233,30 @@ pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<O
     }
 
     // Execute intents
-    let executor = Executor::new(ctx.datastore.as_ref(), ctx.dry_run, ctx.provision_rerun);
+    let executor = Executor::new(
+        ctx.datastore.as_ref(),
+        ctx.fs.as_ref(),
+        ctx.dry_run,
+        ctx.force,
+        ctx.provision_rerun,
+    );
     executor.execute(all_intents)
+}
+
+/// Validate that requested pack names exist. Returns error for nonexistent
+/// packs and collects warnings for ignored packs.
+pub fn validate_pack_names(names: &[String], ctx: &ExecutionContext) -> crate::Result<Vec<String>> {
+    let mut warnings = Vec::new();
+    for name in names {
+        let pack_dir = ctx.paths.pack_path(name);
+        if !ctx.fs.exists(&pack_dir) {
+            return Err(crate::DodotError::PackNotFound { name: name.clone() });
+        }
+        if ctx.fs.exists(&pack_dir.join(".dodotignore")) {
+            warnings.push(format!("warning: pack '{}' is ignored, skipping", name));
+        }
+    }
+    Ok(warnings)
 }
 
 #[cfg(test)]
@@ -281,6 +307,7 @@ mod tests {
             dry_run: false,
             no_provision: true, // skip install/homebrew in tests
             provision_rerun: false,
+            force: false,
         }
     }
 
@@ -434,6 +461,7 @@ mod tests {
             dry_run: true,
             no_provision: true,
             provision_rerun: false,
+            force: false,
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();

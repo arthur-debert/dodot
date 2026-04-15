@@ -14,7 +14,7 @@ Architecture
         Pattern-to-handler mapping with priority.
 
     Handler:
-        Converts matched files to operations (symlink, install, homebrew, shell, path).
+        Converts matched files to operations (symlink, install, Homebrew, shell, path).
 
     Operation:
         Atomic unit of work (CreateDataLink, CreateUserLink, RunCommand, CheckSentinel).
@@ -325,7 +325,7 @@ Architecture
             File-specific intent generators.
 
         Responsibilities:
-            Convert file matches to HandlerIntents (symlink, homebrew, shell, path, install).
+            Convert file matches to HandlerIntents (symlink, Homebrew, shell, path, install).
 
         Used by:
             Handler-related commands (up/down).
@@ -367,7 +367,7 @@ Architecture
 
     - Lazy evaluation: only process requested packs
     - Parallel discovery: scan packs concurrently
-    - Minimal I/O: cache filesystem operations
+    - Minimal I/O: cache file system operations
     - Early termination: stop on first error in dry-run
 
 9. Architectural Principles

@@ -113,4 +113,6 @@ pub struct PackStatusResult {
     pub message: Option<String>,
     pub dry_run: bool,
     pub packs: Vec<DisplayPack>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }

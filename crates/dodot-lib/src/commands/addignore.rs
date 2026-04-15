@@ -32,8 +32,18 @@ pub fn addignore(pack_name: &str, ctx: &ExecutionContext) -> Result<AddIgnoreRes
 
     ctx.fs.write_file(&ignore_path, b"")?;
 
+    // Check if pack is currently deployed and warn (#18)
+    let handlers = ctx.datastore.list_pack_handlers(pack_name)?;
+    let mut details = vec![format!("Created {}", ignore_path.display())];
+    if !handlers.is_empty() {
+        details.push(format!(
+            "Warning: pack '{}' is currently deployed. Run 'dodot down {}' to clean up.",
+            pack_name, pack_name
+        ));
+    }
+
     Ok(AddIgnoreResult {
         message: format!("Pack '{pack_name}' marked as ignored."),
-        details: vec![format!("Created {}", ignore_path.display())],
+        details,
     })
 }

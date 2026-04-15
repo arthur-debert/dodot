@@ -160,6 +160,10 @@ impl DataStore for FilesystemDataStore {
             .map(|e| e.name)
             .collect())
     }
+
+    fn sentinel_path(&self, pack: &str, handler: &str, sentinel: &str) -> PathBuf {
+        self.paths.handler_data_dir(pack, handler).join(sentinel)
+    }
 }
 
 #[cfg(test)]
@@ -560,10 +564,24 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo", &["a".into()], "install.sh-aaa", false)
-            .unwrap();
-        ds.run_and_record("vim", "install", "echo", &["b".into()], "install.sh-bbb", false)
-            .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            "echo",
+            &["a".into()],
+            "install.sh-aaa",
+            false,
+        )
+        .unwrap();
+        ds.run_and_record(
+            "vim",
+            "install",
+            "echo",
+            &["b".into()],
+            "install.sh-bbb",
+            false,
+        )
+        .unwrap();
 
         let mut sentinels = ds.list_handler_sentinels("vim", "install").unwrap();
         sentinels.sort();

@@ -5,14 +5,21 @@ use crate::commands::{
     PackStatusResult,
 };
 use crate::config::mappings_to_rules;
-use crate::handlers::{self};
-use crate::packs::orchestration::ExecutionContext;
+use crate::handlers::symlink::resolve_target;
+use crate::handlers::{self, HANDLER_SYMLINK};
+use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
 use crate::Result;
 
 /// Run the `status` command: scan packs and check handler deployment state.
 pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
+    // Validate pack names before doing anything
+    let mut warnings = Vec::new();
+    if let Some(names) = pack_filter {
+        warnings = orchestration::validate_pack_names(names, ctx)?;
+    }
+
     let root_config = ctx.config_manager.root_config()?;
     let mut all_packs = packs::discover_packs(
         ctx.fs.as_ref(),
@@ -37,6 +44,12 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
+            // Skip directory entries for symlink handler — only show leaf files (#11)
+            // Keep directory entries for other handlers (e.g. path handler uses bin/ dirs)
+            if m.is_dir && m.handler == HANDLER_SYMLINK {
+                continue;
+            }
+
             let handler = registry.get(m.handler.as_str());
             let deployed = if let Some(h) = handler {
                 h.check_status(&m.absolute_path, &pack.name, ctx.datastore.as_ref())
@@ -46,14 +59,26 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 false
             };
 
+            // Compute actual target path for symlink handler (#10)
+            let rel_str = m.relative_path.to_string_lossy().into_owned();
+            let user_target = if m.handler == HANDLER_SYMLINK {
+                let target = resolve_target(&rel_str, &pack.config, ctx.paths.as_ref());
+                let home = ctx.paths.home_dir();
+                // Display relative to ~ for readability
+                let display = if let Ok(rel) = target.strip_prefix(home) {
+                    format!("~/{}", rel.display())
+                } else {
+                    target.display().to_string()
+                };
+                Some(display)
+            } else {
+                None
+            };
+
             files.push(DisplayFile {
-                name: m.relative_path.to_string_lossy().into_owned(),
+                name: rel_str.clone(),
                 symbol: handler_symbol(&m.handler).into(),
-                description: handler_description(
-                    &m.handler,
-                    &m.relative_path.to_string_lossy(),
-                    None,
-                ),
+                description: handler_description(&m.handler, &rel_str, user_target.as_deref()),
                 status: status_style(deployed).into(),
                 status_label: status_label(&m.handler, deployed),
                 handler: m.handler.clone(),
@@ -71,5 +96,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         message: None,
         dry_run: false,
         packs: display_packs,
+        warnings,
     })
 }
