@@ -68,7 +68,13 @@ pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&s
             if let Some(target) = user_target {
                 target.to_string()
             } else {
-                format!("~/.{rel_path}")
+                // Apply dot. prefix convention: dot.bashrc → ~/.bashrc
+                let display_path = if !rel_path.contains('/') && rel_path.starts_with("dot.") {
+                    format!(".{}", &rel_path[4..])
+                } else {
+                    format!(".{rel_path}")
+                };
+                format!("~/{display_path}")
             }
         }
         "shell" => "shell profile".into(),
