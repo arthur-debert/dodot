@@ -266,7 +266,7 @@ assert_install_ran() {
     if [[ ! -f "$marker" ]]; then
         echo "expected install marker at $marker (install.sh for pack '$pack' should have run)" >&2
         echo "  contents of $HOME/.dodot-markers/:" >&2
-        ls -la "$HOME/.dodot-markers/" 2>&1 >&2 || echo "  (directory does not exist)" >&2
+        ls -la "$HOME/.dodot-markers/" >&2 2>&1 || echo "  (directory does not exist)" >&2
         return 1
     fi
 }
@@ -297,7 +297,8 @@ assert_brew_invoked() {
 }
 
 # Assert that the brew mock was invoked with specific arguments.
-# Usage: assert_brew_invoked_with "bundle" "--file="
+# Each argument is matched as a fixed-string substring against the log.
+# Usage: assert_brew_invoked_with "bundle" "--file"
 assert_brew_invoked_with() {
     local log="$HOME/.dodot-markers/brew.log"
 

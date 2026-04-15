@@ -10,7 +10,7 @@
 #
 #   Shell files:  export DODOT_LOADED_{PACK}_{FILE}=1   (env var)
 #   Bin scripts:  echo DODOT_BIN_{PACK}_{SCRIPT}        (stdout)
-#   Install:      write to $HOME/.dodot-markers/{pack}   (file)
+#   Install:      write to $HOME/.dodot-markers/{pack}.install   (file)
 #   Brew mock:    log args to $HOME/.dodot-markers/brew.log
 #
 # The naming convention normalizes pack/file names:
@@ -224,7 +224,7 @@ eval_init_sh() {
 #   ssh/      - symlink with force_home (ssh/config) — tests force_home routing
 #   disabled/ - ignored pack
 #
-# Also creates root .dodot.toml with target_overrides for vim/vimrc.
+# Also creates a minimal root .dodot.toml so the config file is loadable.
 create_realistic_dotfiles() {
     # vim: symlink + shell
     instrumented_shell "vim" "aliases.sh" 'alias vi=vim'
