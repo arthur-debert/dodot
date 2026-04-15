@@ -4,21 +4,22 @@ use standout::cli::App;
 mod handlers;
 
 fn main() {
+    // First parse to check for passthrough commands
     let cmd = build_clap_command();
     let matches = cmd.get_matches();
 
-    // Handle `config` subcommand via clapfig (bypasses standout)
+    // Passthrough: config (clapfig handles its own output)
     if let Some(("config", sub_matches)) = matches.subcommand() {
-        if let Err(e) = handlers::handle_config(sub_matches) {
+        if let Err(e) = handlers::config_passthrough(sub_matches) {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
         return;
     }
 
-    // Handle `init-sh` directly (raw stdout, no rendering)
+    // Passthrough: init-sh (raw stdout for shell eval)
     if matches.subcommand_matches("init-sh").is_some() {
-        if let Err(e) = handlers::handle_init_sh() {
+        if let Err(e) = handlers::init_sh_passthrough() {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
@@ -50,7 +51,7 @@ fn main() {
         .build()
         .expect("app build");
 
-    // Re-parse for standout dispatch (standout needs to parse args itself)
+    // Standout does its own parse — re-build the command
     let cmd = build_clap_command();
     let handled = app.run(cmd, std::env::args());
     if !handled {
