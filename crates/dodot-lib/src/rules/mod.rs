@@ -63,10 +63,7 @@ pub struct RuleMatch {
 pub fn group_by_handler(matches: &[RuleMatch]) -> HashMap<String, Vec<RuleMatch>> {
     let mut groups: HashMap<String, Vec<RuleMatch>> = HashMap::new();
     for m in matches {
-        groups
-            .entry(m.handler.clone())
-            .or_default()
-            .push(m.clone());
+        groups.entry(m.handler.clone()).or_default().push(m.clone());
     }
     groups
 }
@@ -145,7 +142,10 @@ fn compile_rules(rules: &[Rule]) -> Vec<CompiledRule> {
                 // Directory pattern
                 let dir_name = raw_pattern.trim_end_matches('/').to_string();
                 CompiledPattern::Directory(dir_name)
-            } else if raw_pattern.contains('*') || raw_pattern.contains('?') || raw_pattern.contains('[') {
+            } else if raw_pattern.contains('*')
+                || raw_pattern.contains('?')
+                || raw_pattern.contains('[')
+            {
                 // Glob pattern
                 match glob::Pattern::new(&raw_pattern) {
                     Ok(p) => CompiledPattern::Glob(p),
@@ -212,9 +212,9 @@ impl<'a> Scanner<'a> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            if let Some(rule_match) =
-                self.match_file(&compiled, &filename, is_dir, &rel_path, &abs_path, &pack.name)
-            {
+            if let Some(rule_match) = self.match_file(
+                &compiled, &filename, is_dir, &rel_path, &abs_path, &pack.name,
+            ) {
                 matches.push(rule_match);
             }
         }
@@ -261,7 +261,11 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            let rel_path = entry.path.strip_prefix(base).unwrap_or(&entry.path).to_path_buf();
+            let rel_path = entry
+                .path
+                .strip_prefix(base)
+                .unwrap_or(&entry.path)
+                .to_path_buf();
 
             if entry.is_dir {
                 // Add directory itself as a candidate (for path handler)
@@ -350,12 +354,42 @@ mod tests {
 
     fn default_rules() -> Vec<Rule> {
         vec![
-            Rule { pattern: "bin/".into(), handler: "path".into(), priority: 10, options: HashMap::new() },
-            Rule { pattern: "install.sh".into(), handler: "install".into(), priority: 10, options: HashMap::new() },
-            Rule { pattern: "aliases.sh".into(), handler: "shell".into(), priority: 10, options: HashMap::new() },
-            Rule { pattern: "profile.sh".into(), handler: "shell".into(), priority: 10, options: HashMap::new() },
-            Rule { pattern: "Brewfile".into(), handler: "homebrew".into(), priority: 10, options: HashMap::new() },
-            Rule { pattern: "*".into(), handler: "symlink".into(), priority: 0, options: HashMap::new() },
+            Rule {
+                pattern: "bin/".into(),
+                handler: "path".into(),
+                priority: 10,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "install.sh".into(),
+                handler: "install".into(),
+                priority: 10,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "aliases.sh".into(),
+                handler: "shell".into(),
+                priority: 10,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "profile.sh".into(),
+                handler: "shell".into(),
+                priority: 10,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "Brewfile".into(),
+                handler: "homebrew".into(),
+                priority: 10,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "*".into(),
+                handler: "symlink".into(),
+                priority: 0,
+                options: HashMap::new(),
+            },
         ]
     }
 
@@ -429,11 +463,11 @@ mod tests {
     fn scan_pack_basic() {
         let env = TempEnvironment::builder()
             .pack("vim")
-                .file("vimrc", "set nocompatible")
-                .file("gvimrc", "set guifont=Mono")
-                .file("aliases.sh", "alias vi=vim")
-                .file("install.sh", "#!/bin/sh\necho setup")
-                .done()
+            .file("vimrc", "set nocompatible")
+            .file("gvimrc", "set guifont=Mono")
+            .file("aliases.sh", "alias vi=vim")
+            .file("install.sh", "#!/bin/sh\necho setup")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
@@ -462,9 +496,9 @@ mod tests {
     fn scan_pack_skips_hidden_files() {
         let env = TempEnvironment::builder()
             .pack("test")
-                .file("visible", "yes")
-                .file(".hidden", "no")
-                .done()
+            .file("visible", "yes")
+            .file(".hidden", "no")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
@@ -485,9 +519,9 @@ mod tests {
     fn scan_pack_skips_special_files() {
         let env = TempEnvironment::builder()
             .pack("test")
-                .file("normal", "yes")
-                .config("[pack]\nignore = []")
-                .done()
+            .file("normal", "yes")
+            .config("[pack]\nignore = []")
+            .done()
             .build();
 
         // Also manually create .dodotignore (even though it shouldn't be scanned)
@@ -515,10 +549,10 @@ mod tests {
     fn scan_pack_with_ignore_patterns() {
         let env = TempEnvironment::builder()
             .pack("test")
-                .file("keep.txt", "yes")
-                .file("skip.bak", "no")
-                .file("other.bak", "no")
-                .done()
+            .file("keep.txt", "yes")
+            .file("skip.bak", "no")
+            .file("other.bak", "no")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
@@ -542,17 +576,27 @@ mod tests {
     fn scan_pack_exclusion_rules_override_catchall() {
         let env = TempEnvironment::builder()
             .pack("test")
-                .file("good.txt", "yes")
-                .file("bad.tmp", "no")
-                .done()
+            .file("good.txt", "yes")
+            .file("bad.tmp", "no")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
         let pack = make_pack("test", env.dotfiles_root.join("test"));
 
         let rules = vec![
-            Rule { pattern: "!*.tmp".into(), handler: "exclude".into(), priority: 100, options: HashMap::new() },
-            Rule { pattern: "*".into(), handler: "symlink".into(), priority: 0, options: HashMap::new() },
+            Rule {
+                pattern: "!*.tmp".into(),
+                handler: "exclude".into(),
+                priority: 100,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "*".into(),
+                handler: "symlink".into(),
+                priority: 0,
+                options: HashMap::new(),
+            },
         ];
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
@@ -569,8 +613,8 @@ mod tests {
     fn scan_pack_priority_ordering() {
         let env = TempEnvironment::builder()
             .pack("test")
-                .file("aliases.sh", "# shell")
-                .done()
+            .file("aliases.sh", "# shell")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
@@ -578,9 +622,24 @@ mod tests {
 
         // Both *.sh and aliases.sh match — higher priority should win
         let rules = vec![
-            Rule { pattern: "*.sh".into(), handler: "generic-shell".into(), priority: 5, options: HashMap::new() },
-            Rule { pattern: "aliases.sh".into(), handler: "specific-shell".into(), priority: 10, options: HashMap::new() },
-            Rule { pattern: "*".into(), handler: "symlink".into(), priority: 0, options: HashMap::new() },
+            Rule {
+                pattern: "*.sh".into(),
+                handler: "generic-shell".into(),
+                priority: 5,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "aliases.sh".into(),
+                handler: "specific-shell".into(),
+                priority: 10,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "*".into(),
+                handler: "symlink".into(),
+                priority: 0,
+                options: HashMap::new(),
+            },
         ];
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
@@ -592,9 +651,9 @@ mod tests {
     fn scan_pack_directory_entry() {
         let env = TempEnvironment::builder()
             .pack("test")
-                .file("bin/my-script", "#!/bin/sh")
-                .file("normal", "x")
-                .done()
+            .file("bin/my-script", "#!/bin/sh")
+            .file("normal", "x")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
@@ -603,7 +662,9 @@ mod tests {
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
 
-        let bin_match = matches.iter().find(|m| m.relative_path.to_string_lossy() == "bin");
+        let bin_match = matches
+            .iter()
+            .find(|m| m.relative_path.to_string_lossy() == "bin");
         assert!(bin_match.is_some(), "bin directory should match");
         assert_eq!(bin_match.unwrap().handler, "path");
         assert!(bin_match.unwrap().is_dir);
@@ -613,9 +674,9 @@ mod tests {
     fn scan_pack_nested_files() {
         let env = TempEnvironment::builder()
             .pack("nvim")
-                .file("nvim/init.lua", "require('config')")
-                .file("nvim/lua/plugins.lua", "return {}")
-                .done()
+            .file("nvim/init.lua", "require('config')")
+            .file("nvim/lua/plugins.lua", "return {}")
+            .done()
             .build();
 
         let scanner = Scanner::new(env.fs.as_ref());
@@ -639,9 +700,30 @@ mod tests {
     #[test]
     fn group_by_handler_groups_correctly() {
         let matches = vec![
-            RuleMatch { relative_path: "vimrc".into(), absolute_path: "/d/vim/vimrc".into(), pack: "vim".into(), handler: "symlink".into(), is_dir: false, options: HashMap::new() },
-            RuleMatch { relative_path: "aliases.sh".into(), absolute_path: "/d/vim/aliases.sh".into(), pack: "vim".into(), handler: "shell".into(), is_dir: false, options: HashMap::new() },
-            RuleMatch { relative_path: "gvimrc".into(), absolute_path: "/d/vim/gvimrc".into(), pack: "vim".into(), handler: "symlink".into(), is_dir: false, options: HashMap::new() },
+            RuleMatch {
+                relative_path: "vimrc".into(),
+                absolute_path: "/d/vim/vimrc".into(),
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                is_dir: false,
+                options: HashMap::new(),
+            },
+            RuleMatch {
+                relative_path: "aliases.sh".into(),
+                absolute_path: "/d/vim/aliases.sh".into(),
+                pack: "vim".into(),
+                handler: "shell".into(),
+                is_dir: false,
+                options: HashMap::new(),
+            },
+            RuleMatch {
+                relative_path: "gvimrc".into(),
+                absolute_path: "/d/vim/gvimrc".into(),
+                pack: "vim".into(),
+                handler: "symlink".into(),
+                is_dir: false,
+                options: HashMap::new(),
+            },
         ];
 
         let groups = group_by_handler(&matches);

@@ -47,9 +47,11 @@ impl ExecutionContext {
         let fs: Arc<dyn Fs> = Arc::new(crate::fs::OsFs::new());
         let runner: Arc<dyn crate::datastore::CommandRunner> =
             Arc::new(crate::datastore::ShellCommandRunner);
-        let datastore: Arc<dyn DataStore> = Arc::new(
-            crate::datastore::FilesystemDataStore::new(fs.clone(), paths.clone(), runner),
-        );
+        let datastore: Arc<dyn DataStore> = Arc::new(crate::datastore::FilesystemDataStore::new(
+            fs.clone(),
+            paths.clone(),
+            runner,
+        ));
         let config_manager = Arc::new(ConfigManager::new(dotfiles_root)?);
 
         Ok(Self {
@@ -100,11 +102,7 @@ impl ExecuteResult {
 pub trait Command: Send + Sync {
     fn name(&self) -> &str;
 
-    fn execute_for_pack(
-        &self,
-        pack: &Pack,
-        ctx: &ExecutionContext,
-    ) -> Result<PackResult>;
+    fn execute_for_pack(&self, pack: &Pack, ctx: &ExecutionContext) -> Result<PackResult>;
 }
 
 // ── Pipeline ────────────────────────────────────────────────────
@@ -196,10 +194,7 @@ pub fn execute(
 ///
 /// This is the shared logic used by the `up` command (and potentially
 /// `status` for intent generation).
-pub fn run_handler_pipeline(
-    pack: &Pack,
-    ctx: &ExecutionContext,
-) -> Result<Vec<OperationResult>> {
+pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<OperationResult>> {
     let root_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let rules = crate::config::mappings_to_rules(&root_config.mappings);
 
@@ -223,15 +218,12 @@ pub fn run_handler_pipeline(
         };
 
         // Skip code execution handlers if --no-provision
-        if ctx.no_provision
-            && handler.category() == handlers::HandlerCategory::CodeExecution
-        {
+        if ctx.no_provision && handler.category() == handlers::HandlerCategory::CodeExecution {
             continue;
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
-            let intents =
-                handler.to_intents(handler_matches, &pack.config, ctx.paths.as_ref())?;
+            let intents = handler.to_intents(handler_matches, &pack.config, ctx.paths.as_ref())?;
             all_intents.extend(intents);
         }
     }
@@ -278,8 +270,7 @@ mod tests {
             env.paths.clone(),
             runner,
         ));
-        let config_manager =
-            Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
+        let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
         ExecutionContext {
             fs: env.fs.clone() as Arc<dyn Fs>,
@@ -300,11 +291,7 @@ mod tests {
             "test-up"
         }
 
-        fn execute_for_pack(
-            &self,
-            pack: &Pack,
-            ctx: &ExecutionContext,
-        ) -> Result<PackResult> {
+        fn execute_for_pack(&self, pack: &Pack, ctx: &ExecutionContext) -> Result<PackResult> {
             let operations = run_handler_pipeline(pack, ctx)?;
             let success = operations.iter().all(|r| r.success);
             Ok(PackResult {
@@ -436,8 +423,7 @@ mod tests {
             env.paths.clone(),
             runner,
         ));
-        let config_manager =
-            Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
+        let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
         let ctx = ExecutionContext {
             fs: env.fs.clone() as Arc<dyn Fs>,

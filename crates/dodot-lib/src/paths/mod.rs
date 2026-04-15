@@ -345,9 +345,15 @@ mod tests {
     #[test]
     fn expand_tilde_cases() {
         let home = Path::new("/home/alice");
-        assert_eq!(expand_tilde("~/dotfiles", home), PathBuf::from("/home/alice/dotfiles"));
+        assert_eq!(
+            expand_tilde("~/dotfiles", home),
+            PathBuf::from("/home/alice/dotfiles")
+        );
         assert_eq!(expand_tilde("~", home), PathBuf::from("/home/alice"));
-        assert_eq!(expand_tilde("/absolute/path", home), PathBuf::from("/absolute/path"));
+        assert_eq!(
+            expand_tilde("/absolute/path", home),
+            PathBuf::from("/absolute/path")
+        );
         assert_eq!(expand_tilde("relative", home), PathBuf::from("relative"));
     }
 

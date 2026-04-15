@@ -12,10 +12,7 @@ use crate::rules::Scanner;
 use crate::Result;
 
 /// Run the `status` command: scan packs and check handler deployment state.
-pub fn status(
-    pack_filter: Option<&[String]>,
-    ctx: &ExecutionContext,
-) -> Result<PackStatusResult> {
+pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     let root_config = ctx.config_manager.root_config()?;
     let mut all_packs = packs::discover_packs(
         ctx.fs.as_ref(),

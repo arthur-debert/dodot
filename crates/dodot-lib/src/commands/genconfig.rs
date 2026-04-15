@@ -40,8 +40,7 @@ const DEFAULT_CONFIG: &str = r#"# dodot configuration
 pub fn genconfig(write: bool, ctx: &ExecutionContext) -> Result<GenConfigResult> {
     if write {
         let config_path = ctx.paths.dotfiles_root().join(".dodot.toml");
-        ctx.fs
-            .write_file(&config_path, DEFAULT_CONFIG.as_bytes())?;
+        ctx.fs.write_file(&config_path, DEFAULT_CONFIG.as_bytes())?;
 
         Ok(GenConfigResult {
             message: Some(format!("Config written to {}", config_path.display())),

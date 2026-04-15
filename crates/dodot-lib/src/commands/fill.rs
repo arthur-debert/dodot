@@ -192,7 +192,10 @@ mod tests {
         let result = fill("vim", &ctx).unwrap();
         // Only 2 created (aliases.sh + Brewfile), install.sh skipped
         assert!(result.message.contains("2 template"));
-        assert!(result.details.iter().any(|d| d.contains("install.sh") && d.contains("skipped")));
+        assert!(result
+            .details
+            .iter()
+            .any(|d| d.contains("install.sh") && d.contains("skipped")));
 
         // Original content preserved
         let content = env

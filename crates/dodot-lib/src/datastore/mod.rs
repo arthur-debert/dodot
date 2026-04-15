@@ -36,12 +36,7 @@ pub trait DataStore: Send + Sync {
     /// Returns the absolute path of the created datastore link.
     /// Idempotent: if the link exists and already points to the correct
     /// source, this is a no-op.
-    fn create_data_link(
-        &self,
-        pack: &str,
-        handler: &str,
-        source_file: &Path,
-    ) -> Result<PathBuf>;
+    fn create_data_link(&self, pack: &str, handler: &str, source_file: &Path) -> Result<PathBuf>;
 
     /// Creates a user-visible symlink:
     /// `user_path -> datastore_path`

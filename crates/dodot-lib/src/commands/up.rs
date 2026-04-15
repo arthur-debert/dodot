@@ -9,10 +9,7 @@ use crate::shell;
 use crate::Result;
 
 /// Run the `up` command: deploy packs and regenerate shell init.
-pub fn up(
-    pack_filter: Option<&[String]>,
-    ctx: &ExecutionContext,
-) -> Result<PackStatusResult> {
+pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     let command = UpCommand;
     let result = orchestration::execute(&command, pack_filter, ctx)?;
 
@@ -71,13 +68,8 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
                 .into_owned(),
         ),
         crate::operations::Operation::CreateUserLink {
-            handler,
-            user_path,
-            ..
-        } => (
-            handler.clone(),
-            user_path.to_string_lossy().into_owned(),
-        ),
+            handler, user_path, ..
+        } => (handler.clone(), user_path.to_string_lossy().into_owned()),
         crate::operations::Operation::RunCommand {
             handler, command, ..
         } => (handler.clone(), command.clone()),

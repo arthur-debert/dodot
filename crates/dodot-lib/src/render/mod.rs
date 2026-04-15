@@ -91,15 +91,9 @@ pub fn create_renderer() -> Renderer {
     renderer
         .add_template("pack-status", TEMPLATE_PACK_STATUS)
         .unwrap();
-    renderer
-        .add_template("list", TEMPLATE_LIST)
-        .unwrap();
-    renderer
-        .add_template("message", TEMPLATE_MESSAGE)
-        .unwrap();
-    renderer
-        .add_template("config", TEMPLATE_CONFIG)
-        .unwrap();
+    renderer.add_template("list", TEMPLATE_LIST).unwrap();
+    renderer.add_template("message", TEMPLATE_MESSAGE).unwrap();
+    renderer.add_template("config", TEMPLATE_CONFIG).unwrap();
     renderer
 }
 

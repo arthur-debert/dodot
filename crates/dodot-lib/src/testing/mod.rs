@@ -78,7 +78,8 @@ impl TempEnvironment {
             .readlink(link)
             .unwrap_or_else(|e| panic!("failed to readlink {}: {e}", link.display()));
         assert_eq!(
-            actual_target, target,
+            actual_target,
+            target,
             "symlink {} points to {}, expected {}",
             link.display(),
             actual_target.display(),
@@ -93,7 +94,8 @@ impl TempEnvironment {
             .read_to_string(path)
             .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
         assert_eq!(
-            actual, expected,
+            actual,
+            expected,
             "file {} has unexpected contents",
             path.display()
         );
@@ -266,8 +268,7 @@ impl TempEnvironmentBuilder {
 
             if let Some(config_toml) = &pack.config {
                 let config_path = pack_dir.join(".dodot.toml");
-                fs.write_file(&config_path, config_toml.as_bytes())
-                    .unwrap();
+                fs.write_file(&config_path, config_toml.as_bytes()).unwrap();
             }
 
             if pack.dodotignore {
@@ -376,14 +377,8 @@ mod tests {
         env.assert_dir_exists(&env.dotfiles_root.join("git"));
 
         // Files have correct contents
-        env.assert_file_contents(
-            &env.dotfiles_root.join("vim/vimrc"),
-            "set nocompatible",
-        );
-        env.assert_file_contents(
-            &env.dotfiles_root.join("vim/gvimrc"),
-            "set guifont=Mono",
-        );
+        env.assert_file_contents(&env.dotfiles_root.join("vim/vimrc"), "set nocompatible");
+        env.assert_file_contents(&env.dotfiles_root.join("vim/gvimrc"), "set guifont=Mono");
         env.assert_file_contents(
             &env.dotfiles_root.join("git/gitconfig"),
             "[user]\n  name = test",
@@ -448,10 +443,7 @@ mod tests {
             .build();
 
         env.assert_file_contents(&env.home.join(".bashrc"), "# my bashrc");
-        env.assert_file_contents(
-            &env.home.join(".config/nvim/init.lua"),
-            "-- nvim config",
-        );
+        env.assert_file_contents(&env.home.join(".config/nvim/init.lua"), "-- nvim config");
     }
 
     #[test]

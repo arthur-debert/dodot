@@ -48,9 +48,7 @@ impl<'a> Executor<'a> {
                 user_path,
             } => {
                 // Step 1: Create data link (source → datastore)
-                let datastore_path =
-                    self.datastore
-                        .create_data_link(pack, handler, source)?;
+                let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
 
                 let op1 = Operation::CreateDataLink {
                     pack: pack.clone(),
@@ -87,9 +85,7 @@ impl<'a> Executor<'a> {
                 handler,
                 source,
             } => {
-                let datastore_path =
-                    self.datastore
-                        .create_data_link(pack, handler, source)?;
+                let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
 
                 let op = Operation::CreateDataLink {
                     pack: pack.clone(),
@@ -99,7 +95,11 @@ impl<'a> Executor<'a> {
 
                 Ok(vec![OperationResult::ok(
                     op,
-                    format!("staged: {} → {}", source.display(), datastore_path.display()),
+                    format!(
+                        "staged: {} → {}",
+                        source.display(),
+                        datastore_path.display()
+                    ),
                 )])
             }
 
@@ -297,7 +297,10 @@ mod tests {
         assert!(results[0].success);
 
         // Data link should exist
-        let datastore_link = env.paths.handler_data_dir("vim", "shell").join("aliases.sh");
+        let datastore_link = env
+            .paths
+            .handler_data_dir("vim", "shell")
+            .join("aliases.sh");
         env.assert_symlink(&datastore_link, &source);
     }
 
@@ -331,10 +334,7 @@ mod tests {
         let sentinel_dir = env.paths.handler_data_dir("vim", "install");
         env.fs.mkdir_all(&sentinel_dir).unwrap();
         env.fs
-            .write_file(
-                &sentinel_dir.join("install.sh-abc123"),
-                b"completed|12345",
-            )
+            .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
         let executor = Executor::new(&ds, false);

@@ -110,9 +110,7 @@ impl Fs for OsFs {
     }
 
     fn copy_file(&self, from: &Path, to: &Path) -> Result<()> {
-        fs::copy(from, to)
-            .map(|_| ())
-            .map_err(|e| fs_err(from, e))
+        fs::copy(from, to).map(|_| ()).map_err(|e| fs_err(from, e))
     }
 
     fn set_permissions(&self, path: &Path, mode: u32) -> Result<()> {
@@ -252,7 +250,8 @@ mod tests {
 
         let dir = tmp.path().join("subdir");
         fs.mkdir_all(&dir.join("nested")).unwrap();
-        fs.write_file(&dir.join("nested").join("f.txt"), b"y").unwrap();
+        fs.write_file(&dir.join("nested").join("f.txt"), b"y")
+            .unwrap();
         assert!(fs.exists(&dir));
         fs.remove_dir_all(&dir).unwrap();
         assert!(!fs.exists(&dir));

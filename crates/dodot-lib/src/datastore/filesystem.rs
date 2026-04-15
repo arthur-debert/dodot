@@ -23,28 +23,19 @@ pub struct FilesystemDataStore {
 }
 
 impl FilesystemDataStore {
-    pub fn new(
-        fs: Arc<dyn Fs>,
-        paths: Arc<dyn Pather>,
-        runner: Arc<dyn CommandRunner>,
-    ) -> Self {
+    pub fn new(fs: Arc<dyn Fs>, paths: Arc<dyn Pather>, runner: Arc<dyn CommandRunner>) -> Self {
         Self { fs, paths, runner }
     }
 }
 
 impl DataStore for FilesystemDataStore {
-    fn create_data_link(
-        &self,
-        pack: &str,
-        handler: &str,
-        source_file: &Path,
-    ) -> Result<PathBuf> {
-        let filename = source_file
-            .file_name()
-            .ok_or_else(|| crate::DodotError::Other(format!(
+    fn create_data_link(&self, pack: &str, handler: &str, source_file: &Path) -> Result<PathBuf> {
+        let filename = source_file.file_name().ok_or_else(|| {
+            crate::DodotError::Other(format!(
                 "source file has no filename: {}",
                 source_file.display()
-            )))?;
+            ))
+        })?;
 
         let link_dir = self.paths.handler_data_dir(pack, handler);
         let link_path = link_dir.join(filename);
@@ -224,11 +215,7 @@ mod tests {
 
     fn make_datastore(env: &TempEnvironment) -> (FilesystemDataStore, Arc<MockCommandRunner>) {
         let runner = Arc::new(MockCommandRunner::new());
-        let ds = FilesystemDataStore::new(
-            env.fs.clone(),
-            env.paths.clone(),
-            runner.clone(),
-        );
+        let ds = FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), runner.clone());
         (ds, runner)
     }
 
@@ -346,7 +333,9 @@ mod tests {
         // Create a regular file at the user path
         env.fs.write_file(&user_path, b"existing content").unwrap();
 
-        let err = ds.create_user_link(&datastore_path, &user_path).unwrap_err();
+        let err = ds
+            .create_user_link(&datastore_path, &user_path)
+            .unwrap_err();
         assert!(
             matches!(err, crate::DodotError::SymlinkConflict { .. }),
             "expected SymlinkConflict, got: {err}"

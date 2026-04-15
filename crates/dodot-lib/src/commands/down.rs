@@ -1,18 +1,13 @@
 //! `down` command — remove all deployed state for packs.
 
-use crate::commands::{
-    handler_symbol, DisplayFile, DisplayPack, PackStatusResult,
-};
-use crate::packs::orchestration::ExecutionContext;
+use crate::commands::{handler_symbol, DisplayFile, DisplayPack, PackStatusResult};
 use crate::packs;
+use crate::packs::orchestration::ExecutionContext;
 use crate::shell;
 use crate::Result;
 
 /// Run the `down` command: remove all state for specified (or all) packs.
-pub fn down(
-    pack_filter: Option<&[String]>,
-    ctx: &ExecutionContext,
-) -> Result<PackStatusResult> {
+pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     let root_config = ctx.config_manager.root_config()?;
     let mut all_packs = packs::discover_packs(
         ctx.fs.as_ref(),

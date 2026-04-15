@@ -119,8 +119,14 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     registry.insert(HANDLER_SYMLINK.into(), Box::new(symlink::SymlinkHandler));
     registry.insert(HANDLER_SHELL.into(), Box::new(shell::ShellHandler));
     registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
-    registry.insert(HANDLER_INSTALL.into(), Box::new(install::InstallHandler::new(fs)));
-    registry.insert(HANDLER_HOMEBREW.into(), Box::new(homebrew::HomebrewHandler::new(fs)));
+    registry.insert(
+        HANDLER_INSTALL.into(),
+        Box::new(install::InstallHandler::new(fs)),
+    );
+    registry.insert(
+        HANDLER_HOMEBREW.into(),
+        Box::new(homebrew::HomebrewHandler::new(fs)),
+    );
     registry
 }
 
@@ -137,8 +143,14 @@ mod tests {
 
     #[test]
     fn handler_category_eq() {
-        assert_eq!(HandlerCategory::Configuration, HandlerCategory::Configuration);
-        assert_ne!(HandlerCategory::Configuration, HandlerCategory::CodeExecution);
+        assert_eq!(
+            HandlerCategory::Configuration,
+            HandlerCategory::Configuration
+        );
+        assert_ne!(
+            HandlerCategory::Configuration,
+            HandlerCategory::CodeExecution
+        );
     }
 
     #[test]

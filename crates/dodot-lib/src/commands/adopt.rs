@@ -67,10 +67,7 @@ pub fn adopt(
     }
 
     Ok(AdoptResult {
-        message: format!(
-            "Adopted {} file(s) into '{pack_name}'.",
-            files.len()
-        ),
+        message: format!("Adopted {} file(s) into '{pack_name}'.", files.len()),
         details,
     })
 }

@@ -429,9 +429,10 @@ mod tests {
     #[test]
     fn custom_target_relative_path() {
         let mut config = HandlerConfig::default();
-        config
-            .targets
-            .insert("home-bound.conf".into(), "my-documents/home-bound.conf".into());
+        config.targets.insert(
+            "home-bound.conf".into(),
+            "my-documents/home-bound.conf".into(),
+        );
 
         let target = resolve_target("home-bound.conf", &config, &test_pather());
         assert_eq!(

@@ -164,9 +164,12 @@ fn build_clap_command() -> ClapCommand {
                         .action(ArgAction::SetTrue),
                 ),
         )
-        .subcommand(config_cmd.as_command("config").about("Manage configuration"))
         .subcommand(
-            ClapCommand::new("init-sh")
-                .about("Print shell init script for eval in .zshrc/.bashrc"),
+            config_cmd
+                .as_command("config")
+                .about("Manage configuration"),
+        )
+        .subcommand(
+            ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
         )
 }
