@@ -1,5 +1,6 @@
 //! Install handler — runs setup scripts with checksum-based sentinel tracking.
 
+use std::io::Read;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -55,7 +56,8 @@ impl Handler for InstallHandler<'_> {
             intents.push(HandlerIntent::Run {
                 pack: m.pack.clone(),
                 handler: HANDLER_INSTALL.into(),
-                command: format!("bash '{}'", m.absolute_path.display()),
+                executable: "bash".into(),
+                arguments: vec!["--".into(), m.absolute_path.to_string_lossy().into_owned()],
                 sentinel,
             });
         }
@@ -89,9 +91,19 @@ impl Handler for InstallHandler<'_> {
 
 /// Compute a short SHA-256 hex digest of a file's contents.
 fn file_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
-    let contents = fs.read_file(path)?;
+    let mut reader = fs.open_read(path)?;
     let mut hasher = Sha256::new();
-    hasher.update(&contents);
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| crate::DodotError::Fs {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     let hash = hasher.finalize();
     // Use first 8 bytes (16 hex chars) for a short but unique sentinel
     Ok(hex::encode(&hash[..8]))
@@ -169,9 +181,14 @@ mod tests {
         assert_eq!(intents.len(), 1);
         match &intents[0] {
             HandlerIntent::Run {
-                command, sentinel, ..
+                executable,
+                arguments,
+                sentinel,
+                ..
             } => {
-                assert!(command.contains("install.sh"));
+                assert_eq!(executable, "bash");
+                assert_eq!(arguments[0], "--");
+                assert!(arguments[1].contains("install.sh"));
                 assert!(sentinel.starts_with("install.sh-"));
                 assert_eq!(sentinel.len(), "install.sh-".len() + 16);
             }

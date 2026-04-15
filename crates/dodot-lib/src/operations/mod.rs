@@ -33,7 +33,8 @@ pub enum Operation {
     RunCommand {
         pack: String,
         handler: String,
-        command: String,
+        executable: String,
+        arguments: Vec<String>,
         sentinel: String,
     },
 
@@ -107,7 +108,8 @@ pub enum HandlerIntent {
     Run {
         pack: String,
         handler: String,
-        command: String,
+        executable: String,
+        arguments: Vec<String>,
         sentinel: String,
     },
 }
@@ -201,11 +203,13 @@ mod tests {
         let op = Operation::RunCommand {
             pack: "vim".into(),
             handler: "install".into(),
-            command: "echo hi".into(),
+            executable: "echo".into(),
+            arguments: vec!["hi".into()],
             sentinel: "s1".into(),
         };
         let json = serde_json::to_string(&op).unwrap();
         assert!(json.contains("RunCommand"));
-        assert!(json.contains("echo hi"));
+        assert!(json.contains("echo"));
+        assert!(json.contains("hi"));
     }
 }

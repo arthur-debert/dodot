@@ -142,7 +142,7 @@ mod tests {
 
     struct NoopRunner;
     impl CommandRunner for NoopRunner {
-        fn run(&self, _: &str) -> Result<CommandOutput> {
+        fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

@@ -1,5 +1,6 @@
 //! Homebrew handler — runs `brew bundle` with sentinel tracking.
 
+use std::io::Read;
 use std::path::Path;
 
 use sha2::{Digest, Sha256};
@@ -55,7 +56,12 @@ impl Handler for HomebrewHandler<'_> {
             intents.push(HandlerIntent::Run {
                 pack: m.pack.clone(),
                 handler: HANDLER_HOMEBREW.into(),
-                command: format!("brew bundle --file='{}'", m.absolute_path.display()),
+                executable: "brew".into(),
+                arguments: vec![
+                    "bundle".into(),
+                    "--file".into(),
+                    m.absolute_path.to_string_lossy().into_owned(),
+                ],
                 sentinel,
             });
         }
@@ -88,9 +94,19 @@ impl Handler for HomebrewHandler<'_> {
 }
 
 fn brewfile_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
-    let contents = fs.read_file(path)?;
+    let mut reader = fs.open_read(path)?;
     let mut hasher = Sha256::new();
-    hasher.update(&contents);
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| crate::DodotError::Fs {
+            path: path.to_path_buf(),
+            source: e,
+        })?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
     let hash = hasher.finalize();
     Ok(hash[..8].iter().map(|b| format!("{b:02x}")).collect())
 }
