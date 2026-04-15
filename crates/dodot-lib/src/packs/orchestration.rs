@@ -253,8 +253,9 @@ mod tests {
     }
 
     impl CommandRunner for MockCommandRunner {
-        fn run(&self, command: &str) -> Result<CommandOutput> {
-            self.calls.lock().unwrap().push(command.to_string());
+        fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput> {
+            let cmd_str = format!("{} {}", executable, arguments.join(" "));
+            self.calls.lock().unwrap().push(cmd_str.trim().to_string());
             Ok(CommandOutput {
                 exit_code: 0,
                 stdout: String::new(),

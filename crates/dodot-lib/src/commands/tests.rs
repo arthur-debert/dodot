@@ -15,7 +15,7 @@ use standout_render::OutputMode;
 
 struct MockCommandRunner;
 impl CommandRunner for MockCommandRunner {
-    fn run(&self, _: &str) -> Result<CommandOutput> {
+    fn run(&self, _: &str, _: &[String]) -> Result<CommandOutput> {
         Ok(CommandOutput {
             exit_code: 0,
             stdout: String::new(),

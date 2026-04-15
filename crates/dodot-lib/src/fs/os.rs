@@ -37,6 +37,11 @@ impl Fs for OsFs {
         Ok(metadata_from_std(&meta, is_symlink))
     }
 
+    fn open_read(&self, path: &Path) -> Result<Box<dyn std::io::Read + Send + Sync>> {
+        let f = fs::File::open(path).map_err(|e| fs_err(path, e))?;
+        Ok(Box::new(f))
+    }
+
     fn read_file(&self, path: &Path) -> Result<Vec<u8>> {
         fs::read(path).map_err(|e| fs_err(path, e))
     }
