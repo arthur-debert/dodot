@@ -465,6 +465,110 @@ fn genconfig_write_creates_file() {
     env.assert_exists(&env.dotfiles_root.join(".dodot.toml"));
 }
 
+// ── nonexistent pack ───────────────────────────────────────
+
+#[test]
+fn status_on_nonexistent_pack_returns_error() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["nonexistent".into()];
+    let err = commands::status::status(Some(&filter), &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::PackNotFound { .. }),
+        "expected PackNotFound, got: {err}"
+    );
+}
+
+#[test]
+fn up_on_nonexistent_pack_returns_error() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["typo".into()];
+    let err = commands::up::up(Some(&filter), &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::PackNotFound { .. }),
+        "expected PackNotFound, got: {err}"
+    );
+}
+
+// ── down: already down ─────────────────────────────────────
+
+#[test]
+fn down_on_already_down_pack_says_nothing_to_do() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    // vim was never deployed — should not print misleading output
+    let result = commands::down::down(None, &ctx).unwrap();
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Nothing to deactivate."),
+        "should say nothing to deactivate"
+    );
+    assert!(result.packs.is_empty(), "should have no pack entries");
+}
+
+// ── addignore: warns about deployed ────────────────────────
+
+#[test]
+fn addignore_on_deployed_pack_warns() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    // Deploy first
+    commands::up::up(None, &ctx).unwrap();
+
+    // Now addignore should warn
+    let result = commands::addignore::addignore("git", &ctx).unwrap();
+    assert!(result.message.contains("ignored"));
+    let has_warning = result
+        .details
+        .iter()
+        .any(|d| d.contains("currently deployed"));
+    assert!(
+        has_warning,
+        "should warn about deployed pack: {:?}",
+        result.details
+    );
+}
+
+// ── adopt: pack not found hint ─────────────────────────────
+
+#[test]
+fn adopt_nonexistent_pack_suggests_init() {
+    let env = TempEnvironment::builder()
+        .home_file(".vimrc", "set nocompatible")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err =
+        commands::adopt::adopt("newpack", std::slice::from_ref(&source), false, &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("dodot init"),
+        "should suggest dodot init, got: {msg}"
+    );
+}
+
 // ── full lifecycle ──────────────────────────────────────────
 
 #[test]

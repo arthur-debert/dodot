@@ -167,16 +167,6 @@ pub fn addignore_handler(
     Ok(Output::Render(result))
 }
 
-pub fn genconfig_handler(
-    matches: &clap::ArgMatches,
-    _ctx: &CommandContext,
-) -> HandlerResult<commands::genconfig::GenConfigResult> {
-    let ctx = build_readonly_ctx()?;
-    let write = matches.get_flag("write");
-    let result = commands::genconfig::genconfig(write, &ctx)?;
-    Ok(Output::Render(result))
-}
-
 // ── Passthrough handlers (bypass standout rendering) ────────────
 
 /// `dodot config` — delegates to clapfig's config subcommands.
@@ -189,13 +179,34 @@ pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Erro
     let output = clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()
         .app_name("dodot")
         .file_name(".dodot.toml")
-        .search_paths(vec![clapfig::SearchPath::Path(dotfiles_root)])
+        .search_paths(vec![clapfig::SearchPath::Path(dotfiles_root.clone())])
         .search_mode(clapfig::SearchMode::Merge)
+        .persist_scope("local", clapfig::SearchPath::Path(dotfiles_root))
         .no_env()
         .handle_to_string(&action)?;
 
-    print!("{output}");
+    // Clean up clapfig's Debug-format leak: String("value") → "value"
+    let cleaned = clean_debug_format(&output);
+    print!("{cleaned}");
     Ok(())
+}
+
+/// Remove Rust Debug format wrappers from clapfig output.
+/// Replaces `String("value")` with `"value"` in config list output.
+fn clean_debug_format(input: &str) -> String {
+    let mut result = input.to_string();
+    // Iteratively replace String("...") with "..."
+    while let Some(start) = result.find("String(\"") {
+        let after_prefix = start + 8; // skip 'String("'
+        if let Some(end_quote) = result[after_prefix..].find("\")") {
+            let value = &result[after_prefix..after_prefix + end_quote];
+            let replacement = format!("\"{value}\"");
+            result.replace_range(start..after_prefix + end_quote + 2, &replacement);
+        } else {
+            break;
+        }
+    }
+    result
 }
 
 /// `dodot init-sh` — prints shell init script for `eval "$(dodot init-sh)"`.

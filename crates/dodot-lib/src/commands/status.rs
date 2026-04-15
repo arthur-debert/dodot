@@ -7,13 +7,18 @@ use crate::commands::{
 use crate::config::mappings_to_rules;
 use crate::handlers::symlink::resolve_target;
 use crate::handlers::{self, HANDLER_SYMLINK};
-use crate::packs::orchestration::ExecutionContext;
+use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
 use crate::Result;
 
 /// Run the `status` command: scan packs and check handler deployment state.
 pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
+    // Validate pack names before doing anything
+    if let Some(names) = pack_filter {
+        orchestration::validate_pack_names(names, ctx)?;
+    }
+
     let root_config = ctx.config_manager.root_config()?;
     let mut all_packs = packs::discover_packs(
         ctx.fs.as_ref(),
