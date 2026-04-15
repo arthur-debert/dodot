@@ -101,8 +101,6 @@ pub struct DisplayFile {
 pub struct DisplayPack {
     pub name: String,
     pub files: Vec<DisplayFile>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
 }
 
 /// Result type for commands that display pack status

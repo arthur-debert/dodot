@@ -61,7 +61,6 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
             DisplayPack {
                 name: pr.pack_name.clone(),
                 files,
-                error: pr.error.clone(),
             }
         })
         .collect();
