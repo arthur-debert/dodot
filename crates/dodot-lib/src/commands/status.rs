@@ -43,8 +43,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
-            // Skip directory entries — only show leaf files (#11)
-            if m.is_dir {
+            // Skip directory entries for symlink handler — only show leaf files (#11)
+            // Keep directory entries for other handlers (e.g. path handler uses bin/ dirs)
+            if m.is_dir && m.handler == HANDLER_SYMLINK {
                 continue;
             }
 

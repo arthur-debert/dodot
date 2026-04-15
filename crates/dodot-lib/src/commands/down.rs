@@ -45,35 +45,20 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
                 let handler_dir = ctx.paths.handler_data_dir(&pack.name, handler);
                 if let Ok(entries) = ctx.fs.read_dir(&handler_dir) {
                     for entry in entries {
-                        if ctx.dry_run {
-                            files.push(DisplayFile {
-                                name: entry.name.clone(),
-                                symbol: handler_symbol(handler).into(),
-                                description: format!("~/.{}", entry.name),
-                                status: "pending".into(),
-                                status_label: "[dry-run] would remove".into(),
-                                handler: handler.clone(),
-                            });
+                        let label = if ctx.dry_run {
+                            "[dry-run] would remove"
                         } else {
-                            // Remove user-visible symlink if it points to our datastore
-                            // (best-effort: don't fail if already gone)
-                            if entry.is_symlink {
-                                if let Ok(target) = ctx.fs.readlink(&entry.path) {
-                                    // Find and remove the user link that points to this datastore entry
-                                    // We check HOME for the user link
-                                    let home = ctx.paths.home_dir();
-                                    remove_user_links_pointing_to(ctx, &target, home);
-                                }
-                            }
-                            files.push(DisplayFile {
-                                name: entry.name.clone(),
-                                symbol: handler_symbol(handler).into(),
-                                description: format!("~/.{}", entry.name),
-                                status: "deployed".into(),
-                                status_label: "removed".into(),
-                                handler: handler.clone(),
-                            });
-                        }
+                            "removed"
+                        };
+                        let status = if ctx.dry_run { "pending" } else { "deployed" };
+                        files.push(DisplayFile {
+                            name: entry.name.clone(),
+                            symbol: handler_symbol(handler).into(),
+                            description: "unlinked".into(),
+                            status: status.into(),
+                            status_label: label.into(),
+                            handler: handler.clone(),
+                        });
                     }
                 }
             } else {
@@ -126,18 +111,4 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         dry_run: ctx.dry_run,
         packs: display_packs,
     })
-}
-
-/// Best-effort removal of user symlinks that point to a datastore path.
-/// Walks HOME looking for symlinks to `target`. Does NOT recurse deeply.
-fn remove_user_links_pointing_to(
-    ctx: &ExecutionContext,
-    _target: &std::path::Path,
-    _home: &std::path::Path,
-) {
-    // User-visible symlinks are cleaned up by remove_state removing
-    // the datastore entries. The symlinks still exist but point to
-    // nothing (dangling). This is acceptable — the user can clean up
-    // manually, and a full scan of HOME would be expensive.
-    let _ = ctx; // suppress unused
 }
