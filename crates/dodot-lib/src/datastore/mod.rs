@@ -61,6 +61,7 @@ pub trait DataStore: Send + Sync {
         executable: &str,
         arguments: &[String],
         sentinel: &str,
+        force: bool,
     ) -> Result<()>;
 
     /// Checks whether a sentinel exists for this pack/handler.

@@ -163,17 +163,15 @@ impl<'a> Executor<'a> {
                     }
                 }
 
-                // Remove existing sentinel so run_and_record will re-run
-                if self.provision_rerun {
-                    let sentinel_path = self.datastore.sentinel_path(pack, handler, sentinel);
-                    if self.fs.exists(&sentinel_path) {
-                        self.fs.remove_file(&sentinel_path)?;
-                    }
-                }
-
                 // Run the command
-                self.datastore
-                    .run_and_record(pack, handler, executable, arguments, sentinel)?;
+                self.datastore.run_and_record(
+                    pack,
+                    handler,
+                    executable,
+                    arguments,
+                    sentinel,
+                    self.provision_rerun,
+                )?;
 
                 let cmd_str = format!("{} {}", executable, arguments.join(" "));
 

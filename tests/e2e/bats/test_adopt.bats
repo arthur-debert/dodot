@@ -59,3 +59,10 @@ teardown() {
     assert_exists "$DOTFILES_ROOT/shell/bashrc"
     assert_exists "$DOTFILES_ROOT/shell/zshrc"
 }
+
+@test "adopt reports error when target file does not exist" {
+    create_pack "vim"
+
+    run dodot adopt vim "$HOME/.nonexistent"
+    assert_output_contains "file not found"
+}
