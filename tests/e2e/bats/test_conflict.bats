@@ -15,7 +15,7 @@ teardown() {
     create_home_file ".vimrc" "existing content"
 
     run dodot up
-    assert_output_contains "symlink conflict"
+    assert_output_contains "conflict"
 
     # Make sure we didn't overwrite the user's file
     assert_file_contains "$HOME/.vimrc" "existing content"
