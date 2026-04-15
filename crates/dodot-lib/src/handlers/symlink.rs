@@ -103,7 +103,7 @@ fn strip_dot_prefix(rel_path: &str) -> Option<String> {
 /// 2. Layer 3: Explicit `_home/` or `_xdg/` directory prefix
 /// 3. Layer 2: `force_home` config list
 /// 4. Layer 1: Smart defaults (top-level → `$HOME`, subdirs → `$XDG_CONFIG_HOME`)
-fn resolve_target(rel_path: &str, config: &HandlerConfig, paths: &dyn Pather) -> PathBuf {
+pub fn resolve_target(rel_path: &str, config: &HandlerConfig, paths: &dyn Pather) -> PathBuf {
     let home = paths.home_dir();
     let xdg_config = paths.xdg_config_home();
 

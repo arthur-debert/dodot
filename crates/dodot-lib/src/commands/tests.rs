@@ -94,6 +94,57 @@ fn status_renders_with_standout() {
     assert!(json.contains("\"packs\""), "json: {json}");
 }
 
+// ── status: correct target paths ────────────────────────────
+
+#[test]
+fn status_shows_xdg_target_for_subdirectory_files() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("nvim/init.lua", "-- nvim config")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let nvim_pack = &result.packs[0];
+    let init_file = nvim_pack
+        .files
+        .iter()
+        .find(|f| f.name.contains("init.lua"))
+        .expect("should have init.lua");
+
+    // Should show ~/.config/nvim/init.lua, not ~/.nvim/init.lua
+    assert!(
+        init_file.description.contains(".config/nvim"),
+        "expected XDG path, got: {}",
+        init_file.description
+    );
+}
+
+#[test]
+fn status_does_not_list_directories() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("nvim/init.lua", "-- nvim config")
+        .file("nvim/lua/plugins.lua", "return {}")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let nvim_pack = &result.packs[0];
+    // Should not have directory entries like "nvim" or "nvim/lua"
+    for file in &nvim_pack.files {
+        assert!(
+            file.name.contains('.'),
+            "expected only files (with extensions), got directory entry: {}",
+            file.name
+        );
+    }
+}
+
 // ── up ──────────────────────────────────────────────────────
 
 #[test]

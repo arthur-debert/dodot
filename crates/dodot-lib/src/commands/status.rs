@@ -5,7 +5,8 @@ use crate::commands::{
     PackStatusResult,
 };
 use crate::config::mappings_to_rules;
-use crate::handlers::{self};
+use crate::handlers::symlink::resolve_target;
+use crate::handlers::{self, HANDLER_SYMLINK};
 use crate::packs::orchestration::ExecutionContext;
 use crate::packs::{self};
 use crate::rules::Scanner;
@@ -37,6 +38,11 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
+            // Skip directory entries — only show leaf files (#11)
+            if m.is_dir {
+                continue;
+            }
+
             let handler = registry.get(m.handler.as_str());
             let deployed = if let Some(h) = handler {
                 h.check_status(&m.absolute_path, &pack.name, ctx.datastore.as_ref())
@@ -46,14 +52,26 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 false
             };
 
+            // Compute actual target path for symlink handler (#10)
+            let rel_str = m.relative_path.to_string_lossy().into_owned();
+            let user_target = if m.handler == HANDLER_SYMLINK {
+                let target = resolve_target(&rel_str, &pack.config, ctx.paths.as_ref());
+                let home = ctx.paths.home_dir();
+                // Display relative to ~ for readability
+                let display = if let Ok(rel) = target.strip_prefix(home) {
+                    format!("~/{}", rel.display())
+                } else {
+                    target.display().to_string()
+                };
+                Some(display)
+            } else {
+                None
+            };
+
             files.push(DisplayFile {
-                name: m.relative_path.to_string_lossy().into_owned(),
+                name: rel_str.clone(),
                 symbol: handler_symbol(&m.handler).into(),
-                description: handler_description(
-                    &m.handler,
-                    &m.relative_path.to_string_lossy(),
-                    None,
-                ),
+                description: handler_description(&m.handler, &rel_str, user_target.as_deref()),
                 status: status_style(deployed).into(),
                 status_label: status_label(&m.handler, deployed),
                 handler: m.handler.clone(),
