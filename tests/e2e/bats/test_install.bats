@@ -47,18 +47,13 @@ echo "$(date +%s)" > "$HOME/.install-timestamp"'
 }
 
 @test "install.sh re-runs with --provision-rerun" {
-    # TODO: provision_rerun is wired to CLI but not checked in execution pipeline.
-    # The sentinel check in execution/mod.rs always short-circuits regardless of this flag.
-    skip "provision_rerun not yet implemented in execution layer"
 
     create_pack_script "tools" "install.sh" '#!/bin/sh
-echo "$(date +%s)" > "$HOME/.install-timestamp"'
+uuidgen > "$HOME/.install-timestamp"'
 
     dodot up
     local first_ts
     first_ts="$(cat "$HOME/.install-timestamp")"
-
-    sleep 1
 
     dodot up --provision-rerun
     local second_ts

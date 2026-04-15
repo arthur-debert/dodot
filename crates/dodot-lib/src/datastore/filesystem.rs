@@ -90,9 +90,10 @@ impl DataStore for FilesystemDataStore {
         executable: &str,
         arguments: &[String],
         sentinel: &str,
+        force: bool,
     ) -> Result<()> {
         // Idempotent: skip if sentinel exists
-        if self.has_sentinel(pack, handler, sentinel)? {
+        if !force && self.has_sentinel(pack, handler, sentinel)? {
             return Ok(());
         }
 
@@ -408,6 +409,7 @@ mod tests {
             "echo",
             &["hello".into()],
             "install.sh-abc",
+            false,
         )
         .unwrap();
 
@@ -428,9 +430,9 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo", &["first".into()], "s1")
+        ds.run_and_record("vim", "install", "echo", &["first".into()], "s1", false)
             .unwrap();
-        ds.run_and_record("vim", "install", "echo", &["second".into()], "s1")
+        ds.run_and_record("vim", "install", "echo", &["second".into()], "s1", false)
             .unwrap();
 
         // Command only ran once
@@ -444,7 +446,7 @@ mod tests {
         let ds = FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), runner);
 
         let err = ds
-            .run_and_record("vim", "install", "bad-cmd", &[], "s1")
+            .run_and_record("vim", "install", "bad-cmd", &[], "s1", false)
             .unwrap_err();
 
         assert!(
@@ -558,9 +560,9 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let (ds, _) = make_datastore(&env);
 
-        ds.run_and_record("vim", "install", "echo", &["a".into()], "install.sh-aaa")
+        ds.run_and_record("vim", "install", "echo", &["a".into()], "install.sh-aaa", false)
             .unwrap();
-        ds.run_and_record("vim", "install", "echo", &["b".into()], "install.sh-bbb")
+        ds.run_and_record("vim", "install", "echo", &["b".into()], "install.sh-bbb", false)
             .unwrap();
 
         let mut sentinels = ds.list_handler_sentinels("vim", "install").unwrap();

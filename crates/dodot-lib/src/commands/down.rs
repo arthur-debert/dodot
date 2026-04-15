@@ -51,6 +51,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         display_packs.push(DisplayPack {
             name: pack.name.clone(),
             files,
+            error: None,
         });
     }
 

@@ -229,7 +229,7 @@ pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<O
     }
 
     // Execute intents
-    let executor = Executor::new(ctx.datastore.as_ref(), ctx.dry_run);
+    let executor = Executor::new(ctx.datastore.as_ref(), ctx.dry_run, ctx.provision_rerun);
     executor.execute(all_intents)
 }
 

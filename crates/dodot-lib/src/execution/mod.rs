@@ -11,11 +11,12 @@ use crate::Result;
 pub struct Executor<'a> {
     datastore: &'a dyn DataStore,
     dry_run: bool,
+    provision_rerun: bool,
 }
 
 impl<'a> Executor<'a> {
-    pub fn new(datastore: &'a dyn DataStore, dry_run: bool) -> Self {
-        Self { datastore, dry_run }
+    pub fn new(datastore: &'a dyn DataStore, dry_run: bool, provision_rerun: bool) -> Self {
+        Self { datastore, dry_run, provision_rerun }
     }
 
     /// Execute a list of handler intents, returning one result per
@@ -113,7 +114,7 @@ impl<'a> Executor<'a> {
                 // Check sentinel first
                 let already_done = self.datastore.has_sentinel(pack, handler, sentinel)?;
 
-                if already_done {
+                if already_done && !self.provision_rerun {
                     let op = Operation::CheckSentinel {
                         pack: pack.clone(),
                         handler: handler.clone(),
@@ -124,7 +125,7 @@ impl<'a> Executor<'a> {
 
                 // Run the command
                 self.datastore
-                    .run_and_record(pack, handler, executable, arguments, sentinel)?;
+                    .run_and_record(pack, handler, executable, arguments, sentinel, self.provision_rerun)?;
 
                 let cmd_str = format!("{} {}", executable, arguments.join(" "));
 
@@ -259,7 +260,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, false, false);
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -289,7 +290,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, false, false);
 
         let source = env.dotfiles_root.join("vim/aliases.sh");
 
@@ -316,7 +317,7 @@ mod tests {
     fn execute_run_creates_sentinel() {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, false, false);
 
         let results = executor
             .execute(vec![HandlerIntent::Run {
@@ -346,7 +347,7 @@ mod tests {
             .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, false, false);
         let results = executor
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
@@ -371,7 +372,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, true);
+        let executor = Executor::new(&ds, true, false);
 
         let results = executor
             .execute(vec![
@@ -419,7 +420,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, false);
+        let executor = Executor::new(&ds, false, false);
 
         let results = executor
             .execute(vec![

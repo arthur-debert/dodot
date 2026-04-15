@@ -63,6 +63,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         display_packs.push(DisplayPack {
             name: pack.name.clone(),
             files,
+            error: None,
         });
     }
 
