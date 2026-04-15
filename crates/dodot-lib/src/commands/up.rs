@@ -24,22 +24,44 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         .pack_results
         .iter()
         .map(|pr| {
-            let files: Vec<DisplayFile> = pr
+            let mut files: Vec<DisplayFile> = pr
                 .operations
                 .iter()
-                .filter(|op| op.success)
                 .map(|op| {
                     let (handler, source) = extract_op_info(&op.operation);
-                    DisplayFile {
-                        name: source.clone(),
-                        symbol: handler_symbol(&handler).into(),
-                        description: handler_description(&handler, &source, None),
-                        status: status_style(true).into(),
-                        status_label: op.message.clone(),
-                        handler,
+                    if op.success {
+                        DisplayFile {
+                            name: source.clone(),
+                            symbol: handler_symbol(&handler).into(),
+                            description: handler_description(&handler, &source, None),
+                            status: status_style(true).into(),
+                            status_label: op.message.clone(),
+                            handler,
+                        }
+                    } else {
+                        DisplayFile {
+                            name: source.clone(),
+                            symbol: handler_symbol(&handler).into(),
+                            description: handler_description(&handler, &source, None),
+                            status: "error".into(),
+                            status_label: op.message.clone(),
+                            handler,
+                        }
                     }
                 })
                 .collect();
+
+            // Include error from orchestration (e.g. pack-level config error)
+            if let Some(err) = &pr.error {
+                files.push(DisplayFile {
+                    name: String::new(),
+                    symbol: "×".into(),
+                    description: String::new(),
+                    status: "error".into(),
+                    status_label: err.clone(),
+                    handler: String::new(),
+                });
+            }
 
             DisplayPack {
                 name: pr.pack_name.clone(),
@@ -48,8 +70,20 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         })
         .collect();
 
+    // Message reflects actual results
+    let has_failures = result.failed_packs > 0
+        || result
+            .pack_results
+            .iter()
+            .any(|pr| pr.operations.iter().any(|op| !op.success));
+    let message = if has_failures {
+        "Packs deployed with errors.".into()
+    } else {
+        "Packs deployed.".into()
+    };
+
     Ok(PackStatusResult {
-        message: Some("Packs deployed.".into()),
+        message: Some(message),
         dry_run: ctx.dry_run,
         packs,
     })

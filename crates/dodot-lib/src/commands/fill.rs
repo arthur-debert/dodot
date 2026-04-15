@@ -152,6 +152,7 @@ mod tests {
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
+            force: false,
         }
     }
 

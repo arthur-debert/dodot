@@ -102,6 +102,12 @@ fn build_clap_command() -> ClapCommand {
                         .long("provision-rerun")
                         .help("Force re-run of install scripts")
                         .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("force")
+                        .long("force")
+                        .help("Overwrite pre-existing files at target locations")
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(

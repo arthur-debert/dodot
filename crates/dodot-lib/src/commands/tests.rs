@@ -41,6 +41,7 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         dry_run: false,
         no_provision: true,
         provision_rerun: false,
+        force: false,
     }
 }
 
@@ -163,6 +164,78 @@ fn up_dry_run_no_changes() {
     for file in &status.packs[0].files {
         assert_eq!(file.status, "pending", "dry run should not deploy");
     }
+}
+
+// ── up: conflict handling ──────────────────────────────────
+
+#[test]
+fn up_reports_conflict_when_file_exists() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = new")
+        .done()
+        .home_file(".gitconfig", "[user]\n  name = old")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    // Should report errors
+    assert!(
+        result.message.as_deref() == Some("Packs deployed with errors."),
+        "msg: {:?}",
+        result.message
+    );
+
+    // The conflict file should show as error
+    let error_files: Vec<&commands::DisplayFile> = result.packs[0]
+        .files
+        .iter()
+        .filter(|f| f.status == "error")
+        .collect();
+    assert!(
+        !error_files.is_empty(),
+        "should have error files for conflicts"
+    );
+    assert!(
+        error_files[0].status_label.contains("conflict"),
+        "should mention conflict: {}",
+        error_files[0].status_label
+    );
+
+    // Original file should be untouched
+    env.assert_file_contents(&env.home.join(".gitconfig"), "[user]\n  name = old");
+
+    // Status should NOT show deployed (no dangling data link)
+    let status = commands::status::status(None, &ctx).unwrap();
+    for file in &status.packs[0].files {
+        assert_eq!(
+            file.status, "pending",
+            "conflicted file {} should be pending, not deployed",
+            file.name
+        );
+    }
+}
+
+#[test]
+fn up_force_overwrites_existing_files() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = new")
+        .done()
+        .home_file(".gitconfig", "[user]\n  name = old")
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.force = true;
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    // Should succeed
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+
+    // File should now be a symlink with new content
+    let content = env.fs.read_to_string(&env.home.join(".gitconfig")).unwrap();
+    assert_eq!(content, "[user]\n  name = new");
 }
 
 // ── down ────────────────────────────────────────────────────

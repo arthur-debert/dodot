@@ -30,6 +30,7 @@ pub struct ExecutionContext {
     pub dry_run: bool,
     pub no_provision: bool,
     pub provision_rerun: bool,
+    pub force: bool,
 }
 
 impl ExecutionContext {
@@ -62,6 +63,7 @@ impl ExecutionContext {
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
+            force: false,
         })
     }
 }
@@ -229,7 +231,13 @@ pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<O
     }
 
     // Execute intents
-    let executor = Executor::new(ctx.datastore.as_ref(), ctx.dry_run);
+    let executor = Executor::new(
+        ctx.datastore.as_ref(),
+        ctx.fs.as_ref(),
+        ctx.dry_run,
+        ctx.force,
+        ctx.provision_rerun,
+    );
     executor.execute(all_intents)
 }
 
@@ -281,6 +289,7 @@ mod tests {
             dry_run: false,
             no_provision: true, // skip install/homebrew in tests
             provision_rerun: false,
+            force: false,
         }
     }
 
@@ -434,6 +443,7 @@ mod tests {
             dry_run: true,
             no_provision: true,
             provision_rerun: false,
+            force: false,
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();

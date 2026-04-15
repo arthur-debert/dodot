@@ -34,6 +34,7 @@ fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Err
     ctx.dry_run = flag_or_false(matches, "dry-run");
     ctx.no_provision = flag_or_false(matches, "no-provision");
     ctx.provision_rerun = flag_or_false(matches, "provision-rerun");
+    ctx.force = flag_or_false(matches, "force");
 
     Ok(ctx)
 }
