@@ -3,6 +3,7 @@
 use crate::commands::{
     handler_description, handler_symbol, status_style, DisplayFile, DisplayPack, PackStatusResult,
 };
+use crate::datastore::format_command_for_display;
 use crate::packs::orchestration::{self, Command, ExecutionContext, PackResult};
 use crate::packs::Pack;
 use crate::shell;
@@ -75,14 +76,7 @@ fn extract_op_info(op: &crate::operations::Operation) -> (String, String) {
             executable,
             arguments,
             ..
-        } => (
-            handler.clone(),
-            if arguments.is_empty() {
-                executable.clone()
-            } else {
-                format!("{} {}", executable, arguments.join(" "))
-            },
-        ),
+        } => (handler.clone(), format_command_for_display(executable, arguments)),
         crate::operations::Operation::CheckSentinel {
             handler, sentinel, ..
         } => (handler.clone(), sentinel.clone()),

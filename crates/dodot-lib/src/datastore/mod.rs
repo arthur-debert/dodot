@@ -101,7 +101,7 @@ pub struct CommandOutput {
 /// [`CommandRunner`] that spawns a real shell process.
 pub struct ShellCommandRunner;
 
-fn format_command_for_display(executable: &str, arguments: &[String]) -> String {
+pub(crate) fn format_command_for_display(executable: &str, arguments: &[String]) -> String {
     if arguments.is_empty() {
         return executable.to_string();
     }
