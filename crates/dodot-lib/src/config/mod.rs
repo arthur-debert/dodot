@@ -39,8 +39,12 @@ pub struct DodotConfig {
 /// Pack-level settings.
 #[derive(Config, Debug, Clone, Serialize, Deserialize)]
 pub struct PackSection {
-    /// Glob patterns for pack directories to ignore.
-    #[config(default = [])]
+    /// Glob patterns for files and directories to ignore during pack
+    /// discovery and file scanning.
+    #[config(default = [
+        ".git", ".svn", ".hg", "node_modules", ".DS_Store",
+        "*.swp", "*~", "#*#", ".env*", ".terraform/"
+    ])]
     pub ignore: Vec<String>,
 }
 
@@ -89,9 +93,10 @@ pub struct MappingsSection {
     #[config(default = "Brewfile")]
     pub homebrew: String,
 
-    /// Additional patterns to exclude from processing.
+    /// Additional filename patterns to exclude from handler processing
+    /// within a pack. Distinct from [pack] ignore which controls discovery.
     #[config(default = [])]
-    pub ignore: Vec<String>,
+    pub skip: Vec<String>,
 }
 
 // ── Conversions ─────────────────────────────────────────────────
@@ -163,8 +168,8 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
         });
     }
 
-    // Ignore patterns (exclusion rules)
-    for pattern in &mappings.ignore {
+    // Skip patterns (exclusion rules)
+    for pattern in &mappings.skip {
         if !pattern.is_empty() {
             rules.push(Rule {
                 pattern: format!("!{pattern}"),
@@ -256,15 +261,73 @@ mod tests {
         let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
         let cfg = mgr.root_config().unwrap();
 
-        assert!(cfg.symlink.force_home.contains(&"ssh".to_string()));
-        assert!(cfg.symlink.force_home.contains(&"bashrc".to_string()));
-        assert!(cfg
-            .symlink
-            .protected_paths
-            .contains(&".ssh/id_rsa".to_string()));
+        // ── pack.ignore defaults ────────────────────────────────
+        let expected_ignore: Vec<String> = vec![
+            ".git",
+            ".svn",
+            ".hg",
+            "node_modules",
+            ".DS_Store",
+            "*.swp",
+            "*~",
+            "#*#",
+            ".env*",
+            ".terraform/",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        assert_eq!(cfg.pack.ignore, expected_ignore);
+
+        // ── symlink.force_home defaults ─────────────────────────
+        let expected_force_home: Vec<String> = vec![
+            "ssh",
+            "aws",
+            "kube",
+            "bashrc",
+            "zshrc",
+            "profile",
+            "bash_profile",
+            "bash_login",
+            "bash_logout",
+            "inputrc",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        assert_eq!(cfg.symlink.force_home, expected_force_home);
+
+        // ── symlink.protected_paths defaults ────────────────────
+        let expected_protected: Vec<String> = vec![
+            ".ssh/id_rsa",
+            ".ssh/id_ed25519",
+            ".ssh/id_dsa",
+            ".ssh/id_ecdsa",
+            ".ssh/authorized_keys",
+            ".gnupg",
+            ".aws/credentials",
+            ".password-store",
+            ".config/gh/hosts.yml",
+            ".kube/config",
+            ".docker/config.json",
+        ]
+        .into_iter()
+        .map(Into::into)
+        .collect();
+        assert_eq!(cfg.symlink.protected_paths, expected_protected);
+
+        // ── symlink.targets defaults ────────────────────────────
+        assert!(cfg.symlink.targets.is_empty());
+
+        // ── mappings defaults ───────────────────────────────────
+        assert_eq!(cfg.mappings.path, "bin");
         assert_eq!(cfg.mappings.install, "install.sh");
         assert_eq!(cfg.mappings.homebrew, "Brewfile");
-        assert!(cfg.mappings.shell.contains(&"aliases.sh".to_string()));
+        assert_eq!(
+            cfg.mappings.shell,
+            vec!["aliases.sh", "profile.sh", "login.sh"]
+        );
+        assert!(cfg.mappings.skip.is_empty());
     }
 
     #[test]
@@ -342,7 +405,7 @@ homebrew = "RootBrewfile"
             install: "install.sh".into(),
             shell: vec!["aliases.sh".into(), "profile.sh".into()],
             homebrew: "Brewfile".into(),
-            ignore: vec!["*.tmp".into()],
+            skip: vec!["*.tmp".into()],
         };
 
         let rules = mappings_to_rules(&mappings);

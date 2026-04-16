@@ -9,7 +9,6 @@ pub mod addignore;
 pub mod adopt;
 pub mod down;
 pub mod fill;
-pub mod genconfig;
 pub mod init;
 pub mod list;
 pub mod status;

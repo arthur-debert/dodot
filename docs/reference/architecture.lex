@@ -90,7 +90,7 @@ Architecture
         Workspace layout:
 
             dodot-lib/src/           # Core library crate (no terminal deps)
-            +-- commands/            # Public API: up, down, status, list, init, fill, adopt, addignore, genconfig
+            +-- commands/            # Public API: up, down, status, list, init, fill, adopt, addignore
             +-- config/              # DodotConfig via clapfig/confique
             +-- datastore/           # DataStore trait + FilesystemDataStore
             +-- execution/           # Executor: intent -> DataStore dispatch

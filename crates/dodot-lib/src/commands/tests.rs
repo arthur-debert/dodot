@@ -441,30 +441,6 @@ fn addignore_idempotent() {
     assert!(result.message.contains("already ignored"));
 }
 
-// ── genconfig ───────────────────────────────────────────────
-
-#[test]
-fn genconfig_returns_template() {
-    let env = TempEnvironment::builder().build();
-    let ctx = make_ctx(&env);
-
-    let result = commands::genconfig::genconfig(false, &ctx).unwrap();
-    assert!(result.content.contains("[pack]"));
-    assert!(result.content.contains("[symlink]"));
-    assert!(result.content.contains("[mappings]"));
-    assert!(result.message.is_none());
-}
-
-#[test]
-fn genconfig_write_creates_file() {
-    let env = TempEnvironment::builder().build();
-    let ctx = make_ctx(&env);
-
-    let result = commands::genconfig::genconfig(true, &ctx).unwrap();
-    assert!(result.message.is_some());
-    env.assert_exists(&env.dotfiles_root.join(".dodot.toml"));
-}
-
 // ── nonexistent pack ───────────────────────────────────────
 
 #[test]

@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Homebrew handler for Brewfile-driven installs
 - Shell handler for sourcing shell configuration files
 - Path handler for adding directories to PATH
-- Commands: `up`, `down`, `status`, `list`, `init`, `adopt`, `fill`, `genconfig`, `addignore`, `init-sh`
+- Commands: `up`, `down`, `status`, `list`, `init`, `adopt`, `fill`, `addignore`, `init-sh`, `config`
 - Pack discovery with `.dodotignore` support
 - Configuration system: defaults, root `.dodot.toml`, per-pack `.dodot.toml` overrides
 - `dot.` prefix convention for top-level pack files

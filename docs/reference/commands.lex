@@ -43,17 +43,7 @@ dodot Commands Reference
         Usage:
             `dodot fill <pack-name>`
 
-    2.4. genconfig
-
-        Generates default configuration content (commented out) and can write it to packs or current directory. Uses the same configuration template system as the init command for consistency.
-
-        Status:
-            Working.
-
-        Usage:
-            `dodot genconfig [--write] [pack-names...]`
-
-    2.5. init (initialize)
+    2.4. init (initialize)
 
         Creates a new pack directory with initial structure including configuration file, README, and template files. Leverages the fill command internally to ensure consistent template generation across commands.
 
@@ -63,7 +53,7 @@ dodot Commands Reference
         Usage:
             `dodot init <pack-name>`
 
-    2.6. list
+    2.5. list
 
         Discovers and lists all available packs in the dotfiles root directory. Simple command that uses the core pack discovery infrastructure.
 
@@ -73,7 +63,7 @@ dodot Commands Reference
         Usage:
             `dodot list`
 
-    2.7. down
+    2.6. down
 
         The primary pack removal command. Completely removes pack deployments including all symlinks, shell integrations, PATH entries, and handler state from the data directory. This is a complete removal, no state is saved for restoration. Files in your dotfiles repository are never touched.
 
@@ -83,7 +73,7 @@ dodot Commands Reference
         Usage:
             `dodot down [pack-names...]`
 
-    2.8. up
+    2.7. up
 
         The primary pack deployment command. Handles all aspects of pack deployment including creating symlinks for configuration files, setting up shell integrations and PATH entries, and running installation scripts and package managers. By default, provisioning handlers only run once per pack.
 
@@ -97,7 +87,7 @@ dodot Commands Reference
         Usage:
             `dodot up [pack-names...] [--no-provision | --provision-rerun]`
 
-    2.9. status
+    2.8. status
 
         Shows deployment state of packs including special files, handler matches, and current deployment status. Uses the datastore to check actual deployment state and provides detailed file-level status information.
 

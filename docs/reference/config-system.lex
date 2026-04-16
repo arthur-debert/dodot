@@ -2,19 +2,13 @@ Configuration System
 
 1. Overview
 
-    dodot has two configuration parts: internal and user facing. Both are represented as TOML documents. We differentiate them by using:
-
-    - App defaults: internal settings.
-    - Configuration: the parts that are user facing, stored in `dodot.toml` (or `.dodot.toml`) files.
-
-    The config has three layers: the pack layer, the root layer and the app layer. The latter two are optional, and can be present simultaneously. Keys in upper layers override keys in the lower ones, as they are merged.
+    dodot uses a layered TOML configuration system. All settings have compiled defaults baked into the binary. Users can override any subset via `.dodot.toml` files at the dotfiles root (applies to all packs) or inside individual packs (applies to that pack only).
 
 2. Configuration Hierarchy
 
     Configuration is loaded and merged in this order (later sources override earlier):
 
-    - *App Defaults*: embedded `defaults.toml`
-    - *App Config*: embedded `user-defaults.toml`
+    - *Compiled defaults*: `#[config(default = ...)]` on `DodotConfig` struct fields
     - *Root config*: `$DOTFILES_ROOT/.dodot.toml`
     - *Pack config*: `$DOTFILES_ROOT/<pack>/.dodot.toml`
 
@@ -22,9 +16,9 @@ Configuration System
 
         Values are merged according to their type:
 
-        - *Arrays*: append (values accumulate)
         - *Scalars*: override (last value wins)
-        - *Maps*: deep merge recursively
+        - *Arrays*: override (last value wins, no accumulation)
+        - *Maps*: deep merge recursively (only Tables recurse; nested arrays/scalars override)
 
         Configuration is managed through the clapfig crate, which provides layered config resolution with compiled defaults, file discovery, and per-pack merging via its Resolver.
 
@@ -36,7 +30,7 @@ Configuration System
 
     3.1. Pack Section
 
-        Filenames that will be ignored (not symlinked or processed) unless explicitly included in the mapping section.
+        Glob patterns for files and directories to ignore during pack discovery and file scanning. These will not be symlinked or processed.
 
         Pack ignore:
 
@@ -46,7 +40,7 @@ Configuration System
                 ".svn",
                 ".hg",
                 "node_modules",
-                ".ds_store",
+                ".DS_Store",
                 "*.swp",
                 "*~",
                 "#*#",
@@ -58,18 +52,22 @@ Configuration System
 
     3.2. Symlink Section
 
-        dodot respects the user's `XDG_CONFIG_HOME`. However, these programs below do not. Config files for these (such as `.ssh`, `.gnupg`, `.aws`) will be symlinked to `$HOME`.
+        dodot respects the user's `XDG_CONFIG_HOME`. However, some programs do not. Config files for these (such as `.ssh`, `.gnupg`, `.aws`) will be symlinked to `$HOME` instead.
 
         Force home:
 
             [symlink]
             force_home = [
-                "ssh",        # .ssh/ - security critical
-                "aws",        # .aws/ - credentials
-                "kube",       # .kube/ - kubernetes config
-                "bashrc",     # .bashrc - shell expects in $home
-                "zshrc",      # .zshrc - shell expects in $home
-                "profile"     # .profile - shell expects in $home
+                "ssh",            # .ssh/ - security critical
+                "aws",            # .aws/ - credentials
+                "kube",           # .kube/ - kubernetes config
+                "bashrc",         # .bashrc - shell expects in $HOME
+                "zshrc",          # .zshrc - shell expects in $HOME
+                "profile",        # .profile - shell expects in $HOME
+                "bash_profile",   # .bash_profile
+                "bash_login",     # .bash_login
+                "bash_logout",    # .bash_logout
+                "inputrc"         # .inputrc - readline config
             ]
 
         :: toml ::
@@ -78,17 +76,30 @@ Configuration System
 
         Protected paths:
 
+            [symlink]
             protected_paths = [
-                ".ssh/authorized_keys",
                 ".ssh/id_rsa",
                 ".ssh/id_ed25519",
+                ".ssh/id_dsa",
+                ".ssh/id_ecdsa",
+                ".ssh/authorized_keys",
                 ".gnupg",
+                ".aws/credentials",
                 ".password-store",
                 ".config/gh/hosts.yml",
-                ".aws/credentials",
                 ".kube/config",
                 ".docker/config.json"
             ]
+
+        :: toml ::
+
+        Custom per-file symlink target overrides. Maps relative pack filename to an absolute or relative target path. Absolute paths are used as-is; relative paths are resolved from `$XDG_CONFIG_HOME`.
+
+        Targets:
+
+            [symlink.targets]
+            "misterious.conf" = "/var/etc/misterious.conf"
+            "home-bound.conf" = "my-documents/home-bound.conf"
 
         :: toml ::
 
@@ -102,17 +113,21 @@ Configuration System
             path = "bin"
             install = "install.sh"
             shell = ["aliases.sh", "profile.sh", "login.sh"]
-            homebrew = "brewfile"
-            ignore = []
+            homebrew = "Brewfile"
+            skip = []
 
         :: toml ::
+
+        The `skip` field lists additional filename patterns to exclude from handler processing within a pack. This is distinct from `[pack] ignore`, which controls pack discovery and file scanning.
 
 4. Architecture
 
     The configuration system is built around a `ConfigManager` that wraps a clapfig `Resolver`.
 
-    `ConfigManager::new(dotfiles_root)` builds a clapfig Resolver that knows the dotfiles root and the locations of default and user-facing config files. `config_manager.root_config()` loads the root-level config by merging compiled defaults with any `$DOTFILES_ROOT/.dodot.toml` file. `config_manager.config_for_pack(pack_path)` resolves the fully merged config for a specific pack, layering the pack's `.dodot.toml` on top of the root config.
+    `ConfigManager::new(dotfiles_root)` builds a clapfig Resolver configured to search for `.dodot.toml` files using ancestor-walk, merging all found files. `config_manager.root_config()` loads the root-level config by merging compiled defaults with any `$DOTFILES_ROOT/.dodot.toml` file. `config_manager.config_for_pack(pack_path)` resolves the fully merged config for a specific pack, layering the pack's `.dodot.toml` on top of the root config.
 
     The `DodotConfig` struct uses `#[derive(confique::Config)]` to declare fields with compiled defaults, so every config key has a known default value even when no TOML files are present.
+
+    Generate a starter config with `dodot config gen`. This auto-generates a commented TOML template from the struct definitions and their doc comments.
 
     All executions should get a root config at startup and pass it into the main command pipeline. When running pack pipelines, the loop calls `config_for_pack` for each pack to produce a merged config that handlers consume.

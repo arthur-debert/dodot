@@ -28,12 +28,16 @@ Symlink Deployment Paths
 
         [symlink]
         force_home = [
-            "ssh",        # .ssh/ - security critical
-            "aws",        # .aws/ - credentials
-            "kube",       # .kube/ - kubernetes config
-            "bashrc",     # .bashrc - shell expects in $HOME
-            "zshrc",      # .zshrc - shell expects in $HOME
-            "profile"     # .profile - shell expects in $HOME
+            "ssh",            # .ssh/ - security critical
+            "aws",            # .aws/ - credentials
+            "kube",           # .kube/ - kubernetes config
+            "bashrc",         # .bashrc - shell expects in $HOME
+            "zshrc",          # .zshrc - shell expects in $HOME
+            "profile",        # .profile - shell expects in $HOME
+            "bash_profile",   # .bash_profile
+            "bash_login",     # .bash_login
+            "bash_logout",    # .bash_logout
+            "inputrc"         # .inputrc - readline config
         ]
 
     :: toml ::
@@ -46,7 +50,7 @@ Symlink Deployment Paths
 
     Custom paths:
 
-        [symlink]
+        [symlink.targets]
         "misterious.conf" = "/var/etc/misterious.conf"
         "home-bound.conf" = "my-documents/home-bound.conf"
 
@@ -60,18 +64,21 @@ Symlink Deployment Paths
 
 6. Security Restricted Symlink File Names
 
-    To avoid accidental security issues, dodot will ignore (that is, not create symlinks for) the following files and directories. This can also be configured.
+    To avoid accidental security issues, dodot will not create symlinks for the following files and directories. This can also be configured.
 
     Protected paths:
 
+        [symlink]
         protected_paths = [
-            ".ssh/authorized_keys",
             ".ssh/id_rsa",
             ".ssh/id_ed25519",
+            ".ssh/id_dsa",
+            ".ssh/id_ecdsa",
+            ".ssh/authorized_keys",
             ".gnupg",
+            ".aws/credentials",
             ".password-store",
             ".config/gh/hosts.yml",
-            ".aws/credentials",
             ".kube/config",
             ".docker/config.json"
         ]

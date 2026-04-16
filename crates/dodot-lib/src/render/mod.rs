@@ -68,14 +68,10 @@ pub const TEMPLATE_PACK_STATUS: &str = r#"{% if message %}[message]{{ message }}
 pub const TEMPLATE_LIST: &str = r#"{% for pack in packs %}{{ pack.name }}{% if pack.ignored %} [dim](ignored)[/dim]{% endif %}
 {% endfor %}"#;
 
-/// Simple message output (init, fill, adopt, addignore, genconfig).
+/// Simple message output (init, fill, adopt, addignore).
 pub const TEMPLATE_MESSAGE: &str = r#"{% if message %}[message]{{ message }}[/message]
 {% endif %}{% for line in details %}  {{ line }}
 {% endfor %}"#;
-
-/// Config output (genconfig).
-pub const TEMPLATE_CONFIG: &str = r#"{% if message %}[message]{{ message }}[/message]
-{% endif %}{{ content }}"#;
 
 // ── Renderer ────────────────────────────────────────────────────
 
@@ -93,7 +89,6 @@ pub fn create_renderer() -> Renderer {
         .unwrap();
     renderer.add_template("list", TEMPLATE_LIST).unwrap();
     renderer.add_template("message", TEMPLATE_MESSAGE).unwrap();
-    renderer.add_template("config", TEMPLATE_CONFIG).unwrap();
     renderer
 }
 
@@ -116,7 +111,6 @@ pub fn render<T: serde::Serialize>(
         "pack-status" => TEMPLATE_PACK_STATUS,
         "list" => TEMPLATE_LIST,
         "message" => TEMPLATE_MESSAGE,
-        "config" => TEMPLATE_CONFIG,
         other => {
             return Err(crate::DodotError::Other(format!(
                 "unknown template: {other}"
