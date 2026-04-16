@@ -130,6 +130,7 @@ fn metadata_from_std(meta: &fs::Metadata, is_symlink: bool) -> FsMetadata {
         is_dir: meta.is_dir(),
         is_symlink,
         len: meta.len(),
+        mode: meta.permissions().mode(),
     }
 }
 

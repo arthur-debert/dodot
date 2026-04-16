@@ -90,7 +90,7 @@ pub trait Handler: Send + Sync {
 ///
 /// Populated from `DodotConfig::to_handler_config()`. Carries exactly
 /// what handlers need without coupling them to the full config.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct HandlerConfig {
     /// Paths that must be forced to `$HOME` (e.g. `["ssh", "bashrc"]`).
     pub force_home: Vec<String>,
@@ -100,6 +100,20 @@ pub struct HandlerConfig {
     /// Key = relative path in pack, Value = target path.
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub targets: std::collections::HashMap<String, String>,
+    /// Whether to auto-`chmod +x` files in path-handler directories.
+    /// See [`PathSection::auto_chmod_exec`](crate::config::PathSection::auto_chmod_exec).
+    pub auto_chmod_exec: bool,
+}
+
+impl Default for HandlerConfig {
+    fn default() -> Self {
+        Self {
+            force_home: Vec::new(),
+            protected_paths: Vec::new(),
+            targets: std::collections::HashMap::new(),
+            auto_chmod_exec: true,
+        }
+    }
 }
 
 /// Well-known handler names.

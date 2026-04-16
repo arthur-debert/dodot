@@ -13,6 +13,8 @@ pub struct FsMetadata {
     pub is_dir: bool,
     pub is_symlink: bool,
     pub len: u64,
+    /// Unix permission mode (e.g. `0o755`).
+    pub mode: u32,
 }
 
 /// A single directory entry returned by [`Fs::read_dir`].

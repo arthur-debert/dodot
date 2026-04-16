@@ -33,6 +33,9 @@ pub struct DodotConfig {
     pub symlink: SymlinkSection,
 
     #[config(nested)]
+    pub path: PathSection,
+
+    #[config(nested)]
     pub mappings: MappingsSection,
 }
 
@@ -74,6 +77,39 @@ pub struct SymlinkSection {
     pub targets: std::collections::HashMap<String, String>,
 }
 
+/// PATH handler settings.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PathSection {
+    /// Automatically add execute permissions (`+x`) to files inside
+    /// `bin/` directories staged by the path handler.
+    ///
+    /// # Rationale
+    ///
+    /// Files placed in a `bin/` directory are there because the pack
+    /// author intends them as executables — the directory's purpose is
+    /// to expose commands via `$PATH`. However, execute bits can be
+    /// lost in common workflows:
+    ///
+    /// - **Git on macOS** defaults to `core.fileMode = false`, so
+    ///   cloned repos may have `0o644` on scripts.
+    /// - **Manual file creation** often forgets `chmod +x`.
+    ///
+    /// Without `+x` the shell finds the file via PATH lookup but fails
+    /// with "permission denied" — a confusing error when the file is
+    /// clearly in the right place.
+    ///
+    /// With this option enabled (the default), `dodot up` ensures every
+    /// file in a path-handler directory is executable, matching the
+    /// user's intent. Files that are already executable are left
+    /// untouched. Failures are reported as warnings, not hard errors.
+    ///
+    /// Set to `false` if you have `bin/` files that intentionally
+    /// should not be executable (e.g. data files or library scripts
+    /// sourced by other scripts).
+    #[config(default = true)]
+    pub auto_chmod_exec: bool,
+}
+
 /// File-to-handler mapping patterns.
 #[derive(Config, Debug, Clone, Serialize, Deserialize)]
 pub struct MappingsSection {
@@ -108,6 +144,7 @@ impl DodotConfig {
             force_home: self.symlink.force_home.clone(),
             protected_paths: self.symlink.protected_paths.clone(),
             targets: self.symlink.targets.clone(),
+            auto_chmod_exec: self.path.auto_chmod_exec,
         }
     }
 }
@@ -319,6 +356,9 @@ mod tests {
 
         // ── symlink.targets defaults ────────────────────────────
         assert!(cfg.symlink.targets.is_empty());
+
+        // ── path defaults ──────────────────────────────────────
+        assert!(cfg.path.auto_chmod_exec);
 
         // ── mappings defaults ───────────────────────────────────
         assert_eq!(cfg.mappings.path, "bin");

@@ -1444,3 +1444,60 @@ fn up_conflict_xdg_path_both_packs_subdir() {
         "both targeting ~/.config/nvim/init.lua should conflict: {err}"
     );
 }
+
+// ── auto-chmod +x for path handler ─────────────────────────
+
+#[test]
+fn up_auto_chmod_makes_bin_files_executable() {
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("bin/deploy", "#!/bin/sh\necho deploying")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+
+    // Verify the file starts non-executable
+    let tool_path = env.dotfiles_root.join("tools/bin/deploy");
+    let meta_before = env.fs.stat(&tool_path).unwrap();
+    assert_eq!(meta_before.mode & 0o111, 0, "should start non-executable");
+
+    commands::up::up(None, &ctx).unwrap();
+
+    // After up, file should be executable
+    let meta_after = env.fs.stat(&tool_path).unwrap();
+    assert_ne!(
+        meta_after.mode & 0o111,
+        0,
+        "bin/ file should be executable after up"
+    );
+}
+
+#[test]
+fn up_auto_chmod_disabled_via_config() {
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("bin/deploy", "#!/bin/sh\necho deploying")
+        .done()
+        .build();
+
+    // Write root config disabling auto_chmod_exec
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join(".dodot.toml"),
+            b"[path]\nauto_chmod_exec = false",
+        )
+        .unwrap();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // File should remain non-executable
+    let tool_path = env.dotfiles_root.join("tools/bin/deploy");
+    let meta = env.fs.stat(&tool_path).unwrap();
+    assert_eq!(
+        meta.mode & 0o111,
+        0,
+        "auto_chmod_exec=false should leave file non-executable"
+    );
+}
