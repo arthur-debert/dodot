@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod config;
+pub mod conflicts;
 pub mod datastore;
 pub mod error;
 pub mod execution;

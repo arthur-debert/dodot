@@ -804,3 +804,622 @@ fn status_path_handler_verified_deployed() {
     );
     assert_eq!(file.status_label, "in PATH");
 }
+
+// ── cross-pack conflict detection: up command ──────────────
+
+#[test]
+fn up_halts_on_cross_pack_symlink_conflict() {
+    // Two packs both deploying a file that resolves to ~/.aliases
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("aliases", "alias a=1")
+        .done()
+        .pack("pack-b")
+        .file("aliases", "alias b=2")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "expected CrossPackConflict, got: {err}"
+    );
+
+    // Error message should include both packs and the target
+    let msg = err.to_string();
+    assert!(msg.contains("pack-a"), "msg: {msg}");
+    assert!(msg.contains("pack-b"), "msg: {msg}");
+    assert!(msg.contains(".aliases"), "msg: {msg}");
+}
+
+#[test]
+fn up_halts_no_partial_deployment_on_conflict() {
+    // When a conflict is detected, NO packs should be deployed —
+    // not even the non-conflicting ones.
+    let env = TempEnvironment::builder()
+        .pack("conflict-a")
+        .file("aliases", "a")
+        .done()
+        .pack("conflict-b")
+        .file("aliases", "b")
+        .done()
+        .pack("innocent")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let _err = commands::up::up(None, &ctx).unwrap_err();
+
+    // Nothing should be deployed — check the innocent pack
+    env.assert_no_handler_state("innocent", "symlink");
+    env.assert_no_handler_state("conflict-a", "symlink");
+    env.assert_no_handler_state("conflict-b", "symlink");
+}
+
+#[test]
+fn up_force_does_not_override_cross_pack_conflict() {
+    // --force only helps with pre-existing non-dodot files.
+    // Cross-pack conflicts are a config problem and --force must NOT help.
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("aliases", "a")
+        .done()
+        .pack("pack-b")
+        .file("aliases", "b")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.force = true;
+
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "force should NOT override cross-pack conflict, got: {err}"
+    );
+    assert!(
+        err.to_string().contains("--force does not override"),
+        "msg: {}",
+        err
+    );
+}
+
+#[test]
+fn up_dry_run_still_detects_cross_pack_conflict() {
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("bashrc", "a")
+        .done()
+        .pack("b")
+        .file("bashrc", "b")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.dry_run = true;
+
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "dry-run should still detect conflicts, got: {err}"
+    );
+}
+
+#[test]
+fn up_no_conflict_when_different_target_files() {
+    // Different filenames → different targets → no conflict.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+}
+
+#[test]
+fn up_no_conflict_within_same_pack() {
+    // Same pack with multiple files targeting different paths — fine.
+    let env = TempEnvironment::builder()
+        .pack("shell")
+        .file("bashrc", "# bash")
+        .file("zshrc", "# zsh")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+}
+
+#[test]
+fn up_conflict_via_config_mapping() {
+    // Two packs with different source filenames but mapping to the same target
+    // via [symlink.targets].
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("settings", "a")
+        .config("[symlink]\ntargets = { settings = \"myapp/settings.toml\" }")
+        .done()
+        .pack("pack-b")
+        .file("config", "b")
+        .config("[symlink]\ntargets = { config = \"myapp/settings.toml\" }")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "expected CrossPackConflict for config mapping collision, got: {err}"
+    );
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("myapp/settings.toml"),
+        "should mention the conflicting target: {msg}"
+    );
+}
+
+#[test]
+fn up_conflict_via_home_prefix() {
+    // pack-a uses _home/vim/vimrc → ~/.vim/vimrc
+    // pack-b uses vim/vimrc (subdirectory) → ~/.config/vim/vimrc
+    // These target DIFFERENT paths, so no conflict.
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("_home/vim/vimrc", "a")
+        .done()
+        .pack("pack-b")
+        .file("vim/vimrc", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Packs deployed."),
+        "different targets should not conflict"
+    );
+}
+
+#[test]
+fn up_conflict_two_packs_same_home_prefix_target() {
+    // Both packs use _home/ssh/config → both resolve to ~/.ssh/config
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("_home/ssh/config", "Host a")
+        .done()
+        .pack("pack-b")
+        .file("_home/ssh/config", "Host b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "both targeting ~/.ssh/config should conflict, got: {err}"
+    );
+}
+
+#[test]
+fn up_filtered_packs_only_checks_filtered_subset() {
+    // pack-a and pack-b conflict, but if we only deploy pack-a,
+    // there's no conflict.
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("aliases", "a")
+        .done()
+        .pack("pack-b")
+        .file("aliases", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["pack-a".into()];
+    let result = commands::up::up(Some(&filter), &ctx).unwrap();
+
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+    assert_eq!(result.packs.len(), 1);
+    assert_eq!(result.packs[0].name, "pack-a");
+}
+
+#[test]
+fn up_shell_handler_cross_pack_conflict() {
+    // Two packs both having aliases.sh → both staged for shell sourcing.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .pack("git")
+        .file("aliases.sh", "alias g=git")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "same-name shell scripts across packs should conflict, got: {err}"
+    );
+}
+
+#[test]
+fn up_path_handler_cross_pack_conflict() {
+    // Two packs both having bin/ directories → both staged for PATH.
+    let env = TempEnvironment::builder()
+        .pack("tools-a")
+        .file("bin/tool-a", "#!/bin/sh")
+        .done()
+        .pack("tools-b")
+        .file("bin/tool-b", "#!/bin/sh")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "same-name path directories across packs should conflict, got: {err}"
+    );
+}
+
+#[test]
+fn up_no_cross_handler_conflict() {
+    // A shell script and a symlink file with the same name don't conflict
+    // because they're in different handler namespaces.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+}
+
+#[test]
+fn up_three_packs_partial_conflict() {
+    // Three packs, only two conflict — all three are blocked.
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("aliases", "a")
+        .done()
+        .pack("b")
+        .file("aliases", "b")
+        .done()
+        .pack("c")
+        .file("gitconfig", "c")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "should detect the conflict even if not all packs are involved"
+    );
+
+    // Verify nothing was deployed
+    env.assert_no_handler_state("a", "symlink");
+    env.assert_no_handler_state("b", "symlink");
+    env.assert_no_handler_state("c", "symlink");
+}
+
+#[test]
+fn up_error_message_includes_all_conflict_details() {
+    let env = TempEnvironment::builder()
+        .pack("alpha")
+        .file("aliases", "a")
+        .done()
+        .pack("beta")
+        .file("aliases", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+
+    let msg = err.to_string();
+    // Should mention both packs
+    assert!(msg.contains("alpha"), "msg: {msg}");
+    assert!(msg.contains("beta"), "msg: {msg}");
+    // Should mention the handler
+    assert!(msg.contains("symlink"), "msg: {msg}");
+    // Should mention the target path
+    assert!(msg.contains(".aliases"), "msg: {msg}");
+}
+
+// ── cross-pack conflict detection: status command ──────────
+
+#[test]
+fn status_warns_on_potential_cross_pack_conflict() {
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("aliases", "a")
+        .done()
+        .pack("pack-b")
+        .file("aliases", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    // Status should still succeed (it's informational)
+    assert!(!result.warnings.is_empty(), "should have conflict warnings");
+
+    let warnings_text = result.warnings.join("\n");
+    assert!(
+        warnings_text.contains("cross-pack conflicts"),
+        "warnings: {warnings_text}"
+    );
+    assert!(
+        warnings_text.contains("pack-a"),
+        "warnings: {warnings_text}"
+    );
+    assert!(
+        warnings_text.contains("pack-b"),
+        "warnings: {warnings_text}"
+    );
+    assert!(
+        warnings_text.contains("dodot up"),
+        "should hint that up will refuse: {warnings_text}"
+    );
+}
+
+#[test]
+fn status_no_warnings_without_conflicts() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    assert!(
+        result.warnings.is_empty(),
+        "no conflict warnings expected, got: {:?}",
+        result.warnings
+    );
+}
+
+#[test]
+fn status_shows_conflict_even_when_not_deployed() {
+    // Neither pack is deployed yet — status should still show the
+    // potential conflict.
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("bashrc", "a")
+        .done()
+        .pack("b")
+        .file("bashrc", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    // Both packs should show as pending
+    for pack in &result.packs {
+        for file in &pack.files {
+            assert_eq!(file.status, "pending");
+        }
+    }
+
+    // But warnings should flag the conflict
+    assert!(
+        !result.warnings.is_empty(),
+        "should warn about potential conflict even when undeployed"
+    );
+}
+
+#[test]
+fn status_filtered_to_one_pack_no_conflict_warning() {
+    // If we only ask about one pack, no cross-pack comparison happens.
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("aliases", "a")
+        .done()
+        .pack("b")
+        .file("aliases", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["a".into()];
+    let result = commands::status::status(Some(&filter), &ctx).unwrap();
+
+    assert!(
+        result.warnings.is_empty(),
+        "single-pack filter should not produce cross-pack warnings"
+    );
+}
+
+#[test]
+fn status_conflict_with_config_mapping() {
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("settings", "a")
+        .config("[symlink]\ntargets = { settings = \"myapp/settings.toml\" }")
+        .done()
+        .pack("pack-b")
+        .file("config", "b")
+        .config("[symlink]\ntargets = { config = \"myapp/settings.toml\" }")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let warnings_text = result.warnings.join("\n");
+    assert!(
+        warnings_text.contains("cross-pack conflicts"),
+        "config mapping collision should produce a warning: {warnings_text}"
+    );
+    assert!(
+        warnings_text.contains("myapp/settings.toml") || warnings_text.contains("settings.toml"),
+        "should mention the conflicting target: {warnings_text}"
+    );
+}
+
+// ── edge cases ─────────────────────────────────────────────
+
+#[test]
+fn up_succeeds_after_resolving_conflict() {
+    // Set up conflicting packs
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("aliases", "a")
+        .done()
+        .pack("pack-b")
+        .file("aliases", "b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+
+    // First attempt fails
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(matches!(err, crate::DodotError::CrossPackConflict { .. }));
+
+    // "Resolve" conflict by deploying only one pack
+    let filter = vec!["pack-a".into()];
+    let result = commands::up::up(Some(&filter), &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+
+    // pack-a should be deployed
+    let status = commands::status::status(Some(&filter), &ctx).unwrap();
+    assert!(status.packs[0].files.iter().any(|f| f.status == "deployed"));
+}
+
+#[test]
+fn up_conflict_with_dot_prefix_convention() {
+    // pack-a has `dot.bashrc` (uses dot. convention → ~/.bashrc)
+    // pack-b has `bashrc` (top-level → ~/.bashrc)
+    // Same resolved target → conflict
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("dot.bashrc", "# pack a")
+        .done()
+        .pack("b")
+        .file("bashrc", "# pack b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "dot.bashrc and bashrc both resolve to ~/.bashrc: {err}"
+    );
+}
+
+#[test]
+fn up_multiple_simultaneous_conflicts() {
+    // Two conflict groups at the same time
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("aliases", "a-aliases")
+        .file("bashrc", "a-bash")
+        .done()
+        .pack("b")
+        .file("aliases", "b-aliases")
+        .file("bashrc", "b-bash")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+
+    if let crate::DodotError::CrossPackConflict { conflicts } = &err {
+        assert!(
+            conflicts.len() >= 2,
+            "should detect at least 2 conflict groups, got {}",
+            conflicts.len()
+        );
+    } else {
+        panic!("expected CrossPackConflict, got: {err}");
+    }
+}
+
+#[test]
+fn up_ignored_pack_does_not_cause_conflict() {
+    // pack-b is ignored, so it shouldn't participate in conflict detection.
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("aliases", "a")
+        .done()
+        .pack("pack-b")
+        .file("aliases", "b")
+        .ignored()
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+}
+
+#[test]
+fn status_shell_conflict_warning() {
+    let env = TempEnvironment::builder()
+        .pack("a")
+        .file("aliases.sh", "alias a=1")
+        .done()
+        .pack("b")
+        .file("aliases.sh", "alias b=2")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let warnings_text = result.warnings.join("\n");
+    assert!(
+        warnings_text.contains("cross-pack conflicts"),
+        "shell filename collision should produce warning: {warnings_text}"
+    );
+}
+
+#[test]
+fn up_conflict_xdg_path_both_packs_subdir() {
+    // Both packs have nvim/init.lua → both resolve to
+    // ~/.config/nvim/init.lua via the default subdirectory rule.
+    let env = TempEnvironment::builder()
+        .pack("nvim-base")
+        .file("nvim/init.lua", "-- base config")
+        .done()
+        .pack("nvim-custom")
+        .file("nvim/init.lua", "-- custom config")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "both targeting ~/.config/nvim/init.lua should conflict: {err}"
+    );
+}

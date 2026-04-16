@@ -191,14 +191,50 @@ pub fn execute(
     })
 }
 
-// ── Built-in "up" pipeline helper ───────────────────────────────
+// ── Pack preparation ────────────────────────────────────────────
 
-/// Run the standard handler pipeline for a pack: scan → match rules →
-/// group by handler → to_intents → execute.
+/// Discover, filter, and load config for all relevant packs.
 ///
-/// This is the shared logic used by the `up` command (and potentially
-/// `status` for intent generation).
-pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<OperationResult>> {
+/// Returns the list of packs ready for intent collection or command
+/// execution. This is the shared first step for commands that need
+/// to inspect multiple packs before acting (e.g. conflict detection).
+pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Vec<Pack>> {
+    let root_config = ctx.config_manager.root_config()?;
+
+    let mut all_packs = packs::discover_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
+
+    if let Some(names) = pack_filter {
+        let _warnings = validate_pack_names(names, ctx)?;
+        all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+    }
+
+    // Load per-pack config
+    let mut configured = Vec::with_capacity(all_packs.len());
+    for mut pack in all_packs {
+        let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+        pack.config = pack_config.to_handler_config();
+        configured.push(pack);
+    }
+
+    Ok(configured)
+}
+
+// ── Built-in "up" pipeline helpers ──────────────────────────────
+
+/// Collect handler intents for a pack **without** executing them.
+///
+/// Runs the scan → match rules → group by handler → to_intents
+/// pipeline and returns the generated intents. This is the first half
+/// of the two-phase execution model that enables cross-pack conflict
+/// detection before any mutations happen.
+pub fn collect_pack_intents(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+) -> Result<Vec<crate::operations::HandlerIntent>> {
     let root_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let rules = crate::config::mappings_to_rules(&root_config.mappings);
 
@@ -232,7 +268,18 @@ pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<O
         }
     }
 
-    // Execute intents
+    Ok(all_intents)
+}
+
+/// Execute a pre-collected set of intents.
+///
+/// This is the second half of the two-phase execution model.
+/// Call [`collect_pack_intents`] first, run conflict detection,
+/// then call this to actually perform the mutations.
+pub fn execute_intents(
+    intents: Vec<crate::operations::HandlerIntent>,
+    ctx: &ExecutionContext,
+) -> Result<Vec<OperationResult>> {
     let executor = Executor::new(
         ctx.datastore.as_ref(),
         ctx.fs.as_ref(),
@@ -240,7 +287,18 @@ pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<O
         ctx.force,
         ctx.provision_rerun,
     );
-    executor.execute(all_intents)
+    executor.execute(intents)
+}
+
+/// Run the standard handler pipeline for a pack: scan → match rules →
+/// group by handler → to_intents → execute.
+///
+/// Convenience wrapper that combines [`collect_pack_intents`] and
+/// [`execute_intents`]. Does **not** perform cross-pack conflict
+/// detection — use the two-phase API for that.
+pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<OperationResult>> {
+    let intents = collect_pack_intents(pack, ctx)?;
+    execute_intents(intents, ctx)
 }
 
 /// Validate that requested pack names exist. Returns error for nonexistent
