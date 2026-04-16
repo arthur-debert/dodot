@@ -33,24 +33,6 @@ pub fn handler_symbol(handler: &str) -> &'static str {
     }
 }
 
-/// Human-readable status label.
-pub fn status_label(handler: &str, deployed: bool) -> String {
-    match (handler, deployed) {
-        ("symlink", true) => "deployed".into(),
-        ("symlink", false) => "pending".into(),
-        ("shell", true) => "sourced".into(),
-        ("shell", false) => "not sourced".into(),
-        ("path", true) => "in PATH".into(),
-        ("path", false) => "not in PATH".into(),
-        ("install", true) => "installed".into(),
-        ("install", false) => "never run".into(),
-        ("homebrew", true) => "installed".into(),
-        ("homebrew", false) => "not installed".into(),
-        (_, true) => "deployed".into(),
-        (_, false) => "pending".into(),
-    }
-}
-
 /// Status string for standout template tag matching (maps to theme style names).
 pub fn status_style(deployed: bool) -> &'static str {
     if deployed {
