@@ -10,6 +10,7 @@ Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
 - **Cross-pack conflict detection** (#29): `dodot up` now collects intents from all packs before executing any, detects when multiple packs produce symlinks targeting the same resolved path, and halts with a clear error listing conflicting packs, handlers, and source files — no partial deployment occurs
 - `dodot status` surfaces potential cross-pack conflicts as warnings, even for packs that aren't deployed yet
 - Symlink target collisions detected across all resolution layers: `[symlink.targets]`, `_home/` prefix, `dot.` convention, `force_home`, XDG defaults
+- PATH executable shadowing detected: two packs with `bin/` directories containing same-named files are flagged (one would shadow the other in `$PATH`)
 - New `CrossPackConflict` error variant with structured conflict data
 
 ### Changed

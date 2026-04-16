@@ -49,7 +49,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     }
 
     // Phase 2: Detect cross-pack conflicts
-    let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents);
+    let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
     if !conflicts.is_empty() {
         return Err(crate::DodotError::CrossPackConflict { conflicts });
     }
