@@ -10,6 +10,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   check:
@@ -29,18 +30,28 @@ jobs:
       - name: Run checks
         run: scripts/check
 
+      - name: Build release binary
+        run: cargo build --release -p dodot
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: dodot-linux
+          path: target/release/dodot
+
   e2e:
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout tests
         uses: actions/checkout@v4
+        with:
+          sparse-checkout: tests/e2e
 
-      - name: Setup Rust
-        uses: ./.github/actions/rust-setup
-
-      - name: Build dodot
-        run: cargo build --release -p dodot
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dodot-linux
 
       - name: Install BATS
         run: |
@@ -49,5 +60,6 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          export DODOT_BIN="$PWD/target/release/dodot"
+          chmod +x dodot
+          export DODOT_BIN="$PWD/dodot"
           bats tests/e2e/bats/

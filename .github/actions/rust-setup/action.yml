@@ -28,15 +28,5 @@ runs:
         components: ${{ inputs.rust-components }}
         targets: ${{ inputs.targets }}
 
-    - name: Cache Cargo
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-        key: ${{ runner.os }}-${{ inputs.targets || 'native' }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ inputs.targets || 'native' }}-cargo-
+    - name: Cache Rust
+      uses: Swatinem/rust-cache@v2
