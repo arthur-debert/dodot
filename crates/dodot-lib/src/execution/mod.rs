@@ -160,7 +160,7 @@ impl<'a> Executor<'a> {
 
                 // Auto-chmod +x for path handler directories
                 if handler == HANDLER_PATH && self.auto_chmod_exec {
-                    results.extend(self.ensure_executable(source));
+                    results.extend(self.ensure_executable(pack, source));
                 }
 
                 Ok(results)
@@ -222,14 +222,31 @@ impl<'a> Executor<'a> {
     /// was made executable (or that failed). Files that are already
     /// executable produce no output.
     ///
-    /// Permission failures are non-fatal warnings — the file is still
-    /// staged and visible in `$PATH`, it just won't be runnable until
-    /// the user fixes permissions manually.
-    fn ensure_executable(&self, dir: &std::path::Path) -> Vec<OperationResult> {
+    /// Permission failures are non-fatal: they are reported as
+    /// *successful* operations with a warning message, so they don't
+    /// flip the pack to "failed" status. The file is still staged and
+    /// visible in `$PATH`, it just won't be runnable until the user
+    /// fixes permissions manually.
+    fn ensure_executable(&self, pack: &str, dir: &std::path::Path) -> Vec<OperationResult> {
         let mut results = Vec::new();
         let entries = match self.fs.read_dir(dir) {
             Ok(e) => e,
-            Err(_) => return results,
+            Err(e) => {
+                let op = Operation::CreateDataLink {
+                    pack: pack.into(),
+                    handler: HANDLER_PATH.into(),
+                    source: dir.to_path_buf(),
+                };
+                results.push(OperationResult::ok(
+                    op,
+                    format!(
+                        "warning: could not list {} for auto-chmod: {}",
+                        dir.display(),
+                        e
+                    ),
+                ));
+                return results;
+            }
         };
 
         for entry in entries {
@@ -238,7 +255,18 @@ impl<'a> Executor<'a> {
             }
             let meta = match self.fs.stat(&entry.path) {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(e) => {
+                    let op = Operation::CreateDataLink {
+                        pack: pack.into(),
+                        handler: HANDLER_PATH.into(),
+                        source: entry.path.clone(),
+                    };
+                    results.push(OperationResult::ok(
+                        op,
+                        format!("warning: could not stat {}: {}", entry.name, e),
+                    ));
+                    continue;
+                }
             };
 
             let is_exec = meta.mode & 0o111 != 0;
@@ -249,7 +277,7 @@ impl<'a> Executor<'a> {
             // Add user/group/other execute bits, preserving existing permissions.
             let new_mode = meta.mode | 0o111;
             let op = Operation::CreateDataLink {
-                pack: String::new(),
+                pack: pack.into(),
                 handler: HANDLER_PATH.into(),
                 source: entry.path.clone(),
             };
@@ -259,7 +287,9 @@ impl<'a> Executor<'a> {
                     results.push(OperationResult::ok(op, format!("chmod +x {}", entry.name)));
                 }
                 Err(e) => {
-                    results.push(OperationResult::fail(
+                    // Warning, not failure — don't mark the pack as failed
+                    // just because chmod didn't work.
+                    results.push(OperationResult::ok(
                         op,
                         format!("warning: could not chmod +x {}: {}", entry.name, e),
                     ));
@@ -272,7 +302,7 @@ impl<'a> Executor<'a> {
 
     /// Report files in a path-handler directory that lack execute
     /// permissions (dry-run mode — no mutations).
-    fn report_non_executable(&self, dir: &std::path::Path) -> Vec<OperationResult> {
+    fn report_non_executable(&self, pack: &str, dir: &std::path::Path) -> Vec<OperationResult> {
         let mut results = Vec::new();
         let entries = match self.fs.read_dir(dir) {
             Ok(e) => e,
@@ -291,7 +321,7 @@ impl<'a> Executor<'a> {
             let is_exec = meta.mode & 0o111 != 0;
             if !is_exec {
                 let op = Operation::CreateDataLink {
-                    pack: String::new(),
+                    pack: pack.into(),
                     handler: HANDLER_PATH.into(),
                     source: entry.path.clone(),
                 };
@@ -379,7 +409,7 @@ impl<'a> Executor<'a> {
                 )];
 
                 if handler == HANDLER_PATH && self.auto_chmod_exec {
-                    results.extend(self.report_non_executable(source));
+                    results.extend(self.report_non_executable(pack, source));
                 }
 
                 results
