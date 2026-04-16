@@ -51,12 +51,12 @@ Symlink Deployment Paths
     Custom paths:
 
         [symlink.targets]
-        "misterious.conf" = "/var/etc/misterious.conf"
+        "mysterious.conf" = "/var/etc/mysterious.conf"
         "home-bound.conf" = "my-documents/home-bound.conf"
 
     :: toml ::
 
-    This will link `<pack>/misterious.conf` to `/var/etc/misterious.conf`. If the path is a relative path, it will be relative to your `XDG_CONFIG_HOME`. In the example above, `<pack>/home-bound.conf` will be linked to `$XDG_CONFIG_HOME/my-documents/home-bound.conf`.
+    This will link `<pack>/mysterious.conf` to `/var/etc/mysterious.conf`. If the path is a relative path, it will be relative to your `XDG_CONFIG_HOME`. In the example above, `<pack>/home-bound.conf` will be linked to `$XDG_CONFIG_HOME/my-documents/home-bound.conf`.
 
 5. Explicit `$HOME` or `XDG_CONFIG_HOME` via Directory Prefix
 
@@ -102,7 +102,7 @@ Symlink Deployment Paths
             "*~",
             "#*#",
             ".env*",
-            ".terraform/"
+            ".terraform"
         ]
 
     :: toml ::

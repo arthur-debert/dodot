@@ -43,7 +43,7 @@ pub struct PackSection {
     /// discovery and file scanning.
     #[config(default = [
         ".git", ".svn", ".hg", "node_modules", ".DS_Store",
-        "*.swp", "*~", "#*#", ".env*", ".terraform/"
+        "*.swp", "*~", "#*#", ".env*", ".terraform"
     ])]
     pub ignore: Vec<String>,
 }
@@ -207,13 +207,14 @@ impl ConfigManager {
     /// Create a new config manager for the given dotfiles root.
     ///
     /// Builds a clapfig Resolver that searches for `.dodot.toml` files
-    /// using ancestor-walk from the resolve point up to the filesystem
-    /// root, merging all found files.
+    /// using ancestor-walk from the resolve point up to (and including)
+    /// the dotfiles root, identified by its `.git` directory. This
+    /// prevents stray `.dodot.toml` files above the repo from leaking in.
     pub fn new(dotfiles_root: &Path) -> Result<Self> {
         let resolver = Clapfig::builder::<DodotConfig>()
             .app_name("dodot")
             .file_name(".dodot.toml")
-            .search_paths(vec![SearchPath::Ancestors(Boundary::Root)])
+            .search_paths(vec![SearchPath::Ancestors(Boundary::Marker(".git"))])
             .search_mode(SearchMode::Merge)
             .no_env()
             .build_resolver()
@@ -272,7 +273,7 @@ mod tests {
             "*~",
             "#*#",
             ".env*",
-            ".terraform/",
+            ".terraform",
         ]
         .into_iter()
         .map(Into::into)

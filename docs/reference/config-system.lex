@@ -45,7 +45,7 @@ Configuration System
                 "*~",
                 "#*#",
                 ".env*",
-                ".terraform/"
+                ".terraform"
             ]
 
         :: toml ::
@@ -98,7 +98,7 @@ Configuration System
         Targets:
 
             [symlink.targets]
-            "misterious.conf" = "/var/etc/misterious.conf"
+            "mysterious.conf" = "/var/etc/mysterious.conf"
             "home-bound.conf" = "my-documents/home-bound.conf"
 
         :: toml ::
@@ -124,7 +124,7 @@ Configuration System
 
     The configuration system is built around a `ConfigManager` that wraps a clapfig `Resolver`.
 
-    `ConfigManager::new(dotfiles_root)` builds a clapfig Resolver configured to search for `.dodot.toml` files using ancestor-walk, merging all found files. `config_manager.root_config()` loads the root-level config by merging compiled defaults with any `$DOTFILES_ROOT/.dodot.toml` file. `config_manager.config_for_pack(pack_path)` resolves the fully merged config for a specific pack, layering the pack's `.dodot.toml` on top of the root config.
+    `ConfigManager::new(dotfiles_root)` builds a clapfig Resolver configured to search for `.dodot.toml` files using ancestor-walk up to the `.git` boundary (i.e. the dotfiles root), merging all found files. This prevents stray `.dodot.toml` files above the repo from leaking in. `config_manager.root_config()` loads the root-level config by merging compiled defaults with any `$DOTFILES_ROOT/.dodot.toml` file. `config_manager.config_for_pack(pack_path)` resolves the fully merged config for a specific pack, layering the pack's `.dodot.toml` on top of the root config.
 
     The `DodotConfig` struct uses `#[derive(confique::Config)]` to declare fields with compiled defaults, so every config key has a known default value even when no TOML files are present.
 
