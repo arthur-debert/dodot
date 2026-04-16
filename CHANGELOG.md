@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-04-15
+
+### Fixed
+- Release workflow: add MIT license and crate metadata required by crates.io
+- Release workflow: macOS signing failures no longer block binary packaging/upload
+- Release workflow: fix cross-compilation install on runners with pre-existing `cross` binary
+
 ## [0.9.0] - 2026-04-15
 
 ### Added
