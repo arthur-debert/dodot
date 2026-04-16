@@ -27,7 +27,7 @@ pub fn init(pack_name: &str, ctx: &ExecutionContext) -> Result<InitResult> {
     // Write default .dodot.toml
     let config_content = format!(
         r#"# dodot configuration for {pack_name}
-# See: dodot genconfig --help
+# See: dodot config gen --help
 
 [pack]
 # ignore = ["*.bak", "*.tmp"]
@@ -40,7 +40,7 @@ pub fn init(pack_name: &str, ctx: &ExecutionContext) -> Result<InitResult> {
 # install = "install.sh"
 # shell = ["aliases.sh"]
 # homebrew = "Brewfile"
-# ignore = []
+# skip = []
 "#
     );
     ctx.fs

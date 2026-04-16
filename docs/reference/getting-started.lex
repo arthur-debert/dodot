@@ -49,14 +49,14 @@ dodot: Up and Running in 5 Minutes
 
     Customizing and deploying:
 
-        $ dodot genconfig --write git
+        $ dodot config gen -o git/.dodot.toml
         $ cat git/.dodot.toml
         [mappings]
         # path = "bin"
         # install = "install.sh"
         # shell = ["aliases.sh", "profile.sh", "login.sh"]
         # homebrew = "Brewfile"
-        # ignore = []
+        # skip = []
         # Now that everything looks good, we're ready:
         # Preview what will happen without making changes
         $ dodot up git --dry-run

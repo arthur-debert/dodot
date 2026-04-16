@@ -126,7 +126,7 @@ dodot uses a layered TOML configuration:
 # git/.dodot.toml
 [mappings]
 shell = ["aliases.sh", "profile.sh"]
-ignore = ["README.md"]
+skip = ["README.md"]
 ```
 
 Generate a starter config with `dodot config gen -o .dodot.toml`.

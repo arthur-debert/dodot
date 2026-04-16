@@ -28,12 +28,16 @@ Symlink Deployment Paths
 
         [symlink]
         force_home = [
-            "ssh",        # .ssh/ - security critical
-            "aws",        # .aws/ - credentials
-            "kube",       # .kube/ - kubernetes config
-            "bashrc",     # .bashrc - shell expects in $HOME
-            "zshrc",      # .zshrc - shell expects in $HOME
-            "profile"     # .profile - shell expects in $HOME
+            "ssh",            # .ssh/ - security critical
+            "aws",            # .aws/ - credentials
+            "kube",           # .kube/ - kubernetes config
+            "bashrc",         # .bashrc - shell expects in $HOME
+            "zshrc",          # .zshrc - shell expects in $HOME
+            "profile",        # .profile - shell expects in $HOME
+            "bash_profile",   # .bash_profile
+            "bash_login",     # .bash_login
+            "bash_logout",    # .bash_logout
+            "inputrc"         # .inputrc - readline config
         ]
 
     :: toml ::
@@ -46,13 +50,13 @@ Symlink Deployment Paths
 
     Custom paths:
 
-        [symlink]
-        "misterious.conf" = "/var/etc/misterious.conf"
+        [symlink.targets]
+        "mysterious.conf" = "/var/etc/mysterious.conf"
         "home-bound.conf" = "my-documents/home-bound.conf"
 
     :: toml ::
 
-    This will link `<pack>/misterious.conf` to `/var/etc/misterious.conf`. If the path is a relative path, it will be relative to your `XDG_CONFIG_HOME`. In the example above, `<pack>/home-bound.conf` will be linked to `$XDG_CONFIG_HOME/my-documents/home-bound.conf`.
+    This will link `<pack>/mysterious.conf` to `/var/etc/mysterious.conf`. If the path is a relative path, it will be relative to your `XDG_CONFIG_HOME`. In the example above, `<pack>/home-bound.conf` will be linked to `$XDG_CONFIG_HOME/my-documents/home-bound.conf`.
 
 5. Explicit `$HOME` or `XDG_CONFIG_HOME` via Directory Prefix
 
@@ -60,18 +64,21 @@ Symlink Deployment Paths
 
 6. Security Restricted Symlink File Names
 
-    To avoid accidental security issues, dodot will ignore (that is, not create symlinks for) the following files and directories. This can also be configured.
+    To avoid accidental security issues, dodot will not create symlinks for the following files and directories. This can also be configured.
 
     Protected paths:
 
+        [symlink]
         protected_paths = [
-            ".ssh/authorized_keys",
             ".ssh/id_rsa",
             ".ssh/id_ed25519",
+            ".ssh/id_dsa",
+            ".ssh/id_ecdsa",
+            ".ssh/authorized_keys",
             ".gnupg",
+            ".aws/credentials",
             ".password-store",
             ".config/gh/hosts.yml",
-            ".aws/credentials",
             ".kube/config",
             ".docker/config.json"
         ]
@@ -95,7 +102,7 @@ Symlink Deployment Paths
             "*~",
             "#*#",
             ".env*",
-            ".terraform/"
+            ".terraform"
         ]
 
     :: toml ::
