@@ -63,6 +63,7 @@ fn main() {
 
 fn build_app() -> App {
     App::builder()
+        .help_handling(true)
         .templates(standout::embed_templates!("src/templates"))
         .styles(standout::embed_styles!("src/styles"))
         .command("status", handlers::status_handler, "pack-status")
