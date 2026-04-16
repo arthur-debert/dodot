@@ -42,6 +42,11 @@ pub enum DodotError {
     #[error("invalid pattern {pattern}: {reason}")]
     InvalidPattern { pattern: String, reason: String },
 
+    #[error("cross-pack deployment conflict detected (--force does not override this):\n{}", crate::conflicts::format_conflicts(.conflicts))]
+    CrossPackConflict {
+        conflicts: Vec<crate::conflicts::Conflict>,
+    },
+
     #[error("{0}")]
     Other(String),
 }

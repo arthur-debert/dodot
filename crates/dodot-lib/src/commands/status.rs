@@ -3,11 +3,16 @@
 //! For each file, status verifies the actual filesystem state rather than
 //! just checking whether datastore directories exist. This catches broken
 //! symlinks, missing source files, and config drift.
+//!
+//! Additionally, status performs cross-pack conflict detection and surfaces
+//! potential conflicts as warnings — even for packs that aren't deployed
+//! yet. This lets users see problems before they run `up`.
 
 use crate::commands::{
     handler_description, handler_symbol, DisplayFile, DisplayPack, PackStatusResult,
 };
 use crate::config::mappings_to_rules;
+use crate::conflicts;
 use crate::handlers::symlink::resolve_target;
 use crate::handlers::{self, HANDLER_SYMLINK};
 use crate::packs::orchestration::{self, ExecutionContext};
@@ -170,7 +175,42 @@ fn verify_staged(
     Health::Deployed
 }
 
+/// Format cross-pack conflict warnings for status output.
+fn conflict_warnings(conflicts: &[conflicts::Conflict], home: &std::path::Path) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if conflicts.is_empty() {
+        return warnings;
+    }
+
+    warnings.push("cross-pack conflicts detected:".into());
+    for c in conflicts {
+        let target_display = if let Ok(rel) = c.target.strip_prefix(home) {
+            format!("~/{}", rel.display())
+        } else {
+            c.target.display().to_string()
+        };
+        warnings.push(format!("  target: {target_display}"));
+        for claimant in &c.claimants {
+            warnings.push(format!(
+                "    - pack '{}' ({} handler): {}",
+                claimant.pack,
+                claimant.handler,
+                claimant.source.display()
+            ));
+        }
+    }
+    warnings.push(
+        "fix your configuration — `dodot up` will refuse to deploy until conflicts are resolved."
+            .into(),
+    );
+
+    warnings
+}
+
 /// Run the `status` command: scan packs and verify deployment chain per file.
+///
+/// Also performs cross-pack conflict detection and surfaces potential
+/// conflicts as warnings.
 pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
     // Validate pack names before doing anything
     let mut warnings = Vec::new();
@@ -192,6 +232,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     let registry = handlers::create_registry(ctx.fs.as_ref());
     let mut display_packs = Vec::new();
 
+    // Collect intents across all packs for conflict detection
+    let mut pack_intents = Vec::new();
+
     for mut pack in all_packs {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
@@ -199,6 +242,19 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let scanner = Scanner::new(ctx.fs.as_ref());
         let matches = scanner.scan_pack(&pack, &rules, &pack_config.pack.ignore)?;
+
+        // Collect intents for conflict detection
+        match orchestration::collect_pack_intents(&pack, ctx) {
+            Ok(intents) => {
+                pack_intents.push((pack.name.clone(), intents));
+            }
+            Err(err) => {
+                warnings.push(format!(
+                    "could not collect intents for pack '{}'; conflict detection may be incomplete: {}",
+                    pack.name, err
+                ));
+            }
+        }
 
         let mut files = Vec::new();
         for m in &matches {
@@ -262,6 +318,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             name: pack.name.clone(),
             files,
         });
+    }
+
+    // Detect and surface cross-pack conflicts as warnings
+    let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents);
+    if !detected_conflicts.is_empty() {
+        let home = ctx.paths.home_dir();
+        warnings.extend(conflict_warnings(&detected_conflicts, home));
     }
 
     Ok(PackStatusResult {
