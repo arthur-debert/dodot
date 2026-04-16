@@ -2,12 +2,26 @@ use clap::{Arg, ArgAction, Command as ClapCommand};
 use standout::cli::{App, CommandGroup};
 
 mod handlers;
+mod logging;
 
 fn main() {
     let app = build_app();
 
     // parse_with handles help rendering (with command groups) and exits if help requested
     let matches = app.parse_with(build_clap_command());
+
+    // Initialize logging based on CLI flags
+    let verbosity = if matches.get_flag("debug") {
+        logging::Verbosity::Debug
+    } else if matches.get_flag("verbose") {
+        logging::Verbosity::Verbose
+    } else {
+        logging::Verbosity::Quiet
+    };
+    let log_dir = dodot_lib::paths::XdgPather::from_env()
+        .map(|p| dodot_lib::paths::Pather::log_dir(&p))
+        .unwrap_or_else(|_| std::env::temp_dir().join("dodot-logs"));
+    let _log_guard = logging::init(&log_dir, verbosity);
 
     // Passthrough: config (clapfig handles its own output)
     if let Some(("config", sub_matches)) = matches.subcommand() {
@@ -123,6 +137,20 @@ fn build_clap_command() -> ClapCommand {
     ClapCommand::new("dodot")
         .about("A dotfiles manager that uses symlinks for live editing")
         .version(env!("CARGO_PKG_VERSION"))
+        .arg(
+            Arg::new("verbose")
+                .long("verbose")
+                .help("Enable verbose logging to stderr")
+                .global(true)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("debug")
+                .long("debug")
+                .help("Enable debug logging to stderr (implies --verbose)")
+                .global(true)
+                .action(ArgAction::SetTrue),
+        )
         .subcommand(
             ClapCommand::new("status")
                 .about("Show deployment status of packs")

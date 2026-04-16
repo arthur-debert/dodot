@@ -1,5 +1,7 @@
 //! `down` command — remove all deployed state for packs.
 
+use tracing::{debug, info};
+
 use crate::commands::{handler_symbol, DisplayFile, DisplayPack, PackStatusResult};
 use crate::handlers::HANDLER_SYMLINK;
 use crate::packs;
@@ -9,6 +11,8 @@ use crate::Result;
 
 /// Run the `down` command: remove all state for specified (or all) packs.
 pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
+    info!(dry_run = ctx.dry_run, "starting down command");
+
     // Validate pack names before doing anything
     let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
@@ -21,6 +25,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         ctx.paths.dotfiles_root(),
         &root_config.pack.ignore,
     )?;
+    info!(count = all_packs.len(), "discovered packs");
 
     if let Some(names) = pack_filter {
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));
@@ -33,10 +38,11 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         let handlers = ctx.datastore.list_pack_handlers(&pack.name)?;
 
         if handlers.is_empty() {
-            // Already-down pack (#17): don't print misleading output
+            debug!(pack = %pack.name, "already down, skipping");
             continue;
         }
 
+        info!(pack = %pack.name, handlers = ?handlers, "removing pack state");
         any_removed = true;
         let mut files = Vec::new();
 
@@ -97,6 +103,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
 
     // Regenerate shell init script (now empty for removed packs)
     if !ctx.dry_run {
+        info!("regenerating shell init script");
         shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     }
 

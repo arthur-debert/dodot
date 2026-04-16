@@ -49,6 +49,11 @@ pub trait Pather: Send + Sync {
         self.pack_data_dir(pack).join(handler)
     }
 
+    /// Log directory for dodot (e.g. `~/.cache/dodot/logs`).
+    fn log_dir(&self) -> PathBuf {
+        self.cache_dir().join("logs")
+    }
+
     /// Path to the generated shell init script.
     fn init_script_path(&self) -> PathBuf {
         self.shell_dir().join("dodot-init.sh")

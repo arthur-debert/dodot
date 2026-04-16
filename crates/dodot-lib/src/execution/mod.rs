@@ -16,6 +16,8 @@
 //! `$PATH`, it just won't be directly runnable until the user fixes
 //! permissions manually.
 
+use tracing::{debug, info};
+
 use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::handlers::HANDLER_PATH;
@@ -60,6 +62,12 @@ impl<'a> Executor<'a> {
     /// execution immediately via `?`.
     /// In dry-run mode, all intents are simulated regardless of errors.
     pub fn execute(&self, intents: Vec<HandlerIntent>) -> Result<Vec<OperationResult>> {
+        debug!(
+            count = intents.len(),
+            dry_run = self.dry_run,
+            force = self.force,
+            "executor starting"
+        );
         let mut results = Vec::new();
 
         for intent in intents {
@@ -70,6 +78,10 @@ impl<'a> Executor<'a> {
             };
             results.extend(intent_results);
         }
+
+        let succeeded = results.iter().filter(|r| r.success).count();
+        let failed = results.iter().filter(|r| !r.success).count();
+        debug!(succeeded, failed, "executor finished");
 
         Ok(results)
     }
@@ -83,11 +95,24 @@ impl<'a> Executor<'a> {
                 source,
                 user_path,
             } => {
+                debug!(
+                    pack,
+                    handler,
+                    source = %source.display(),
+                    user_path = %user_path.display(),
+                    "executing link intent"
+                );
+
                 // Pre-check: does a non-symlink file exist at user_path?
                 // We check BEFORE creating the data link to avoid leaving
                 // dangling state when the user link would fail.
                 if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
                     if self.force {
+                        info!(
+                            pack,
+                            path = %user_path.display(),
+                            "force-removing existing file"
+                        );
                         // Remove the existing path before creating the symlink
                         if self.fs.is_dir(user_path) {
                             self.fs.remove_dir_all(user_path)?;
@@ -95,6 +120,11 @@ impl<'a> Executor<'a> {
                             self.fs.remove_file(user_path)?;
                         }
                     } else {
+                        info!(
+                            pack,
+                            path = %user_path.display(),
+                            "conflict: file already exists"
+                        );
                         // Return a failed result — non-fatal so other files
                         // in the pack can still be processed.
                         let op = Operation::CreateUserLink {
@@ -115,10 +145,23 @@ impl<'a> Executor<'a> {
 
                 // Step 1: Create data link (source → datastore)
                 let datastore_path = self.datastore.create_data_link(pack, handler, source)?;
+                debug!(
+                    pack,
+                    datastore_path = %datastore_path.display(),
+                    "created data link"
+                );
 
                 // Step 2: Create user link (datastore → user location)
                 self.datastore
                     .create_user_link(&datastore_path, user_path)?;
+
+                let filename = source.file_name().unwrap_or_default().to_string_lossy();
+                info!(
+                    pack,
+                    file = %filename,
+                    target = %user_path.display(),
+                    "created symlink"
+                );
 
                 let op = Operation::CreateUserLink {
                     pack: pack.clone(),
@@ -129,11 +172,7 @@ impl<'a> Executor<'a> {
 
                 Ok(vec![OperationResult::ok(
                     op,
-                    format!(
-                        "{} → {}",
-                        source.file_name().unwrap_or_default().to_string_lossy(),
-                        user_path.display()
-                    ),
+                    format!("{} → {}", filename, user_path.display()),
                 )])
             }
 
@@ -142,6 +181,9 @@ impl<'a> Executor<'a> {
                 handler,
                 source,
             } => {
+                let filename = source.file_name().unwrap_or_default().to_string_lossy();
+                info!(pack, handler = handler.as_str(), file = %filename, "staging file");
+
                 self.datastore.create_data_link(pack, handler, source)?;
 
                 let op = Operation::CreateDataLink {
@@ -150,16 +192,11 @@ impl<'a> Executor<'a> {
                     source: source.clone(),
                 };
 
-                let mut results = vec![OperationResult::ok(
-                    op,
-                    format!(
-                        "staged {}",
-                        source.file_name().unwrap_or_default().to_string_lossy(),
-                    ),
-                )];
+                let mut results = vec![OperationResult::ok(op, format!("staged {}", filename))];
 
                 // Auto-chmod +x for path handler directories
                 if handler == HANDLER_PATH && self.auto_chmod_exec {
+                    debug!(pack, source = %source.display(), "checking executable permissions");
                     results.extend(self.ensure_executable(pack, source));
                 }
 
@@ -178,6 +215,12 @@ impl<'a> Executor<'a> {
                     let already_done = self.datastore.has_sentinel(pack, handler, sentinel)?;
 
                     if already_done {
+                        info!(
+                            pack,
+                            handler = handler.as_str(),
+                            sentinel,
+                            "sentinel found, skipping"
+                        );
                         let op = Operation::CheckSentinel {
                             pack: pack.clone(),
                             handler: handler.clone(),
@@ -186,6 +229,9 @@ impl<'a> Executor<'a> {
                         return Ok(vec![OperationResult::ok(op, "already completed")]);
                     }
                 }
+
+                let cmd_str = format!("{} {}", executable, arguments.join(" "));
+                info!(pack, handler = handler.as_str(), command = %cmd_str.trim(), "running command");
 
                 // Run the command
                 self.datastore.run_and_record(
@@ -197,7 +243,7 @@ impl<'a> Executor<'a> {
                     self.provision_rerun,
                 )?;
 
-                let cmd_str = format!("{} {}", executable, arguments.join(" "));
+                info!(pack, sentinel, "command completed, sentinel recorded");
 
                 let op = Operation::RunCommand {
                     pack: pack.clone(),
@@ -284,9 +330,11 @@ impl<'a> Executor<'a> {
 
             match self.fs.set_permissions(&entry.path, new_mode) {
                 Ok(()) => {
+                    info!(pack, file = %entry.name, mode = format!("{:o}", new_mode), "chmod +x");
                     results.push(OperationResult::ok(op, format!("chmod +x {}", entry.name)));
                 }
                 Err(e) => {
+                    info!(pack, file = %entry.name, error = %e, "chmod +x failed");
                     // Warning, not failure — don't mark the pack as failed
                     // just because chmod didn't work.
                     results.push(OperationResult::ok(
