@@ -85,8 +85,11 @@ fn verify_symlink(
         .handler_data_dir(pack, HANDLER_SYMLINK)
         .join(filename);
 
-    // Step 1: Does the data link exist?
+    // Step 1: Does the data link exist and is it a symlink?
     if !ctx.fs.is_symlink(&data_link) {
+        if ctx.fs.exists(&data_link) {
+            return Health::Broken("broken: data link exists but is not a symlink".into());
+        }
         return Health::Pending;
     }
 
@@ -146,6 +149,9 @@ fn verify_staged(
     let data_link = ctx.paths.handler_data_dir(pack, handler).join(filename);
 
     if !ctx.fs.is_symlink(&data_link) {
+        if ctx.fs.exists(&data_link) {
+            return Health::Broken("broken: data link exists but is not a symlink".into());
+        }
         return Health::Pending;
     }
 
