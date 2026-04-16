@@ -34,6 +34,17 @@ pub struct Rule {
     pub options: HashMap<String, String>,
 }
 
+/// A raw file entry discovered during directory walking (before rule matching).
+#[derive(Debug, Clone)]
+pub struct PackEntry {
+    /// Path relative to the pack root (e.g. `"vimrc"`, `"nvim/init.lua"`).
+    pub relative_path: PathBuf,
+    /// Absolute path to the file.
+    pub absolute_path: PathBuf,
+    /// Whether this entry is a directory.
+    pub is_dir: bool,
+}
+
 /// A file that matched a rule during pack scanning.
 #[derive(Debug, Clone, Serialize)]
 pub struct RuleMatch {
@@ -55,6 +66,11 @@ pub struct RuleMatch {
     /// Handler-specific options from the matched rule.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub options: HashMap<String, String>,
+
+    /// If this file was produced by a preprocessor, the original source path.
+    /// `None` for regular (non-preprocessed) files.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preprocessor_source: Option<PathBuf>,
 }
 
 // ── Grouping helpers ────────────────────────────────────────────
@@ -196,42 +212,68 @@ impl<'a> Scanner<'a> {
     /// single entries). Skips hidden files (except `.config`), special
     /// files (`.dodot.toml`, `.dodotignore`), and files matching
     /// pack-level ignore patterns.
+    ///
+    /// This is a convenience wrapper over [`walk_pack`] + [`match_entries`].
     pub fn scan_pack(
         &self,
         pack: &Pack,
         rules: &[Rule],
         pack_ignore: &[String],
     ) -> Result<Vec<RuleMatch>> {
-        let compiled = compile_rules(rules);
         let entries = self.walk_pack(&pack.path, pack_ignore)?;
+        Ok(self.match_entries(&entries, rules, &pack.name))
+    }
+
+    /// Walk a pack directory and return raw file entries.
+    ///
+    /// Skips hidden files (except `.config`), special files
+    /// (`.dodot.toml`, `.dodotignore`), and files matching
+    /// pack-level ignore patterns.
+    pub fn walk_pack(
+        &self,
+        pack_path: &Path,
+        ignore_patterns: &[String],
+    ) -> Result<Vec<PackEntry>> {
+        let mut results = Vec::new();
+        self.walk_dir(pack_path, pack_path, ignore_patterns, &mut results)?;
+        Ok(results)
+    }
+
+    /// Match a list of entries against rules, returning rule matches.
+    ///
+    /// This is the second half of the scan pipeline: given raw entries
+    /// (from [`walk_pack`] or from preprocessing), match each against
+    /// the rule set to determine which handler processes it.
+    pub fn match_entries(
+        &self,
+        entries: &[PackEntry],
+        rules: &[Rule],
+        pack_name: &str,
+    ) -> Vec<RuleMatch> {
+        let compiled = compile_rules(rules);
         let mut matches = Vec::new();
 
-        for (rel_path, abs_path, is_dir) in entries {
-            let filename = rel_path
+        for entry in entries {
+            let filename = entry
+                .relative_path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            if let Some(rule_match) = self.match_file(
-                &compiled, &filename, is_dir, &rel_path, &abs_path, &pack.name,
+            if let Some(rule_match) = match_file(
+                &compiled,
+                &filename,
+                entry.is_dir,
+                &entry.relative_path,
+                &entry.absolute_path,
+                pack_name,
             ) {
                 matches.push(rule_match);
             }
         }
 
         matches.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-        Ok(matches)
-    }
-
-    /// Walk pack directory, returning (relative_path, absolute_path, is_dir).
-    fn walk_pack(
-        &self,
-        pack_path: &Path,
-        ignore_patterns: &[String],
-    ) -> Result<Vec<(PathBuf, PathBuf, bool)>> {
-        let mut results = Vec::new();
-        self.walk_dir(pack_path, pack_path, ignore_patterns, &mut results)?;
-        Ok(results)
+        matches
     }
 
     fn walk_dir(
@@ -239,7 +281,7 @@ impl<'a> Scanner<'a> {
         base: &Path,
         dir: &Path,
         ignore_patterns: &[String],
-        results: &mut Vec<(PathBuf, PathBuf, bool)>,
+        results: &mut Vec<PackEntry>,
     ) -> Result<()> {
         let entries = self.fs.read_dir(dir)?;
 
@@ -269,58 +311,66 @@ impl<'a> Scanner<'a> {
 
             if entry.is_dir {
                 // Add directory itself as a candidate (for path handler)
-                results.push((rel_path.clone(), entry.path.clone(), true));
+                results.push(PackEntry {
+                    relative_path: rel_path.clone(),
+                    absolute_path: entry.path.clone(),
+                    is_dir: true,
+                });
                 // Recurse into subdirectories
                 self.walk_dir(base, &entry.path, ignore_patterns, results)?;
             } else {
-                results.push((rel_path, entry.path.clone(), false));
+                results.push(PackEntry {
+                    relative_path: rel_path,
+                    absolute_path: entry.path.clone(),
+                    is_dir: false,
+                });
             }
         }
 
         Ok(())
     }
+}
 
-    /// Match a single file against the compiled rules.
-    ///
-    /// 1. Check exclusion rules first — if any match, file is skipped.
-    /// 2. Check inclusion rules by priority (descending), first match wins.
-    fn match_file(
-        &self,
-        compiled: &[CompiledRule],
-        filename: &str,
-        is_dir: bool,
-        rel_path: &Path,
-        abs_path: &Path,
-        pack: &str,
-    ) -> Option<RuleMatch> {
-        // Phase 1: check exclusions
-        for rule in compiled {
-            if rule.is_exclusion && matches_entry(&rule.pattern, filename, is_dir) {
-                return None;
-            }
+/// Match a single file against the compiled rules.
+///
+/// 1. Check exclusion rules first — if any match, file is skipped.
+/// 2. Check inclusion rules by priority (descending), first match wins.
+fn match_file(
+    compiled: &[CompiledRule],
+    filename: &str,
+    is_dir: bool,
+    rel_path: &Path,
+    abs_path: &Path,
+    pack: &str,
+) -> Option<RuleMatch> {
+    // Phase 1: check exclusions
+    for rule in compiled {
+        if rule.is_exclusion && matches_entry(&rule.pattern, filename, is_dir) {
+            return None;
         }
-
-        // Phase 2: find first matching inclusion rule (sorted by priority desc)
-        // We sort a copy so we don't modify the original
-        let mut inclusion_rules: Vec<&CompiledRule> =
-            compiled.iter().filter(|r| !r.is_exclusion).collect();
-        inclusion_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
-
-        for rule in inclusion_rules {
-            if matches_entry(&rule.pattern, filename, is_dir) {
-                return Some(RuleMatch {
-                    relative_path: rel_path.to_path_buf(),
-                    absolute_path: abs_path.to_path_buf(),
-                    pack: pack.to_string(),
-                    handler: rule.handler.clone(),
-                    is_dir,
-                    options: rule.options.clone(),
-                });
-            }
-        }
-
-        None
     }
+
+    // Phase 2: find first matching inclusion rule (sorted by priority desc)
+    // We sort a copy so we don't modify the original
+    let mut inclusion_rules: Vec<&CompiledRule> =
+        compiled.iter().filter(|r| !r.is_exclusion).collect();
+    inclusion_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+    for rule in inclusion_rules {
+        if matches_entry(&rule.pattern, filename, is_dir) {
+            return Some(RuleMatch {
+                relative_path: rel_path.to_path_buf(),
+                absolute_path: abs_path.to_path_buf(),
+                pack: pack.to_string(),
+                handler: rule.handler.clone(),
+                is_dir,
+                options: rule.options.clone(),
+                preprocessor_source: None,
+            });
+        }
+    }
+
+    None
 }
 
 fn is_ignored(name: &str, patterns: &[String]) -> bool {
@@ -707,6 +757,7 @@ mod tests {
                 handler: "symlink".into(),
                 is_dir: false,
                 options: HashMap::new(),
+                preprocessor_source: None,
             },
             RuleMatch {
                 relative_path: "aliases.sh".into(),
@@ -715,6 +766,7 @@ mod tests {
                 handler: "shell".into(),
                 is_dir: false,
                 options: HashMap::new(),
+                preprocessor_source: None,
             },
             RuleMatch {
                 relative_path: "gvimrc".into(),
@@ -723,6 +775,7 @@ mod tests {
                 handler: "symlink".into(),
                 is_dir: false,
                 options: HashMap::new(),
+                preprocessor_source: None,
             },
         ];
 
@@ -766,6 +819,7 @@ mod tests {
             handler: "symlink".into(),
             is_dir: false,
             options: HashMap::new(),
+            preprocessor_source: None,
         };
         let json = serde_json::to_string(&m).unwrap();
         assert!(json.contains("vimrc"));

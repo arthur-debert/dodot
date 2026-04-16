@@ -9,6 +9,7 @@ pub mod handlers;
 pub mod operations;
 pub mod packs;
 pub mod paths;
+pub mod preprocessing;
 pub mod render;
 pub mod rules;
 pub mod shell;

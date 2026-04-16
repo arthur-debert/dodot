@@ -259,23 +259,65 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
 
 /// Collect handler intents for a pack **without** executing them.
 ///
-/// Runs the scan → match rules → group by handler → to_intents
-/// pipeline and returns the generated intents. This is the first half
-/// of the two-phase execution model that enables cross-pack conflict
-/// detection before any mutations happen.
+/// Runs the scan → preprocess → match rules → group by handler →
+/// to_intents pipeline and returns the generated intents. This is the
+/// first half of the two-phase execution model that enables cross-pack
+/// conflict detection before any mutations happen.
 pub fn collect_pack_intents(
     pack: &Pack,
     ctx: &ExecutionContext,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
+    collect_pack_intents_with_preprocessors(pack, ctx, None)
+}
+
+/// Like [`collect_pack_intents`], but accepts an explicit preprocessor
+/// registry. If `None`, no preprocessing occurs.
+///
+/// This variant exists for testing: callers can inject a registry with
+/// test preprocessors without requiring config-driven registration.
+pub fn collect_pack_intents_with_preprocessors(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
+) -> Result<Vec<crate::operations::HandlerIntent>> {
     let root_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let rules = crate::config::mappings_to_rules(&root_config.mappings);
 
-    // Scan pack files
+    // Phase 1: Walk pack directory
     let scanner = Scanner::new(ctx.fs.as_ref());
-    let matches = scanner.scan_pack(pack, &rules, &root_config.pack.ignore)?;
-    debug!(pack = %pack.name, files = matches.len(), "scanned pack files");
+    let entries = scanner.walk_pack(&pack.path, &root_config.pack.ignore)?;
+    debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
 
-    // Group by handler
+    // Phase 2: Preprocessing
+    let preprocess_result = if let Some(registry) = preprocessors {
+        if !registry.is_empty() && root_config.preprocessor.enabled {
+            crate::preprocessing::pipeline::preprocess_pack(
+                entries,
+                registry,
+                pack,
+                ctx.fs.as_ref(),
+                ctx.datastore.as_ref(),
+            )?
+        } else {
+            crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
+        }
+    } else {
+        crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
+    };
+
+    // Phase 3: Merge and match rules
+    let all_entries = preprocess_result.merged_entries();
+    let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name);
+    debug!(pack = %pack.name, files = matches.len(), "matched rules");
+
+    // Propagate preprocessor source info into matches
+    for m in &mut matches {
+        if let Some(source) = preprocess_result.source_map.get(&m.absolute_path) {
+            m.preprocessor_source = Some(source.clone());
+        }
+    }
+
+    // Phase 4: Group by handler
     let groups = rules::group_by_handler(&matches);
     let order = rules::handler_execution_order(&groups);
     debug!(pack = %pack.name, handlers = ?order, "handler execution order");
@@ -614,6 +656,376 @@ mod tests {
                 !matches!(r.operation, crate::operations::Operation::RunCommand { .. }),
                 "RunCommand should be skipped with no_provision"
             );
+        }
+    }
+
+    // ── Preprocessing integration tests ────────────────────────
+
+    #[test]
+    fn preprocessing_identity_file_deploys_via_symlink_handler() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "host = localhost")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::identity::IdentityPreprocessor::new(),
+        ));
+
+        let intents =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
+
+        // Should produce a Link intent for "config.toml" (not "config.toml.identity")
+        assert_eq!(intents.len(), 1, "intents: {intents:?}");
+
+        match &intents[0] {
+            crate::operations::HandlerIntent::Link {
+                pack: p,
+                handler,
+                source,
+                user_path,
+            } => {
+                assert_eq!(p, "app");
+                assert_eq!(handler, "symlink");
+                // The source should be in the datastore (preprocessed handler dir)
+                assert!(
+                    source.to_string_lossy().contains("preprocessed"),
+                    "source should be in preprocessed dir: {}",
+                    source.display()
+                );
+                // The user_path should NOT contain .identity extension
+                let user_str = user_path.to_string_lossy();
+                assert!(
+                    !user_str.contains("identity"),
+                    "user_path should not have .identity: {user_str}"
+                );
+            }
+            other => panic!("expected Link intent, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preprocessing_mixed_pack_deploys_both() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "preprocessed content")
+            .file("readme.txt", "regular content")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::identity::IdentityPreprocessor::new(),
+        ));
+
+        let intents =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
+
+        // Should have 2 Link intents: one for config.toml (preprocessed), one for readme.txt (regular)
+        assert_eq!(intents.len(), 2, "intents: {intents:?}");
+
+        let intent_sources: Vec<String> = intents
+            .iter()
+            .filter_map(|i| match i {
+                crate::operations::HandlerIntent::Link { source, .. } => {
+                    Some(source.to_string_lossy().to_string())
+                }
+                _ => None,
+            })
+            .collect();
+
+        // One should be in the preprocessed dir, the other in the pack dir
+        let has_preprocessed = intent_sources.iter().any(|s| s.contains("preprocessed"));
+        let has_regular = intent_sources
+            .iter()
+            .any(|s| s.contains("dotfiles/app/readme.txt"));
+        assert!(
+            has_preprocessed,
+            "should have a preprocessed source: {intent_sources:?}"
+        );
+        assert!(
+            has_regular,
+            "should have a regular source: {intent_sources:?}"
+        );
+    }
+
+    #[test]
+    fn preprocessing_collision_detected() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "preprocessed")
+            .file("config.toml", "regular")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::identity::IdentityPreprocessor::new(),
+        ));
+
+        let err =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap_err();
+        assert!(
+            matches!(err, crate::DodotError::PreprocessorCollision { .. }),
+            "expected PreprocessorCollision, got: {err}"
+        );
+    }
+
+    #[test]
+    fn preprocessing_disabled_via_config_treats_files_as_regular() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "content")
+            .done()
+            .build();
+
+        // Write config disabling preprocessing
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                b"[preprocessor]\nenabled = false\n",
+            )
+            .unwrap();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::identity::IdentityPreprocessor::new(),
+        ));
+
+        let intents =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
+
+        // With preprocessing disabled, the .identity file is treated as regular
+        // and deployed as-is with the .identity extension preserved
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            crate::operations::HandlerIntent::Link { user_path, .. } => {
+                let user_str = user_path.to_string_lossy();
+                assert!(
+                    user_str.contains("identity"),
+                    "with preprocessing disabled, file should keep .identity extension: {user_str}"
+                );
+            }
+            other => panic!("expected Link intent, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preprocessing_no_registry_works_like_before() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "vim".into(),
+            path: env.dotfiles_root.join("vim"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("vim"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        // No preprocessor registry at all
+        let intents = collect_pack_intents_with_preprocessors(&pack, &ctx, None).unwrap();
+
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            crate::operations::HandlerIntent::Link { source, .. } => {
+                assert!(
+                    source.to_string_lossy().contains("vim/vimrc"),
+                    "source should be the pack file: {}",
+                    source.display()
+                );
+            }
+            other => panic!("expected Link intent, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn preprocessing_end_to_end_deploy_and_verify_content() {
+        // Full pipeline: preprocess → collect intents → execute → verify user file
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "host = localhost\nport = 5432")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::identity::IdentityPreprocessor::new(),
+        ));
+
+        let intents =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
+
+        // Extract the user_path from the intent so we know where to check
+        let user_path = match &intents[0] {
+            crate::operations::HandlerIntent::Link { user_path, .. } => user_path.clone(),
+            other => panic!("expected Link intent, got: {other:?}"),
+        };
+
+        let results = execute_intents(intents, &ctx).unwrap();
+
+        assert!(
+            results.iter().all(|r| r.success),
+            "all operations should succeed: {results:?}"
+        );
+
+        // The user file should exist and have the preprocessed content
+        assert!(
+            ctx.fs.exists(&user_path),
+            "user file should exist at: {}",
+            user_path.display()
+        );
+        assert!(
+            ctx.fs.is_symlink(&user_path),
+            "user file should be a symlink"
+        );
+
+        // Content should be the preprocessed (identity = same) content
+        let content = ctx.fs.read_to_string(&user_path).unwrap();
+        assert_eq!(content, "host = localhost\nport = 5432");
+    }
+
+    #[test]
+    fn preprocessing_error_propagates_through_pipeline() {
+        // Expansion errors should propagate through the pipeline.
+        // We test this at the pipeline level (not orchestration) since
+        // the scanner won't see a file that doesn't exist. The pipeline
+        // tests in pipeline.rs cover this case directly. Here we verify
+        // that a valid preprocessor file that triggers an error during
+        // a lower-level operation still propagates correctly.
+        //
+        // Use the unarchive preprocessor with a corrupted archive.
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bad.tar.gz", "this is not valid gzip data at all")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "tools".into(),
+            path: env.dotfiles_root.join("tools"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("tools"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::unarchive::UnarchivePreprocessor::new(),
+        ));
+
+        let err =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap_err();
+        assert!(
+            matches!(err, crate::DodotError::PreprocessorError { .. }),
+            "expected PreprocessorError, got: {err}"
+        );
+    }
+
+    #[test]
+    fn preprocessing_multiple_types_in_registry() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "identity content")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        // Register both identity and unarchive preprocessors
+        let mut registry = crate::preprocessing::PreprocessorRegistry::new();
+        registry.register(Box::new(
+            crate::preprocessing::identity::IdentityPreprocessor::new(),
+        ));
+        registry.register(Box::new(
+            crate::preprocessing::unarchive::UnarchivePreprocessor::new(),
+        ));
+
+        let intents =
+            collect_pack_intents_with_preprocessors(&pack, &ctx, Some(&registry)).unwrap();
+
+        // The .identity file should still be handled by the identity preprocessor
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            crate::operations::HandlerIntent::Link { source, .. } => {
+                assert!(source.to_string_lossy().contains("preprocessed"));
+            }
+            other => panic!("expected Link intent, got: {other:?}"),
         }
     }
 }

@@ -161,6 +161,20 @@ impl DataStore for FilesystemDataStore {
             .collect())
     }
 
+    fn write_rendered_file(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+        content: &[u8],
+    ) -> Result<PathBuf> {
+        let dir = self.paths.handler_data_dir(pack, handler);
+        self.fs.mkdir_all(&dir)?;
+        let path = dir.join(filename);
+        self.fs.write_file(&path, content)?;
+        Ok(path)
+    }
+
     fn sentinel_path(&self, pack: &str, handler: &str, sentinel: &str) -> PathBuf {
         self.paths.handler_data_dir(pack, handler).join(sentinel)
     }
@@ -595,6 +609,81 @@ mod tests {
 
         let sentinels = ds.list_handler_sentinels("vim", "install").unwrap();
         assert!(sentinels.is_empty());
+    }
+
+    // ── write_rendered_file ───────────────────────────────────────
+
+    #[test]
+    fn write_rendered_file_creates_regular_file() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let path = ds
+            .write_rendered_file("app", "preprocessed", "config.toml", b"host = localhost")
+            .unwrap();
+
+        assert!(env.fs.exists(&path));
+        assert!(!env.fs.is_symlink(&path));
+        assert_eq!(env.fs.read_to_string(&path).unwrap(), "host = localhost");
+    }
+
+    #[test]
+    fn write_rendered_file_overwrites_existing() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let path1 = ds
+            .write_rendered_file("app", "preprocessed", "config.toml", b"version 1")
+            .unwrap();
+        let path2 = ds
+            .write_rendered_file("app", "preprocessed", "config.toml", b"version 2")
+            .unwrap();
+
+        assert_eq!(path1, path2);
+        assert_eq!(env.fs.read_to_string(&path1).unwrap(), "version 2");
+    }
+
+    #[test]
+    fn write_rendered_file_empty_content() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let path = ds
+            .write_rendered_file("app", "preprocessed", "empty.conf", b"")
+            .unwrap();
+
+        assert!(env.fs.exists(&path));
+        assert_eq!(env.fs.read_to_string(&path).unwrap(), "");
+    }
+
+    #[test]
+    fn write_rendered_file_binary_content() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let binary = vec![0u8, 1, 2, 255, 254, 253];
+        let path = ds
+            .write_rendered_file("app", "preprocessed", "data.bin", &binary)
+            .unwrap();
+
+        assert_eq!(env.fs.read_file(&path).unwrap(), binary);
+    }
+
+    #[test]
+    fn write_rendered_file_creates_parent_dirs() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        // handler_data_dir doesn't exist yet — write_rendered_file should create it
+        let handler_dir = env.paths.handler_data_dir("newpack", "preprocessed");
+        assert!(!env.fs.exists(&handler_dir));
+
+        let path = ds
+            .write_rendered_file("newpack", "preprocessed", "file.txt", b"hello")
+            .unwrap();
+
+        assert!(env.fs.exists(&path));
+        assert_eq!(env.fs.read_to_string(&path).unwrap(), "hello");
     }
 
     // ── Object safety ───────────────────────────────────────────

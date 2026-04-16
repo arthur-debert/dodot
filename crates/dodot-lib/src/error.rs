@@ -47,6 +47,20 @@ pub enum DodotError {
         conflicts: Vec<crate::conflicts::Conflict>,
     },
 
+    #[error("preprocessing failed for {source_file} ({preprocessor}): {message}")]
+    PreprocessorError {
+        preprocessor: String,
+        source_file: PathBuf,
+        message: String,
+    },
+
+    #[error("preprocessing collision in pack \"{pack}\": {source_file} expands to {expanded_name}, which already exists as a regular file")]
+    PreprocessorCollision {
+        pack: String,
+        source_file: String,
+        expanded_name: String,
+    },
+
     #[error("{0}")]
     Other(String),
 }
