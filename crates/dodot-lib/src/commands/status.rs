@@ -8,6 +8,8 @@
 //! potential conflicts as warnings — even for packs that aren't deployed
 //! yet. This lets users see problems before they run `up`.
 
+use tracing::{debug, info};
+
 use crate::commands::{
     handler_description, handler_symbol, DisplayFile, DisplayPack, PackStatusResult,
 };
@@ -212,6 +214,8 @@ fn conflict_warnings(conflicts: &[conflicts::Conflict], home: &std::path::Path) 
 /// Also performs cross-pack conflict detection and surfaces potential
 /// conflicts as warnings.
 pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
+    info!("starting status command");
+
     // Validate pack names before doing anything
     let mut warnings = Vec::new();
     if let Some(names) = pack_filter {
@@ -224,6 +228,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         ctx.paths.dotfiles_root(),
         &root_config.pack.ignore,
     )?;
+    info!(count = all_packs.len(), "discovered packs");
 
     if let Some(names) = pack_filter {
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));
@@ -236,6 +241,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     let mut pack_intents = Vec::new();
 
     for mut pack in all_packs {
+        info!(pack = %pack.name, "checking pack status");
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
         let rules = mappings_to_rules(&pack_config.mappings);
@@ -323,8 +329,14 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     // Detect and surface cross-pack conflicts as warnings
     let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
     if !detected_conflicts.is_empty() {
+        info!(
+            count = detected_conflicts.len(),
+            "cross-pack conflicts detected"
+        );
         let home = ctx.paths.home_dir();
         warnings.extend(conflict_warnings(&detected_conflicts, home));
+    } else {
+        debug!("no cross-pack conflicts");
     }
 
     Ok(PackStatusResult {

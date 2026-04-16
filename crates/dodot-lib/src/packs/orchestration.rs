@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use serde::Serialize;
+use tracing::{debug, info};
 
 use crate::config::ConfigManager;
 use crate::datastore::DataStore;
@@ -122,8 +123,14 @@ pub fn execute(
     pack_filter: Option<&[String]>,
     ctx: &ExecutionContext,
 ) -> Result<ExecuteResult> {
+    info!(command = command.name(), "starting command");
+
     // Load root config for pack-level ignore patterns
     let root_config = ctx.config_manager.root_config()?;
+    debug!(
+        ignore_patterns = ?root_config.pack.ignore,
+        "loaded root config"
+    );
 
     // Discover packs
     let mut all_packs = packs::discover_packs(
@@ -131,12 +138,19 @@ pub fn execute(
         ctx.paths.dotfiles_root(),
         &root_config.pack.ignore,
     )?;
+    info!(
+        count = all_packs.len(),
+        root = %ctx.paths.dotfiles_root().display(),
+        "discovered packs"
+    );
 
     // Validate and apply name filter
     if let Some(names) = pack_filter {
         let _warnings = validate_pack_names(names, ctx)?;
         // Warnings are handled by the calling command (status/up/down)
+        debug!(filter = ?names, "applying pack filter");
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+        info!(count = all_packs.len(), "packs after filter");
     }
 
     let total_packs = all_packs.len();
@@ -145,12 +159,16 @@ pub fn execute(
     let mut failed = 0;
 
     for mut pack in all_packs {
+        info!(pack = %pack.name, "processing pack");
+
         // Load pack-specific merged config
         match ctx.config_manager.config_for_pack(&pack.path) {
             Ok(pack_config) => {
+                debug!(pack = %pack.name, "loaded pack config");
                 pack.config = pack_config.to_handler_config();
             }
             Err(e) => {
+                info!(pack = %pack.name, error = %e, "pack config error, skipping");
                 failed += 1;
                 pack_results.push(PackResult {
                     pack_name: pack.name.clone(),
@@ -165,13 +183,16 @@ pub fn execute(
         match command.execute_for_pack(&pack, ctx) {
             Ok(result) => {
                 if result.success {
+                    info!(pack = %pack.name, ops = result.operations.len(), "pack succeeded");
                     successful += 1;
                 } else {
+                    info!(pack = %pack.name, ops = result.operations.len(), "pack completed with errors");
                     failed += 1;
                 }
                 pack_results.push(result);
             }
             Err(e) => {
+                info!(pack = %pack.name, error = %e, "pack failed");
                 failed += 1;
                 pack_results.push(PackResult {
                     pack_name: pack.name.clone(),
@@ -182,6 +203,13 @@ pub fn execute(
             }
         }
     }
+
+    info!(
+        total = total_packs,
+        successful = successful,
+        failed = failed,
+        "command complete"
+    );
 
     Ok(ExecuteResult {
         pack_results,
@@ -206,16 +234,20 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
         ctx.paths.dotfiles_root(),
         &root_config.pack.ignore,
     )?;
+    info!(count = all_packs.len(), "discovered packs");
 
     if let Some(names) = pack_filter {
         let _warnings = validate_pack_names(names, ctx)?;
+        debug!(filter = ?names, "applying pack filter");
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+        info!(count = all_packs.len(), "packs after filter");
     }
 
     // Load per-pack config
     let mut configured = Vec::with_capacity(all_packs.len());
     for mut pack in all_packs {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+        debug!(pack = %pack.name, "loaded pack config");
         pack.config = pack_config.to_handler_config();
         configured.push(pack);
     }
@@ -241,10 +273,12 @@ pub fn collect_pack_intents(
     // Scan pack files
     let scanner = Scanner::new(ctx.fs.as_ref());
     let matches = scanner.scan_pack(pack, &rules, &root_config.pack.ignore)?;
+    debug!(pack = %pack.name, files = matches.len(), "scanned pack files");
 
     // Group by handler
     let groups = rules::group_by_handler(&matches);
     let order = rules::handler_execution_order(&groups);
+    debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
     // Build handler registry
     let registry = handlers::create_registry(ctx.fs.as_ref());
@@ -254,20 +288,31 @@ pub fn collect_pack_intents(
     for handler_name in &order {
         let handler = match registry.get(handler_name.as_str()) {
             Some(h) => h,
-            None => continue, // skip unknown handlers (e.g. "exclude")
+            None => {
+                debug!(pack = %pack.name, handler = %handler_name, "skipping unknown handler");
+                continue;
+            }
         };
 
         // Skip code execution handlers if --no-provision
         if ctx.no_provision && handler.category() == handlers::HandlerCategory::CodeExecution {
+            debug!(pack = %pack.name, handler = %handler_name, "skipping code-execution handler (--no-provision)");
             continue;
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
             let intents = handler.to_intents(handler_matches, &pack.config, ctx.paths.as_ref())?;
+            debug!(
+                pack = %pack.name,
+                handler = %handler_name,
+                intents = intents.len(),
+                "generated intents"
+            );
             all_intents.extend(intents);
         }
     }
 
+    info!(pack = %pack.name, intents = all_intents.len(), "collected intents");
     Ok(all_intents)
 }
 
@@ -280,6 +325,13 @@ pub fn execute_intents(
     intents: Vec<crate::operations::HandlerIntent>,
     ctx: &ExecutionContext,
 ) -> Result<Vec<OperationResult>> {
+    let count = intents.len();
+    info!(
+        intents = count,
+        dry_run = ctx.dry_run,
+        force = ctx.force,
+        "executing intents"
+    );
     let auto_chmod = ctx.config_manager.root_config()?.path.auto_chmod_exec;
     let executor = Executor::new(
         ctx.datastore.as_ref(),

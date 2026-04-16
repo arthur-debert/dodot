@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.3] - 2026-04-16
+
+### Added
+- Structured logging via `tracing` with daily-rotating file output to `~/.cache/dodot/logs/`
+- `--verbose` flag: show INFO-level log messages on stderr
+- `--debug` flag: show DEBUG-level log messages on stderr
+- INFO and DEBUG events across orchestration pipeline and executor subsystems
+- Automatic cleanup of log files older than 7 days
+
 ## [0.9.2] - 2026-04-16
 
 ### Changed

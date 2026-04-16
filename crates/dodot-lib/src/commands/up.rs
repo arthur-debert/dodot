@@ -8,6 +8,8 @@
 //! This prevents partial deployments where one pack silently overwrites
 //! another pack's symlinks.
 
+use tracing::{debug, info};
+
 use crate::commands::{
     handler_description, handler_symbol, status_style, DisplayFile, DisplayPack, PackStatusResult,
 };
@@ -26,6 +28,13 @@ use crate::Result;
 /// `--force` is set, because cross-pack conflicts are a configuration
 /// problem, not a deployment problem.
 pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<PackStatusResult> {
+    info!(
+        dry_run = ctx.dry_run,
+        force = ctx.force,
+        no_provision = ctx.no_provision,
+        "starting up command"
+    );
+
     // Phase 1: Discover packs and collect intents
     let packs = orchestration::prepare_packs(pack_filter, ctx)?;
 
@@ -38,6 +47,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
                 pack_intents.push((pack.name.clone(), intents));
             }
             Err(e) => {
+                info!(pack = %pack.name, error = %e, "intent collection failed");
                 intent_errors.push(PackResult {
                     pack_name: pack.name.clone(),
                     success: false,
@@ -49,18 +59,25 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     }
 
     // Phase 2: Detect cross-pack conflicts
+    info!("checking for cross-pack conflicts");
     let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
     if !conflicts.is_empty() {
+        info!(count = conflicts.len(), "cross-pack conflicts detected");
         return Err(crate::DodotError::CrossPackConflict { conflicts });
     }
+    debug!("no cross-pack conflicts");
 
     // Phase 3: Execute intents for each pack
     let mut pack_results: Vec<PackResult> = intent_errors;
 
     for (pack_name, intents) in pack_intents {
+        info!(pack = %pack_name, intents = intents.len(), "executing pack");
         match orchestration::execute_intents(intents, ctx) {
             Ok(operations) => {
                 let success = operations.iter().all(|r| r.success);
+                let succeeded = operations.iter().filter(|o| o.success).count();
+                let failed = operations.iter().filter(|o| !o.success).count();
+                debug!(pack = %pack_name, succeeded, failed, "pack execution complete");
                 pack_results.push(PackResult {
                     pack_name,
                     success,
@@ -69,6 +86,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
                 });
             }
             Err(e) => {
+                info!(pack = %pack_name, error = %e, "pack execution failed");
                 pack_results.push(PackResult {
                     pack_name,
                     success: false,
@@ -81,6 +99,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 
     // Regenerate shell init script
     if !ctx.dry_run {
+        info!("regenerating shell init script");
         shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     }
 

@@ -17,6 +17,7 @@ standout-render = "7.3"
 tempfile = { version = "3", optional = true }
 thiserror = "2"
 toml = "0.8"
+tracing = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
