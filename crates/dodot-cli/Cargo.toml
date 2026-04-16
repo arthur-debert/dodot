@@ -2,7 +2,9 @@
 name = "dodot"
 version = "0.9.0"
 edition = "2021"
+license = "MIT"
 description = "A dotfiles manager that uses symlinks for live editing"
+repository = "https://github.com/arthur-debert/dodot"
 
 [[bin]]
 name = "dodot"
@@ -12,6 +14,6 @@ path = "src/main.rs"
 anyhow = "1"
 clapfig = "0.16"
 clap = { version = "4", features = ["derive"] }
-dodot-lib = { path = "../dodot-lib" }
+dodot-lib = { version = "0.9.0", path = "../dodot-lib" }
 serde = { version = "1", features = ["derive"] }
 standout = "7.1"
