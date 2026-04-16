@@ -5,20 +5,24 @@
 //! target paths are fully resolved — this catches collisions introduced
 //! by `[symlink.targets]`, `force_home`, `_home/` prefixes, etc.
 //!
-//! Only **Link–Link** collisions are detected: two packs produce
-//! `HandlerIntent::Link` with the same resolved `user_path`. This is
-//! a real filesystem collision where the last `up` silently overwrites
-//! the previous pack's symlink.
+//! Two kinds of collision are detected:
 //!
-//! Stage intents (shell/path handlers) are *not* flagged because they
-//! are stored in per-pack namespaced directories in the datastore —
-//! no filesystem collision occurs. Multiple packs having `aliases.sh`
-//! is a legitimate and common pattern.
+//! 1. **Symlink target collisions**: two packs produce
+//!    `HandlerIntent::Link` with the same resolved `user_path`.
+//! 2. **PATH executable shadowing**: two packs stage directories via the
+//!    path handler that contain files with the same name — only the
+//!    first one in PATH order would be found by the shell.
+//!
+//! Shell handler Stage intents are *not* flagged because each pack's
+//! scripts are sourced independently from per-pack namespaced
+//! directories — multiple packs having `aliases.sh` is legitimate.
 
 use std::collections::HashMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use crate::fs::Fs;
+use crate::handlers::HANDLER_PATH;
 use crate::operations::HandlerIntent;
 
 /// One pack's claim on a target path.
@@ -33,7 +37,7 @@ pub struct Claimant {
 #[derive(Debug, Clone)]
 pub struct Conflict {
     /// The resolved target path (filesystem path for Link intents,
-    /// descriptive label for Stage intents).
+    /// descriptive label for path executable collisions).
     pub target: PathBuf,
     /// Every pack that claims this target.
     pub claimants: Vec<Claimant>,
@@ -64,35 +68,53 @@ pub fn format_conflicts(conflicts: &[Conflict]) -> String {
         .join("\n")
 }
 
-/// The effective target for conflict grouping.
-///
-/// Only `Link` intents produce a target (the resolved `user_path`).
-/// `Stage` and `Run` intents don't create user-visible filesystem
-/// entries that could collide — they're stored in per-pack namespaced
-/// directories in the datastore.
-fn effective_target(intent: &HandlerIntent) -> Option<PathBuf> {
-    match intent {
-        HandlerIntent::Link { user_path, .. } => Some(user_path.clone()),
-        HandlerIntent::Stage { .. } | HandlerIntent::Run { .. } => None,
-    }
-}
-
 /// Detect cross-pack conflicts across all collected intents.
 ///
 /// `pack_intents` is a slice of `(pack_name, intents)` pairs, one per
 /// pack. Returns a (possibly empty) list of conflicts where multiple
 /// **different** packs claim the same target.
-pub fn detect_cross_pack_conflicts(pack_intents: &[(String, Vec<HandlerIntent>)]) -> Vec<Conflict> {
+///
+/// `fs` is needed to list the contents of path-handler directories
+/// for executable name collision detection.
+pub fn detect_cross_pack_conflicts(
+    pack_intents: &[(String, Vec<HandlerIntent>)],
+    fs: &dyn Fs,
+) -> Vec<Conflict> {
     let mut targets: HashMap<PathBuf, Vec<Claimant>> = HashMap::new();
 
     for (pack_name, intents) in pack_intents {
         for intent in intents {
-            if let Some(target) = effective_target(intent) {
-                targets.entry(target).or_default().push(Claimant {
-                    pack: pack_name.clone(),
-                    handler: intent.handler().to_string(),
-                    source: intent_source(intent),
-                });
+            // Symlink target conflicts
+            if let HandlerIntent::Link { user_path, .. } = intent {
+                targets
+                    .entry(user_path.clone())
+                    .or_default()
+                    .push(Claimant {
+                        pack: pack_name.clone(),
+                        handler: intent.handler().to_string(),
+                        source: intent_source(intent),
+                    });
+            }
+
+            // PATH executable shadowing: list files inside staged directories
+            if let HandlerIntent::Stage {
+                handler, source, ..
+            } = intent
+            {
+                if handler == HANDLER_PATH {
+                    if let Ok(entries) = fs.read_dir(source) {
+                        for entry in entries {
+                            if entry.is_file {
+                                let key = Path::new("<path-executable>").join(&entry.name);
+                                targets.entry(key).or_default().push(Claimant {
+                                    pack: pack_name.clone(),
+                                    handler: handler.clone(),
+                                    source: entry.path.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -101,8 +123,6 @@ pub fn detect_cross_pack_conflicts(pack_intents: &[(String, Vec<HandlerIntent>)]
         .into_iter()
         .filter(|(_, claimants)| {
             // Only flag when at least two *different* packs claim the target.
-            // Same-pack "conflicts" are out of scope (a single pack can't
-            // have two files with the same name).
             let first = &claimants[0].pack;
             claimants.len() > 1 && claimants.iter().any(|c| c.pack != *first)
         })
@@ -125,6 +145,7 @@ fn intent_source(intent: &HandlerIntent) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::TempEnvironment;
 
     fn link(pack: &str, source: &str, user_path: &str) -> HandlerIntent {
         HandlerIntent::Link {
@@ -143,10 +164,16 @@ mod tests {
         }
     }
 
+    /// Helper: create a mock Fs for tests that don't need real filesystem.
+    fn dummy_fs() -> std::sync::Arc<crate::fs::OsFs> {
+        std::sync::Arc::new(crate::fs::OsFs::new())
+    }
+
     // ── No conflicts ───────────────────────────────────────────
 
     #[test]
     fn no_conflicts_when_different_targets() {
+        let fs = dummy_fs();
         let pack_intents = vec![
             (
                 "vim".into(),
@@ -157,12 +184,13 @@ mod tests {
                 vec![link("git", "/dot/git/gitconfig", "/home/.gitconfig")],
             ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert!(conflicts.is_empty());
     }
 
     #[test]
     fn no_conflicts_when_single_pack() {
+        let fs = dummy_fs();
         let pack_intents = vec![(
             "vim".into(),
             vec![
@@ -170,18 +198,20 @@ mod tests {
                 link("vim", "/dot/vim/gvimrc", "/home/.gvimrc"),
             ],
         )];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert!(conflicts.is_empty());
     }
 
     #[test]
     fn no_conflicts_when_empty() {
-        let conflicts = detect_cross_pack_conflicts(&[]);
+        let fs = dummy_fs();
+        let conflicts = detect_cross_pack_conflicts(&[], fs.as_ref());
         assert!(conflicts.is_empty());
     }
 
     #[test]
     fn no_conflicts_for_run_intents() {
+        let fs = dummy_fs();
         let pack_intents = vec![
             (
                 "a".into(),
@@ -204,7 +234,7 @@ mod tests {
                 }],
             ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert!(conflicts.is_empty());
     }
 
@@ -212,6 +242,7 @@ mod tests {
 
     #[test]
     fn detects_link_link_conflict() {
+        let fs = dummy_fs();
         let pack_intents = vec![
             (
                 "pack-a".into(),
@@ -222,7 +253,7 @@ mod tests {
                 vec![link("pack-b", "/dot/pack-b/aliases", "/home/.aliases")],
             ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].target, PathBuf::from("/home/.aliases"));
         assert_eq!(conflicts[0].claimants.len(), 2);
@@ -238,6 +269,7 @@ mod tests {
 
     #[test]
     fn detects_multiple_conflicts() {
+        let fs = dummy_fs();
         let pack_intents = vec![
             (
                 "a".into(),
@@ -254,12 +286,13 @@ mod tests {
                 ],
             ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert_eq!(conflicts.len(), 2);
     }
 
     #[test]
     fn three_packs_one_conflict() {
+        let fs = dummy_fs();
         let pack_intents = vec![
             (
                 "a".into(),
@@ -274,18 +307,16 @@ mod tests {
                 vec![link("c", "/dot/c/conf", "/home/.config/app/conf")],
             ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].claimants.len(), 3);
     }
 
-    // ── Stage intents are NOT conflicts ──────────────────────────
-    //
-    // Shell/path handlers stage files into per-pack namespaced
-    // datastore directories — no filesystem collision occurs.
+    // ── Stage intents ──────────────────────────────────────────
 
     #[test]
     fn same_name_shell_scripts_are_not_conflicts() {
+        let fs = dummy_fs();
         let pack_intents = vec![
             (
                 "vim".into(),
@@ -296,7 +327,7 @@ mod tests {
                 vec![stage("git", "shell", "/dot/git/aliases.sh")],
             ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
         assert!(
             conflicts.is_empty(),
             "same-name shell scripts in different packs are legitimate"
@@ -304,25 +335,158 @@ mod tests {
     }
 
     #[test]
-    fn same_name_path_dirs_are_not_conflicts() {
+    fn stage_intents_do_not_conflict_with_link_intents() {
+        let fs = dummy_fs();
         let pack_intents = vec![
-            ("a".into(), vec![stage("a", "path", "/dot/a/bin")]),
-            ("b".into(), vec![stage("b", "path", "/dot/b/bin")]),
+            ("a".into(), vec![link("a", "/dot/a/tool", "/home/bin/tool")]),
+            ("b".into(), vec![stage("b", "path", "/nonexistent/dir")]),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, fs.as_ref());
+        assert!(conflicts.is_empty());
+    }
+
+    // ── PATH executable shadowing ──────────────────────────────
+
+    #[test]
+    fn detects_path_executable_shadowing() {
+        // Two packs both have bin/ directories containing a file named `tool`
+        let env = TempEnvironment::builder()
+            .pack("tools-a")
+            .file("bin/tool", "#!/bin/sh\necho a")
+            .done()
+            .pack("tools-b")
+            .file("bin/tool", "#!/bin/sh\necho b")
+            .done()
+            .build();
+
+        let pack_intents = vec![
+            (
+                "tools-a".into(),
+                vec![stage(
+                    "tools-a",
+                    "path",
+                    &env.dotfiles_root.join("tools-a/bin").to_string_lossy(),
+                )],
+            ),
+            (
+                "tools-b".into(),
+                vec![stage(
+                    "tools-b",
+                    "path",
+                    &env.dotfiles_root.join("tools-b/bin").to_string_lossy(),
+                )],
+            ),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
+        assert_eq!(conflicts.len(), 1, "should detect shadowed executable");
+
+        let c = &conflicts[0];
         assert!(
-            conflicts.is_empty(),
-            "same-name path dirs in different packs are legitimate"
+            c.target.to_string_lossy().contains("tool"),
+            "target should mention the executable name: {}",
+            c.target.display()
         );
+        assert_eq!(c.claimants.len(), 2);
+
+        let packs: Vec<&str> = c.claimants.iter().map(|cl| cl.pack.as_str()).collect();
+        assert!(packs.contains(&"tools-a"));
+        assert!(packs.contains(&"tools-b"));
     }
 
     #[test]
-    fn stage_intents_do_not_conflict_with_link_intents() {
+    fn no_path_conflict_when_different_executables() {
+        // Two packs with bin/ directories but different file names — no conflict
+        let env = TempEnvironment::builder()
+            .pack("tools-a")
+            .file("bin/tool-a", "#!/bin/sh")
+            .done()
+            .pack("tools-b")
+            .file("bin/tool-b", "#!/bin/sh")
+            .done()
+            .build();
+
         let pack_intents = vec![
-            ("a".into(), vec![link("a", "/dot/a/tool", "/home/bin/tool")]),
-            ("b".into(), vec![stage("b", "path", "/dot/b/tool")]),
+            (
+                "tools-a".into(),
+                vec![stage(
+                    "tools-a",
+                    "path",
+                    &env.dotfiles_root.join("tools-a/bin").to_string_lossy(),
+                )],
+            ),
+            (
+                "tools-b".into(),
+                vec![stage(
+                    "tools-b",
+                    "path",
+                    &env.dotfiles_root.join("tools-b/bin").to_string_lossy(),
+                )],
+            ),
         ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
+        assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn path_executable_conflict_shows_source_files() {
+        let env = TempEnvironment::builder()
+            .pack("a")
+            .file("bin/deploy", "#!/bin/sh\necho a")
+            .done()
+            .pack("b")
+            .file("bin/deploy", "#!/bin/sh\necho b")
+            .done()
+            .build();
+
+        let pack_intents = vec![
+            (
+                "a".into(),
+                vec![stage(
+                    "a",
+                    "path",
+                    &env.dotfiles_root.join("a/bin").to_string_lossy(),
+                )],
+            ),
+            (
+                "b".into(),
+                vec![stage(
+                    "b",
+                    "path",
+                    &env.dotfiles_root.join("b/bin").to_string_lossy(),
+                )],
+            ),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
+        assert_eq!(conflicts.len(), 1);
+
+        // Claimant sources should point to the actual files, not the directories
+        for claimant in &conflicts[0].claimants {
+            assert!(
+                claimant.source.to_string_lossy().contains("deploy"),
+                "source should be the file, not the directory: {}",
+                claimant.source.display()
+            );
+        }
+    }
+
+    #[test]
+    fn same_pack_path_executables_are_not_conflicts() {
+        // A single pack can't conflict with itself
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/tool", "#!/bin/sh")
+            .done()
+            .build();
+
+        let pack_intents = vec![(
+            "tools".into(),
+            vec![stage(
+                "tools",
+                "path",
+                &env.dotfiles_root.join("tools/bin").to_string_lossy(),
+            )],
+        )];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
         assert!(conflicts.is_empty());
     }
 

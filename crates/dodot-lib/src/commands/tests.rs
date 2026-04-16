@@ -1054,9 +1054,8 @@ fn up_same_name_shell_scripts_are_not_conflicts() {
 }
 
 #[test]
-fn up_same_name_path_dirs_are_not_conflicts() {
-    // Two packs both having bin/ is legitimate — they're staged
-    // in separate datastore directories and both added to PATH.
+fn up_path_dirs_with_different_executables_ok() {
+    // Two packs both having bin/ with different file names — no conflict.
     let env = TempEnvironment::builder()
         .pack("tools-a")
         .file("bin/tool-a", "#!/bin/sh")
@@ -1069,6 +1068,30 @@ fn up_same_name_path_dirs_are_not_conflicts() {
     let ctx = make_ctx(&env);
     let result = commands::up::up(None, &ctx).unwrap();
     assert_eq!(result.message.as_deref(), Some("Packs deployed."));
+}
+
+#[test]
+fn up_path_dirs_with_same_executable_name_conflicts() {
+    // Two packs both have bin/tool — one would shadow the other in PATH.
+    let env = TempEnvironment::builder()
+        .pack("tools-a")
+        .file("bin/tool", "#!/bin/sh\necho a")
+        .done()
+        .pack("tools-b")
+        .file("bin/tool", "#!/bin/sh\necho b")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "same-name executables across packs should conflict: {err}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("tool"), "should mention the executable: {msg}");
+    assert!(msg.contains("tools-a"), "should mention pack a: {msg}");
+    assert!(msg.contains("tools-b"), "should mention pack b: {msg}");
 }
 
 #[test]

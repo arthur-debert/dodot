@@ -321,7 +321,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     }
 
     // Detect and surface cross-pack conflicts as warnings
-    let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents);
+    let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
     if !detected_conflicts.is_empty() {
         let home = ctx.paths.home_dir();
         warnings.extend(conflict_warnings(&detected_conflicts, home));
