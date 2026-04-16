@@ -2,9 +2,23 @@
 //!
 //! The executor is where the complexity lives. Handlers just declare
 //! what they want; the executor figures out how to make it happen.
+//!
+//! ## Auto-executable permissions
+//!
+//! When `auto_chmod_exec` is enabled (the default), the executor
+//! ensures that files inside path-handler staged directories have
+//! execute permissions (`+x`). This matches the user's intent: files
+//! in `bin/` are there to be runnable, but execute bits can be lost
+//! in common workflows (git on macOS, manual file creation).
+//!
+//! Permission failures are reported as warnings in the operation
+//! results, not hard errors — the file is still staged and added to
+//! `$PATH`, it just won't be directly runnable until the user fixes
+//! permissions manually.
 
 use crate::datastore::DataStore;
 use crate::fs::Fs;
+use crate::handlers::HANDLER_PATH;
 use crate::operations::{HandlerIntent, Operation, OperationResult};
 use crate::Result;
 
@@ -15,6 +29,7 @@ pub struct Executor<'a> {
     dry_run: bool,
     force: bool,
     provision_rerun: bool,
+    auto_chmod_exec: bool,
 }
 
 impl<'a> Executor<'a> {
@@ -24,6 +39,7 @@ impl<'a> Executor<'a> {
         dry_run: bool,
         force: bool,
         provision_rerun: bool,
+        auto_chmod_exec: bool,
     ) -> Self {
         Self {
             datastore,
@@ -31,6 +47,7 @@ impl<'a> Executor<'a> {
             dry_run,
             force,
             provision_rerun,
+            auto_chmod_exec,
         }
     }
 
@@ -133,13 +150,20 @@ impl<'a> Executor<'a> {
                     source: source.clone(),
                 };
 
-                Ok(vec![OperationResult::ok(
+                let mut results = vec![OperationResult::ok(
                     op,
                     format!(
                         "staged {}",
                         source.file_name().unwrap_or_default().to_string_lossy(),
                     ),
-                )])
+                )];
+
+                // Auto-chmod +x for path handler directories
+                if handler == HANDLER_PATH && self.auto_chmod_exec {
+                    results.extend(self.ensure_executable(source));
+                }
+
+                Ok(results)
             }
 
             HandlerIntent::Run {
@@ -189,6 +213,96 @@ impl<'a> Executor<'a> {
                 )])
             }
         }
+    }
+
+    /// Ensure all files in a path-handler directory are executable.
+    ///
+    /// Iterates files in `dir`, checks each for the execute bit, and
+    /// adds it if missing. Returns one `OperationResult` per file that
+    /// was made executable (or that failed). Files that are already
+    /// executable produce no output.
+    ///
+    /// Permission failures are non-fatal warnings — the file is still
+    /// staged and visible in `$PATH`, it just won't be runnable until
+    /// the user fixes permissions manually.
+    fn ensure_executable(&self, dir: &std::path::Path) -> Vec<OperationResult> {
+        let mut results = Vec::new();
+        let entries = match self.fs.read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return results,
+        };
+
+        for entry in entries {
+            if !entry.is_file {
+                continue;
+            }
+            let meta = match self.fs.stat(&entry.path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let is_exec = meta.mode & 0o111 != 0;
+            if is_exec {
+                continue;
+            }
+
+            // Add user/group/other execute bits, preserving existing permissions.
+            let new_mode = meta.mode | 0o111;
+            let op = Operation::CreateDataLink {
+                pack: String::new(),
+                handler: HANDLER_PATH.into(),
+                source: entry.path.clone(),
+            };
+
+            match self.fs.set_permissions(&entry.path, new_mode) {
+                Ok(()) => {
+                    results.push(OperationResult::ok(op, format!("chmod +x {}", entry.name)));
+                }
+                Err(e) => {
+                    results.push(OperationResult::fail(
+                        op,
+                        format!("warning: could not chmod +x {}: {}", entry.name, e),
+                    ));
+                }
+            }
+        }
+
+        results
+    }
+
+    /// Report files in a path-handler directory that lack execute
+    /// permissions (dry-run mode — no mutations).
+    fn report_non_executable(&self, dir: &std::path::Path) -> Vec<OperationResult> {
+        let mut results = Vec::new();
+        let entries = match self.fs.read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return results,
+        };
+
+        for entry in entries {
+            if !entry.is_file {
+                continue;
+            }
+            let meta = match self.fs.stat(&entry.path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let is_exec = meta.mode & 0o111 != 0;
+            if !is_exec {
+                let op = Operation::CreateDataLink {
+                    pack: String::new(),
+                    handler: HANDLER_PATH.into(),
+                    source: entry.path.clone(),
+                };
+                results.push(OperationResult::ok(
+                    op,
+                    format!("[dry-run] would chmod +x {}", entry.name),
+                ));
+            }
+        }
+
+        results
     }
 
     /// Simulate an intent without touching the filesystem.
@@ -252,7 +366,7 @@ impl<'a> Executor<'a> {
                 handler,
                 source,
             } => {
-                vec![OperationResult::ok(
+                let mut results = vec![OperationResult::ok(
                     Operation::CreateDataLink {
                         pack: pack.clone(),
                         handler: handler.clone(),
@@ -262,7 +376,13 @@ impl<'a> Executor<'a> {
                         "[dry-run] would stage: {}",
                         source.file_name().unwrap_or_default().to_string_lossy()
                     ),
-                )]
+                )];
+
+                if handler == HANDLER_PATH && self.auto_chmod_exec {
+                    results.extend(self.report_non_executable(source));
+                }
+
+                results
             }
 
             HandlerIntent::Run {
@@ -334,7 +454,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -364,7 +484,7 @@ mod tests {
             .home_file(".vimrc", "existing content")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -407,7 +527,7 @@ mod tests {
             .home_file(".vimrc", "existing content")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, true, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, true, false, true);
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -442,7 +562,7 @@ mod tests {
             .home_file(".vimrc", "existing content")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
 
         let results = executor
             .execute(vec![
@@ -485,7 +605,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
 
         let source = env.dotfiles_root.join("vim/aliases.sh");
 
@@ -512,7 +632,7 @@ mod tests {
     fn execute_run_creates_sentinel() {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
 
         let results = executor
             .execute(vec![HandlerIntent::Run {
@@ -542,7 +662,7 @@ mod tests {
             .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
         let results = executor
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
@@ -571,7 +691,7 @@ mod tests {
             .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, true);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, true, true);
         let results = executor
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
@@ -600,7 +720,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false, true);
 
         let results = executor
             .execute(vec![
@@ -648,7 +768,7 @@ mod tests {
             .home_file(".vimrc", "existing")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false, true);
 
         let results = executor
             .execute(vec![HandlerIntent::Link {
@@ -673,7 +793,7 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false);
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
 
         let results = executor
             .execute(vec![
@@ -709,5 +829,257 @@ mod tests {
             &env.dotfiles_root.join("vim/gvimrc"),
             &env.home.join(".gvimrc"),
         );
+    }
+
+    // ── Auto-chmod +x for path handler ─────────────────────────
+
+    #[test]
+    fn path_stage_adds_execute_permission() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/mytool", "#!/bin/sh\necho hello")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        // Verify the file starts without execute permission
+        let tool_path = env.dotfiles_root.join("tools/bin/mytool");
+        let meta_before = env.fs.stat(&tool_path).unwrap();
+        assert_eq!(
+            meta_before.mode & 0o111,
+            0,
+            "file should start non-executable"
+        );
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "tools".into(),
+                handler: "path".into(),
+                source: env.dotfiles_root.join("tools/bin"),
+            }])
+            .unwrap();
+
+        // Should have the stage result + chmod result
+        assert!(results.len() >= 2, "results: {results:?}");
+        let chmod_result = results.iter().find(|r| r.message.contains("chmod +x"));
+        assert!(
+            chmod_result.is_some(),
+            "should have a chmod +x result: {results:?}"
+        );
+        assert!(chmod_result.unwrap().success);
+
+        // Verify file is now executable
+        let meta_after = env.fs.stat(&tool_path).unwrap();
+        assert_ne!(
+            meta_after.mode & 0o111,
+            0,
+            "file should be executable after up"
+        );
+    }
+
+    #[test]
+    fn path_stage_skips_already_executable() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/mytool", "#!/bin/sh\necho hello")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        // Pre-set execute permission
+        let tool_path = env.dotfiles_root.join("tools/bin/mytool");
+        env.fs.set_permissions(&tool_path, 0o755).unwrap();
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "tools".into(),
+                handler: "path".into(),
+                source: env.dotfiles_root.join("tools/bin"),
+            }])
+            .unwrap();
+
+        // Should only have the stage result — no chmod needed
+        let chmod_results: Vec<_> = results
+            .iter()
+            .filter(|r| r.message.contains("chmod"))
+            .collect();
+        assert!(
+            chmod_results.is_empty(),
+            "already-executable file should not produce chmod result: {chmod_results:?}"
+        );
+    }
+
+    #[test]
+    fn path_stage_auto_chmod_disabled() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/mytool", "#!/bin/sh\necho hello")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        // auto_chmod_exec = false
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, false);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "tools".into(),
+                handler: "path".into(),
+                source: env.dotfiles_root.join("tools/bin"),
+            }])
+            .unwrap();
+
+        // Should only have the stage result — no chmod attempted
+        let chmod_results: Vec<_> = results
+            .iter()
+            .filter(|r| r.message.contains("chmod"))
+            .collect();
+        assert!(
+            chmod_results.is_empty(),
+            "auto_chmod_exec=false should skip chmod: {chmod_results:?}"
+        );
+
+        // File should remain non-executable
+        let tool_path = env.dotfiles_root.join("tools/bin/mytool");
+        let meta = env.fs.stat(&tool_path).unwrap();
+        assert_eq!(meta.mode & 0o111, 0, "file should remain non-executable");
+    }
+
+    #[test]
+    fn path_stage_skips_directories() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/subdir/nested", "#!/bin/sh")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "tools".into(),
+                handler: "path".into(),
+                source: env.dotfiles_root.join("tools/bin"),
+            }])
+            .unwrap();
+
+        // The chmod should only apply to files, not the subdir directory
+        let chmod_results: Vec<_> = results
+            .iter()
+            .filter(|r| r.message.contains("chmod"))
+            .collect();
+        // subdir is a directory, not a file — should not be chmod'd
+        for r in &chmod_results {
+            assert!(
+                !r.message.contains("subdir"),
+                "directories should not be chmod'd: {}",
+                r.message
+            );
+        }
+    }
+
+    #[test]
+    fn shell_stage_does_not_auto_chmod() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "vim".into(),
+                handler: "shell".into(),
+                source: env.dotfiles_root.join("vim/aliases.sh"),
+            }])
+            .unwrap();
+
+        let chmod_results: Vec<_> = results
+            .iter()
+            .filter(|r| r.message.contains("chmod"))
+            .collect();
+        assert!(
+            chmod_results.is_empty(),
+            "shell handler should not auto-chmod: {chmod_results:?}"
+        );
+    }
+
+    #[test]
+    fn dry_run_reports_non_executable_without_modifying() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/mytool", "#!/bin/sh\necho hello")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "tools".into(),
+                handler: "path".into(),
+                source: env.dotfiles_root.join("tools/bin"),
+            }])
+            .unwrap();
+
+        // Should report what would be chmod'd
+        let chmod_results: Vec<_> = results
+            .iter()
+            .filter(|r| r.message.contains("chmod"))
+            .collect();
+        assert!(
+            !chmod_results.is_empty(),
+            "dry-run should report non-executable files"
+        );
+        assert!(chmod_results[0].message.contains("[dry-run]"));
+
+        // File should NOT have been modified
+        let tool_path = env.dotfiles_root.join("tools/bin/mytool");
+        let meta = env.fs.stat(&tool_path).unwrap();
+        assert_eq!(
+            meta.mode & 0o111,
+            0,
+            "dry-run should not modify permissions"
+        );
+    }
+
+    #[test]
+    fn path_stage_auto_chmod_multiple_files() {
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("bin/tool-a", "#!/bin/sh\necho a")
+            .file("bin/tool-b", "#!/bin/sh\necho b")
+            .done()
+            .build();
+        let (ds, _) = make_datastore(&env);
+
+        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let results = executor
+            .execute(vec![HandlerIntent::Stage {
+                pack: "tools".into(),
+                handler: "path".into(),
+                source: env.dotfiles_root.join("tools/bin"),
+            }])
+            .unwrap();
+
+        let chmod_results: Vec<_> = results
+            .iter()
+            .filter(|r| r.message.contains("chmod +x"))
+            .collect();
+        assert_eq!(
+            chmod_results.len(),
+            2,
+            "should chmod both files: {chmod_results:?}"
+        );
+
+        // Both files should be executable
+        for name in ["tool-a", "tool-b"] {
+            let path = env.dotfiles_root.join(format!("tools/bin/{name}"));
+            let meta = env.fs.stat(&path).unwrap();
+            assert_ne!(meta.mode & 0o111, 0, "{name} should be executable");
+        }
     }
 }

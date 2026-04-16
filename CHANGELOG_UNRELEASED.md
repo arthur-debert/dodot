@@ -11,6 +11,7 @@ Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
 - `dodot status` surfaces potential cross-pack conflicts as warnings, even for packs that aren't deployed yet
 - Symlink target collisions detected across all resolution layers: `[symlink.targets]`, `_home/` prefix, `dot.` convention, `force_home`, XDG defaults
 - PATH executable shadowing detected: two packs with `bin/` directories containing same-named files are flagged (one would shadow the other in `$PATH`)
+- **Auto-executable permissions**: `dodot up` now automatically adds `+x` to files in path-handler directories (`bin/`), matching user intent that these files should be runnable. Controlled by `[path] auto_chmod_exec` (default: `true`). Already-executable files are left untouched; permission failures are reported as warnings, not hard errors.
 - New `CrossPackConflict` error variant with structured conflict data
 
 ### Changed

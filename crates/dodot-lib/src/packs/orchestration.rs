@@ -280,12 +280,18 @@ pub fn execute_intents(
     intents: Vec<crate::operations::HandlerIntent>,
     ctx: &ExecutionContext,
 ) -> Result<Vec<OperationResult>> {
+    let auto_chmod = ctx
+        .config_manager
+        .root_config()
+        .map(|c| c.path.auto_chmod_exec)
+        .unwrap_or(true);
     let executor = Executor::new(
         ctx.datastore.as_ref(),
         ctx.fs.as_ref(),
         ctx.dry_run,
         ctx.force,
         ctx.provision_rerun,
+        auto_chmod,
     );
     executor.execute(intents)
 }

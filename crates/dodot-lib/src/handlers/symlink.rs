@@ -276,6 +276,7 @@ mod tests {
                 ".gnupg".into(),
             ],
             targets: std::collections::HashMap::new(),
+            ..HandlerConfig::default()
         }
     }
 
