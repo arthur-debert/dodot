@@ -20,8 +20,8 @@ fn main() {
     };
     let log_dir = dodot_lib::paths::XdgPather::from_env()
         .map(|p| dodot_lib::paths::Pather::log_dir(&p))
-        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/dodot-logs"));
-    logging::init(&log_dir, verbosity);
+        .unwrap_or_else(|_| std::env::temp_dir().join("dodot-logs"));
+    let _log_guard = logging::init(&log_dir, verbosity);
 
     // Passthrough: config (clapfig handles its own output)
     if let Some(("config", sub_matches)) = matches.subcommand() {
