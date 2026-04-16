@@ -58,14 +58,25 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     let mut pack_results: Vec<PackResult> = intent_errors;
 
     for (pack_name, intents) in pack_intents {
-        let operations = orchestration::execute_intents(intents, ctx)?;
-        let success = operations.iter().all(|r| r.success);
-        pack_results.push(PackResult {
-            pack_name,
-            success,
-            operations,
-            error: None,
-        });
+        match orchestration::execute_intents(intents, ctx) {
+            Ok(operations) => {
+                let success = operations.iter().all(|r| r.success);
+                pack_results.push(PackResult {
+                    pack_name,
+                    success,
+                    operations,
+                    error: None,
+                });
+            }
+            Err(e) => {
+                pack_results.push(PackResult {
+                    pack_name,
+                    success: false,
+                    operations: Vec::new(),
+                    error: Some(format!("execution error: {e}")),
+                });
+            }
+        }
     }
 
     // Regenerate shell init script

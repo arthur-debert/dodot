@@ -5,18 +5,19 @@
 //! target paths are fully resolved — this catches collisions introduced
 //! by `[symlink.targets]`, `force_home`, `_home/` prefixes, etc.
 //!
-//! Three kinds of collision are detected:
+//! Only **Link–Link** collisions are detected: two packs produce
+//! `HandlerIntent::Link` with the same resolved `user_path`. This is
+//! a real filesystem collision where the last `up` silently overwrites
+//! the previous pack's symlink.
 //!
-//! 1. **Link–Link**: two packs produce `HandlerIntent::Link` with the
-//!    same resolved `user_path`.
-//! 2. **Stage–Stage (shell)**: two packs stage shell scripts with the
-//!    same filename (both get sourced → duplicated/conflicting work).
-//! 3. **Stage–Stage (path)**: two packs stage directories with the same
-//!    name (both added to `$PATH` → duplicate entries).
+//! Stage intents (shell/path handlers) are *not* flagged because they
+//! are stored in per-pack namespaced directories in the datastore —
+//! no filesystem collision occurs. Multiple packs having `aliases.sh`
+//! is a legitimate and common pattern.
 
 use std::collections::HashMap;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::operations::HandlerIntent;
 
@@ -65,21 +66,14 @@ pub fn format_conflicts(conflicts: &[Conflict]) -> String {
 
 /// The effective target for conflict grouping.
 ///
-/// For `Link` intents this is the resolved `user_path`. For `Stage`
-/// intents we use a synthetic key based on handler + filename so that
-/// two packs staging the same-named script/directory are flagged.
+/// Only `Link` intents produce a target (the resolved `user_path`).
+/// `Stage` and `Run` intents don't create user-visible filesystem
+/// entries that could collide — they're stored in per-pack namespaced
+/// directories in the datastore.
 fn effective_target(intent: &HandlerIntent) -> Option<PathBuf> {
     match intent {
         HandlerIntent::Link { user_path, .. } => Some(user_path.clone()),
-        HandlerIntent::Stage {
-            handler, source, ..
-        } => {
-            let filename = source.file_name()?;
-            // Synthetic path that cannot collide with real filesystem
-            // paths: `<staged>/{handler}/{filename}`.
-            Some(Path::new("<staged>").join(handler).join(filename))
-        }
-        HandlerIntent::Run { .. } => None,
+        HandlerIntent::Stage { .. } | HandlerIntent::Run { .. } => None,
     }
 }
 
@@ -141,18 +135,10 @@ mod tests {
         }
     }
 
-    fn stage_shell(pack: &str, source: &str) -> HandlerIntent {
+    fn stage(pack: &str, handler: &str, source: &str) -> HandlerIntent {
         HandlerIntent::Stage {
             pack: pack.into(),
-            handler: "shell".into(),
-            source: PathBuf::from(source),
-        }
-    }
-
-    fn stage_path(pack: &str, source: &str) -> HandlerIntent {
-        HandlerIntent::Stage {
-            pack: pack.into(),
-            handler: "path".into(),
+            handler: handler.into(),
             source: PathBuf::from(source),
         }
     }
@@ -293,62 +279,51 @@ mod tests {
         assert_eq!(conflicts[0].claimants.len(), 3);
     }
 
-    // ── Stage conflicts ────────────────────────────────────────
+    // ── Stage intents are NOT conflicts ──────────────────────────
+    //
+    // Shell/path handlers stage files into per-pack namespaced
+    // datastore directories — no filesystem collision occurs.
 
     #[test]
-    fn detects_shell_stage_conflict() {
+    fn same_name_shell_scripts_are_not_conflicts() {
         let pack_intents = vec![
             (
                 "vim".into(),
-                vec![stage_shell("vim", "/dot/vim/aliases.sh")],
+                vec![stage("vim", "shell", "/dot/vim/aliases.sh")],
             ),
             (
                 "git".into(),
-                vec![stage_shell("git", "/dot/git/aliases.sh")],
+                vec![stage("git", "shell", "/dot/git/aliases.sh")],
             ),
-        ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
-        assert_eq!(conflicts.len(), 1);
-        assert!(conflicts[0].target.to_string_lossy().contains("aliases.sh"));
-    }
-
-    #[test]
-    fn detects_path_stage_conflict() {
-        let pack_intents = vec![
-            ("a".into(), vec![stage_path("a", "/dot/a/bin")]),
-            ("b".into(), vec![stage_path("b", "/dot/b/bin")]),
-        ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
-        assert_eq!(conflicts.len(), 1);
-    }
-
-    #[test]
-    fn no_cross_handler_stage_conflict() {
-        // Shell and path handlers staging same-named files should NOT
-        // conflict — they're in different namespaces.
-        let pack_intents = vec![
-            ("a".into(), vec![stage_shell("a", "/dot/a/setup.sh")]),
-            ("b".into(), vec![stage_path("b", "/dot/b/setup.sh")]),
-        ];
-        let conflicts = detect_cross_pack_conflicts(&pack_intents);
-        assert!(conflicts.is_empty());
-    }
-
-    // ── Mixed intent types ─────────────────────────────────────
-
-    #[test]
-    fn conflict_only_between_same_intent_types() {
-        // A Link and a Stage targeting conceptually the same name
-        // should NOT conflict (different namespaces).
-        let pack_intents = vec![
-            ("a".into(), vec![link("a", "/dot/a/tool", "/home/bin/tool")]),
-            ("b".into(), vec![stage_path("b", "/dot/b/tool")]),
         ];
         let conflicts = detect_cross_pack_conflicts(&pack_intents);
         assert!(
             conflicts.is_empty(),
-            "Link and Stage should not cross-conflict via grouping"
+            "same-name shell scripts in different packs are legitimate"
         );
+    }
+
+    #[test]
+    fn same_name_path_dirs_are_not_conflicts() {
+        let pack_intents = vec![
+            ("a".into(), vec![stage("a", "path", "/dot/a/bin")]),
+            ("b".into(), vec![stage("b", "path", "/dot/b/bin")]),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        assert!(
+            conflicts.is_empty(),
+            "same-name path dirs in different packs are legitimate"
+        );
+    }
+
+    #[test]
+    fn stage_intents_do_not_conflict_with_link_intents() {
+        let pack_intents = vec![
+            ("a".into(), vec![link("a", "/dot/a/tool", "/home/bin/tool")]),
+            ("b".into(), vec![stage("b", "path", "/dot/b/tool")]),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents);
+        assert!(conflicts.is_empty());
     }
 
     // ── Display ────────────────────────────────────────────────

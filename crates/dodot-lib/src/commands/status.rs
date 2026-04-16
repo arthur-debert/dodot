@@ -191,14 +191,11 @@ fn conflict_warnings(conflicts: &[conflicts::Conflict], home: &std::path::Path) 
         };
         warnings.push(format!("  target: {target_display}"));
         for claimant in &c.claimants {
-            let source_display = claimant
-                .source
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy();
             warnings.push(format!(
                 "    - pack '{}' ({} handler): {}",
-                claimant.pack, claimant.handler, source_display
+                claimant.pack,
+                claimant.handler,
+                claimant.source.display()
             ));
         }
     }
@@ -247,8 +244,16 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         let matches = scanner.scan_pack(&pack, &rules, &pack_config.pack.ignore)?;
 
         // Collect intents for conflict detection
-        if let Ok(intents) = orchestration::collect_pack_intents(&pack, ctx) {
-            pack_intents.push((pack.name.clone(), intents));
+        match orchestration::collect_pack_intents(&pack, ctx) {
+            Ok(intents) => {
+                pack_intents.push((pack.name.clone(), intents));
+            }
+            Err(err) => {
+                warnings.push(format!(
+                    "could not collect intents for pack '{}'; conflict detection may be incomplete: {}",
+                    pack.name, err
+                ));
+            }
         }
 
         let mut files = Vec::new();

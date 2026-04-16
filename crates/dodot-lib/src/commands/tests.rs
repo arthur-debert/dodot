@@ -1036,8 +1036,9 @@ fn up_filtered_packs_only_checks_filtered_subset() {
 }
 
 #[test]
-fn up_shell_handler_cross_pack_conflict() {
-    // Two packs both having aliases.sh → both staged for shell sourcing.
+fn up_same_name_shell_scripts_are_not_conflicts() {
+    // Two packs both having aliases.sh is a legitimate and common
+    // pattern — they're staged in per-pack namespaced directories.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("aliases.sh", "alias vi=vim")
@@ -1048,16 +1049,14 @@ fn up_shell_handler_cross_pack_conflict() {
         .build();
 
     let ctx = make_ctx(&env);
-    let err = commands::up::up(None, &ctx).unwrap_err();
-    assert!(
-        matches!(err, crate::DodotError::CrossPackConflict { .. }),
-        "same-name shell scripts across packs should conflict, got: {err}"
-    );
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
 }
 
 #[test]
-fn up_path_handler_cross_pack_conflict() {
-    // Two packs both having bin/ directories → both staged for PATH.
+fn up_same_name_path_dirs_are_not_conflicts() {
+    // Two packs both having bin/ is legitimate — they're staged
+    // in separate datastore directories and both added to PATH.
     let env = TempEnvironment::builder()
         .pack("tools-a")
         .file("bin/tool-a", "#!/bin/sh")
@@ -1068,11 +1067,8 @@ fn up_path_handler_cross_pack_conflict() {
         .build();
 
     let ctx = make_ctx(&env);
-    let err = commands::up::up(None, &ctx).unwrap_err();
-    assert!(
-        matches!(err, crate::DodotError::CrossPackConflict { .. }),
-        "same-name path directories across packs should conflict, got: {err}"
-    );
+    let result = commands::up::up(None, &ctx).unwrap();
+    assert_eq!(result.message.as_deref(), Some("Packs deployed."));
 }
 
 #[test]
@@ -1383,7 +1379,9 @@ fn up_ignored_pack_does_not_cause_conflict() {
 }
 
 #[test]
-fn status_shell_conflict_warning() {
+fn status_no_warning_for_same_name_shell_scripts() {
+    // Same-name shell scripts in different packs are legitimate
+    // and should not produce conflict warnings.
     let env = TempEnvironment::builder()
         .pack("a")
         .file("aliases.sh", "alias a=1")
@@ -1396,10 +1394,10 @@ fn status_shell_conflict_warning() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    let warnings_text = result.warnings.join("\n");
     assert!(
-        warnings_text.contains("cross-pack conflicts"),
-        "shell filename collision should produce warning: {warnings_text}"
+        result.warnings.is_empty(),
+        "same-name shell scripts should not produce warnings, got: {:?}",
+        result.warnings
     );
 }
 

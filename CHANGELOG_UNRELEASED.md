@@ -7,9 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
 
 ### Added
-- **Cross-pack conflict detection** (#29): `dodot up` now collects intents from all packs before executing any, detects when multiple packs resolve to the same target path, and halts with a clear error listing conflicting packs, handlers, and source files — no partial deployment occurs
+- **Cross-pack conflict detection** (#29): `dodot up` now collects intents from all packs before executing any, detects when multiple packs produce symlinks targeting the same resolved path, and halts with a clear error listing conflicting packs, handlers, and source files — no partial deployment occurs
 - `dodot status` surfaces potential cross-pack conflicts as warnings, even for packs that aren't deployed yet
-- Three collision types detected: symlink target collisions (including via `[symlink.targets]`, `_home/`, `dot.` prefix resolution), shell script filename collisions, and PATH directory name collisions
+- Symlink target collisions detected across all resolution layers: `[symlink.targets]`, `_home/` prefix, `dot.` convention, `force_home`, XDG defaults
 - New `CrossPackConflict` error variant with structured conflict data
 
 ### Changed
