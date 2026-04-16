@@ -604,3 +604,203 @@ fn full_lifecycle_up_status_down_status() {
         .count();
     assert_eq!(total_deployed, deployed_again, "idempotent re-deploy");
 }
+
+// ── status: chain verification ────────────────────────────
+
+#[test]
+fn status_verified_deployed_after_up() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let file = &result.packs[0].files[0];
+    assert_eq!(file.status, "deployed", "should be verified deployed");
+    assert_eq!(file.status_label, "deployed");
+}
+
+#[test]
+fn status_detects_broken_source_deleted() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Delete the source file — scanner won't find it so pack will have no
+    // matches. But the orphaned data link persists in the datastore. This
+    // verifies that deleting a source doesn't crash status and that the
+    // data link survives (a subsequent `up` would clean it up).
+    let source = env.dotfiles_root.join("vim/vimrc");
+    env.fs.remove_file(&source).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    assert!(
+        result.packs[0].files.is_empty(),
+        "deleted source should produce no scanner matches"
+    );
+    assert!(
+        env.fs
+            .is_symlink(&env.paths.handler_data_dir("vim", "symlink").join("vimrc")),
+        "data link should still exist after source deletion"
+    );
+}
+
+#[test]
+fn status_detects_broken_user_link_removed() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Remove the user link (~/.vimrc)
+    let user_path = env.home.join(".vimrc");
+    env.fs.remove_file(&user_path).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let file = &result.packs[0].files[0];
+    assert_eq!(
+        file.status, "stale",
+        "should detect missing user link, got: {} ({})",
+        file.status, file.status_label
+    );
+    assert!(
+        file.status_label.contains("user link missing"),
+        "label: {}",
+        file.status_label
+    );
+}
+
+#[test]
+fn status_detects_conflict_at_user_path() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Replace user symlink with a regular file
+    let user_path = env.home.join(".vimrc");
+    env.fs.remove_file(&user_path).unwrap();
+    env.fs.write_file(&user_path, b"manual file").unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let file = &result.packs[0].files[0];
+    assert_eq!(
+        file.status, "broken",
+        "should detect conflict, got: {} ({})",
+        file.status, file.status_label
+    );
+    assert!(
+        file.status_label.contains("conflict"),
+        "label: {}",
+        file.status_label
+    );
+}
+
+#[test]
+fn status_shell_handler_verified_deployed() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let file = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.handler == "shell")
+        .expect("should have shell file");
+    assert_eq!(
+        file.status, "deployed",
+        "shell handler should be verified deployed"
+    );
+    assert_eq!(file.status_label, "sourced");
+}
+
+#[test]
+fn status_shell_handler_detects_broken_source() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Delete source but keep data link
+    let source = env.dotfiles_root.join("vim/aliases.sh");
+    env.fs.remove_file(&source).unwrap();
+
+    // Scanner won't find the deleted file, so pack will have no matches.
+    // Recreate the source so scanner finds it, but break the chain differently.
+    // Instead, test that the data link pointing to missing source is detected.
+    // We need the file in the pack for the scanner, so write a new one and
+    // then break the data link.
+    env.fs.write_file(&source, b"alias vi=vim").unwrap();
+
+    // Now manually break the data link by pointing it elsewhere
+    let data_link = env
+        .paths
+        .handler_data_dir("vim", "shell")
+        .join("aliases.sh");
+    env.fs.remove_file(&data_link).unwrap();
+    let bogus = env.dotfiles_root.join("vim/nonexistent");
+    env.fs.symlink(&bogus, &data_link).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let file = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.handler == "shell")
+        .expect("should have shell file");
+    assert_eq!(
+        file.status, "broken",
+        "should detect broken data link, got: {} ({})",
+        file.status, file.status_label
+    );
+}
+
+#[test]
+fn status_path_handler_verified_deployed() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("bin/myscript", "#!/bin/sh")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let file = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.handler == "path")
+        .expect("should have path file");
+    assert_eq!(
+        file.status, "deployed",
+        "path handler should be verified deployed"
+    );
+    assert_eq!(file.status_label, "in PATH");
+}

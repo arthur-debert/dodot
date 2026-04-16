@@ -37,6 +37,12 @@ error:
   fg: red
   bold: true
 
+broken:
+  fg: red
+
+stale:
+  fg: yellow
+
 warning:
   fg: yellow
 
