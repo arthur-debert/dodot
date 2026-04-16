@@ -1,12 +1,13 @@
 use clap::{Arg, ArgAction, Command as ClapCommand};
-use standout::cli::App;
+use standout::cli::{App, CommandGroup};
 
 mod handlers;
 
 fn main() {
-    // First parse to check for passthrough commands
-    let cmd = build_clap_command();
-    let matches = cmd.get_matches();
+    let app = build_app();
+
+    // parse_with handles help rendering (with command groups) and exits if help requested
+    let matches = app.parse_with(build_clap_command());
 
     // Passthrough: config (clapfig handles its own output)
     if let Some(("config", sub_matches)) = matches.subcommand() {
@@ -41,7 +42,27 @@ fn main() {
     }
 
     // All other commands go through standout dispatch
-    let app = App::builder()
+    let output_mode = app.extract_output_mode(&matches);
+    match app.dispatch(matches, output_mode) {
+        standout::cli::RunResult::Handled(output) => println!("{output}"),
+        standout::cli::RunResult::Silent => {}
+        standout::cli::RunResult::NoMatch(_) => {
+            // No subcommand given — show help
+            let _ = build_clap_command().print_help();
+            println!();
+        }
+        standout::cli::RunResult::Binary(data, content_type) => {
+            eprintln!(
+                "error: unexpected binary output ({content_type}, {} bytes)",
+                data.len()
+            );
+            std::process::exit(1);
+        }
+    }
+}
+
+fn build_app() -> App {
+    App::builder()
         .templates(standout::embed_templates!("src/templates"))
         .styles(standout::embed_styles!("src/styles"))
         .command("status", handlers::status_handler, "pack-status")
@@ -60,16 +81,39 @@ fn main() {
         .expect("register adopt")
         .command("addignore", handlers::addignore_handler, "message")
         .expect("register addignore")
+        .command_groups(vec![
+            CommandGroup {
+                title: "Core".into(),
+                help: None,
+                commands: vec![
+                    Some("up".into()),
+                    Some("down".into()),
+                    Some("status".into()),
+                    Some("list".into()),
+                ],
+            },
+            CommandGroup {
+                title: "Helpers".into(),
+                help: None,
+                commands: vec![
+                    Some("adopt".into()),
+                    Some("init".into()),
+                    Some("fill".into()),
+                    Some("addignore".into()),
+                ],
+            },
+            CommandGroup {
+                title: "Misc".into(),
+                help: None,
+                commands: vec![
+                    Some("init-sh".into()),
+                    Some("config".into()),
+                    Some("help".into()),
+                ],
+            },
+        ])
         .build()
-        .expect("app build");
-
-    // Standout does its own parse — re-build the command
-    let cmd = build_clap_command();
-    let handled = app.run(cmd, std::env::args());
-    if !handled {
-        let _ = build_clap_command().print_help();
-        println!();
-    }
+        .expect("app build")
 }
 
 fn build_clap_command() -> ClapCommand {
