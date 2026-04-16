@@ -104,7 +104,7 @@ pub fn detect_cross_pack_conflicts(
                 if handler == HANDLER_PATH {
                     if let Ok(entries) = fs.read_dir(source) {
                         for entry in entries {
-                            if entry.is_file {
+                            if entry.is_file || entry.is_symlink {
                                 let key = Path::new("<path-executable>").join(&entry.name);
                                 targets.entry(key).or_default().push(Claimant {
                                     pack: pack_name.clone(),
@@ -488,6 +488,62 @@ mod tests {
         )];
         let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
         assert!(conflicts.is_empty());
+    }
+
+    #[test]
+    fn detects_path_shadowing_via_symlinks() {
+        // bin/ entries that are symlinks (e.g. bin/tool -> ../libexec/tool) must
+        // also be detected as potential shadowing conflicts.
+        let env = TempEnvironment::builder()
+            .pack("tools-a")
+            .file("libexec/tool", "#!/bin/sh\necho a")
+            .done()
+            .pack("tools-b")
+            .file("libexec/tool", "#!/bin/sh\necho b")
+            .done()
+            .build();
+
+        // Create bin/ directories and symlinks inside them
+        let bin_a = env.dotfiles_root.join("tools-a/bin");
+        let bin_b = env.dotfiles_root.join("tools-b/bin");
+        env.fs.mkdir_all(&bin_a).unwrap();
+        env.fs.mkdir_all(&bin_b).unwrap();
+        env.fs
+            .symlink(
+                &env.dotfiles_root.join("tools-a/libexec/tool"),
+                &bin_a.join("tool"),
+            )
+            .unwrap();
+        env.fs
+            .symlink(
+                &env.dotfiles_root.join("tools-b/libexec/tool"),
+                &bin_b.join("tool"),
+            )
+            .unwrap();
+
+        let pack_intents = vec![
+            (
+                "tools-a".into(),
+                vec![stage("tools-a", "path", &bin_a.to_string_lossy())],
+            ),
+            (
+                "tools-b".into(),
+                vec![stage("tools-b", "path", &bin_b.to_string_lossy())],
+            ),
+        ];
+        let conflicts = detect_cross_pack_conflicts(&pack_intents, env.fs.as_ref());
+        assert_eq!(
+            conflicts.len(),
+            1,
+            "symlink executables with the same name should be detected as shadowing"
+        );
+        let packs: Vec<&str> = conflicts[0]
+            .claimants
+            .iter()
+            .map(|c| c.pack.as_str())
+            .collect();
+        assert!(packs.contains(&"tools-a"));
+        assert!(packs.contains(&"tools-b"));
     }
 
     // ── Display ────────────────────────────────────────────────
