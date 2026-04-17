@@ -646,6 +646,7 @@ dependencies = [
  "confique",
  "flate2",
  "glob",
+ "minijinja",
  "serde",
  "serde_json",
  "sha2",

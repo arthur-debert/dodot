@@ -119,6 +119,26 @@ pub struct PreprocessorSection {
     /// Global kill switch for all preprocessing.
     #[config(default = true)]
     pub enabled: bool,
+
+    #[config(nested)]
+    pub template: PreprocessorTemplateSection,
+}
+
+/// Template preprocessor settings.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorTemplateSection {
+    /// File extensions that trigger template rendering. Each extension
+    /// is matched as a suffix (e.g. `"tmpl"` matches `config.toml.tmpl`).
+    #[config(default = ["tmpl", "template"])]
+    pub extensions: Vec<String>,
+
+    /// User-defined variables, accessible as bare names in templates
+    /// (e.g. `name = "Alice"` makes `{{ name }}` render as `Alice`).
+    ///
+    /// Reserved: `dodot` and `env` are built-in namespaces; using them
+    /// as var names raises an error at load time.
+    #[config(default = {})]
+    pub vars: std::collections::HashMap<String, String>,
 }
 
 /// File-to-handler mapping patterns.

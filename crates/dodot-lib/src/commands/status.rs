@@ -247,7 +247,46 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         let rules = mappings_to_rules(&pack_config.mappings);
 
         let scanner = Scanner::new(ctx.fs.as_ref());
-        let matches = scanner.scan_pack(&pack, &rules, &pack_config.pack.ignore)?;
+
+        // Walk and preprocess so the status display sees *post-preprocessing*
+        // filenames (e.g. `config.toml` rather than `config.toml.tmpl`).
+        // Without this step, status reports templates under their source
+        // name and wrongly marks them "pending" because the verification
+        // path (`~/.config.toml.tmpl`) doesn't exist.
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+        let preprocess_result = if pack_config.preprocessor.enabled {
+            let registry = crate::preprocessing::default_registry(
+                &pack_config.preprocessor.template,
+                ctx.paths.as_ref(),
+            )?;
+            if !registry.is_empty() {
+                match crate::preprocessing::pipeline::preprocess_pack(
+                    entries,
+                    &registry,
+                    &pack,
+                    ctx.fs.as_ref(),
+                    ctx.datastore.as_ref(),
+                ) {
+                    Ok(r) => r,
+                    Err(err) => {
+                        // Preprocessing failure surfaces as a warning; we
+                        // still want to show whatever we can from the
+                        // intent-collection attempt below.
+                        warnings.push(format!(
+                            "preprocessing failed for pack '{}': {}",
+                            pack.name, err
+                        ));
+                        crate::preprocessing::pipeline::PreprocessResult::passthrough(Vec::new())
+                    }
+                }
+            } else {
+                crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
+            }
+        } else {
+            crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
+        };
+        let all_entries = preprocess_result.merged_entries();
+        let matches = scanner.match_entries(&all_entries, &rules, &pack.name);
 
         // Collect intents for conflict detection
         match orchestration::collect_pack_intents(&pack, ctx) {

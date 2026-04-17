@@ -1501,3 +1501,56 @@ fn up_auto_chmod_disabled_via_config() {
         "auto_chmod_exec=false should leave file non-executable"
     );
 }
+
+// ── status: preprocessed file display ──────────────────────────
+
+#[test]
+fn status_reports_template_under_stripped_name() {
+    // Regression guard: before the fix, status used the raw scanner
+    // output (pre-preprocessing) for its file list, so a `greet.tmpl`
+    // template would be listed as `greet.tmpl` and wrongly reported as
+    // "pending" even after `dodot up` deployed the rendered `greet`.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+
+    // Run up first so the deployment state is "deployed".
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    assert_eq!(result.packs.len(), 1);
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1, "files: {files:?}");
+
+    // The display name must be the stripped name, not the .tmpl source.
+    assert_eq!(files[0].name, "greet", "file name: {}", files[0].name);
+    assert_eq!(
+        files[0].status, "deployed",
+        "template should report as deployed after up, not pending"
+    );
+}
+
+#[test]
+fn status_reports_template_pending_before_up() {
+    // Even without running up, status should use the stripped name.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].name, "greet");
+    assert_eq!(files[0].status, "pending");
+}

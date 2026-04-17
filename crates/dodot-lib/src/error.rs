@@ -61,6 +61,15 @@ pub enum DodotError {
         expanded_name: String,
     },
 
+    #[error("template render failed for {}:\n  {message}", source_file.display())]
+    TemplateRender {
+        source_file: PathBuf,
+        message: String,
+    },
+
+    #[error("template variable name \"{name}\" is reserved (dodot and env are built-in namespaces); choose a different name in [preprocessor.template.vars]")]
+    TemplateReservedVar { name: String },
+
     #[error("{0}")]
     Other(String),
 }

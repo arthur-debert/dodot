@@ -10,6 +10,7 @@
 
 pub mod identity;
 pub mod pipeline;
+pub mod template;
 pub mod unarchive;
 
 use std::path::{Path, PathBuf};
@@ -135,13 +136,25 @@ impl Default for PreprocessorRegistry {
 
 /// The default registry used on the normal execution path.
 ///
-/// Contains all user-facing preprocessors. The [`identity`] preprocessor
-/// is test-only and is intentionally *not* registered here (it would
-/// match innocuous-looking `.identity` files in user dotfiles).
-pub fn default_registry() -> PreprocessorRegistry {
+/// Contains all user-facing preprocessors:
+/// - [`unarchive::UnarchivePreprocessor`] for `.tar.gz` extraction
+/// - [`template::TemplatePreprocessor`] for Jinja2-style templates
+///
+/// The [`identity`] preprocessor is test-only and is intentionally *not*
+/// registered here (it would match innocuous-looking `.identity` files in
+/// user dotfiles).
+pub fn default_registry(
+    template_config: &crate::config::PreprocessorTemplateSection,
+    pather: &dyn crate::paths::Pather,
+) -> Result<PreprocessorRegistry> {
     let mut registry = PreprocessorRegistry::new();
     registry.register(Box::new(unarchive::UnarchivePreprocessor::new()));
-    registry
+    registry.register(Box::new(template::TemplatePreprocessor::new(
+        template_config.extensions.clone(),
+        template_config.vars.clone(),
+        pather,
+    )?));
+    Ok(registry)
 }
 
 #[cfg(test)]

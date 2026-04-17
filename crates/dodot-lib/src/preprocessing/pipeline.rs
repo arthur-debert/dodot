@@ -18,15 +18,21 @@ use crate::rules::PackEntry;
 use crate::{DodotError, Result};
 
 /// Validate that a preprocessor-produced path is safe to materialise in
-/// the datastore: relative, no root/prefix/parent-dir components.
+/// the datastore: relative, no root/prefix/parent-dir components, and
+/// not effectively empty.
 ///
 /// Malicious or malformed preprocessor output (tar-slip, absolute paths,
 /// `..` segments) can escape the pack namespace and overwrite arbitrary
-/// files. We reject such paths before any disk write.
+/// files. Empty paths (or paths made up only of `.` components) are
+/// rejected because they would silently fail at the datastore layer with
+/// an opaque error — here we produce a clean diagnostic naming the
+/// preprocessor and source file.
 fn validate_safe_relative_path(path: &Path, preprocessor: &str, source_file: &Path) -> Result<()> {
+    let mut has_normal = false;
     for component in path.components() {
         match component {
-            Component::Normal(_) | Component::CurDir => {}
+            Component::Normal(_) => has_normal = true,
+            Component::CurDir => {}
             Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
                 return Err(DodotError::PreprocessorError {
                     preprocessor: preprocessor.into(),
@@ -39,7 +45,32 @@ fn validate_safe_relative_path(path: &Path, preprocessor: &str, source_file: &Pa
             }
         }
     }
+    if !has_normal {
+        return Err(DodotError::PreprocessorError {
+            preprocessor: preprocessor.into(),
+            source_file: source_file.to_path_buf(),
+            message: format!(
+                "preprocessor produced an empty output path (\"{}\"). This usually means a file like \
+                 `.tmpl` or `.identity` has no stem after stripping the preprocessor extension — \
+                 rename the source file so that it has a non-empty name after stripping.",
+                path.display()
+            ),
+        });
+    }
     Ok(())
+}
+
+/// Normalise a validated relative path by dropping `CurDir` components,
+/// so that `./foo` and `foo` are treated as the same virtual path for
+/// collision detection. Only call after [`validate_safe_relative_path`].
+fn normalize_relative(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        if let Component::Normal(n) = component {
+            out.push(n);
+        }
+    }
+    out
 }
 
 /// The result of preprocessing a pack's file entries.
@@ -187,6 +218,11 @@ pub fn preprocess_pack(
                 preprocessor.name(),
                 &entry.absolute_path,
             )?;
+
+            // Normalise `./foo` and `foo` to the same canonical form, so
+            // that collision detection and downstream comparisons don't
+            // silently diverge from the datastore's own normalisation.
+            let virtual_relative = normalize_relative(&virtual_relative);
 
             // Phase 4: Collision check (against both regular entries and
             // previously-expanded virtual entries)
@@ -1044,6 +1080,174 @@ mod tests {
         assert_eq!(
             env.fs.read_to_string(&file_entry.absolute_path).unwrap(),
             "hello"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_path_from_preprocessor() {
+        // A preprocessor that produces an empty relative_path (e.g. a
+        // template file named literally `.tmpl` whose stripped name is
+        // empty) must be rejected with a clean PreprocessorError, not
+        // cascaded to the datastore's opaque "empty datastore path"
+        // message.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bad.zz", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "scripted",
+            extension: ".zz",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from(""),
+                content: b"nope".to_vec(),
+                is_dir: false,
+            }],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bad.zz".into(),
+            absolute_path: env.dotfiles_root.join("app/bad.zz"),
+            is_dir: false,
+        }];
+
+        let err =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("empty output path")),
+            "expected empty-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_curdir_only_path_from_preprocessor() {
+        // `./` or `.` alone normalises to empty — same rejection.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bad.zz", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "scripted",
+            extension: ".zz",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("."),
+                content: b"nope".to_vec(),
+                is_dir: false,
+            }],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bad.zz".into(),
+            absolute_path: env.dotfiles_root.join("app/bad.zz"),
+            is_dir: false,
+        }];
+
+        let err =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("empty output path")),
+            "expected empty-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn curdir_prefixed_paths_collide_with_plain_paths() {
+        // Two preprocessor outputs — one `./foo` and one `foo` — must
+        // be treated as a collision. Before normalisation these lived
+        // at distinct HashSet keys but the same datastore path, so the
+        // second write silently clobbered the first.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bundle.zz", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "scripted",
+            extension: ".zz",
+            outputs: vec![
+                crate::preprocessing::ExpandedFile {
+                    relative_path: PathBuf::from("foo"),
+                    content: b"first".to_vec(),
+                    is_dir: false,
+                },
+                crate::preprocessing::ExpandedFile {
+                    relative_path: PathBuf::from("./foo"),
+                    content: b"second".to_vec(),
+                    is_dir: false,
+                },
+            ],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bundle.zz".into(),
+            absolute_path: env.dotfiles_root.join("app/bundle.zz"),
+            is_dir: false,
+        }];
+
+        let err =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorCollision { .. }),
+            "expected PreprocessorCollision for ./foo vs foo, got: {err}"
+        );
+    }
+
+    #[test]
+    fn virtual_entry_relative_path_is_normalized() {
+        // When a preprocessor emits `./foo`, the resulting virtual entry
+        // must carry a normalised relative path. Otherwise downstream
+        // code (e.g. rule matching or status display) sees both shapes
+        // and treats them as different files.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bundle.zz", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "scripted",
+            extension: ".zz",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("./nested/file.txt"),
+                content: b"hi".to_vec(),
+                is_dir: false,
+            }],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bundle.zz".into(),
+            absolute_path: env.dotfiles_root.join("app/bundle.zz"),
+            is_dir: false,
+        }];
+
+        let result =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap();
+
+        assert_eq!(result.virtual_entries.len(), 1);
+        assert_eq!(
+            result.virtual_entries[0].relative_path,
+            PathBuf::from("nested/file.txt"),
+            "CurDir components must be stripped from virtual entry"
         );
     }
 }
