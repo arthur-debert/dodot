@@ -7,11 +7,26 @@
 //! (you cannot re-archive deployed files back into the source).
 
 use std::io::Read;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use crate::fs::Fs;
 use crate::preprocessing::{ExpandedFile, Preprocessor, TransformType};
 use crate::{DodotError, Result};
+
+/// Reject tar entries whose path is absolute, contains `..`, or has a
+/// drive/root prefix. Without this check an archive could write outside
+/// the pack's datastore namespace (tar-slip).
+fn entry_path_is_safe(path: &Path) -> bool {
+    for component in path.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return false;
+            }
+        }
+    }
+    true
+}
 
 /// A preprocessor that extracts `.tar.gz` archives.
 pub struct UnarchivePreprocessor;
@@ -79,15 +94,30 @@ impl Preprocessor for UnarchivePreprocessor {
                 })?
                 .into_owned();
 
-            let is_dir = entry.header().entry_type().is_dir();
+            // Tar-slip guard: reject absolute paths and `..` components.
+            if !entry_path_is_safe(&entry_path) {
+                return Err(DodotError::PreprocessorError {
+                    preprocessor: "unarchive".into(),
+                    source_file: source.to_path_buf(),
+                    message: format!(
+                        "unsafe entry path in archive: {} (absolute or contains `..`)",
+                        entry_path.display()
+                    ),
+                });
+            }
 
-            if is_dir {
+            // Only regular files and directories are allowed. Symlinks,
+            // hardlinks, devices, fifos, and other special entry types
+            // are rejected to avoid surprising behavior in a dotfile
+            // deployment tool.
+            let entry_type = entry.header().entry_type();
+            if entry_type.is_dir() {
                 expanded.push(ExpandedFile {
                     relative_path: entry_path,
                     content: Vec::new(),
                     is_dir: true,
                 });
-            } else {
+            } else if entry_type.is_file() {
                 let mut content = Vec::new();
                 entry
                     .read_to_end(&mut content)
@@ -101,6 +131,16 @@ impl Preprocessor for UnarchivePreprocessor {
                     relative_path: entry_path,
                     content,
                     is_dir: false,
+                });
+            } else {
+                return Err(DodotError::PreprocessorError {
+                    preprocessor: "unarchive".into(),
+                    source_file: source.to_path_buf(),
+                    message: format!(
+                        "unsupported tar entry type {:?} for {} (only regular files and directories are allowed)",
+                        entry_type,
+                        entry_path.display()
+                    ),
                 });
             }
         }
@@ -339,5 +379,144 @@ mod tests {
         let err = pp.expand(&source, env.fs.as_ref());
 
         assert!(err.is_err(), "missing archive should produce an error");
+    }
+
+    /// Build a tar.gz archive containing a single file with a raw
+    /// (potentially unsafe) path written directly into the header bytes.
+    /// The `tar` crate's safe APIs reject absolute paths and `..`, but
+    /// real-world attackers can craft arbitrary bytes — this helper
+    /// simulates that.
+    fn write_malicious_tar_gz(archive_path: &Path, raw_path: &[u8], content: &[u8]) {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        // Manually craft a ustar header (512 bytes) with the path written
+        // at offset 0 without any sanitisation.
+        let mut header = [0u8; 512];
+
+        // Name (bytes 0..100): raw_path, null-terminated
+        let name_len = raw_path.len().min(99);
+        header[..name_len].copy_from_slice(&raw_path[..name_len]);
+
+        // Mode (100..108): "0000644\0"
+        header[100..108].copy_from_slice(b"0000644\0");
+
+        // UID/GID (108..124): zeros (8 octal chars + null, twice)
+        header[108..116].copy_from_slice(b"0000000\0");
+        header[116..124].copy_from_slice(b"0000000\0");
+
+        // Size (124..136): octal-padded
+        let size_str = format!("{:011o}\0", content.len());
+        header[124..136].copy_from_slice(size_str.as_bytes());
+
+        // MTime (136..148)
+        header[136..148].copy_from_slice(b"00000000000\0");
+
+        // Checksum placeholder — 8 spaces while computing
+        header[148..156].copy_from_slice(b"        ");
+
+        // TypeFlag (156): '0' for regular file
+        header[156] = b'0';
+
+        // Magic (257..263): "ustar\0"
+        header[257..263].copy_from_slice(b"ustar\0");
+        // Version (263..265): "00"
+        header[263..265].copy_from_slice(b"00");
+
+        // Compute checksum: sum of all bytes in header
+        let checksum: u32 = header.iter().map(|b| *b as u32).sum();
+        let cksum_str = format!("{checksum:06o}\0 ");
+        header[148..156].copy_from_slice(cksum_str.as_bytes());
+
+        let file = std::fs::File::create(archive_path).unwrap();
+        let mut enc = GzEncoder::new(file, Compression::default());
+        enc.write_all(&header).unwrap();
+
+        // Write content padded to 512-byte boundary
+        enc.write_all(content).unwrap();
+        let pad = (512 - content.len() % 512) % 512;
+        if pad > 0 {
+            enc.write_all(&vec![0u8; pad]).unwrap();
+        }
+
+        // Tar EOF: two 512-byte zero blocks
+        enc.write_all(&[0u8; 1024]).unwrap();
+
+        enc.finish().unwrap();
+    }
+
+    #[test]
+    fn rejects_tar_slip_absolute_path() {
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("tools")
+            .file("placeholder", "")
+            .done()
+            .build();
+
+        let archive_path = env.dotfiles_root.join("tools/evil.tar.gz");
+        write_malicious_tar_gz(&archive_path, b"/etc/passwd", b"pwn");
+
+        let pp = UnarchivePreprocessor::new();
+        let err = pp.expand(&archive_path, env.fs.as_ref()).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe entry path")),
+            "expected unsafe-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_tar_slip_parent_dir() {
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("tools")
+            .file("placeholder", "")
+            .done()
+            .build();
+
+        let archive_path = env.dotfiles_root.join("tools/evil.tar.gz");
+        write_malicious_tar_gz(&archive_path, b"../../escape.txt", b"pwn");
+
+        let pp = UnarchivePreprocessor::new();
+        let err = pp.expand(&archive_path, env.fs.as_ref()).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe entry path")),
+            "expected unsafe-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_symlink_entry() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("tools")
+            .file("placeholder", "")
+            .done()
+            .build();
+
+        let archive_path = env.dotfiles_root.join("tools/syms.tar.gz");
+        let file = std::fs::File::create(&archive_path).unwrap();
+        let enc = GzEncoder::new(file, Compression::default());
+        let mut builder = tar::Builder::new(enc);
+
+        let mut header = tar::Header::new_gnu();
+        header.set_path("link").unwrap();
+        header.set_size(0);
+        header.set_entry_type(tar::EntryType::Symlink);
+        header.set_link_name("/etc/passwd").unwrap();
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append(&header, &[][..]).unwrap();
+
+        let enc = builder.into_inner().unwrap();
+        enc.finish().unwrap();
+
+        let pp = UnarchivePreprocessor::new();
+        let err = pp.expand(&archive_path, env.fs.as_ref()).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsupported tar entry type")),
+            "expected unsupported-entry-type error, got: {err}"
+        );
     }
 }

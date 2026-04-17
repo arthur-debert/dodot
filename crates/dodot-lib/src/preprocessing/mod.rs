@@ -133,6 +133,17 @@ impl Default for PreprocessorRegistry {
     }
 }
 
+/// The default registry used on the normal execution path.
+///
+/// Contains all user-facing preprocessors. The [`identity`] preprocessor
+/// is test-only and is intentionally *not* registered here (it would
+/// match innocuous-looking `.identity` files in user dotfiles).
+pub fn default_registry() -> PreprocessorRegistry {
+    let mut registry = PreprocessorRegistry::new();
+    registry.register(Box::new(unarchive::UnarchivePreprocessor::new()));
+    registry
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -263,11 +263,15 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
 /// to_intents pipeline and returns the generated intents. This is the
 /// first half of the two-phase execution model that enables cross-pack
 /// conflict detection before any mutations happen.
+///
+/// Uses the default preprocessor registry
+/// ([`crate::preprocessing::default_registry`]).
 pub fn collect_pack_intents(
     pack: &Pack,
     ctx: &ExecutionContext,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
-    collect_pack_intents_with_preprocessors(pack, ctx, None)
+    let registry = crate::preprocessing::default_registry();
+    collect_pack_intents_with_preprocessors(pack, ctx, Some(&registry))
 }
 
 /// Like [`collect_pack_intents`], but accepts an explicit preprocessor
@@ -1027,5 +1031,66 @@ mod tests {
             }
             other => panic!("expected Link intent, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn collect_pack_intents_uses_default_registry() {
+        // The normal `collect_pack_intents` entrypoint should wire the
+        // default preprocessor registry (not pass `None`). We verify
+        // this by putting a `.tar.gz` file in a pack — the default
+        // registry contains `UnarchivePreprocessor`, so the archive
+        // should be expanded rather than passed through.
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("placeholder", "")
+            .done()
+            .build();
+
+        // Create a simple tar.gz at the pack's bin/ dir so it maps to
+        // the path handler after expansion.
+        let archive_path = env.dotfiles_root.join("tools/payload.tar.gz");
+        let file = std::fs::File::create(&archive_path).unwrap();
+        let enc = GzEncoder::new(file, Compression::default());
+        let mut builder = tar::Builder::new(enc);
+        let content = b"#!/bin/sh\necho hi";
+        let mut header = tar::Header::new_gnu();
+        header.set_path("mytool").unwrap();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder.append(&header, &content[..]).unwrap();
+        let enc = builder.into_inner().unwrap();
+        enc.finish().unwrap();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "tools".into(),
+            path: env.dotfiles_root.join("tools"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("tools"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        // Call the real production entrypoint — no explicit registry.
+        let intents = collect_pack_intents(&pack, &ctx).unwrap();
+
+        // Should include a Link intent for the expanded `mytool` file,
+        // with its source in the preprocessed datastore directory.
+        let has_expanded_source = intents.iter().any(|i| match i {
+            crate::operations::HandlerIntent::Link { source, .. } => {
+                source.to_string_lossy().contains("preprocessed")
+                    && source.to_string_lossy().contains("mytool")
+            }
+            _ => false,
+        });
+        assert!(
+            has_expanded_source,
+            "production collect_pack_intents should expand .tar.gz via the default registry. Intents: {intents:?}"
+        );
     }
 }

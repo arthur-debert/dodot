@@ -54,7 +54,7 @@ pub enum DodotError {
         message: String,
     },
 
-    #[error("preprocessing collision in pack \"{pack}\": {source_file} expands to {expanded_name}, which already exists as a regular file")]
+    #[error("preprocessing collision in pack \"{pack}\": {source_file} expands to {expanded_name}, which conflicts with an existing pack file or another preprocessor's output")]
     PreprocessorCollision {
         pack: String,
         source_file: String,

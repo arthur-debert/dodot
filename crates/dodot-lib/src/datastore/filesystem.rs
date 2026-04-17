@@ -1,10 +1,39 @@
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use crate::datastore::{CommandRunner, DataStore};
 use crate::fs::Fs;
 use crate::paths::Pather;
-use crate::Result;
+use crate::{DodotError, Result};
+
+/// Validate that `raw` is a safe relative path to be used under `base`.
+///
+/// Defense-in-depth against path traversal: rejects absolute paths, `..`
+/// components, and anything that would escape `base`. Returns the
+/// normalised relative `PathBuf` on success.
+fn validate_safe_relative(raw: &str, base: &Path) -> Result<PathBuf> {
+    let candidate = Path::new(raw);
+    let mut cleaned = PathBuf::new();
+    for component in candidate.components() {
+        match component {
+            Component::Normal(n) => cleaned.push(n),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(DodotError::Other(format!(
+                    "unsafe datastore path: {} (would escape {})",
+                    raw,
+                    base.display()
+                )));
+            }
+        }
+    }
+    if cleaned.as_os_str().is_empty() {
+        return Err(DodotError::Other(format!(
+            "empty datastore path (from {raw:?})"
+        )));
+    }
+    Ok(cleaned)
+}
 
 /// [`DataStore`] implementation backed by the real filesystem.
 ///
@@ -169,7 +198,8 @@ impl DataStore for FilesystemDataStore {
         content: &[u8],
     ) -> Result<PathBuf> {
         let dir = self.paths.handler_data_dir(pack, handler);
-        let path = dir.join(filename);
+        let relative = validate_safe_relative(filename, &dir)?;
+        let path = dir.join(&relative);
         // Create the full parent chain (supports nested filenames like "sub/file.txt")
         if let Some(parent) = path.parent() {
             self.fs.mkdir_all(parent)?;
@@ -177,6 +207,14 @@ impl DataStore for FilesystemDataStore {
             self.fs.mkdir_all(&dir)?;
         }
         self.fs.write_file(&path, content)?;
+        Ok(path)
+    }
+
+    fn write_rendered_dir(&self, pack: &str, handler: &str, relative: &str) -> Result<PathBuf> {
+        let dir = self.paths.handler_data_dir(pack, handler);
+        let rel = validate_safe_relative(relative, &dir)?;
+        let path = dir.join(&rel);
+        self.fs.mkdir_all(&path)?;
         Ok(path)
     }
 
@@ -689,6 +727,71 @@ mod tests {
 
         assert!(env.fs.exists(&path));
         assert_eq!(env.fs.read_to_string(&path).unwrap(), "hello");
+    }
+
+    #[test]
+    fn write_rendered_file_rejects_absolute_path() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let err = ds
+            .write_rendered_file("app", "preprocessed", "/etc/passwd", b"x")
+            .unwrap_err();
+        assert!(
+            matches!(err, crate::DodotError::Other(ref m) if m.contains("unsafe")),
+            "expected unsafe-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn write_rendered_file_rejects_parent_dir() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let err = ds
+            .write_rendered_file("app", "preprocessed", "../escape.txt", b"x")
+            .unwrap_err();
+        assert!(
+            matches!(err, crate::DodotError::Other(ref m) if m.contains("unsafe")),
+            "expected unsafe-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn write_rendered_dir_creates_dir() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let path = ds
+            .write_rendered_dir("app", "preprocessed", "sub/nested")
+            .unwrap();
+
+        assert!(env.fs.is_dir(&path));
+        assert!(!env.fs.is_symlink(&path));
+    }
+
+    #[test]
+    fn write_rendered_dir_is_idempotent() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let p1 = ds.write_rendered_dir("app", "preprocessed", "d").unwrap();
+        let p2 = ds.write_rendered_dir("app", "preprocessed", "d").unwrap();
+        assert_eq!(p1, p2);
+        assert!(env.fs.is_dir(&p1));
+    }
+
+    #[test]
+    fn write_rendered_dir_rejects_unsafe_paths() {
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        assert!(ds
+            .write_rendered_dir("app", "preprocessed", "/abs")
+            .is_err());
+        assert!(ds
+            .write_rendered_dir("app", "preprocessed", "../esc")
+            .is_err());
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! and produces virtual entries for the handler pipeline.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use tracing::{debug, info};
 
@@ -16,6 +16,31 @@ use crate::packs::Pack;
 use crate::preprocessing::PreprocessorRegistry;
 use crate::rules::PackEntry;
 use crate::{DodotError, Result};
+
+/// Validate that a preprocessor-produced path is safe to materialise in
+/// the datastore: relative, no root/prefix/parent-dir components.
+///
+/// Malicious or malformed preprocessor output (tar-slip, absolute paths,
+/// `..` segments) can escape the pack namespace and overwrite arbitrary
+/// files. We reject such paths before any disk write.
+fn validate_safe_relative_path(path: &Path, preprocessor: &str, source_file: &Path) -> Result<()> {
+    for component in path.components() {
+        match component {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(DodotError::PreprocessorError {
+                    preprocessor: preprocessor.into(),
+                    source_file: source_file.to_path_buf(),
+                    message: format!(
+                        "unsafe path in preprocessor output: {} (absolute or contains `..`)",
+                        path.display()
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
 
 /// The result of preprocessing a pack's file entries.
 #[derive(Debug)]
@@ -134,11 +159,19 @@ pub fn preprocess_pack(
         let expanded_files = preprocessor.expand(&entry.absolute_path, fs)?;
 
         for expanded in expanded_files {
+            // Reject unsafe paths from the preprocessor (tar-slip,
+            // absolute paths, parent-dir escapes) before any disk write.
+            validate_safe_relative_path(
+                &expanded.relative_path,
+                preprocessor.name(),
+                &entry.absolute_path,
+            )?;
+
             // Compute the virtual relative path.
             // If the source was in a subdirectory (e.g., "subdir/config.toml.identity"),
             // the virtual entry should preserve the parent (e.g., "subdir/config.toml").
             let virtual_relative = if let Some(parent) = entry.relative_path.parent() {
-                if parent == std::path::Path::new("") {
+                if parent == Path::new("") {
                     expanded.relative_path.clone()
                 } else {
                     parent.join(&expanded.relative_path)
@@ -146,6 +179,14 @@ pub fn preprocess_pack(
             } else {
                 expanded.relative_path.clone()
             };
+
+            // Defense-in-depth: validate the joined path too (parent
+            // could only come from the pack scanner, but re-check).
+            validate_safe_relative_path(
+                &virtual_relative,
+                preprocessor.name(),
+                &entry.absolute_path,
+            )?;
 
             // Phase 4: Collision check (against both regular entries and
             // previously-expanded virtual entries)
@@ -158,20 +199,30 @@ pub fn preprocess_pack(
             }
 
             // Write expanded content to datastore, preserving directory
-            // structure. `write_rendered_file` creates any needed parent
-            // directories under the handler data dir.
-            let datastore_path = datastore.write_rendered_file(
-                &pack.name,
-                PREPROCESSED_HANDLER,
-                &virtual_relative.to_string_lossy(),
-                &expanded.content,
-            )?;
+            // structure. Directories get mkdir'd; files get their content
+            // written. `write_rendered_file` creates any needed parent
+            // directories.
+            let datastore_path = if expanded.is_dir {
+                datastore.write_rendered_dir(
+                    &pack.name,
+                    PREPROCESSED_HANDLER,
+                    &virtual_relative.to_string_lossy(),
+                )?
+            } else {
+                datastore.write_rendered_file(
+                    &pack.name,
+                    PREPROCESSED_HANDLER,
+                    &virtual_relative.to_string_lossy(),
+                    &expanded.content,
+                )?
+            };
 
             debug!(
                 pack = %pack.name,
                 virtual_path = %virtual_relative.display(),
                 datastore_path = %datastore_path.display(),
-                "wrote expanded file"
+                is_dir = expanded.is_dir,
+                "wrote expanded entry"
             );
 
             claimed_paths.insert(virtual_relative.clone());
@@ -818,5 +869,181 @@ mod tests {
             "nested"
         );
         assert_eq!(env.fs.read_to_string(&flat.absolute_path).unwrap(), "flat");
+    }
+
+    // ── Path-traversal defenses ─────────────────────────────────
+
+    /// Test-only preprocessor that emits a configurable set of
+    /// [`crate::preprocessing::ExpandedFile`]s — lets tests inject
+    /// unsafe paths or directory entries without needing a real archive.
+    struct ScriptedPreprocessor {
+        name: &'static str,
+        extension: &'static str,
+        outputs: Vec<crate::preprocessing::ExpandedFile>,
+    }
+
+    impl crate::preprocessing::Preprocessor for ScriptedPreprocessor {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn transform_type(&self) -> crate::preprocessing::TransformType {
+            crate::preprocessing::TransformType::Opaque
+        }
+        fn matches_extension(&self, filename: &str) -> bool {
+            filename.ends_with(self.extension)
+        }
+        fn stripped_name(&self, filename: &str) -> String {
+            filename
+                .strip_suffix(self.extension)
+                .unwrap_or(filename)
+                .to_string()
+        }
+        fn expand(
+            &self,
+            _source: &Path,
+            _fs: &dyn Fs,
+        ) -> Result<Vec<crate::preprocessing::ExpandedFile>> {
+            Ok(self.outputs.clone())
+        }
+    }
+
+    #[test]
+    fn rejects_absolute_path_from_preprocessor() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bad.evil", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "evil",
+            extension: ".evil",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("/etc/passwd"),
+                content: b"pwn".to_vec(),
+                is_dir: false,
+            }],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bad.evil".into(),
+            absolute_path: env.dotfiles_root.join("app/bad.evil"),
+            is_dir: false,
+        }];
+
+        let err =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe path")),
+            "expected unsafe-path error, got: {err}"
+        );
+        // Verify the malicious target was not written
+        assert!(!std::path::Path::new("/etc/passwd.dodot-would-have-written-here").exists());
+    }
+
+    #[test]
+    fn rejects_parent_dir_escape_from_preprocessor() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bad.evil", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "evil",
+            extension: ".evil",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("../../escape.txt"),
+                content: b"pwn".to_vec(),
+                is_dir: false,
+            }],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bad.evil".into(),
+            absolute_path: env.dotfiles_root.join("app/bad.evil"),
+            is_dir: false,
+        }];
+
+        let err =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe path")),
+            "expected unsafe-path error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn directory_entry_is_mkdird_not_written_as_file() {
+        // A preprocessor emits a directory marker followed by a file
+        // inside it. The pipeline must mkdir the directory rather than
+        // writing a file at the directory path (which would break the
+        // subsequent nested file write).
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bundle.zz", "x")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "scripted",
+            extension: ".zz",
+            outputs: vec![
+                crate::preprocessing::ExpandedFile {
+                    relative_path: PathBuf::from("sub"),
+                    content: Vec::new(),
+                    is_dir: true,
+                },
+                crate::preprocessing::ExpandedFile {
+                    relative_path: PathBuf::from("sub/nested.txt"),
+                    content: b"hello".to_vec(),
+                    is_dir: false,
+                },
+            ],
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "bundle.zz".into(),
+            absolute_path: env.dotfiles_root.join("app/bundle.zz"),
+            is_dir: false,
+        }];
+
+        let result =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap();
+
+        assert_eq!(result.virtual_entries.len(), 2);
+
+        let dir_entry = result
+            .virtual_entries
+            .iter()
+            .find(|e| e.is_dir)
+            .expect("directory entry");
+        assert!(
+            env.fs.is_dir(&dir_entry.absolute_path),
+            "directory entry should be a real directory: {}",
+            dir_entry.absolute_path.display()
+        );
+
+        let file_entry = result
+            .virtual_entries
+            .iter()
+            .find(|e| !e.is_dir)
+            .expect("file entry");
+        assert_eq!(
+            env.fs.read_to_string(&file_entry.absolute_path).unwrap(),
+            "hello"
+        );
     }
 }
