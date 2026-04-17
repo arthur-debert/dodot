@@ -67,12 +67,23 @@ teardown() {
 # ── Subdirectory files are NOT stripped ──────────────────────────
 
 @test "dot. prefix not stripped for subdirectory files" {
+    # Under the top-level-only scanner, the subdir is linked wholesale;
+    # nested files are visible through the link. The dot. prefix is a
+    # top-level-only convention and must NOT be stripped for files
+    # living inside a linked directory.
     create_pack_file "app" "subdir/dot.conf" "config"
 
     run dodot status
     [ "$status" -eq 0 ]
-    # Subdirectory files keep the dot. prefix
-    assert_output_contains "dot.conf"
+    # Status shows the wholesale subdir entry, not the nested file.
+    assert_output_contains "subdir"
+    assert_output_contains "~/.config/subdir"
+
+    # After deploy, the nested file is reachable through the dir symlink,
+    # and its name retains the literal `dot.` prefix (no stripping).
+    dodot up
+    assert_exists "$HOME/.config/subdir/dot.conf"
+    assert_not_exists "$HOME/.config/subdir/.conf"
 }
 
 # ── Full lifecycle ──────────────────────────────────────────────
