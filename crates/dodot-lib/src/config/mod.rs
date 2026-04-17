@@ -176,6 +176,7 @@ impl DodotConfig {
             protected_paths: self.symlink.protected_paths.clone(),
             targets: self.symlink.targets.clone(),
             auto_chmod_exec: self.path.auto_chmod_exec,
+            pack_ignore: self.pack.ignore.clone(),
         }
     }
 }

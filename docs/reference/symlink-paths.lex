@@ -14,7 +14,7 @@ Symlink Deployment Paths
 
     Most dotfiles are, predictably, prefixed with a dot. While that's very useful for keeping your home dir tidy, it does mean that these files inside your dotfiles root repo are hidden by default (i.e. for `ls`). This can be confusing, requiring you to ensure you are seeing hidden files on whatever tool or editor you are using.
 
-    To make this easier, if a symlink path starts with "dot.", dodot will strip the "dot" prefix. For example `<pack>/dot.bashrc` will be symlinked to `$XDG_CONFIG_HOME/.bashrc`.
+    To make this easier, if a top-level file name starts with "dot.", dodot strips the "dot" prefix and routes the result to `$HOME` (the `dot.` convention is only meaningful for files that the user would expect at `$HOME/.<name>`). For example `<pack>/dot.bashrc` will be symlinked to `$HOME/.bashrc`.
 
     If you have a file that actually starts with "dot.", you can use a `.dodot.toml` config to override the symlink path.
 

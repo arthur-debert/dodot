@@ -193,7 +193,18 @@ fn matches_entry(pattern: &CompiledPattern, filename: &str, is_dir: bool) -> boo
 // ── Scanner ─────────────────────────────────────────────────────
 
 /// Files that are always skipped during scanning.
-const SPECIAL_FILES: &[&str] = &[".dodot.toml", ".dodotignore"];
+pub const SPECIAL_FILES: &[&str] = &[".dodot.toml", ".dodotignore"];
+
+/// Should this entry name be skipped at scan or handler-recursion time?
+///
+/// Combines the three always-on filters: dodot's own files
+/// (`SPECIAL_FILES`) and the pack's `ignore` glob patterns. Hidden
+/// files are NOT filtered here — the caller decides whether to skip
+/// dotfiles (the scanner does, for the top-level walk; the symlink
+/// handler's per-file fallback does not, since the user opted in).
+pub fn should_skip_entry(name: &str, ignore_patterns: &[String]) -> bool {
+    SPECIAL_FILES.contains(&name) || is_ignored(name, ignore_patterns)
+}
 
 /// Scans pack directories and matches files against rules.
 pub struct Scanner<'a> {

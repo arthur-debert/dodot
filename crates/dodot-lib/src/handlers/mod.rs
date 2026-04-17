@@ -4,8 +4,11 @@
 //! (operations). Each handler knows how to transform a set of matched
 //! files into [`HandlerIntent`]s that the executor will carry out.
 //!
-//! Handlers are pure data transformers — they declare what operations
-//! they need without performing any I/O themselves.
+//! Handlers are intent planners. They may perform **read-only**
+//! filesystem inspection (e.g. the symlink handler reads a matched
+//! directory's contents to decide between wholesale and per-file
+//! linking) but must not mutate anything — mutations are the executor's
+//! job. This keeps planning idempotent and safe to re-run.
 
 pub mod homebrew;
 pub mod install;
@@ -110,10 +113,11 @@ pub trait Handler: Send + Sync {
 
     /// Transform matched files into intents.
     ///
-    /// This is the heart of each handler — it declares what operations
-    /// are needed without performing any I/O. `fs` is provided so a
-    /// handler that owns a directory entry can inspect its contents
-    /// to decide wholesale vs per-file treatment.
+    /// This is the heart of each handler: it declares what operations
+    /// are needed. `fs` is available for **read-only** inspection
+    /// (e.g. enumerating a matched directory to decide wholesale vs
+    /// per-file linking). Handlers must not write, delete, or rename
+    /// anything here — mutations happen in the executor.
     fn to_intents(
         &self,
         matches: &[RuleMatch],
@@ -148,6 +152,11 @@ pub struct HandlerConfig {
     /// Whether to auto-`chmod +x` files in path-handler directories.
     /// See [`PathSection::auto_chmod_exec`](crate::config::PathSection::auto_chmod_exec).
     pub auto_chmod_exec: bool,
+    /// Pack-level ignore patterns (from `[pack] ignore`). Handlers that
+    /// recurse into a matched directory should apply these so the
+    /// per-file fallback doesn't pick up `.DS_Store`, `.git`, etc.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pack_ignore: Vec<String>,
 }
 
 impl Default for HandlerConfig {
@@ -157,6 +166,7 @@ impl Default for HandlerConfig {
             protected_paths: Vec::new(),
             targets: std::collections::HashMap::new(),
             auto_chmod_exec: true,
+            pack_ignore: Vec::new(),
         }
     }
 }
@@ -195,13 +205,19 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
 /// At most one handler may be simultaneously [`MatchMode::Catchall`]
 /// and [`HandlerScope::Exclusive`]. Two such handlers would fight over
 /// the same "leftover" entries with no principled way to pick a winner.
+///
+/// This is a developer-only invariant: the built-in registry is
+/// hard-coded and third-party handlers would be added via code, not
+/// user input. We use `debug_assert!` so release builds never panic
+/// from a misconfiguration here; if the invariant is violated in a
+/// dev build the panic surfaces immediately.
 fn validate_registry(registry: &HashMap<String, Box<dyn Handler + '_>>) {
     let exclusive_catchalls: Vec<&str> = registry
         .values()
         .filter(|h| h.match_mode() == MatchMode::Catchall && h.scope() == HandlerScope::Exclusive)
         .map(|h| h.name())
         .collect();
-    assert!(
+    debug_assert!(
         exclusive_catchalls.len() <= 1,
         "at most one exclusive catchall handler allowed, found: {exclusive_catchalls:?}"
     );

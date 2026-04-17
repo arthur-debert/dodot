@@ -148,6 +148,13 @@ fn collect_per_file_intents(
 ) -> Result<()> {
     let entries = fs.read_dir(dir)?;
     for entry in entries {
+        // Skip dodot's own files and anything matching the pack's
+        // ignore patterns — same filter the scanner applies at walk
+        // time, so per-file fallback doesn't pick up `.DS_Store`,
+        // `.dodot.toml`, `*.swp`, etc.
+        if crate::rules::should_skip_entry(&entry.name, &config.pack_ignore) {
+            continue;
+        }
         if entry.is_dir {
             collect_per_file_intents(m, &entry.path, config, paths, fs, out)?;
             continue;
@@ -662,6 +669,44 @@ mod tests {
             assert!(user_path.ends_with(".ssh/config"));
         } else {
             panic!("expected Link intent");
+        }
+    }
+
+    #[test]
+    fn per_file_fallback_skips_special_and_pack_ignored_files() {
+        // When per-file mode kicks in (because of a protected_path),
+        // the recursion must apply the same filters the scanner uses:
+        // dodot's own files and pack-ignore globs like `.DS_Store`.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("cfg")
+            .file("ssh/config", "Host *")
+            .file("ssh/id_rsa", "secret")
+            .file("ssh/.DS_Store", "garbage")
+            .file("ssh/.dodot.toml", "# pack config")
+            .done()
+            .build();
+        let m = build_dir_match(&env, "cfg", "ssh");
+        let handler = SymlinkHandler;
+        let config = HandlerConfig {
+            protected_paths: vec!["ssh/id_rsa".into()],
+            pack_ignore: vec![".DS_Store".into()],
+            ..HandlerConfig::default()
+        };
+        let paths = crate::paths::XdgPather::builder()
+            .home(&env.home)
+            .dotfiles_root(&env.dotfiles_root)
+            .build()
+            .unwrap();
+        let intents = handler
+            .to_intents(&[m], &config, &paths, env.fs.as_ref())
+            .unwrap();
+        assert_eq!(
+            intents.len(),
+            1,
+            "only ssh/config should be linked. Got: {intents:?}"
+        );
+        if let HandlerIntent::Link { source, .. } = &intents[0] {
+            assert!(source.ends_with("ssh/config"));
         }
     }
 
