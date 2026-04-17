@@ -108,14 +108,18 @@ impl Preprocessor for TemplatePreprocessor {
     }
 
     fn matches_extension(&self, filename: &str) -> bool {
-        self.extensions
-            .iter()
-            .any(|ext| filename.ends_with(&format!(".{ext}")))
+        self.extensions.iter().any(|ext| {
+            // Tolerate user config that writes extensions with or without
+            // a leading dot (".tmpl" vs "tmpl"); without this, ".tmpl"
+            // would produce "..tmpl" and silently fail to match.
+            let suffix = format!(".{}", ext.trim_start_matches('.'));
+            filename.ends_with(&suffix)
+        })
     }
 
     fn stripped_name(&self, filename: &str) -> String {
         for ext in &self.extensions {
-            let suffix = format!(".{ext}");
+            let suffix = format!(".{}", ext.trim_start_matches('.'));
             if let Some(stripped) = filename.strip_suffix(&suffix) {
                 return stripped.to_string();
             }
@@ -151,16 +155,23 @@ impl Preprocessor for TemplatePreprocessor {
 
 /// Build the `dodot.*` namespace map.
 ///
-/// Values are resolved best-effort from the environment; if hostname or
-/// username cannot be determined, an empty string is returned so
-/// templates don't fail outright (users will notice the empty value
-/// and fix their environment).
+/// Keys we can always resolve (os, arch, home, dotfiles_root) are
+/// always inserted. Keys that depend on environment detection
+/// (hostname, username) are inserted only when a non-empty value is
+/// found — otherwise they are omitted so that template access via
+/// `{{ dodot.hostname }}` triggers a strict-undefined render error,
+/// rather than silently injecting an empty string. Users who want a
+/// fallback can write `{{ dodot.hostname | default("unknown") }}`.
 fn build_dodot_context(pather: &dyn Pather) -> BTreeMap<String, String> {
     let mut ctx = BTreeMap::new();
     ctx.insert("os".into(), std::env::consts::OS.into());
     ctx.insert("arch".into(), std::env::consts::ARCH.into());
-    ctx.insert("hostname".into(), detect_hostname());
-    ctx.insert("username".into(), detect_username());
+    if let Some(h) = detect_hostname() {
+        ctx.insert("hostname".into(), h);
+    }
+    if let Some(u) = detect_username() {
+        ctx.insert("username".into(), u);
+    }
     ctx.insert("home".into(), pather.home_dir().display().to_string());
     ctx.insert(
         "dotfiles_root".into(),
@@ -169,31 +180,34 @@ fn build_dodot_context(pather: &dyn Pather) -> BTreeMap<String, String> {
     ctx
 }
 
-fn detect_hostname() -> String {
+fn detect_hostname() -> Option<String> {
     if let Ok(h) = std::env::var("HOSTNAME") {
         if !h.is_empty() {
-            return h;
+            return Some(h);
         }
     }
-    // Fallback: shell out. Ignore errors and return empty string.
-    std::process::Command::new("hostname")
-        .output()
-        .ok()
-        .and_then(|out| {
-            if out.status.success() {
-                Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_default()
+    // Fallback: shell out. Ignore errors.
+    let output = std::process::Command::new("hostname").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
 }
 
-fn detect_username() -> String {
-    std::env::var("USER")
-        .or_else(|_| std::env::var("USERNAME"))
-        .or_else(|_| std::env::var("LOGNAME"))
-        .unwrap_or_default()
+fn detect_username() -> Option<String> {
+    for var in ["USER", "USERNAME", "LOGNAME"] {
+        if let Ok(v) = std::env::var(var) {
+            if !v.is_empty() {
+                return Some(v);
+            }
+        }
+    }
+    None
 }
 
 /// Compact a MiniJinja error into a single human-readable string with
@@ -489,5 +503,92 @@ mod tests {
             String::from_utf8_lossy(&result[0].content),
             "just plain text\nno vars here"
         );
+    }
+
+    #[test]
+    fn extension_with_leading_dot_still_matches() {
+        // Tolerate config that writes extensions as `.tmpl` instead of
+        // `tmpl`. Without the leading-dot trim, `.ends_with("..tmpl")`
+        // would silently never match and templates would not be processed.
+        let pp = TemplatePreprocessor::new(
+            vec![".tmpl".into(), ".template".into()],
+            HashMap::new(),
+            &make_pather(),
+        )
+        .unwrap();
+        assert!(pp.matches_extension("config.toml.tmpl"));
+        assert!(pp.matches_extension("app.template"));
+        assert_eq!(pp.stripped_name("config.toml.tmpl"), "config.toml");
+    }
+
+    #[test]
+    fn missing_dodot_key_raises_strict_error() {
+        // The `build_dodot_context` fix omits `hostname`/`username` from
+        // the map when they cannot be detected (rather than injecting
+        // empty strings, which would silently deploy broken configs).
+        //
+        // We avoid manipulating `std::env` here (not thread-safe; other
+        // tests read USER) and instead verify the underlying invariant:
+        // any missing key on the `dodot` object triggers the
+        // strict-undefined error. Under this invariant, an undetected
+        // username/hostname behaves the same as any other missing key.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("uses_missing.tmpl", "value={{ dodot.nonexistent_key_zzz }}")
+            .done()
+            .build();
+
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], HashMap::new(), env.paths.as_ref())
+            .unwrap();
+
+        let source = env.dotfiles_root.join("app/uses_missing.tmpl");
+        let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
+        assert!(
+            matches!(err, DodotError::TemplateRender { .. }),
+            "accessing a missing dodot.* key must error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_dodot_key_can_be_defaulted() {
+        // Ergonomic escape hatch: Jinja's `default` filter lets users
+        // tolerate potentially-missing fields without raising.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "defaulted.tmpl",
+                "value={{ dodot.nonexistent_key_zzz | default(\"unknown\") }}",
+            )
+            .done()
+            .build();
+
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], HashMap::new(), env.paths.as_ref())
+            .unwrap();
+
+        let source = env.dotfiles_root.join("app/defaulted.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        assert_eq!(String::from_utf8_lossy(&result[0].content), "value=unknown");
+    }
+
+    #[test]
+    fn build_dodot_context_omits_undetected_optional_keys() {
+        // Directly exercise the map-building helper: given a Pather but
+        // the detection helpers return None (simulated via testing the
+        // helper return invariants), verify the map structure.
+        //
+        // Since `detect_username`/`detect_hostname` read real env/system
+        // state, we can only assert: if they return Some, the key is
+        // present; if they return None, the key is absent.
+        let ctx = build_dodot_context(&make_pather());
+
+        // These are always present:
+        assert!(ctx.contains_key("os"));
+        assert!(ctx.contains_key("arch"));
+        assert!(ctx.contains_key("home"));
+        assert!(ctx.contains_key("dotfiles_root"));
+
+        // Optional keys: present iff the detection helper returned Some.
+        assert_eq!(ctx.contains_key("username"), detect_username().is_some());
+        assert_eq!(ctx.contains_key("hostname"), detect_hostname().is_some());
     }
 }
