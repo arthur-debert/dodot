@@ -178,6 +178,52 @@ impl TempEnvironment {
         );
     }
 
+    /// Assert a rendered (non-symlink) file exists in the datastore
+    /// with the expected content.
+    pub fn assert_rendered_file(&self, pack: &str, handler: &str, filename: &str, expected: &str) {
+        let path = self.paths.handler_data_dir(pack, handler).join(filename);
+        assert!(
+            self.fs.exists(&path),
+            "expected rendered file at {}, but it does not exist",
+            path.display()
+        );
+        assert!(
+            !self.fs.is_symlink(&path),
+            "expected {} to be a regular file, but it is a symlink",
+            path.display()
+        );
+        let actual = self
+            .fs
+            .read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        assert_eq!(
+            actual,
+            expected,
+            "rendered file {} has unexpected contents",
+            path.display()
+        );
+    }
+
+    /// Assert that a path is a regular file (not a symlink) with expected content.
+    pub fn assert_regular_file(&self, path: &Path, expected: &str) {
+        assert!(self.fs.exists(path), "expected {} to exist", path.display());
+        assert!(
+            !self.fs.is_symlink(path),
+            "expected {} to be a regular file, not a symlink",
+            path.display()
+        );
+        let actual = self
+            .fs
+            .read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        assert_eq!(
+            actual,
+            expected,
+            "file {} has unexpected contents",
+            path.display()
+        );
+    }
+
     /// Returns the list of file names in a directory.
     pub fn list_dir_names(&self, path: &Path) -> Vec<String> {
         self.fs

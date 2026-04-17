@@ -37,6 +37,9 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub mappings: MappingsSection,
+
+    #[config(nested)]
+    pub preprocessor: PreprocessorSection,
 }
 
 /// Pack-level settings.
@@ -108,6 +111,14 @@ pub struct PathSection {
     /// sourced by other scripts).
     #[config(default = true)]
     pub auto_chmod_exec: bool,
+}
+
+/// Preprocessing pipeline settings.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorSection {
+    /// Global kill switch for all preprocessing.
+    #[config(default = true)]
+    pub enabled: bool,
 }
 
 /// File-to-handler mapping patterns.

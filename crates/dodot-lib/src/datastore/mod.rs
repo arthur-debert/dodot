@@ -81,6 +81,32 @@ pub trait DataStore: Send + Sync {
     /// Lists sentinel file names for a pack/handler.
     fn list_handler_sentinels(&self, pack: &str, handler: &str) -> Result<Vec<String>>;
 
+    /// Writes a regular file (not a symlink) into the datastore.
+    ///
+    /// Used for preprocessor-expanded files where the datastore holds
+    /// rendered content rather than a symlink to the source.
+    /// Returns the absolute path of the written file.
+    /// Idempotent: overwrites if the file already exists.
+    ///
+    /// `filename` must be a safe relative path — no absolute paths, no
+    /// `..` components. Callers (typically the preprocessing pipeline)
+    /// are expected to validate before calling. Implementations should
+    /// also reject unsafe paths as defense-in-depth.
+    fn write_rendered_file(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+        content: &[u8],
+    ) -> Result<PathBuf>;
+
+    /// Creates a directory (mkdir -p) inside the datastore and returns
+    /// its absolute path. Used for preprocessor-expanded directory
+    /// entries (e.g. directory markers from tar archives).
+    ///
+    /// Same path-safety constraints as [`write_rendered_file`].
+    fn write_rendered_dir(&self, pack: &str, handler: &str, relative: &str) -> Result<PathBuf>;
+
     /// Returns the absolute path where a sentinel file would be stored.
     fn sentinel_path(&self, pack: &str, handler: &str, sentinel: &str) -> std::path::PathBuf;
 }

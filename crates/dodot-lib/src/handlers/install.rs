@@ -166,6 +166,7 @@ mod tests {
             handler: "install".into(),
             is_dir: false,
             options: std::collections::HashMap::new(),
+            preprocessor_source: None,
         }];
 
         let pather = crate::paths::XdgPather::builder()
