@@ -169,8 +169,13 @@ impl DataStore for FilesystemDataStore {
         content: &[u8],
     ) -> Result<PathBuf> {
         let dir = self.paths.handler_data_dir(pack, handler);
-        self.fs.mkdir_all(&dir)?;
         let path = dir.join(filename);
+        // Create the full parent chain (supports nested filenames like "sub/file.txt")
+        if let Some(parent) = path.parent() {
+            self.fs.mkdir_all(parent)?;
+        } else {
+            self.fs.mkdir_all(&dir)?;
+        }
         self.fs.write_file(&path, content)?;
         Ok(path)
     }
@@ -684,6 +689,28 @@ mod tests {
 
         assert!(env.fs.exists(&path));
         assert_eq!(env.fs.read_to_string(&path).unwrap(), "hello");
+    }
+
+    #[test]
+    fn write_rendered_file_supports_nested_filename() {
+        // A filename containing `/` should be written to the corresponding
+        // nested directory under the handler data dir, creating any needed
+        // parents. This preserves source structure for preprocessor output.
+        let env = TempEnvironment::builder().build();
+        let (ds, _) = make_datastore(&env);
+
+        let path = ds
+            .write_rendered_file("app", "preprocessed", "sub/nested/file.txt", b"deep")
+            .unwrap();
+
+        assert!(env.fs.exists(&path));
+        assert!(!env.fs.is_symlink(&path));
+        assert_eq!(env.fs.read_to_string(&path).unwrap(), "deep");
+        assert!(
+            path.to_string_lossy().contains("sub/nested/file.txt"),
+            "path should contain nested structure: {}",
+            path.display()
+        );
     }
 
     // ── Object safety ───────────────────────────────────────────

@@ -70,6 +70,15 @@ pub trait Preprocessor: Send + Sync {
     /// For multi-file preprocessors (archives): returns many entries.
     ///
     /// The `source` path points to the original file in the pack directory.
+    ///
+    /// # Memory
+    ///
+    /// Expanded content is held fully in memory via [`Vec<u8>`]. This is
+    /// appropriate for dotfile-sized payloads (configs, small scripts,
+    /// small archives). Preprocessors that may handle very large inputs
+    /// (e.g. multi-hundred-MB archives of pre-built toolchains) should
+    /// consider adding a streaming path rather than materialising the
+    /// entire decoded stream at once.
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>>;
 }
 

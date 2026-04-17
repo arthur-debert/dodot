@@ -102,8 +102,12 @@ pub fn preprocess_pack(
     let mut virtual_entries = Vec::new();
     let mut source_map = HashMap::new();
 
-    // Build a set of regular entry relative paths for collision detection
-    let regular_paths: std::collections::HashSet<PathBuf> = regular_entries
+    // Tracks claimed paths for collision detection. Seeded with regular
+    // entries; virtual entries are added as they're created so two
+    // preprocessors can't both produce the same virtual path (e.g.
+    // `config.toml.identity` and `config.toml.tmpl` both expanding to
+    // `config.toml`).
+    let mut claimed_paths: std::collections::HashSet<PathBuf> = regular_entries
         .iter()
         .map(|e| e.relative_path.clone())
         .collect();
@@ -143,8 +147,9 @@ pub fn preprocess_pack(
                 expanded.relative_path.clone()
             };
 
-            // Phase 4: Collision check
-            if regular_paths.contains(&virtual_relative) {
+            // Phase 4: Collision check (against both regular entries and
+            // previously-expanded virtual entries)
+            if claimed_paths.contains(&virtual_relative) {
                 return Err(DodotError::PreprocessorCollision {
                     pack: pack.name.clone(),
                     source_file: filename.clone(),
@@ -152,12 +157,13 @@ pub fn preprocess_pack(
                 });
             }
 
-            // Write expanded content to datastore
-            let expanded_filename = virtual_relative.to_string_lossy().replace('/', "__");
+            // Write expanded content to datastore, preserving directory
+            // structure. `write_rendered_file` creates any needed parent
+            // directories under the handler data dir.
             let datastore_path = datastore.write_rendered_file(
                 &pack.name,
                 PREPROCESSED_HANDLER,
-                &expanded_filename,
+                &virtual_relative.to_string_lossy(),
                 &expanded.content,
             )?;
 
@@ -168,6 +174,7 @@ pub fn preprocess_pack(
                 "wrote expanded file"
             );
 
+            claimed_paths.insert(virtual_relative.clone());
             source_map.insert(datastore_path.clone(), entry.absolute_path.clone());
 
             virtual_entries.push(PackEntry {
@@ -672,5 +679,144 @@ mod tests {
             matches!(err, DodotError::Fs { .. }),
             "expected Fs error for missing file, got: {err}"
         );
+    }
+
+    #[test]
+    fn inter_preprocessor_collision_detected() {
+        // Two preprocessors produce the same logical name.
+        // Set up: `config.toml.identity` and `config.toml.other` (custom
+        // extension) both strip to `config.toml`. The pipeline must
+        // detect this and refuse rather than silently overwriting.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.identity", "a")
+            .file("config.toml.other", "b")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(IdentityPreprocessor::new()));
+        registry.register(Box::new(IdentityPreprocessor::with_extension("other")));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![
+            PackEntry {
+                relative_path: "config.toml.identity".into(),
+                absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
+                is_dir: false,
+            },
+            PackEntry {
+                relative_path: "config.toml.other".into(),
+                absolute_path: env.dotfiles_root.join("app/config.toml.other"),
+                is_dir: false,
+            },
+        ];
+
+        let err =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap_err();
+        assert!(
+            matches!(err, DodotError::PreprocessorCollision { .. }),
+            "expected PreprocessorCollision for inter-preprocessor clash, got: {err}"
+        );
+    }
+
+    #[test]
+    fn datastore_preserves_directory_structure() {
+        // Preprocessor files in subdirectories should land in matching
+        // subdirectories under the datastore, not be flattened with `__`.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("sub/config.toml.identity", "nested")
+            .done()
+            .build();
+
+        let registry = make_registry();
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "sub/config.toml.identity".into(),
+            absolute_path: env.dotfiles_root.join("app/sub/config.toml.identity"),
+            is_dir: false,
+        }];
+
+        let result =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap();
+
+        assert_eq!(result.virtual_entries.len(), 1);
+        let datastore_path = &result.virtual_entries[0].absolute_path;
+
+        // The datastore path should contain the subdirectory structure, not flattened
+        let ds_str = datastore_path.to_string_lossy();
+        assert!(
+            ds_str.contains("sub/config.toml"),
+            "datastore path should preserve directory structure, got: {ds_str}"
+        );
+        assert!(
+            !ds_str.contains("__"),
+            "datastore path should not contain flattening separator, got: {ds_str}"
+        );
+
+        // File should actually exist at that path
+        assert!(env.fs.exists(datastore_path));
+        let content = env.fs.read_to_string(datastore_path).unwrap();
+        assert_eq!(content, "nested");
+    }
+
+    #[test]
+    fn datastore_distinguishes_sibling_from_flattened_name() {
+        // Regression test for the flatten-with-`__` edge case: a user could
+        // have `a/b.txt` and `a__b.txt` both as preprocessor outputs, which
+        // would have collided under the old flattening scheme. With
+        // directory-preserving storage they live in distinct datastore paths.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("a/b.txt.identity", "nested")
+            .file("a__b.txt.identity", "flat")
+            .done()
+            .build();
+
+        let registry = make_registry();
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![
+            PackEntry {
+                relative_path: "a/b.txt.identity".into(),
+                absolute_path: env.dotfiles_root.join("app/a/b.txt.identity"),
+                is_dir: false,
+            },
+            PackEntry {
+                relative_path: "a__b.txt.identity".into(),
+                absolute_path: env.dotfiles_root.join("app/a__b.txt.identity"),
+                is_dir: false,
+            },
+        ];
+
+        let result =
+            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore).unwrap();
+
+        assert_eq!(result.virtual_entries.len(), 2);
+
+        // Both files must exist with distinct content
+        let nested = result
+            .virtual_entries
+            .iter()
+            .find(|e| e.relative_path == std::path::Path::new("a/b.txt"))
+            .expect("nested entry");
+        let flat = result
+            .virtual_entries
+            .iter()
+            .find(|e| e.relative_path == std::path::Path::new("a__b.txt"))
+            .expect("flat entry");
+
+        assert_ne!(nested.absolute_path, flat.absolute_path);
+        assert_eq!(
+            env.fs.read_to_string(&nested.absolute_path).unwrap(),
+            "nested"
+        );
+        assert_eq!(env.fs.read_to_string(&flat.absolute_path).unwrap(), "flat");
     }
 }
