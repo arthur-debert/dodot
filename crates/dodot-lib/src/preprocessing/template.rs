@@ -648,6 +648,121 @@ mod tests {
     }
 
     #[test]
+    fn env_var_default_filter_bridges_missing_vars() {
+        // The documented escape hatch for optional env vars is
+        // `{{ env.NAME | default("...") }}`. If `default` doesn't work,
+        // users have no way to reference env vars that might not be set —
+        // so this specific pattern must stay functional.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "cfg.tmpl",
+                "editor={{ env.DODOT_MISSING_VAR_ZZZ | default(\"vim\") }}",
+            )
+            .done()
+            .build();
+
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], HashMap::new(), env.paths.as_ref())
+            .unwrap();
+
+        let source = env.dotfiles_root.join("app/cfg.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        assert_eq!(String::from_utf8_lossy(&result[0].content), "editor=vim");
+    }
+
+    #[test]
+    fn renders_for_loop_over_user_var() {
+        // Regression guard: MiniJinja supports loops, but we want to
+        // confirm that user-defined vars (which are plain strings) still
+        // work inside a minimal control-flow structure. Strings are
+        // iterable as sequences of characters — confirm our value-layer
+        // doesn't silently block that.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "loop.tmpl",
+                "{% for c in word %}{{ c | upper }}{% endfor %}",
+            )
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("word".into(), "hi".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/loop.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        assert_eq!(String::from_utf8_lossy(&result[0].content), "HI");
+    }
+
+    #[test]
+    fn renders_unicode_content_and_vars() {
+        // Template content and user vars may contain non-ASCII. Confirm
+        // both pass through without mangling.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("greet.tmpl", "こんにちは {{ name }}! 🎉")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "世界".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/greet.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&result[0].content),
+            "こんにちは 世界! 🎉"
+        );
+    }
+
+    #[test]
+    fn rendering_is_deterministic_across_calls() {
+        // Calling `expand` multiple times with the same inputs must
+        // produce byte-identical output. This guards against any
+        // hidden state leaking between renders (e.g. a stale globals
+        // cache, a reseeded RNG, or a leaked side-effect into the
+        // Environment).
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "cfg.tmpl",
+                "name={{ name }} os={{ dodot.os }} home={{ dodot.home }}",
+            )
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/cfg.tmpl");
+        let first = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let second = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let third = pp.expand(&source, env.fs.as_ref()).unwrap();
+
+        assert_eq!(first[0].content, second[0].content);
+        assert_eq!(second[0].content, third[0].content);
+    }
+
+    #[test]
+    fn stripped_name_of_literal_extension_returns_empty() {
+        // Edge case recording the current (defensive) behavior: a file
+        // named exactly `.tmpl` (extension and nothing else) strips to
+        // the empty string. In normal packs the scanner filters dotfiles
+        // out before they reach the preprocessor, so this won't happen
+        // via user flows. But a misconfigured preprocessor extension or
+        // an archive entry with no stem could still produce an empty
+        // path downstream, and the pipeline is expected to reject that
+        // with a useful error — see
+        // `pipeline::rejects_empty_path_from_preprocessor`.
+        let pp = new_pp(HashMap::new());
+        assert_eq!(pp.stripped_name(".tmpl"), "");
+        assert!(pp.matches_extension(".tmpl"));
+    }
+
+    #[test]
     fn build_dodot_context_omits_undetected_optional_keys() {
         // Directly exercise the map-building helper: given a Pather but
         // the detection helpers return None (simulated via testing the
