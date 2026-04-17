@@ -6,9 +6,9 @@ Symlink Deployment Paths
 
     Dodot respects the `XDG_CONFIG_HOME` specification. In essence, it means that if the user has set the `XDG_CONFIG_HOME` environment variable, dodot will honor it, otherwise it will default to `~/.config`. Therefore your config home is either `$XDG_CONFIG_HOME` or `$HOME`. For brevity's sake, we will refer to it as `$XDG_CONFIG_HOME` in the rest of this document.
 
-    Hence in the simplest cases `<pack>/<file-or-dir>` will be symlinked to `$XDG_CONFIG_HOME/<file-or-dir>`.
+    Hence in the simplest cases `<pack>/<file-or-dir>` will be symlinked to `$XDG_CONFIG_HOME/<file-or-dir>`. Top-level *files* default to `$HOME/.<name>` (so `vim/vimrc` → `~/.vimrc`); top-level *directories* default to `$XDG_CONFIG_HOME/<name>` (so `warp/themes/` → `~/.config/themes`).
 
-    Note that symlinks are flat: dodot will create symlinks for files and directories, but it will not create symlinks for files inside directories.
+    Note that symlinks are flat: dodot creates one symlink per top-level entry of the pack. For a top-level directory, that means the directory itself is linked, not each nested file individually. Per-file behavior can be re-enabled for a specific directory by adding an `[symlink.targets]` entry that reaches inside it or by listing a file inside it in `[symlink] protected_paths` — either triggers per-file mode for that directory (and only that directory).
 
 2. The `dot.<file>` Convention
 

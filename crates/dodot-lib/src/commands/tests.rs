@@ -97,7 +97,10 @@ fn status_renders_with_standout() {
 // ── status: correct target paths ────────────────────────────
 
 #[test]
-fn status_shows_xdg_target_for_subdirectory_files() {
+fn status_shows_xdg_target_for_subdirectory() {
+    // Top-level directories (e.g. `nvim`) are linked wholesale to
+    // `$XDG_CONFIG_HOME/<name>` — a single entry in status, not
+    // one per nested file.
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("nvim/init.lua", "-- nvim config")
@@ -108,22 +111,23 @@ fn status_shows_xdg_target_for_subdirectory_files() {
     let result = commands::status::status(None, &ctx).unwrap();
 
     let nvim_pack = &result.packs[0];
-    let init_file = nvim_pack
+    let nvim_entry = nvim_pack
         .files
         .iter()
-        .find(|f| f.name.contains("init.lua"))
-        .expect("should have init.lua");
+        .find(|f| f.name == "nvim")
+        .expect("should have nvim dir entry");
 
-    // Should show ~/.config/nvim/init.lua, not ~/.nvim/init.lua
     assert!(
-        init_file.description.contains(".config/nvim"),
-        "expected XDG path, got: {}",
-        init_file.description
+        nvim_entry.description.contains(".config/nvim"),
+        "expected XDG path for wholesale dir, got: {}",
+        nvim_entry.description
     );
 }
 
 #[test]
-fn status_does_not_list_directories() {
+fn status_lists_top_level_dirs_wholesale() {
+    // Top-level dirs now appear as single entries (linked wholesale),
+    // not expanded into one entry per nested file.
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("nvim/init.lua", "-- nvim config")
@@ -135,14 +139,12 @@ fn status_does_not_list_directories() {
     let result = commands::status::status(None, &ctx).unwrap();
 
     let nvim_pack = &result.packs[0];
-    // Should not have directory entries like "nvim" or "nvim/lua"
-    for file in &nvim_pack.files {
-        assert!(
-            file.name.contains('.'),
-            "expected only files (with extensions), got directory entry: {}",
-            file.name
-        );
-    }
+    let names: Vec<&str> = nvim_pack.files.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["nvim"],
+        "expected single wholesale dir entry, got {names:?}"
+    );
 }
 
 // ── up ──────────────────────────────────────────────────────

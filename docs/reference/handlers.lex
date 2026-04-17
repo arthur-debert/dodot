@@ -36,11 +36,26 @@ Handlers Guide
 
         See `dodot_lib::handlers::path`.
 
-2. Handler Categories
+2. Matching Model
+
+    Handlers are classified along two axes:
+
+    - *Match mode* — *Precise* (whitelisted names like `bin/`, `install.sh`, `Brewfile`) or *Catchall* (anything the precise handlers didn't claim).
+    - *Scope* — *Exclusive* (a match is consumed — no other handler sees that entry) or *Shared* (the entry remains available; reserved for future observer-style handlers).
+
+    Invariants:
+    - At most one handler may be simultaneously *Catchall* + *Exclusive*. `symlink` is that handler today.
+    - Catchall handlers run after all precise handlers.
+
+    Scanning is top-level only: the scanner enumerates depth-1 entries of the pack (files and directories directly under the pack root). It does *not* recurse. A handler that receives a directory entry decides how to treat its contents — the path handler stages the whole directory into `$PATH`, the symlink handler creates one wholesale symlink for it (falling back to per-file mode when `protected_paths` or `symlink.targets` reach inside).
+
+    If you want a nested path handled individually (different target, excluded from a wholesale link, etc.), declare it explicitly via `[symlink.targets]` or list it in `[symlink] protected_paths`. These triggers promote the nested path out of its parent's wholesale treatment.
+
+3. Handler Categories
 
     Handlers are divided into two categories based on their operation types.
 
-    2.1. Code Execution Handlers (provisioning)
+    3.1. Code Execution Handlers (provisioning)
 
         - Generate *RunCommand* operations with sentinels
         - Install Handler: runs setup scripts once
@@ -48,7 +63,7 @@ Handlers Guide
         - Operations are tracked to prevent re-execution
         - Run by default with `dodot up`, skip with `--no-provision`
 
-    2.2. Configuration Handlers (always run)
+    3.2. Configuration Handlers (always run)
 
         - Generate *CreateDataLink* and *CreateUserLink* operations
         - Symlink Handler: creates configuration symlinks
@@ -57,7 +72,7 @@ Handlers Guide
         - Operations are idempotent (safe to run multiple times)
         - Always run with `dodot up`
 
-3. Quick Reference
+4. Quick Reference
 
     Handler summary:
         | Handler  | Category       | Operations                    | Purpose                  |
@@ -68,7 +83,7 @@ Handlers Guide
         | path     | Configuration  | CreateDataLink                | Manage PATH entries      |
     :: table ::
 
-4. Handler Documentation Structure
+5. Handler Documentation Structure
 
     Each handler's module documentation contains:
 
@@ -85,7 +100,7 @@ Handlers Guide
     - Best Practices: usage recommendations
     - Comparison: when to use vs other handlers
 
-5. Creating Custom Handlers
+6. Creating Custom Handlers
 
     While dodot includes comprehensive built-in handlers, you can create custom ones:
 
@@ -96,7 +111,7 @@ Handlers Guide
 
     Handlers are simple data transformers: they just declare what intents they need, not how to perform them. See `dodot_lib::handlers::Handler` trait and `dodot_lib::operations::HandlerIntent`.
 
-6. Best Practices
+7. Best Practices
 
     - Read the handler module docs: each handler has extensive documentation
     - Use the right tool: each handler has a specific purpose
@@ -105,7 +120,7 @@ Handlers Guide
     - Organize by pack: group related configurations
     - Use standard patterns: follow naming conventions
 
-7. Troubleshooting
+8. Troubleshooting
 
     - Not running? Check rule patterns and priorities.
     - Errors? Each handler module lists common error codes.

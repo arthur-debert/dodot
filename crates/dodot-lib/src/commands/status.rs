@@ -80,6 +80,7 @@ fn verify_symlink(
     source: &std::path::Path,
     pack: &str,
     rel_path: &str,
+    is_dir: bool,
     config: &crate::handlers::HandlerConfig,
     ctx: &ExecutionContext,
 ) -> Health {
@@ -116,7 +117,7 @@ fn verify_symlink(
     }
 
     // Step 4: Check user link at the currently-resolved target
-    let user_target = resolve_target(rel_path, config, ctx.paths.as_ref());
+    let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
 
     if ctx.fs.is_symlink(&user_target) {
         match ctx.fs.readlink(&user_target) {
@@ -272,19 +273,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
-            // Skip directory entries for symlink handler — only show leaf files (#11)
-            // Keep directory entries for other handlers (e.g. path handler uses bin/ dirs)
-            if m.is_dir && m.handler == HANDLER_SYMLINK {
-                continue;
-            }
-
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
-                "symlink" => {
-                    verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
-                }
+                "symlink" => verify_symlink(
+                    &m.absolute_path,
+                    &pack.name,
+                    &rel_str,
+                    m.is_dir,
+                    &pack.config,
+                    ctx,
+                ),
                 "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
                 _ => {
                     // install, homebrew — use existing handler check_status
@@ -306,7 +306,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
             // Compute actual target path for symlink handler display
             let user_target = if m.handler == HANDLER_SYMLINK {
-                let target = resolve_target(&rel_str, &pack.config, ctx.paths.as_ref());
+                let target = resolve_target(&rel_str, m.is_dir, &pack.config, ctx.paths.as_ref());
                 let home = ctx.paths.home_dir();
                 let display = if let Ok(rel) = target.strip_prefix(home) {
                     format!("~/{}", rel.display())
