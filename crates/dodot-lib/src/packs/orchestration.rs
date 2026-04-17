@@ -270,7 +270,11 @@ pub fn collect_pack_intents(
     pack: &Pack,
     ctx: &ExecutionContext,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
-    let registry = crate::preprocessing::default_registry();
+    let root_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    let registry = crate::preprocessing::default_registry(
+        &root_config.preprocessor.template,
+        ctx.paths.as_ref(),
+    )?;
     collect_pack_intents_with_preprocessors(pack, ctx, Some(&registry))
 }
 
@@ -1091,6 +1095,292 @@ mod tests {
         assert!(
             has_expanded_source,
             "production collect_pack_intents should expand .tar.gz via the default registry. Intents: {intents:?}"
+        );
+    }
+
+    // ── Template preprocessor integration tests ─────────────────
+
+    #[test]
+    fn template_deploys_rendered_content_via_symlink_handler() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "config.toml.tmpl",
+                "name = \"{{ name }}\"\nos = \"{{ dodot.os }}\"",
+            )
+            .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let intents = collect_pack_intents(&pack, &ctx).unwrap();
+        let user_path = match &intents[0] {
+            crate::operations::HandlerIntent::Link { user_path, .. } => user_path.clone(),
+            other => panic!("expected Link intent, got: {other:?}"),
+        };
+
+        let results = execute_intents(intents, &ctx).unwrap();
+        assert!(
+            results.iter().all(|r| r.success),
+            "expected success: {results:?}"
+        );
+
+        let content = ctx.fs.read_to_string(&user_path).unwrap();
+        let expected_os = std::env::consts::OS;
+        assert_eq!(content, format!("name = \"Alice\"\nos = \"{expected_os}\""));
+    }
+
+    #[test]
+    fn template_with_shell_handler_sources_rendered_content() {
+        // aliases.sh.tmpl should match the shell handler after stripping.
+        let env = TempEnvironment::builder()
+            .pack("tools")
+            .file("aliases.sh.tmpl", "alias hello='echo {{ greeting }}'")
+            .config("[preprocessor.template.vars]\ngreeting = \"world\"\n")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "tools".into(),
+            path: env.dotfiles_root.join("tools"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("tools"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let intents = collect_pack_intents(&pack, &ctx).unwrap();
+        assert_eq!(intents.len(), 1);
+
+        match &intents[0] {
+            crate::operations::HandlerIntent::Stage {
+                handler, source, ..
+            } => {
+                assert_eq!(handler, "shell", "shell handler should own this");
+                let content = ctx.fs.read_to_string(source).unwrap();
+                assert_eq!(content, "alias hello='echo world'");
+            }
+            other => panic!("expected Stage intent, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn template_respects_per_pack_var_overrides() {
+        // Root config defines name=Alice; pack overrides to name=Bob.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("greeting.tmpl", "hello {{ name }}")
+            .config("[preprocessor.template.vars]\nname = \"Bob\"\n")
+            .done()
+            .build();
+
+        // Root config: name = Alice
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                b"[preprocessor.template.vars]\nname = \"Alice\"\n",
+            )
+            .unwrap();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let intents = collect_pack_intents(&pack, &ctx).unwrap();
+        match &intents[0] {
+            crate::operations::HandlerIntent::Link { source, .. } => {
+                let content = ctx.fs.read_to_string(source).unwrap();
+                assert_eq!(content, "hello Bob", "pack-level override should win");
+            }
+            other => panic!("expected Link intent, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn template_disabled_via_config_treats_files_as_regular() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = \"{{ name }}\"")
+            .done()
+            .build();
+
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                b"[preprocessor]\nenabled = false\n",
+            )
+            .unwrap();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let intents = collect_pack_intents(&pack, &ctx).unwrap();
+        // With preprocessing disabled, the .tmpl file is treated as a
+        // regular file and deployed verbatim (retaining the .tmpl extension).
+        assert_eq!(intents.len(), 1);
+        match &intents[0] {
+            crate::operations::HandlerIntent::Link {
+                source, user_path, ..
+            } => {
+                assert!(
+                    source.to_string_lossy().ends_with("config.toml.tmpl"),
+                    "source: {}",
+                    source.display()
+                );
+                assert!(
+                    user_path.to_string_lossy().contains(".tmpl"),
+                    "user_path should keep .tmpl extension: {}",
+                    user_path.display()
+                );
+            }
+            other => panic!("expected Link intent, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn template_render_error_surfaces_with_source_path() {
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("bad.tmpl", "value = \"{{ undefined_var }}\"")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let err = collect_pack_intents(&pack, &ctx).unwrap_err();
+        match err {
+            crate::DodotError::TemplateRender { source_file, .. } => {
+                assert!(
+                    source_file.ends_with("bad.tmpl"),
+                    "source_file: {}",
+                    source_file.display()
+                );
+            }
+            other => panic!("expected TemplateRender, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn template_reserved_var_fails_fast() {
+        // A user tries to define `dodot` as a variable — construction
+        // of the preprocessor should fail before any rendering happens.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("file.txt", "x")
+            .done()
+            .build();
+
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                b"[preprocessor.template.vars]\ndodot = \"pwn\"\n",
+            )
+            .unwrap();
+
+        let ctx = make_context(&env);
+        let pack = Pack {
+            name: "app".into(),
+            path: env.dotfiles_root.join("app"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let err = collect_pack_intents(&pack, &ctx).unwrap_err();
+        assert!(
+            matches!(err, crate::DodotError::TemplateReservedVar { ref name } if name == "dodot"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn template_with_install_handler_sentinel_reflects_rendered_content() {
+        // install.sh.tmpl should render, and the sentinel should be
+        // based on the rendered content (so vars changes re-run the
+        // script). Verify by checking the sentinel name includes the
+        // hash of the rendered content, not the template source.
+        let env = TempEnvironment::builder()
+            .pack("setup")
+            .file(
+                "install.sh.tmpl",
+                "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
+            )
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        ctx.no_provision = false; // actually run install this time
+
+        let pack = Pack {
+            name: "setup".into(),
+            path: env.dotfiles_root.join("setup"),
+            config: ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("setup"))
+                .unwrap()
+                .to_handler_config(),
+        };
+
+        let intents = collect_pack_intents(&pack, &ctx).unwrap();
+        let (sentinel, rendered_path) = match &intents[0] {
+            crate::operations::HandlerIntent::Run {
+                sentinel,
+                arguments,
+                ..
+            } => (
+                sentinel.clone(),
+                std::path::PathBuf::from(arguments.last().unwrap()),
+            ),
+            other => panic!("expected Run intent, got: {other:?}"),
+        };
+
+        // Sentinel is "install.sh-{checksum}" where checksum is the
+        // SHA-256 of the *rendered* script in the datastore.
+        assert!(sentinel.starts_with("install.sh-"));
+
+        // Verify the rendered file contains the OS substitution
+        let content = ctx.fs.read_to_string(&rendered_path).unwrap();
+        assert!(
+            content.contains(std::env::consts::OS),
+            "rendered content should have OS substituted: {content}"
         );
     }
 }
