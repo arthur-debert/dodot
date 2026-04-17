@@ -270,12 +270,12 @@ pub fn collect_pack_intents(
     pack: &Pack,
     ctx: &ExecutionContext,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
-    let root_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let registry = crate::preprocessing::default_registry(
-        &root_config.preprocessor.template,
+        &pack_config.preprocessor.template,
         ctx.paths.as_ref(),
     )?;
-    collect_pack_intents_with_preprocessors(pack, ctx, Some(&registry))
+    collect_pack_intents_inner(pack, ctx, &pack_config, Some(&registry))
 }
 
 /// Like [`collect_pack_intents`], but accepts an explicit preprocessor
@@ -288,17 +288,30 @@ pub fn collect_pack_intents_with_preprocessors(
     ctx: &ExecutionContext,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
-    let root_config = ctx.config_manager.config_for_pack(&pack.path)?;
-    let rules = crate::config::mappings_to_rules(&root_config.mappings);
+    let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    collect_pack_intents_inner(pack, ctx, &pack_config, preprocessors)
+}
+
+/// Shared implementation that takes a pre-loaded pack config. Both
+/// entrypoints load the config once and pass it through so we don't
+/// re-merge config for every pack (the ConfigManager caches by path,
+/// but passing the config explicitly makes the data flow obvious).
+fn collect_pack_intents_inner(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    pack_config: &crate::config::DodotConfig,
+    preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
+) -> Result<Vec<crate::operations::HandlerIntent>> {
+    let rules = crate::config::mappings_to_rules(&pack_config.mappings);
 
     // Phase 1: Walk pack directory
     let scanner = Scanner::new(ctx.fs.as_ref());
-    let entries = scanner.walk_pack(&pack.path, &root_config.pack.ignore)?;
+    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
 
     // Phase 2: Preprocessing
     let preprocess_result = if let Some(registry) = preprocessors {
-        if !registry.is_empty() && root_config.preprocessor.enabled {
+        if !registry.is_empty() && pack_config.preprocessor.enabled {
             crate::preprocessing::pipeline::preprocess_pack(
                 entries,
                 registry,

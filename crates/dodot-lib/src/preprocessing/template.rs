@@ -15,7 +15,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use minijinja::value::{Enumerator, Object, ObjectRepr, Value};
 use minijinja::{Environment, UndefinedBehavior};
@@ -30,8 +30,9 @@ const RESERVED_VARS: &[&str] = &["dodot", "env"];
 
 /// MiniJinja object that looks up process environment variables on
 /// attribute access. `{{ env.SHELL }}` becomes `std::env::var("SHELL")`.
-/// Missing env vars become `None`, which MiniJinja in strict mode
-/// reports as an undefined-value error at render time.
+/// Missing env vars return `None` from `get_value`, which MiniJinja
+/// treats as an undefined attribute (a render error under strict mode).
+/// For optional variables, use `{{ env.NAME | default("...") }}`.
 #[derive(Debug)]
 struct EnvLookup;
 
@@ -73,6 +74,9 @@ impl TemplatePreprocessor {
     /// (`dodot` or `env`). Populates the MiniJinja environment with
     /// the `dodot.*` builtins from `pather` + system info, an `env.*`
     /// dynamic lookup, and each user variable as a bare global.
+    ///
+    /// Extensions are normalized at construction: a leading dot (e.g.
+    /// `".tmpl"`) is stripped so both `"tmpl"` and `".tmpl"` work.
     pub fn new(
         extensions: Vec<String>,
         user_vars: HashMap<String, String>,
@@ -83,6 +87,11 @@ impl TemplatePreprocessor {
                 return Err(DodotError::TemplateReservedVar { name: name.clone() });
             }
         }
+
+        let extensions: Vec<String> = extensions
+            .into_iter()
+            .map(|e| e.trim_start_matches('.').to_string())
+            .collect();
 
         let mut env = Environment::new();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
@@ -108,23 +117,32 @@ impl Preprocessor for TemplatePreprocessor {
     }
 
     fn matches_extension(&self, filename: &str) -> bool {
+        // Extensions are normalized (no leading dot) at construction.
+        // We require a literal "." before the extension to avoid e.g.
+        // "mpl" matching "foo.tmpl". No per-call allocation.
         self.extensions.iter().any(|ext| {
-            // Tolerate user config that writes extensions with or without
-            // a leading dot (".tmpl" vs "tmpl"); without this, ".tmpl"
-            // would produce "..tmpl" and silently fail to match.
-            let suffix = format!(".{}", ext.trim_start_matches('.'));
-            filename.ends_with(&suffix)
+            filename
+                .strip_suffix(ext.as_str())
+                .is_some_and(|prefix| prefix.ends_with('.'))
         })
     }
 
     fn stripped_name(&self, filename: &str) -> String {
-        for ext in &self.extensions {
-            let suffix = format!(".{}", ext.trim_start_matches('.'));
-            if let Some(stripped) = filename.strip_suffix(&suffix) {
-                return stripped.to_string();
-            }
-        }
-        filename.to_string()
+        // If multiple configured extensions match (e.g. "tmpl" and
+        // "j2.tmpl" both suffixes of the same filename), prefer the
+        // longest so behaviour is deterministic and independent of
+        // config ordering.
+        self.extensions
+            .iter()
+            .filter_map(|ext| {
+                filename
+                    .strip_suffix(ext.as_str())
+                    .and_then(|prefix| prefix.strip_suffix('.'))
+                    .map(|stripped| (ext.len(), stripped))
+            })
+            .max_by_key(|(len, _)| *len)
+            .map(|(_, stripped)| stripped.to_string())
+            .unwrap_or_else(|| filename.to_string())
     }
 
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>> {
@@ -162,15 +180,19 @@ impl Preprocessor for TemplatePreprocessor {
 /// `{{ dodot.hostname }}` triggers a strict-undefined render error,
 /// rather than silently injecting an empty string. Users who want a
 /// fallback can write `{{ dodot.hostname | default("unknown") }}`.
+///
+/// Hostname and username detection is cached process-wide via
+/// [`OnceLock`] so that building a template preprocessor for each pack
+/// does not respawn `hostname(1)` every time.
 fn build_dodot_context(pather: &dyn Pather) -> BTreeMap<String, String> {
     let mut ctx = BTreeMap::new();
     ctx.insert("os".into(), std::env::consts::OS.into());
     ctx.insert("arch".into(), std::env::consts::ARCH.into());
-    if let Some(h) = detect_hostname() {
-        ctx.insert("hostname".into(), h);
+    if let Some(h) = cached_hostname() {
+        ctx.insert("hostname".into(), h.clone());
     }
-    if let Some(u) = detect_username() {
-        ctx.insert("username".into(), u);
+    if let Some(u) = cached_username() {
+        ctx.insert("username".into(), u.clone());
     }
     ctx.insert("home".into(), pather.home_dir().display().to_string());
     ctx.insert(
@@ -178,6 +200,20 @@ fn build_dodot_context(pather: &dyn Pather) -> BTreeMap<String, String> {
         pather.dotfiles_root().display().to_string(),
     );
     ctx
+}
+
+/// Process-wide cached hostname. First call resolves and pins the
+/// result for the lifetime of the process.
+fn cached_hostname() -> Option<&'static String> {
+    static CACHE: OnceLock<Option<String>> = OnceLock::new();
+    CACHE.get_or_init(detect_hostname).as_ref()
+}
+
+/// Process-wide cached username. Same caching semantics as
+/// [`cached_hostname`].
+fn cached_username() -> Option<&'static String> {
+    static CACHE: OnceLock<Option<String>> = OnceLock::new();
+    CACHE.get_or_init(detect_username).as_ref()
 }
 
 fn detect_hostname() -> Option<String> {
@@ -519,6 +555,47 @@ mod tests {
         assert!(pp.matches_extension("config.toml.tmpl"));
         assert!(pp.matches_extension("app.template"));
         assert_eq!(pp.stripped_name("config.toml.tmpl"), "config.toml");
+    }
+
+    #[test]
+    fn overlapping_suffix_does_not_false_match() {
+        // If a user configures an extension that is a suffix of another
+        // legitimate filename part (e.g. "mpl" as a suffix of "tmpl"),
+        // the matcher must require the literal "." boundary before the
+        // extension — otherwise "foo.tmpl" would be wrongly recognised
+        // as a "mpl" template and stripped to "foo.t".
+        let pp =
+            TemplatePreprocessor::new(vec!["mpl".into()], HashMap::new(), &make_pather()).unwrap();
+        assert!(!pp.matches_extension("foo.tmpl"));
+        assert_eq!(pp.stripped_name("foo.tmpl"), "foo.tmpl");
+
+        // Files that legitimately end with `.mpl` still match.
+        assert!(pp.matches_extension("song.mpl"));
+        assert_eq!(pp.stripped_name("song.mpl"), "song");
+    }
+
+    #[test]
+    fn overlapping_extensions_prefer_longest_match() {
+        // If a filename ends with both configured extensions (e.g.
+        // "foo.j2.tmpl" matches both "tmpl" and "j2.tmpl"), prefer the
+        // longest match so behaviour is deterministic regardless of
+        // config ordering.
+        let pp = TemplatePreprocessor::new(
+            vec!["tmpl".into(), "j2.tmpl".into()],
+            HashMap::new(),
+            &make_pather(),
+        )
+        .unwrap();
+        assert_eq!(pp.stripped_name("config.j2.tmpl"), "config");
+
+        // Opposite config order yields the same result.
+        let pp_reversed = TemplatePreprocessor::new(
+            vec!["j2.tmpl".into(), "tmpl".into()],
+            HashMap::new(),
+            &make_pather(),
+        )
+        .unwrap();
+        assert_eq!(pp_reversed.stripped_name("config.j2.tmpl"), "config");
     }
 
     #[test]
