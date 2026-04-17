@@ -33,11 +33,28 @@ pub struct Claimant {
     pub source: PathBuf,
 }
 
+/// What kind of collision this conflict represents.
+///
+/// The two kinds have different display semantics: symlink conflicts
+/// have a filesystem target path, while path-executable conflicts have
+/// a bare executable name whose location is "somewhere in $PATH".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConflictKind {
+    /// Multiple packs resolve to the same user symlink target.
+    SymlinkTarget,
+    /// Multiple packs stage a `$PATH` directory that contains files
+    /// with the same name — only the first in PATH order would be used.
+    PathExecutable,
+}
+
 /// A cross-pack conflict: multiple packs claim the same effective target.
 #[derive(Debug, Clone)]
 pub struct Conflict {
-    /// The resolved target path (filesystem path for Link intents,
-    /// descriptive label for path executable collisions).
+    /// The kind of collision.
+    pub kind: ConflictKind,
+    /// For [`ConflictKind::SymlinkTarget`]: the resolved filesystem path.
+    /// For [`ConflictKind::PathExecutable`]: a sentinel path
+    /// `<path-executable>/<name>` — read `.file_name()` for the bare name.
     pub target: PathBuf,
     /// Every pack that claims this target.
     pub claimants: Vec<Claimant>,
@@ -82,10 +99,13 @@ pub fn detect_cross_pack_conflicts(
 ) -> Vec<Conflict> {
     let mut targets: HashMap<PathBuf, Vec<Claimant>> = HashMap::new();
 
+    let mut kinds: HashMap<PathBuf, ConflictKind> = HashMap::new();
+
     for (pack_name, intents) in pack_intents {
         for intent in intents {
             // Symlink target conflicts
             if let HandlerIntent::Link { user_path, .. } = intent {
+                kinds.insert(user_path.clone(), ConflictKind::SymlinkTarget);
                 targets
                     .entry(user_path.clone())
                     .or_default()
@@ -106,6 +126,7 @@ pub fn detect_cross_pack_conflicts(
                         for entry in entries {
                             if entry.is_file || entry.is_symlink {
                                 let key = Path::new("<path-executable>").join(&entry.name);
+                                kinds.insert(key.clone(), ConflictKind::PathExecutable);
                                 targets.entry(key).or_default().push(Claimant {
                                     pack: pack_name.clone(),
                                     handler: handler.clone(),
@@ -126,7 +147,17 @@ pub fn detect_cross_pack_conflicts(
             let first = &claimants[0].pack;
             claimants.len() > 1 && claimants.iter().any(|c| c.pack != *first)
         })
-        .map(|(target, claimants)| Conflict { target, claimants })
+        .map(|(target, claimants)| {
+            let kind = kinds
+                .get(&target)
+                .copied()
+                .unwrap_or(ConflictKind::SymlinkTarget);
+            Conflict {
+                kind,
+                target,
+                claimants,
+            }
+        })
         .collect();
 
     // Sort for deterministic output
@@ -551,6 +582,7 @@ mod tests {
     #[test]
     fn conflict_display_includes_all_info() {
         let conflict = Conflict {
+            kind: ConflictKind::SymlinkTarget,
             target: PathBuf::from("/home/.aliases"),
             claimants: vec![
                 Claimant {
@@ -576,6 +608,7 @@ mod tests {
     fn format_conflicts_combines_multiple() {
         let conflicts = vec![
             Conflict {
+                kind: ConflictKind::SymlinkTarget,
                 target: PathBuf::from("/home/.a"),
                 claimants: vec![
                     Claimant {
@@ -591,6 +624,7 @@ mod tests {
                 ],
             },
             Conflict {
+                kind: ConflictKind::SymlinkTarget,
                 target: PathBuf::from("/home/.b"),
                 claimants: vec![
                     Claimant {

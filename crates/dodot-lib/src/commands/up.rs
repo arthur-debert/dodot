@@ -163,6 +163,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         dry_run: ctx.dry_run,
         packs: display_packs,
         warnings: Vec::new(),
+        conflicts: Vec::new(),
     })
 }
 

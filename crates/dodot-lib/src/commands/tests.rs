@@ -1181,26 +1181,14 @@ fn status_warns_on_potential_cross_pack_conflict() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    // Status should still succeed (it's informational)
-    assert!(!result.warnings.is_empty(), "should have conflict warnings");
-
-    let warnings_text = result.warnings.join("\n");
-    assert!(
-        warnings_text.contains("cross-pack conflicts"),
-        "warnings: {warnings_text}"
-    );
-    assert!(
-        warnings_text.contains("pack-a"),
-        "warnings: {warnings_text}"
-    );
-    assert!(
-        warnings_text.contains("pack-b"),
-        "warnings: {warnings_text}"
-    );
-    assert!(
-        warnings_text.contains("dodot up"),
-        "should hint that up will refuse: {warnings_text}"
-    );
+    // Status should still succeed (it's informational) and surface the
+    // conflict as structured data on the result.
+    assert_eq!(result.conflicts.len(), 1, "should detect one conflict");
+    let c = &result.conflicts[0];
+    assert_eq!(c.kind, "symlink");
+    let packs: Vec<&str> = c.claimants.iter().map(|cl| cl.pack.as_str()).collect();
+    assert!(packs.contains(&"pack-a"), "claimants: {:?}", c.claimants);
+    assert!(packs.contains(&"pack-b"), "claimants: {:?}", c.claimants);
 }
 
 #[test]
@@ -1219,8 +1207,13 @@ fn status_no_warnings_without_conflicts() {
 
     assert!(
         result.warnings.is_empty(),
-        "no conflict warnings expected, got: {:?}",
+        "no warnings expected, got: {:?}",
         result.warnings
+    );
+    assert!(
+        result.conflicts.is_empty(),
+        "no conflicts expected, got: {:?}",
+        result.conflicts
     );
 }
 
@@ -1247,10 +1240,10 @@ fn status_shows_conflict_even_when_not_deployed() {
         }
     }
 
-    // But warnings should flag the conflict
+    // Conflict data should still be emitted.
     assert!(
-        !result.warnings.is_empty(),
-        "should warn about potential conflict even when undeployed"
+        !result.conflicts.is_empty(),
+        "should flag potential conflict even when undeployed"
     );
 }
 
@@ -1271,8 +1264,8 @@ fn status_filtered_to_one_pack_no_conflict_warning() {
     let result = commands::status::status(Some(&filter), &ctx).unwrap();
 
     assert!(
-        result.warnings.is_empty(),
-        "single-pack filter should not produce cross-pack warnings"
+        result.conflicts.is_empty(),
+        "single-pack filter should not produce cross-pack conflicts"
     );
 }
 
@@ -1292,14 +1285,15 @@ fn status_conflict_with_config_mapping() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    let warnings_text = result.warnings.join("\n");
-    assert!(
-        warnings_text.contains("cross-pack conflicts"),
-        "config mapping collision should produce a warning: {warnings_text}"
+    assert_eq!(
+        result.conflicts.len(),
+        1,
+        "config mapping collision should surface one conflict"
     );
     assert!(
-        warnings_text.contains("myapp/settings.toml") || warnings_text.contains("settings.toml"),
-        "should mention the conflicting target: {warnings_text}"
+        result.conflicts[0].target.contains("settings.toml"),
+        "should mention the conflicting target: {:?}",
+        result.conflicts[0]
     );
 }
 

@@ -1,17 +1,17 @@
 /* dodot CLI theme — semantic styles for all output */
 
 .pack-name {
-    color: #005F87;
+    color: #000;
     font-weight: bold;
 }
 
 .handler-symbol {
-    color: #875F00;
+    color: #999;
     font-weight: bold;
 }
 
 .description {
-    opacity: 0.6;
+    dim: true;
 }
 
 .deployed {
@@ -19,7 +19,8 @@
 }
 
 .pending {
-    color: #5F5F87;
+    background: #f8f8f8;
+    color: #000;
 }
 
 .error {
@@ -41,9 +42,34 @@
 }
 
 .dim {
-    opacity: 0.6;
+    dim: true;
 }
 
 .header {
     font-weight: bold;
+}
+
+.conflict-banner {
+    color: #FFFFFF;
+    background: #D70000;
+    font-weight: bold;
+}
+
+.conflict-header {
+    color: #FFFFFF;
+    background: #D70000;
+    font-weight: bold;
+}
+
+.conflict-target {
+    color: #D70000;
+    font-weight: bold;
+}
+
+.conflict-pack {
+    color: #D70000;
+}
+
+.conflict-hint {
+    dim: true;
 }

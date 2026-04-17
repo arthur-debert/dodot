@@ -11,7 +11,8 @@
 use tracing::{debug, info};
 
 use crate::commands::{
-    handler_description, handler_symbol, DisplayFile, DisplayPack, PackStatusResult,
+    handler_description, handler_symbol, DisplayConflict, DisplayFile, DisplayPack,
+    PackStatusResult,
 };
 use crate::config::mappings_to_rules;
 use crate::conflicts;
@@ -177,38 +178,6 @@ fn verify_staged(
     Health::Deployed
 }
 
-/// Format cross-pack conflict warnings for status output.
-fn conflict_warnings(conflicts: &[conflicts::Conflict], home: &std::path::Path) -> Vec<String> {
-    let mut warnings = Vec::new();
-    if conflicts.is_empty() {
-        return warnings;
-    }
-
-    warnings.push("cross-pack conflicts detected:".into());
-    for c in conflicts {
-        let target_display = if let Ok(rel) = c.target.strip_prefix(home) {
-            format!("~/{}", rel.display())
-        } else {
-            c.target.display().to_string()
-        };
-        warnings.push(format!("  target: {target_display}"));
-        for claimant in &c.claimants {
-            warnings.push(format!(
-                "    - pack '{}' ({} handler): {}",
-                claimant.pack,
-                claimant.handler,
-                claimant.source.display()
-            ));
-        }
-    }
-    warnings.push(
-        "fix your configuration — `dodot up` will refuse to deploy until conflicts are resolved."
-            .into(),
-    );
-
-    warnings
-}
-
 /// Run the `status` command: scan packs and verify deployment chain per file.
 ///
 /// Also performs cross-pack conflict detection and surfaces potential
@@ -365,15 +334,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         });
     }
 
-    // Detect and surface cross-pack conflicts as warnings
+    // Detect and surface cross-pack conflicts as structured display data
     let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
-    if !detected_conflicts.is_empty() {
+    let home = ctx.paths.home_dir();
+    let display_conflicts: Vec<DisplayConflict> = detected_conflicts
+        .iter()
+        .map(|c| DisplayConflict::from_conflict(c, home))
+        .collect();
+    if !display_conflicts.is_empty() {
         info!(
-            count = detected_conflicts.len(),
+            count = display_conflicts.len(),
             "cross-pack conflicts detected"
         );
-        let home = ctx.paths.home_dir();
-        warnings.extend(conflict_warnings(&detected_conflicts, home));
     } else {
         debug!("no cross-pack conflicts");
     }
@@ -383,5 +355,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         dry_run: false,
         packs: display_packs,
         warnings,
+        conflicts: display_conflicts,
     })
 }

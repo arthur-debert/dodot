@@ -58,17 +58,48 @@ header:
 dry-run:
   fg: yellow
   italic: true
+
+conflict-banner:
+  fg: white
+  bg: red
+  bold: true
+
+conflict-header:
+  fg: white
+  bg: red
+  bold: true
+
+conflict-target:
+  fg: red
+  bold: true
+
+conflict-pack:
+  fg: red
+
+conflict-hint:
+  dim: true
 "#;
 
 // ── Templates ───────────────────────────────────────────────────
 
 /// Status / up / down — pack-level output with file listings.
-pub const TEMPLATE_PACK_STATUS: &str = r#"{% if message %}[message]{{ message }}[/message]
+pub const TEMPLATE_PACK_STATUS: &str = r#"{% if conflicts %}[conflict-banner] ✗ Cross-pack conflicts detected — see details below [/conflict-banner]
+{% endif %}{% if message %}[message]{{ message }}[/message]
 {% endif %}{% if dry_run %}[dry-run]  (dry run — no changes made)[/dry-run]
 {% endif %}{% for pack in packs %}[pack-name]{{ pack.name }}[/pack-name]
 {% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]
 {% endfor %}
-{% endfor %}"#;
+{% endfor %}{% if conflicts %}
+[conflict-header] Cross-pack conflicts [/conflict-header]
+{% for c in conflicts %}
+{% if c.kind == "symlink" %}The target path [conflict-target]{{ c.target }}[/conflict-target] would be used by multiple packs:
+{% else %}The executable [conflict-target]{{ c.target }}[/conflict-target] would be shadowed across multiple packs in $PATH:
+{% endif %}{% for cl in c.claimants %}  - [conflict-pack]{{ cl.source }}[/conflict-pack]
+{% endfor %}{% endfor %}
+[conflict-hint]Common fixes: give them unique names, override the destination in the pack's config,[/conflict-hint]
+[conflict-hint]or ignore the pack entirely. See `dodot config --help` for the last option.[/conflict-hint]
+[conflict-hint]`dodot up` won't run while conflicts exist.[/conflict-hint]
+{% endif %}"#;
 
 /// List — just pack names.
 pub const TEMPLATE_LIST: &str = r#"{% for pack in packs %}{{ pack.name }}{% if pack.ignored %} [dim](ignored)[/dim]{% endif %}
