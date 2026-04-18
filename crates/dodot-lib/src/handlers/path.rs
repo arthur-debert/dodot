@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use crate::datastore::DataStore;
+use crate::fs::Fs;
 use crate::handlers::{Handler, HandlerCategory, HandlerConfig, HandlerStatus, HANDLER_PATH};
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
@@ -25,6 +26,7 @@ impl Handler for PathHandler {
         matches: &[RuleMatch],
         _config: &HandlerConfig,
         _paths: &dyn Pather,
+        _fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>> {
         Ok(matches
             .iter()

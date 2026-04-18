@@ -4,8 +4,11 @@
 //! (operations). Each handler knows how to transform a set of matched
 //! files into [`HandlerIntent`]s that the executor will carry out.
 //!
-//! Handlers are pure data transformers — they declare what operations
-//! they need without performing any I/O themselves.
+//! Handlers are intent planners. They may perform **read-only**
+//! filesystem inspection (e.g. the symlink handler reads a matched
+//! directory's contents to decide between wholesale and per-file
+//! linking) but must not mutate anything — mutations are the executor's
+//! job. This keeps planning idempotent and safe to re-run.
 
 pub mod homebrew;
 pub mod install;
@@ -34,6 +37,31 @@ use crate::Result;
 pub enum HandlerCategory {
     Configuration,
     CodeExecution,
+}
+
+/// Whether a handler matches specific names or acts as a catchall.
+///
+/// [`MatchMode::Precise`] handlers only match whitelisted patterns
+/// (e.g. `bin/`, `install.sh`). [`MatchMode::Catchall`] handlers
+/// match anything not already claimed and must run after all precise
+/// handlers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchMode {
+    Precise,
+    Catchall,
+}
+
+/// Whether a handler's match is consumed or leaves the entry available.
+///
+/// [`HandlerScope::Exclusive`] handlers consume their matches — once
+/// claimed, no other handler sees the entry. [`HandlerScope::Shared`]
+/// handlers let other handlers also process the same entry (future
+/// use-cases like audit/indexing). At most one `Exclusive` + `Catchall`
+/// handler may exist in a registry; this is validated at build time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HandlerScope {
+    Exclusive,
+    Shared,
 }
 
 /// The status of a handler's operations for a single file.
@@ -66,15 +94,36 @@ pub trait Handler: Send + Sync {
     /// Whether this is a configuration or code-execution handler.
     fn category(&self) -> HandlerCategory;
 
+    /// How this handler decides what to claim.
+    ///
+    /// Defaults to [`MatchMode::Precise`]. Override to `Catchall` for
+    /// a fallback handler (like symlink) that takes anything not
+    /// already claimed.
+    fn match_mode(&self) -> MatchMode {
+        MatchMode::Precise
+    }
+
+    /// Whether a match removes the entry from further consideration.
+    ///
+    /// Defaults to [`HandlerScope::Exclusive`] — a matched entry is
+    /// consumed and no other handler will see it.
+    fn scope(&self) -> HandlerScope {
+        HandlerScope::Exclusive
+    }
+
     /// Transform matched files into intents.
     ///
-    /// This is the heart of each handler — it declares what operations
-    /// are needed without performing any I/O.
+    /// This is the heart of each handler: it declares what operations
+    /// are needed. `fs` is available for **read-only** inspection
+    /// (e.g. enumerating a matched directory to decide wholesale vs
+    /// per-file linking). Handlers must not write, delete, or rename
+    /// anything here — mutations happen in the executor.
     fn to_intents(
         &self,
         matches: &[RuleMatch],
         config: &HandlerConfig,
         paths: &dyn Pather,
+        fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>>;
 
     /// Check whether a file has been deployed by this handler.
@@ -103,6 +152,11 @@ pub struct HandlerConfig {
     /// Whether to auto-`chmod +x` files in path-handler directories.
     /// See [`PathSection::auto_chmod_exec`](crate::config::PathSection::auto_chmod_exec).
     pub auto_chmod_exec: bool,
+    /// Pack-level ignore patterns (from `[pack] ignore`). Handlers that
+    /// recurse into a matched directory should apply these so the
+    /// per-file fallback doesn't pick up `.DS_Store`, `.git`, etc.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pack_ignore: Vec<String>,
 }
 
 impl Default for HandlerConfig {
@@ -112,6 +166,7 @@ impl Default for HandlerConfig {
             protected_paths: Vec::new(),
             targets: std::collections::HashMap::new(),
             auto_chmod_exec: true,
+            pack_ignore: Vec::new(),
         }
     }
 }
@@ -141,7 +196,31 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
         HANDLER_HOMEBREW.into(),
         Box::new(homebrew::HomebrewHandler::new(fs)),
     );
+    validate_registry(&registry);
     registry
+}
+
+/// Enforce registry invariants.
+///
+/// At most one handler may be simultaneously [`MatchMode::Catchall`]
+/// and [`HandlerScope::Exclusive`]. Two such handlers would fight over
+/// the same "leftover" entries with no principled way to pick a winner.
+///
+/// This is a developer-only invariant: the built-in registry is
+/// hard-coded and third-party handlers would be added via code, not
+/// user input. We use `debug_assert!` so release builds never panic
+/// from a misconfiguration here; if the invariant is violated in a
+/// dev build the panic surfaces immediately.
+fn validate_registry(registry: &HashMap<String, Box<dyn Handler + '_>>) {
+    let exclusive_catchalls: Vec<&str> = registry
+        .values()
+        .filter(|h| h.match_mode() == MatchMode::Catchall && h.scope() == HandlerScope::Exclusive)
+        .map(|h| h.name())
+        .collect();
+    debug_assert!(
+        exclusive_catchalls.len() <= 1,
+        "at most one exclusive catchall handler allowed, found: {exclusive_catchalls:?}"
+    );
 }
 
 #[cfg(test)]
@@ -185,5 +264,60 @@ mod tests {
         let config = HandlerConfig::default();
         assert!(config.force_home.is_empty());
         assert!(config.protected_paths.is_empty());
+    }
+
+    #[test]
+    fn default_registry_has_exactly_one_exclusive_catchall() {
+        let fs = crate::fs::OsFs::new();
+        let registry = create_registry(&fs);
+        let exclusive_catchalls: Vec<&str> = registry
+            .values()
+            .filter(|h| {
+                h.match_mode() == MatchMode::Catchall && h.scope() == HandlerScope::Exclusive
+            })
+            .map(|h| h.name())
+            .collect();
+        assert_eq!(exclusive_catchalls, vec!["symlink"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "at most one exclusive catchall handler")]
+    fn two_exclusive_catchalls_panic() {
+        struct FakeCatchall;
+        impl Handler for FakeCatchall {
+            fn name(&self) -> &str {
+                "fake"
+            }
+            fn category(&self) -> HandlerCategory {
+                HandlerCategory::Configuration
+            }
+            fn match_mode(&self) -> MatchMode {
+                MatchMode::Catchall
+            }
+            fn scope(&self) -> HandlerScope {
+                HandlerScope::Exclusive
+            }
+            fn to_intents(
+                &self,
+                _matches: &[RuleMatch],
+                _config: &HandlerConfig,
+                _paths: &dyn Pather,
+                _fs: &dyn Fs,
+            ) -> Result<Vec<HandlerIntent>> {
+                Ok(Vec::new())
+            }
+            fn check_status(
+                &self,
+                _file: &Path,
+                _pack: &str,
+                _datastore: &dyn DataStore,
+            ) -> Result<HandlerStatus> {
+                unreachable!()
+            }
+        }
+        let fs = crate::fs::OsFs::new();
+        let mut registry = create_registry(&fs);
+        registry.insert("fake".into(), Box::new(FakeCatchall));
+        validate_registry(&registry);
     }
 }

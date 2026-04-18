@@ -11,7 +11,8 @@
 use tracing::{debug, info};
 
 use crate::commands::{
-    handler_description, handler_symbol, DisplayFile, DisplayPack, PackStatusResult,
+    handler_description, handler_symbol, DisplayConflict, DisplayFile, DisplayPack,
+    PackStatusResult,
 };
 use crate::config::mappings_to_rules;
 use crate::conflicts;
@@ -79,6 +80,7 @@ fn verify_symlink(
     source: &std::path::Path,
     pack: &str,
     rel_path: &str,
+    is_dir: bool,
     config: &crate::handlers::HandlerConfig,
     ctx: &ExecutionContext,
 ) -> Health {
@@ -115,7 +117,7 @@ fn verify_symlink(
     }
 
     // Step 4: Check user link at the currently-resolved target
-    let user_target = resolve_target(rel_path, config, ctx.paths.as_ref());
+    let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
 
     if ctx.fs.is_symlink(&user_target) {
         match ctx.fs.readlink(&user_target) {
@@ -175,38 +177,6 @@ fn verify_staged(
     }
 
     Health::Deployed
-}
-
-/// Format cross-pack conflict warnings for status output.
-fn conflict_warnings(conflicts: &[conflicts::Conflict], home: &std::path::Path) -> Vec<String> {
-    let mut warnings = Vec::new();
-    if conflicts.is_empty() {
-        return warnings;
-    }
-
-    warnings.push("cross-pack conflicts detected:".into());
-    for c in conflicts {
-        let target_display = if let Ok(rel) = c.target.strip_prefix(home) {
-            format!("~/{}", rel.display())
-        } else {
-            c.target.display().to_string()
-        };
-        warnings.push(format!("  target: {target_display}"));
-        for claimant in &c.claimants {
-            warnings.push(format!(
-                "    - pack '{}' ({} handler): {}",
-                claimant.pack,
-                claimant.handler,
-                claimant.source.display()
-            ));
-        }
-    }
-    warnings.push(
-        "fix your configuration — `dodot up` will refuse to deploy until conflicts are resolved."
-            .into(),
-    );
-
-    warnings
 }
 
 /// Run the `status` command: scan packs and verify deployment chain per file.
@@ -303,19 +273,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
-            // Skip directory entries for symlink handler — only show leaf files (#11)
-            // Keep directory entries for other handlers (e.g. path handler uses bin/ dirs)
-            if m.is_dir && m.handler == HANDLER_SYMLINK {
-                continue;
-            }
-
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
-                "symlink" => {
-                    verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
-                }
+                "symlink" => verify_symlink(
+                    &m.absolute_path,
+                    &pack.name,
+                    &rel_str,
+                    m.is_dir,
+                    &pack.config,
+                    ctx,
+                ),
                 "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
                 _ => {
                     // install, homebrew — use existing handler check_status
@@ -337,7 +306,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
             // Compute actual target path for symlink handler display
             let user_target = if m.handler == HANDLER_SYMLINK {
-                let target = resolve_target(&rel_str, &pack.config, ctx.paths.as_ref());
+                let target = resolve_target(&rel_str, m.is_dir, &pack.config, ctx.paths.as_ref());
                 let home = ctx.paths.home_dir();
                 let display = if let Ok(rel) = target.strip_prefix(home) {
                     format!("~/{}", rel.display())
@@ -365,15 +334,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         });
     }
 
-    // Detect and surface cross-pack conflicts as warnings
+    // Detect and surface cross-pack conflicts as structured display data
     let detected_conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
-    if !detected_conflicts.is_empty() {
+    let home = ctx.paths.home_dir();
+    let display_conflicts: Vec<DisplayConflict> = detected_conflicts
+        .iter()
+        .map(|c| DisplayConflict::from_conflict(c, home))
+        .collect();
+    if !display_conflicts.is_empty() {
         info!(
-            count = detected_conflicts.len(),
+            count = display_conflicts.len(),
             "cross-pack conflicts detected"
         );
-        let home = ctx.paths.home_dir();
-        warnings.extend(conflict_warnings(&detected_conflicts, home));
     } else {
         debug!("no cross-pack conflicts");
     }
@@ -383,5 +355,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         dry_run: false,
         packs: display_packs,
         warnings,
+        conflicts: display_conflicts,
     })
 }

@@ -6,15 +6,15 @@ Symlink Deployment Paths
 
     Dodot respects the `XDG_CONFIG_HOME` specification. In essence, it means that if the user has set the `XDG_CONFIG_HOME` environment variable, dodot will honor it, otherwise it will default to `~/.config`. Therefore your config home is either `$XDG_CONFIG_HOME` or `$HOME`. For brevity's sake, we will refer to it as `$XDG_CONFIG_HOME` in the rest of this document.
 
-    Hence in the simplest cases `<pack>/<file-or-dir>` will be symlinked to `$XDG_CONFIG_HOME/<file-or-dir>`.
+    Hence in the simplest cases `<pack>/<file-or-dir>` will be symlinked to `$XDG_CONFIG_HOME/<file-or-dir>`. Top-level *files* default to `$HOME/.<name>` (so `vim/vimrc` → `~/.vimrc`); top-level *directories* default to `$XDG_CONFIG_HOME/<name>` (so `warp/themes/` → `~/.config/themes`).
 
-    Note that symlinks are flat: dodot will create symlinks for files and directories, but it will not create symlinks for files inside directories.
+    Note that symlinks are flat: dodot creates one symlink per top-level entry of the pack. For a top-level directory, that means the directory itself is linked, not each nested file individually. Per-file behavior can be re-enabled for a specific directory by adding an `[symlink.targets]` entry that reaches inside it or by listing a file inside it in `[symlink] protected_paths` — either triggers per-file mode for that directory (and only that directory).
 
 2. The `dot.<file>` Convention
 
     Most dotfiles are, predictably, prefixed with a dot. While that's very useful for keeping your home dir tidy, it does mean that these files inside your dotfiles root repo are hidden by default (i.e. for `ls`). This can be confusing, requiring you to ensure you are seeing hidden files on whatever tool or editor you are using.
 
-    To make this easier, if a symlink path starts with "dot.", dodot will strip the "dot" prefix. For example `<pack>/dot.bashrc` will be symlinked to `$XDG_CONFIG_HOME/.bashrc`.
+    To make this easier, if a top-level file name starts with "dot.", dodot strips the "dot" prefix and routes the result to `$HOME` (the `dot.` convention is only meaningful for files that the user would expect at `$HOME/.<name>`). For example `<pack>/dot.bashrc` will be symlinked to `$HOME/.bashrc`.
 
     If you have a file that actually starts with "dot.", you can use a `.dodot.toml` config to override the symlink path.
 

@@ -11,7 +11,11 @@
 use std::path::{Path, PathBuf};
 
 use crate::datastore::DataStore;
-use crate::handlers::{Handler, HandlerCategory, HandlerConfig, HandlerStatus, HANDLER_SYMLINK};
+use crate::fs::Fs;
+use crate::handlers::{
+    Handler, HandlerCategory, HandlerConfig, HandlerScope, HandlerStatus, MatchMode,
+    HANDLER_SYMLINK,
+};
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
 use crate::rules::RuleMatch;
@@ -28,19 +32,24 @@ impl Handler for SymlinkHandler {
         HandlerCategory::Configuration
     }
 
+    fn match_mode(&self) -> MatchMode {
+        MatchMode::Catchall
+    }
+
+    fn scope(&self) -> HandlerScope {
+        HandlerScope::Exclusive
+    }
+
     fn to_intents(
         &self,
         matches: &[RuleMatch],
         config: &HandlerConfig,
         paths: &dyn Pather,
+        fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>> {
         let mut intents = Vec::new();
 
         for m in matches {
-            if m.is_dir {
-                continue; // symlink handler doesn't process directories
-            }
-
             let rel_str = m.relative_path.to_string_lossy();
 
             // Check protected paths
@@ -48,14 +57,17 @@ impl Handler for SymlinkHandler {
                 continue;
             }
 
-            let user_path = resolve_target(&rel_str, config, paths);
-
-            intents.push(HandlerIntent::Link {
-                pack: m.pack.clone(),
-                handler: HANDLER_SYMLINK.into(),
-                source: m.absolute_path.clone(),
-                user_path,
-            });
+            if m.is_dir {
+                intents.extend(dir_intents(m, config, paths, fs)?);
+            } else {
+                let user_path = resolve_target(&rel_str, false, config, paths);
+                intents.push(HandlerIntent::Link {
+                    pack: m.pack.clone(),
+                    handler: HANDLER_SYMLINK.into(),
+                    source: m.absolute_path.clone(),
+                    user_path,
+                });
+            }
         }
 
         Ok(intents)
@@ -83,6 +95,91 @@ impl Handler for SymlinkHandler {
     }
 }
 
+/// Produce symlink intents for a directory match.
+///
+/// Wholesale mode (one symlink for the whole directory) is the default.
+/// Per-file mode is triggered when the directory contains any file whose
+/// relative path matches a `protected_paths` entry or appears as a key
+/// in `symlink.targets`. In per-file mode we recurse and emit one Link
+/// intent per non-protected file, each resolved independently.
+fn dir_intents(
+    m: &RuleMatch,
+    config: &HandlerConfig,
+    paths: &dyn Pather,
+    fs: &dyn Fs,
+) -> Result<Vec<HandlerIntent>> {
+    let rel_str = m.relative_path.to_string_lossy();
+    let dir_prefix = format!("{rel_str}/");
+
+    let has_override = config.protected_paths.iter().any(|p| {
+        let normalized = p.strip_prefix('.').unwrap_or(p);
+        normalized.starts_with(&dir_prefix)
+            || p.starts_with(&dir_prefix)
+            || normalized == rel_str
+            || p == rel_str.as_ref()
+    }) || config
+        .targets
+        .keys()
+        .any(|k| k.starts_with(&dir_prefix) || k == rel_str.as_ref());
+
+    if !has_override {
+        let user_path = resolve_target(&rel_str, true, config, paths);
+        return Ok(vec![HandlerIntent::Link {
+            pack: m.pack.clone(),
+            handler: HANDLER_SYMLINK.into(),
+            source: m.absolute_path.clone(),
+            user_path,
+        }]);
+    }
+
+    // Per-file mode: recurse the directory and emit one intent per file.
+    let mut intents = Vec::new();
+    collect_per_file_intents(m, &m.absolute_path, config, paths, fs, &mut intents)?;
+    Ok(intents)
+}
+
+fn collect_per_file_intents(
+    m: &RuleMatch,
+    dir: &Path,
+    config: &HandlerConfig,
+    paths: &dyn Pather,
+    fs: &dyn Fs,
+    out: &mut Vec<HandlerIntent>,
+) -> Result<()> {
+    let entries = fs.read_dir(dir)?;
+    for entry in entries {
+        // Skip dodot's own files and anything matching the pack's
+        // ignore patterns — same filter the scanner applies at walk
+        // time, so per-file fallback doesn't pick up `.DS_Store`,
+        // `.dodot.toml`, `*.swp`, etc.
+        if crate::rules::should_skip_entry(&entry.name, &config.pack_ignore) {
+            continue;
+        }
+        if entry.is_dir {
+            collect_per_file_intents(m, &entry.path, config, paths, fs, out)?;
+            continue;
+        }
+        let rel = entry
+            .path
+            .strip_prefix(&m.absolute_path)
+            .ok()
+            .map(|r| m.relative_path.join(r))
+            .unwrap_or_else(|| PathBuf::from(&entry.name));
+        let rel_str = rel.to_string_lossy();
+        if is_protected(&rel_str, &config.protected_paths) {
+            continue;
+        }
+        let user_path = resolve_target(&rel_str, false, config, paths);
+        out.push(HandlerIntent::Link {
+            pack: m.pack.clone(),
+            handler: HANDLER_SYMLINK.into(),
+            source: entry.path.clone(),
+            user_path,
+        });
+    }
+    Ok(())
+}
+
 /// Strip the `dot.` prefix from a filename, returning the dotted version.
 /// `dot.bashrc` → `.bashrc`, `dot.vimrc` → `.vimrc`.
 /// Only applies to top-level files (no `/` in path).
@@ -97,14 +194,20 @@ fn strip_dot_prefix(rel_path: &str) -> Option<String> {
 
 /// Resolve the target path for a symlink using the layered system.
 ///
+/// `is_dir` is true when the match is a top-level directory that will
+/// be linked wholesale — in that case the default target is
+/// `$XDG_CONFIG_HOME/<name>` (dirs are not dot-prefixed).
+///
 /// Priority (highest first):
 /// 0. Custom target override from config (`[symlink.targets]`)
 /// 1. `dot.` prefix convention (top-level only)
 /// 2. Layer 3: Explicit `_home/` or `_xdg/` directory prefix
 /// 3. Layer 2: `force_home` config list
-/// 4. Layer 1: Smart defaults (top-level → `$HOME`, subdirs → `$XDG_CONFIG_HOME`)
+/// 4. Layer 1: Smart defaults (top-level file → `$HOME/.{name}`,
+///    top-level dir → `$XDG_CONFIG_HOME/{name}`, subdirs → `$XDG_CONFIG_HOME/{path}`)
 pub(crate) fn resolve_target(
     rel_path: &str,
+    is_dir: bool,
     config: &HandlerConfig,
     paths: &dyn Pather,
 ) -> PathBuf {
@@ -184,6 +287,10 @@ pub(crate) fn resolve_target(
 
     // Layer 1: Smart defaults
     if !rel_path.contains('/') {
+        if is_dir {
+            // Top-level dir → $XDG_CONFIG_HOME/{name} (dirs are not dot-prefixed).
+            return xdg_config.join(rel_path);
+        }
         // Top-level file → $HOME/.{name}
         let filename = Path::new(rel_path)
             .file_name()
@@ -284,34 +391,34 @@ mod tests {
 
     #[test]
     fn top_level_file_goes_to_home_with_dot() {
-        let target = resolve_target("vimrc", &default_config(), &test_pather());
+        let target = resolve_target("vimrc", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
     }
 
     #[test]
     fn top_level_dotfile_keeps_dot() {
-        let target = resolve_target(".bashrc", &default_config(), &test_pather());
+        let target = resolve_target(".bashrc", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
     }
 
     #[test]
     fn subdirectory_goes_to_xdg() {
         let config = HandlerConfig::default(); // no force_home
-        let target = resolve_target("nvim/init.lua", &config, &test_pather());
+        let target = resolve_target("nvim/init.lua", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
     }
 
     #[test]
     fn dotted_subdirectory_goes_to_home() {
         let config = HandlerConfig::default();
-        let target = resolve_target(".vim/colors/theme.vim", &config, &test_pather());
+        let target = resolve_target(".vim/colors/theme.vim", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vim/colors/theme.vim"));
     }
 
     #[test]
     fn config_prefix_stripped() {
         let config = HandlerConfig::default();
-        let target = resolve_target("config/nvim/init.lua", &config, &test_pather());
+        let target = resolve_target("config/nvim/init.lua", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
     }
 
@@ -319,13 +426,13 @@ mod tests {
 
     #[test]
     fn force_home_top_level() {
-        let target = resolve_target("bashrc", &default_config(), &test_pather());
+        let target = resolve_target("bashrc", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
     }
 
     #[test]
     fn force_home_subdirectory() {
-        let target = resolve_target("ssh/config", &default_config(), &test_pather());
+        let target = resolve_target("ssh/config", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.ssh/config"));
     }
 
@@ -334,14 +441,14 @@ mod tests {
     #[test]
     fn home_prefix_override() {
         let config = HandlerConfig::default();
-        let target = resolve_target("_home/vim/vimrc", &config, &test_pather());
+        let target = resolve_target("_home/vim/vimrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vim/vimrc"));
     }
 
     #[test]
     fn xdg_prefix_override() {
         let config = HandlerConfig::default();
-        let target = resolve_target("_xdg/nvim/init.lua", &config, &test_pather());
+        let target = resolve_target("_xdg/nvim/init.lua", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
     }
 
@@ -383,20 +490,20 @@ mod tests {
 
     #[test]
     fn dot_prefix_stripped_for_top_level() {
-        let target = resolve_target("dot.bashrc", &default_config(), &test_pather());
+        let target = resolve_target("dot.bashrc", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
     }
 
     #[test]
     fn dot_prefix_with_force_home() {
-        let target = resolve_target("dot.zshrc", &default_config(), &test_pather());
+        let target = resolve_target("dot.zshrc", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.zshrc"));
     }
 
     #[test]
     fn dot_prefix_non_forced_file() {
         let config = HandlerConfig::default(); // no force_home
-        let target = resolve_target("dot.vimrc", &config, &test_pather());
+        let target = resolve_target("dot.vimrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
     }
 
@@ -404,7 +511,7 @@ mod tests {
     fn dot_prefix_not_applied_to_subdirs() {
         // dot. prefix only works for top-level files
         let config = HandlerConfig::default();
-        let target = resolve_target("subdir/dot.conf", &config, &test_pather());
+        let target = resolve_target("subdir/dot.conf", false, &config, &test_pather());
         // Should NOT strip dot. — it's not top-level
         assert_eq!(target, PathBuf::from("/home/alice/.config/subdir/dot.conf"));
     }
@@ -427,7 +534,7 @@ mod tests {
             .targets
             .insert("misterious.conf".into(), "/var/etc/misterious.conf".into());
 
-        let target = resolve_target("misterious.conf", &config, &test_pather());
+        let target = resolve_target("misterious.conf", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/var/etc/misterious.conf"));
     }
 
@@ -439,7 +546,7 @@ mod tests {
             "my-documents/home-bound.conf".into(),
         );
 
-        let target = resolve_target("home-bound.conf", &config, &test_pather());
+        let target = resolve_target("home-bound.conf", false, &config, &test_pather());
         assert_eq!(
             target,
             PathBuf::from("/home/alice/.config/my-documents/home-bound.conf")
@@ -454,7 +561,7 @@ mod tests {
             .targets
             .insert("bashrc".into(), "/custom/bashrc".into());
 
-        let target = resolve_target("bashrc", &config, &test_pather());
+        let target = resolve_target("bashrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/custom/bashrc"));
     }
 
@@ -462,7 +569,180 @@ mod tests {
     fn no_custom_target_falls_through() {
         let config = HandlerConfig::default();
         // No targets configured — should use default behavior
-        let target = resolve_target("vimrc", &config, &test_pather());
+        let target = resolve_target("vimrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
+    }
+
+    // ── Top-level dir resolution ────────────────────────────────
+
+    #[test]
+    fn top_level_dir_goes_to_xdg() {
+        let config = HandlerConfig::default();
+        let target = resolve_target("nvim", true, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim"));
+    }
+
+    #[test]
+    fn top_level_dir_still_respects_force_home() {
+        let target = resolve_target("ssh", true, &default_config(), &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.ssh"));
+    }
+
+    // ── Wholesale vs per-file dir behavior ──────────────────────
+
+    fn build_dir_match(env: &crate::testing::TempEnvironment, pack: &str, dir: &str) -> RuleMatch {
+        RuleMatch {
+            relative_path: PathBuf::from(dir),
+            absolute_path: env.dotfiles_root.join(pack).join(dir),
+            pack: pack.into(),
+            handler: HANDLER_SYMLINK.into(),
+            is_dir: true,
+            options: std::collections::HashMap::new(),
+            preprocessor_source: None,
+        }
+    }
+
+    #[test]
+    fn plain_top_level_dir_produces_single_wholesale_intent() {
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("warp")
+            .file("themes/nord.yaml", "a")
+            .file("themes/vs_code.yaml", "b")
+            .done()
+            .build();
+        let m = build_dir_match(&env, "warp", "themes");
+        let handler = SymlinkHandler;
+        let paths = crate::paths::XdgPather::builder()
+            .home(&env.home)
+            .dotfiles_root(&env.dotfiles_root)
+            .build()
+            .unwrap();
+        let intents = handler
+            .to_intents(&[m], &HandlerConfig::default(), &paths, env.fs.as_ref())
+            .unwrap();
+        assert_eq!(intents.len(), 1, "plain dir -> single wholesale intent");
+        if let HandlerIntent::Link {
+            source, user_path, ..
+        } = &intents[0]
+        {
+            assert!(source.ends_with("warp/themes"));
+            assert!(user_path.ends_with(".config/themes"));
+        } else {
+            panic!("expected Link intent");
+        }
+    }
+
+    #[test]
+    fn dir_with_protected_path_falls_back_to_per_file_and_skips_protected() {
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("secret")
+            .file("ssh/config", "Host *")
+            .file("ssh/id_rsa", "DO NOT LINK")
+            .done()
+            .build();
+        let m = build_dir_match(&env, "secret", "ssh");
+        let handler = SymlinkHandler;
+        let config = HandlerConfig {
+            protected_paths: vec!["ssh/id_rsa".into()],
+            force_home: vec!["ssh".into()],
+            ..HandlerConfig::default()
+        };
+        let paths = crate::paths::XdgPather::builder()
+            .home(&env.home)
+            .dotfiles_root(&env.dotfiles_root)
+            .build()
+            .unwrap();
+        let intents = handler
+            .to_intents(&[m], &config, &paths, env.fs.as_ref())
+            .unwrap();
+        assert_eq!(
+            intents.len(),
+            1,
+            "only ssh/config should be linked; id_rsa skipped. Got: {intents:?}"
+        );
+        if let HandlerIntent::Link {
+            source, user_path, ..
+        } = &intents[0]
+        {
+            assert!(source.ends_with("ssh/config"));
+            // force_home=["ssh"] routes subdir config to $HOME/.ssh/config
+            assert!(user_path.ends_with(".ssh/config"));
+        } else {
+            panic!("expected Link intent");
+        }
+    }
+
+    #[test]
+    fn per_file_fallback_skips_special_and_pack_ignored_files() {
+        // When per-file mode kicks in (because of a protected_path),
+        // the recursion must apply the same filters the scanner uses:
+        // dodot's own files and pack-ignore globs like `.DS_Store`.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("cfg")
+            .file("ssh/config", "Host *")
+            .file("ssh/id_rsa", "secret")
+            .file("ssh/.DS_Store", "garbage")
+            .file("ssh/.dodot.toml", "# pack config")
+            .done()
+            .build();
+        let m = build_dir_match(&env, "cfg", "ssh");
+        let handler = SymlinkHandler;
+        let config = HandlerConfig {
+            protected_paths: vec!["ssh/id_rsa".into()],
+            pack_ignore: vec![".DS_Store".into()],
+            ..HandlerConfig::default()
+        };
+        let paths = crate::paths::XdgPather::builder()
+            .home(&env.home)
+            .dotfiles_root(&env.dotfiles_root)
+            .build()
+            .unwrap();
+        let intents = handler
+            .to_intents(&[m], &config, &paths, env.fs.as_ref())
+            .unwrap();
+        assert_eq!(
+            intents.len(),
+            1,
+            "only ssh/config should be linked. Got: {intents:?}"
+        );
+        if let HandlerIntent::Link { source, .. } = &intents[0] {
+            assert!(source.ends_with("ssh/config"));
+        }
+    }
+
+    #[test]
+    fn dir_with_targets_override_falls_back_to_per_file() {
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("config/main.toml", "x")
+            .file("config/aux.toml", "y")
+            .done()
+            .build();
+        let m = build_dir_match(&env, "app", "config");
+        let handler = SymlinkHandler;
+        let mut targets = std::collections::HashMap::new();
+        targets.insert("config/main.toml".into(), "/etc/main.toml".into());
+        let config = HandlerConfig {
+            targets,
+            ..HandlerConfig::default()
+        };
+        let paths = crate::paths::XdgPather::builder()
+            .home(&env.home)
+            .dotfiles_root(&env.dotfiles_root)
+            .build()
+            .unwrap();
+        let intents = handler
+            .to_intents(&[m], &config, &paths, env.fs.as_ref())
+            .unwrap();
+        // Both files should get per-file intents — targets override forces
+        // per-file mode so main.toml gets the explicit path.
+        assert_eq!(intents.len(), 2, "intents: {intents:?}");
+        let main = intents
+            .iter()
+            .find(|i| matches!(i, HandlerIntent::Link { source, .. } if source.ends_with("config/main.toml")))
+            .expect("main.toml intent");
+        if let HandlerIntent::Link { user_path, .. } = main {
+            assert_eq!(user_path, &PathBuf::from("/etc/main.toml"));
+        }
     }
 }

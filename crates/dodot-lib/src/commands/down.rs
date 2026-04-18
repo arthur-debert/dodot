@@ -118,5 +118,6 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         dry_run: ctx.dry_run,
         packs: display_packs,
         warnings,
+        conflicts: Vec::new(),
     })
 }

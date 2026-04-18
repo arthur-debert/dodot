@@ -37,6 +37,7 @@ impl Handler for HomebrewHandler<'_> {
         matches: &[RuleMatch],
         _config: &HandlerConfig,
         _paths: &dyn Pather,
+        _fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>> {
         let mut intents = Vec::new();
 

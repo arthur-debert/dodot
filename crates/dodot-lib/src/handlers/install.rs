@@ -37,6 +37,7 @@ impl Handler for InstallHandler<'_> {
         matches: &[RuleMatch],
         _config: &HandlerConfig,
         _paths: &dyn Pather,
+        _fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>> {
         let mut intents = Vec::new();
 
@@ -176,7 +177,12 @@ mod tests {
             .unwrap();
 
         let intents = handler
-            .to_intents(&matches, &HandlerConfig::default(), &pather)
+            .to_intents(
+                &matches,
+                &HandlerConfig::default(),
+                &pather,
+                env.fs.as_ref(),
+            )
             .unwrap();
 
         assert_eq!(intents.len(), 1);

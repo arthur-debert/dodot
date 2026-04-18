@@ -97,7 +97,10 @@ fn status_renders_with_standout() {
 // ── status: correct target paths ────────────────────────────
 
 #[test]
-fn status_shows_xdg_target_for_subdirectory_files() {
+fn status_shows_xdg_target_for_subdirectory() {
+    // Top-level directories (e.g. `nvim`) are linked wholesale to
+    // `$XDG_CONFIG_HOME/<name>` — a single entry in status, not
+    // one per nested file.
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("nvim/init.lua", "-- nvim config")
@@ -108,22 +111,23 @@ fn status_shows_xdg_target_for_subdirectory_files() {
     let result = commands::status::status(None, &ctx).unwrap();
 
     let nvim_pack = &result.packs[0];
-    let init_file = nvim_pack
+    let nvim_entry = nvim_pack
         .files
         .iter()
-        .find(|f| f.name.contains("init.lua"))
-        .expect("should have init.lua");
+        .find(|f| f.name == "nvim")
+        .expect("should have nvim dir entry");
 
-    // Should show ~/.config/nvim/init.lua, not ~/.nvim/init.lua
     assert!(
-        init_file.description.contains(".config/nvim"),
-        "expected XDG path, got: {}",
-        init_file.description
+        nvim_entry.description.contains(".config/nvim"),
+        "expected XDG path for wholesale dir, got: {}",
+        nvim_entry.description
     );
 }
 
 #[test]
-fn status_does_not_list_directories() {
+fn status_lists_top_level_dirs_wholesale() {
+    // Top-level dirs now appear as single entries (linked wholesale),
+    // not expanded into one entry per nested file.
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("nvim/init.lua", "-- nvim config")
@@ -135,14 +139,12 @@ fn status_does_not_list_directories() {
     let result = commands::status::status(None, &ctx).unwrap();
 
     let nvim_pack = &result.packs[0];
-    // Should not have directory entries like "nvim" or "nvim/lua"
-    for file in &nvim_pack.files {
-        assert!(
-            file.name.contains('.'),
-            "expected only files (with extensions), got directory entry: {}",
-            file.name
-        );
-    }
+    let names: Vec<&str> = nvim_pack.files.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec!["nvim"],
+        "expected single wholesale dir entry, got {names:?}"
+    );
 }
 
 // ── up ──────────────────────────────────────────────────────
@@ -1181,26 +1183,14 @@ fn status_warns_on_potential_cross_pack_conflict() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    // Status should still succeed (it's informational)
-    assert!(!result.warnings.is_empty(), "should have conflict warnings");
-
-    let warnings_text = result.warnings.join("\n");
-    assert!(
-        warnings_text.contains("cross-pack conflicts"),
-        "warnings: {warnings_text}"
-    );
-    assert!(
-        warnings_text.contains("pack-a"),
-        "warnings: {warnings_text}"
-    );
-    assert!(
-        warnings_text.contains("pack-b"),
-        "warnings: {warnings_text}"
-    );
-    assert!(
-        warnings_text.contains("dodot up"),
-        "should hint that up will refuse: {warnings_text}"
-    );
+    // Status should still succeed (it's informational) and surface the
+    // conflict as structured data on the result.
+    assert_eq!(result.conflicts.len(), 1, "should detect one conflict");
+    let c = &result.conflicts[0];
+    assert_eq!(c.kind, "symlink");
+    let packs: Vec<&str> = c.claimants.iter().map(|cl| cl.pack.as_str()).collect();
+    assert!(packs.contains(&"pack-a"), "claimants: {:?}", c.claimants);
+    assert!(packs.contains(&"pack-b"), "claimants: {:?}", c.claimants);
 }
 
 #[test]
@@ -1219,8 +1209,13 @@ fn status_no_warnings_without_conflicts() {
 
     assert!(
         result.warnings.is_empty(),
-        "no conflict warnings expected, got: {:?}",
+        "no warnings expected, got: {:?}",
         result.warnings
+    );
+    assert!(
+        result.conflicts.is_empty(),
+        "no conflicts expected, got: {:?}",
+        result.conflicts
     );
 }
 
@@ -1247,10 +1242,10 @@ fn status_shows_conflict_even_when_not_deployed() {
         }
     }
 
-    // But warnings should flag the conflict
+    // Conflict data should still be emitted.
     assert!(
-        !result.warnings.is_empty(),
-        "should warn about potential conflict even when undeployed"
+        !result.conflicts.is_empty(),
+        "should flag potential conflict even when undeployed"
     );
 }
 
@@ -1271,8 +1266,8 @@ fn status_filtered_to_one_pack_no_conflict_warning() {
     let result = commands::status::status(Some(&filter), &ctx).unwrap();
 
     assert!(
-        result.warnings.is_empty(),
-        "single-pack filter should not produce cross-pack warnings"
+        result.conflicts.is_empty(),
+        "single-pack filter should not produce cross-pack conflicts"
     );
 }
 
@@ -1292,14 +1287,15 @@ fn status_conflict_with_config_mapping() {
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
 
-    let warnings_text = result.warnings.join("\n");
-    assert!(
-        warnings_text.contains("cross-pack conflicts"),
-        "config mapping collision should produce a warning: {warnings_text}"
+    assert_eq!(
+        result.conflicts.len(),
+        1,
+        "config mapping collision should surface one conflict"
     );
     assert!(
-        warnings_text.contains("myapp/settings.toml") || warnings_text.contains("settings.toml"),
-        "should mention the conflicting target: {warnings_text}"
+        result.conflicts[0].target.contains("settings.toml"),
+        "should mention the conflicting target: {:?}",
+        result.conflicts[0]
     );
 }
 

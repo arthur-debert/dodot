@@ -364,7 +364,12 @@ fn collect_pack_intents_inner(
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
-            let intents = handler.to_intents(handler_matches, &pack.config, ctx.paths.as_ref())?;
+            let intents = handler.to_intents(
+                handler_matches,
+                &pack.config,
+                ctx.paths.as_ref(),
+                ctx.fs.as_ref(),
+            )?;
             debug!(
                 pack = %pack.name,
                 handler = %handler_name,

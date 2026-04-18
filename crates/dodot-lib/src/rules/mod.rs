@@ -193,7 +193,18 @@ fn matches_entry(pattern: &CompiledPattern, filename: &str, is_dir: bool) -> boo
 // ── Scanner ─────────────────────────────────────────────────────
 
 /// Files that are always skipped during scanning.
-const SPECIAL_FILES: &[&str] = &[".dodot.toml", ".dodotignore"];
+pub const SPECIAL_FILES: &[&str] = &[".dodot.toml", ".dodotignore"];
+
+/// Should this entry name be skipped at scan or handler-recursion time?
+///
+/// Combines the three always-on filters: dodot's own files
+/// (`SPECIAL_FILES`) and the pack's `ignore` glob patterns. Hidden
+/// files are NOT filtered here — the caller decides whether to skip
+/// dotfiles (the scanner does, for the top-level walk; the symlink
+/// handler's per-file fallback does not, since the user opted in).
+pub fn should_skip_entry(name: &str, ignore_patterns: &[String]) -> bool {
+    SPECIAL_FILES.contains(&name) || is_ignored(name, ignore_patterns)
+}
 
 /// Scans pack directories and matches files against rules.
 pub struct Scanner<'a> {
@@ -229,7 +240,29 @@ impl<'a> Scanner<'a> {
     /// Skips hidden files (except `.config`), special files
     /// (`.dodot.toml`, `.dodotignore`), and files matching
     /// pack-level ignore patterns.
+    /// Walk the pack's top-level children only.
+    ///
+    /// Returns depth-1 entries (files and directories directly under
+    /// the pack root). Nested files/dirs are **not** returned — handlers
+    /// that receive a directory entry decide internally whether and how
+    /// to recurse (e.g. symlink falls back to per-file mode when
+    /// `protected_paths` or `targets` reach inside the dir).
+    ///
+    /// Preprocessing is the one exception: it still needs to see nested
+    /// files to discover templates (`*.tmpl`) and the like. Use
+    /// [`Scanner::walk_pack_recursive`] for that use case.
     pub fn walk_pack(
+        &self,
+        pack_path: &Path,
+        ignore_patterns: &[String],
+    ) -> Result<Vec<PackEntry>> {
+        let mut results = Vec::new();
+        self.list_top_level(pack_path, ignore_patterns, &mut results)?;
+        Ok(results)
+    }
+
+    /// Walk the pack recursively. Only used by the preprocessing pipeline.
+    pub fn walk_pack_recursive(
         &self,
         pack_path: &Path,
         ignore_patterns: &[String],
@@ -274,6 +307,45 @@ impl<'a> Scanner<'a> {
 
         matches.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
         matches
+    }
+
+    /// Enumerate the direct children of `pack_path`, skipping hidden,
+    /// special, and ignored entries. No recursion.
+    fn list_top_level(
+        &self,
+        pack_path: &Path,
+        ignore_patterns: &[String],
+        results: &mut Vec<PackEntry>,
+    ) -> Result<()> {
+        let entries = self.fs.read_dir(pack_path)?;
+
+        for entry in entries {
+            let name = &entry.name;
+
+            if name.starts_with('.') && name != ".config" {
+                continue;
+            }
+            if SPECIAL_FILES.contains(&name.as_str()) {
+                continue;
+            }
+            if is_ignored(name, ignore_patterns) {
+                continue;
+            }
+
+            let rel_path = entry
+                .path
+                .strip_prefix(pack_path)
+                .unwrap_or(&entry.path)
+                .to_path_buf();
+
+            results.push(PackEntry {
+                relative_path: rel_path,
+                absolute_path: entry.path.clone(),
+                is_dir: entry.is_dir,
+            });
+        }
+
+        Ok(())
     }
 
     fn walk_dir(
@@ -721,7 +793,33 @@ mod tests {
     }
 
     #[test]
-    fn scan_pack_nested_files() {
+    fn nested_install_sh_is_not_matched_by_install_rule() {
+        // A file named install.sh that lives deep inside a directory
+        // must NOT activate the install handler. Only a top-level
+        // install.sh triggers it.
+        let env = TempEnvironment::builder()
+            .pack("sneaky")
+            .file("config/install.sh", "echo boom")
+            .done()
+            .build();
+
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("sneaky", env.dotfiles_root.join("sneaky"));
+        let rules = default_rules();
+
+        let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
+
+        assert!(
+            !matches.iter().any(|m| m.handler == "install"),
+            "nested install.sh should not route to install handler: {matches:?}"
+        );
+    }
+
+    #[test]
+    fn scan_pack_returns_only_top_level_entries() {
+        // Under the top-level-only scanner, nested files are not surfaced
+        // as individual matches. The containing dir is the matched entry;
+        // handlers (symlink wholesale, path, …) decide how to recurse.
         let env = TempEnvironment::builder()
             .pack("nvim")
             .file("nvim/init.lua", "require('config')")
@@ -735,14 +833,19 @@ mod tests {
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
 
-        let file_matches: Vec<String> = matches
+        let relpaths: Vec<String> = matches
             .iter()
-            .filter(|m| !m.is_dir)
             .map(|m| m.relative_path.to_string_lossy().to_string())
             .collect();
 
-        assert!(file_matches.contains(&"nvim/init.lua".to_string()));
-        assert!(file_matches.contains(&"nvim/lua/plugins.lua".to_string()));
+        assert!(
+            relpaths.iter().any(|p| p == "nvim"),
+            "top-level nvim dir should match: {relpaths:?}"
+        );
+        assert!(
+            !relpaths.iter().any(|p| p.contains('/')),
+            "no nested paths expected: {relpaths:?}"
+        );
     }
 
     // ── Grouping tests (from PR 5, kept) ────────────────────────

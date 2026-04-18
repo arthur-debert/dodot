@@ -80,6 +80,7 @@ fn build_app() -> App {
         .help_handling(true)
         .templates(standout::embed_templates!("src/templates"))
         .styles(standout::embed_styles!("src/styles"))
+        .default_theme("dodot")
         .command("status", handlers::status_handler, "pack-status")
         .expect("register status")
         .command("up", handlers::up_handler, "pack-status")
