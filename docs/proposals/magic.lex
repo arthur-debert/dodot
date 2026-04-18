@@ -1,103 +1,173 @@
 Proposal: The Magical Git Experience with Pre Processed Files
 
-This file is not a feature proposal per se, but the user facing conceptual document that captures what we see as the ideal design for future dodot, that allows us to withhold our goals and principles and impose minimal costs on users to make it all work. 
-See the @../proposals/template-expansion.lex and @docs/../proposals/preprocessing-pipeline.lex for context.
+This file is not a feature proposal per se, but the user-facing conceptual document that captures what we see as the ideal design for future dodot — one that lets us uphold our goals and principles while imposing minimal cost on users to make it all work.
+See @../proposals/template-expansion.lex and @../proposals/preprocessing-pipeline.lex for context.
+
+This is a revised version of an earlier draft. Two things changed our thinking. First, we pulled encrypted files out of this story entirely — users already grok that you can't round-trip plaintext through a ciphertext, and the reference spec already says dodot does not own encryption. Second, we realized that the baseline cache the preprocessing pipeline already plans to keep (for divergence detection) turns out to be the structural trick that makes everything else cheap, honest, and compatible with the secrets design. Both changes are walked through in the sections below.
 
 
 1. Source Control and dodot: git always wins
 
-    Dotfiles manager are *primarily* about collecting such files from many locations and centralizing them for proper source control. That is the primary point, from which everything flow, like reproducibility, recovery, history tracking. These are what source control gets, not the dotfiles manager.
-    Hence, it's a sensible way to define such programs as a software that facilitates getting your configuration under source control.
+    Dotfile managers are *primarily* about collecting files from many locations and centralizing them for proper source control. That is the primary point, and everything else flows from it: reproducibility, recovery, history tracking. These are what source control gives you — not what the dotfile manager gives you.
+    So it's a sensible way to define such a program as software that facilitates getting your configuration under source control.
 
 2. The Overbearing Solutions
 
-    However, the more advanced ones , in a combination of a complicated design and the proposition of handling things, often overstep and handle some parts of source control. Sometimes it's just a specific use case, sometimes they want you to execute git calls through them or through a especial sub shell. The point being that in some scenario the answer to how do I do task X (a source control one) changes from your vanilla git answer.
-    This is a core principle of dodot: "though shall not fuck around with source control" . That is, git does it's job very well, and for whatever shortcomings one may see, there is an ecosystem of tools to augment it. Dotfiles management is something you want for the long haul, probably be with you for decade. Coupling your data, workflows and tooling on a particular solution is bound to cause your more work. Sure, git is such a coupling, but it's likely to think that git's shell live will be much longer small dotfiles manager, and the new comer is likely to be git compatible also. That's why in dodot nothing in source control is done outside git, ever. git diff tells you what has changed, as does history, checkout and everything else. 
-    However, what what about the things that are not really in git, or not entirely? 
+    The more advanced dotfile managers, in a combination of complicated designs and an ambition to handle things themselves, often overstep and take over parts of source control. Sometimes it's just a specific use case; sometimes they want you to execute git calls through them, or through a special sub-shell. The point is that in some scenario the answer to "how do I do task X (a source-control task)" changes from your vanilla git answer.
+    This is a core principle of dodot: thou shalt not fuck around with source control. git does its job very well, and for whatever shortcomings one may see, there is an ecosystem of tools to augment it. Dotfile management is something you want for the long haul — probably the kind of thing you'll carry with you for decades. Coupling your data, workflows, and tooling to one particular solution is bound to cause you more work. Sure, git is itself such a coupling, but it's reasonable to expect git's shelf life to be much longer than any given dotfile manager's, and any newcomer is likely to be git-compatible anyway. That's why in dodot, nothing in source control is done outside git, ever. `git diff` tells you what has changed, as do history, checkout, and everything else.
+    But what about the things that aren't really in git, or aren't entirely?
 
-3. When Source Files and Deploy File Differ
+3. When Source Files and Deploy Files Differ
 
-    Some situations, the thing you keep under source control is not the thing that gets deployed? In these cases, while you may still keep the source snugly under git , git diff still tells you what has changed to the source file, but not the deployed one (nor could it?).
-    There are a common use cases: injecting secret at run time (to avoid keeping sensitive data in source control), template expanded files and cases like our Plist solution , where you transform the plain text version of the format into the binary one for deployment, keeping both source control and the application requirements happy, gpg encrypted files and so on. 
-    In this case, the source file is fine in git, it's just that if you made a version to the deployed file, how does that propagates back to the git source? 
-    Many solutions handle this by forcing a workflow change on how you edit your configs , usually with further restrictions on how (which tool), and or having an "apply" step (a change in your workflow really).
-    These were strict no-gos for dodot: no apply step, no workflow change, no forcing of config editing tools.
-But that works as long as you can keep source -> deployed 1o1, as these can be links , which has these nice properties we want. But for transformed files that breaks. You can't have your cake and eat it too: if these don't match, something has to control changes, hence the workflow, apply step, tooling requirements.
+    In some situations, the thing you keep under source control is not the thing that gets deployed. In these cases you may still keep the source snugly under git, but `git diff` tells you what has changed in the *source*, not in the *deployed* file (nor easily could it).
+    There are a handful of common use cases: template-expanded files; cases like our plist solution, where you transform the plain-text version of the format into the binary one for deployment, keeping both source control and the application happy; and secrets injected at render time (to avoid keeping sensitive data in source control).
+    The question is: if the source file is fine in git and you've made a change to the deployed file, how does that change propagate back to the git source?
+    Many tools solve this by forcing a workflow change on how you edit your configs, usually with further restrictions on which tool you use, and/or requiring an "apply" step — a change in your workflow, really. These were strict no-gos for dodot: no apply step, no workflow change, no forcing of config-editing tools. That works as long as you can keep source → deployed one-to-one, because then the deployed file can be a symlink, which has the nice properties we want. But for transformed files that breaks down. You can't have your cake and eat it too: if the two don't match, something has to mediate changes — hence the workflow imposition, the apply step, the tooling requirements.
+    One scoping clarification before we go further: this document is specifically about files where a *useful* reverse path exists. That covers representational transforms (plist XML ↔ binary) and generative transforms (templates with variables and injected secrets). It does *not* cover encrypted files. The ciphertext you store in git and the plaintext you deploy are deliberately unrelated from git's point of view, and the whole point of encryption is that the write-back direction should be an explicit, authenticated operation — not a git hook firing silently. For those, the existing story stands: edit the plaintext manually, re-encrypt, commit the new ciphertext. That's what the reference spec already says, and we're not walking it back.
 
-4. dodot: have your cake and eat it.
+4. dodot: have your cake and eat it
 
-    We wanted to support all these Transformation use cases, but not give up on principles: no change to workflow or tooling, git is the source of truth.
-    Other dotfiles manager are correctly framing the situation: you can't have all these things at the same time. What dodot does, is not about breaking logical facts, but making a few trade-offs that we hope feels like the magic keep able and eatable cake. 
-    The answer is a bit unorthodox, as this does requires a bit of reality bending effort, but it works and is true _in spirit_,  to both our principles and the user needs.  Our solution takes some clever bits and a willingness to add to git some tooling.
-    The answer is git it self. By using clever smudge and clean filters, and some clever diffing techniques, we can make this work magically.  
+    We wanted to support the two remaining transformation use cases but not give up on our principles: no workflow changes, no tool requirements, git is the source of truth.
+    Other dotfile managers are correctly framing the situation: you can't have all of these at once. What dodot does isn't about breaking logical facts — it's about making a few trade-offs that, we hope, feel like the magical keepable-and-eatable cake. The answer does require a bit of reality-bending, but it works and is true *in spirit* to both our principles and the user's needs. The solution takes some clever bits and a willingness to add a little tooling to git.
+    The answer is git itself. By using clean and smudge filters, plus some clever diffing, we can make this work.
 
-    4.1 Representational Transformations
+    4.1. Representational Transformations
 
-        For perfectly revertible transforms, smudge and filter are all that is needed. These can deterministically describe it's files and hence have a correct git diff and statuses.
+        For perfectly revertible transforms, clean and smudge filters are all you need. They can deterministically describe their files, and hence produce correct `git diff` and `git status` output with no ambiguity.
+        Plists are the canonical example: `plutil -convert xml1` and `plutil -convert binary1` round-trip losslessly. Git stores the XML (canonical, diffable); the working tree holds the binary (what the application actually reads). The clean filter converts binary → XML on `git add`; the smudge filter converts XML → binary on `git checkout`. The user never sees the transform happen; `git diff` shows a sensible XML diff of what is otherwise a binary file.
+        This case is clean, low-risk, and high-value. It's also logically independent of the rest of this proposal, so we plan to ship it on its own track.
 
-    4.2  Generative Transformations
-    
-        For non revertible transformations, such as template expansions -- which includes secret injection -- there is no deterministically correct way to do so, as more than one changes can result in the same processed output. However, when we think of what dodot does, what user needs, it's possible to count on simple heuristics that allow users to have the benefit without effort, and when ambiguous situations arise, we can have the user confirm the correct choice.
-        That stems from the fact that, if you can determine whether the diff in generated form is related to expansion at generation time, then you can ignore these and still see a meaningful diff with the actual interesting bits that should go back to source control.  
-        What it means is that for non inject lines, we can very reliably tell changes that do not touch injected ones, and hence we can correctly and assertively state the diff.
-        For lines that that do, whoever, we do not. In these cases , what we will do, is to pre fill the file with that information, the original line, the changed line, and let the user decide what is the right call. It's a sort of a merge conflict, except there is no merging, as the changes are not commited yet. 
-        We believe that is a good compromise, that can do the expected thing almost always correctly , that is provide the magical solution, given a few compromises.
+    4.2. Generative Transformations
+
+        For non-revertible transformations, such as template expansions — which include secret injection — there is no deterministically correct way to reverse them, because more than one input change can produce the same expanded output. However, when we think about what dodot actually does and what the user actually needs, it's possible to lean on simple heuristics that let users have the benefit without effort. And when a genuinely ambiguous situation arises, we ask the user to confirm the right call.
+        This stems from an observation: if, at generation time, you can tell which parts of the rendered output came from expansion versus static template content, then you can ignore the "expansion" parts when diffing, and still produce a meaningful diff of the interesting bits that should go back into source control.
+        For lines that don't touch injected content, we can very reliably detect changes and state the reverse diff assertively. For lines that *do* touch injected content, we can't. In those cases, we pre-fill the file with both the original line and the changed line, and let the user decide which is right. It's a sort of merge conflict, except nothing is being merged, because the changes aren't committed yet.
+        We believe that's a good compromise: it does the expected thing almost all the time — producing the magical outcome — with only a small cost at the genuinely ambiguous corners.
 
 The Magical BurgerToCow
 
-    The formal truth holds: the problem is unsolvable in a deterministic and general way. However this doesn't need to cover all possible forms and be generalizable. We can leverage the information we have (the source text, the values for the expansion in the template), and knowledge of the templating engine (minijinja) to produce diffs to be done on the original template for many cases, and being explicit about the other ones , and asking the user to resolve it.
-    This is done by our burgertocow[github.com/arthur-debert/burgertocow] crate, and it uses interesting shadow map ideas to achieve it. I
-    It's assertiveness can greatly be enhanced with a simple best practice of assigning local template variables to the expansion on top of your file, in shell files for example: 
-        GH_TOKEN="{{secret("...")}}"
-    another way is to use minijinja and set them as template vars: 
-        {% set GH_TOKEN secret("...) %}
-    :: text:: 
-    This technique, which is good practice regardless to make the template easier to Underhand and change isolates expansions into dedicated lines , after which very few cases can't be reliably diffed.
+    The formal truth holds: the reverse-templating problem is unsolvable in a deterministic and general way. But we don't need to cover every possible form or be fully generalizable. We can leverage the information we already have — the source text and the values used in expansion — along with knowledge of the templating engine (minijinja) to produce diffs against the original template for the common cases, and be explicit about the ambiguous ones, asking the user to resolve them.
+    This is done by our burgertocow crate [https://github.com/arthur-debert/burgertocow], using a shadow-map approach: every variable emission is wrapped in invisible marker bytes during rendering, and the markers let us later tell which chars in the output came from which part of the template. The crate produces either an honest template-space diff or a conflict block flagging the lines it couldn't reliably reverse.
+    Its assertiveness can be greatly enhanced with a simple best practice: hoist each expansion into a dedicated variable assignment at the top of the file. In a shell file:
+
+    Hoisted expansion in shell:
+
+        GH_TOKEN="{{ secret('op://Personal/GitHub/token') }}"
+
+    :: shell ::
+
+    Or equivalently, using minijinja's `set` tag:
+
+    Hoisted expansion in minijinja:
+
+        {% set GH_TOKEN = secret('op://Personal/GitHub/token') %}
+
+    :: jinja ::
+
+    This isolates expansions into dedicated lines — which is good practice regardless, because it makes the template easier to understand and change. After doing so, very few cases remain that can't be reliably diffed.
+
+The Cache That Makes It Cheap
+
+    When we first sketched this architecture, we had a real worry: if a clean filter runs on every `git status`, every `git diff`, every editor gitgutter poll, every shell prompt refresh — and it has to re-render a template that contains `secret()` calls — then every one of those now prompts for Touch ID or a 1Password unlock. That is severe auth fatigue, and it contradicts exactly the passive/active split that the secrets design carefully laid out. It was close to a dealbreaker.
+    The way out came from noticing we already planned to keep a baseline cache for divergence detection (see preprocessing-pipeline.lex §5.2 and §6.1). The cache holds, per deployed file: a hash of the source, a hash of the render context, a hash of the rendered output, and the rendered output itself. Add one more field — the *tracked render*, which is the rendered output with burgertocow's one-byte markers around each variable emission — and the clean filter becomes nearly free.
+
+    Clean filter, fast path (the common case):
+
+        1. hash the current deployed file
+        2. compare to baseline.rendered_hash
+        3. if equal: emit the template unchanged and exit
+           — no burgertocow, no provider calls, microseconds
+
+    :: text ::
+
+    The vast majority of `git status` invocations fire while the deployed file is still in sync with its last `dodot up`. Nothing needs to be recomputed; the clean filter returns immediately.
+    When the deployed file *has* been edited — the interesting case — we still don't need to re-render:
+
+    Clean filter, slow path (the user edited their deployed file):
+
+        1. load baseline.tracked_render (cached, with markers)
+        2. run burgertocow with (template, cached_tracked_render, current_deployed)
+        3. emit the resulting patched template
+
+    :: text ::
+
+    No provider calls. The tracked render was computed and cached on the last `dodot up`, when the user authenticated once for the whole run. `git status` never prompts.
+    The security posture of caching the tracked render is the same as caching the rendered output, which the reference spec already does: the plaintext is already on disk, visible to the user; adding a marker-annotated twin in the same directory, under the same permissions, doesn't meaningfully expand the attack surface.
+    This is the small structural insight that makes the whole vision viable. Without it, clean filters are hostile to the secrets design. With it, they slot in cleanly.
 
 The User Experience
 
+    We want to be honest that the magical outcome does have user-visible costs — they're small, one-time, and per machine, but they're real. We think the best way to introduce them is incrementally, so that each step ships value on its own and the user opts into more magic only if they want it.
+
     1. The Git Data Bit
 
-        There are now only two problems left, how to teach git to map / transform these values, and how they fit the regular fit usage. By using git's smudge and clean filters, we can alter and map the values that get used by git (be them diff, status, commits), so you have to install these . 
-        This is fairly straight forward and the $dodot helper git-install-filters (does it all) and git-show-filters (outputs the config for you to inspect , setup) will get it done.
+        There are two things to wire into git: the filters themselves, and the commit-time safety net.
+        Filters live in `.git/config` and aren't carried by the repository, so they have to be installed once per clone, per machine. `dodot git-install-filters` installs them; `dodot git-show-filters` prints the configuration so you can inspect or install it by hand. On the first `dodot up` of a pack that uses a preprocessor, dodot checks whether the filters are installed. If they aren't, it asks you whether to install them, print the script for you to run yourself, or skip (and nag next time). One Y/n per machine.
 
     2. The Update Trigger Bit
 
-        The last final hurdle , getting git to use said filters. You see, git does not goes through a file's actual content on each check, instead only doing so if it's modification time stamp is newer than the ref content. This is a smart things, and it makes git much Snappier. But it our case, it poses a problem. 
-    When you pre-process your templates, the generated output gets deployed, that is , becomes the configuration file your system will use. If you then update that (in whatever tool or workflow, in our core goals), only the generated one gets updated, and the source's time stamp won't have changed. Then if you git diff it, it will see the old time stamp and it never runs the filters, so the changes never pickup. 
-        So we need a way to change the source's timestamps when the deployed content changes. The logic for that is trivial, and can be done fast , we just copy the timestamps from the deployed file into the source and we only do these for the files that need it. Note that the file can have no changed and that is fine, git will do the correct thing, it will just spend the time to read it instead of bypassing it through the time stamp. 
-        The tricky part is when to do that. There are various solutions but they all make different trade-offs: 
-            1. A custom dodot refresh command: 
+        The last hurdle is getting git to actually *use* the filters. git doesn't scan every file's content on every check — instead, it only re-reads content when the file's modification time is newer than the cached version. This is a sensible optimization that normally keeps git snappy. But in our case, it poses a problem: when you update the deployed file, the deployed file's mtime changes, but the *source* file's mtime (the template) doesn't. git looks at the source, sees an unchanged mtime, and skips the filter — so the reverse-diff never runs.
+        The fix for mtime itself is trivial: we copy the deployed file's mtime onto the source, so git will re-read it on the next invocation. With the cache in place, deciding *which* sources need a touch is cheap — we hash the deployed files and compare against the baseline, and only touch sources that are genuinely out of sync. A full `dodot refresh` over a realistic dotfile repo runs in well under a second.
+        The interesting question is *when* to trigger that refresh. We see this as a ladder the user can climb as far as they want. Everyone gets tier 1 for free; tier 2 is opt-in for folks who want the fullest magic; tier 3 is there if you already have a file watcher and want to plug dodot into it.
 
-                This is the most straight forward one, and it can be used. The trouble with this is that is requires users to change (abet a little) their git workflow, and worse, to remember doing it.
+        2.1. The Commit Tier (default)
 
-            2. A Pre commit Hook
+            The always-available answer is a pre-commit hook. `dodot git-install-hook` installs one; it runs `dodot refresh` just before the commit, so the commit snapshot always contains the right template-space changes. `git diff --cached` right before committing shows the right thing. `git log -p` shows the right thing. PR reviews show the right thing.
+            The trade-off is that `git status` and `git diff HEAD` *before* you try to commit will show the template as unchanged, even if you have edits sitting in the deployed file. We think this is an acceptable default: the moment template-space diffs really matter is at commit time, and that's when the hook fires. Everyone gets this tier out of the box.
 
-                While status and diff have no hooks, commit does. Hence we can call the refresh logic there (and give users a one command or Y to have that automated, so the user effort is minimal and done once per machine). 
-                However, it only happens when you commit a change, and if you git diff or git status, it won't show up. This is a reasonable solution , that trades away immediate status and diff output by postponing it until the next repo's commit.
+        2.2. The Interactive-Shell Tier (opt-in)
 
-            3. A Nice and Simple Hack
+            For users who want `git status` and `git diff` in their interactive shell to always reflect the latest template state, we offer a shell alias or function that runs `dodot refresh` before delegating to git. Something like:
 
-                You can set and alias / function (and do it in this repo only with an .env var), that will call dodot refresh first, than git diff / status . 
-                These are utterly simple: 
-                    git alias ...
-                :: shell ::
-                And likewise we can do it for your, or provide you the text to add.
+            The interactive alias:
 
-            4. A Deamon Of Sorts
+                alias git='dodot refresh --quiet && command git'
 
-                The "perfect" solution would be a file level hook / deamon that checks it , hen runs dodot refresh as needed. We do not think this should be done by dodot, it's too out of scope, too invasive and brings more complexity than we like. 
-                But there are still simple solutions , if that is your preferred approach: the well established tool (insert them) you can use the dodot refresh --list-paths command to generate these as needed and have your tool doing it automated. If this solution rocks your boat, say you already leverage thee file watcher, this is also simple , done once only and will produce the magical behavior we want.
+            :: shell ::
 
-            5. Dodot Overstepping Tools And Workflow
+            Because the refresh is cache-backed, the added latency is small enough not to feel intrusive. dodot will print the alias for your shell on request (`dodot git-show-alias`), or add it to your shell's rc file with your consent. This tier only affects your interactive shell — scripts, editors, and CI that shell out to `git` directly are unaffected, which is exactly what we want: non-interactive callers get predictable behavior, interactive use gets the magic.
+            If this tier rocks your boat, great. If it doesn't, skip it — you still get the commit-time magic from tier 1.
 
-                Were dodot to require e explicit apply step for updating changes, or a specific tool or shell to be used for changing values, this could be handled there. But this anathema to our goals and ethos, so this is a hard no. If you are Ok with it, solution 1 works already, just call refresh (but the burden is on you, something we do not feel good about)
+        2.3. The External-Watcher Tier (out of scope, but supported)
 
-        In all, if you are okay with adding the filters and the two local aliases, you're good .
-        - On the first deploy (up) of files that use pre processors we will check if these are installed.
-        - If not we will ask you if you want us to install it, output the scripts for you to do so, or forgetaboutit.
+            If you already have a file watcher set up — a direnv hook, a Nix rebuild watcher, your editor's onSave handler — you can plug `dodot refresh` into it yourself. `dodot refresh --list-paths` enumerates the source templates that need to be watched, so the integration is straightforward. We don't ship a daemon of our own: it's out of scope, more invasive than we'd like, and you probably already have opinions about what watcher you use.
 
-        We do think that our design does what we set out for: no changes to users or flows, at the cost of installing two alias and filters once , which is guided and can be done for your. The user effort is minimal, the solution is not too intrusive or magic, and it works every time. If you're Ok with it, all that it will require you is a yes once per machine you setup (filters and aliases wont be git controlled, hence not available on new checkouts.)
+    3. Conflicts, Honestly
 
+        When burgertocow can't reliably reverse a change — typically because the edited line touches an expansion — it emits a conflict block into the reversed template. The block contains the original template line, the user's deployed-file edit, and clear markers around both.
+        In the clean-filter fast/slow path these markers surface in `git diff` and `git status` exactly as you'd expect — you see them, you resolve them. The one thing we *don't* do is let them get committed silently: the pre-commit hook (tier 1 above) detects the markers and refuses the commit until they're resolved. So even if you're deep in a rebase and the clean filter is emitting conflict-marker-bearing templates into intermediate git operations, the only way they land in a real commit is if you yourself edit them out.
 
+    4. What This Costs the User
 
+        Being honest about the price tag, per machine:
+
+        - one Y/n to install the clean/smudge filters and the pre-commit hook (tier 1)
+        - optionally, one Y/n to install the interactive-shell alias (tier 2)
+        - re-running the install on each new clone, because filters aren't stored in the repo (git doesn't carry them)
+
+        Being honest about what this does *not* cost:
+
+        - no new CLI commands the user has to remember in daily use
+        - no workflow changes — you commit, diff, and status with vanilla git
+        - no auth prompts from passive git commands, ever
+        - no dodot-owned shell, editor, or daemon
+
+        We think that's a good deal. The user's effort is bounded, the solution isn't too intrusive, and once installed, the magic works every time.
+
+5. Implementation, Phased
+
+    The phased path falls out naturally from the architecture. Each phase ships value on its own; later phases build on the cache that earlier phases already require.
+
+    Phase 1: the foundation.
+        Ship the preprocessing pipeline, the baseline cache (including the tracked-render field), burgertocow integration, `dodot transform check`, and the pre-commit hook (tier 1 above). At this point, users who adopt preprocessors get correct template-space diffs at commit time with no filter installed. This is the minimum viable magic.
+
+    Phase 2: plist clean/smudge.
+        Ship plist support as an independent track — clean/smudge filters for `plutil` conversion, with their own install flow. Doesn't depend on anything in phase 1; can ship in parallel.
+
+    Phase 3: the template clean filter.
+        Layer the clean filter on top of the phase-1 cache. This is the thin wrapper: hash-compare, fast-path, burgertocow on the slow path. The commit-time gate from phase 1 handles conflict markers. Opt-in filter install (the Y/n prompt on first deploy).
+
+    Phase 4: the interactive-shell alias.
+        Ship `dodot git-show-alias` and the install flow for the opt-in tier-2 alias. Purely additive over phase 3.
+
+    Re-opening phase 3 or 4 is always possible if the commit-tier magic from phase 1 turns out to be sufficient in practice. We don't think it will be — the pull of `git status` telling the truth is strong — but it's good to know the earlier phases stand on their own if the later ones never ship.
