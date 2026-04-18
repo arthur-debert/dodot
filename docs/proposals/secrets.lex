@@ -192,7 +192,7 @@ Design Specification: Secret Handling
             - No reverse path is attempted
             - The user updates the source manually: decrypt, edit, re-encrypt, commit
 
-        dodot does not own encryption. It delegates to age and gpg in the read direction; the write direction is the user's responsibility, outside dodot.
+        dodot does not own encryption. It delegates to age and gpg in the read direction; the write direction is the user's responsibility, outside dodot. (A `dodot secret edit` command in Phase S5 will provide a seamless wrapper over this manual loop).
 
 5. Providers
 
@@ -326,6 +326,21 @@ Design Specification: Secret Handling
 
         Rotation is handled by the provider (change the value in 1Password, pass, SOPS, etc.). On the next `dodot up`, the changed value flows into the rendered output and, for install/homebrew handlers, bumps the sentinel hash to trigger re-execution.
 
+    7.4. Auth Fatigue and Passive Commands
+
+        Evaluating `secret()` templates forces provider invocations, which can trigger interactive prompts (Touch ID, 1Password modal, gpg-agent passphrase). If passive commands like `dodot status` evaluate templates on every invocation, users suffer severe auth fatigue.
+
+        dodot distinguishes between execution envelopes:
+
+        - *Active (`dodot up`)*: Pre-walks each template's AST to collect all `secret()` references before rendering, batches calls per provider, and submits them together. The user authenticates once per run; resolved values are held in-memory for the remainder of the run. MiniJinja's introspection API (already relied on by the reverse-merge heuristics in template-expansion) makes this pre-walk cheap.
+        - *Passive (`dodot status`, `dodot up --dry-run`)*: Must NOT trigger template evaluation. All drift detection uses the baseline cache, which carries `rendered_hash`, `source_hash`, and `context_hash`. That is enough to detect local drift on the deployed file, source/template changes, and non-secret context changes — fully offline, no provider calls.
+
+        What passive cannot detect without provider calls is *upstream rotation*: the vault value changed but nothing else did. Users who want this check opt in explicitly:
+
+            dodot status --refresh-secrets
+
+        For `dodot up --dry-run`, template previews that reference a secret render as a `[SECRET: op://...]` placeholder rather than the resolved value, preserving the no-prompt guarantee while still making the reference visible in the preview.
+
 8. Implementation Phases
 
     Phase S1: Value injection — minimal set
@@ -355,3 +370,4 @@ Design Specification: Secret Handling
         - `dodot secret list` — enumerate references across the repo
         - `dodot secret probe` — validate all configured providers
         - `dodot transform status` enhancements for secret-bearing files
+        - `dodot secret edit <path>` — edits whole-file opaque secrets without the manual decrypt/edit/re-encrypt loop. Plaintext stays in an ephemeral location (tmpfs on Linux, mode-0700 tempfile with unlink-on-exit on macOS, or anonymous mmap where in-memory-only is feasible); exact mechanism is platform-dependent.
