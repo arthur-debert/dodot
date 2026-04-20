@@ -124,6 +124,32 @@ fn status_lists_ignored_packs() {
     assert!(output.contains("disabled"), "output: {output}");
 }
 
+#[test]
+fn status_pack_filter_applies_to_ignored_packs() {
+    // `dodot status <name>` should narrow both the main listing and the
+    // ignored-packs section to just the requested name.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("disabled")
+        .file("stuff", "x")
+        .ignored()
+        .done()
+        .pack("old")
+        .file("thing", "x")
+        .ignored()
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let filter = vec!["disabled".to_string()];
+    let result = commands::status::status(Some(&filter), &ctx).unwrap();
+
+    assert!(result.packs.is_empty(), "filter should exclude vim");
+    assert_eq!(result.ignored_packs, vec!["disabled".to_string()]);
+}
+
 // ── status: correct target paths ────────────────────────────
 
 #[test]

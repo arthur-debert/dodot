@@ -193,18 +193,15 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     }
 
     let root_config = ctx.config_manager.root_config()?;
-    let mut all_packs = packs::discover_packs(
+    let packs::DiscoveredPacks {
+        packs: mut all_packs,
+        ignored: mut ignored_packs,
+    } = packs::scan_packs(
         ctx.fs.as_ref(),
         ctx.paths.dotfiles_root(),
         &root_config.pack.ignore,
     )?;
     info!(count = all_packs.len(), "discovered packs");
-
-    let mut ignored_packs = packs::discover_ignored_packs(
-        ctx.fs.as_ref(),
-        ctx.paths.dotfiles_root(),
-        &root_config.pack.ignore,
-    )?;
 
     if let Some(names) = pack_filter {
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));

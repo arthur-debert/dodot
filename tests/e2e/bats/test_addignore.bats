@@ -45,5 +45,9 @@ teardown() {
     dodot addignore scratch
     run dodot status
     [ "$status" -eq 0 ]
-    assert_output_not_contains "scratch"
+    # Ignored packs appear under "Ignored Packs" so users aren't
+    # baffled, but their contents are not scanned.
+    assert_output_contains "Ignored Packs"
+    assert_output_contains "scratch"
+    assert_output_not_contains "notes"
 }

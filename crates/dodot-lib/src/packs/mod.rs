@@ -27,21 +27,28 @@ pub struct Pack {
     pub config: HandlerConfig,
 }
 
-/// Discover all packs in the dotfiles root.
+/// Result of scanning the dotfiles root: active packs + names of
+/// pack-shaped directories skipped via `.dodotignore`.
+pub struct DiscoveredPacks {
+    pub packs: Vec<Pack>,
+    pub ignored: Vec<String>,
+}
+
+/// Scan the dotfiles root once, partitioning pack-shaped directories into
+/// active packs and those skipped via `.dodotignore`.
 ///
-/// Scans for directories, skipping:
-/// - Hidden directories (except `.config`)
-/// - Directories matching ignore patterns
-/// - Directories containing a `.dodotignore` file
+/// Directories filtered out entirely (hidden, matching `ignore_patterns`,
+/// invalid names) appear in neither list — they aren't pack-shaped.
 ///
-/// Packs are returned sorted alphabetically by name.
-pub fn discover_packs(
+/// Both lists are returned sorted alphabetically.
+pub fn scan_packs(
     fs: &dyn Fs,
     dotfiles_root: &Path,
     ignore_patterns: &[String],
-) -> Result<Vec<Pack>> {
+) -> Result<DiscoveredPacks> {
     let entries = fs.read_dir(dotfiles_root)?;
     let mut packs = Vec::new();
+    let mut ignored = Vec::new();
 
     for entry in entries {
         if !entry.is_dir {
@@ -50,23 +57,20 @@ pub fn discover_packs(
 
         let name = &entry.name;
 
-        // Skip hidden directories (except .config)
         if name.starts_with('.') && name != ".config" {
             continue;
         }
 
-        // Skip ignored patterns
         if is_ignored(name, ignore_patterns) {
             continue;
         }
 
-        // Skip packs with .dodotignore
-        if fs.exists(&entry.path.join(".dodotignore")) {
+        if !is_valid_pack_name(name) {
             continue;
         }
 
-        // Validate pack name (alphanumeric, underscore, dash)
-        if !is_valid_pack_name(name) {
+        if fs.exists(&entry.path.join(".dodotignore")) {
+            ignored.push(name.clone());
             continue;
         }
 
@@ -77,55 +81,25 @@ pub fn discover_packs(
         });
     }
 
-    // Already sorted by read_dir (OsFs sorts), but ensure it
     packs.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(packs)
+    ignored.sort();
+    Ok(DiscoveredPacks { packs, ignored })
 }
 
-/// Discover pack directories that are ignored via a `.dodotignore` file.
+/// Discover all active packs in the dotfiles root.
 ///
-/// Returns names (sorted alphabetically) of directories that would otherwise
-/// be valid packs but carry a `.dodotignore` marker. Used by the `status`
-/// command to surface these directories so users aren't surprised by their
-/// absence from the main listing.
+/// Skips hidden directories (except `.config`), directories matching
+/// ignore patterns, directories carrying a `.dodotignore` file, and
+/// directories with invalid names. Returns sorted alphabetically.
 ///
-/// Applies the same filters as `discover_packs` (hidden dirs, ignore
-/// patterns, valid names) so the two lists together cover every
-/// pack-shaped directory the user might expect to see.
-pub fn discover_ignored_packs(
+/// Prefer [`scan_packs`] when you also need the ignored list —
+/// this is a convenience wrapper over the same single-pass scan.
+pub fn discover_packs(
     fs: &dyn Fs,
     dotfiles_root: &Path,
     ignore_patterns: &[String],
-) -> Result<Vec<String>> {
-    let entries = fs.read_dir(dotfiles_root)?;
-    let mut names = Vec::new();
-
-    for entry in entries {
-        if !entry.is_dir {
-            continue;
-        }
-
-        let name = &entry.name;
-
-        if name.starts_with('.') && name != ".config" {
-            continue;
-        }
-
-        if is_ignored(name, ignore_patterns) {
-            continue;
-        }
-
-        if !is_valid_pack_name(name) {
-            continue;
-        }
-
-        if fs.exists(&entry.path.join(".dodotignore")) {
-            names.push(name.clone());
-        }
-    }
-
-    names.sort();
-    Ok(names)
+) -> Result<Vec<Pack>> {
+    Ok(scan_packs(fs, dotfiles_root, ignore_patterns)?.packs)
 }
 
 /// Check if a name matches any ignore pattern.
@@ -231,7 +205,7 @@ mod tests {
     }
 
     #[test]
-    fn discover_ignored_returns_dodotignore_dirs() {
+    fn scan_partitions_active_and_ignored_packs() {
         let env = TempEnvironment::builder()
             .pack("vim")
             .file("vimrc", "x")
@@ -246,8 +220,13 @@ mod tests {
             .done()
             .build();
 
-        let ignored = discover_ignored_packs(env.fs.as_ref(), &env.dotfiles_root, &[]).unwrap();
-        assert_eq!(ignored, vec!["disabled".to_string(), "old".to_string()]);
+        let result = scan_packs(env.fs.as_ref(), &env.dotfiles_root, &[]).unwrap();
+        let names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, vec!["vim"]);
+        assert_eq!(
+            result.ignored,
+            vec!["disabled".to_string(), "old".to_string()]
+        );
     }
 
     #[test]
