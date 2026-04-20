@@ -77,7 +77,7 @@ teardown() {
     assert_output_contains "never run"
 }
 
-@test "status skips ignored packs" {
+@test "status skips ignored packs from main listing but shows them as ignored" {
     create_pack_file "vim" "vimrc" "x"
     create_pack_file "disabled" "file" "x"
     mark_ignored "disabled"
@@ -85,7 +85,13 @@ teardown() {
     run dodot status
     [ "$status" -eq 0 ]
     assert_output_contains "vim"
-    assert_output_not_contains "disabled"
+    # Ignored packs are not scanned/deployed, but are listed under an
+    # "Ignored Packs" heading so users aren't baffled when a directory
+    # they expected doesn't appear in the main listing.
+    assert_output_contains "Ignored Packs"
+    assert_output_contains "disabled"
+    # The ignored pack's contents should NOT be scanned or shown.
+    assert_output_not_contains "file"
 }
 
 @test "status returns pending after down" {
