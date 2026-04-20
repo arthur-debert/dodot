@@ -82,6 +82,52 @@ pub fn discover_packs(
     Ok(packs)
 }
 
+/// Discover pack directories that are ignored via a `.dodotignore` file.
+///
+/// Returns names (sorted alphabetically) of directories that would otherwise
+/// be valid packs but carry a `.dodotignore` marker. Used by the `status`
+/// command to surface these directories so users aren't surprised by their
+/// absence from the main listing.
+///
+/// Applies the same filters as `discover_packs` (hidden dirs, ignore
+/// patterns, valid names) so the two lists together cover every
+/// pack-shaped directory the user might expect to see.
+pub fn discover_ignored_packs(
+    fs: &dyn Fs,
+    dotfiles_root: &Path,
+    ignore_patterns: &[String],
+) -> Result<Vec<String>> {
+    let entries = fs.read_dir(dotfiles_root)?;
+    let mut names = Vec::new();
+
+    for entry in entries {
+        if !entry.is_dir {
+            continue;
+        }
+
+        let name = &entry.name;
+
+        if name.starts_with('.') && name != ".config" {
+            continue;
+        }
+
+        if is_ignored(name, ignore_patterns) {
+            continue;
+        }
+
+        if !is_valid_pack_name(name) {
+            continue;
+        }
+
+        if fs.exists(&entry.path.join(".dodotignore")) {
+            names.push(name.clone());
+        }
+    }
+
+    names.sort();
+    Ok(names)
+}
+
 /// Check if a name matches any ignore pattern.
 fn is_ignored(name: &str, patterns: &[String]) -> bool {
     for pattern in patterns {
@@ -182,6 +228,26 @@ mod tests {
         let packs = discover_packs(env.fs.as_ref(), &env.dotfiles_root, &[]).unwrap();
         let names: Vec<&str> = packs.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names, vec!["vim"]);
+    }
+
+    #[test]
+    fn discover_ignored_returns_dodotignore_dirs() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "x")
+            .done()
+            .pack("disabled")
+            .file("stuff", "x")
+            .ignored()
+            .done()
+            .pack("old")
+            .file("thing", "x")
+            .ignored()
+            .done()
+            .build();
+
+        let ignored = discover_ignored_packs(env.fs.as_ref(), &env.dotfiles_root, &[]).unwrap();
+        assert_eq!(ignored, vec!["disabled".to_string(), "old".to_string()]);
     }
 
     #[test]

@@ -118,6 +118,7 @@ pub fn up_handler(
                 packs: Vec::new(),
                 warnings: Vec::new(),
                 conflicts: display_conflicts,
+                ignored_packs: Vec::new(),
             }))
         }
         Err(e) => Err(e.into()),

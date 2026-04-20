@@ -119,5 +119,6 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         packs: display_packs,
         warnings,
         conflicts: Vec::new(),
+        ignored_packs: Vec::new(),
     })
 }

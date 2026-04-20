@@ -200,8 +200,15 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     )?;
     info!(count = all_packs.len(), "discovered packs");
 
+    let mut ignored_packs = packs::discover_ignored_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
+
     if let Some(names) = pack_filter {
         all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+        ignored_packs.retain(|name| names.iter().any(|n| n == name));
     }
 
     let registry = handlers::create_registry(ctx.fs.as_ref());
@@ -356,5 +363,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         packs: display_packs,
         warnings,
         conflicts: display_conflicts,
+        ignored_packs,
     })
 }

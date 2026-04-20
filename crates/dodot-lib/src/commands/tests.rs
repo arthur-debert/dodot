@@ -94,6 +94,36 @@ fn status_renders_with_standout() {
     assert!(json.contains("\"packs\""), "json: {json}");
 }
 
+#[test]
+fn status_lists_ignored_packs() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("disabled")
+        .file("stuff", "x")
+        .ignored()
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    assert_eq!(
+        result
+            .packs
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["vim"]
+    );
+    assert_eq!(result.ignored_packs, vec!["disabled".to_string()]);
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("Ignored Packs"), "output: {output}");
+    assert!(output.contains("disabled"), "output: {output}");
+}
+
 // ── status: correct target paths ────────────────────────────
 
 #[test]

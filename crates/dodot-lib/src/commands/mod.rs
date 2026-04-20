@@ -174,4 +174,9 @@ pub struct PackStatusResult {
     /// Cross-pack conflicts to display at the end of the output.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts: Vec<DisplayConflict>,
+    /// Names of pack-shaped directories skipped because they carry a
+    /// `.dodotignore` marker. Surfaced by `status` so users aren't
+    /// baffled when a directory they expected doesn't appear.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ignored_packs: Vec<String>,
 }
