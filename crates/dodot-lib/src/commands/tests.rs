@@ -460,13 +460,632 @@ fn adopt_moves_file_and_creates_symlink() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
 
-    let result = commands::adopt::adopt("vim", std::slice::from_ref(&source), false, &ctx).unwrap();
-    assert!(result.message.contains("1 file"));
+    let result = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
 
-    // File should have moved into pack (without dot prefix)
-    env.assert_exists(&env.dotfiles_root.join("vim/vimrc"));
+    // File should have moved into pack (without dot prefix), content preserved
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "set nocompatible");
     // Symlink should exist at original location
     assert!(env.fs.is_symlink(&source));
+
+    // Status output should include the vim pack with the adopted file
+    assert!(result.packs.iter().any(|p| p.name == "vim"));
+    let vim = result.packs.iter().find(|p| p.name == "vim").unwrap();
+    assert!(vim.files.iter().any(|f| f.name == "vimrc"));
+}
+
+#[test]
+fn adopt_preserves_executable_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("placeholder", "")
+        .done()
+        .home_file("script.sh", "#!/bin/sh\necho hi")
+        .build();
+
+    let source = env.home.join("script.sh");
+    // Mark source as executable
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&source, perms).unwrap();
+
+    let ctx = make_ctx(&env);
+    commands::adopt::adopt(
+        "tools",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let dest = env.dotfiles_root.join("tools/script.sh");
+    let meta = std::fs::metadata(&dest).unwrap();
+    assert_eq!(
+        meta.permissions().mode() & 0o777,
+        0o755,
+        "executable bit should be preserved on adopted file"
+    );
+}
+
+#[test]
+fn adopt_destination_conflict_refused_without_force() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "existing content")
+        .done()
+        .home_file(".vimrc", "new content")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    let err = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::SymlinkConflict { .. }),
+        "expected SymlinkConflict, got: {err}"
+    );
+
+    // Original file untouched; existing pack file untouched.
+    env.assert_regular_file(&source, "new content");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "existing content");
+}
+
+#[test]
+fn adopt_destination_conflict_resolved_with_force() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "OLD")
+        .done()
+        .home_file(".vimrc", "NEW")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "NEW");
+    assert!(env.fs.is_symlink(&source));
+}
+
+#[test]
+fn adopt_directory_creates_symlink_and_preserves_contents() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- config")
+        .home_file(".config/nvim/lua/mod.lua", "-- module")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config");
+
+    commands::adopt::adopt(
+        "nvim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // The directory is moved to pack/config (dot stripped) with contents.
+    let pack_dir = env.dotfiles_root.join("nvim/config");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("nvim/init.lua"), "-- config");
+    env.assert_regular_file(&pack_dir.join("nvim/lua/mod.lua"), "-- module");
+
+    // Original path is now a symlink to the pack copy.
+    assert!(env.fs.is_symlink(&source));
+    let target = env.fs.readlink(&source).unwrap();
+    assert_eq!(target, pack_dir);
+}
+
+#[test]
+fn adopt_preserves_inner_symlinks_as_symlinks() {
+    let env = TempEnvironment::builder()
+        .pack("shell")
+        .file("placeholder", "")
+        .done()
+        .home_file("mydir/real.txt", "hello")
+        .build();
+
+    // Create an inner symlink: mydir/alias -> mydir/real.txt
+    let inner_target = env.home.join("mydir/real.txt");
+    let inner_link = env.home.join("mydir/alias");
+    env.fs.symlink(&inner_target, &inner_link).unwrap();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join("mydir");
+    commands::adopt::adopt(
+        "shell",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // The inner link should still be a symlink inside the pack copy.
+    let copied_link = env.dotfiles_root.join("shell/mydir/alias");
+    assert!(
+        env.fs.is_symlink(&copied_link),
+        "inner symlink should be preserved as a symlink, not followed"
+    );
+}
+
+#[test]
+fn adopt_nested_source_refused() {
+    let env = TempEnvironment::builder()
+        .pack("nvim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/nvim/init.lua", "-- config")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/init.lua");
+
+    let err = commands::adopt::adopt(
+        "nvim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("nested"),
+        "expected 'nested' in error message, got: {msg}"
+    );
+
+    // Nothing mutated.
+    env.assert_regular_file(&source, "-- config");
+    env.assert_not_exists(&env.dotfiles_root.join("nvim/init.lua"));
+}
+
+#[test]
+fn adopt_already_adopted_source_is_skipped() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "content")
+        .done()
+        .build();
+
+    // Pre-link home file to the pack.
+    let source = env.home.join(".vimrc");
+    let pack_file = env.dotfiles_root.join("vim/vimrc");
+    env.fs.symlink(&pack_file, &source).unwrap();
+
+    let ctx = make_ctx(&env);
+    let result = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("already managed")),
+        "expected already-managed warning, got: {:?}",
+        result.warnings
+    );
+    // Source still a symlink, pack file untouched.
+    assert!(env.fs.is_symlink(&source));
+    env.assert_regular_file(&pack_file, "content");
+}
+
+#[test]
+fn adopt_relative_path_with_curdir_normalizes() {
+    // `dodot adopt mypack ./.vimrc` run from HOME must not be rejected as
+    // "nested" — the `.` component should normalize away so parent == HOME.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "content")
+        .build();
+
+    // Run with CWD = HOME so the relative path resolves naturally.
+    let prev_cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&env.home).unwrap();
+    let ctx = make_ctx(&env);
+    let result = commands::adopt::adopt(
+        "vim",
+        &[std::path::PathBuf::from("./.vimrc")],
+        false,
+        false,
+        false,
+        &ctx,
+    );
+    std::env::set_current_dir(prev_cwd).unwrap();
+
+    result.expect("adopt should accept ./.vimrc when CWD is HOME");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "content");
+    assert!(env.fs.is_symlink(&env.home.join(".vimrc")));
+}
+
+#[test]
+fn adopt_ignored_pack_refused() {
+    let env = TempEnvironment::builder()
+        .pack("disabled")
+        .file("placeholder", "")
+        .ignored()
+        .done()
+        .home_file(".vimrc", "x")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        "disabled",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::PackInvalid { .. }),
+        "expected PackInvalid, got: {err}"
+    );
+}
+
+#[test]
+fn adopt_filename_matching_pack_ignore_refused() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .config("[pack]\nignore = [\"*.bak\"]")
+        .done()
+        .home_file(".vimrc.bak", "old")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc.bak");
+    let err = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("ignore"),
+        "expected ignore-pattern message, got: {msg}"
+    );
+}
+
+#[test]
+fn adopt_broken_pack_blocks_conflict_check() {
+    // If another pack fails intent collection, adoption must refuse rather
+    // than silently proceed — otherwise the conflict check produces a false
+    // negative and we'd mutate into a state `dodot up` would later reject.
+    let env = TempEnvironment::builder()
+        .pack("broken")
+        .file("config.toml.tmpl", "{{ missing_var }}")
+        .done()
+        .pack("target")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "content")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        "target",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+
+    // The error surfaces from the broken pack's intent collection
+    // (template render failure), not a silent success.
+    assert!(
+        matches!(err, crate::DodotError::TemplateRender { .. }),
+        "expected the broken pack's error to surface, got: {err}"
+    );
+
+    // Home untouched; no pack copy left behind.
+    env.assert_regular_file(&source, "content");
+    env.assert_not_exists(&env.dotfiles_root.join("target/vimrc"));
+}
+
+#[test]
+fn adopt_deploy_conflict_refused() {
+    // Two packs, both would end up claiming ~/.vimrc after adoption.
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("vimrc", "existing")
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "new")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        "work",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "expected CrossPackConflict, got: {err}"
+    );
+
+    // Home untouched.
+    env.assert_regular_file(&source, "new");
+    // Pack copy rolled back.
+    env.assert_not_exists(&env.dotfiles_root.join("work/vimrc"));
+}
+
+#[test]
+fn adopt_deploy_conflict_not_bypassed_by_force() {
+    let env = TempEnvironment::builder()
+        .pack("unix")
+        .file("vimrc", "existing")
+        .done()
+        .pack("work")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "new")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        "work",
+        std::slice::from_ref(&source),
+        true, // --force should NOT bypass deploy conflicts
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    assert!(
+        matches!(err, crate::DodotError::CrossPackConflict { .. }),
+        "--force must not bypass deploy conflicts, got: {err}"
+    );
+}
+
+#[test]
+fn adopt_dry_run_makes_no_changes() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "content")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    let result = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        true, // dry-run
+        &ctx,
+    )
+    .unwrap();
+    assert!(result.dry_run);
+
+    // Nothing changed at home.
+    env.assert_regular_file(&source, "content");
+    assert!(!env.fs.is_symlink(&source));
+    // No copy in pack.
+    env.assert_not_exists(&env.dotfiles_root.join("vim/vimrc"));
+}
+
+#[test]
+fn adopt_no_follow_keeps_source_symlink_as_symlink() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file("real_vimrc", "real content")
+        .build();
+
+    // ~/.vimrc is a symlink to ~/real_vimrc
+    let real = env.home.join("real_vimrc");
+    let source = env.home.join(".vimrc");
+    env.fs.symlink(&real, &source).unwrap();
+
+    let ctx = make_ctx(&env);
+    commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        true, // --no-follow
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // The pack copy should be a symlink (not a regular file with copied content).
+    let pack_copy = env.dotfiles_root.join("vim/vimrc");
+    assert!(
+        env.fs.is_symlink(&pack_copy),
+        "--no-follow should preserve source symlink as a symlink in the pack"
+    );
+    // Home path replaced with a symlink into the pack.
+    assert!(env.fs.is_symlink(&source));
+}
+
+#[cfg(unix)]
+#[test]
+fn adopt_force_preserves_old_content_when_copy_fails() {
+    // With --force, the old destination must remain intact if the copy of
+    // the new source fails. Previously copy_all removed the dest before
+    // copying, so a copy failure silently lost the old content.
+    use std::os::unix::fs::PermissionsExt;
+
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "OLD")
+        .done()
+        .home_file(".vimrc", "NEW")
+        .build();
+
+    let source = env.home.join(".vimrc");
+    // chmod 000 makes the file unreadable, so the copy phase fails at
+    // read-time without tripping preflight (which uses lstat only).
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let ctx = make_ctx(&env);
+    let result = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        &ctx,
+    );
+
+    // Restore perms so drop-cleanup works regardless of assertion outcome.
+    let _ = std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o644));
+
+    assert!(
+        result.is_err(),
+        "adopt should fail when the source is unreadable"
+    );
+    // The old pack content must survive the failed --force adoption.
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "OLD");
+    // Home file also untouched.
+    env.assert_regular_file(&source, "NEW");
+    // No lingering stage file in the pack.
+    let leftover = env.fs.read_dir(&env.dotfiles_root.join("vim")).unwrap();
+    for entry in leftover {
+        assert!(
+            !entry.name.contains("dodot-adopt-stage"),
+            "stage file leaked into pack: {}",
+            entry.name
+        );
+    }
+}
+
+#[test]
+fn adopt_no_follow_on_dangling_symlink_succeeds() {
+    // A dangling symlink under --no-follow: readability check must inspect
+    // the link itself (lstat), not try to follow it into a non-existent
+    // target. Regression test: check_readable previously used fs.is_dir +
+    // fs.stat, both of which follow symlinks and would fail here.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .build();
+
+    // Create ~/.dangling -> /does/not/exist (target intentionally missing).
+    let source = env.home.join(".dangling");
+    env.fs
+        .symlink(std::path::Path::new("/does/not/exist"), &source)
+        .unwrap();
+
+    let ctx = make_ctx(&env);
+    commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        true, // --no-follow
+        false,
+        &ctx,
+    )
+    .expect("adopt with --no-follow on a dangling symlink should succeed");
+
+    // The pack copy should itself be a symlink (preserving the dangling link).
+    let pack_copy = env.dotfiles_root.join("vim/dangling");
+    assert!(env.fs.is_symlink(&pack_copy));
+    let target = env.fs.readlink(&pack_copy).unwrap();
+    assert_eq!(target, std::path::PathBuf::from("/does/not/exist"));
+}
+
+#[test]
+fn adopt_nonexistent_source_errors() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".does-not-exist");
+    let err = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    assert!(matches!(err, crate::DodotError::Fs { .. }), "got: {err}");
+}
+
+#[test]
+fn adopt_empty_sources_errors() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    let err = commands::adopt::adopt("vim", &[], false, false, false, &ctx).unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("no files"), "got: {msg}");
 }
 
 // ── addignore ───────────────────────────────────────────────
@@ -594,8 +1213,15 @@ fn adopt_nonexistent_pack_returns_pack_not_found() {
 
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
-    let err =
-        commands::adopt::adopt("newpack", std::slice::from_ref(&source), false, &ctx).unwrap_err();
+    let err = commands::adopt::adopt(
+        "newpack",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
     assert!(
         matches!(err, crate::DodotError::PackNotFound { .. }),
         "expected PackNotFound, got: {err}"

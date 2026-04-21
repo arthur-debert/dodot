@@ -93,7 +93,7 @@ fn build_app() -> App {
         .expect("register init")
         .command("fill", handlers::fill_handler, "message")
         .expect("register fill")
-        .command("adopt", handlers::adopt_handler, "message")
+        .command("adopt", handlers::adopt_handler, "pack-status")
         .expect("register adopt")
         .command("addignore", handlers::addignore_handler, "message")
         .expect("register addignore")
@@ -238,7 +238,19 @@ fn build_clap_command() -> ClapCommand {
                 .arg(
                     Arg::new("force")
                         .long("force")
-                        .help("Overwrite existing files in pack")
+                        .help("Overwrite existing destination files in the pack")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("dry-run")
+                        .long("dry-run")
+                        .help("Show what would be adopted without making changes")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("no-follow")
+                        .long("no-follow")
+                        .help("When the source is a symlink, move the link itself instead of its target")
                         .action(ArgAction::SetTrue),
                 ),
         )

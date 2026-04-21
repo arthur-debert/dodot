@@ -174,7 +174,7 @@ pub fn fill_handler(
 pub fn adopt_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
-) -> HandlerResult<commands::adopt::AdoptResult> {
+) -> HandlerResult<commands::PackStatusResult> {
     let ctx = build_readonly_ctx()?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let files: Vec<PathBuf> = matches
@@ -183,13 +183,17 @@ pub fn adopt_handler(
         .map(PathBuf::from)
         .collect();
     let force = matches.get_flag("force");
-    let result = commands::adopt::adopt(pack_name, &files, force, &ctx).map_err(|e| {
-        if matches!(e, dodot_lib::DodotError::PackNotFound { .. }) {
-            anyhow::anyhow!("{e}\n  Hint: run 'dodot init {pack_name}' first to create it")
-        } else {
-            e.into()
-        }
-    })?;
+    let no_follow = matches.get_flag("no-follow");
+    let dry_run = matches.get_flag("dry-run");
+    let result = commands::adopt::adopt(pack_name, &files, force, no_follow, dry_run, &ctx)
+        .map_err(|e| {
+            if matches!(e, dodot_lib::DodotError::PackNotFound { .. }) {
+                anyhow::anyhow!("{e}\n  Hint: run 'dodot init {pack_name}' first to create it")
+            } else {
+                e.into()
+            }
+        })?;
+    print_warnings(&result.warnings);
     Ok(Output::Render(result))
 }
 
