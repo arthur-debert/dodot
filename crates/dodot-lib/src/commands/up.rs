@@ -164,6 +164,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         packs: display_packs,
         warnings: Vec::new(),
         conflicts: Vec::new(),
+        ignored_packs: Vec::new(),
     })
 }
 

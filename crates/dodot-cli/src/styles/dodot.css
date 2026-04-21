@@ -73,3 +73,8 @@
 .conflict-hint {
     dim: true;
 }
+
+.ignored-pack {
+    dim: true;
+    font-style: italic;
+}

@@ -78,6 +78,10 @@ conflict-pack:
 
 conflict-hint:
   dim: true
+
+ignored-pack:
+  dim: true
+  italic: true
 "#;
 
 // ── Templates ───────────────────────────────────────────────────
@@ -89,7 +93,9 @@ pub const TEMPLATE_PACK_STATUS: &str = r#"{% if conflicts %}[conflict-banner] �
 {% endif %}{% for pack in packs %}[pack-name]{{ pack.name }}[/pack-name]
 {% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]
 {% endfor %}
-{% endfor %}{% if conflicts %}
+{% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
+{% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
+{% endfor %}{% endif %}{% if conflicts %}
 [conflict-header] Cross-pack conflicts [/conflict-header]
 {% for c in conflicts %}
 {% if c.kind == "symlink" %}The target path [conflict-target]{{ c.target }}[/conflict-target] would be used by multiple packs:
