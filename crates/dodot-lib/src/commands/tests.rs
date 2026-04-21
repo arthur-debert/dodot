@@ -768,6 +768,45 @@ fn adopt_filename_matching_pack_ignore_refused() {
 }
 
 #[test]
+fn adopt_broken_pack_blocks_conflict_check() {
+    // If another pack fails intent collection, adoption must refuse rather
+    // than silently proceed — otherwise the conflict check produces a false
+    // negative and we'd mutate into a state `dodot up` would later reject.
+    let env = TempEnvironment::builder()
+        .pack("broken")
+        .file("config.toml.tmpl", "{{ missing_var }}")
+        .done()
+        .pack("target")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "content")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        "target",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+
+    // The error surfaces from the broken pack's intent collection
+    // (template render failure), not a silent success.
+    assert!(
+        matches!(err, crate::DodotError::TemplateRender { .. }),
+        "expected the broken pack's error to surface, got: {err}"
+    );
+
+    // Home untouched; no pack copy left behind.
+    env.assert_regular_file(&source, "content");
+    env.assert_not_exists(&env.dotfiles_root.join("target/vimrc"));
+}
+
+#[test]
 fn adopt_deploy_conflict_refused() {
     // Two packs, both would end up claiming ~/.vimrc after adoption.
     let env = TempEnvironment::builder()

@@ -364,13 +364,12 @@ fn check_deploy_conflicts(ctx: &ExecutionContext) -> Result<()> {
     for mut pack in all {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
-        match orchestration::collect_pack_intents(&pack, ctx) {
-            Ok(intents) => pack_intents.push((pack.name.clone(), intents)),
-            Err(_) => {
-                // Skip packs that fail to collect — they won't contribute
-                // conflicts, and their own errors surface via status/up.
-            }
-        }
+        // Propagate per-pack errors: if any pack can't be scanned we can't
+        // truthfully say "no conflict with that pack," so refuse outright
+        // rather than risk a false negative that lets us mutate into a
+        // state `dodot up` will later reject.
+        let intents = orchestration::collect_pack_intents(&pack, ctx)?;
+        pack_intents.push((pack.name.clone(), intents));
     }
 
     let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
