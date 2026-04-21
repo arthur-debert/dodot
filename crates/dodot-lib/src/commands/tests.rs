@@ -713,6 +713,36 @@ fn adopt_already_adopted_source_is_skipped() {
 }
 
 #[test]
+fn adopt_relative_path_with_curdir_normalizes() {
+    // `dodot adopt mypack ./.vimrc` run from HOME must not be rejected as
+    // "nested" — the `.` component should normalize away so parent == HOME.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "content")
+        .build();
+
+    // Run with CWD = HOME so the relative path resolves naturally.
+    let prev_cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&env.home).unwrap();
+    let ctx = make_ctx(&env);
+    let result = commands::adopt::adopt(
+        "vim",
+        &[std::path::PathBuf::from("./.vimrc")],
+        false,
+        false,
+        false,
+        &ctx,
+    );
+    std::env::set_current_dir(prev_cwd).unwrap();
+
+    result.expect("adopt should accept ./.vimrc when CWD is HOME");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "content");
+    assert!(env.fs.is_symlink(&env.home.join(".vimrc")));
+}
+
+#[test]
 fn adopt_ignored_pack_refused() {
     let env = TempEnvironment::builder()
         .pack("disabled")

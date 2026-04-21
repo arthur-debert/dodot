@@ -148,7 +148,10 @@ fn preflight(
     let mut skipped: Vec<String> = Vec::new();
 
     for raw_source in sources {
-        // Resolve to absolute. Relative paths are resolved against CWD.
+        // Resolve to absolute, then normalize. Relative paths are resolved
+        // against CWD. We normalize logically (strip `.`, collapse `..`)
+        // rather than calling `canonicalize()` because canonicalize follows
+        // symlinks, which would break `--no-follow`.
         let abs = if raw_source.is_absolute() {
             raw_source.clone()
         } else {
@@ -159,6 +162,7 @@ fn preflight(
                 })?
                 .join(raw_source)
         };
+        let abs = normalize_path(&abs);
 
         if !fs.exists(&abs) && !fs.is_symlink(&abs) {
             return Err(DodotError::Fs {
@@ -197,10 +201,15 @@ fn preflight(
 
         // Nested-source refusal: parent must be HOME (dodot's flat-at-top-level
         // rule applied to source paths too). Allow adopting from HOME directly.
+        // Canonicalize the parent (not the source itself — that would follow
+        // a symlink source and break `--no-follow`) so OS-level path
+        // equivalences like `/var` ↔ `/private/var` on macOS compare equal.
         let parent = abs
             .parent()
             .ok_or_else(|| DodotError::Other(format!("no parent directory: {}", abs.display())))?;
-        if parent != home {
+        let canon_parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+        let canon_home = std::fs::canonicalize(&home).unwrap_or_else(|_| home.clone());
+        if canon_parent != canon_home {
             return Err(DodotError::Other(format!(
                 "nested source not allowed: {}\n  hint: adopt the top-level directory instead (parent must be {})",
                 abs.display(),
@@ -439,6 +448,29 @@ fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
 }
 
 // ── helpers ──────────────────────────────────────────────────────
+
+/// Normalize a path by collapsing `.` and `..` components without touching
+/// the filesystem.
+///
+/// Unlike `std::fs::canonicalize`, this does not follow symlinks — important
+/// for `--no-follow`, where we want to preserve the source as a link rather
+/// than resolve through it. Parent refs (`..`) are collapsed purely
+/// lexically, which is correct for the nested-parent check here since the
+/// caller has already joined against `current_dir()` for relative inputs.
+fn normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                result.pop();
+            }
+            other => result.push(other),
+        }
+    }
+    result
+}
 
 fn temp_sibling(path: &Path, tag: &str) -> PathBuf {
     let parent = path.parent().unwrap_or(Path::new("."));
