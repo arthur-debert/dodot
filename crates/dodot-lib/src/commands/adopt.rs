@@ -268,7 +268,10 @@ fn preflight(
     let _ = pack_name; // reserved for future per-pack perm messages
     check_writable(fs, pack_path)?;
     for plan in &plans {
-        check_readable(fs, &plan.source)?;
+        // Pass the plan's `is_dir` (already resolved with `--no-follow`
+        // semantics) so a symlink-to-dir under `--no-follow` isn't probed
+        // via `read_dir` on the target.
+        check_readable(fs, &plan.source, plan.is_dir)?;
         if let Some(src_parent) = plan.source.parent() {
             check_writable(fs, src_parent)?;
         }
@@ -287,12 +290,14 @@ fn check_writable(fs: &dyn Fs, dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn check_readable(fs: &dyn Fs, path: &Path) -> Result<()> {
-    // For directories, read_dir; for files, a stat is enough.
-    if fs.is_dir(path) {
+fn check_readable(fs: &dyn Fs, path: &Path, is_dir: bool) -> Result<()> {
+    // For directories, read_dir; for files or symlinks, lstat (which does
+    // not follow) is enough — we don't need to reach through a symlink
+    // target, especially under `--no-follow`.
+    if is_dir {
         fs.read_dir(path).map(|_| ())
     } else {
-        fs.stat(path).map(|_| ())
+        fs.lstat(path).map(|_| ())
     }
 }
 

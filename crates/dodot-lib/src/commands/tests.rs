@@ -966,6 +966,42 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
 }
 
 #[test]
+fn adopt_no_follow_on_dangling_symlink_succeeds() {
+    // A dangling symlink under --no-follow: readability check must inspect
+    // the link itself (lstat), not try to follow it into a non-existent
+    // target. Regression test: check_readable previously used fs.is_dir +
+    // fs.stat, both of which follow symlinks and would fail here.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .build();
+
+    // Create ~/.dangling -> /does/not/exist (target intentionally missing).
+    let source = env.home.join(".dangling");
+    env.fs
+        .symlink(std::path::Path::new("/does/not/exist"), &source)
+        .unwrap();
+
+    let ctx = make_ctx(&env);
+    commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        true, // --no-follow
+        false,
+        &ctx,
+    )
+    .expect("adopt with --no-follow on a dangling symlink should succeed");
+
+    // The pack copy should itself be a symlink (preserving the dangling link).
+    let pack_copy = env.dotfiles_root.join("vim/dangling");
+    assert!(env.fs.is_symlink(&pack_copy));
+    let target = env.fs.readlink(&pack_copy).unwrap();
+    assert_eq!(target, std::path::PathBuf::from("/does/not/exist"));
+}
+
+#[test]
 fn adopt_nonexistent_source_errors() {
     let env = TempEnvironment::builder()
         .pack("vim")
