@@ -1,73 +1,464 @@
 //! `adopt` command — move existing files into a pack, creating symlinks back.
+//!
+//! Two-phase model:
+//!
+//! 1. **Copy phase** — recursively copy each source into the pack, preserving
+//!    inner symlinks and Unix permissions. Originals are never touched in this
+//!    phase. If anything fails, the partial copies are removed and the error
+//!    surfaces; home is pristine throughout.
+//!
+//! 2. **Swap phase** — per source, atomically replace the original with a
+//!    symlink to the pack copy. Files use a symlink-at-temp + rename-over-original
+//!    trick (POSIX atomic). Directories use a rename-to-backup + symlink + rm-backup
+//!    dance (one-step recoverable). A per-file failure cleans up that source's pack
+//!    copy only; previously-adopted sources remain adopted.
+//!
+//! Cross-pack deployment conflicts are detected after the copy phase and before
+//! the swap phase — adoption is refused if deploying the adopted files would
+//! collide with another pack. This check is not bypassed by `--force`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use serde::Serialize;
-
-use crate::packs::orchestration::ExecutionContext;
+use crate::commands::status;
+use crate::commands::PackStatusResult;
+use crate::conflicts;
+use crate::fs::Fs;
+use crate::packs;
+use crate::packs::orchestration::{self, ExecutionContext};
+use crate::rules;
 use crate::{DodotError, Result};
 
-#[derive(Debug, Clone, Serialize)]
-pub struct AdoptResult {
-    pub message: String,
-    pub details: Vec<String>,
+/// Plan for a single source: the resolved source path, what to call it in the
+/// pack, and the destination path.
+struct AdoptPlan {
+    /// The resolved source (post --no-follow handling).
+    source: PathBuf,
+    /// Destination inside the pack.
+    pack_dest: PathBuf,
+    /// `true` if the source is a directory (after --no-follow resolution).
+    is_dir: bool,
 }
 
-/// Move files from their current location into a pack, creating
-/// symlinks from the original location back to the pack.
+/// Move sources into a pack, creating symlinks from their original locations.
+///
+/// See the module-level docs for the two-phase model and failure semantics.
 pub fn adopt(
     pack_name: &str,
-    files: &[PathBuf],
+    sources: &[PathBuf],
     force: bool,
+    no_follow: bool,
+    dry_run: bool,
     ctx: &ExecutionContext,
-) -> Result<AdoptResult> {
-    let pack_path = ctx.paths.pack_path(pack_name);
+) -> Result<PackStatusResult> {
+    if sources.is_empty() {
+        return Err(DodotError::Other("no files specified".into()));
+    }
 
+    let pack_path = ctx.paths.pack_path(pack_name);
     if !ctx.fs.exists(&pack_path) {
         return Err(DodotError::PackNotFound {
             name: pack_name.into(),
         });
     }
+    if ctx.fs.exists(&pack_path.join(".dodotignore")) {
+        return Err(DodotError::PackInvalid {
+            name: pack_name.into(),
+            reason: "pack is marked ignored via .dodotignore".into(),
+        });
+    }
 
-    let mut details = Vec::new();
+    let (plans, skipped_already_adopted) =
+        preflight(pack_name, &pack_path, sources, force, no_follow, ctx)?;
 
-    for file in files {
-        if !ctx.fs.exists(file) {
+    // If every input was already adopted, there's nothing to do.
+    if plans.is_empty() {
+        let mut result = status::status(Some(&[pack_name.to_string()]), ctx)?;
+        result.dry_run = dry_run;
+        for msg in skipped_already_adopted {
+            result.warnings.push(msg);
+        }
+        return Ok(result);
+    }
+
+    // Phase 1 — copy every source into the pack. On failure, cleanup and bail.
+    if let Err(e) = copy_all(&plans, ctx.fs.as_ref()) {
+        cleanup_pack_copies(&plans, ctx.fs.as_ref());
+        return Err(e);
+    }
+
+    // Cross-pack deploy conflict simulation happens with the copies in place.
+    if let Err(e) = check_deploy_conflicts(ctx) {
+        cleanup_pack_copies(&plans, ctx.fs.as_ref());
+        return Err(e);
+    }
+
+    // Dry-run stops here: we've verified the plan is viable, now unwind.
+    if dry_run {
+        cleanup_pack_copies(&plans, ctx.fs.as_ref());
+        let mut result = status::status(Some(&[pack_name.to_string()]), ctx)?;
+        result.dry_run = true;
+        for msg in skipped_already_adopted {
+            result.warnings.push(msg);
+        }
+        return Ok(result);
+    }
+
+    // Phase 2 — per-source atomic swap. Failures are recorded, not fatal.
+    let failures = swap_all(&plans, ctx.fs.as_ref());
+
+    let mut result = status::status(Some(&[pack_name.to_string()]), ctx)?;
+    result.dry_run = false;
+    for msg in skipped_already_adopted {
+        result.warnings.push(msg);
+    }
+    for f in &failures {
+        result.warnings.push(format!(
+            "adopt failed: {}: {}",
+            f.source.display(),
+            f.reason
+        ));
+    }
+    Ok(result)
+}
+
+// ── Pre-flight ───────────────────────────────────────────────────
+
+fn preflight(
+    pack_name: &str,
+    pack_path: &Path,
+    sources: &[PathBuf],
+    force: bool,
+    no_follow: bool,
+    ctx: &ExecutionContext,
+) -> Result<(Vec<AdoptPlan>, Vec<String>)> {
+    let fs = ctx.fs.as_ref();
+    let home = ctx.paths.home_dir().to_path_buf();
+    let dotfiles_root = ctx.paths.dotfiles_root().to_path_buf();
+    let data_dir = ctx.paths.data_dir().to_path_buf();
+
+    let root_config = ctx.config_manager.root_config()?;
+    let pack_config = ctx.config_manager.config_for_pack(pack_path)?;
+    let ignore_patterns = {
+        let mut combined = root_config.pack.ignore.clone();
+        combined.extend(pack_config.pack.ignore.iter().cloned());
+        combined
+    };
+
+    let mut plans: Vec<AdoptPlan> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+
+    for raw_source in sources {
+        // Resolve to absolute. Relative paths are resolved against CWD.
+        let abs = if raw_source.is_absolute() {
+            raw_source.clone()
+        } else {
+            std::env::current_dir()
+                .map_err(|e| DodotError::Fs {
+                    path: raw_source.clone(),
+                    source: e,
+                })?
+                .join(raw_source)
+        };
+
+        if !fs.exists(&abs) && !fs.is_symlink(&abs) {
             return Err(DodotError::Fs {
-                path: file.clone(),
-                source: std::io::Error::new(std::io::ErrorKind::NotFound, "file not found"),
+                path: abs,
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "source does not exist"),
             });
         }
 
-        let filename = file
-            .file_name()
-            .ok_or_else(|| DodotError::Other(format!("no filename: {}", file.display())))?;
-
-        // Strip leading dot for pack organization
-        let pack_filename = filename.to_string_lossy();
-        let pack_filename = pack_filename.strip_prefix('.').unwrap_or(&pack_filename);
-        let dest = pack_path.join(pack_filename);
-
-        if ctx.fs.exists(&dest) && !force {
-            return Err(DodotError::SymlinkConflict { path: dest });
+        // Already-adopted detection: source is a symlink whose target lives
+        // inside the dotfiles root or the data dir.
+        if fs.is_symlink(&abs) {
+            if let Ok(target) = fs.readlink(&abs) {
+                if target.starts_with(&dotfiles_root) || target.starts_with(&data_dir) {
+                    skipped.push(format!(
+                        "skipped: {} is already managed by dodot (-> {})",
+                        abs.display(),
+                        target.display()
+                    ));
+                    continue;
+                }
+            }
         }
 
-        // Move file into pack
-        ctx.fs.rename(file, &dest)?;
+        // Decide whether to follow a symlink source or treat it as the link itself.
+        let lmeta = fs.lstat(&abs)?;
+        let is_source_symlink = lmeta.is_symlink;
+        let treat_as_link = is_source_symlink && no_follow;
 
-        // Create symlink from original location to pack
-        ctx.fs.symlink(&dest, file)?;
+        // Effective metadata for is_dir and for the copy operation.
+        let is_dir = if treat_as_link {
+            false
+        } else {
+            let smeta = fs.stat(&abs)?;
+            smeta.is_dir
+        };
 
-        details.push(format!(
-            "{} → {}/{}",
-            file.display(),
-            pack_name,
-            pack_filename
-        ));
+        // Nested-source refusal: parent must be HOME (dodot's flat-at-top-level
+        // rule applied to source paths too). Allow adopting from HOME directly.
+        let parent = abs
+            .parent()
+            .ok_or_else(|| DodotError::Other(format!("no parent directory: {}", abs.display())))?;
+        if parent != home {
+            return Err(DodotError::Other(format!(
+                "nested source not allowed: {}\n  hint: adopt the top-level directory instead (parent must be {})",
+                abs.display(),
+                home.display()
+            )));
+        }
+
+        let file_name = abs
+            .file_name()
+            .ok_or_else(|| DodotError::Other(format!("no filename: {}", abs.display())))?
+            .to_string_lossy()
+            .into_owned();
+
+        // Strip a leading dot so `.vimrc` becomes `vimrc` in the pack.
+        let pack_filename = file_name
+            .strip_prefix('.')
+            .unwrap_or(&file_name)
+            .to_string();
+
+        // Filename-ignore check against pack + root ignore patterns.
+        if rules::should_skip_entry(&pack_filename, &ignore_patterns) {
+            return Err(DodotError::Other(format!(
+                "refusing to adopt {}: name '{}' matches an ignore pattern or is reserved",
+                abs.display(),
+                pack_filename
+            )));
+        }
+
+        let pack_dest = pack_path.join(&pack_filename);
+
+        // Destination conflict check. With --force, we'll remove the existing
+        // destination before copy; without, this is a hard refusal.
+        let dest_exists = fs.exists(&pack_dest) || fs.is_symlink(&pack_dest);
+        if dest_exists && !force {
+            return Err(DodotError::SymlinkConflict { path: pack_dest });
+        }
+
+        // Cross-plan filename collision: can't adopt two things with the same
+        // stripped name in a single invocation.
+        if plans.iter().any(|p| p.pack_dest == pack_dest) {
+            return Err(DodotError::Other(format!(
+                "two sources produce the same pack filename '{}'; adopt them separately",
+                pack_filename
+            )));
+        }
+
+        plans.push(AdoptPlan {
+            source: abs,
+            pack_dest,
+            is_dir,
+        });
     }
 
-    Ok(AdoptResult {
-        message: format!("Adopted {} file(s) into '{pack_name}'.", files.len()),
-        details,
-    })
+    // Permission pre-flight. We do this after planning so every error up to
+    // this point gives precise guidance; perms check catches late issues.
+    let _ = pack_name; // reserved for future per-pack perm messages
+    check_writable(fs, pack_path)?;
+    for plan in &plans {
+        check_readable(fs, &plan.source)?;
+        if let Some(src_parent) = plan.source.parent() {
+            check_writable(fs, src_parent)?;
+        }
+    }
+
+    Ok((plans, skipped))
+}
+
+fn check_writable(fs: &dyn Fs, dir: &Path) -> Result<()> {
+    // Probe write by creating and removing a unique marker file.
+    let probe = dir.join(format!(".dodot-adopt-probe-{}", nonce()));
+    fs.write_file(&probe, b"").map_err(|e| {
+        DodotError::Other(format!("not writable: {}: {}", dir.display(), err_msg(&e)))
+    })?;
+    let _ = fs.remove_file(&probe);
+    Ok(())
+}
+
+fn check_readable(fs: &dyn Fs, path: &Path) -> Result<()> {
+    // For directories, read_dir; for files, a stat is enough.
+    if fs.is_dir(path) {
+        fs.read_dir(path).map(|_| ())
+    } else {
+        fs.stat(path).map(|_| ())
+    }
+}
+
+// ── Phase 1: copy ─────────────────────────────────────────────────
+
+fn copy_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
+    for plan in plans {
+        // --force case: wipe any existing destination before copying.
+        if fs.exists(&plan.pack_dest) || fs.is_symlink(&plan.pack_dest) {
+            if fs.is_dir(&plan.pack_dest) && !fs.is_symlink(&plan.pack_dest) {
+                fs.remove_dir_all(&plan.pack_dest)?;
+            } else {
+                fs.remove_file(&plan.pack_dest)?;
+            }
+        }
+        copy_tree(&plan.source, &plan.pack_dest, fs)?;
+    }
+    Ok(())
+}
+
+/// Recursively copy `src` into `dst`. Preserves inner symlinks as symlinks
+/// (does not follow them) and Unix permissions on files and directories.
+fn copy_tree(src: &Path, dst: &Path, fs: &dyn Fs) -> Result<()> {
+    let meta = fs.lstat(src)?;
+    if meta.is_symlink {
+        let target = fs.readlink(src)?;
+        fs.symlink(&target, dst)?;
+        return Ok(());
+    }
+    if meta.is_dir {
+        fs.mkdir_all(dst)?;
+        // Best-effort mode preserve on the directory itself; ignore failures
+        // (tempdirs on some platforms reject chmod on freshly-created dirs).
+        let _ = fs.set_permissions(dst, meta.mode);
+        for entry in fs.read_dir(src)? {
+            copy_tree(&entry.path, &dst.join(&entry.name), fs)?;
+        }
+        return Ok(());
+    }
+    if meta.is_file {
+        fs.copy_file(src, dst)?;
+        let _ = fs.set_permissions(dst, meta.mode);
+        return Ok(());
+    }
+    Err(DodotError::Other(format!(
+        "unsupported file type: {}",
+        src.display()
+    )))
+}
+
+fn cleanup_pack_copies(plans: &[AdoptPlan], fs: &dyn Fs) {
+    for plan in plans {
+        remove_best_effort(fs, &plan.pack_dest);
+    }
+}
+
+fn remove_best_effort(fs: &dyn Fs, path: &Path) {
+    if fs.is_symlink(path) {
+        let _ = fs.remove_file(path);
+    } else if fs.is_dir(path) {
+        let _ = fs.remove_dir_all(path);
+    } else if fs.exists(path) {
+        let _ = fs.remove_file(path);
+    }
+}
+
+// ── Deploy conflict check ─────────────────────────────────────────
+
+fn check_deploy_conflicts(ctx: &ExecutionContext) -> Result<()> {
+    let root_config = ctx.config_manager.root_config()?;
+    let packs::DiscoveredPacks { packs: all, .. } = packs::scan_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
+
+    let mut pack_intents = Vec::new();
+    for mut pack in all {
+        let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+        pack.config = pack_config.to_handler_config();
+        match orchestration::collect_pack_intents(&pack, ctx) {
+            Ok(intents) => pack_intents.push((pack.name.clone(), intents)),
+            Err(_) => {
+                // Skip packs that fail to collect — they won't contribute
+                // conflicts, and their own errors surface via status/up.
+            }
+        }
+    }
+
+    let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());
+    if !conflicts.is_empty() {
+        return Err(DodotError::CrossPackConflict { conflicts });
+    }
+    Ok(())
+}
+
+// ── Phase 2: atomic swap ──────────────────────────────────────────
+
+struct AdoptFailure {
+    source: PathBuf,
+    reason: String,
+}
+
+fn swap_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Vec<AdoptFailure> {
+    let mut failures = Vec::new();
+    for plan in plans {
+        let result = if plan.is_dir {
+            swap_dir(&plan.source, &plan.pack_dest, fs)
+        } else {
+            swap_file_atomic(&plan.source, &plan.pack_dest, fs)
+        };
+        if let Err(e) = result {
+            // Roll back just this source: its pack copy is now orphaned.
+            remove_best_effort(fs, &plan.pack_dest);
+            failures.push(AdoptFailure {
+                source: plan.source.clone(),
+                reason: format!("{}", e),
+            });
+        }
+    }
+    failures
+}
+
+/// Atomic file swap: create symlink at a temp sibling, then rename over the
+/// original. `rename` is atomic on POSIX and replaces the existing file.
+fn swap_file_atomic(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
+    let tmp = temp_sibling(source, "tmp");
+    fs.symlink(pack_dest, &tmp)?;
+    if let Err(e) = fs.rename(&tmp, source) {
+        // Clean up temp link before returning.
+        let _ = fs.remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Directory swap: rename original aside, create symlink, remove backup. On
+/// symlink failure, restore the backup.
+fn swap_dir(source: &Path, pack_dest: &Path, fs: &dyn Fs) -> Result<()> {
+    let backup = temp_sibling(source, "old");
+    fs.rename(source, &backup)?;
+    match fs.symlink(pack_dest, source) {
+        Ok(()) => {
+            // Best-effort cleanup of the backup directory.
+            let _ = fs.remove_dir_all(&backup);
+            Ok(())
+        }
+        Err(e) => {
+            // Restore original on failure.
+            let _ = fs.rename(&backup, source);
+            Err(e)
+        }
+    }
+}
+
+// ── helpers ──────────────────────────────────────────────────────
+
+fn temp_sibling(path: &Path, tag: &str) -> PathBuf {
+    let parent = path.parent().unwrap_or(Path::new("."));
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    parent.join(format!(".dodot-adopt-{}-{}-{}", tag, name, nonce()))
+}
+
+fn nonce() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let n = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{:x}", n)
+}
+
+fn err_msg(e: &DodotError) -> String {
+    format!("{e}")
 }
