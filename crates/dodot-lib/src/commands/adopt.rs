@@ -37,6 +37,13 @@ struct AdoptPlan {
     pack_dest: PathBuf,
     /// `true` if the source is a directory (after --no-follow resolution).
     is_dir: bool,
+    /// `true` when `pack_dest` already had content before adoption (only
+    /// possible with `--force`). Rollback paths must NOT remove this plan's
+    /// `pack_dest`: on copy failure we've preserved the old content in
+    /// place; on later failure the new content is committed-destructively
+    /// per the user's --force opt-in, and we can't restore the old content
+    /// anyway.
+    destructive_overwrite: bool,
 }
 
 /// Move sources into a pack, creating symlinks from their original locations.
@@ -260,6 +267,7 @@ fn preflight(
             source: abs,
             pack_dest,
             is_dir,
+            destructive_overwrite: dest_exists, // only true under --force
         });
     }
 
@@ -305,17 +313,38 @@ fn check_readable(fs: &dyn Fs, path: &Path, is_dir: bool) -> Result<()> {
 
 fn copy_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
     for plan in plans {
-        // --force case: wipe any existing destination before copying.
-        if fs.exists(&plan.pack_dest) || fs.is_symlink(&plan.pack_dest) {
-            if fs.is_dir(&plan.pack_dest) && !fs.is_symlink(&plan.pack_dest) {
-                fs.remove_dir_all(&plan.pack_dest)?;
-            } else {
-                fs.remove_file(&plan.pack_dest)?;
+        let had_existing_dest = fs.exists(&plan.pack_dest) || fs.is_symlink(&plan.pack_dest);
+        if had_existing_dest {
+            // --force path: stage the new content into a sibling temp path
+            // first so a failed copy leaves the old destination intact.
+            // Only after the copy succeeds do we remove the old content and
+            // move the stage into place.
+            let stage = temp_sibling(&plan.pack_dest, "stage");
+            if let Err(e) = copy_tree(&plan.source, &stage, fs) {
+                remove_best_effort(fs, &stage);
+                return Err(e);
             }
+            remove_path(&plan.pack_dest, fs)?;
+            if let Err(e) = fs.rename(&stage, &plan.pack_dest) {
+                remove_best_effort(fs, &stage);
+                return Err(e);
+            }
+        } else {
+            // No existing destination: copy directly.
+            copy_tree(&plan.source, &plan.pack_dest, fs)?;
         }
-        copy_tree(&plan.source, &plan.pack_dest, fs)?;
     }
     Ok(())
+}
+
+fn remove_path(path: &Path, fs: &dyn Fs) -> Result<()> {
+    if fs.is_symlink(path) {
+        fs.remove_file(path)
+    } else if fs.is_dir(path) {
+        fs.remove_dir_all(path)
+    } else {
+        fs.remove_file(path)
+    }
 }
 
 /// Recursively copy `src` into `dst`. Preserves inner symlinks as symlinks
@@ -350,6 +379,13 @@ fn copy_tree(src: &Path, dst: &Path, fs: &dyn Fs) -> Result<()> {
 
 fn cleanup_pack_copies(plans: &[AdoptPlan], fs: &dyn Fs) {
     for plan in plans {
+        // Destructive-overwrite plans: on copy failure, `pack_dest` still
+        // holds the preserved old content; on later failure the new
+        // content is committed-destructively per --force. Either way,
+        // don't remove.
+        if plan.destructive_overwrite {
+            continue;
+        }
         remove_best_effort(fs, &plan.pack_dest);
     }
 }

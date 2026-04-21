@@ -965,6 +965,58 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
     assert!(env.fs.is_symlink(&source));
 }
 
+#[cfg(unix)]
+#[test]
+fn adopt_force_preserves_old_content_when_copy_fails() {
+    // With --force, the old destination must remain intact if the copy of
+    // the new source fails. Previously copy_all removed the dest before
+    // copying, so a copy failure silently lost the old content.
+    use std::os::unix::fs::PermissionsExt;
+
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "OLD")
+        .done()
+        .home_file(".vimrc", "NEW")
+        .build();
+
+    let source = env.home.join(".vimrc");
+    // chmod 000 makes the file unreadable, so the copy phase fails at
+    // read-time without tripping preflight (which uses lstat only).
+    std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let ctx = make_ctx(&env);
+    let result = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        true, // --force
+        false,
+        false,
+        &ctx,
+    );
+
+    // Restore perms so drop-cleanup works regardless of assertion outcome.
+    let _ = std::fs::set_permissions(&source, std::fs::Permissions::from_mode(0o644));
+
+    assert!(
+        result.is_err(),
+        "adopt should fail when the source is unreadable"
+    );
+    // The old pack content must survive the failed --force adoption.
+    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "OLD");
+    // Home file also untouched.
+    env.assert_regular_file(&source, "NEW");
+    // No lingering stage file in the pack.
+    let leftover = env.fs.read_dir(&env.dotfiles_root.join("vim")).unwrap();
+    for entry in leftover {
+        assert!(
+            !entry.name.contains("dodot-adopt-stage"),
+            "stage file leaked into pack: {}",
+            entry.name
+        );
+    }
+}
+
 #[test]
 fn adopt_no_follow_on_dangling_symlink_succeeds() {
     // A dangling symlink under --no-follow: readability check must inspect
