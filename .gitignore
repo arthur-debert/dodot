@@ -16,3 +16,5 @@ seer-editor-wasm/pkg/
 .padz/
 temp-images/
 .vscode/
+.claude
+docs/research
