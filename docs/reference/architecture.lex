@@ -1,394 +1,120 @@
 Architecture
 
-    This document describes dodot's technical architecture and implementation details.
+    This document describes how dodot is organized — the pipeline each command flows through, the layers that do the work, and the boundaries between them. It is the conceptual view. For concrete types, crate layout, and trait signatures, see [./../dev/types-and-structure.lex].
 
-1. Core Concepts
+    :: note :: See [./terms-and-concepts.lex] for terminology used throughout.
 
-    Dotfiles Root:
-        Base directory containing all dotfile packs (defaults to ~/dotfiles).
+1. The Unified Pipeline
 
-    Pack:
-        A directory containing related dotfiles (vim/, git/, zsh/).
+    Every pack-based dodot command — `up`, `down`, `status`, and friends — runs through the same pipeline. Commands differ in what they do at each phase, not in which phases they visit. This is deliberate: it means `status` truly predicts what `up` will do, because they follow the same path and `status` simply stops short of executing.
 
-    Rule:
-        Pattern-to-handler mapping with priority.
+    Pipeline phases:
 
-    Handler:
-        Converts matched files to operations (symlink, install, Homebrew, shell, path).
+        discover packs
+        -> match rules against pack files
+        -> run preprocessors on matched template/plist/encrypted files
+        -> group matches by handler
+        -> ask each handler for intents
+        -> convert intents to operations
+        -> dispatch operations to the datastore
 
-    Operation:
-        Atomic unit of work (CreateDataLink, CreateUserLink, RunCommand, CheckSentinel).
+    :: text ::
+
+    Each arrow is a layer boundary. The phases before the arrow produce data; the phase after consumes that data and produces new data. There are no back-edges — no phase reaches backward into an earlier one. This is what `--dry-run` exploits: you stop the flow before the last arrow, and you have a complete picture of what _would_ have happened.
+
+2. What Each Phase Does
+
+    2.1. Pack Discovery
+
+        dodot enumerates top-level directories of the dotfiles root, skipping any that contain `.dodotignore` and any that match global ignore patterns (`.git`, `node_modules`, etc.). The result is the set of packs to process. When a command is invoked with explicit pack names (`dodot up git nvim`), only those are discovered.
+
+    2.2. Rule Matching
+
+        Each pack's top-level entries (files and directories immediately under the pack root) are matched against the rule set. Rules declare patterns, the handler that should claim a match, and a priority. Higher priority wins; first match wins at equal priority. Exclusion rules (prefixed `!`) remove entries from consideration before any handler sees them.
+
+        The scanner is top-level only. It does _not_ recurse into subdirectories. A handler that receives a directory entry decides for itself what to do with the contents.
+
+    2.3. Preprocessing
+
+        After rule matching, the set of matches is partitioned into preprocessor candidates (files with preprocessor extensions like `.tmpl`, `.plist.xml`, `.age`) and everything else. Preprocessor candidates are transformed — rendered, converted, decrypted — and their outputs are written to the datastore. Each output appears back in the pipeline as a virtual match for the stripped filename, which re-enters rule matching to determine the downstream handler.
+
+        Collisions (e.g., a pack containing both `config.toml` and `config.toml.tmpl`) are detected here and raised as errors before any handler runs.
+
+    2.4. Handler Grouping
+
+        Matches are grouped by the handler that claimed them. Each group is handed to its handler as a batch. This lets handlers make decisions that span multiple files — the symlink handler, for example, can reason about whether a whole directory should be linked wholesale or per-file based on whether any nested path was independently claimed.
+
+    2.5. Intents
+
+        Each handler inspects its group and produces a list of intents. An intent is a declaration: "I want this file linked to that target"; "I want this script executable and sourced at login"; "I want this command run once, keyed by this sentinel." Intents are shape-limited to three kinds — link, stage, run — so the executor has a small surface to handle.
+
+        Handlers never touch the filesystem. They read matches and write intents.
+
+    2.6. Operations
+
+        Intents are converted to operations by the executor. An operation is a concrete filesystem-level verb: create a data link, create a user link, run a command, check a sentinel. A single intent can produce multiple operations (a `Link` intent produces one `CreateDataLink` plus one `CreateUserLink`). Operations are what actually get dispatched.
+
+        This is the layer that implements `--dry-run`: the operation list is printed instead of executed.
+
+    2.7. Datastore Dispatch
+
+        Operations are routed to the datastore, which executes them. The datastore is responsible for everything under `$XDG_DATA_HOME/dodot/` — creating intermediate symlinks, writing sentinel files, running commands, cleaning up on `down`. The datastore is an abstraction with a small API surface; the rest of the codebase does not know how state is stored.
+
+3. Layers and Their Responsibilities
+
+    The pipeline maps to a stack of layers, each with one job.
+
+    Commands:
+        Parse arguments, build an execution context, call into the orchestration layer. Commands know nothing about handlers, rules, or the filesystem.
+
+    Orchestration:
+        Run the pipeline for a command across the selected packs. This is the single entry point for any pack-based work.
+
+    Rules and Scanner:
+        Walk a pack, apply rules, produce matches. Deterministic, stateless.
+
+    Preprocessing:
+        Transform source files before handler dispatch. Declares the three transform shapes (generative, representational, opaque). See [./pre-processors.lex].
+
+    Handlers:
+        Convert matches into intents. One handler per concern. Small; focused; no filesystem access.
+
+    Executor:
+        Convert intents into operations and dispatch them. Handles `--dry-run` by short-circuiting dispatch.
 
     DataStore:
-        Minimal 8-method API for state management.
+        Execute operations against the on-disk state. The single component that touches the datastore directory.
 
-2. Processing Pipeline
+    Filesystem (Fs) and Pather:
+        Low-level abstractions for filesystem access and path resolution. Swappable for testing.
 
-    dodot follows a unified execution pipeline through `packs::orchestration::execute()`.
+    Each layer depends only on the layers below it. A handler can't reach into the orchestration layer; an operation can't look up a rule.
 
-    Pipeline:
+4. Commands and the Pipeline
 
-        Commands -> packs::orchestration::execute() -> rules -> handlers -> intents -> operations -> DataStore
+    Most commands are thin wrappers around a specific shape of pipeline traversal.
 
-    :: text ::
+    - `up`: runs the full pipeline, executes operations.
+    - `down`: skips rule matching and handlers entirely; asks the datastore to remove all state for the pack.
+    - `status`: runs through intents, asks each handler to report its current deployment state against the datastore, stops before executing.
+    - `list`: pack discovery only.
+    - `adopt`, `fill`, `init`, `addignore`: operate on pack content directly, not on deployment state. They use a smaller, pack-scoped API rather than the full pipeline.
 
-    2.1. Unified Execution Flow
+    Two commands sit outside the pack pipeline entirely:
 
-        The `packs::orchestration::execute()` function provides a single entry point for all pack-based commands:
+    - `config`: inspects resolved configuration.
+    - `init-sh`: generates the shell integration script from the current datastore.
 
-        - Pack Discovery: scans DOTFILES_ROOT for packs
-        - Command Execution: executes the command for each pack via `execute_for_pack()`
-        - Result Aggregation: collects and reports results across all packs
+5. Execution Properties
 
-        Each command implementation decides how to process its pack:
+    The pipeline gives you several properties that are worth naming explicitly.
 
-        - Rule matching and handler execution (for up/down commands)
-        - Direct file operations (for adopt/init/fill)
-        - Status checking (for status command)
+    - _Deterministic._ Given the same inputs (pack files, rules, config), the operation list is identical across runs and machines.
+    - _Idempotent at the boundary._ Running `dodot up` a second time produces the same operations but yields no change, because configuration handlers use idempotent filesystem operations and code-execution handlers are gated by sentinels.
+    - _Previewable._ `--dry-run` reports the exact operation list that would have run.
+    - _Fail-fast._ The pipeline stops on the first error in execution and reports it with context. Partial state is allowed (and legible, via the datastore); silent drift is not.
+    - _Per-pack isolation._ Packs are processed independently. A failure in one pack does not prevent other packs from succeeding, though the command's exit code still reflects the failure.
 
-    2.2. Command Execution Details
+6. What Lives Where
 
-        Each command implementation handles its own logic.
-
-        Up Command Flow:
-            - Rule Matching: scans pack files against rules
-            - Handler Grouping: groups matches by handler
-            - Operation Generation: handlers convert matches to HandlerIntents
-            - Execution: executor converts intents to DataStore calls
-
-        Down Command Flow:
-            - State Discovery: lists handlers with state for the pack
-            - State Removal: calls RemoveState for each handler
-
-        Status Command Flow:
-            - Rule Matching: scans pack files against rules
-            - Status Checking: handlers check their own status via StatusChecker
-            - Display: shows current state for each file
-
-3. State Management
-
-    dodot uses a "double-link" architecture for state.
-
-    Double-link:
-
-        Repository File -> DataStore Link -> Target Location
-        ~/dotfiles/vim/.vimrc -> ~/.local/share/dodot/data/vim/symlink/.vimrc -> ~/.vimrc
-
-    :: text ::
-
-    This provides:
-
-    - State representation without databases
-    - Conflict detection before operations
-    - Clean uninstall by removing intermediate layer
-    - Operation tracking through sentinel files
-
-4. Implementation Details
-
-    4.1. Crate Organization
-
-        Workspace layout:
-
-            dodot-lib/src/           # Core library crate (no terminal deps)
-            +-- commands/            # Public API: up, down, status, list, init, fill, adopt, addignore
-            +-- config/              # DodotConfig via clapfig/confique
-            +-- datastore/           # DataStore trait + FilesystemDataStore
-            +-- execution/           # Executor: intent -> DataStore dispatch
-            +-- fs/                  # Fs trait + OsFs
-            +-- handlers/            # symlink, shell, path, install, homebrew
-            +-- operations/          # Operation enum, HandlerIntent
-            +-- packs/               # Pack, discovery, orchestration pipeline
-            +-- paths/               # Pather trait + XdgPather
-            +-- render/              # standout theme + templates
-            +-- rules/               # Rule, Scanner, pattern matching
-            +-- shell/               # init script generation
-            +-- testing/             # TempEnvironment builder
-
-            dodot-cli/src/           # Thin CLI layer crate
-            +-- main.rs              # clap command definitions + standout App wiring
-            +-- handlers.rs          # Thin wrappers calling dodot-lib
-            +-- templates/           # MiniJinja .jinja files
-            +-- styles/              # CSS stylesheet
-
-        :: text ::
-
-    4.2. Key Types
-
-        Rule:
-
-            pub struct Rule {
-                pub pattern: String,                       // e.g., "*.sh", "bin/", "!*.tmp"
-                pub handler: String,                       // handler name
-                pub priority: i32,                         // higher priority matches first
-                pub options: HashMap<String, toml::Value>, // handler-specific options
-            }
-
-        :: rust ::
-
-        Handler:
-
-            pub trait Handler {
-                fn name(&self) -> &str;
-                fn category(&self) -> HandlerCategory;
-                fn to_intents(&self, matches: &[RuleMatch]) -> Result<Vec<HandlerIntent>>;
-                fn check_status(&self, matches: &[RuleMatch], ds: &dyn DataStore) -> Result<Vec<Status>>;
-            }
-
-        :: rust ::
-
-        HandlerIntent:
-
-            pub enum HandlerIntent {
-                Link { source: PathBuf, target: PathBuf },
-                Stage { source: PathBuf },
-                Run { command: String, sentinel: String },
-            }
-
-        :: rust ::
-
-        Operation:
-
-            pub enum Operation {
-                CreateDataLink { pack: String, handler: String, source: PathBuf },
-                CreateUserLink { datastore_path: PathBuf, user_path: PathBuf },
-                RunCommand { pack: String, handler: String, command: String, sentinel: String },
-                CheckSentinel { pack: String, handler: String, sentinel: String },
-            }
-
-        :: rust ::
-
-        DataStore:
-
-            pub trait DataStore {
-                fn create_data_link(&self, pack: &str, handler: &str, source: &Path) -> Result<PathBuf>;
-                fn create_user_link(&self, datastore_path: &Path, user_path: &Path) -> Result<()>;
-                fn run_and_record(&self, pack: &str, handler: &str, command: &str, sentinel: &str) -> Result<()>;
-                fn has_sentinel(&self, pack: &str, handler: &str, sentinel: &str) -> Result<bool>;
-                fn remove_state(&self, pack: &str, handler: &str) -> Result<()>;
-                fn has_handler_state(&self, pack: &str, handler: &str) -> Result<bool>;
-                fn list_pack_handlers(&self, pack: &str) -> Result<Vec<String>>;
-                fn list_handler_sentinels(&self, pack: &str, handler: &str) -> Result<Vec<String>>;
-            }
-
-        :: rust ::
-
-5. Rules System
-
-    The rules system provides simple, declarative file matching.
-
-    5.1. Pattern Conventions
-
-        - `install.sh`: exact filename match
-        - `*.sh`: glob pattern match
-        - `bin/`: directory match (trailing slash)
-        - `!*.tmp`: exclusion rule (leading !)
-        - `*`: catchall pattern
-
-    5.2. Rule Processing
-
-        - Exclusions first: files matching !patterns are skipped
-        - Priority order: higher priority rules match first
-        - First match wins: once matched, no further rules apply
-
-    5.3. Example Configuration
-
-        Rules config:
-
-            [[rules]]
-            pattern = "install.sh"
-            handler = "install"
-            priority = 90
-
-            [[rules]]
-            pattern = "*.sh"
-            handler = "shell"
-            priority = 80
-
-            [[rules]]
-            pattern = "*"
-            handler = "symlink"
-            priority = 0
-
-        :: toml ::
-
-6. CLI Architecture
-
-    The CLI layer follows strict design principles.
-
-    6.1. Thin CLI Layer
-
-        - Commands only parse arguments and call dodot-lib command functions
-        - Business logic lives in `dodot_lib::commands` and handlers
-        - No direct handler knowledge in CLI commands
-        - Clear boundaries between layers
-
-    6.2. Command Flow
-
-        Handler-based commands:
-
-            // Handler-based commands build a production context and call command functions
-            let ctx = ExecutionContext::production(config, fs, datastore, pather);
-            let result = commands::up::up(&ctx, &pack_names)?;
-
-        :: rust ::
-
-        Non-handler commands:
-
-            // Non-handler commands use domain methods
-            commands::adopt::adopt(&ctx, source_file, target_name)?;
-            datastore.remove_state(pack, handler)?;
-
-        :: rust ::
-
-    6.3. Crate Organization
-
-        CLI crate:
-
-            dodot-cli/src/
-            +-- main.rs         # clap command definitions + standout App wiring
-            +-- handlers.rs     # Thin wrappers calling dodot-lib command functions
-            +-- templates/      # MiniJinja .jinja files for output rendering
-            +-- styles/         # CSS stylesheet for standout themes
-
-        :: text ::
-
-        Library crate:
-
-            dodot-lib/src/
-            +-- commands/       # Command implementations
-            |   +-- up.rs       # Implements orchestration::Command trait
-            |   +-- down.rs
-            |   +-- status.rs
-            |   +-- ...
-
-        :: text ::
-
-    6.4. Unified Output System
-
-        The CLI uses *standout* for all output rendering. The `App::builder()` wires MiniJinja templates from `templates/` and CSS stylesheets from `styles/` into a unified rendering pipeline. The `--output` flag selects the output format (terminal, json, text).
-
-7. Component Responsibilities
-
-    7.1. CLI Commands (`dodot-cli`)
-
-        Role:
-            Command structure and help text.
-
-        Responsibilities:
-            Define clap commands with usage/examples, wire standout App for output rendering.
-
-        What they don't do:
-            Contain any business logic.
-
-    7.2. Command Implementations (`dodot_lib::commands`)
-
-        Role:
-            Business logic for pack commands.
-
-        Responsibilities:
-            Implement `orchestration::Command` trait.
-
-        Handler commands:
-            Execute operations via handlers.
-
-        Non-handler commands:
-            Use Pack methods or DataStore directly.
-
-        What they don't do:
-            Handle CLI parsing, know about clap.
-
-    7.3. Packs/Orchestration (`dodot_lib::packs::orchestration`)
-
-        Role:
-            Unified execution pipeline.
-
-        Key function:
-            `packs::orchestration::execute()` orchestrates the entire flow.
-
-        Responsibilities:
-            Pack discovery, command execution per pack.
-
-    7.4. Rules (`dodot_lib::rules`)
-
-        Role:
-            Bridge between matches and execution.
-
-        Key type:
-            `Scanner` scans pack files against rules and produces matches.
-
-        Responsibilities:
-            Group matches by handler, determine execution order, invoke handlers.
-
-    7.5. Handlers (`dodot_lib::handlers`)
-
-        Role:
-            File-specific intent generators.
-
-        Responsibilities:
-            Convert file matches to HandlerIntents (symlink, Homebrew, shell, path, install).
-
-        Used by:
-            Handler-related commands (up/down).
-
-        Size:
-            50-100 lines each, focused on single concern.
-
-    7.6. Packs (`dodot_lib::packs`)
-
-        Role:
-            Pack management domain object.
-
-        Responsibilities:
-            Pack operations (init, fill, adopt, addignore), guardian methods for safe manipulation.
-
-        Used by:
-            Pack-related commands (init, fill, adopt, addignore).
-
-    7.7. DataStore (`dodot_lib::datastore`)
-
-        Role:
-            Operations execution abstraction.
-
-        Responsibilities:
-            Execute operations via 8-method trait API, state management.
-
-        Trait methods:
-            create_data_link, create_user_link, run_and_record, has_sentinel, remove_state, has_handler_state, list_pack_handlers, list_handler_sentinels.
-
-    7.8. Executor (`dodot_lib::execution`)
-
-        Role:
-            Intent-to-operation conversion and dispatch.
-
-        Responsibilities:
-            Convert HandlerIntents to Operations, dispatch Operations to DataStore, dry-run support.
-
-8. Performance Considerations
-
-    - Lazy evaluation: only process requested packs
-    - Parallel discovery: scan packs concurrently
-    - Minimal I/O: cache file system operations
-    - Early termination: stop on first error in dry-run
-
-9. Architectural Principles
-
-    9.1. Unified Execution
-
-        - Single entry point: all pack-based commands use `packs::orchestration::execute()`
-        - No business logic in CLI: commands are thin orchestrators only
-        - Proper abstractions: Commands, Orchestration, Rules, Handlers, Intents, Operations, DataStore
-        - No bypassing: never skip abstraction layers or access handlers directly
-
-    9.2. Separation of Concerns
-
-        - Handler commands: up, down use `packs::orchestration::execute()` for handler operations
-        - Pack commands: init, fill, adopt use Pack guardian methods
-        - State commands: down uses `DataStore::remove_state()`
-        - Query commands: list, status use discovery functions
-
-10. Error Philosophy
-
-    - Fail fast: stop on first error
-    - Clear messages: include context and suggestions
-    - Error codes: stable identifiers for testing
-    - Recovery hints: tell users how to fix issues
+    For the mapping from this conceptual architecture to actual crates, modules, and types, see [./../dev/types-and-structure.lex]. For the DataStore API surface, see [./../dev/storage.lex]. For config resolution internals, see [./../dev/config-system.lex]. For the standout-based output layer, see [./../dev/cli-output.lex].

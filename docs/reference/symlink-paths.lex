@@ -1,6 +1,8 @@
 Symlink Deployment Paths
 
-    As symlink is the core of a dotfiles manager, dodot is designed with smart defaults with the ability to override them.
+    Symlinking is the core of a dotfile manager, and dodot ships with smart defaults plus overrides for every case where the defaults are wrong. This document is the full reference for where files end up on deploy.
+
+    :: note :: See [./terms-and-concepts.lex] for terminology used throughout.
 
 1. The Config Home Directory
 

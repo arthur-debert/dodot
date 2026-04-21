@@ -4,7 +4,9 @@ Template Expansion
 
     Any pack file whose name ends in `.tmpl` or `.template` is a template. dodot strips that extension, renders the content, and hands the result to the normal handler pipeline. `git/gitconfig.tmpl` is rendered and then symlinked as `~/.gitconfig`, exactly as if `gitconfig` had been there all along.
 
-    Rendering is transparent: there is no `dodot render` step, no staging area, no "please remember to regenerate". Every `dodot up` re-renders, so editing the template or changing a variable picks up on the next deploy.
+    Rendering is transparent: there is no `dodot render` step, no staging area, no "please remember to regenerate." Every `dodot up` re-renders, so editing the template or changing a variable picks up on the next deploy.
+
+    :: note :: For the concept-level view of how preprocessing fits into dodot, see [./../reference/pre-processors.lex]. For terminology, see [./../reference/terms-and-concepts.lex].
 
 1. A First Example
 

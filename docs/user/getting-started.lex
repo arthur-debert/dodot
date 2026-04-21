@@ -1,0 +1,111 @@
+dodot: Up and Running in 5 Minutes
+
+    dodot aims to give you the full benefit of a dotfile manager (centralized control, versioning, deployment, modularity) while minimizing its costs.
+
+    - Minimal structure imposed on your dotfiles.
+    - No change to how you edit your configs.
+    - Changes are always live; there is no "apply" step.
+    - Git is the source of truth; no extra database or state files.
+    - Minimal setup or migration required.
+    - Three commands to know: `up`, `down`, `status`.
+
+    Prerequisites:
+        - Your dotfiles in a git repository
+        - Files organized in directories (or willing to organize them)
+        - A couple of minutes to try it
+
+    How does dodot achieve this? The core principle is that the structure of your dotfiles is the configuration itself, as long as a few simple rules are followed.
+
+    - Organize your dotfiles in directories. The criterion is up to you: by application, usage, environment, whatever suits. These directories are "packs," and they are turned up or down as a unit.
+    - Inside each pack, dodot follows common naming conventions to decide what to do with each file.
+
+    :: note :: dodot automatically discovers every directory in your dotfiles root as a pack.
+
+    An example pack for git:
+
+    Pack structure and status:
+
+        git/
+        +-- Brewfile    -> includes git, gh and lazygit installs
+        +-- alias.sh    -> common aliases for git (e.g. gco: git checkout)
+        +-- bin/        -> custom git-related scripts
+        +-- gitconfig   -> symlinked to ~/.gitconfig
+
+        $ cd ~/dotfiles
+        $ dodot status git
+
+        git
+            alias.sh    ⚙  source by shell     pending
+            bin         +  add to PATH         pending
+            gitconfig   ➞  ~/.gitconfig        pending
+            Brewfile    ⚙  brew install        pending
+
+        Legend: ⚙ shell/brew config, + PATH addition, ➞ symlink
+        Status: pending (ready to deploy), deployed (active)
+
+    :: shell ::
+
+    `dodot status` shows both what dodot has done and what it _will_ do on the next `up`. This is your chance to sanity-check that the conventions dodot detected match what you expected. If they don't, rename the files or override the mapping in `.dodot.toml`.
+
+    Customizing and deploying:
+
+        $ dodot config gen -o git/.dodot.toml
+        $ cat git/.dodot.toml
+        [mappings]
+        # path = "bin"
+        # install = "install.sh"
+        # shell = ["aliases.sh", "profile.sh", "login.sh"]
+        # homebrew = "Brewfile"
+        # skip = []
+
+        # Preview what will happen without making changes
+        $ dodot up git --dry-run
+
+        $ dodot up git
+        ... homebrew:  git/Brewfile: installed
+        ... shell:     git/alias.sh: sourced
+        ... symlink:   git/gitconfig -> ~/.gitconfig: deployed
+
+        git
+            alias.sh    ⚙  source by shell        deployed
+            bin         +  add to PATH            deployed
+            gitconfig   ➞  ~/.gitconfig           deployed
+            Brewfile    ⚙  brew install           deployed
+
+        # Edit your config - changes are immediate
+        $ vim ~/.gitconfig  # or ~/dotfiles/git/gitconfig - same file
+
+    :: shell ::
+
+    `dodot down git` reverses the deployment. All commands accept one or more pack names (`dodot up git nvim`) or operate on every pack when run without arguments.
+
+    By combining directory grouping into packs and filename conventions, dodot handles most setups with no configuration at all. When the conventions don't match your files, rename them or override via `.dodot.toml`.
+
+1. Quick Start
+
+    - `cd ~/dotfiles` (or wherever your dotfiles live)
+    - `dodot status` to see what dodot will do
+    - Fine-tune by renaming files or adding a `.dodot.toml`
+    - `dodot up [pack]` to deploy (or `dodot up` for everything)
+    - `dodot down [pack]` to cleanly remove a pack
+
+2. Shell Integration
+
+    For the shell and path handlers to take effect, add one line to your shell rc:
+
+    Shell integration:
+
+        eval "$(dodot init-sh)"
+
+    :: shell ::
+
+    This is a one-time step per machine. The init script is regenerated on every `dodot up` and `dodot down`, so you never need to touch this line again.
+
+3. What's Next
+
+    - `dodot --help` — every command and flag
+    - [./commands.lex] — command-by-command usage
+    - [./configuration.lex] — the `.dodot.toml` schema
+    - [./templates.lex] — per-machine config via templates
+    - [./../reference/philosophy.lex] — why dodot is shaped the way it is
+    - [./../reference/terms-and-concepts.lex] — the shared vocabulary

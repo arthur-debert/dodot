@@ -1,130 +1,90 @@
-Handlers Guide
+Handlers
 
-    Handlers are operation generators in dodot that process matched files and convert them into HandlerIntents (Link, Stage, Run) which the executor converts to DataStore calls. Each handler serves a specific purpose in managing your dotfiles.
+    A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, run install scripts once, or install Brewfiles. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.
 
-1. Available Handlers
+    :: note :: See [./terms-and-concepts.lex] for terminology used throughout.
 
-    dodot includes several built-in handlers, each with comprehensive documentation in their respective packages. For detailed end-to-end documentation of each handler, including examples, configuration, and best practices, see the module documentation referenced below.
+1. The Built-in Handlers
 
-    1.1. SymlinkHandler (`symlink`)
+    dodot ships with five handlers, covering the overwhelming majority of what dotfile repositories need.
 
-        Creates symlinks from dotfiles to target locations. Use for configuration files and dotfiles.
+    1.1. symlink
 
-        See `dodot_lib::handlers::symlink`.
+        Creates a symlink from a deployed location (typically `~/` or `~/.config/`) back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
 
-    1.2. InstallHandler (`install`)
+        Path resolution is smart: top-level files go to `$HOME` with a dot prefix (`vimrc` → `~/.vimrc`); top-level directories go to `$XDG_CONFIG_HOME` (`nvim/` → `~/.config/nvim/`); a small list of exceptions force `$HOME` placement regardless of XDG (`ssh`, `bashrc`, `zshrc`, etc.). For the full path rules, see [./symlink-paths.lex].
 
-        Executes shell scripts for one-time setup. Use for installing tools and initial setup.
+    1.2. shell
 
-        See `dodot_lib::handlers::install`.
+        Arranges for shell scripts to be sourced at login. Matches `aliases.sh`, `profile.sh`, and `login.sh` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore and emits `source` lines for every matched shell file.
 
-    1.3. HomebrewHandler (`homebrew`)
+    1.3. path
 
-        Processes Brewfiles to manage Homebrew packages. Use for system packages and GUI apps (macOS).
+        Exposes a directory on your `$PATH`. The conventional match is a `bin/` directory inside a pack; its contents become directly executable from any shell. Like shell, this rides on the dodot init script — the datastore records which directories should be on PATH, and the init script prepends them.
 
-        See `dodot_lib::handlers::homebrew`.
+    1.4. install
 
-    1.4. ShellProfileHandler (`shell`)
+        Runs an arbitrary shell script once, tracked by a sentinel file so it doesn't re-run on every deploy. Matches `install.sh` by convention. Use this for machine-specific setup that isn't covered by the other handlers: installing language toolchains, configuring window managers, creating directories, setting system defaults.
 
-        Sources shell scripts into your environment. Use for aliases, functions, and shell customization.
+    1.5. homebrew
 
-        See `dodot_lib::handlers::shell`.
-
-    1.5. PathHandler (`path`)
-
-        Adds directories to system PATH. Use for personal scripts and tools directories.
-
-        See `dodot_lib::handlers::path`.
+        Runs `brew bundle` against a `Brewfile`, once per content-hash. macOS-only in practice. Functionally a specialization of install, but more ergonomic for its common case.
 
 2. Matching Model
 
-    Handlers are classified along two axes:
+    Handlers are classified along two axes that together decide how matches flow.
 
-    - *Match mode* — *Precise* (whitelisted names like `bin/`, `install.sh`, `Brewfile`) or *Catchall* (anything the precise handlers didn't claim).
-    - *Scope* — *Exclusive* (a match is consumed — no other handler sees that entry) or *Shared* (the entry remains available; reserved for future observer-style handlers).
+    Match mode:
+        _Precise_ handlers claim specific names or patterns: `install.sh`, `Brewfile`, `bin/`, `*.sh`. _Catchall_ handlers claim anything precise handlers didn't touch. Precise handlers run first and consume their matches; the catchall sees only what's left.
 
-    Invariants:
-    - At most one handler may be simultaneously *Catchall* + *Exclusive*. `symlink` is that handler today.
-    - Catchall handlers run after all precise handlers.
+        At most one handler may be catchall in a given pack. Today that role is played by `symlink`. This isn't a rule of the matching system so much as a practical consequence: two catchalls would race for every unclaimed file.
 
-    Scanning is top-level only: the scanner enumerates depth-1 entries of the pack (files and directories directly under the pack root). It does *not* recurse. A handler that receives a directory entry decides how to treat its contents — the path handler stages the whole directory into `$PATH`, the symlink handler creates one wholesale symlink for it (falling back to per-file mode when `protected_paths` or `symlink.targets` reach inside).
+    Scope:
+        _Exclusive_ matches are consumed on first claim — no other handler sees that entry. _Shared_ matches remain available after a claim, so multiple handlers can act on the same entry. All current handlers are exclusive. Shared scope is reserved for future observer-style handlers (an audit handler, a stats handler) that watch without deploying.
 
-    If you want a nested path handled individually (different target, excluded from a wholesale link, etc.), declare it explicitly via `[symlink.targets]` or list it in `[symlink] protected_paths`. These triggers promote the nested path out of its parent's wholesale treatment.
+    The scanner that produces matches works only at the pack's top level — it does not recurse. A handler that receives a directory entry decides how to treat its contents. The path handler stages the whole directory into `$PATH`; the symlink handler creates one symlink for the directory as a whole. If you want a nested path handled independently, you declare it explicitly in `.dodot.toml` (via `[symlink.targets]` or by naming a file inside it in `[symlink] protected_paths`).
 
-3. Handler Categories
+3. Configuration vs Code Execution
 
-    Handlers are divided into two categories based on their operation types.
+    Handlers fall into two categories that behave differently at deploy time.
 
-    3.1. Code Execution Handlers (provisioning)
+    3.1. Configuration handlers
 
-        - Generate *RunCommand* operations with sentinels
-        - Install Handler: runs setup scripts once
-        - Homebrew Handler: installs packages once
-        - Operations are tracked to prevent re-execution
-        - Run by default with `dodot up`, skip with `--no-provision`
+        symlink, shell, and path. Their operations are idempotent filesystem work: create a link, stage a file. Running them a second time produces the same result as running them once; no special tracking is required. `dodot up` always runs them in full.
 
-    3.2. Configuration Handlers (always run)
+    3.2. Code execution handlers
 
-        - Generate *CreateDataLink* and *CreateUserLink* operations
-        - Symlink Handler: creates configuration symlinks
-        - Path Handler: manages PATH entries
-        - Shell Handler: sources shell configuration
-        - Operations are idempotent (safe to run multiple times)
-        - Always run with `dodot up`
+        install and homebrew. Their operations run user-authored shell commands. These are assumed _not_ to be idempotent in general — `install.sh` might install packages, write files, mutate the system — and re-running them on every `dodot up` would be slow, surprising, or both. Even Brewfile processing, though nominally idempotent, can take many seconds per pack.
+
+        dodot solves this with sentinels. When a code-execution handler runs, it writes a small marker file to the datastore keyed by pack, handler, and a content hash of the command. On subsequent deploys, the presence of that sentinel causes the handler to skip. To override:
+
+        - `--no-provision` skips code-execution handlers entirely for this run. Configuration handlers still run.
+        - `--provision-rerun` forces code-execution handlers to run even when sentinels exist. Use after changing an install script, or to re-run `brew bundle` after adding a formula.
+
+        When the content of a code-execution input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches, and the handler re-runs automatically. You only need `--provision-rerun` when you want to re-run without an input change.
 
 4. Quick Reference
 
     Handler summary:
-        | Handler  | Category       | Operations                    | Purpose                  |
-        | symlink  | Configuration  | CreateDataLink + CreateUserLink | Link configs to home   |
-        | install  | Code Execution | RunCommand                    | Run setup scripts once   |
-        | homebrew | Code Execution | RunCommand                    | Install packages once    |
-        | shell    | Configuration  | CreateDataLink                | Source shell configs     |
-        | path     | Configuration  | CreateDataLink                | Manage PATH entries      |
-    :: table ::
 
-5. Handler Documentation Structure
+        | Handler  | Category       | Default claims                                  | Effect                              |
+        | symlink  | Configuration  | Anything else (catchall)                        | Link to `~` or `~/.config/`         |
+        | shell    | Configuration  | `aliases.sh`, `profile.sh`, `login.sh`          | Sourced at shell login              |
+        | path     | Configuration  | `bin/`                                          | Prepended to `$PATH`                |
+        | install  | Code Execution | `install.sh`                                    | Run once per content hash           |
+        | homebrew | Code Execution | `Brewfile`                                      | `brew bundle` once per content hash |
 
-    Each handler's module documentation contains:
+    :: table align=llll ::
 
-    - Overview: what the handler does
-    - When It Runs: Configuration vs Provisioning category
-    - Standard Configuration: example rule configs
-    - File Selection Process: how files are matched
-    - Execution Strategy: how it works internally
-    - Storage Locations: where files are stored
-    - Effects on User Environment: what changes are made
-    - Options: configuration options
-    - Example End-to-End Flow: complete usage example
-    - Error Handling: common errors and solutions
-    - Best Practices: usage recommendations
-    - Comparison: when to use vs other handlers
+5. Why Handlers Look the Way They Do
 
-6. Creating Custom Handlers
+    A few design decisions worth naming.
 
-    While dodot includes comprehensive built-in handlers, you can create custom ones:
+    Handlers do not touch the filesystem.
+        They read matches and produce intents. The actual work of creating links, running commands, and writing sentinels happens in layers below (executor, datastore). This keeps handlers small — each is a few dozen lines — and trivially testable without a real filesystem.
 
-    - Implement the `handlers::Handler` trait
-    - Register the handler in `handlers::create_registry()`
-    - Implement `to_intents()` to convert matches to `HandlerIntent` values
-    - Add rules to your configuration
+    Handlers are replaceable but not pluggable.
+        The trait they implement is stable enough that writing a custom handler is not hard, but dodot does not load third-party handlers at runtime. The built-in set is deliberately small; we'd rather add handlers carefully than ship a plugin system we have to maintain.
 
-    Handlers are simple data transformers: they just declare what intents they need, not how to perform them. See `dodot_lib::handlers::Handler` trait and `dodot_lib::operations::HandlerIntent`.
-
-7. Best Practices
-
-    - Read the handler module docs: each handler has extensive documentation
-    - Use the right tool: each handler has a specific purpose
-    - Check run modes: understand when handlers execute
-    - Test with `--dry-run`: preview changes before applying
-    - Organize by pack: group related configurations
-    - Use standard patterns: follow naming conventions
-
-8. Troubleshooting
-
-    - Not running? Check rule patterns and priorities.
-    - Errors? Each handler module lists common error codes.
-    - Wrong phase? Verify handler category (Configuration vs Code Execution).
-    - Conflicts? Use `--force` flag when appropriate.
-
-    For comprehensive details on any handler, read its module documentation in `dodot_lib::handlers::<name>`.
+    The catchall is always symlink.
+        This is a convention rather than a hard rule of the code, but it's the only combination that preserves the "just name it sensibly" promise. If no precise handler matched, we know the user wanted the file deployed somewhere sensible, and a link is the right default.

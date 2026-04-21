@@ -1,0 +1,171 @@
+Configuration
+
+    dodot works out of the box with no configuration at all. The `.dodot.toml` file is there for when the defaults don't fit: when you want to rename a handler's default file, symlink to an unusual location, or disable a preprocessor for a single pack. This document is the reference for every configuration key.
+
+    :: note :: See [./../reference/terms-and-concepts.lex] for terminology used throughout.
+
+1. Where Configuration Lives
+
+    Configuration is loaded from `.dodot.toml` files in two locations:
+
+    - _Root config_: `$DOTFILES_ROOT/.dodot.toml`. Applies to every pack.
+    - _Pack config_: `$DOTFILES_ROOT/<pack>/.dodot.toml`. Applies to that pack only.
+
+    Both are optional. Every key has a compiled-in default; you only put into `.dodot.toml` the values you want to override. Pack configuration layers on top of root configuration, so you can set a sensible default at the root and override it per pack.
+
+    Merge rules:
+
+    - Scalars and arrays: override (the later-layer value replaces the earlier one, no accumulation).
+    - Maps: deep-merge (nested keys combine across layers, but any scalar or array within still overrides).
+
+    Generate a fully commented starter with `dodot config gen -o .dodot.toml`.
+
+2. The `[pack]` Section
+
+    Controls pack-level behavior.
+
+    Pack ignore patterns:
+
+        [pack]
+        ignore = [
+            ".git",
+            ".svn",
+            ".hg",
+            "node_modules",
+            ".DS_Store",
+            "*.swp",
+            "*~",
+            "#*#",
+            ".env*",
+            ".terraform"
+        ]
+
+    :: toml ::
+
+    `ignore` is glob patterns that dodot skips during pack discovery and file scanning. Matching files are not considered for any handler. The defaults cover version-control noise, editor swapfiles, and a few directories that are notoriously never meant to be deployed.
+
+    Note: to skip an _entire pack_, drop a `.dodotignore` marker file in that pack's directory. `[pack] ignore` is for patterns within a pack.
+
+3. The `[symlink]` Section
+
+    Controls how the symlink handler resolves targets. Full path-resolution rules live in [./../reference/symlink-paths.lex]; this section is the config knobs.
+
+    3.1. `force_home`
+
+        Files that must land in `$HOME` even when XDG would route them to `$XDG_CONFIG_HOME`. These are decades-old conventions that precede XDG.
+
+        Force home:
+
+            [symlink]
+            force_home = [
+                "ssh",            # .ssh/ - security critical
+                "aws",            # .aws/ - credentials
+                "kube",           # .kube/ - kubernetes config
+                "bashrc",         # .bashrc - shell expects in $HOME
+                "zshrc",          # .zshrc
+                "profile",        # .profile
+                "bash_profile",
+                "bash_login",
+                "bash_logout",
+                "inputrc"         # readline config
+            ]
+
+        :: toml ::
+
+        Override to add your own entries or remove ones you don't need.
+
+    3.2. `protected_paths`
+
+        Files dodot refuses to symlink by default, because doing so is almost always a mistake. Private SSH keys, GPG state, cloud credentials.
+
+        Protected paths:
+
+            [symlink]
+            protected_paths = [
+                ".ssh/id_rsa",
+                ".ssh/id_ed25519",
+                ".ssh/id_dsa",
+                ".ssh/id_ecdsa",
+                ".ssh/authorized_keys",
+                ".gnupg",
+                ".aws/credentials",
+                ".password-store",
+                ".config/gh/hosts.yml",
+                ".kube/config",
+                ".docker/config.json"
+            ]
+
+        :: toml ::
+
+        Remove an entry to allow dodot to symlink it anyway.
+
+    3.3. `targets`
+
+        Per-file symlink target overrides. Maps a pack-relative filename to an absolute or relative target path. Absolute paths are used as-is; relative paths resolve against `$XDG_CONFIG_HOME`.
+
+        Targets:
+
+            [symlink.targets]
+            "mysterious.conf" = "/var/etc/mysterious.conf"
+            "home-bound.conf" = "my-documents/home-bound.conf"
+
+        :: toml ::
+
+4. The `[mappings]` Section
+
+    Overrides the default filename-to-handler map. Each key is a handler name; each value is either a single pattern or a list of patterns.
+
+    Mappings:
+
+        [mappings]
+        path = "bin"
+        install = "install.sh"
+        shell = ["aliases.sh", "profile.sh", "login.sh"]
+        homebrew = "Brewfile"
+        skip = []
+
+    :: toml ::
+
+    The `skip` key is the odd one out. It is _not_ a handler; it is a list of patterns that should be excluded from handler processing entirely. Distinct from `[pack] ignore`: `skip` applies only to handler dispatch, while `ignore` affects pack discovery and scanning.
+
+5. The `[preprocessor]` Section
+
+    Controls the preprocessing pipeline. For the concept, see [./../reference/pre-processors.lex].
+
+    5.1. Global kill switch
+
+        Global preprocessor toggle:
+
+            [preprocessor]
+            enabled = true
+
+        :: toml ::
+
+        Set to `false` to disable _all_ preprocessors. `.tmpl` files (and other preprocessor-matched files) will deploy verbatim.
+
+    5.2. `[preprocessor.template]`
+
+        Template engine configuration.
+
+        Template configuration:
+
+            [preprocessor.template]
+            extensions = ["tmpl", "template"]
+
+            [preprocessor.template.vars]
+            editor = "nvim"
+            host_tier = "workstation"
+
+        :: toml ::
+
+        `extensions` is the list of trigger extensions. Both `".j2"` and `"j2"` are tolerated (leading dot optional).
+
+        `[preprocessor.template.vars]` defines variables available in templates under their bare names. See [./templates.lex] for usage.
+
+6. Inheritance Model
+
+    All sections follow the same three-layer model: compiled defaults, then root `.dodot.toml`, then pack `.dodot.toml`. The outermost layer that sets a key wins for scalars and arrays; for maps, the layers deep-merge.
+
+    Example: you set `[preprocessor.template.vars] editor = "nvim"` at the root. In a pack for work configs, you set `[preprocessor.template.vars] editor = "vscode"`. That pack renders templates with `editor = "vscode"`; all others render with `editor = "nvim"`. All other keys under `[preprocessor.template]` (enabled, extensions) remain as defined at the root.
+
+    To see the fully resolved configuration for a context, run `dodot config`. This shows exactly what dodot is using.
