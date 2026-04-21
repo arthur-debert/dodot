@@ -163,8 +163,8 @@ scripts/check-fmt
 scripts/check-lint
 scripts/check-tests
 
-# Install pre-commit hook
-ln -sf ../../scripts/pre-commit .git/hooks/pre-commit
+# Install pre-commit hook (requires lefthook: `brew install lefthook`)
+lefthook install
 ```
 
 ## License
