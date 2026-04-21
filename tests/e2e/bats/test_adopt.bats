@@ -16,7 +16,10 @@ teardown() {
 
     run dodot adopt vim "$HOME/.vimrc"
     [ "$status" -eq 0 ]
-    assert_output_contains "1 file"
+    # Adopt output is now the destination pack's status (matches `dodot status vim`).
+    assert_output_contains "vim"
+    assert_output_contains "vimrc"
+    assert_output_contains "pending"
 
     # File should be in the pack (dot prefix stripped)
     assert_exists "$DOTFILES_ROOT/vim/vimrc"
@@ -54,7 +57,10 @@ teardown() {
 
     run dodot adopt shell "$HOME/.bashrc" "$HOME/.zshrc"
     [ "$status" -eq 0 ]
-    assert_output_contains "2 file"
+    # Status output lists both adopted files under the destination pack.
+    assert_output_contains "shell"
+    assert_output_contains "bashrc"
+    assert_output_contains "zshrc"
 
     assert_exists "$DOTFILES_ROOT/shell/bashrc"
     assert_exists "$DOTFILES_ROOT/shell/zshrc"
@@ -64,5 +70,5 @@ teardown() {
     create_pack "vim"
 
     run dodot adopt vim "$HOME/.nonexistent"
-    assert_output_contains "file not found"
+    assert_output_contains "source does not exist"
 }
