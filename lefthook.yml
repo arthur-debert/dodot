@@ -17,18 +17,18 @@ pre-commit:
     # version drift in untouched files doesn't produce lingering
     # unstaged diffs after the commit lands.
     rustfmt:
-      glob: '*.rs'
+      glob: '**/*.rs'
       run: rustfmt --edition 2021 {staged_files}
       stage_fixed: true
       priority: 1
 
     # --- Phase 2: Checks (parallel) ---
     clippy:
-      glob: '*.{rs,toml}'
+      glob: '**/*.{rs,toml}'
       run: scripts/check-lint
       priority: 2
 
     tests:
-      glob: '*.{rs,toml}'
+      glob: '**/*.{rs,toml}'
       run: scripts/check-tests
       priority: 2
