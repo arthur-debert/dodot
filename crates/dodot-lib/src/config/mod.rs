@@ -153,7 +153,7 @@ pub struct MappingsSection {
     pub install: String,
 
     /// Filename patterns for shell scripts to source.
-    #[config(default = ["aliases.sh", "profile.sh", "login.sh"])]
+    #[config(default = ["aliases.sh", "profile.sh", "login.sh", "env.sh"])]
     pub shell: Vec<String>,
 
     /// Filename pattern for Homebrew Brewfile.
@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(cfg.mappings.homebrew, "Brewfile");
         assert_eq!(
             cfg.mappings.shell,
-            vec!["aliases.sh", "profile.sh", "login.sh"]
+            vec!["aliases.sh", "profile.sh", "login.sh", "env.sh"]
         );
         assert!(cfg.mappings.skip.is_empty());
     }
