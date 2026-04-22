@@ -126,8 +126,34 @@ impl DataStore for FilesystemDataStore {
             return Ok(());
         }
 
-        // Run the command
-        self.runner.run(executable, arguments)?;
+        // Provisioning scripts are consequential and can take a while; surface
+        // start/end markers on stderr so the user knows what's running and
+        // whether it succeeded. The script's own stdout/stderr still flows
+        // through the runner as before.
+        let display_name = arguments
+            .iter()
+            .rev()
+            .find_map(|arg| {
+                Path::new(arg)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .filter(|n| n.contains('.'))
+            })
+            .unwrap_or_else(|| executable.to_string());
+        let header = format!("==== {pack} → {handler} → {display_name}");
+        let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
+        let dim = if tty { "\x1b[2m" } else { "" };
+        let green = if tty { "\x1b[32m" } else { "" };
+        let red = if tty { "\x1b[31m" } else { "" };
+        let reset = if tty { "\x1b[0m" } else { "" };
+        eprintln!("{header}  {dim}running…{reset}");
+
+        let result = self.runner.run(executable, arguments);
+        match &result {
+            Ok(_) => eprintln!("{header}  {green}OK{reset}"),
+            Err(_) => eprintln!("{header}  {red}FAILED{reset}"),
+        }
+        result?;
 
         // Record sentinel
         let sentinel_dir = self.paths.handler_data_dir(pack, handler);
