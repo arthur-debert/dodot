@@ -75,14 +75,20 @@ if [ -z "$body" ]; then
     exit 1
 fi
 
-new_section="## [$new_version] - $today
+section_file=$(mktemp)
+trap 'rm -f "$section_file"' EXIT
+{
+    printf '## [%s] - %s\n\n' "$new_version" "$today"
+    printf '%s\n\n' "$body"
+} > "$section_file"
 
-$body
-"
-
-# Insert new section after the changelog preamble (just before the first existing version heading).
-awk -v section="$new_section" '
-    !inserted && /^## \[/ { print section; inserted=1 }
+# Insert new section just before the first existing version heading.
+awk -v section_file="$section_file" '
+    !inserted && /^## \[/ {
+        while ((getline line < section_file) > 0) print line
+        close(section_file)
+        inserted=1
+    }
     { print }
 ' "$changelog" > "$changelog.tmp"
 mv "$changelog.tmp" "$changelog"
