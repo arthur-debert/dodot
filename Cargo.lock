@@ -625,7 +625,7 @@ checksum = "0688c2a7f92e427f44895cd63841bff7b29f8d7a1648b9e7e07a4a365b2e1257"
 
 [[package]]
 name = "dodot"
-version = "0.14.0"
+version = "0.16.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -640,7 +640,7 @@ dependencies = [
 
 [[package]]
 name = "dodot-lib"
-version = "0.14.0"
+version = "0.16.0"
 dependencies = [
  "clapfig",
  "confique",
