@@ -199,13 +199,19 @@ fn collect_per_file_intents(
 /// dotted version. `home.bashrc` → `.bashrc`, `home.vimrc` → `.vimrc`.
 /// Only applies to top-level files (no `/` in path).
 ///
+/// Returns `None` for the literal filename `"home."` (empty rest) — that
+/// would resolve to `$HOME/.` (the home directory itself), which is
+/// never a meaningful symlink target and would fail at deploy time.
+///
 /// This is the per-file opt-in for "deploy to `$HOME/.<rest>` instead of
 /// the default `$XDG_CONFIG_HOME/<pack>/<rest>`". For per-subtree
 /// opt-out, use the `_home/` directory prefix.
 fn strip_home_prefix(rel_path: &str) -> Option<String> {
     if !rel_path.contains('/') {
         if let Some(rest) = rel_path.strip_prefix("home.") {
-            return Some(format!(".{rest}"));
+            if !rest.is_empty() {
+                return Some(format!(".{rest}"));
+            }
         }
     }
     None
@@ -542,6 +548,18 @@ mod tests {
         assert_eq!(strip_home_prefix("vimrc"), None);
         assert_eq!(strip_home_prefix(".bashrc"), None);
         assert_eq!(strip_home_prefix("sub/home.conf"), None);
+        // Empty rest must not produce ".": that would target $HOME itself.
+        assert_eq!(strip_home_prefix("home."), None);
+    }
+
+    /// A file literally named `home.` falls through the priority list to
+    /// the pack-namespaced XDG default — never to `$HOME/.`. Regression
+    /// for review item #3 on PR #49.
+    #[test]
+    fn literal_home_dot_filename_does_not_target_home_root() {
+        let config = HandlerConfig::default();
+        let target = resolve_target("misc", "home.", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/misc/home."));
     }
 
     // ── Custom target overrides ─────────────────────────────────
