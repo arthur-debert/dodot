@@ -86,43 +86,31 @@ impl Health {
     }
 }
 
-/// Classify what's currently at `user_target` to produce a short
-/// human-readable footnote describing why deployment would conflict.
-/// Returns `None` if the target is clear (no conflict).
-fn classify_target_state(
+/// Build the footnote text for a non-symlink file or directory that
+/// already occupies the user-target path and would block `dodot up`.
+///
+/// The conflict definition here matches the executor's pre-check
+/// (`execution/mod.rs`): `dodot up` only refuses when the user-target
+/// is a non-symlink that exists. Existing symlinks (correct, dangling,
+/// or pointing elsewhere) are gracefully replaced by `create_user_link`
+/// and are *not* conflicts. Caller must verify those conditions before
+/// calling this helper.
+fn describe_blocking_target(
     user_target: &std::path::Path,
-    source: &std::path::Path,
     fs: &dyn crate::fs::Fs,
     home: &std::path::Path,
-) -> Option<String> {
-    let display_target = if let Ok(rel) = user_target.strip_prefix(home) {
+) -> String {
+    let display = if let Ok(rel) = user_target.strip_prefix(home) {
         format!("~/{}", rel.display())
     } else {
         user_target.display().to_string()
     };
-
-    if fs.is_symlink(user_target) {
-        let detail = match fs.readlink(user_target) {
-            Ok(target) if target == source => {
-                "symlink already points to dodot's source".to_string()
-            }
-            Ok(target) => format!("existing symlink → {}", target.display()),
-            Err(_) => "broken existing symlink".to_string(),
-        };
-        Some(format!(
-            "{display_target} ({detail}) — `dodot up` will refuse without `--force`"
-        ))
-    } else if fs.is_dir(user_target) {
-        Some(format!(
-            "{display_target} (existing directory) — `dodot up` will refuse without `--force`"
-        ))
-    } else if fs.exists(user_target) {
-        Some(format!(
-            "{display_target} (existing file) — `dodot up` will refuse without `--force`"
-        ))
+    let kind = if fs.is_dir(user_target) {
+        "directory"
     } else {
-        None
-    }
+        "file"
+    };
+    format!("{display} (existing {kind}) — `dodot up` will refuse without `--force`")
 }
 
 /// Verify symlink handler chain for a single file.
@@ -153,13 +141,20 @@ fn verify_symlink(
             return Health::Broken("broken: data link exists but is not a symlink".into());
         }
         // No data link yet. Before declaring plain "pending", peek at the
-        // user-target path: if a non-dodot file/symlink already lives
-        // there, `dodot up` would fail — surface that as a conflict-aware
-        // pending so the user sees it before running up.
+        // user-target path: if a non-symlink file or directory already
+        // lives there, `dodot up` will refuse without `--force` — surface
+        // that as a conflict-aware pending so the user sees it before
+        // running up.
+        //
+        // Symlinks at the target are NOT conflicts: the executor's
+        // create_user_link gracefully replaces them (correct ones are
+        // left alone, wrong/dangling ones are removed and recreated). A
+        // dangling symlink left over from `dodot down` is the canonical
+        // case — flagging it as a conflict would be a false positive.
         let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
-        if let Some(reason) =
-            classify_target_state(&user_target, source, ctx.fs.as_ref(), ctx.paths.home_dir())
-        {
+        if !ctx.fs.is_symlink(&user_target) && ctx.fs.exists(&user_target) {
+            let reason =
+                describe_blocking_target(&user_target, ctx.fs.as_ref(), ctx.paths.home_dir());
             return Health::PendingConflict { reason };
         }
         return Health::Pending;

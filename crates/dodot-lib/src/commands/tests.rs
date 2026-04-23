@@ -515,17 +515,17 @@ fn down_removes_deployed_state() {
     let down_result = commands::down::down(None, &ctx).unwrap();
     assert!(down_result.message.is_some());
 
-    // All should be pending or warning after down. (`warning` happens for
-    // symlink-handler files because `down` removes data links but leaves
-    // the user-side symlink dangling — surfaced by #43's PendingConflict
-    // detection. Cleaning user-side state in `down` is a separate concern.)
+    // After down, all files should be plain pending. The user-side
+    // symlinks left dangling by `down` are NOT conflicts — the executor's
+    // create_user_link gracefully replaces them on the next `up`. (#43
+    // refines `PendingConflict` to only fire when the executor would
+    // actually refuse: non-symlink + exists.)
     let status = commands::status::status(None, &ctx).unwrap();
     for file in &status.packs[0].files {
-        assert!(
-            matches!(file.status.as_str(), "pending" | "warning"),
-            "file {} should be pending or warning after down, got {}",
-            file.name,
-            file.status
+        assert_eq!(
+            file.status, "pending",
+            "file {} should be pending after down (dangling symlinks are not conflicts), got {}",
+            file.name, file.status
         );
     }
 }
@@ -1417,17 +1417,16 @@ fn full_lifecycle_up_status_down_status() {
     // 4. Down — remove
     commands::down::down(None, &ctx).unwrap();
 
-    // 5. Status after down — pending or warning. Symlink-handler files
-    // become warning (PendingConflict: dangling symlink) since `down`
-    // removes data links but leaves user-side symlinks; see #43.
+    // 5. Status after down — pending again. Dangling user-side symlinks
+    // left by `down` are not conflicts (executor handles them on
+    // re-deploy), so they stay plain pending.
     let s3 = commands::status::status(None, &ctx).unwrap();
     for pack in &s3.packs {
         for file in &pack.files {
-            assert!(
-                matches!(file.status.as_str(), "pending" | "warning"),
-                "{} should be pending or warning after down, got {}",
-                file.name,
-                file.status
+            assert_eq!(
+                file.status, "pending",
+                "{} should be pending after down, got {}",
+                file.name, file.status
             );
         }
     }
@@ -1516,38 +1515,57 @@ fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
     );
 }
 
-/// Equivalent symlink case (#43 + #44 boundary): if the user already has
-/// a symlink that points directly at dodot's source, status still surfaces
-/// it as warning today. Issue #44 will turn this into a transparent
-/// auto-replace; for now we just want the user to see *why* `up` would
-/// refuse without `--force`.
+/// Negative regression for #43: pre-existing symlinks at the user-target
+/// path are NOT conflicts. The executor's `create_user_link` gracefully
+/// replaces them (correct ones are no-ops, wrong/dangling ones are
+/// removed and recreated), so flagging them would be a false positive.
+/// Issue #44 may add an informational note for the equivalent-symlink
+/// case, but that's separate from the conflict detection #43 introduces.
 #[test]
-fn status_flags_equivalent_pre_existing_symlink() {
+fn status_does_not_flag_pre_existing_symlinks_as_conflict() {
     let env = TempEnvironment::builder()
         .pack("kitty")
         .file("kittyrc", "font_size 14")
         .done()
+        .pack("ghostty")
+        .file("ghostrc", "x")
+        .done()
         .build();
 
-    // Create a symlink at ~/.kittyrc that already points to dodot's source
-    // (a common case when migrating from another dotfiles manager).
+    // Equivalent symlink: ~/.kittyrc already points at dodot's source.
     let source = env.dotfiles_root.join("kitty/kittyrc");
-    let user_target = env.home.join(".kittyrc");
-    env.fs.symlink(&source, &user_target).unwrap();
+    let kitty_target = env.home.join(".kittyrc");
+    env.fs.symlink(&source, &kitty_target).unwrap();
+
+    // Non-equivalent symlink: ~/.ghostrc points somewhere else entirely.
+    let ghostty_target = env.home.join(".ghostrc");
+    env.fs
+        .symlink(std::path::Path::new("/tmp/elsewhere"), &ghostty_target)
+        .unwrap();
 
     let ctx = make_ctx(&env);
     let result = commands::status::status(None, &ctx).unwrap();
-    let kitty = result.packs.iter().find(|p| p.name == "kitty").unwrap();
 
+    let kitty = result.packs.iter().find(|p| p.name == "kitty").unwrap();
     assert_eq!(
-        kitty.files[0].status, "warning",
-        "equivalent pre-existing symlink should still surface as warning until #44"
+        kitty.files[0].status, "pending",
+        "equivalent symlink should be plain pending, not a conflict (executor handles it)"
     );
-    assert_eq!(kitty.footnotes.len(), 1);
     assert!(
-        kitty.footnotes[0].contains("symlink already points to dodot"),
-        "footnote should classify equivalence, got: {}",
-        kitty.footnotes[0]
+        kitty.footnotes.is_empty(),
+        "no footnote for non-conflict, got: {:?}",
+        kitty.footnotes
+    );
+
+    let ghostty = result.packs.iter().find(|p| p.name == "ghostty").unwrap();
+    assert_eq!(
+        ghostty.files[0].status, "pending",
+        "non-equivalent symlink should also be plain pending — executor will replace it"
+    );
+    assert!(
+        ghostty.footnotes.is_empty(),
+        "no footnote for non-conflict, got: {:?}",
+        ghostty.footnotes
     );
 }
 
