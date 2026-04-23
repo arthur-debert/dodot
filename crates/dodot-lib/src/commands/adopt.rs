@@ -297,7 +297,24 @@ fn preflight(
                 format!("home.{stripped}")
             }
         } else {
-            stripped.to_string()
+            // Non-dotted file or directory in $HOME: no automatic
+            // round-trip path exists post-#48 (the default would route
+            // re-deploys to `$XDG_CONFIG_HOME/<pack>/<name>` rather
+            // than back to the original $HOME location). Refuse rather
+            // than silently relocating.
+            //
+            // The user's options: rename the file in $HOME to a dotted
+            // name first, or — if they really want it under XDG —
+            // move it into the pack manually and add a
+            // `[symlink.targets]` override pinning the target.
+            return Err(DodotError::Other(format!(
+                "refusing to adopt {}: a non-dotted entry in $HOME has no \
+                 automatic round-trip path under the post-#48 XDG default. \
+                 Either rename to a dotted name (e.g. .{stripped}) before \
+                 adopting, or copy into the pack manually and add a \
+                 [symlink.targets] override pinning the deploy path.",
+                abs.display()
+            )));
         };
 
         // Filename-ignore check against pack + root ignore patterns.

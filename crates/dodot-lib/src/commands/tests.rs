@@ -641,14 +641,17 @@ fn adopt_moves_file_and_creates_symlink() {
 fn adopt_preserves_executable_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
+    // Uses a dotted file (post-#2: non-dotted $HOME entries are
+    // refused for round-trip safety). The test's intent is exec-bit
+    // preservation, not the dot-or-not policy.
     let env = TempEnvironment::builder()
         .pack("tools")
         .file("placeholder", "")
         .done()
-        .home_file("script.sh", "#!/bin/sh\necho hi")
+        .home_file(".script.sh", "#!/bin/sh\necho hi")
         .build();
 
-    let source = env.home.join("script.sh");
+    let source = env.home.join(".script.sh");
     // Mark source as executable
     let perms = std::fs::Permissions::from_mode(0o755);
     std::fs::set_permissions(&source, perms).unwrap();
@@ -664,13 +667,51 @@ fn adopt_preserves_executable_permissions() {
     )
     .unwrap();
 
-    let dest = env.dotfiles_root.join("tools/script.sh");
+    let dest = env.dotfiles_root.join("tools/home.script.sh");
     let meta = std::fs::metadata(&dest).unwrap();
     assert_eq!(
         meta.permissions().mode() & 0o777,
         0o755,
         "executable bit should be preserved on adopted file"
     );
+}
+
+/// Regression for review item #2 on PR #49: a non-dotted entry in
+/// $HOME has no automatic round-trip path under the post-#48 XDG
+/// default — adopt must refuse rather than silently relocate.
+#[test]
+fn adopt_refuses_non_dotted_home_entry() {
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("placeholder", "")
+        .done()
+        .home_file("script.sh", "#!/bin/sh\necho hi")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join("script.sh");
+    let err = commands::adopt::adopt(
+        "tools",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("non-dotted entry in $HOME"),
+        "expected refusal message, got: {msg}"
+    );
+    assert!(
+        msg.contains("[symlink.targets]"),
+        "refusal should point at [symlink.targets] escape hatch, got: {msg}"
+    );
+    // Source untouched, no pack copy created.
+    env.assert_regular_file(&source, "#!/bin/sh\necho hi");
+    env.assert_not_exists(&env.dotfiles_root.join("tools/script.sh"));
 }
 
 #[test]
@@ -818,20 +859,24 @@ fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
 
 #[test]
 fn adopt_preserves_inner_symlinks_as_symlinks() {
+    // Uses a dotted directory (post-#2: non-dotted $HOME entries are
+    // refused). Test intent: inner symlinks are preserved during the
+    // copy phase. The `_home/` path comes from #1's dotted-dir
+    // round-trip rename.
     let env = TempEnvironment::builder()
         .pack("shell")
         .file("placeholder", "")
         .done()
-        .home_file("mydir/real.txt", "hello")
+        .home_file(".mydir/real.txt", "hello")
         .build();
 
-    // Create an inner symlink: mydir/alias -> mydir/real.txt
-    let inner_target = env.home.join("mydir/real.txt");
-    let inner_link = env.home.join("mydir/alias");
+    // Create an inner symlink: .mydir/alias -> .mydir/real.txt
+    let inner_target = env.home.join(".mydir/real.txt");
+    let inner_link = env.home.join(".mydir/alias");
     env.fs.symlink(&inner_target, &inner_link).unwrap();
 
     let ctx = make_ctx(&env);
-    let source = env.home.join("mydir");
+    let source = env.home.join(".mydir");
     commands::adopt::adopt(
         "shell",
         std::slice::from_ref(&source),
@@ -843,7 +888,7 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
     .unwrap();
 
     // The inner link should still be a symlink inside the pack copy.
-    let copied_link = env.dotfiles_root.join("shell/mydir/alias");
+    let copied_link = env.dotfiles_root.join("shell/_home/mydir/alias");
     assert!(
         env.fs.is_symlink(&copied_link),
         "inner symlink should be preserved as a symlink, not followed"
