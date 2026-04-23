@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::commands::status;
-use crate::commands::PackStatusResult;
+use crate::commands::{DisplayNote, PackStatusResult};
 use crate::conflicts;
 use crate::fs::Fs;
 use crate::packs;
@@ -118,12 +118,14 @@ pub fn adopt(
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
     }
+    // Adopt failures are real errors, not informational — push them into
+    // the command-wide notes list so they appear in the trailing errors
+    // section alongside any notes already surfaced by status::status().
     for f in &failures {
-        result.warnings.push(format!(
-            "adopt failed: {}: {}",
-            f.source.display(),
-            f.reason
-        ));
+        result.notes.push(DisplayNote {
+            body: format!("adopt failed: {}: {}", f.source.display(), f.reason),
+            hint: None,
+        });
     }
     Ok(result)
 }

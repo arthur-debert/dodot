@@ -73,6 +73,13 @@ pub struct DisplayFile {
     pub status: String,
     pub status_label: String,
     pub handler: String,
+    /// 1-based index into `PackStatusResult.notes`. `Some(N)` means the
+    /// row has a command-wide error/note attached; the template renders
+    /// `[N]` next to the status label and the body appears in the notes
+    /// section at the bottom of the output. Indices are assigned at
+    /// assembly time and are stable within a single command invocation.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub note_ref: Option<u32>,
 }
 
 /// A pack entry for status display.
@@ -80,11 +87,16 @@ pub struct DisplayFile {
 pub struct DisplayPack {
     pub name: String,
     pub files: Vec<DisplayFile>,
-    /// Per-pack footnotes referenced by `(N)` markers in `status_label`.
-    /// Each entry is the body text only (no leading `(N)`); the renderer
-    /// pairs them with the marker number assigned at assembly time.
-    #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    pub footnotes: Vec<String>,
+}
+
+/// A command-wide note (error / inline conflict) referenced by
+/// `DisplayFile.note_ref`. Indices into `PackStatusResult.notes` are
+/// 1-based; position in the vec matches the `[N]` shown inline.
+#[derive(Debug, Clone, Serialize)]
+pub struct DisplayNote {
+    pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub hint: Option<String>,
 }
 
 /// One claimant of a cross-pack conflict, formatted for display.
@@ -172,8 +184,16 @@ pub struct PackStatusResult {
     pub message: Option<String>,
     pub dry_run: bool,
     pub packs: Vec<DisplayPack>,
+    /// Informational command-level messages not attached to any row
+    /// (e.g. "pack X is ignored, skipping"). Real errors belong in
+    /// `notes` so they can be referenced from an item row.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
+    /// Command-wide error/note list. Each entry is referenced by a
+    /// `DisplayFile.note_ref` (1-based). Rendered at the end of the
+    /// output so per-item rows stay single-line and column-aligned.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<DisplayNote>,
     /// Cross-pack conflicts to display at the end of the output.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub conflicts: Vec<DisplayConflict>,

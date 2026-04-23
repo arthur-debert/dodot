@@ -22,8 +22,8 @@
 use tracing::{debug, info};
 
 use crate::commands::{
-    handler_description, handler_symbol, status, status_style, DisplayFile, DisplayPack,
-    PackStatusResult,
+    handler_description, handler_symbol, status, status_style, DisplayConflict, DisplayFile,
+    DisplayNote, DisplayPack, PackStatusResult,
 };
 use crate::conflicts;
 use crate::datastore::format_command_for_display;
@@ -123,17 +123,28 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     //
     // For real executions, render through status::status() so the user sees
     // the same labels they'd see by running `dodot status` immediately
-    // afterward. Operation failures are overlaid as additional rows.
+    // afterward. Operation failures flip their matching row's status to
+    // "error" and attach a command-wide note; pack-level errors synthesize
+    // an error row at the end of the pack.
     //
     // For dry-run, render the simulated operations directly — there's no
     // post-execution state to verify, and the user wants to see the planned
     // changes, not the unchanged current state.
-    let display_packs = if ctx.dry_run {
+    let (display_packs, notes) = if ctx.dry_run {
         render_intents(&pack_results, ctx.paths.home_dir())
     } else {
         let pack_names: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
         let status_result = status::status(Some(&pack_names), ctx)?;
-        overlay_errors(status_result.packs, &pack_results, ctx.paths.home_dir())
+        // status::status() may have populated notes (PendingConflict etc.);
+        // preserve them and continue numbering from there.
+        let mut notes = status_result.notes;
+        let display_packs = overlay_errors(
+            status_result.packs,
+            &pack_results,
+            ctx.paths.home_dir(),
+            &mut notes,
+        );
+        (display_packs, notes)
     };
 
     let message = if has_failures {
@@ -147,16 +158,60 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         dry_run: ctx.dry_run,
         packs: display_packs,
         warnings: Vec::new(),
+        notes,
         conflicts: Vec::new(),
         ignored_packs: Vec::new(),
     })
 }
 
+/// Run `up`, falling back to a status render when a cross-pack conflict
+/// blocks deployment.
+///
+/// On a plain success, this returns `up()`'s result unchanged. On a
+/// cross-pack conflict it re-runs the status scan and folds the
+/// conflicts in, so the caller gets the full per-pack file listing plus
+/// the conflicts section — the same view `dodot status` produces — with
+/// a top-level message explaining that nothing was deployed. Other
+/// errors propagate unchanged.
+///
+/// The CLI uses this so `dodot up` and `dodot status` look identical
+/// when a cross-pack conflict is present, rather than stripping the
+/// per-pack rows down to a bare conflict dump.
+pub fn up_or_status_for_conflict(
+    pack_filter: Option<&[String]>,
+    ctx: &ExecutionContext,
+) -> Result<PackStatusResult> {
+    match up(pack_filter, ctx) {
+        Ok(r) => Ok(r),
+        Err(crate::DodotError::CrossPackConflict { conflicts: raw }) => {
+            let home = ctx.paths.home_dir();
+            let display_conflicts: Vec<DisplayConflict> = raw
+                .iter()
+                .map(|c| DisplayConflict::from_conflict(c, home))
+                .collect();
+            let mut base = status::status(pack_filter, ctx)?;
+            base.message = Some("Cross-pack conflicts prevent deployment.".into());
+            base.dry_run = ctx.dry_run;
+            base.conflicts = display_conflicts;
+            Ok(base)
+        }
+        Err(e) => Err(e),
+    }
+}
+
 /// Render operations directly from pack_results — used for dry-run, where
 /// there's no executed state to verify and the user wants to see the
 /// planned changes rather than the unchanged status quo.
-fn render_intents(pack_results: &[PackResult], home: &std::path::Path) -> Vec<DisplayPack> {
-    pack_results
+///
+/// Returns (packs, notes). Failed operations keep their row but receive a
+/// `note_ref` into the command-wide notes list, keeping the column layout
+/// intact.
+fn render_intents(
+    pack_results: &[PackResult],
+    home: &std::path::Path,
+) -> (Vec<DisplayPack>, Vec<DisplayNote>) {
+    let mut notes: Vec<DisplayNote> = Vec::new();
+    let packs = pack_results
         .iter()
         .map(|pr| {
             let mut files: Vec<DisplayFile> = pr
@@ -164,50 +219,66 @@ fn render_intents(pack_results: &[PackResult], home: &std::path::Path) -> Vec<Di
                 .iter()
                 .map(|op| {
                     let (handler, name, user_target) = extract_op_info(&op.operation, home);
-                    let status = if op.success {
-                        status_style(true).into()
+                    let (status, status_label, note_ref) = if op.success {
+                        (status_style(true).to_string(), op.message.clone(), None)
                     } else {
-                        "error".into()
+                        notes.push(DisplayNote {
+                            body: op.message.clone(),
+                            hint: None,
+                        });
+                        (
+                            "error".to_string(),
+                            "error".to_string(),
+                            Some(notes.len() as u32),
+                        )
                     };
                     DisplayFile {
                         name: name.clone(),
                         symbol: handler_symbol(&handler).into(),
                         description: handler_description(&handler, &name, user_target.as_deref()),
                         status,
-                        status_label: op.message.clone(),
+                        status_label,
                         handler,
+                        note_ref,
                     }
                 })
                 .collect();
 
             if let Some(err) = &pr.error {
+                notes.push(DisplayNote {
+                    body: err.clone(),
+                    hint: None,
+                });
                 files.push(DisplayFile {
                     name: String::new(),
                     symbol: "×".into(),
                     description: String::new(),
                     status: "error".into(),
-                    status_label: err.clone(),
+                    status_label: "error".into(),
                     handler: String::new(),
+                    note_ref: Some(notes.len() as u32),
                 });
             }
 
             DisplayPack {
                 name: pr.pack_name.clone(),
                 files,
-                footnotes: Vec::new(),
             }
         })
-        .collect()
+        .collect();
+    (packs, notes)
 }
 
 /// Take the steady-state DisplayPacks produced by `status::status()` and
-/// append error rows for any failed operations or pack-level errors. The
-/// status rows still describe what *is* on disk; the appended rows
-/// describe what *failed* during the just-completed execution.
+/// flip the matching row's status to "error" for any failed operation,
+/// attaching a note with the full error body. Pack-level errors (intent
+/// collection, execution) synthesize a dedicated error row at the end of
+/// the pack. All notes share a single 1-based command-wide index.
 pub(crate) fn overlay_errors(
     mut packs: Vec<DisplayPack>,
     pack_results: &[PackResult],
     home: &std::path::Path,
+    notes: &mut Vec<DisplayNote>,
 ) -> Vec<DisplayPack> {
     for pr in pack_results {
         let display_pack = match packs.iter_mut().find(|p| p.name == pr.pack_name) {
@@ -220,25 +291,110 @@ pub(crate) fn overlay_errors(
                 continue;
             }
             let (handler, name, user_target) = extract_op_info(&op_result.operation, home);
-            display_pack.files.push(DisplayFile {
-                name: name.clone(),
-                symbol: handler_symbol(&handler).into(),
-                description: handler_description(&handler, &name, user_target.as_deref()),
-                status: "error".into(),
-                status_label: op_result.message.clone(),
-                handler,
-            });
+            let body = op_result.message.clone();
+
+            // Prefer to flip the existing status row so the file listing
+            // stays one line per item. Match order:
+            //   1. (handler, name) — exact match by pack-relative basename.
+            //      Correct when the operation's source basename equals the
+            //      file row's pack-relative path (flat layout, common case).
+            //   2. (handler, user_target) — covers the pre-link CreateUserLink
+            //      conflict case where datastore_path is defaulted (empty)
+            //      and the op's "name" comes from user_path.file_name(),
+            //      which won't match a `home.X` or subdir pack row. The
+            //      row's description is the shortened user_target, so that
+            //      matches what the op tried to write.
+            //   3. Fallback: match by name only (any handler).
+            //   4. Synthesize a new error row if nothing matched.
+            let pos = display_pack
+                .files
+                .iter()
+                .position(|f| f.handler == handler && f.name == name)
+                .or_else(|| {
+                    user_target.as_ref().and_then(|ut| {
+                        display_pack
+                            .files
+                            .iter()
+                            .position(|f| f.handler == handler && &f.description == ut)
+                    })
+                })
+                .or_else(|| display_pack.files.iter().position(|f| f.name == name));
+
+            match pos {
+                Some(idx) => {
+                    // If the row already carries a note (e.g. status flagged
+                    // it as PendingConflict), replace that note in place so
+                    // numbering stays contiguous and we don't leave a stale
+                    // "would conflict" note alongside the actual failure.
+                    let file = &mut display_pack.files[idx];
+                    if let Some(existing) = file.note_ref {
+                        notes[(existing - 1) as usize] = DisplayNote { body, hint: None };
+                    } else {
+                        notes.push(DisplayNote { body, hint: None });
+                        file.note_ref = Some(notes.len() as u32);
+                    }
+                    file.status = "error".into();
+                    file.status_label = "error".into();
+                }
+                None => {
+                    notes.push(DisplayNote { body, hint: None });
+                    display_pack.files.push(DisplayFile {
+                        name: name.clone(),
+                        symbol: handler_symbol(&handler).into(),
+                        description: handler_description(&handler, &name, user_target.as_deref()),
+                        status: "error".into(),
+                        status_label: "error".into(),
+                        handler,
+                        note_ref: Some(notes.len() as u32),
+                    });
+                }
+            }
         }
 
         if let Some(err) = &pr.error {
-            display_pack.files.push(DisplayFile {
-                name: String::new(),
-                symbol: "×".into(),
-                description: String::new(),
-                status: "error".into(),
-                status_label: err.clone(),
-                handler: String::new(),
-            });
+            // Pack-level errors (intent collection failure, orchestration
+            // failure bubbled up from execute_intents) don't name a
+            // specific file. Attach the note to an existing row so the
+            // user can tell which item the failure relates to. Prefer a
+            // row that isn't already flipped to error (otherwise we'd
+            // clobber a more specific per-op note); if no row qualifies,
+            // synthesize a pack-level error row as a last resort.
+            let fallback_idx = if display_pack.files.is_empty() {
+                None
+            } else {
+                Some(0)
+            };
+            let target_idx = display_pack
+                .files
+                .iter()
+                .position(|f| f.status != "error")
+                .or(fallback_idx);
+            let body = err.clone();
+            match target_idx {
+                Some(idx) => {
+                    let file = &mut display_pack.files[idx];
+                    if let Some(existing) = file.note_ref {
+                        notes[(existing - 1) as usize] = DisplayNote { body, hint: None };
+                    } else {
+                        notes.push(DisplayNote { body, hint: None });
+                        file.note_ref = Some(notes.len() as u32);
+                    }
+                    file.status = "error".into();
+                    file.status_label = "error".into();
+                }
+                None => {
+                    notes.push(DisplayNote { body, hint: None });
+                    display_pack.files.push(DisplayFile {
+                        name: String::new(),
+                        symbol: "×".into(),
+                        description: String::new(),
+                        status: "error".into(),
+                        status_label: "error".into(),
+                        handler: String::new(),
+                        note_ref: Some(notes.len() as u32),
+                    });
+                }
+            }
         }
     }
     packs

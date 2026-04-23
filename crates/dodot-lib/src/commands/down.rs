@@ -90,6 +90,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         dry_run: ctx.dry_run,
         packs: display_packs,
         warnings,
+        notes: Vec::new(),
         conflicts: Vec::new(),
         ignored_packs: Vec::new(),
     })
@@ -116,6 +117,7 @@ fn build_dry_run_display(
                     status: "pending".into(),
                     status_label: "[dry-run] would remove".into(),
                     handler: handler.clone(),
+                    note_ref: None,
                 });
             }
         } else {
@@ -126,12 +128,12 @@ fn build_dry_run_display(
                 status: "pending".into(),
                 status_label: "[dry-run] would remove".into(),
                 handler: handler.clone(),
+                note_ref: None,
             });
         }
     }
     Ok(DisplayPack {
         name: pack.name.clone(),
         files,
-        footnotes: Vec::new(),
     })
 }
