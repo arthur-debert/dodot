@@ -256,11 +256,34 @@ fn preflight(
             .to_string_lossy()
             .into_owned();
 
-        // Strip a leading dot so `.vimrc` becomes `vimrc` in the pack.
-        let pack_filename = file_name
-            .strip_prefix('.')
-            .unwrap_or(&file_name)
-            .to_string();
+        // Pack-filename derivation for a `$HOME/.<name>` source:
+        //   - Strip the leading dot.
+        //   - If the resulting name is in `force_home` (canonical $HOME
+        //     tools — bashrc, zshrc, ssh, …), drop straight into the pack
+        //     under that name; the symlink handler's `force_home` rule
+        //     will route deploys back to `$HOME/.<name>`.
+        //   - Otherwise prefix with `home.` so the file uses the per-file
+        //     `home.X` convention (#48). Without this prefix, the post-
+        //     #48 default would route the re-deployed file to
+        //     `$XDG_CONFIG_HOME/<pack>/<name>`, breaking the adopt
+        //     round-trip (`adopt vim ~/.vimrc` then `up` should leave
+        //     `~/.vimrc` pointing back at the pack — not relocate it
+        //     to `~/.config/vim/vimrc`).
+        let stripped = file_name.strip_prefix('.').unwrap_or(&file_name);
+        let in_force_home = pack_config
+            .symlink
+            .force_home
+            .iter()
+            .any(|entry| entry.strip_prefix('.').unwrap_or(entry) == stripped);
+        // The `home.` rename only applies to FILES — there's no
+        // `home.<dir>` directory convention. Directories keep the
+        // legacy "strip leading dot" behavior; for whole-subtree $HOME
+        // routing the user would use the `_home/` directory prefix.
+        let pack_filename = if !is_dir && file_name.starts_with('.') && !in_force_home {
+            format!("home.{stripped}")
+        } else {
+            stripped.to_string()
+        };
 
         // Filename-ignore check against pack + root ignore patterns.
         if rules::should_skip_entry(&pack_filename, &ignore_patterns) {

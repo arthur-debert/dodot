@@ -621,15 +621,20 @@ fn adopt_moves_file_and_creates_symlink() {
     )
     .unwrap();
 
-    // File should have moved into pack (without dot prefix), content preserved
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "set nocompatible");
+    // File should have moved into pack with the `home.` prefix (post-#48
+    // adopt rename — preserves the round-trip back to ~/.vimrc on `up`),
+    // content preserved.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("vim/home.vimrc"),
+        "set nocompatible",
+    );
     // Symlink should exist at original location
     assert!(env.fs.is_symlink(&source));
 
     // Status output should include the vim pack with the adopted file
     assert!(result.packs.iter().any(|p| p.name == "vim"));
     let vim = result.packs.iter().find(|p| p.name == "vim").unwrap();
-    assert!(vim.files.iter().any(|f| f.name == "vimrc"));
+    assert!(vim.files.iter().any(|f| f.name == "home.vimrc"));
 }
 
 #[test]
@@ -670,9 +675,12 @@ fn adopt_preserves_executable_permissions() {
 
 #[test]
 fn adopt_destination_conflict_refused_without_force() {
+    // Destination conflict: pack already has `home.vimrc`. Adopt of
+    // `~/.vimrc` derives `home.vimrc` as the pack filename (post-#48
+    // adopt rename), so the existing file blocks the adoption.
     let env = TempEnvironment::builder()
         .pack("vim")
-        .file("vimrc", "existing content")
+        .file("home.vimrc", "existing content")
         .done()
         .home_file(".vimrc", "new content")
         .build();
@@ -696,14 +704,17 @@ fn adopt_destination_conflict_refused_without_force() {
 
     // Original file untouched; existing pack file untouched.
     env.assert_regular_file(&source, "new content");
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "existing content");
+    env.assert_regular_file(
+        &env.dotfiles_root.join("vim/home.vimrc"),
+        "existing content",
+    );
 }
 
 #[test]
 fn adopt_destination_conflict_resolved_with_force() {
     let env = TempEnvironment::builder()
         .pack("vim")
-        .file("vimrc", "OLD")
+        .file("home.vimrc", "OLD")
         .done()
         .home_file(".vimrc", "NEW")
         .build();
@@ -721,7 +732,7 @@ fn adopt_destination_conflict_resolved_with_force() {
     )
     .unwrap();
 
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "NEW");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/home.vimrc"), "NEW");
     assert!(env.fs.is_symlink(&source));
 }
 
@@ -1032,7 +1043,7 @@ fn adopt_relative_path_with_curdir_normalizes() {
     std::env::set_current_dir(prev_cwd).unwrap();
 
     result.expect("adopt should accept ./.vimrc when CWD is HOME");
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "content");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/home.vimrc"), "content");
     assert!(env.fs.is_symlink(&env.home.join(".vimrc")));
 }
 
@@ -1223,7 +1234,7 @@ fn adopt_dry_run_makes_no_changes() {
     env.assert_regular_file(&source, "content");
     assert!(!env.fs.is_symlink(&source));
     // No copy in pack.
-    env.assert_not_exists(&env.dotfiles_root.join("vim/vimrc"));
+    env.assert_not_exists(&env.dotfiles_root.join("vim/home.vimrc"));
 }
 
 #[test]
@@ -1252,7 +1263,7 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
     .unwrap();
 
     // The pack copy should be a symlink (not a regular file with copied content).
-    let pack_copy = env.dotfiles_root.join("vim/vimrc");
+    let pack_copy = env.dotfiles_root.join("vim/home.vimrc");
     assert!(
         env.fs.is_symlink(&pack_copy),
         "--no-follow should preserve source symlink as a symlink in the pack"
@@ -1271,7 +1282,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
 
     let env = TempEnvironment::builder()
         .pack("vim")
-        .file("vimrc", "OLD")
+        .file("home.vimrc", "OLD")
         .done()
         .home_file(".vimrc", "NEW")
         .build();
@@ -1299,7 +1310,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
         "adopt should fail when the source is unreadable"
     );
     // The old pack content must survive the failed --force adoption.
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "OLD");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/home.vimrc"), "OLD");
     // Home file also untouched.
     env.assert_regular_file(&source, "NEW");
     // No lingering stage file in the pack.
@@ -1343,7 +1354,8 @@ fn adopt_no_follow_on_dangling_symlink_succeeds() {
     .expect("adopt with --no-follow on a dangling symlink should succeed");
 
     // The pack copy should itself be a symlink (preserving the dangling link).
-    let pack_copy = env.dotfiles_root.join("vim/dangling");
+    // Post-#48 adopt rename: ~/.dangling → vim/home.dangling.
+    let pack_copy = env.dotfiles_root.join("vim/home.dangling");
     assert!(env.fs.is_symlink(&pack_copy));
     let target = env.fs.readlink(&pack_copy).unwrap();
     assert_eq!(target, std::path::PathBuf::from("/does/not/exist"));

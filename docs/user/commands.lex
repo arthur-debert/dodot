@@ -70,7 +70,7 @@ Commands
 
     2.3. adopt
 
-        Move an existing system file into a pack and replace the original with a symlink. Useful for bringing dotfiles that have been living at their deployed location (`~/.config/nvim/init.lua`, `~/.bashrc`) under dodot's control.
+        Move an existing system file into a pack and replace the original with a symlink. Useful for bringing legacy `$HOME` dotfiles (`~/.bashrc`, `~/.zshrc`, `~/.gitconfig`, …) under dodot's control.
 
         Flags:
             - `--force` — overwrite an existing destination file in the pack
@@ -79,10 +79,14 @@ Commands
 
         Usage:
 
-            dodot adopt nvim ~/.config/nvim/init.lua
-            dodot adopt shell ~/.bashrc ~/.zshrc
-            dodot adopt nvim ~/.config/nvim/init.lua --force
-            dodot adopt nvim ~/.config/nvim/init.lua --dry-run
+            dodot adopt shell ~/.bashrc
+            dodot adopt git ~/.gitconfig ~/.gitignore_global
+            dodot adopt shell ~/.bashrc --force
+            dodot adopt shell ~/.bashrc --dry-run
+
+        Adopt currently only accepts sources whose parent is `$HOME` directly — files nested under `~/.config/<tool>/...` aren't yet supported. To bring an XDG-rooted file under dodot, copy it into the pack manually.
+
+        Naming inside the pack: a `$HOME/.<name>` source is renamed to `<pack>/home.<name>` if `<name>` isn't already a `force_home` canonical (ssh, gpg, bashrc, zshrc, …). The `home.X` prefix preserves the round-trip — re-deploying with `dodot up` puts the symlink back at `$HOME/.<name>`. For canonical force_home names the file lands under the pack as `<name>` (the `force_home` rule already routes deploys back to `$HOME/.<name>`).
 
         :: shell ::
 

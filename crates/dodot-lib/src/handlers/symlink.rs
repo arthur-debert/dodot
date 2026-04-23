@@ -392,8 +392,10 @@ mod tests {
     #[test]
     fn top_level_dir_goes_to_pack_xdg_dir() {
         let config = HandlerConfig::default();
-        let target = resolve_target("nvim", "init.lua", false, &config, &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
+        // Top-level dir wholesale-linked: `nvim/lua` directory →
+        // ~/.config/nvim/lua (the dir itself, not its files).
+        let target = resolve_target("nvim", "lua", true, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/lua"));
     }
 
     #[test]

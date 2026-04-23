@@ -47,22 +47,14 @@ pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&s
     match handler {
         "symlink" => {
             // Callers normally pass a fully-resolved user_target (computed
-            // by `resolve_target` with the pack name in scope). The fallback
-            // below is best-effort for callers without that context — it
-            // only honours the `home.X` per-file opt-in convention; the
-            // pack-namespaced XDG default can't be reconstructed from
-            // rel_path alone.
-            if let Some(target) = user_target {
-                target.to_string()
-            } else if !rel_path.contains('/') {
-                if let Some(rest) = rel_path.strip_prefix("home.") {
-                    format!("~/.{rest}")
-                } else {
-                    format!("~/.{rel_path}")
-                }
-            } else {
-                format!("~/{rel_path}")
-            }
+            // by `resolve_target` with the pack name in scope). The
+            // pack-namespaced XDG default cannot be reconstructed from
+            // `rel_path` alone, so when no target is provided we fall
+            // back to a generic "<symlink>" placeholder rather than
+            // guessing a wrong `~/.<name>` path.
+            user_target
+                .map(str::to_string)
+                .unwrap_or_else(|| "<symlink>".to_string())
         }
         "shell" => "shell profile".into(),
         "path" => format!("$PATH/{rel_path}"),

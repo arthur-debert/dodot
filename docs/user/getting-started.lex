@@ -47,7 +47,7 @@ dodot: Up and Running in 5 Minutes
 
     :: shell ::
 
-    Notice how every pack-root entry deploys under `~/.config/nvim/` — the pack name namespaces config under XDG by default, matching how nvim itself reads its configuration. No need to write `nvim/nvim/init.lua` to land at the right place; dodot does the namespacing.
+    Notice how every symlinked pack-root entry defaults to `~/.config/nvim/` — the pack name namespaces symlinked config under XDG by default, matching how nvim itself reads its configuration. No need to write `nvim/nvim/init.lua` to land at the right place for those symlinked entries; dodot does the namespacing. (Non-symlink handlers — Brewfile, shell, path — work on their own conventions and don't deploy under that directory.)
 
     `dodot status` shows both what dodot has done and what it _will_ do on the next `up`. This is your chance to sanity-check that the conventions dodot detected match what you expected. If they don't, rename the files or override the mapping in `.dodot.toml`.
 

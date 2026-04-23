@@ -86,19 +86,20 @@ dodot matches files to handlers by name convention:
 
 | Handler    | Matches                                     | Action                        |
 |------------|---------------------------------------------|-------------------------------|
-| **symlink**| Most files (default)                        | Symlink to `~` or `~/.config` |
+| **symlink**| Most files (default)                        | Symlink under `~/.config/<pack>/` |
 | **shell**  | `*.sh`, `aliases.*`, `profile.*`, `login.*` | Sourced via shell init script |
 | **path**   | `bin/` directories                          | Added to `$PATH`              |
 | **homebrew** | `Brewfile`                                | `brew bundle install`         |
 | **install**| `install.sh`, `install`                     | Run once (checksum-tracked)   |
 
 Symlink targets are resolved smartly:
-- Top-level files go to `~` with a dot prefix (e.g., `gitconfig` -> `~/.gitconfig`)
-- Subdirectories go to `~/.config/` (e.g., `nvim/init.lua` -> `~/.config/nvim/init.lua`)
-- Files already starting with `.` keep their name as-is
-- `dot.` prefix convention: `dot.bashrc` -> `~/.bashrc` (avoids hidden files in your repo)
+- Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<rel_path>` (e.g. `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`)
+- `force_home` blacklist routes canonical legacy tools to `$HOME/.<name>` regardless (ssh, gpg, bashrc, zshrc, etc.)
+- Per-file `home.X` prefix opts a single file into `$HOME/.X` placement (e.g. `git/home.gitconfig` → `~/.gitconfig`)
+- Per-subtree `_home/` and `_xdg/` directory prefixes route whole groups of files to `$HOME` or `$XDG_CONFIG_HOME` respectively, skipping the pack-name namespace
+- Per-file `[symlink.targets]` config maps any pack file to any absolute or XDG-relative path
 
-dodot uses a double-symlink architecture (`~/.file → datastore/... → ~/dotfiles/...`) for clean state management. Edits still flow through both links instantly.
+dodot uses a double-symlink architecture (`~/.config/nvim/init.lua → datastore/... → ~/dotfiles/...`) for clean state management. Edits still flow through both links instantly.
 
 All conventions can be overridden via `.dodot.toml` in the pack or the dotfiles root.
 
