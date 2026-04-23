@@ -45,6 +45,31 @@ pub fn resolve_symlink_target(link_path: &Path, raw_target: &Path) -> PathBuf {
     }
 }
 
+/// Collapse `.` and `..` components lexically, without touching the
+/// filesystem. Needed for prefix comparisons: `starts_with` is purely
+/// lexical, so a path like `/home/u/.config/../dotfiles/warp` does not
+/// start with `/home/u/dotfiles` even though they resolve to the same
+/// place.
+///
+/// Unlike `std::fs::canonicalize`, this does NOT follow symlinks —
+/// callers that want lexical normalization of a symlink target joined
+/// against its parent path get the right answer without an extra round
+/// through the OS.
+pub fn normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut result = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                result.pop();
+            }
+            other => result.push(other),
+        }
+    }
+    result
+}
+
 /// Whether the existing thing at `user_path` is content-equivalent to
 /// `source` — meaning `dodot up` would produce the same content
 /// reaching the same path, so it's safe to replace without `--force`.

@@ -404,6 +404,7 @@ pub fn execute_intents(
     let executor = Executor::new(
         ctx.datastore.as_ref(),
         ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
         ctx.dry_run,
         ctx.force,
         ctx.provision_rerun,
