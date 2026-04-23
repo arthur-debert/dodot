@@ -7,11 +7,23 @@
 //!
 //! This prevents partial deployments where one pack silently overwrites
 //! another pack's symlinks.
+//!
+//! ## Output rendering
+//!
+//! For non-dry-run executions, `up` renders by calling `status::status()`
+//! on the affected packs after execution and overlaying any operation
+//! errors. This guarantees that the per-file labels you see after `up`
+//! match exactly what you'd see if you ran `status` immediately
+//! afterward — there's a single rendering path, not two.
+//!
+//! Dry-run keeps the per-intent rendering since there's no
+//! post-execution state to verify.
 
 use tracing::{debug, info};
 
 use crate::commands::{
-    handler_description, handler_symbol, status_style, DisplayFile, DisplayPack, PackStatusResult,
+    handler_description, handler_symbol, status, status_style, DisplayFile, DisplayPack,
+    PackStatusResult,
 };
 use crate::conflicts;
 use crate::datastore::format_command_for_display;
@@ -103,9 +115,48 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     }
 
-    // Convert to display format
-    let home = ctx.paths.home_dir();
-    let display_packs: Vec<DisplayPack> = pack_results
+    let has_failures = pack_results
+        .iter()
+        .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
+
+    // Build display packs.
+    //
+    // For real executions, render through status::status() so the user sees
+    // the same labels they'd see by running `dodot status` immediately
+    // afterward. Operation failures are overlaid as additional rows.
+    //
+    // For dry-run, render the simulated operations directly — there's no
+    // post-execution state to verify, and the user wants to see the planned
+    // changes, not the unchanged current state.
+    let display_packs = if ctx.dry_run {
+        render_intents(&pack_results, ctx.paths.home_dir())
+    } else {
+        let pack_names: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
+        let status_result = status::status(Some(&pack_names), ctx)?;
+        overlay_errors(status_result.packs, &pack_results)
+    };
+
+    let message = if has_failures {
+        "Packs deployed with errors.".into()
+    } else {
+        "Packs deployed.".into()
+    };
+
+    Ok(PackStatusResult {
+        message: Some(message),
+        dry_run: ctx.dry_run,
+        packs: display_packs,
+        warnings: Vec::new(),
+        conflicts: Vec::new(),
+        ignored_packs: Vec::new(),
+    })
+}
+
+/// Render operations directly from pack_results — used for dry-run, where
+/// there's no executed state to verify and the user wants to see the
+/// planned changes rather than the unchanged status quo.
+fn render_intents(pack_results: &[PackResult], home: &std::path::Path) -> Vec<DisplayPack> {
+    pack_results
         .iter()
         .map(|pr| {
             let mut files: Vec<DisplayFile> = pr
@@ -129,7 +180,6 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
                 })
                 .collect();
 
-            // Include error from orchestration (e.g. pack-level config error)
             if let Some(err) = &pr.error {
                 files.push(DisplayFile {
                     name: String::new(),
@@ -146,26 +196,50 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
                 files,
             }
         })
-        .collect();
+        .collect()
+}
 
-    // Message reflects actual results
-    let has_failures = pack_results
-        .iter()
-        .any(|pr| !pr.success || pr.operations.iter().any(|op| !op.success));
-    let message = if has_failures {
-        "Packs deployed with errors.".into()
-    } else {
-        "Packs deployed.".into()
-    };
+/// Take the steady-state DisplayPacks produced by `status::status()` and
+/// append error rows for any failed operations or pack-level errors. The
+/// status rows still describe what *is* on disk; the appended rows
+/// describe what *failed* during the just-completed execution.
+pub(crate) fn overlay_errors(
+    mut packs: Vec<DisplayPack>,
+    pack_results: &[PackResult],
+) -> Vec<DisplayPack> {
+    for pr in pack_results {
+        let display_pack = match packs.iter_mut().find(|p| p.name == pr.pack_name) {
+            Some(p) => p,
+            None => continue,
+        };
 
-    Ok(PackStatusResult {
-        message: Some(message),
-        dry_run: ctx.dry_run,
-        packs: display_packs,
-        warnings: Vec::new(),
-        conflicts: Vec::new(),
-        ignored_packs: Vec::new(),
-    })
+        for op_result in &pr.operations {
+            if op_result.success {
+                continue;
+            }
+            let handler = op_result.operation.handler().to_string();
+            display_pack.files.push(DisplayFile {
+                name: String::new(),
+                symbol: handler_symbol(&handler).into(),
+                description: String::new(),
+                status: "error".into(),
+                status_label: op_result.message.clone(),
+                handler,
+            });
+        }
+
+        if let Some(err) = &pr.error {
+            display_pack.files.push(DisplayFile {
+                name: String::new(),
+                symbol: "×".into(),
+                description: String::new(),
+                status: "error".into(),
+                status_label: err.clone(),
+                handler: String::new(),
+            });
+        }
+    }
+    packs
 }
 
 /// Extract handler name, display name, and optional user target from an operation.
