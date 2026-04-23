@@ -37,7 +37,7 @@ if ! command -v gh >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "Triggering release workflow for v$new_version…"
+echo "Triggering release workflow for v${new_version}..."
 gh workflow run release.yml -f version="$new_version"
 
 echo
