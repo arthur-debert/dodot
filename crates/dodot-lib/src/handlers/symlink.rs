@@ -68,7 +68,7 @@ impl Handler for SymlinkHandler {
             if m.is_dir {
                 intents.extend(dir_intents(m, config, paths, fs)?);
             } else {
-                let user_path = resolve_target(&m.pack, &rel_str, false, config, paths);
+                let user_path = resolve_target(&m.pack, &rel_str, config, paths);
                 intents.push(HandlerIntent::Link {
                     pack: m.pack.clone(),
                     handler: HANDLER_SYMLINK.into(),
@@ -138,7 +138,7 @@ fn dir_intents(
     let is_escape_prefix_dir = matches!(rel_str.as_ref(), "_home" | "_xdg");
 
     if !has_override && !is_escape_prefix_dir {
-        let user_path = resolve_target(&m.pack, &rel_str, true, config, paths);
+        let user_path = resolve_target(&m.pack, &rel_str, config, paths);
         return Ok(vec![HandlerIntent::Link {
             pack: m.pack.clone(),
             handler: HANDLER_SYMLINK.into(),
@@ -184,7 +184,7 @@ fn collect_per_file_intents(
         if is_protected(&rel_str, &config.protected_paths) {
             continue;
         }
-        let user_path = resolve_target(&m.pack, &rel_str, false, config, paths);
+        let user_path = resolve_target(&m.pack, &rel_str, config, paths);
         out.push(HandlerIntent::Link {
             pack: m.pack.clone(),
             handler: HANDLER_SYMLINK.into(),
@@ -215,8 +215,7 @@ fn strip_home_prefix(rel_path: &str) -> Option<String> {
 ///
 /// `pack` is the pack name; it namespaces the default XDG target so
 /// `pack vim/vimrc` deploys under `$XDG_CONFIG_HOME/vim/vimrc` rather
-/// than `$XDG_CONFIG_HOME/vimrc`. `is_dir` is true when the match is a
-/// top-level directory linked wholesale.
+/// than `$XDG_CONFIG_HOME/vimrc`.
 ///
 /// Priority (highest first):
 /// 0. Custom target override from config (`[symlink.targets]`)
@@ -228,7 +227,6 @@ fn strip_home_prefix(rel_path: &str) -> Option<String> {
 pub(crate) fn resolve_target(
     pack: &str,
     rel_path: &str,
-    _is_dir: bool,
     config: &HandlerConfig,
     paths: &dyn Pather,
 ) -> PathBuf {
@@ -385,7 +383,7 @@ mod tests {
         // Under #48: top-level files in a pack default to
         // $XDG_CONFIG_HOME/<pack>/<file>, not $HOME/.<file>.
         let config = HandlerConfig::default();
-        let target = resolve_target("vim", "vimrc", false, &config, &test_pather());
+        let target = resolve_target("vim", "vimrc", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/vim/vimrc"));
     }
 
@@ -394,14 +392,14 @@ mod tests {
         let config = HandlerConfig::default();
         // Top-level dir wholesale-linked: `nvim/lua` directory →
         // ~/.config/nvim/lua (the dir itself, not its files).
-        let target = resolve_target("nvim", "lua", true, &config, &test_pather());
+        let target = resolve_target("nvim", "lua", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/lua"));
     }
 
     #[test]
     fn top_level_dir_wholesale_goes_to_pack_xdg_dir() {
         let config = HandlerConfig::default();
-        let target = resolve_target("warp", "themes", true, &config, &test_pather());
+        let target = resolve_target("warp", "themes", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/warp/themes"));
     }
 
@@ -411,14 +409,14 @@ mod tests {
     #[test]
     fn top_level_file_named_config_goes_under_pack_no_xdg_collision() {
         let config = HandlerConfig::default();
-        let target = resolve_target("ghostty", "config", false, &config, &test_pather());
+        let target = resolve_target("ghostty", "config", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/ghostty/config"));
     }
 
     #[test]
     fn nested_file_namespaced_under_pack() {
         let config = HandlerConfig::default();
-        let target = resolve_target("nvim", "lua/options.lua", false, &config, &test_pather());
+        let target = resolve_target("nvim", "lua/options.lua", &config, &test_pather());
         assert_eq!(
             target,
             PathBuf::from("/home/alice/.config/nvim/lua/options.lua")
@@ -429,25 +427,19 @@ mod tests {
 
     #[test]
     fn force_home_top_level_file() {
-        let target = resolve_target("shell", "bashrc", false, &default_config(), &test_pather());
+        let target = resolve_target("shell", "bashrc", &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
     }
 
     #[test]
     fn force_home_subdirectory_file() {
-        let target = resolve_target(
-            "net",
-            "ssh/config",
-            false,
-            &default_config(),
-            &test_pather(),
-        );
+        let target = resolve_target("net", "ssh/config", &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.ssh/config"));
     }
 
     #[test]
     fn force_home_top_level_dir_wholesale() {
-        let target = resolve_target("net", "ssh", true, &default_config(), &test_pather());
+        let target = resolve_target("net", "ssh", &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.ssh"));
     }
 
@@ -459,7 +451,7 @@ mod tests {
         // name. Useful when a single pack groups files that belong in
         // $HOME without being in force_home.
         let config = HandlerConfig::default();
-        let target = resolve_target("misc", "_home/vim/vimrc", false, &config, &test_pather());
+        let target = resolve_target("misc", "_home/vim/vimrc", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vim/vimrc"));
     }
 
@@ -473,7 +465,6 @@ mod tests {
         let target = resolve_target(
             "term-config",
             "_xdg/ghostty/config",
-            false,
             &config,
             &test_pather(),
         );
@@ -521,14 +512,14 @@ mod tests {
         // home.X is the per-file opt-in for $HOME/.X placement, replacing
         // the older `dot.X` prefix in #48.
         let config = HandlerConfig::default();
-        let target = resolve_target("git", "home.gitconfig", false, &config, &test_pather());
+        let target = resolve_target("git", "home.gitconfig", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.gitconfig"));
     }
 
     #[test]
     fn home_prefix_works_even_when_pack_not_force_home() {
         let config = HandlerConfig::default();
-        let target = resolve_target("misc", "home.vimrc", false, &config, &test_pather());
+        let target = resolve_target("misc", "home.vimrc", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
     }
 
@@ -537,7 +528,7 @@ mod tests {
         // home. prefix only works for top-level files; nested
         // home.<x> files keep the literal name under the pack's XDG dir.
         let config = HandlerConfig::default();
-        let target = resolve_target("misc", "subdir/home.conf", false, &config, &test_pather());
+        let target = resolve_target("misc", "subdir/home.conf", &config, &test_pather());
         assert_eq!(
             target,
             PathBuf::from("/home/alice/.config/misc/subdir/home.conf")
@@ -562,7 +553,7 @@ mod tests {
             .targets
             .insert("misterious.conf".into(), "/var/etc/misterious.conf".into());
 
-        let target = resolve_target("pack", "misterious.conf", false, &config, &test_pather());
+        let target = resolve_target("pack", "misterious.conf", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/var/etc/misterious.conf"));
     }
 
@@ -574,7 +565,7 @@ mod tests {
             "my-documents/home-bound.conf".into(),
         );
 
-        let target = resolve_target("pack", "home-bound.conf", false, &config, &test_pather());
+        let target = resolve_target("pack", "home-bound.conf", &config, &test_pather());
         assert_eq!(
             target,
             PathBuf::from("/home/alice/.config/my-documents/home-bound.conf")
@@ -589,14 +580,14 @@ mod tests {
             .targets
             .insert("bashrc".into(), "/custom/bashrc".into());
 
-        let target = resolve_target("shell", "bashrc", false, &config, &test_pather());
+        let target = resolve_target("shell", "bashrc", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/custom/bashrc"));
     }
 
     #[test]
     fn no_custom_target_falls_through_to_pack_namespaced_default() {
         let config = HandlerConfig::default();
-        let target = resolve_target("vim", "vimrc", false, &config, &test_pather());
+        let target = resolve_target("vim", "vimrc", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/vim/vimrc"));
     }
 
