@@ -825,6 +825,8 @@ fn adopt_nested_source_refused() {
 
 #[test]
 fn adopt_already_adopted_source_is_skipped() {
+    // Direct symlink to pack source — adopt skips with a #44 message
+    // pointing the user at `dodot up` to upgrade to the full chain.
     let env = TempEnvironment::builder()
         .pack("vim")
         .file("vimrc", "content")
@@ -847,17 +849,157 @@ fn adopt_already_adopted_source_is_skipped() {
     )
     .unwrap();
 
+    let warning = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("skipped"))
+        .unwrap_or_else(|| panic!("expected a skipped warning, got: {:?}", result.warnings));
     assert!(
-        result
-            .warnings
-            .iter()
-            .any(|w| w.contains("already managed")),
-        "expected already-managed warning, got: {:?}",
-        result.warnings
+        warning.contains("direct symlink to pack source"),
+        "expected #44 'direct symlink' wording, got: {warning}"
+    );
+    assert!(
+        warning.contains("dodot up vim"),
+        "warning should point user at `dodot up vim`, got: {warning}"
     );
     // Source still a symlink, pack file untouched.
     assert!(env.fs.is_symlink(&source));
     env.assert_regular_file(&pack_file, "content");
+}
+
+/// Regression for #44: when the source is fully managed (the user
+/// symlink points at dodot's data_dir), adopt skips with the original
+/// "already managed by dodot" wording — no upgrade needed.
+#[test]
+fn adopt_fully_managed_source_keeps_original_skip_message() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "content")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    // First, deploy normally so user_path goes through the dodot chain.
+    commands::up::up(Some(&["vim".into()]), &ctx).unwrap();
+
+    let source = env.home.join(".vimrc");
+    assert!(env.fs.is_symlink(&source));
+
+    let result = commands::adopt::adopt(
+        "vim",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let warning = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("skipped"))
+        .unwrap_or_else(|| panic!("expected a skipped warning, got: {:?}", result.warnings));
+    assert!(
+        warning.contains("already managed by dodot"),
+        "fully-managed case should keep original wording, got: {warning}"
+    );
+    assert!(
+        !warning.contains("direct symlink"),
+        "fully-managed case should NOT use the #44 'direct symlink' wording, got: {warning}"
+    );
+}
+
+/// Regression for #44: `dodot up` auto-replaces a pre-existing regular
+/// file whose content is byte-identical to the pack source — no
+/// `--force` needed, no conflict reported.
+#[test]
+fn up_auto_replaces_content_equivalent_pre_existing_file() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        // Same content as the pack source.
+        .home_file(".gitconfig", "[user]\n  name = test")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Packs deployed."),
+        "no errors expected for content-equivalent file, got: {:?}",
+        result.message
+    );
+    // ~/.gitconfig is now a symlink (the dodot chain), not a regular file.
+    let user_path = env.home.join(".gitconfig");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "user file should now be a symlink"
+    );
+    // Content reaching the user is unchanged.
+    assert_eq!(
+        env.fs.read_to_string(&user_path).unwrap(),
+        "[user]\n  name = test"
+    );
+    // And status agrees: deployed, not a conflict.
+    let status = commands::status::status(None, &ctx).unwrap();
+    let file = &status.packs[0].files[0];
+    assert_eq!(file.status, "deployed");
+}
+
+/// Regression for #44: `dodot up` still refuses (without `--force`) when
+/// the pre-existing file's content differs from the source. The
+/// auto-replace only kicks in for content-equivalent files.
+#[test]
+fn up_still_refuses_content_different_pre_existing_file() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = new")
+        .done()
+        .home_file(".gitconfig", "[user]\n  name = old")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Packs deployed with errors."),
+        "different content should still conflict, got: {:?}",
+        result.message
+    );
+    // Original content preserved.
+    env.assert_file_contents(&env.home.join(".gitconfig"), "[user]\n  name = old");
+}
+
+/// Regression for #44: `status` does NOT flag a content-equivalent
+/// pre-existing file as PendingConflict (since `up` will handle it
+/// without `--force`). Stays plain `pending`, no footnote.
+#[test]
+fn status_does_not_flag_content_equivalent_file_as_conflict() {
+    let env = TempEnvironment::builder()
+        .pack("git")
+        .file("gitconfig", "[user]\n  name = test")
+        .done()
+        .home_file(".gitconfig", "[user]\n  name = test")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let status = commands::status::status(None, &ctx).unwrap();
+    let file = &status.packs[0].files[0];
+
+    assert_eq!(
+        file.status, "pending",
+        "content-equivalent file should be plain pending (auto-replaceable), got: {}",
+        file.status
+    );
+    assert!(
+        status.packs[0].footnotes.is_empty(),
+        "no footnote for auto-replaceable case, got: {:?}",
+        status.packs[0].footnotes
+    );
 }
 
 #[test]

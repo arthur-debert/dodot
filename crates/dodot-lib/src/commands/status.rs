@@ -151,8 +151,15 @@ fn verify_symlink(
         // left alone, wrong/dangling ones are removed and recreated). A
         // dangling symlink left over from `dodot down` is the canonical
         // case — flagging it as a conflict would be a false positive.
+        //
+        // #44: a non-symlink file whose content is byte-identical to the
+        // source is also NOT a conflict — the executor will auto-replace
+        // it without `--force`. Stay plain `pending` for that case.
         let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
         if !ctx.fs.is_symlink(&user_target) && ctx.fs.exists(&user_target) {
+            if crate::equivalence::is_equivalent(&user_target, source, ctx.fs.as_ref()) {
+                return Health::Pending;
+            }
             let reason =
                 describe_blocking_target(&user_target, ctx.fs.as_ref(), ctx.paths.home_dir());
             return Health::PendingConflict { reason };
@@ -190,8 +197,14 @@ fn verify_symlink(
             Err(_) => Health::Broken("broken: cannot read user link".into()),
         }
     } else if ctx.fs.exists(&user_target) {
-        // Regular file at target — conflict
-        Health::Broken("conflict: non-symlink file at target path".into())
+        // Non-symlink file at target. If its content is byte-identical to
+        // the source, `up` will auto-replace it (#44) — surface as Stale
+        // (re-deploy fixes), not Broken. Otherwise it's a real conflict.
+        if crate::equivalence::is_equivalent(&user_target, source, ctx.fs.as_ref()) {
+            Health::Stale("stale: user link missing, re-deploy to fix".into())
+        } else {
+            Health::Broken("conflict: non-symlink file at target path".into())
+        }
     } else {
         // No user link — data link exists but user link missing.
         // This happens when config changed (drift) or deployment was interrupted.
