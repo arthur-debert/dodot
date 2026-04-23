@@ -542,6 +542,11 @@ impl<'a> Executor<'a> {
     /// `(ancestor, resolved_target)`. Writing through such an ancestor
     /// lands back inside the store and is always wrong — either it
     /// clobbers a pack source or builds a pack↔data-dir cycle.
+    ///
+    /// The resolved target is lexically normalized before the prefix
+    /// comparison: relative symlinks like `~/.config/warp -> ../dotfiles/warp`
+    /// produce a joined path with `..` segments that would not naively
+    /// `starts_with(dotfiles_root)`.
     fn ancestor_cycles_into_store(&self, user_path: &Path) -> Option<(PathBuf, PathBuf)> {
         let dotfiles_root = self.paths.dotfiles_root();
         let data_dir = self.paths.data_dir();
@@ -549,7 +554,9 @@ impl<'a> Executor<'a> {
         loop {
             if self.fs.is_symlink(current) {
                 if let Ok(raw_target) = self.fs.readlink(current) {
-                    let resolved = crate::equivalence::resolve_symlink_target(current, &raw_target);
+                    let resolved = crate::equivalence::normalize_path(
+                        &crate::equivalence::resolve_symlink_target(current, &raw_target),
+                    );
                     if resolved.starts_with(dotfiles_root) || resolved.starts_with(data_dir) {
                         return Some((current.to_path_buf(), resolved));
                     }
@@ -1577,6 +1584,62 @@ mod tests {
             .unwrap();
 
         assert!(!results[0].success, "force must not bypass cycle check");
+        env.assert_file_contents(&source, "keep me");
+    }
+
+    /// Relative-target ancestor symlinks must also be detected. A link
+    /// like `~/.config/warp -> ../../h/dotfiles/warp` joins lexically to
+    /// a path containing `..` segments that wouldn't naively pass
+    /// `starts_with(dotfiles_root)` — we normalize first.
+    #[test]
+    fn link_refuses_relative_ancestor_symlink_into_pack() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+
+        // config_home is home/.config, dotfiles_root is home/dotfiles,
+        // so the relative hop is `../dotfiles/warp` — exactly the shape
+        // Copilot flagged: contains `..`, joins to a path that would
+        // NOT naively `starts_with(dotfiles_root)` without normalization.
+        let rel_target = Path::new("../dotfiles/warp");
+        env.fs.symlink(rel_target, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path,
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            !results[0].success,
+            "relative ancestor symlink must still be caught: {:?}",
+            results
+        );
+        assert!(results[0].message.contains("cycle"));
+        env.assert_no_handler_state("warp", "symlink");
         env.assert_file_contents(&source, "keep me");
     }
 }
