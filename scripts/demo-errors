@@ -3,14 +3,15 @@
 # path in dodot, then run a sequence of commands against it so you can
 # eyeball the rendered output.
 #
-# Scenarios exercised:
-#   1. Healthy pack                     → deployed
-#   2. Pending with conflict            → pending, note attached
-#   3. Stale deployment                 → user link removed after up
-#   4. Cross-pack target collision      → trailing conflicts section
-#   5. Failing install.sh               → error row, note attached
-#   6. Ignored pack                     → listed under Ignored Packs
-#   7. Adopt with non-dotted file       → surfaces an error from the CLI
+# Conditions set up in the sandbox (not 1:1 with the numbered command
+# runs below — those are a separate sequence):
+#   - Healthy pack                     → deploys clean
+#   - Pending with conflict            → row stays pending, note attached
+#   - Stale deployment                 → user link removed after up
+#   - Cross-pack target collision      → surfaces via the trailing conflicts section
+#   - Failing install.sh               → row flips to error + note
+#   - Ignored pack                     → listed under Ignored Packs
+#   - Adopt on a non-dotted file       → surfaces an error from the CLI
 #
 # Usage:
 #   scripts/demo-errors              # run the demo, clean up at the end
