@@ -1,114 +1,46 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Cut a release: bump versions, roll the changelog, commit, tag.
+# Cut a release. Everything runs in CI — this just triggers it.
 #
-# Usage:  scripts/release <new-version>      e.g. scripts/release 0.14.0
+# Usage:  scripts/release <new-version>      e.g. scripts/release 0.18.0
 #
-# What it does (all local — does not push):
-#   1. Verifies the working tree is clean and we're on main
-#   2. Bumps version in crates/dodot-cli/Cargo.toml, crates/dodot-lib/Cargo.toml,
-#      and the dodot-lib path-dep in dodot-cli's Cargo.toml
-#   3. Refreshes Cargo.lock
-#   4. Rolls CHANGELOG_UNRELEASED.md into CHANGELOG.md under ## [<version>] - <date>
-#      and resets CHANGELOG_UNRELEASED.md to its template form
-#   5. Creates "chore: Release vX.Y.Z" commit
-#   6. Creates annotated tag vX.Y.Z
+# What CI does (all on GitHub):
+#   1. Bumps version in Cargo.toml files + refreshes Cargo.lock
+#   2. Rolls CHANGELOG_UNRELEASED.md into CHANGELOG.md
+#   3. Commits "chore: Release vX.Y.Z" on main + creates+pushes tag
+#   4. Creates GitHub Release with notes from CHANGELOG
+#   5. Builds binaries (macOS arm64, linux x64+arm64), signs+notarizes macOS
+#   6. Publishes dodot-lib and dodot to crates.io
 #
-# After it finishes:
-#   git push && git push origin vX.Y.Z       (workflow does the rest)
+# Preconditions (checked by CI before mutating anything):
+#   - version is MAJOR.MINOR.PATCH and does not already exist as a tag
+#   - Cargo.toml version differs from the requested version
+#   - CHANGELOG_UNRELEASED.md has entries
+#
+# After the script returns, `gh run watch` follows the workflow.
 
 if [ $# -ne 1 ]; then
-    echo "usage: $(basename "$0") <new-version>  (e.g. 0.14.0)" >&2
+    echo "usage: $(basename "$0") <new-version>  (e.g. 0.18.0)" >&2
     exit 2
 fi
 
 new_version="$1"
-repo_root="$(git rev-parse --show-toplevel)"
-cd "$repo_root"
 
 if ! [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     echo "version must be MAJOR.MINOR.PATCH (got: $new_version)" >&2
     exit 2
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
-    echo "working tree is dirty — commit or stash first" >&2
-    git status --short
+if ! command -v gh >/dev/null 2>&1; then
+    echo "gh CLI not found — install from https://cli.github.com/" >&2
     exit 1
 fi
 
-branch="$(git rev-parse --abbrev-ref HEAD)"
-if [ "$branch" != "main" ]; then
-    echo "not on main (currently on: $branch) — release from main" >&2
-    exit 1
-fi
-
-cli_toml="crates/dodot-cli/Cargo.toml"
-lib_toml="crates/dodot-lib/Cargo.toml"
-old_version=$(grep -E '^version = ' "$cli_toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
-
-if [ "$old_version" = "$new_version" ]; then
-    echo "version is already $new_version — nothing to bump" >&2
-    exit 1
-fi
-
-echo "Releasing $old_version → $new_version"
-
-# 1. Bump versions.
-sed -i.bak -E "s/^version = \"$old_version\"/version = \"$new_version\"/" "$cli_toml" "$lib_toml"
-sed -i.bak -E "s/^dodot-lib = \\{ version = \"$old_version\"/dodot-lib = { version = \"$new_version\"/" "$cli_toml"
-rm -f "$cli_toml.bak" "$lib_toml.bak"
-
-# 2. Refresh Cargo.lock without rebuilding the world.
-cargo update -p dodot -p dodot-lib --offline >/dev/null 2>&1 || cargo update -p dodot -p dodot-lib
-
-# 3. Roll changelog.
-unreleased="CHANGELOG_UNRELEASED.md"
-changelog="CHANGELOG.md"
-today=$(date -u +%Y-%m-%d)
-
-# Body of unreleased = everything after the documentation header (line starting with "### ").
-body=$(awk '/^### /{found=1} found{print}' "$unreleased")
-if [ -z "$body" ]; then
-    echo "CHANGELOG_UNRELEASED.md has no entries — nothing to roll" >&2
-    exit 1
-fi
-
-section_file=$(mktemp)
-trap 'rm -f "$section_file"' EXIT
-{
-    printf '## [%s] - %s\n\n' "$new_version" "$today"
-    printf '%s\n\n' "$body"
-} > "$section_file"
-
-# Insert new section just before the first existing version heading.
-awk -v section_file="$section_file" '
-    !inserted && /^## \[/ {
-        while ((getline line < section_file) > 0) print line
-        close(section_file)
-        inserted=1
-    }
-    { print }
-' "$changelog" > "$changelog.tmp"
-mv "$changelog.tmp" "$changelog"
-
-# Reset unreleased file to template.
-cat > "$unreleased" <<'EOF'
-# Unreleased Changes
-
-Add entries here as changes are made. On release, copy this content into
-CHANGELOG.md under a new version heading and clear this file.
-
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
-EOF
-
-# 4. Commit + tag.
-git add "$cli_toml" "$lib_toml" Cargo.lock "$changelog" "$unreleased"
-git commit -m "chore: Release v$new_version"
-git tag -a "v$new_version" -m "Release v$new_version"
+echo "Triggering release workflow for v$new_version…"
+gh workflow run release.yml -f version="$new_version"
 
 echo
-echo "Done. Created commit + tag v$new_version."
-echo "Push with:  git push && git push origin v$new_version"
+echo "Workflow queued. Follow with:"
+echo "  gh run watch"
+echo "  gh run list --workflow=release.yml --limit=1"
