@@ -87,17 +87,23 @@ impl Handler for SymlinkHandler {
         pack: &str,
         datastore: &dyn DataStore,
     ) -> Result<HandlerStatus> {
-        let filename = file.file_name().unwrap_or_default().to_string_lossy();
         let has_state = datastore.has_handler_state(pack, HANDLER_SYMLINK)?;
 
+        // The trait doesn't carry a `Pather`, so we can't compute the
+        // resolved deploy path here. Producing a hand-rolled path string
+        // would re-implement (and inevitably drift from) `resolve_target`
+        // — the very bug-bomb #48's centralization is meant to prevent.
+        // Use a path-free message in the style of `path` and `shell`
+        // handlers; callers that need the deploy path call
+        // `resolve_target` directly via the `status::status()` flow.
         Ok(HandlerStatus {
             file: file.to_string_lossy().into_owned(),
             handler: HANDLER_SYMLINK.into(),
             deployed: has_state,
             message: if has_state {
-                format!("linked to $HOME/.{filename}")
+                "symlink deployed".into()
             } else {
-                format!("will be linked to $HOME/.{filename}")
+                "symlink pending".into()
             },
         })
     }
