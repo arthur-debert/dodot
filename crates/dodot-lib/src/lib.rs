@@ -2,6 +2,7 @@ pub mod commands;
 pub mod config;
 pub mod conflicts;
 pub mod datastore;
+pub mod equivalence;
 pub mod error;
 pub mod execution;
 pub mod fs;

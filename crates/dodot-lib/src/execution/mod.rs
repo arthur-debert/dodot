@@ -106,13 +106,28 @@ impl<'a> Executor<'a> {
                 // Pre-check: does a non-symlink file exist at user_path?
                 // We check BEFORE creating the data link to avoid leaving
                 // dangling state when the user link would fail.
+                //
+                // #44: if the existing file's content is byte-identical to
+                // the source we'd deploy, treat it as safe to replace —
+                // the content reaching `user_path` doesn't change, only
+                // the storage representation does. No `--force` required.
                 if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
-                    if self.force {
-                        info!(
-                            pack,
-                            path = %user_path.display(),
-                            "force-removing existing file"
-                        );
+                    let content_equivalent =
+                        crate::equivalence::is_equivalent(user_path, source, self.fs);
+                    if self.force || content_equivalent {
+                        if content_equivalent {
+                            info!(
+                                pack,
+                                path = %user_path.display(),
+                                "auto-replacing content-equivalent file with dodot symlink"
+                            );
+                        } else {
+                            info!(
+                                pack,
+                                path = %user_path.display(),
+                                "force-removing existing file"
+                            );
+                        }
                         // Remove the existing path before creating the symlink
                         if self.fs.is_dir(user_path) {
                             self.fs.remove_dir_all(user_path)?;

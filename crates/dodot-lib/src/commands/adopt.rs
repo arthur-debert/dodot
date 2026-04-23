@@ -180,13 +180,35 @@ fn preflight(
 
         // Already-adopted detection: source is a symlink whose target lives
         // inside the dotfiles root or the data dir.
+        //
+        // #44: distinguish two sub-cases so the user knows what to do next:
+        //
+        // - `target.starts_with(&data_dir)` — fully managed via dodot's
+        //   chain (`user_path → data_link → source`). Nothing to do.
+        //
+        // - `target.starts_with(&dotfiles_root)` (and not data_dir) — the
+        //   source is in a pack but the user's symlink points *directly*
+        //   at it, missing dodot's data-link layer. `dodot up <pack>` will
+        //   upgrade this to the full chain transparently — point users at
+        //   that command instead of leaving them confused about why
+        //   status still shows "pending".
         if fs.is_symlink(&abs) {
             if let Ok(target) = fs.readlink(&abs) {
-                if target.starts_with(&dotfiles_root) || target.starts_with(&data_dir) {
+                if target.starts_with(&data_dir) {
                     skipped.push(format!(
                         "skipped: {} is already managed by dodot (-> {})",
                         abs.display(),
                         target.display()
+                    ));
+                    continue;
+                }
+                if target.starts_with(&dotfiles_root) {
+                    skipped.push(format!(
+                        "skipped: {} is a direct symlink to pack source (-> {}); \
+                         run `dodot up {}` to upgrade it to dodot's full chain",
+                        abs.display(),
+                        target.display(),
+                        pack_name,
                     ));
                     continue;
                 }
