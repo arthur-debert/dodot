@@ -3,6 +3,7 @@
 {% endif %}{% if dry_run %}[dry-run]  (dry run — no changes made)[/dry-run]
 {% endif %}{% for pack in packs %}[pack-name]{{ pack.name }}[/pack-name]
 {% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]
+{% endfor %}{% for note in pack.footnotes %}  [dim]({{ loop.index }}) {{ note }}[/dim]
 {% endfor %}
 {% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
 {% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]

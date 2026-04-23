@@ -194,6 +194,7 @@ fn render_intents(pack_results: &[PackResult], home: &std::path::Path) -> Vec<Di
             DisplayPack {
                 name: pr.pack_name.clone(),
                 files,
+                footnotes: Vec::new(),
             }
         })
         .collect()

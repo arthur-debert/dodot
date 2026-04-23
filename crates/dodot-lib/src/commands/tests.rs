@@ -437,15 +437,37 @@ fn up_reports_conflict_when_file_exists() {
     // Original file should be untouched
     env.assert_file_contents(&env.home.join(".gitconfig"), "[user]\n  name = old");
 
-    // Status should NOT show deployed (no dangling data link)
+    // Status should NOT show deployed. The conflicted file should surface
+    // as `warning` (PendingConflict) with a footnote pointing at the
+    // pre-existing user file — see #43.
     let status = commands::status::status(None, &ctx).unwrap();
     for file in &status.packs[0].files {
-        assert_eq!(
-            file.status, "pending",
-            "conflicted file {} should be pending, not deployed",
-            file.name
+        assert!(
+            matches!(file.status.as_str(), "pending" | "warning"),
+            "conflicted file {} should be pending or warning, got {}",
+            file.name,
+            file.status
         );
     }
+    let conflicted = status.packs[0]
+        .files
+        .iter()
+        .find(|f| f.status == "warning")
+        .expect("the conflicted file should surface as warning (PendingConflict)");
+    assert!(
+        conflicted.status_label.starts_with("pending ("),
+        "warning label should keep 'pending' and add footnote ref, got: {}",
+        conflicted.status_label
+    );
+    assert!(
+        !status.packs[0].footnotes.is_empty(),
+        "pack should have a footnote describing the pre-existing file"
+    );
+    assert!(
+        status.packs[0].footnotes[0].contains(".gitconfig"),
+        "footnote should mention the conflicting path, got: {}",
+        status.packs[0].footnotes[0]
+    );
 }
 
 #[test]
@@ -493,13 +515,17 @@ fn down_removes_deployed_state() {
     let down_result = commands::down::down(None, &ctx).unwrap();
     assert!(down_result.message.is_some());
 
-    // All should be pending again
+    // After down, all files should be plain pending. The user-side
+    // symlinks left dangling by `down` are NOT conflicts — the executor's
+    // create_user_link gracefully replaces them on the next `up`. (#43
+    // refines `PendingConflict` to only fire when the executor would
+    // actually refuse: non-symlink + exists.)
     let status = commands::status::status(None, &ctx).unwrap();
     for file in &status.packs[0].files {
         assert_eq!(
             file.status, "pending",
-            "file {} should be pending after down",
-            file.name
+            "file {} should be pending after down (dangling symlinks are not conflicts), got {}",
+            file.name, file.status
         );
     }
 }
@@ -1391,11 +1417,17 @@ fn full_lifecycle_up_status_down_status() {
     // 4. Down — remove
     commands::down::down(None, &ctx).unwrap();
 
-    // 5. Status after down — pending again
+    // 5. Status after down — pending again. Dangling user-side symlinks
+    // left by `down` are not conflicts (executor handles them on
+    // re-deploy), so they stay plain pending.
     let s3 = commands::status::status(None, &ctx).unwrap();
     for pack in &s3.packs {
         for file in &pack.files {
-            assert_eq!(file.status, "pending");
+            assert_eq!(
+                file.status, "pending",
+                "{} should be pending after down, got {}",
+                file.name, file.status
+            );
         }
     }
 
@@ -1409,6 +1441,132 @@ fn full_lifecycle_up_status_down_status() {
         .filter(|f| f.status == "deployed")
         .count();
     assert_eq!(total_deployed, deployed_again, "idempotent re-deploy");
+}
+
+/// Regression for #43: status must distinguish "pending — clear to
+/// deploy" from "pending — would conflict with a pre-existing file".
+/// Both render under the `pending` *label*, but the conflict case gets
+/// a `warning` status (so themes can color it differently) plus a
+/// footnote explaining what's at the target path.
+#[test]
+fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
+    let env = TempEnvironment::builder()
+        .pack("ghostty")
+        .file("ghostrc", "theme=dark")
+        .done()
+        .home_file(".ghostrc", "theme=light")
+        .pack("vim")
+        .file("vimrc", "set nocompat")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let ghostty = result
+        .packs
+        .iter()
+        .find(|p| p.name == "ghostty")
+        .expect("ghostty pack should appear");
+    let vim = result
+        .packs
+        .iter()
+        .find(|p| p.name == "vim")
+        .expect("vim pack should appear");
+
+    let ghostty_file = &ghostty.files[0];
+    assert_eq!(
+        ghostty_file.status, "warning",
+        "ghostty/ghostrc collides with ~/.ghostrc — should surface as warning"
+    );
+    assert!(
+        ghostty_file.status_label.starts_with("pending ("),
+        "label should keep 'pending' and add a footnote ref, got: {}",
+        ghostty_file.status_label
+    );
+    assert_eq!(
+        ghostty.footnotes.len(),
+        1,
+        "ghostty should have exactly one footnote, got: {:?}",
+        ghostty.footnotes
+    );
+    assert!(
+        ghostty.footnotes[0].contains(".ghostrc"),
+        "footnote should mention the conflicting path, got: {}",
+        ghostty.footnotes[0]
+    );
+    assert!(
+        ghostty.footnotes[0].contains("existing file"),
+        "footnote should classify the target (existing file), got: {}",
+        ghostty.footnotes[0]
+    );
+
+    // vim has no pre-existing ~/.vimrc — should be plain pending, no footnote.
+    let vim_file = &vim.files[0];
+    assert_eq!(
+        vim_file.status, "pending",
+        "vim/vimrc has no conflict — should be plain pending"
+    );
+    assert_eq!(vim_file.status_label, "pending");
+    assert!(
+        vim.footnotes.is_empty(),
+        "vim should have no footnotes, got: {:?}",
+        vim.footnotes
+    );
+}
+
+/// Negative regression for #43: pre-existing symlinks at the user-target
+/// path are NOT conflicts. The executor's `create_user_link` gracefully
+/// replaces them (correct ones are no-ops, wrong/dangling ones are
+/// removed and recreated), so flagging them would be a false positive.
+/// Issue #44 may add an informational note for the equivalent-symlink
+/// case, but that's separate from the conflict detection #43 introduces.
+#[test]
+fn status_does_not_flag_pre_existing_symlinks_as_conflict() {
+    let env = TempEnvironment::builder()
+        .pack("kitty")
+        .file("kittyrc", "font_size 14")
+        .done()
+        .pack("ghostty")
+        .file("ghostrc", "x")
+        .done()
+        .build();
+
+    // Equivalent symlink: ~/.kittyrc already points at dodot's source.
+    let source = env.dotfiles_root.join("kitty/kittyrc");
+    let kitty_target = env.home.join(".kittyrc");
+    env.fs.symlink(&source, &kitty_target).unwrap();
+
+    // Non-equivalent symlink: ~/.ghostrc points somewhere else entirely.
+    let ghostty_target = env.home.join(".ghostrc");
+    env.fs
+        .symlink(std::path::Path::new("/tmp/elsewhere"), &ghostty_target)
+        .unwrap();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let kitty = result.packs.iter().find(|p| p.name == "kitty").unwrap();
+    assert_eq!(
+        kitty.files[0].status, "pending",
+        "equivalent symlink should be plain pending, not a conflict (executor handles it)"
+    );
+    assert!(
+        kitty.footnotes.is_empty(),
+        "no footnote for non-conflict, got: {:?}",
+        kitty.footnotes
+    );
+
+    let ghostty = result.packs.iter().find(|p| p.name == "ghostty").unwrap();
+    assert_eq!(
+        ghostty.files[0].status, "pending",
+        "non-equivalent symlink should also be plain pending — executor will replace it"
+    );
+    assert!(
+        ghostty.footnotes.is_empty(),
+        "no footnote for non-conflict, got: {:?}",
+        ghostty.footnotes
+    );
 }
 
 // ── status: chain verification ────────────────────────────
