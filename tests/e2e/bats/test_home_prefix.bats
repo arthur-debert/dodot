@@ -71,19 +71,23 @@ teardown() {
     # nested files are visible through the link. The home. prefix is a
     # top-level-only convention and must NOT be stripped for files
     # living inside a linked directory.
+    #
+    # Post-#48: top-level dirs deploy under the pack's XDG namespace
+    # (~/.config/<pack>/<dir>), so the subdir path is
+    # ~/.config/app/subdir/, not ~/.config/subdir/.
     create_pack_file "app" "subdir/home.conf" "config"
 
     run dodot status
     [ "$status" -eq 0 ]
     # Status shows the wholesale subdir entry, not the nested file.
     assert_output_contains "subdir"
-    assert_output_contains "~/.config/subdir"
+    assert_output_contains "~/.config/app/subdir"
 
     # After deploy, the nested file is reachable through the dir symlink,
     # and its name retains the literal `home.` prefix (no stripping).
     dodot up
-    assert_exists "$HOME/.config/subdir/home.conf"
-    assert_not_exists "$HOME/.config/subdir/.conf"
+    assert_exists "$HOME/.config/app/subdir/home.conf"
+    assert_not_exists "$HOME/.config/app/subdir/.conf"
 }
 
 # ── Full lifecycle ──────────────────────────────────────────────
@@ -123,13 +127,13 @@ teardown() {
 
     dodot up
 
-    # home.bashrc → ~/.bashrc
+    # home.bashrc → ~/.bashrc (per-file home opt-in)
     assert_exists "$HOME/.bashrc"
     assert_file_contains "$HOME/.bashrc" "bashrc"
 
-    # vimrc → ~/.vimrc (regular home-prefix behavior)
-    assert_exists "$HOME/.vimrc"
-    assert_file_contains "$HOME/.vimrc" "nocompatible"
+    # vimrc (no home. prefix) → ~/.config/mixed/vimrc (post-#48 default)
+    assert_exists "$HOME/.config/mixed/vimrc"
+    assert_file_contains "$HOME/.config/mixed/vimrc" "nocompatible"
 }
 
 @test "home. prefix works with double-link chain" {

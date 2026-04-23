@@ -219,7 +219,7 @@ eval_init_sh() {
 #   vim/      - symlink (vimrc), shell (aliases.sh)
 #   git/      - symlink (gitconfig)
 #   zsh/      - shell (aliases.sh, profile.sh, login.sh)
-#   nvim/     - symlink with subdirs (nvim/init.lua, nvim/lua/plugins.lua) → XDG
+#   nvim/     - symlink (init.lua + lua/plugins.lua) → ~/.config/nvim/...
 #   tools/    - install (install.sh), path (bin/devtool), Brewfile
 #   ssh/      - symlink with force_home (ssh/config) — tests force_home routing
 #   disabled/ - ignored pack
@@ -238,9 +238,10 @@ create_realistic_dotfiles() {
     instrumented_shell "zsh" "profile.sh" 'export ZSH_PROFILE_LOADED=1'
     instrumented_shell "zsh" "login.sh" 'export ZSH_LOGIN_LOADED=1'
 
-    # nvim: subdirectory files → XDG config
-    create_pack_file "nvim" "nvim/init.lua" '-- nvim config\nrequire("plugins")'
-    create_pack_file "nvim" "nvim/lua/plugins.lua" '-- plugin list\nreturn {}'
+    # nvim: top-level file + nested dir route under the pack's XDG dir
+    # (post-#48: pack name namespaces — no need for `nvim/nvim/` doubling).
+    create_pack_file "nvim" "init.lua" '-- nvim config\nrequire("plugins")'
+    create_pack_file "nvim" "lua/plugins.lua" '-- plugin list\nreturn {}'
 
     # tools: install + path + brew
     instrumented_install "tools"
