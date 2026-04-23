@@ -82,6 +82,11 @@ pub struct DisplayFile {
 pub struct DisplayPack {
     pub name: String,
     pub files: Vec<DisplayFile>,
+    /// Per-pack footnotes referenced by `(N)` markers in `status_label`.
+    /// Each entry is the body text only (no leading `(N)`); the renderer
+    /// pairs them with the marker number assigned at assembly time.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub footnotes: Vec<String>,
 }
 
 /// One claimant of a cross-pack conflict, formatted for display.

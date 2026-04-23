@@ -132,5 +132,6 @@ fn build_dry_run_display(
     Ok(DisplayPack {
         name: pack.name.clone(),
         files,
+        footnotes: Vec::new(),
     })
 }

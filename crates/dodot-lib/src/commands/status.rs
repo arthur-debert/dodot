@@ -27,6 +27,10 @@ use crate::Result;
 enum Health {
     /// Not deployed (no data link in datastore).
     Pending,
+    /// Not deployed AND a non-dodot file/symlink already occupies the
+    /// target path — `dodot up` would fail without `--force`. The reason
+    /// is rendered as a footnote so the right column stays compact.
+    PendingConflict { reason: String },
     /// Deployed and all links verified correct.
     Deployed,
     /// Deployed but the chain is broken.
@@ -41,6 +45,7 @@ impl Health {
     fn style(&self) -> &'static str {
         match self {
             Health::Pending => "pending",
+            Health::PendingConflict { .. } => "warning",
             Health::Deployed => "deployed",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
@@ -50,7 +55,7 @@ impl Health {
     /// Human-readable label for display.
     fn label(&self, handler: &str) -> String {
         match self {
-            Health::Pending => match handler {
+            Health::Pending | Health::PendingConflict { .. } => match handler {
                 "symlink" => "pending".into(),
                 "shell" => "not sourced".into(),
                 "path" => "not in PATH".into(),
@@ -69,6 +74,54 @@ impl Health {
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
         }
+    }
+
+    /// If this health represents a pending conflict, return the reason
+    /// (suitable for use as a footnote). `None` otherwise.
+    fn footnote_reason(&self) -> Option<&str> {
+        match self {
+            Health::PendingConflict { reason } => Some(reason.as_str()),
+            _ => None,
+        }
+    }
+}
+
+/// Classify what's currently at `user_target` to produce a short
+/// human-readable footnote describing why deployment would conflict.
+/// Returns `None` if the target is clear (no conflict).
+fn classify_target_state(
+    user_target: &std::path::Path,
+    source: &std::path::Path,
+    fs: &dyn crate::fs::Fs,
+    home: &std::path::Path,
+) -> Option<String> {
+    let display_target = if let Ok(rel) = user_target.strip_prefix(home) {
+        format!("~/{}", rel.display())
+    } else {
+        user_target.display().to_string()
+    };
+
+    if fs.is_symlink(user_target) {
+        let detail = match fs.readlink(user_target) {
+            Ok(target) if target == source => {
+                "symlink already points to dodot's source".to_string()
+            }
+            Ok(target) => format!("existing symlink → {}", target.display()),
+            Err(_) => "broken existing symlink".to_string(),
+        };
+        Some(format!(
+            "{display_target} ({detail}) — `dodot up` will refuse without `--force`"
+        ))
+    } else if fs.is_dir(user_target) {
+        Some(format!(
+            "{display_target} (existing directory) — `dodot up` will refuse without `--force`"
+        ))
+    } else if fs.exists(user_target) {
+        Some(format!(
+            "{display_target} (existing file) — `dodot up` will refuse without `--force`"
+        ))
+    } else {
+        None
     }
 }
 
@@ -98,6 +151,16 @@ fn verify_symlink(
     if !ctx.fs.is_symlink(&data_link) {
         if ctx.fs.exists(&data_link) {
             return Health::Broken("broken: data link exists but is not a symlink".into());
+        }
+        // No data link yet. Before declaring plain "pending", peek at the
+        // user-target path: if a non-dodot file/symlink already lives
+        // there, `dodot up` would fail — surface that as a conflict-aware
+        // pending so the user sees it before running up.
+        let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
+        if let Some(reason) =
+            classify_target_state(&user_target, source, ctx.fs.as_ref(), ctx.paths.home_dir())
+        {
+            return Health::PendingConflict { reason };
         }
         return Health::Pending;
     }
@@ -276,6 +339,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         }
 
         let mut files = Vec::new();
+        let mut footnotes: Vec<String> = Vec::new();
         for m in &matches {
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
@@ -322,12 +386,21 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 None
             };
 
+            let mut status_label = health.label(&m.handler);
+            // For PendingConflict, append the next per-pack footnote ID to
+            // the right-column label and stash the reason in the pack's
+            // footnotes vec.
+            if let Some(reason) = health.footnote_reason() {
+                let footnote_id = footnotes.len() + 1;
+                status_label = format!("{status_label} ({footnote_id})");
+                footnotes.push(reason.to_string());
+            }
             files.push(DisplayFile {
                 name: rel_str.clone(),
                 symbol: handler_symbol(&m.handler).into(),
                 description: handler_description(&m.handler, &rel_str, user_target.as_deref()),
                 status: health.style().into(),
-                status_label: health.label(&m.handler),
+                status_label,
                 handler: m.handler.clone(),
             });
         }
@@ -335,6 +408,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         display_packs.push(DisplayPack {
             name: pack.name.clone(),
             files,
+            footnotes,
         });
     }
 
