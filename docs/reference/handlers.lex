@@ -12,7 +12,7 @@ Handlers
 
         Creates a symlink from a deployed location (typically `~/` or `~/.config/`) back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
 
-        Path resolution is smart: top-level files go to `$HOME` with a dot prefix (`vimrc` → `~/.vimrc`); top-level directories go to `$XDG_CONFIG_HOME` (`nvim/` → `~/.config/nvim/`); a small list of exceptions force `$HOME` placement regardless of XDG (`ssh`, `bashrc`, `zshrc`, etc.). For the full path rules, see [./symlink-paths.lex].
+        Path resolution is smart: every pack-root entry — file or directory — defaults to `$XDG_CONFIG_HOME/<pack>/<name>` (so `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`). A small list of exceptions force `$HOME` placement regardless of XDG (`ssh`, `bashrc`, `zshrc`, etc.); the per-file `home.X` prefix and per-subtree `_home/` directory route opt-in single files or whole subtrees to `$HOME/.X`. For the full path rules, see [./symlink-paths.lex].
 
     1.2. shell
 

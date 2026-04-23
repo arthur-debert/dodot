@@ -11,7 +11,7 @@ teardown() {
 }
 
 @test "up reports error when pack config is malformed" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
     # Create invalid toml
     create_pack_config "vim" '[symlink]\ntargets = "not an array"'
 

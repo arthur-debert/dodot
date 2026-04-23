@@ -25,14 +25,15 @@ name = "Alice"'
     run dodot up
     [ "$status" -eq 0 ]
 
-    # The user-visible file has the `.tmpl` extension stripped and gets
-    # the dotfile prefix from the symlink handler: vimrc → ~/.vimrc.
-    [ -L "$HOME/.vimrc" ]
+    # The user-visible file has the `.tmpl` extension stripped; under
+    # the post-#48 default it deploys to ~/.config/<pack>/<name>:
+    # vimrc → ~/.config/app/vimrc.
+    [ -L "$HOME/.config/app/vimrc" ]
 
     # Rendered content: the variable is substituted and dodot.os is a
     # non-empty string (whatever the host OS is).
-    assert_file_contains "$HOME/.vimrc" "set user=Alice"
-    assert_file_contains "$HOME/.vimrc" "set os="
+    assert_file_contains "$HOME/.config/app/vimrc" "set user=Alice"
+    assert_file_contains "$HOME/.config/app/vimrc" "set os="
 
     # The rendered file lives in the datastore under packs/<pack>/preprocessed/.
     assert_exists "$XDG_DATA_HOME/dodot/packs/app/preprocessed/vimrc"
@@ -49,8 +50,8 @@ enabled = false'
 
     # With preprocessing disabled the `.tmpl` file is deployed verbatim,
     # extension preserved, no rendering.
-    [ -L "$HOME/.vimrc.tmpl" ]
-    assert_file_contains "$HOME/.vimrc.tmpl" '{{ name }}'
+    [ -L "$HOME/.config/app/vimrc.tmpl" ]
+    assert_file_contains "$HOME/.config/app/vimrc.tmpl" '{{ name }}'
 }
 
 @test "undefined template variable surfaces with source path" {
@@ -64,7 +65,7 @@ enabled = false'
     run dodot up
     assert_output_contains "bad.tmpl"
     assert_output_contains "template render failed"
-    [ ! -e "$HOME/.bad" ]
+    [ ! -e "$HOME/.config/app/bad" ]
 }
 
 @test "pack config overrides root config for template vars" {
@@ -77,8 +78,8 @@ name = "Pack"'
 
     run dodot up
     [ "$status" -eq 0 ]
-    # File is top-level, so it deploys as ~/.greeting (dotfile prefix).
-    assert_file_contains "$HOME/.greeting" "hello Pack"
+    # Top-level file deploys to ~/.config/<pack>/<name> (post-#48 default).
+    assert_file_contains "$HOME/.config/app/greeting" "hello Pack"
 }
 
 @test "template collision with regular file is rejected" {
@@ -91,7 +92,7 @@ name = "Pack"'
     assert_output_contains "config.toml"
     # Neither file should have been deployed — the pack short-circuits
     # on the collision.
-    [ ! -e "$HOME/.config.toml" ]
+    [ ! -e "$HOME/.config/app/config.toml" ]
 }
 
 @test "template with env var and default filter renders fallback" {
@@ -103,5 +104,5 @@ name = "Pack"'
 
     run dodot up
     [ "$status" -eq 0 ]
-    assert_file_contains "$HOME/.settings" "editor=nano"
+    assert_file_contains "$HOME/.config/app/settings" "editor=nano"
 }

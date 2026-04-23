@@ -11,8 +11,8 @@ teardown() {
 }
 
 @test "full lifecycle: up → status → down → status" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
-    create_pack_file "git" "gitconfig" "[user]\n  name = test"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
+    create_pack_file "git" "home.gitconfig" "[user]\n  name = test"
 
     # 1. Status before up — all pending
     run dodot status
@@ -47,7 +47,7 @@ teardown() {
 }
 
 @test "lifecycle with re-deploy is idempotent" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     dodot up
     run dodot status
@@ -89,8 +89,8 @@ teardown() {
 }
 
 @test "selective up then full down" {
-    create_pack_file "vim" "vimrc" "x"
-    create_pack_file "git" "gitconfig" "x"
+    create_pack_file "vim" "home.vimrc" "x"
+    create_pack_file "git" "home.gitconfig" "x"
 
     # Deploy only vim
     dodot up vim

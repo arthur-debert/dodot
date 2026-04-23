@@ -18,7 +18,7 @@ teardown() {
 # ── Pack ignore patterns ────────────────────────────────────────
 
 @test "pack ignore excludes matching files from processing" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
     create_pack_file "vim" "notes.bak" "scratch"
     create_pack_config "vim" '[pack]\nignore = ["*.bak"]'
 
@@ -90,7 +90,7 @@ teardown() {
 # ── Per-pack config overrides ──────────────────────────────────
 
 @test "per-pack config overrides root config" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
     create_pack_file "vim" "cache.tmp" "temporary"
 
     # Root config has no ignores

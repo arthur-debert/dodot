@@ -25,32 +25,36 @@ dodot: Up and Running in 5 Minutes
 
     Pack structure and status:
 
-        git/
-        +-- Brewfile    -> includes git, gh and lazygit installs
-        +-- alias.sh    -> common aliases for git (e.g. gco: git checkout)
-        +-- bin/        -> custom git-related scripts
-        +-- gitconfig   -> symlinked to ~/.gitconfig
+        nvim/
+        +-- Brewfile    -> includes neovim, ripgrep, fd installs
+        +-- aliases.sh  -> common nvim aliases (e.g. vi=nvim)
+        +-- bin/        -> custom helper scripts
+        +-- init.lua    -> symlinked to ~/.config/nvim/init.lua
+        +-- lua/        -> symlinked wholesale to ~/.config/nvim/lua
 
         $ cd ~/dotfiles
-        $ dodot status git
+        $ dodot status nvim
 
-        git
-            alias.sh    ⚙  source by shell     pending
-            bin         +  add to PATH         pending
-            gitconfig   ➞  ~/.gitconfig        pending
-            Brewfile    ⚙  brew install        pending
+        nvim
+            aliases.sh  ⚙  source by shell         pending
+            bin         +  add to PATH             pending
+            init.lua    ➞  ~/.config/nvim/init.lua pending
+            lua         ➞  ~/.config/nvim/lua      pending
+            Brewfile    ⚙  brew install            pending
 
         Legend: ⚙ shell/brew config, + PATH addition, ➞ symlink
         Status: pending (ready to deploy), deployed (active)
 
     :: shell ::
 
+    Notice how every symlinked pack-root entry defaults to `~/.config/nvim/` — the pack name namespaces symlinked config under XDG by default, matching how nvim itself reads its configuration. No need to write `nvim/nvim/init.lua` to land at the right place for those symlinked entries; dodot does the namespacing. (Non-symlink handlers — Brewfile, shell, path — work on their own conventions and don't deploy under that directory.)
+
     `dodot status` shows both what dodot has done and what it _will_ do on the next `up`. This is your chance to sanity-check that the conventions dodot detected match what you expected. If they don't, rename the files or override the mapping in `.dodot.toml`.
 
     Customizing and deploying:
 
-        $ dodot config gen -o git/.dodot.toml
-        $ cat git/.dodot.toml
+        $ dodot config gen -o nvim/.dodot.toml
+        $ cat nvim/.dodot.toml
         [mappings]
         # path = "bin"
         # install = "install.sh"
@@ -59,21 +63,22 @@ dodot: Up and Running in 5 Minutes
         # skip = []
 
         # Preview what will happen without making changes
-        $ dodot up git --dry-run
+        $ dodot up nvim --dry-run
 
-        $ dodot up git
-        ... homebrew:  git/Brewfile: installed
-        ... shell:     git/alias.sh: sourced
-        ... symlink:   git/gitconfig -> ~/.gitconfig: deployed
+        $ dodot up nvim
+        ... homebrew:  nvim/Brewfile: installed
+        ... shell:     nvim/aliases.sh: sourced
+        ... symlink:   nvim/init.lua -> ~/.config/nvim/init.lua: deployed
 
-        git
-            alias.sh    ⚙  source by shell        deployed
-            bin         +  add to PATH            deployed
-            gitconfig   ➞  ~/.gitconfig           deployed
-            Brewfile    ⚙  brew install           deployed
+        nvim
+            aliases.sh  ⚙  source by shell             deployed
+            bin         +  add to PATH                 deployed
+            init.lua    ➞  ~/.config/nvim/init.lua    deployed
+            lua         ➞  ~/.config/nvim/lua         deployed
+            Brewfile    ⚙  brew install                deployed
 
         # Edit your config - changes are immediate
-        $ vim ~/.gitconfig  # or ~/dotfiles/git/gitconfig - same file
+        $ nvim ~/.config/nvim/init.lua  # or ~/dotfiles/nvim/init.lua - same file
 
     :: shell ::
 

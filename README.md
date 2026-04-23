@@ -40,33 +40,38 @@ dodot down git
 dodot discovers directories in your dotfiles root as **packs** and uses file naming conventions to decide what to do with each file:
 
 ```
-git/
-+-- Brewfile    -> homebrew installs git, gh, lazygit
-+-- alias.sh    -> sourced by shell
+nvim/
++-- Brewfile    -> homebrew installs neovim, ripgrep, fd
++-- aliases.sh  -> sourced by shell
 +-- bin/        -> added to PATH
-+-- gitconfig   -> symlinked to ~/.gitconfig
++-- init.lua    -> symlinked to ~/.config/nvim/init.lua
++-- lua/        -> symlinked wholesale to ~/.config/nvim/lua
 ```
 
 ```sh
-$ dodot status git
+$ dodot status nvim
 
-git
-    alias.sh    ⚙ shell profile     pending
-    bin         + $PATH/bin          pending
-    gitconfig   ➞ ~/.gitconfig       pending
-    Brewfile    ⚙ brew install       pending
+nvim
+    aliases.sh  ⚙ shell profile             pending
+    bin         + $PATH/bin                  pending
+    init.lua    ➞ ~/.config/nvim/init.lua   pending
+    lua         ➞ ~/.config/nvim/lua        pending
+    Brewfile    ⚙ brew install               pending
 ```
+
+Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<name>` — the pack name namespaces config under XDG, matching the convention modern tools (nvim, helix, ghostty, kitty, …) follow. Files like `~/.bashrc` that legacy tools expect in `$HOME` go through `force_home` (auto-handled for canonical names) or the per-file `home.X` opt-in prefix.
 
 Preview with `dodot up --dry-run`, then deploy:
 
 ```sh
-$ dodot up git
+$ dodot up nvim
 
 Packs deployed.
-git
-    gitconfig   ➞ ~/.gitconfig       gitconfig → ~/.gitconfig
-    alias.sh    ⚙ shell profile      staged alias.sh
-    Brewfile    ⚙ brew install        executed: brew bundle ...
+nvim
+    init.lua    ➞ ~/.config/nvim/init.lua   deployed
+    lua         ➞ ~/.config/nvim/lua        deployed
+    aliases.sh  ⚙ shell profile              sourced
+    Brewfile    ⚙ brew install                installed
 ```
 
 Edit your config -- changes are immediate:
@@ -81,19 +86,20 @@ dodot matches files to handlers by name convention:
 
 | Handler    | Matches                                     | Action                        |
 |------------|---------------------------------------------|-------------------------------|
-| **symlink**| Most files (default)                        | Symlink to `~` or `~/.config` |
+| **symlink**| Most files (default)                        | Symlink under `~/.config/<pack>/` |
 | **shell**  | `*.sh`, `aliases.*`, `profile.*`, `login.*` | Sourced via shell init script |
 | **path**   | `bin/` directories                          | Added to `$PATH`              |
 | **homebrew** | `Brewfile`                                | `brew bundle install`         |
 | **install**| `install.sh`, `install`                     | Run once (checksum-tracked)   |
 
 Symlink targets are resolved smartly:
-- Top-level files go to `~` with a dot prefix (e.g., `gitconfig` -> `~/.gitconfig`)
-- Subdirectories go to `~/.config/` (e.g., `nvim/init.lua` -> `~/.config/nvim/init.lua`)
-- Files already starting with `.` keep their name as-is
-- `dot.` prefix convention: `dot.bashrc` -> `~/.bashrc` (avoids hidden files in your repo)
+- Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<rel_path>` (e.g. `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`)
+- `force_home` blacklist routes canonical legacy tools to `$HOME/.<name>` regardless (ssh, gpg, bashrc, zshrc, etc.)
+- Per-file `home.X` prefix opts a single file into `$HOME/.X` placement (e.g. `git/home.gitconfig` → `~/.gitconfig`)
+- Per-subtree `_home/` and `_xdg/` directory prefixes route whole groups of files to `$HOME` or `$XDG_CONFIG_HOME` respectively, skipping the pack-name namespace
+- Per-file `[symlink.targets]` config maps any pack file to any absolute or XDG-relative path
 
-dodot uses a double-symlink architecture (`~/.file → datastore/... → ~/dotfiles/...`) for clean state management. Edits still flow through both links instantly.
+dodot uses a double-symlink architecture (`~/.config/nvim/init.lua → datastore/... → ~/dotfiles/...`) for clean state management. Edits still flow through both links instantly.
 
 All conventions can be overridden via `.dodot.toml` in the pack or the dotfiles root.
 

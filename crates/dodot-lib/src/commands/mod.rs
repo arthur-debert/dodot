@@ -46,17 +46,15 @@ pub fn status_style(deployed: bool) -> &'static str {
 pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&str>) -> String {
     match handler {
         "symlink" => {
-            if let Some(target) = user_target {
-                target.to_string()
-            } else {
-                // Apply dot. prefix convention: dot.bashrc → ~/.bashrc
-                let display_path = if !rel_path.contains('/') && rel_path.starts_with("dot.") {
-                    format!(".{}", &rel_path[4..])
-                } else {
-                    format!(".{rel_path}")
-                };
-                format!("~/{display_path}")
-            }
+            // Callers normally pass a fully-resolved user_target (computed
+            // by `resolve_target` with the pack name in scope). The
+            // pack-namespaced XDG default cannot be reconstructed from
+            // `rel_path` alone, so when no target is provided we fall
+            // back to a generic "<symlink>" placeholder rather than
+            // guessing a wrong `~/.<name>` path.
+            user_target
+                .map(str::to_string)
+                .unwrap_or_else(|| "<symlink>".to_string())
         }
         "shell" => "shell profile".into(),
         "path" => format!("$PATH/{rel_path}"),

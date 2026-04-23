@@ -11,15 +11,15 @@ teardown() {
 }
 
 @test "up deploys symlink files" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     run dodot up
     [ "$status" -eq 0 ]
     assert_output_contains "Packs deployed"
 
     # Double-link chain: source -> datastore -> ~/.vimrc
-    assert_double_link "vim" "symlink" "vimrc" \
-        "$DOTFILES_ROOT/vim/vimrc" \
+    assert_double_link "vim" "symlink" "home.vimrc" \
+        "$DOTFILES_ROOT/vim/home.vimrc" \
         "$HOME/.vimrc"
 
     # Content should be readable through the symlink chain
@@ -27,12 +27,12 @@ teardown() {
 }
 
 @test "up deploys multiple files in a pack" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
-    create_pack_file "vim" "gvimrc" "set guifont=Mono"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
+    create_pack_file "vim" "home.gvimrc" "set guifont=Mono"
 
     dodot up
-    assert_symlink "$HOME/.vimrc" "$XDG_DATA_HOME/dodot/packs/vim/symlink/vimrc"
-    assert_symlink "$HOME/.gvimrc" "$XDG_DATA_HOME/dodot/packs/vim/symlink/gvimrc"
+    assert_symlink "$HOME/.vimrc" "$XDG_DATA_HOME/dodot/packs/vim/symlink/home.vimrc"
+    assert_symlink "$HOME/.gvimrc" "$XDG_DATA_HOME/dodot/packs/vim/symlink/home.gvimrc"
 }
 
 @test "up deploys shell files" {
@@ -61,7 +61,7 @@ teardown() {
 }
 
 @test "up --dry-run shows plan without changes" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
 
     run dodot up --dry-run
     [ "$status" -eq 0 ]
@@ -83,8 +83,8 @@ teardown() {
 }
 
 @test "up deploys selected packs only" {
-    create_pack_file "vim" "vimrc" "x"
-    create_pack_file "git" "gitconfig" "x"
+    create_pack_file "vim" "home.vimrc" "x"
+    create_pack_file "git" "home.gitconfig" "x"
 
     dodot up vim
 
@@ -95,7 +95,7 @@ teardown() {
 }
 
 @test "up is idempotent" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     dodot up
     assert_exists "$HOME/.vimrc"
@@ -109,8 +109,8 @@ teardown() {
 }
 
 @test "up deploys multiple packs" {
-    create_pack_file "vim" "vimrc" "x"
-    create_pack_file "git" "gitconfig" "x"
+    create_pack_file "vim" "home.vimrc" "x"
+    create_pack_file "git" "home.gitconfig" "x"
 
     dodot up
     assert_exists "$HOME/.vimrc"
@@ -118,7 +118,7 @@ teardown() {
 }
 
 @test "up skips ignored packs" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
     create_pack_file "disabled" "file" "x"
     mark_ignored "disabled"
 

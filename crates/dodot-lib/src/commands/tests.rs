@@ -390,9 +390,12 @@ fn up_dry_run_no_changes() {
 
 #[test]
 fn up_reports_conflict_when_file_exists() {
+    // home.gitconfig (post-#48 per-file home opt-in) routes to ~/.gitconfig,
+    // which already exists in the home_file fixture. That collision
+    // exercises the conflict path the test cares about.
     let env = TempEnvironment::builder()
         .pack("git")
-        .file("gitconfig", "[user]\n  name = new")
+        .file("home.gitconfig", "[user]\n  name = new")
         .done()
         .home_file(".gitconfig", "[user]\n  name = old")
         .build();
@@ -474,7 +477,7 @@ fn up_reports_conflict_when_file_exists() {
 fn up_force_overwrites_existing_files() {
     let env = TempEnvironment::builder()
         .pack("git")
-        .file("gitconfig", "[user]\n  name = new")
+        .file("home.gitconfig", "[user]\n  name = new")
         .done()
         .home_file(".gitconfig", "[user]\n  name = old")
         .build();
@@ -618,29 +621,37 @@ fn adopt_moves_file_and_creates_symlink() {
     )
     .unwrap();
 
-    // File should have moved into pack (without dot prefix), content preserved
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "set nocompatible");
+    // File should have moved into pack with the `home.` prefix (post-#48
+    // adopt rename — preserves the round-trip back to ~/.vimrc on `up`),
+    // content preserved.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("vim/home.vimrc"),
+        "set nocompatible",
+    );
     // Symlink should exist at original location
     assert!(env.fs.is_symlink(&source));
 
     // Status output should include the vim pack with the adopted file
     assert!(result.packs.iter().any(|p| p.name == "vim"));
     let vim = result.packs.iter().find(|p| p.name == "vim").unwrap();
-    assert!(vim.files.iter().any(|f| f.name == "vimrc"));
+    assert!(vim.files.iter().any(|f| f.name == "home.vimrc"));
 }
 
 #[test]
 fn adopt_preserves_executable_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
+    // Uses a dotted file (post-#2: non-dotted $HOME entries are
+    // refused for round-trip safety). The test's intent is exec-bit
+    // preservation, not the dot-or-not policy.
     let env = TempEnvironment::builder()
         .pack("tools")
         .file("placeholder", "")
         .done()
-        .home_file("script.sh", "#!/bin/sh\necho hi")
+        .home_file(".script.sh", "#!/bin/sh\necho hi")
         .build();
 
-    let source = env.home.join("script.sh");
+    let source = env.home.join(".script.sh");
     // Mark source as executable
     let perms = std::fs::Permissions::from_mode(0o755);
     std::fs::set_permissions(&source, perms).unwrap();
@@ -656,7 +667,7 @@ fn adopt_preserves_executable_permissions() {
     )
     .unwrap();
 
-    let dest = env.dotfiles_root.join("tools/script.sh");
+    let dest = env.dotfiles_root.join("tools/home.script.sh");
     let meta = std::fs::metadata(&dest).unwrap();
     assert_eq!(
         meta.permissions().mode() & 0o777,
@@ -665,11 +676,52 @@ fn adopt_preserves_executable_permissions() {
     );
 }
 
+/// Regression for review item #2 on PR #49: a non-dotted entry in
+/// $HOME has no automatic round-trip path under the post-#48 XDG
+/// default — adopt must refuse rather than silently relocate.
+#[test]
+fn adopt_refuses_non_dotted_home_entry() {
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("placeholder", "")
+        .done()
+        .home_file("script.sh", "#!/bin/sh\necho hi")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join("script.sh");
+    let err = commands::adopt::adopt(
+        "tools",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("non-dotted entry in $HOME"),
+        "expected refusal message, got: {msg}"
+    );
+    assert!(
+        msg.contains("[symlink.targets]"),
+        "refusal should point at [symlink.targets] escape hatch, got: {msg}"
+    );
+    // Source untouched, no pack copy created.
+    env.assert_regular_file(&source, "#!/bin/sh\necho hi");
+    env.assert_not_exists(&env.dotfiles_root.join("tools/script.sh"));
+}
+
 #[test]
 fn adopt_destination_conflict_refused_without_force() {
+    // Destination conflict: pack already has `home.vimrc`. Adopt of
+    // `~/.vimrc` derives `home.vimrc` as the pack filename (post-#48
+    // adopt rename), so the existing file blocks the adoption.
     let env = TempEnvironment::builder()
         .pack("vim")
-        .file("vimrc", "existing content")
+        .file("home.vimrc", "existing content")
         .done()
         .home_file(".vimrc", "new content")
         .build();
@@ -693,14 +745,17 @@ fn adopt_destination_conflict_refused_without_force() {
 
     // Original file untouched; existing pack file untouched.
     env.assert_regular_file(&source, "new content");
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "existing content");
+    env.assert_regular_file(
+        &env.dotfiles_root.join("vim/home.vimrc"),
+        "existing content",
+    );
 }
 
 #[test]
 fn adopt_destination_conflict_resolved_with_force() {
     let env = TempEnvironment::builder()
         .pack("vim")
-        .file("vimrc", "OLD")
+        .file("home.vimrc", "OLD")
         .done()
         .home_file(".vimrc", "NEW")
         .build();
@@ -718,7 +773,7 @@ fn adopt_destination_conflict_resolved_with_force() {
     )
     .unwrap();
 
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "NEW");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/home.vimrc"), "NEW");
     assert!(env.fs.is_symlink(&source));
 }
 
@@ -745,8 +800,11 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
     )
     .unwrap();
 
-    // The directory is moved to pack/config (dot stripped) with contents.
-    let pack_dir = env.dotfiles_root.join("nvim/config");
+    // The directory is moved under pack/_home/<stripped> (post-#48
+    // adopt rename for dotted directories — the `_home/` per-subtree
+    // escape hatch routes deploys back to ~/.config when `dodot up`
+    // runs, preserving the round-trip).
+    let pack_dir = env.dotfiles_root.join("nvim/_home/config");
     env.assert_dir_exists(&pack_dir);
     env.assert_regular_file(&pack_dir.join("nvim/init.lua"), "-- config");
     env.assert_regular_file(&pack_dir.join("nvim/lua/mod.lua"), "-- module");
@@ -757,22 +815,190 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
     assert_eq!(target, pack_dir);
 }
 
+/// Regression for review item #1 on PR #49: a dotted directory adopted
+/// from $HOME (not in force_home) must round-trip back via the
+/// `_home/` escape hatch on `dodot up`. Without this, the file would
+/// silently move from $HOME/.X to $XDG_CONFIG_HOME/<pack>/X.
+#[test]
+fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
+    let env = TempEnvironment::builder()
+        .pack("chats")
+        .file("placeholder", "")
+        .done()
+        .home_file(".weechat/weechat.conf", "[server]")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".weechat");
+
+    commands::adopt::adopt(
+        "chats",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Adopted under chats/_home/weechat (the `_home/` per-subtree
+    // routing tells the symlink handler to deploy back to $HOME/.X).
+    let pack_dir = env.dotfiles_root.join("chats/_home/weechat");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("weechat.conf"), "[server]");
+
+    // Re-deploying with `dodot up` puts the symlink back at $HOME/.weechat
+    // — the round-trip the rename was designed to preserve.
+    commands::up::up(Some(&["chats".into()]), &ctx).unwrap();
+    let user_path = env.home.join(".weechat");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "~/.weechat should be a symlink after re-deploy"
+    );
+}
+
+/// **Round-trip property** — the critical contract between `adopt` and
+/// `resolve_target`. For every `$HOME` source that `adopt` accepts,
+/// feeding the `derive_pack_filename` result back through
+/// `resolve_target` must return the original source path.
+///
+/// `derive_pack_filename` encodes the *inverse* of `resolve_target`'s
+/// priority rules (force_home, home. prefix, _home/ directory). The
+/// two functions are separately implemented but must stay lockstep;
+/// this test catches any drift directly.
+///
+/// Cases cover every accepted branch:
+///   - force_home file (`~/.bashrc`)
+///   - force_home directory (`~/.ssh`)
+///   - dotted non-force_home file (`~/.vimrc`)
+///   - dotted non-force_home directory (`~/.weechat`)
+///
+/// The refused branch (non-dotted $HOME entry) is covered by the
+/// explicit refusal test `adopt_refuses_non_dotted_home_entry`.
+#[test]
+fn pack_filename_round_trips_through_resolve_target() {
+    use crate::commands::adopt::derive_pack_filename;
+    use crate::handlers::symlink::resolve_target;
+
+    // Default force_home: match what dodot ships (keep this minimal
+    // and explicit so test failures point at a real behavior change).
+    let force_home: Vec<String> = vec![
+        "ssh".into(),
+        "gnupg".into(),
+        "aws".into(),
+        "kube".into(),
+        "bashrc".into(),
+        "zshrc".into(),
+        "profile".into(),
+        "inputrc".into(),
+    ];
+    let config = crate::handlers::HandlerConfig {
+        force_home: force_home.clone(),
+        ..crate::handlers::HandlerConfig::default()
+    };
+
+    let paths = crate::paths::XdgPather::builder()
+        .home("/home/alice")
+        .dotfiles_root("/home/alice/dotfiles")
+        .xdg_config_home("/home/alice/.config")
+        .build()
+        .unwrap();
+
+    struct Case {
+        pack: &'static str,
+        // The file/dir name as it would appear inside $HOME (.vimrc, .ssh, …).
+        home_name: &'static str,
+        is_dir: bool,
+        // What `derive_pack_filename` should produce (here as documentation; the
+        // test only asserts the round-trip, not the literal pack filename — a
+        // future refactor of the inverse rules is allowed to pick a different
+        // internal representation as long as the round-trip still holds).
+        expected_pack_filename: &'static str,
+    }
+
+    let cases = [
+        Case {
+            pack: "shell",
+            home_name: ".bashrc",
+            is_dir: false,
+            expected_pack_filename: "bashrc",
+        },
+        Case {
+            pack: "net",
+            home_name: ".ssh",
+            is_dir: true,
+            expected_pack_filename: "ssh",
+        },
+        Case {
+            pack: "vim",
+            home_name: ".vimrc",
+            is_dir: false,
+            expected_pack_filename: "home.vimrc",
+        },
+        Case {
+            pack: "chats",
+            home_name: ".weechat",
+            is_dir: true,
+            expected_pack_filename: "_home/weechat",
+        },
+    ];
+
+    for c in &cases {
+        let derived =
+            derive_pack_filename(c.home_name, c.is_dir, &force_home).unwrap_or_else(|e| {
+                panic!(
+                    "derive_pack_filename refused accepted case {:?}: {e}",
+                    c.home_name
+                )
+            });
+        assert_eq!(
+            derived, c.expected_pack_filename,
+            "documentation-expected pack filename drifted for {}",
+            c.home_name
+        );
+
+        let target = resolve_target(c.pack, &derived, &config, &paths);
+        let expected_source = std::path::PathBuf::from(format!("/home/alice/{}", c.home_name));
+        assert_eq!(
+            target,
+            expected_source,
+            "round-trip broke for {}: derive_pack_filename → {} → resolve_target → {} \
+             (expected back at {})",
+            c.home_name,
+            derived,
+            target.display(),
+            expected_source.display(),
+        );
+    }
+
+    // Refused case: non-dotted entry — no round-trip path exists.
+    let refused = derive_pack_filename("my_script.sh", false, &force_home);
+    assert!(
+        refused.is_err(),
+        "non-dotted $HOME entry must be refused, got: {refused:?}"
+    );
+}
+
 #[test]
 fn adopt_preserves_inner_symlinks_as_symlinks() {
+    // Uses a dotted directory (post-#2: non-dotted $HOME entries are
+    // refused). Test intent: inner symlinks are preserved during the
+    // copy phase. The `_home/` path comes from #1's dotted-dir
+    // round-trip rename.
     let env = TempEnvironment::builder()
         .pack("shell")
         .file("placeholder", "")
         .done()
-        .home_file("mydir/real.txt", "hello")
+        .home_file(".mydir/real.txt", "hello")
         .build();
 
-    // Create an inner symlink: mydir/alias -> mydir/real.txt
-    let inner_target = env.home.join("mydir/real.txt");
-    let inner_link = env.home.join("mydir/alias");
+    // Create an inner symlink: .mydir/alias -> .mydir/real.txt
+    let inner_target = env.home.join(".mydir/real.txt");
+    let inner_link = env.home.join(".mydir/alias");
     env.fs.symlink(&inner_target, &inner_link).unwrap();
 
     let ctx = make_ctx(&env);
-    let source = env.home.join("mydir");
+    let source = env.home.join(".mydir");
     commands::adopt::adopt(
         "shell",
         std::slice::from_ref(&source),
@@ -784,7 +1010,7 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
     .unwrap();
 
     // The inner link should still be a symlink inside the pack copy.
-    let copied_link = env.dotfiles_root.join("shell/mydir/alias");
+    let copied_link = env.dotfiles_root.join("shell/_home/mydir/alias");
     assert!(
         env.fs.is_symlink(&copied_link),
         "inner symlink should be preserved as a symlink, not followed"
@@ -880,9 +1106,10 @@ fn adopt_fully_managed_source_keeps_original_skip_message() {
 
     let ctx = make_ctx(&env);
     // First, deploy normally so user_path goes through the dodot chain.
+    // Under #48 the default deploy target is $XDG_CONFIG_HOME/<pack>/<file>.
     commands::up::up(Some(&["vim".into()]), &ctx).unwrap();
 
-    let source = env.home.join(".vimrc");
+    let source = env.home.join(".config/vim/vimrc");
     assert!(env.fs.is_symlink(&source));
 
     let result = commands::adopt::adopt(
@@ -917,7 +1144,7 @@ fn adopt_fully_managed_source_keeps_original_skip_message() {
 fn up_auto_replaces_content_equivalent_pre_existing_file() {
     let env = TempEnvironment::builder()
         .pack("git")
-        .file("gitconfig", "[user]\n  name = test")
+        .file("home.gitconfig", "[user]\n  name = test")
         .done()
         // Same content as the pack source.
         .home_file(".gitconfig", "[user]\n  name = test")
@@ -956,7 +1183,7 @@ fn up_auto_replaces_content_equivalent_pre_existing_file() {
 fn up_still_refuses_content_different_pre_existing_file() {
     let env = TempEnvironment::builder()
         .pack("git")
-        .file("gitconfig", "[user]\n  name = new")
+        .file("home.gitconfig", "[user]\n  name = new")
         .done()
         .home_file(".gitconfig", "[user]\n  name = old")
         .build();
@@ -981,7 +1208,7 @@ fn up_still_refuses_content_different_pre_existing_file() {
 fn status_does_not_flag_content_equivalent_file_as_conflict() {
     let env = TempEnvironment::builder()
         .pack("git")
-        .file("gitconfig", "[user]\n  name = test")
+        .file("home.gitconfig", "[user]\n  name = test")
         .done()
         .home_file(".gitconfig", "[user]\n  name = test")
         .build();
@@ -1028,7 +1255,7 @@ fn adopt_relative_path_with_curdir_normalizes() {
     std::env::set_current_dir(prev_cwd).unwrap();
 
     result.expect("adopt should accept ./.vimrc when CWD is HOME");
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "content");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/home.vimrc"), "content");
     assert!(env.fs.is_symlink(&env.home.join(".vimrc")));
 }
 
@@ -1128,19 +1355,21 @@ fn adopt_broken_pack_blocks_conflict_check() {
 
 #[test]
 fn adopt_deploy_conflict_refused() {
-    // Two packs, both would end up claiming ~/.vimrc after adoption.
+    // Two packs would both end up claiming ~/.bashrc after adoption.
+    // Using `bashrc` because it's in `force_home` — different packs both
+    // deploy it to ~/.bashrc, producing a real cross-pack conflict.
     let env = TempEnvironment::builder()
         .pack("unix")
-        .file("vimrc", "existing")
+        .file("bashrc", "existing")
         .done()
         .pack("work")
         .file("placeholder", "")
         .done()
-        .home_file(".vimrc", "new")
+        .home_file(".bashrc", "new")
         .build();
 
     let ctx = make_ctx(&env);
-    let source = env.home.join(".vimrc");
+    let source = env.home.join(".bashrc");
     let err = commands::adopt::adopt(
         "work",
         std::slice::from_ref(&source),
@@ -1158,23 +1387,23 @@ fn adopt_deploy_conflict_refused() {
     // Home untouched.
     env.assert_regular_file(&source, "new");
     // Pack copy rolled back.
-    env.assert_not_exists(&env.dotfiles_root.join("work/vimrc"));
+    env.assert_not_exists(&env.dotfiles_root.join("work/bashrc"));
 }
 
 #[test]
 fn adopt_deploy_conflict_not_bypassed_by_force() {
     let env = TempEnvironment::builder()
         .pack("unix")
-        .file("vimrc", "existing")
+        .file("bashrc", "existing")
         .done()
         .pack("work")
         .file("placeholder", "")
         .done()
-        .home_file(".vimrc", "new")
+        .home_file(".bashrc", "new")
         .build();
 
     let ctx = make_ctx(&env);
-    let source = env.home.join(".vimrc");
+    let source = env.home.join(".bashrc");
     let err = commands::adopt::adopt(
         "work",
         std::slice::from_ref(&source),
@@ -1217,7 +1446,7 @@ fn adopt_dry_run_makes_no_changes() {
     env.assert_regular_file(&source, "content");
     assert!(!env.fs.is_symlink(&source));
     // No copy in pack.
-    env.assert_not_exists(&env.dotfiles_root.join("vim/vimrc"));
+    env.assert_not_exists(&env.dotfiles_root.join("vim/home.vimrc"));
 }
 
 #[test]
@@ -1246,7 +1475,7 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
     .unwrap();
 
     // The pack copy should be a symlink (not a regular file with copied content).
-    let pack_copy = env.dotfiles_root.join("vim/vimrc");
+    let pack_copy = env.dotfiles_root.join("vim/home.vimrc");
     assert!(
         env.fs.is_symlink(&pack_copy),
         "--no-follow should preserve source symlink as a symlink in the pack"
@@ -1265,7 +1494,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
 
     let env = TempEnvironment::builder()
         .pack("vim")
-        .file("vimrc", "OLD")
+        .file("home.vimrc", "OLD")
         .done()
         .home_file(".vimrc", "NEW")
         .build();
@@ -1293,7 +1522,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
         "adopt should fail when the source is unreadable"
     );
     // The old pack content must survive the failed --force adoption.
-    env.assert_regular_file(&env.dotfiles_root.join("vim/vimrc"), "OLD");
+    env.assert_regular_file(&env.dotfiles_root.join("vim/home.vimrc"), "OLD");
     // Home file also untouched.
     env.assert_regular_file(&source, "NEW");
     // No lingering stage file in the pack.
@@ -1337,7 +1566,8 @@ fn adopt_no_follow_on_dangling_symlink_succeeds() {
     .expect("adopt with --no-follow on a dangling symlink should succeed");
 
     // The pack copy should itself be a symlink (preserving the dangling link).
-    let pack_copy = env.dotfiles_root.join("vim/dangling");
+    // Post-#48 adopt rename: ~/.dangling → vim/home.dangling.
+    let pack_copy = env.dotfiles_root.join("vim/home.dangling");
     assert!(env.fs.is_symlink(&pack_copy));
     let target = env.fs.readlink(&pack_copy).unwrap();
     assert_eq!(target, std::path::PathBuf::from("/does/not/exist"));
@@ -1592,9 +1822,12 @@ fn full_lifecycle_up_status_down_status() {
 /// footnote explaining what's at the target path.
 #[test]
 fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
+    // Use `home.X` so the deploy targets ~/.X and collides with the
+    // home_file fixture (under #48 the default deploy target is
+    // $XDG_CONFIG_HOME/<pack>/X, which wouldn't collide).
     let env = TempEnvironment::builder()
         .pack("ghostty")
-        .file("ghostrc", "theme=dark")
+        .file("home.ghostrc", "theme=dark")
         .done()
         .home_file(".ghostrc", "theme=light")
         .pack("vim")
@@ -1771,8 +2004,8 @@ fn status_detects_broken_user_link_removed() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Remove the user link (~/.vimrc)
-    let user_path = env.home.join(".vimrc");
+    // Remove the user link (under #48: $XDG_CONFIG_HOME/vim/vimrc).
+    let user_path = env.home.join(".config/vim/vimrc");
     env.fs.remove_file(&user_path).unwrap();
 
     let result = commands::status::status(None, &ctx).unwrap();
@@ -1800,8 +2033,10 @@ fn status_detects_conflict_at_user_path() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Replace user symlink with a regular file
-    let user_path = env.home.join(".vimrc");
+    // Replace user symlink (under #48: $XDG_CONFIG_HOME/vim/vimrc) with a
+    // regular file whose content does NOT match source — that's a real
+    // conflict (#44 auto-replace would only kick in for matching content).
+    let user_path = env.home.join(".config/vim/vimrc");
     env.fs.remove_file(&user_path).unwrap();
     env.fs.write_file(&user_path, b"manual file").unwrap();
 
@@ -1918,10 +2153,10 @@ fn up_halts_on_cross_pack_symlink_conflict() {
     // Two packs both deploying a file that resolves to ~/.aliases
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("aliases", "alias a=1")
+        .file("home.aliases", "alias a=1")
         .done()
         .pack("pack-b")
-        .file("aliases", "alias b=2")
+        .file("home.aliases", "alias b=2")
         .done()
         .build();
 
@@ -1946,10 +2181,10 @@ fn up_halts_no_partial_deployment_on_conflict() {
     // not even the non-conflicting ones.
     let env = TempEnvironment::builder()
         .pack("conflict-a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("conflict-b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .pack("innocent")
         .file("vimrc", "set nocompatible")
@@ -1971,10 +2206,10 @@ fn up_force_does_not_override_cross_pack_conflict() {
     // Cross-pack conflicts are a config problem and --force must NOT help.
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("pack-b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .build();
 
@@ -2101,13 +2336,14 @@ fn up_conflict_via_home_prefix() {
 
 #[test]
 fn up_conflict_two_packs_same_home_prefix_target() {
-    // Both packs use _home/ssh/config → both resolve to ~/.ssh/config
+    // Both packs use the `home.X` per-file home opt-in → both resolve
+    // to ~/.bashrc, conflict.
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("_home/ssh/config", "Host a")
+        .file("home.bashrc", "# a")
         .done()
         .pack("pack-b")
-        .file("_home/ssh/config", "Host b")
+        .file("home.bashrc", "# b")
         .done()
         .build();
 
@@ -2115,7 +2351,7 @@ fn up_conflict_two_packs_same_home_prefix_target() {
     let err = commands::up::up(None, &ctx).unwrap_err();
     assert!(
         matches!(err, crate::DodotError::CrossPackConflict { .. }),
-        "both targeting ~/.ssh/config should conflict, got: {err}"
+        "both targeting ~/.bashrc should conflict, got: {err}"
     );
 }
 
@@ -2125,10 +2361,10 @@ fn up_filtered_packs_only_checks_filtered_subset() {
     // there's no conflict.
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("pack-b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .build();
 
@@ -2223,10 +2459,10 @@ fn up_three_packs_partial_conflict() {
     // Three packs, only two conflict — all three are blocked.
     let env = TempEnvironment::builder()
         .pack("a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .pack("c")
         .file("gitconfig", "c")
@@ -2251,10 +2487,10 @@ fn up_three_packs_partial_conflict() {
 fn up_error_message_includes_all_conflict_details() {
     let env = TempEnvironment::builder()
         .pack("alpha")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("beta")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .build();
 
@@ -2277,10 +2513,10 @@ fn up_error_message_includes_all_conflict_details() {
 fn status_warns_on_potential_cross_pack_conflict() {
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("pack-b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .build();
 
@@ -2358,10 +2594,10 @@ fn status_filtered_to_one_pack_no_conflict_warning() {
     // If we only ask about one pack, no cross-pack comparison happens.
     let env = TempEnvironment::builder()
         .pack("a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .build();
 
@@ -2410,10 +2646,10 @@ fn up_succeeds_after_resolving_conflict() {
     // Set up conflicting packs
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("pack-b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .done()
         .build();
 
@@ -2434,13 +2670,13 @@ fn up_succeeds_after_resolving_conflict() {
 }
 
 #[test]
-fn up_conflict_with_dot_prefix_convention() {
-    // pack-a has `dot.bashrc` (uses dot. convention → ~/.bashrc)
-    // pack-b has `bashrc` (top-level → ~/.bashrc)
-    // Same resolved target → conflict
+fn up_conflict_with_home_prefix_convention() {
+    // pack-a has `home.bashrc` (uses home. convention → ~/.bashrc)
+    // pack-b has `bashrc` (in force_home → ~/.bashrc)
+    // Same resolved target → conflict.
     let env = TempEnvironment::builder()
         .pack("a")
-        .file("dot.bashrc", "# pack a")
+        .file("home.bashrc", "# pack a")
         .done()
         .pack("b")
         .file("bashrc", "# pack b")
@@ -2451,7 +2687,7 @@ fn up_conflict_with_dot_prefix_convention() {
     let err = commands::up::up(None, &ctx).unwrap_err();
     assert!(
         matches!(err, crate::DodotError::CrossPackConflict { .. }),
-        "dot.bashrc and bashrc both resolve to ~/.bashrc: {err}"
+        "home.bashrc and bashrc both resolve to ~/.bashrc: {err}"
     );
 }
 
@@ -2460,11 +2696,11 @@ fn up_multiple_simultaneous_conflicts() {
     // Two conflict groups at the same time
     let env = TempEnvironment::builder()
         .pack("a")
-        .file("aliases", "a-aliases")
+        .file("home.aliases", "a-aliases")
         .file("bashrc", "a-bash")
         .done()
         .pack("b")
-        .file("aliases", "b-aliases")
+        .file("home.aliases", "b-aliases")
         .file("bashrc", "b-bash")
         .done()
         .build();
@@ -2488,10 +2724,10 @@ fn up_ignored_pack_does_not_cause_conflict() {
     // pack-b is ignored, so it shouldn't participate in conflict detection.
     let env = TempEnvironment::builder()
         .pack("pack-a")
-        .file("aliases", "a")
+        .file("home.aliases", "a")
         .done()
         .pack("pack-b")
-        .file("aliases", "b")
+        .file("home.aliases", "b")
         .ignored()
         .done()
         .build();
@@ -2526,14 +2762,19 @@ fn status_no_warning_for_same_name_shell_scripts() {
 
 #[test]
 fn up_conflict_xdg_path_both_packs_subdir() {
-    // Both packs have nvim/init.lua → both resolve to
-    // ~/.config/nvim/init.lua via the default subdirectory rule.
+    // Both packs use `_xdg/nvim/init.lua` (the per-subtree XDG escape
+    // hatch — skips the pack name in the path) → both resolve to
+    // ~/.config/nvim/init.lua, conflict.
+    //
+    // (Without `_xdg/`, the new default would namespace each pack
+    // under its own dir — `~/.config/nvim-base/...` vs `~/.config/
+    // nvim-custom/...` — and they wouldn't collide.)
     let env = TempEnvironment::builder()
         .pack("nvim-base")
-        .file("nvim/init.lua", "-- base config")
+        .file("_xdg/nvim/init.lua", "-- base config")
         .done()
         .pack("nvim-custom")
-        .file("nvim/init.lua", "-- custom config")
+        .file("_xdg/nvim/init.lua", "-- custom config")
         .done()
         .build();
 
