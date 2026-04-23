@@ -11,7 +11,7 @@
 use tracing::{debug, info};
 
 use crate::commands::{
-    handler_description, handler_symbol, DisplayConflict, DisplayFile, DisplayPack,
+    handler_description, handler_symbol, DisplayConflict, DisplayFile, DisplayNote, DisplayPack,
     PackStatusResult,
 };
 use crate::config::mappings_to_rules;
@@ -280,6 +280,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
     let registry = handlers::create_registry(ctx.fs.as_ref());
     let mut display_packs = Vec::new();
+    let mut notes: Vec<DisplayNote> = Vec::new();
 
     // Collect intents across all packs for conflict detection
     let mut pack_intents = Vec::new();
@@ -346,7 +347,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         }
 
         let mut files = Vec::new();
-        let mut footnotes: Vec<String> = Vec::new();
         for m in &matches {
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
@@ -388,15 +388,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 None
             };
 
-            let mut status_label = health.label(&m.handler);
-            // For PendingConflict, append the next per-pack footnote ID to
-            // the right-column label and stash the reason in the pack's
-            // footnotes vec.
-            if let Some(reason) = health.footnote_reason() {
-                let footnote_id = footnotes.len() + 1;
-                status_label = format!("{status_label} ({footnote_id})");
-                footnotes.push(reason.to_string());
-            }
+            let status_label = health.label(&m.handler);
+            // For PendingConflict, allocate a command-wide note index and
+            // stash the reason in the global notes list. The row keeps
+            // its plain handler label; the template renders `[N]` next
+            // to it and the body appears in the notes section.
+            let note_ref = health.footnote_reason().map(|reason| {
+                notes.push(DisplayNote {
+                    body: reason.to_string(),
+                    hint: None,
+                });
+                notes.len() as u32
+            });
             files.push(DisplayFile {
                 name: rel_str.clone(),
                 symbol: handler_symbol(&m.handler).into(),
@@ -404,13 +407,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 status: health.style().into(),
                 status_label,
                 handler: m.handler.clone(),
+                note_ref,
             });
         }
 
         display_packs.push(DisplayPack {
             name: pack.name.clone(),
             files,
-            footnotes,
         });
     }
 
@@ -435,6 +438,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         dry_run: false,
         packs: display_packs,
         warnings,
+        notes,
         conflicts: display_conflicts,
         ignored_packs,
     })

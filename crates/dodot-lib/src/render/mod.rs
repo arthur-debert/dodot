@@ -87,15 +87,24 @@ ignored-pack:
 // ── Templates ───────────────────────────────────────────────────
 
 /// Status / up / down — pack-level output with file listings.
+///
+/// Per-item errors are surfaced as `[N]` markers next to the status label;
+/// their bodies render in a dedicated `Errors:` section at the bottom so
+/// the per-file columns stay single-line and aligned regardless of how
+/// long an individual error message is.
 pub const TEMPLATE_PACK_STATUS: &str = r#"{% if conflicts %}[conflict-banner] ✗ Cross-pack conflicts detected — see details below [/conflict-banner]
 {% endif %}{% if message %}[message]{{ message }}[/message]
 {% endif %}{% if dry_run %}[dry-run]  (dry run — no changes made)[/dry-run]
 {% endif %}{% for pack in packs %}[pack-name]{{ pack.name }}[/pack-name]
-{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]
+{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]{% if file.note_ref %} [dim][{{ file.note_ref }}][/dim]{% endif %}
 {% endfor %}
 {% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
 {% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
-{% endfor %}{% endif %}{% if conflicts %}
+{% endfor %}{% endif %}{% if notes %}
+[header]Errors:[/header]
+{% for note in notes %}  [dim][{{ loop.index }}][/dim] {{ note.body }}
+{% if note.hint %}      [dim]hint:[/dim] {{ note.hint }}
+{% endif %}{% endfor %}{% endif %}{% if conflicts %}
 [conflict-header] Cross-pack conflicts [/conflict-header]
 {% for c in conflicts %}
 {% if c.kind == "symlink" %}The target path [conflict-target]{{ c.target }}[/conflict-target] would be used by multiple packs:

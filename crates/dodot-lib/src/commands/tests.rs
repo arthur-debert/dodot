@@ -420,12 +420,19 @@ fn up_reports_conflict_when_file_exists() {
         !error_files.is_empty(),
         "should have error files for conflicts"
     );
+    // The conflict message now lives in the notes section, referenced by
+    // the error row's note_ref. status_label stays a short "error" keyword
+    // so the column layout is preserved.
+    let note_idx = error_files[0]
+        .note_ref
+        .expect("error row should carry a note_ref") as usize
+        - 1;
     assert!(
-        error_files[0].status_label.contains("conflict"),
-        "should mention conflict: {}",
-        error_files[0].status_label
+        result.notes[note_idx].body.contains("conflict"),
+        "note should mention conflict: {}",
+        result.notes[note_idx].body
     );
-    // Overlay error rows must identify the failing file in the left column,
+    // Error rows must identify the failing file in the left column,
     // not render with an empty name (regression: PR #45 review).
     assert!(
         !error_files[0].name.is_empty(),
@@ -457,19 +464,24 @@ fn up_reports_conflict_when_file_exists() {
         .iter()
         .find(|f| f.status == "warning")
         .expect("the conflicted file should surface as warning (PendingConflict)");
-    assert!(
-        conflicted.status_label.starts_with("pending ("),
-        "warning label should keep 'pending' and add footnote ref, got: {}",
+    assert_eq!(
+        conflicted.status_label, "pending",
+        "warning label should be plain 'pending' (the [N] marker is a separate column now), got: {}",
         conflicted.status_label
     );
     assert!(
-        !status.packs[0].footnotes.is_empty(),
-        "pack should have a footnote describing the pre-existing file"
+        conflicted.note_ref.is_some(),
+        "conflicted row should carry a note_ref into the command-wide notes list"
     );
     assert!(
-        status.packs[0].footnotes[0].contains(".gitconfig"),
-        "footnote should mention the conflicting path, got: {}",
-        status.packs[0].footnotes[0]
+        !status.notes.is_empty(),
+        "status should have at least one note describing the pre-existing file"
+    );
+    let note_idx = conflicted.note_ref.unwrap() as usize - 1;
+    assert!(
+        status.notes[note_idx].body.contains(".gitconfig"),
+        "note should mention the conflicting path, got: {}",
+        status.notes[note_idx].body
     );
 }
 
@@ -1223,9 +1235,13 @@ fn status_does_not_flag_content_equivalent_file_as_conflict() {
         file.status
     );
     assert!(
-        status.packs[0].footnotes.is_empty(),
-        "no footnote for auto-replaceable case, got: {:?}",
-        status.packs[0].footnotes
+        file.note_ref.is_none(),
+        "no note_ref for auto-replaceable case"
+    );
+    assert!(
+        status.notes.is_empty(),
+        "no notes for auto-replaceable case, got: {:?}",
+        status.notes
     );
 }
 
@@ -1854,29 +1870,33 @@ fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
         ghostty_file.status, "warning",
         "ghostty/ghostrc collides with ~/.ghostrc — should surface as warning"
     );
-    assert!(
-        ghostty_file.status_label.starts_with("pending ("),
-        "label should keep 'pending' and add a footnote ref, got: {}",
+    assert_eq!(
+        ghostty_file.status_label, "pending",
+        "label should be plain 'pending'; the [N] marker lives in a separate column, got: {}",
         ghostty_file.status_label
     );
+    let ghostty_note = ghostty_file
+        .note_ref
+        .expect("ghostty row should carry a note_ref") as usize
+        - 1;
     assert_eq!(
-        ghostty.footnotes.len(),
+        result.notes.len(),
         1,
-        "ghostty should have exactly one footnote, got: {:?}",
-        ghostty.footnotes
+        "status should have exactly one note, got: {:?}",
+        result.notes
     );
     assert!(
-        ghostty.footnotes[0].contains(".ghostrc"),
-        "footnote should mention the conflicting path, got: {}",
-        ghostty.footnotes[0]
+        result.notes[ghostty_note].body.contains(".ghostrc"),
+        "note should mention the conflicting path, got: {}",
+        result.notes[ghostty_note].body
     );
     assert!(
-        ghostty.footnotes[0].contains("existing file"),
-        "footnote should classify the target (existing file), got: {}",
-        ghostty.footnotes[0]
+        result.notes[ghostty_note].body.contains("existing file"),
+        "note should classify the target (existing file), got: {}",
+        result.notes[ghostty_note].body
     );
 
-    // vim has no pre-existing ~/.vimrc — should be plain pending, no footnote.
+    // vim has no pre-existing ~/.vimrc — should be plain pending, no note.
     let vim_file = &vim.files[0];
     assert_eq!(
         vim_file.status, "pending",
@@ -1884,9 +1904,8 @@ fn status_surfaces_pre_existing_conflict_as_warning_with_footnote() {
     );
     assert_eq!(vim_file.status_label, "pending");
     assert!(
-        vim.footnotes.is_empty(),
-        "vim should have no footnotes, got: {:?}",
-        vim.footnotes
+        vim_file.note_ref.is_none(),
+        "vim row should carry no note_ref"
     );
 }
 
@@ -1927,9 +1946,8 @@ fn status_does_not_flag_pre_existing_symlinks_as_conflict() {
         "equivalent symlink should be plain pending, not a conflict (executor handles it)"
     );
     assert!(
-        kitty.footnotes.is_empty(),
-        "no footnote for non-conflict, got: {:?}",
-        kitty.footnotes
+        kitty.files[0].note_ref.is_none(),
+        "no note_ref for non-conflict"
     );
 
     let ghostty = result.packs.iter().find(|p| p.name == "ghostty").unwrap();
@@ -1938,9 +1956,13 @@ fn status_does_not_flag_pre_existing_symlinks_as_conflict() {
         "non-equivalent symlink should also be plain pending — executor will replace it"
     );
     assert!(
-        ghostty.footnotes.is_empty(),
-        "no footnote for non-conflict, got: {:?}",
-        ghostty.footnotes
+        ghostty.files[0].note_ref.is_none(),
+        "no note_ref for non-conflict"
+    );
+    assert!(
+        result.notes.is_empty(),
+        "no notes for non-conflict case, got: {:?}",
+        result.notes
     );
 }
 
@@ -2247,6 +2269,85 @@ fn up_dry_run_still_detects_cross_pack_conflict() {
         matches!(err, crate::DodotError::CrossPackConflict { .. }),
         "dry-run should still detect conflicts, got: {err}"
     );
+}
+
+/// Regression: `dodot up` on a cross-pack conflict must render the full
+/// per-pack listing, notes, and ignored-pack section — not a bare
+/// conflicts dump. Before the fix, the CLI handler hardcoded
+/// `packs: Vec::new()` on the `CrossPackConflict` branch, so users only
+/// saw the trailing conflicts section and lost all context about what
+/// *would* have been deployed.
+#[test]
+fn up_with_cross_pack_conflict_renders_full_status_view() {
+    let env = TempEnvironment::builder()
+        .pack("pack-a")
+        .file("home.aliases", "alias a=1")
+        .done()
+        .pack("pack-b")
+        .file("home.aliases", "alias b=2")
+        .done()
+        // An unrelated pack so we can assert the listing is preserved.
+        .pack("innocent")
+        .file("home.vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up_or_status_for_conflict(None, &ctx)
+        .expect("status fallback should produce Ok on cross-pack conflict");
+
+    // Top-level message explains why nothing deployed.
+    assert_eq!(
+        result.message.as_deref(),
+        Some("Cross-pack conflicts prevent deployment."),
+        "got message: {:?}",
+        result.message
+    );
+
+    // Full per-pack listing is present — the regression was this being empty.
+    assert!(
+        !result.packs.is_empty(),
+        "up-with-conflict must render pack rows, not a bare conflicts dump"
+    );
+    let pack_names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert!(
+        pack_names.contains(&"pack-a"),
+        "expected pack-a in listing, got: {:?}",
+        pack_names
+    );
+    assert!(
+        pack_names.contains(&"pack-b"),
+        "expected pack-b in listing, got: {:?}",
+        pack_names
+    );
+    assert!(
+        pack_names.contains(&"innocent"),
+        "expected innocent pack in listing, got: {:?}",
+        pack_names
+    );
+
+    // Conflicts section is still populated — same data the old branch showed.
+    assert!(
+        !result.conflicts.is_empty(),
+        "expected conflicts section to be populated"
+    );
+    let conflict = &result.conflicts[0];
+    assert!(
+        conflict.target.contains(".aliases"),
+        "conflict target should reference .aliases, got: {}",
+        conflict.target
+    );
+
+    // Nothing was actually deployed — rows should report pending, not deployed.
+    for pack in &result.packs {
+        for file in &pack.files {
+            assert_ne!(
+                file.status, "deployed",
+                "{}::{} should not be deployed when conflict blocks up, got: {} ({})",
+                pack.name, file.name, file.status, file.status_label
+            );
+        }
+    }
 }
 
 #[test]

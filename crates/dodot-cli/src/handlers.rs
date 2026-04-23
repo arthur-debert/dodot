@@ -99,30 +99,12 @@ pub fn up_handler(
 ) -> HandlerResult<commands::PackStatusResult> {
     let ctx = build_ctx(matches)?;
     let filter = pack_filter(matches);
-    match commands::up::up(filter.as_deref(), &ctx) {
-        Ok(result) => {
-            print_warnings(&result.warnings);
-            Ok(Output::Render(result))
-        }
-        Err(dodot_lib::DodotError::CrossPackConflict { conflicts }) => {
-            // Render conflicts through the same template as status, so the
-            // user sees the rich, styled output instead of a raw error dump.
-            let home = ctx.paths.home_dir();
-            let display_conflicts = conflicts
-                .iter()
-                .map(|c| commands::DisplayConflict::from_conflict(c, home))
-                .collect();
-            Ok(Output::Render(commands::PackStatusResult {
-                message: None,
-                dry_run: ctx.dry_run,
-                packs: Vec::new(),
-                warnings: Vec::new(),
-                conflicts: display_conflicts,
-                ignored_packs: Vec::new(),
-            }))
-        }
-        Err(e) => Err(e.into()),
-    }
+    // Use the status-fallback variant so cross-pack conflicts still
+    // render the full per-pack listing instead of a bare conflicts dump
+    // — `up` and `status` output stay consistent.
+    let result = commands::up::up_or_status_for_conflict(filter.as_deref(), &ctx)?;
+    print_warnings(&result.warnings);
+    Ok(Output::Render(result))
 }
 
 pub fn down_handler(

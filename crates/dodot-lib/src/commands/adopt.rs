@@ -20,7 +20,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::commands::status;
-use crate::commands::PackStatusResult;
+use crate::commands::{DisplayFile, DisplayNote, PackStatusResult};
 use crate::conflicts;
 use crate::fs::Fs;
 use crate::packs;
@@ -118,12 +118,36 @@ pub fn adopt(
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
     }
+    // Adopt failures are real errors — surface them in the same
+    // command-wide notes list that drives `[N]` markers for status/up.
+    // To keep the model consistent ("every note is referenced by a row"),
+    // synthesize an error row in the target pack for the file we tried
+    // (and failed) to adopt. Post-rollback the pack doesn't actually
+    // contain that file, so this row is purely informational about the
+    // attempt — but it anchors the `[N]` back to a visible listing entry
+    // instead of leaving an orphaned footnote at the bottom.
     for f in &failures {
-        result.warnings.push(format!(
-            "adopt failed: {}: {}",
-            f.source.display(),
-            f.reason
-        ));
+        let src_name = f
+            .source
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| f.source.display().to_string());
+        result.notes.push(DisplayNote {
+            body: format!("adopt failed: {}: {}", f.source.display(), f.reason),
+            hint: None,
+        });
+        let note_ref = Some(result.notes.len() as u32);
+        if let Some(pack) = result.packs.iter_mut().find(|p| p.name == pack_name) {
+            pack.files.push(DisplayFile {
+                name: src_name,
+                symbol: "×".into(),
+                description: "adopt failed".into(),
+                status: "error".into(),
+                status_label: "error".into(),
+                handler: String::new(),
+                note_ref,
+            });
+        }
     }
     Ok(result)
 }
