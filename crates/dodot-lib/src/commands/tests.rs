@@ -230,6 +230,117 @@ fn up_deploys_packs() {
     assert!(deployed_count > 0, "some files should be deployed after up");
 }
 
+/// Regression for #42 (unify status rendering): `up` and `status` must
+/// produce identical per-file status_label strings for the same handler
+/// state. Before #42, `up` reported "staged bin" while `status` reported
+/// "in PATH" for the same path-handler state — confusing duplicate
+/// vocabulary.
+#[test]
+fn up_and_status_produce_matching_labels() {
+    let env = TempEnvironment::builder()
+        .pack("multi")
+        .file("vimrc", "set nocompat") // symlink handler
+        .file("aliases.sh", "alias x=y") // shell handler
+        .done()
+        .pack("withbin")
+        .file("bin/tool", "#!/bin/sh\necho hi")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+
+    let up_result = commands::up::up(None, &ctx).unwrap();
+    let status_result = commands::status::status(None, &ctx).unwrap();
+
+    // Build (pack, file_name) -> status_label maps for both.
+    let to_map = |packs: &[commands::DisplayPack]| {
+        let mut map = std::collections::HashMap::new();
+        for p in packs {
+            for f in &p.files {
+                if f.status == "error" || f.name.is_empty() {
+                    continue; // skip overlay error rows that have no status counterpart
+                }
+                map.insert((p.name.clone(), f.name.clone()), f.status_label.clone());
+            }
+        }
+        map
+    };
+
+    let up_labels = to_map(&up_result.packs);
+    let status_labels = to_map(&status_result.packs);
+
+    assert_eq!(
+        up_labels, status_labels,
+        "up and status should report identical status_labels for the same files"
+    );
+
+    // Spot-check the actual labels: should be the steady-state vocabulary
+    // ("deployed", "sourced", "in PATH"), not the executor vocabulary
+    // ("staged X", "executed: X").
+    let labels: Vec<&str> = up_labels.values().map(String::as_str).collect();
+    assert!(
+        labels.contains(&"in PATH"),
+        "expected path handler to render as 'in PATH', got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"sourced"),
+        "expected shell handler to render as 'sourced', got: {labels:?}"
+    );
+    assert!(
+        labels.contains(&"deployed"),
+        "expected symlink handler to render as 'deployed', got: {labels:?}"
+    );
+    assert!(
+        labels.iter().all(|l| !l.starts_with("staged ")),
+        "no label should use the executor's 'staged X' vocabulary, got: {labels:?}"
+    );
+}
+
+/// Regression for #42: `down` should likewise render through status, not
+/// hand-rolled "removed" / "state removed" labels.
+#[test]
+fn down_and_status_produce_matching_labels() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .file("aliases.sh", "alias v=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let down_result = commands::down::down(None, &ctx).unwrap();
+    let status_result = commands::status::status(None, &ctx).unwrap();
+
+    let to_map = |packs: &[commands::DisplayPack]| {
+        let mut map = std::collections::HashMap::new();
+        for p in packs {
+            for f in &p.files {
+                if f.status == "error" || f.name.is_empty() {
+                    continue;
+                }
+                map.insert((p.name.clone(), f.name.clone()), f.status_label.clone());
+            }
+        }
+        map
+    };
+
+    let down_labels = to_map(&down_result.packs);
+    let status_labels = to_map(&status_result.packs);
+    assert_eq!(
+        down_labels, status_labels,
+        "down and status should report identical status_labels for the same files"
+    );
+
+    // After down, files should be in handler-specific pending vocabulary.
+    let labels: Vec<&str> = down_labels.values().map(String::as_str).collect();
+    assert!(
+        labels.iter().all(|l| !l.contains("removed")),
+        "down output should use status vocabulary, not 'removed', got: {labels:?}"
+    );
+}
+
 #[test]
 fn up_generates_shell_init() {
     let env = TempEnvironment::builder()
@@ -310,6 +421,17 @@ fn up_reports_conflict_when_file_exists() {
         error_files[0].status_label.contains("conflict"),
         "should mention conflict: {}",
         error_files[0].status_label
+    );
+    // Overlay error rows must identify the failing file in the left column,
+    // not render with an empty name (regression: PR #45 review).
+    assert!(
+        !error_files[0].name.is_empty(),
+        "error row should name the failing file, got empty name"
+    );
+    assert!(
+        error_files[0].name.contains("gitconfig"),
+        "error row name should reference gitconfig, got: {}",
+        error_files[0].name
     );
 
     // Original file should be untouched
