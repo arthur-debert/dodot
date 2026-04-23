@@ -197,8 +197,14 @@ fn verify_symlink(
             Err(_) => Health::Broken("broken: cannot read user link".into()),
         }
     } else if ctx.fs.exists(&user_target) {
-        // Regular file at target — conflict
-        Health::Broken("conflict: non-symlink file at target path".into())
+        // Non-symlink file at target. If its content is byte-identical to
+        // the source, `up` will auto-replace it (#44) — surface as Stale
+        // (re-deploy fixes), not Broken. Otherwise it's a real conflict.
+        if crate::equivalence::is_equivalent(&user_target, source, ctx.fs.as_ref()) {
+            Health::Stale("stale: user link missing, re-deploy to fix".into())
+        } else {
+            Health::Broken("conflict: non-symlink file at target path".into())
+        }
     } else {
         // No user link — data link exists but user link missing.
         // This happens when config changed (drift) or deployment was interrupted.

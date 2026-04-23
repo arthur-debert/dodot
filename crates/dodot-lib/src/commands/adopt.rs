@@ -193,21 +193,25 @@ fn preflight(
         //   that command instead of leaving them confused about why
         //   status still shows "pending".
         if fs.is_symlink(&abs) {
-            if let Ok(target) = fs.readlink(&abs) {
-                if target.starts_with(&data_dir) {
+            if let Ok(raw_target) = fs.readlink(&abs) {
+                // readlink() returns the symlink's raw target which may be
+                // a relative path; resolve against the link's parent so
+                // `starts_with` checks work for both forms.
+                let resolved = crate::equivalence::resolve_symlink_target(&abs, &raw_target);
+                if resolved.starts_with(&data_dir) {
                     skipped.push(format!(
                         "skipped: {} is already managed by dodot (-> {})",
                         abs.display(),
-                        target.display()
+                        raw_target.display()
                     ));
                     continue;
                 }
-                if target.starts_with(&dotfiles_root) {
+                if resolved.starts_with(&dotfiles_root) {
                     skipped.push(format!(
                         "skipped: {} is a direct symlink to pack source (-> {}); \
                          run `dodot up {}` to upgrade it to dodot's full chain",
                         abs.display(),
-                        target.display(),
+                        raw_target.display(),
                         pack_name,
                     ));
                     continue;

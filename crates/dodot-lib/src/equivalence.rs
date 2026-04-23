@@ -19,9 +19,31 @@
 //! equivalent even if their realpath matches `source`. The chain
 //! probably exists for a reason and we shouldn't second-guess it.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::fs::Fs;
+
+/// Resolve a single symlink hop's raw `readlink()` target into an
+/// absolute path, in the same way the kernel does on traversal:
+///
+/// - Absolute targets are returned as-is.
+/// - Relative targets are joined onto `link_path.parent()`. (No
+///   canonicalization, no following further hops — that's deliberately
+///   single-hop only.)
+///
+/// Used by equivalence detection so that `~/.vimrc → ../dotfiles/vim/vimrc`
+/// is recognised as a direct link to `<dotfiles>/vim/vimrc` instead of
+/// being mis-classified as "points elsewhere".
+pub fn resolve_symlink_target(link_path: &Path, raw_target: &Path) -> PathBuf {
+    if raw_target.is_absolute() {
+        raw_target.to_path_buf()
+    } else {
+        link_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(raw_target)
+    }
+}
 
 /// Whether the existing thing at `user_path` is content-equivalent to
 /// `source` — meaning `dodot up` would produce the same content
@@ -30,10 +52,12 @@ use crate::fs::Fs;
 /// See module-level docs for the exact equivalence rules.
 pub fn is_equivalent(user_path: &Path, source: &Path, fs: &dyn Fs) -> bool {
     if fs.is_symlink(user_path) {
-        // Single-hop direct symlink to source.
-        // Multi-hop or pointing elsewhere falls through to false.
+        // Single-hop direct symlink to source. Resolve relative targets
+        // against the symlink's parent so e.g. `~/.vimrc -> ../foo/vimrc`
+        // is recognised. Multi-hop chains and links pointing elsewhere
+        // fall through to false.
         match fs.readlink(user_path) {
-            Ok(target) => target == source,
+            Ok(target) => resolve_symlink_target(user_path, &target) == source,
             Err(_) => false,
         }
     } else if fs.exists(user_path) && !fs.is_dir(user_path) {
@@ -52,6 +76,41 @@ pub fn is_equivalent(user_path: &Path, source: &Path, fs: &dyn Fs) -> bool {
 mod tests {
     use super::*;
     use crate::testing::TempEnvironment;
+
+    #[test]
+    fn relative_direct_symlink_to_source_is_equivalent() {
+        // Regression for PR #47 review: `~/.vimrc -> ../dotfiles/vim/vimrc`
+        // (relative target) must resolve to the same absolute source path,
+        // not be mis-classified as "points elsewhere".
+        //
+        // TempEnvironment lays out dotfiles_root inside home (as
+        // `<home>/dotfiles`), so a symlink at `<home>/.vimrc` reaches
+        // the source via the relative path `dotfiles/vim/vimrc`.
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "set nocompatible")
+            .done()
+            .build();
+
+        let source = env.dotfiles_root.join("vim/vimrc");
+        let user_path = env.home.join(".vimrc");
+        let relative_target = std::path::PathBuf::from("dotfiles/vim/vimrc");
+        env.fs.symlink(&relative_target, &user_path).unwrap();
+
+        // Sanity check the layout assumption that makes the relative path
+        // resolve correctly (test would silently pass for the wrong reason
+        // otherwise).
+        assert_eq!(
+            resolve_symlink_target(&user_path, &relative_target),
+            source,
+            "test layout assumption broke: relative target doesn't resolve to source"
+        );
+
+        assert!(
+            is_equivalent(&user_path, &source, env.fs.as_ref()),
+            "relative symlink to source should be equivalent (resolved against link's parent)"
+        );
+    }
 
     #[test]
     fn direct_symlink_to_source_is_equivalent() {
