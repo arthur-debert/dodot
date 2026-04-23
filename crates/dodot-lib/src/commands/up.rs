@@ -133,7 +133,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     } else {
         let pack_names: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
         let status_result = status::status(Some(&pack_names), ctx)?;
-        overlay_errors(status_result.packs, &pack_results)
+        overlay_errors(status_result.packs, &pack_results, ctx.paths.home_dir())
     };
 
     let message = if has_failures {
@@ -206,6 +206,7 @@ fn render_intents(pack_results: &[PackResult], home: &std::path::Path) -> Vec<Di
 pub(crate) fn overlay_errors(
     mut packs: Vec<DisplayPack>,
     pack_results: &[PackResult],
+    home: &std::path::Path,
 ) -> Vec<DisplayPack> {
     for pr in pack_results {
         let display_pack = match packs.iter_mut().find(|p| p.name == pr.pack_name) {
@@ -217,11 +218,11 @@ pub(crate) fn overlay_errors(
             if op_result.success {
                 continue;
             }
-            let handler = op_result.operation.handler().to_string();
+            let (handler, name, user_target) = extract_op_info(&op_result.operation, home);
             display_pack.files.push(DisplayFile {
-                name: String::new(),
+                name: name.clone(),
                 symbol: handler_symbol(&handler).into(),
-                description: String::new(),
+                description: handler_description(&handler, &name, user_target.as_deref()),
                 status: "error".into(),
                 status_label: op_result.message.clone(),
                 handler,

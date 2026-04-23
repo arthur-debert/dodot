@@ -422,6 +422,17 @@ fn up_reports_conflict_when_file_exists() {
         "should mention conflict: {}",
         error_files[0].status_label
     );
+    // Overlay error rows must identify the failing file in the left column,
+    // not render with an empty name (regression: PR #45 review).
+    assert!(
+        !error_files[0].name.is_empty(),
+        "error row should name the failing file, got empty name"
+    );
+    assert!(
+        error_files[0].name.contains("gitconfig"),
+        "error row name should reference gitconfig, got: {}",
+        error_files[0].name
+    );
 
     // Original file should be untouched
     env.assert_file_contents(&env.home.join(".gitconfig"), "[user]\n  name = old");
