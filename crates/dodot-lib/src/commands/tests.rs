@@ -759,8 +759,11 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
     )
     .unwrap();
 
-    // The directory is moved to pack/config (dot stripped) with contents.
-    let pack_dir = env.dotfiles_root.join("nvim/config");
+    // The directory is moved under pack/_home/<stripped> (post-#48
+    // adopt rename for dotted directories — the `_home/` per-subtree
+    // escape hatch routes deploys back to ~/.config when `dodot up`
+    // runs, preserving the round-trip).
+    let pack_dir = env.dotfiles_root.join("nvim/_home/config");
     env.assert_dir_exists(&pack_dir);
     env.assert_regular_file(&pack_dir.join("nvim/init.lua"), "-- config");
     env.assert_regular_file(&pack_dir.join("nvim/lua/mod.lua"), "-- module");
@@ -769,6 +772,48 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
     assert!(env.fs.is_symlink(&source));
     let target = env.fs.readlink(&source).unwrap();
     assert_eq!(target, pack_dir);
+}
+
+/// Regression for review item #1 on PR #49: a dotted directory adopted
+/// from $HOME (not in force_home) must round-trip back via the
+/// `_home/` escape hatch on `dodot up`. Without this, the file would
+/// silently move from $HOME/.X to $XDG_CONFIG_HOME/<pack>/X.
+#[test]
+fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
+    let env = TempEnvironment::builder()
+        .pack("chats")
+        .file("placeholder", "")
+        .done()
+        .home_file(".weechat/weechat.conf", "[server]")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".weechat");
+
+    commands::adopt::adopt(
+        "chats",
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Adopted under chats/_home/weechat (the `_home/` per-subtree
+    // routing tells the symlink handler to deploy back to $HOME/.X).
+    let pack_dir = env.dotfiles_root.join("chats/_home/weechat");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("weechat.conf"), "[server]");
+
+    // Re-deploying with `dodot up` puts the symlink back at $HOME/.weechat
+    // — the round-trip the rename was designed to preserve.
+    commands::up::up(Some(&["chats".into()]), &ctx).unwrap();
+    let user_path = env.home.join(".weechat");
+    assert!(
+        env.fs.is_symlink(&user_path),
+        "~/.weechat should be a symlink after re-deploy"
+    );
 }
 
 #[test]

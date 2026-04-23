@@ -256,31 +256,46 @@ fn preflight(
             .to_string_lossy()
             .into_owned();
 
-        // Pack-filename derivation for a `$HOME/.<name>` source:
-        //   - Strip the leading dot.
-        //   - If the resulting name is in `force_home` (canonical $HOME
-        //     tools — bashrc, zshrc, ssh, …), drop straight into the pack
-        //     under that name; the symlink handler's `force_home` rule
-        //     will route deploys back to `$HOME/.<name>`.
-        //   - Otherwise prefix with `home.` so the file uses the per-file
-        //     `home.X` convention (#48). Without this prefix, the post-
-        //     #48 default would route the re-deployed file to
-        //     `$XDG_CONFIG_HOME/<pack>/<name>`, breaking the adopt
-        //     round-trip (`adopt vim ~/.vimrc` then `up` should leave
-        //     `~/.vimrc` pointing back at the pack — not relocate it
-        //     to `~/.config/vim/vimrc`).
+        // Pack-filename derivation for a `$HOME/.<name>` source.
+        // Goal: `dodot up` after `dodot adopt` should put the symlink
+        // back at the *exact* original location. Under #48's pack-
+        // namespaced XDG default, naming the pack file just `<name>`
+        // (the legacy strip-the-dot behavior) would route deploys to
+        // `$XDG_CONFIG_HOME/<pack>/<name>` instead of `$HOME/.<name>` —
+        // breaking the round-trip and silently relocating the file.
+        //
+        // Rules:
+        //   - In `force_home` (bashrc, ssh, gpg, …): pack file `<name>`.
+        //     The symlink handler's `force_home` rule routes deploys
+        //     back to `$HOME/.<name>` automatically.
+        //   - Dotted file (e.g. `~/.vimrc`): pack file `home.<name>`.
+        //     The per-file `home.X` convention routes back to `$HOME/.<name>`.
+        //   - Dotted directory (e.g. `~/.weechat/`): pack subdirectory
+        //     `_home/<name>/`. The per-subtree `_home/` directory prefix
+        //     routes contents back to `$HOME/.<name>/...`. (There's no
+        //     per-file `home.X` convention for directories; `_home/` is
+        //     the equivalent at the directory level.)
+        //   - Non-dotted file (rare in $HOME) and non-dotted directory:
+        //     no automatic round-trip path exists. The caller can use
+        //     `[symlink.targets]` to pin a custom destination after
+        //     adoption; meanwhile we refuse rather than silently
+        //     relocating the file under XDG. See review item #2.
         let stripped = file_name.strip_prefix('.').unwrap_or(&file_name);
         let in_force_home = pack_config
             .symlink
             .force_home
             .iter()
             .any(|entry| entry.strip_prefix('.').unwrap_or(entry) == stripped);
-        // The `home.` rename only applies to FILES — there's no
-        // `home.<dir>` directory convention. Directories keep the
-        // legacy "strip leading dot" behavior; for whole-subtree $HOME
-        // routing the user would use the `_home/` directory prefix.
-        let pack_filename = if !is_dir && file_name.starts_with('.') && !in_force_home {
-            format!("home.{stripped}")
+        let pack_filename = if in_force_home {
+            stripped.to_string()
+        } else if file_name.starts_with('.') {
+            if is_dir {
+                // Place under `_home/<stripped>/`. The `_home/` per-subtree
+                // escape hatch routes everything inside back to `$HOME`.
+                format!("_home/{stripped}")
+            } else {
+                format!("home.{stripped}")
+            }
         } else {
             stripped.to_string()
         };
