@@ -40,33 +40,38 @@ dodot down git
 dodot discovers directories in your dotfiles root as **packs** and uses file naming conventions to decide what to do with each file:
 
 ```
-git/
-+-- Brewfile    -> homebrew installs git, gh, lazygit
-+-- alias.sh    -> sourced by shell
+nvim/
++-- Brewfile    -> homebrew installs neovim, ripgrep, fd
++-- aliases.sh  -> sourced by shell
 +-- bin/        -> added to PATH
-+-- gitconfig   -> symlinked to ~/.gitconfig
++-- init.lua    -> symlinked to ~/.config/nvim/init.lua
++-- lua/        -> symlinked wholesale to ~/.config/nvim/lua
 ```
 
 ```sh
-$ dodot status git
+$ dodot status nvim
 
-git
-    alias.sh    ⚙ shell profile     pending
-    bin         + $PATH/bin          pending
-    gitconfig   ➞ ~/.gitconfig       pending
-    Brewfile    ⚙ brew install       pending
+nvim
+    aliases.sh  ⚙ shell profile             pending
+    bin         + $PATH/bin                  pending
+    init.lua    ➞ ~/.config/nvim/init.lua   pending
+    lua         ➞ ~/.config/nvim/lua        pending
+    Brewfile    ⚙ brew install               pending
 ```
+
+Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<name>` — the pack name namespaces config under XDG, matching the convention modern tools (nvim, helix, ghostty, kitty, …) follow. Files like `~/.bashrc` that legacy tools expect in `$HOME` go through `force_home` (auto-handled for canonical names) or the per-file `home.X` opt-in prefix.
 
 Preview with `dodot up --dry-run`, then deploy:
 
 ```sh
-$ dodot up git
+$ dodot up nvim
 
 Packs deployed.
-git
-    gitconfig   ➞ ~/.gitconfig       gitconfig → ~/.gitconfig
-    alias.sh    ⚙ shell profile      staged alias.sh
-    Brewfile    ⚙ brew install        executed: brew bundle ...
+nvim
+    init.lua    ➞ ~/.config/nvim/init.lua   deployed
+    lua         ➞ ~/.config/nvim/lua        deployed
+    aliases.sh  ⚙ shell profile              sourced
+    Brewfile    ⚙ brew install                installed
 ```
 
 Edit your config -- changes are immediate:

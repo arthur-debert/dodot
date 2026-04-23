@@ -70,7 +70,7 @@ Commands
 
     2.3. adopt
 
-        Move an existing system file into a pack and replace the original with a symlink. Useful for bringing dotfiles that have been living at their deployed location (`~/.vimrc`, `~/.gitconfig`) under dodot's control.
+        Move an existing system file into a pack and replace the original with a symlink. Useful for bringing dotfiles that have been living at their deployed location (`~/.config/nvim/init.lua`, `~/.bashrc`) under dodot's control.
 
         Flags:
             - `--force` — overwrite an existing destination file in the pack
@@ -79,10 +79,10 @@ Commands
 
         Usage:
 
-            dodot adopt vim ~/.vimrc
-            dodot adopt git ~/.gitconfig ~/.gitignore_global
-            dodot adopt vim ~/.vimrc --force
-            dodot adopt vim ~/.vimrc --dry-run
+            dodot adopt nvim ~/.config/nvim/init.lua
+            dodot adopt shell ~/.bashrc ~/.zshrc
+            dodot adopt nvim ~/.config/nvim/init.lua --force
+            dodot adopt nvim ~/.config/nvim/init.lua --dry-run
 
         :: shell ::
 

@@ -50,9 +50,11 @@ Configuration
 
     Controls how the symlink handler resolves targets. Full path-resolution rules live in [./../reference/symlink-paths.lex]; this section is the config knobs.
 
+    By default, every pack-root entry deploys to `$XDG_CONFIG_HOME/<pack>/<name>` (so `nvim/init.lua` → `~/.config/nvim/init.lua`). Use `force_home`, the per-file `home.X` prefix, or the `_home/` directory prefix to opt files out of XDG when needed.
+
     3.1. `force_home`
 
-        Files that must land in `$HOME` even when XDG would route them to `$XDG_CONFIG_HOME`. These are decades-old conventions that precede XDG.
+        Files that must land in `$HOME/.<name>` regardless of the default XDG rule. These are decades-old conventions that precede XDG and are hardcoded by other tools (shell init, ssh interop, etc.).
 
         Force home:
 
