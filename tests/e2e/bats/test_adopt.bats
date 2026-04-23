@@ -22,32 +22,32 @@ teardown() {
     assert_output_contains "pending"
 
     # File should be in the pack (dot prefix stripped)
-    assert_exists "$DOTFILES_ROOT/vim/vimrc"
-    assert_file_contents "$DOTFILES_ROOT/vim/vimrc" "set nocompatible"
+    assert_exists "$DOTFILES_ROOT/vim/home.vimrc"
+    assert_file_contents "$DOTFILES_ROOT/vim/home.vimrc" "set nocompatible"
 
     # Original location should be a symlink
     [ -L "$HOME/.vimrc" ]
 }
 
 @test "adopt with --force overwrites existing pack file" {
-    create_pack_file "vim" "vimrc" "old content"
+    create_pack_file "vim" "home.vimrc" "old content"
     create_home_file ".vimrc" "new content"
 
     run dodot adopt vim --force "$HOME/.vimrc"
     [ "$status" -eq 0 ]
 
-    assert_file_contents "$DOTFILES_ROOT/vim/vimrc" "new content"
+    assert_file_contents "$DOTFILES_ROOT/vim/home.vimrc" "new content"
 }
 
 @test "adopt reports error without --force when file exists in pack" {
-    create_pack_file "vim" "vimrc" "old content"
+    create_pack_file "vim" "home.vimrc" "old content"
     create_home_file ".vimrc" "new content"
 
     run dodot adopt vim "$HOME/.vimrc"
     assert_output_contains "already exists"
 
     # Original pack file should be unchanged
-    assert_file_contents "$DOTFILES_ROOT/vim/vimrc" "old content"
+    assert_file_contents "$DOTFILES_ROOT/vim/home.vimrc" "old content"
 }
 
 @test "adopt multiple files" {

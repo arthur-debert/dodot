@@ -40,7 +40,7 @@ teardown() {
 }
 
 @test "init-sh is empty when no packs deployed" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
     # Don't deploy
 
     run dodot init-sh

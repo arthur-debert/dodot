@@ -12,9 +12,9 @@ teardown() {
 
 @test "list shows all packs" {
     create_pack "git"
-    create_pack_file "git" "gitconfig" "[user]\n  name = test"
+    create_pack_file "git" "home.gitconfig" "[user]\n  name = test"
     create_pack "vim"
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     run dodot list
     [ "$status" -eq 0 ]
@@ -45,7 +45,7 @@ teardown() {
 
 @test "list ignores dotfiles and hidden directories" {
     create_pack "vim"
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
     # .dodot.toml and .git should not appear as packs
     create_root_config '[pack]\nignore = []'
 

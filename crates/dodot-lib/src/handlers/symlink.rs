@@ -1,12 +1,20 @@
 //! Symlink handler — the most complex handler.
 //!
 //! Creates double-link chains from source files to user-visible locations.
-//! Implements a 3-layer target path mapping system:
+//! Target resolution priority (highest first):
 //!
-//! 1. **Layer 3** (highest): Explicit overrides (`_home/`, `_xdg/` prefix)
-//! 2. **Layer 2**: `force_home` config list
-//! 3. **Layer 1** (default): top-level → `$HOME/.{name}`,
-//!    subdirectory → `$XDG_CONFIG_HOME/{path}`
+//! 0. **Custom target** from `[symlink.targets]` config
+//! 1. **`home.X` prefix** (top-level files only) — routes to `$HOME/.X`
+//! 2. **`_home/` or `_xdg/` directory prefix** — raw `$HOME/.<rest>` or
+//!    `$XDG_CONFIG_HOME/<rest>` (escape hatches that skip pack
+//!    namespacing entirely)
+//! 3. **`force_home` config list** — canonical `$HOME` tools (ssh, gpg,
+//!    bashrc, etc.)
+//! 4. **Default**: `$XDG_CONFIG_HOME/<pack>/<rel_path>` for every
+//!    pack-root entry (file or directory) and every nested file. The
+//!    pack name namespaces config under XDG, matching modern tool
+//!    conventions (nvim, helix, ghostty, …) without requiring users
+//!    to write `pack/program/` doubled paths.
 
 use std::path::{Path, PathBuf};
 
@@ -60,7 +68,7 @@ impl Handler for SymlinkHandler {
             if m.is_dir {
                 intents.extend(dir_intents(m, config, paths, fs)?);
             } else {
-                let user_path = resolve_target(&rel_str, false, config, paths);
+                let user_path = resolve_target(&m.pack, &rel_str, false, config, paths);
                 intents.push(HandlerIntent::Link {
                     pack: m.pack.clone(),
                     handler: HANDLER_SYMLINK.into(),
@@ -122,8 +130,15 @@ fn dir_intents(
         .keys()
         .any(|k| k.starts_with(&dir_prefix) || k == rel_str.as_ref());
 
-    if !has_override {
-        let user_path = resolve_target(&rel_str, true, config, paths);
+    // `_home/` and `_xdg/` are per-subtree escape hatches that strip
+    // their prefix during file-level resolution. Wholesale-linking the
+    // top-level `_home` or `_xdg` dir would bake the prefix into the
+    // deploy path (e.g. `~/.config/<pack>/_home`) — clearly not what
+    // the user meant. Force per-file mode for these.
+    let is_escape_prefix_dir = matches!(rel_str.as_ref(), "_home" | "_xdg");
+
+    if !has_override && !is_escape_prefix_dir {
+        let user_path = resolve_target(&m.pack, &rel_str, true, config, paths);
         return Ok(vec![HandlerIntent::Link {
             pack: m.pack.clone(),
             handler: HANDLER_SYMLINK.into(),
@@ -169,7 +184,7 @@ fn collect_per_file_intents(
         if is_protected(&rel_str, &config.protected_paths) {
             continue;
         }
-        let user_path = resolve_target(&rel_str, false, config, paths);
+        let user_path = resolve_target(&m.pack, &rel_str, false, config, paths);
         out.push(HandlerIntent::Link {
             pack: m.pack.clone(),
             handler: HANDLER_SYMLINK.into(),
@@ -180,34 +195,40 @@ fn collect_per_file_intents(
     Ok(())
 }
 
-/// Strip the `dot.` prefix from a filename, returning the dotted version.
-/// `dot.bashrc` → `.bashrc`, `dot.vimrc` → `.vimrc`.
+/// Strip the `home.` prefix from a filename, returning the `$HOME`-bound
+/// dotted version. `home.bashrc` → `.bashrc`, `home.vimrc` → `.vimrc`.
 /// Only applies to top-level files (no `/` in path).
-fn strip_dot_prefix(rel_path: &str) -> Option<String> {
+///
+/// This is the per-file opt-in for "deploy to `$HOME/.<rest>` instead of
+/// the default `$XDG_CONFIG_HOME/<pack>/<rest>`". For per-subtree
+/// opt-out, use the `_home/` directory prefix.
+fn strip_home_prefix(rel_path: &str) -> Option<String> {
     if !rel_path.contains('/') {
-        if let Some(rest) = rel_path.strip_prefix("dot.") {
+        if let Some(rest) = rel_path.strip_prefix("home.") {
             return Some(format!(".{rest}"));
         }
     }
     None
 }
 
-/// Resolve the target path for a symlink using the layered system.
+/// Resolve the target path for a symlink.
 ///
-/// `is_dir` is true when the match is a top-level directory that will
-/// be linked wholesale — in that case the default target is
-/// `$XDG_CONFIG_HOME/<name>` (dirs are not dot-prefixed).
+/// `pack` is the pack name; it namespaces the default XDG target so
+/// `pack vim/vimrc` deploys under `$XDG_CONFIG_HOME/vim/vimrc` rather
+/// than `$XDG_CONFIG_HOME/vimrc`. `is_dir` is true when the match is a
+/// top-level directory linked wholesale.
 ///
 /// Priority (highest first):
 /// 0. Custom target override from config (`[symlink.targets]`)
-/// 1. `dot.` prefix convention (top-level only)
-/// 2. Layer 3: Explicit `_home/` or `_xdg/` directory prefix
-/// 3. Layer 2: `force_home` config list
-/// 4. Layer 1: Smart defaults (top-level file → `$HOME/.{name}`,
-///    top-level dir → `$XDG_CONFIG_HOME/{name}`, subdirs → `$XDG_CONFIG_HOME/{path}`)
+/// 1. `home.X` prefix convention (top-level files only) → `$HOME/.X`
+/// 2. Explicit `_home/` or `_xdg/` directory prefix (escape hatches —
+///    skip pack namespacing entirely)
+/// 3. `force_home` config list (ssh, gpg, bashrc, …)
+/// 4. Default: `$XDG_CONFIG_HOME/<pack>/<rel_path>`
 pub(crate) fn resolve_target(
+    pack: &str,
     rel_path: &str,
-    is_dir: bool,
+    _is_dir: bool,
     config: &HandlerConfig,
     paths: &dyn Pather,
 ) -> PathBuf {
@@ -224,20 +245,15 @@ pub(crate) fn resolve_target(
         return xdg_config.join(target);
     }
 
-    // dot. prefix convention: dot.bashrc → .bashrc (top-level only)
-    // Applied before all layers so it works with force_home and defaults.
-    if let Some(dotted) = strip_dot_prefix(rel_path) {
-        // Treat as if the file were already named with a dot prefix.
-        // force_home still applies to the stripped name.
-        let base = dotted.strip_prefix('.').unwrap_or(&dotted);
-        if is_force_home(base, &config.force_home) {
-            return home.join(&dotted);
-        }
-        // Default: top-level dot-prefixed file goes to $HOME
+    // Priority 1: home. prefix convention (per-file opt-in for $HOME placement)
+    // home.bashrc → ~/.bashrc, home.vimrc → ~/.vimrc (top-level files only).
+    if let Some(dotted) = strip_home_prefix(rel_path) {
         return home.join(&dotted);
     }
 
-    // Layer 3: Explicit overrides
+    // Priority 2: Explicit directory-prefix escape hatches.
+    // _home/<rest> → $HOME/.<rest> (raw, no pack namespace)
+    // _xdg/<rest>  → $XDG_CONFIG_HOME/<rest> (raw, no pack namespace)
     if let Some(stripped) = rel_path.strip_prefix("_home/") {
         let parts: Vec<&str> = stripped.split('/').collect();
         if let Some(first) = parts.first() {
@@ -254,7 +270,7 @@ pub(crate) fn resolve_target(
         return xdg_config.join(stripped);
     }
 
-    // Layer 2: force_home
+    // Priority 3: force_home blacklist (ssh, gpg, bashrc, …)
     if is_force_home(rel_path, &config.force_home) {
         if rel_path.contains('/') {
             // Subdirectory file forced to home (e.g. ssh/config -> .ssh/config)
@@ -285,38 +301,13 @@ pub(crate) fn resolve_target(
         return home.join(dotted);
     }
 
-    // Layer 1: Smart defaults
-    if !rel_path.contains('/') {
-        if is_dir {
-            // Top-level dir → $XDG_CONFIG_HOME/{name} (dirs are not dot-prefixed).
-            return xdg_config.join(rel_path);
-        }
-        // Top-level file → $HOME/.{name}
-        let filename = Path::new(rel_path)
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        let dotted = if filename.starts_with('.') {
-            filename.to_string()
-        } else {
-            format!(".{filename}")
-        };
-        return home.join(dotted);
-    }
-
-    // Files already starting with dot go to $HOME directly
-    if rel_path.starts_with('.') {
-        return home.join(rel_path);
-    }
-
-    // Subdirectory files → $XDG_CONFIG_HOME/{path}
-    // Strip redundant config/ or .config/ prefix
-    let cleaned = rel_path
-        .strip_prefix(".config/")
-        .or_else(|| rel_path.strip_prefix("config/"))
-        .unwrap_or(rel_path);
-
-    xdg_config.join(cleaned)
+    // Priority 4: Default — $XDG_CONFIG_HOME/<pack>/<rel_path>
+    //
+    // The pack name namespaces every entry by default so common modern
+    // tools (nvim, helix, ghostty, …) work out of the box without
+    // requiring `pack/program/` doubled paths. The escape hatches above
+    // cover legacy `$HOME` tools and any user-specified overrides.
+    xdg_config.join(pack).join(rel_path)
 }
 
 /// Check if a path matches any force_home entry.
@@ -387,69 +378,104 @@ mod tests {
         }
     }
 
-    // ── Layer 1: Smart defaults ─────────────────────────────────
+    // ── Default rule: $XDG_CONFIG_HOME/<pack>/<rel_path> ─────────
 
     #[test]
-    fn top_level_file_goes_to_home_with_dot() {
-        let target = resolve_target("vimrc", false, &default_config(), &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
+    fn top_level_file_goes_to_pack_xdg_dir() {
+        // Under #48: top-level files in a pack default to
+        // $XDG_CONFIG_HOME/<pack>/<file>, not $HOME/.<file>.
+        let config = HandlerConfig::default();
+        let target = resolve_target("vim", "vimrc", false, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/vim/vimrc"));
     }
 
     #[test]
-    fn top_level_dotfile_keeps_dot() {
-        let target = resolve_target(".bashrc", false, &default_config(), &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
-    }
-
-    #[test]
-    fn subdirectory_goes_to_xdg() {
-        let config = HandlerConfig::default(); // no force_home
-        let target = resolve_target("nvim/init.lua", false, &config, &test_pather());
+    fn top_level_dir_goes_to_pack_xdg_dir() {
+        let config = HandlerConfig::default();
+        let target = resolve_target("nvim", "init.lua", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
     }
 
     #[test]
-    fn dotted_subdirectory_goes_to_home() {
+    fn top_level_dir_wholesale_goes_to_pack_xdg_dir() {
         let config = HandlerConfig::default();
-        let target = resolve_target(".vim/colors/theme.vim", false, &config, &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.vim/colors/theme.vim"));
+        let target = resolve_target("warp", "themes", true, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/warp/themes"));
+    }
+
+    /// Regression for the 0.16.0 pilot: pack `ghostty` with top-level
+    /// file `config` used to resolve to `$HOME/.config` (collision with
+    /// XDG_CONFIG_HOME directory). Under #48 it goes under the pack.
+    #[test]
+    fn top_level_file_named_config_goes_under_pack_no_xdg_collision() {
+        let config = HandlerConfig::default();
+        let target = resolve_target("ghostty", "config", false, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/ghostty/config"));
     }
 
     #[test]
-    fn config_prefix_stripped() {
+    fn nested_file_namespaced_under_pack() {
         let config = HandlerConfig::default();
-        let target = resolve_target("config/nvim/init.lua", false, &config, &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
+        let target = resolve_target("nvim", "lua/options.lua", false, &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/.config/nvim/lua/options.lua")
+        );
     }
 
-    // ── Layer 2: force_home ─────────────────────────────────────
+    // ── Priority 3: force_home ──────────────────────────────────
 
     #[test]
-    fn force_home_top_level() {
-        let target = resolve_target("bashrc", false, &default_config(), &test_pather());
+    fn force_home_top_level_file() {
+        let target = resolve_target("shell", "bashrc", false, &default_config(), &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
     }
 
     #[test]
-    fn force_home_subdirectory() {
-        let target = resolve_target("ssh/config", false, &default_config(), &test_pather());
+    fn force_home_subdirectory_file() {
+        let target = resolve_target(
+            "net",
+            "ssh/config",
+            false,
+            &default_config(),
+            &test_pather(),
+        );
         assert_eq!(target, PathBuf::from("/home/alice/.ssh/config"));
     }
 
-    // ── Layer 3: Explicit overrides ─────────────────────────────
+    #[test]
+    fn force_home_top_level_dir_wholesale() {
+        let target = resolve_target("net", "ssh", true, &default_config(), &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.ssh"));
+    }
+
+    // ── Priority 2: _home/ and _xdg/ escape hatches ─────────────
 
     #[test]
-    fn home_prefix_override() {
+    fn home_prefix_dir_escapes_pack_namespace() {
+        // _home/<rest> deploys raw to $HOME/.<rest>, regardless of pack
+        // name. Useful when a single pack groups files that belong in
+        // $HOME without being in force_home.
         let config = HandlerConfig::default();
-        let target = resolve_target("_home/vim/vimrc", false, &config, &test_pather());
+        let target = resolve_target("misc", "_home/vim/vimrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vim/vimrc"));
     }
 
     #[test]
-    fn xdg_prefix_override() {
+    fn xdg_prefix_dir_escapes_pack_namespace() {
+        // _xdg/<rest> deploys raw to $XDG_CONFIG_HOME/<rest>, NOT under
+        // the pack name. Useful for packs whose name doesn't match the
+        // target program (e.g. a `term-config` pack containing
+        // `_xdg/ghostty/config`).
         let config = HandlerConfig::default();
-        let target = resolve_target("_xdg/nvim/init.lua", false, &config, &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
+        let target = resolve_target(
+            "term-config",
+            "_xdg/ghostty/config",
+            false,
+            &config,
+            &test_pather(),
+        );
+        assert_eq!(target, PathBuf::from("/home/alice/.config/ghostty/config"));
     }
 
     // ── Protected paths ─────────────────────────────────────────
@@ -486,43 +512,43 @@ mod tests {
         assert!(!is_force_home("vimrc", &["ssh".into(), "bashrc".into()]));
     }
 
-    // ── dot. prefix convention ──────────────────────────────────
+    // ── Priority 1: home. prefix convention ─────────────────────
 
     #[test]
-    fn dot_prefix_stripped_for_top_level() {
-        let target = resolve_target("dot.bashrc", false, &default_config(), &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.bashrc"));
+    fn home_prefix_routes_top_level_file_to_home() {
+        // home.X is the per-file opt-in for $HOME/.X placement, replacing
+        // the older `dot.X` prefix in #48.
+        let config = HandlerConfig::default();
+        let target = resolve_target("git", "home.gitconfig", false, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.gitconfig"));
     }
 
     #[test]
-    fn dot_prefix_with_force_home() {
-        let target = resolve_target("dot.zshrc", false, &default_config(), &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.zshrc"));
-    }
-
-    #[test]
-    fn dot_prefix_non_forced_file() {
-        let config = HandlerConfig::default(); // no force_home
-        let target = resolve_target("dot.vimrc", false, &config, &test_pather());
+    fn home_prefix_works_even_when_pack_not_force_home() {
+        let config = HandlerConfig::default();
+        let target = resolve_target("misc", "home.vimrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
     }
 
     #[test]
-    fn dot_prefix_not_applied_to_subdirs() {
-        // dot. prefix only works for top-level files
+    fn home_prefix_not_applied_to_subdirs() {
+        // home. prefix only works for top-level files; nested
+        // home.<x> files keep the literal name under the pack's XDG dir.
         let config = HandlerConfig::default();
-        let target = resolve_target("subdir/dot.conf", false, &config, &test_pather());
-        // Should NOT strip dot. — it's not top-level
-        assert_eq!(target, PathBuf::from("/home/alice/.config/subdir/dot.conf"));
+        let target = resolve_target("misc", "subdir/home.conf", false, &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/.config/misc/subdir/home.conf")
+        );
     }
 
     #[test]
-    fn strip_dot_prefix_unit() {
-        assert_eq!(strip_dot_prefix("dot.bashrc"), Some(".bashrc".into()));
-        assert_eq!(strip_dot_prefix("dot.vimrc"), Some(".vimrc".into()));
-        assert_eq!(strip_dot_prefix("vimrc"), None);
-        assert_eq!(strip_dot_prefix(".bashrc"), None);
-        assert_eq!(strip_dot_prefix("sub/dot.conf"), None); // not top-level
+    fn strip_home_prefix_unit() {
+        assert_eq!(strip_home_prefix("home.bashrc"), Some(".bashrc".into()));
+        assert_eq!(strip_home_prefix("home.vimrc"), Some(".vimrc".into()));
+        assert_eq!(strip_home_prefix("vimrc"), None);
+        assert_eq!(strip_home_prefix(".bashrc"), None);
+        assert_eq!(strip_home_prefix("sub/home.conf"), None);
     }
 
     // ── Custom target overrides ─────────────────────────────────
@@ -534,7 +560,7 @@ mod tests {
             .targets
             .insert("misterious.conf".into(), "/var/etc/misterious.conf".into());
 
-        let target = resolve_target("misterious.conf", false, &config, &test_pather());
+        let target = resolve_target("pack", "misterious.conf", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/var/etc/misterious.conf"));
     }
 
@@ -546,7 +572,7 @@ mod tests {
             "my-documents/home-bound.conf".into(),
         );
 
-        let target = resolve_target("home-bound.conf", false, &config, &test_pather());
+        let target = resolve_target("pack", "home-bound.conf", false, &config, &test_pather());
         assert_eq!(
             target,
             PathBuf::from("/home/alice/.config/my-documents/home-bound.conf")
@@ -555,37 +581,21 @@ mod tests {
 
     #[test]
     fn custom_target_overrides_all_layers() {
-        // Even a force_home file can be overridden
+        // Even a force_home file can be overridden.
         let mut config = default_config();
         config
             .targets
             .insert("bashrc".into(), "/custom/bashrc".into());
 
-        let target = resolve_target("bashrc", false, &config, &test_pather());
+        let target = resolve_target("shell", "bashrc", false, &config, &test_pather());
         assert_eq!(target, PathBuf::from("/custom/bashrc"));
     }
 
     #[test]
-    fn no_custom_target_falls_through() {
+    fn no_custom_target_falls_through_to_pack_namespaced_default() {
         let config = HandlerConfig::default();
-        // No targets configured — should use default behavior
-        let target = resolve_target("vimrc", false, &config, &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.vimrc"));
-    }
-
-    // ── Top-level dir resolution ────────────────────────────────
-
-    #[test]
-    fn top_level_dir_goes_to_xdg() {
-        let config = HandlerConfig::default();
-        let target = resolve_target("nvim", true, &config, &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim"));
-    }
-
-    #[test]
-    fn top_level_dir_still_respects_force_home() {
-        let target = resolve_target("ssh", true, &default_config(), &test_pather());
-        assert_eq!(target, PathBuf::from("/home/alice/.ssh"));
+        let target = resolve_target("vim", "vimrc", false, &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/vim/vimrc"));
     }
 
     // ── Wholesale vs per-file dir behavior ──────────────────────
@@ -626,7 +636,12 @@ mod tests {
         } = &intents[0]
         {
             assert!(source.ends_with("warp/themes"));
-            assert!(user_path.ends_with(".config/themes"));
+            // Under #48, top-level dirs deploy under the pack's XDG dir.
+            assert!(
+                user_path.ends_with(".config/warp/themes"),
+                "user_path={}",
+                user_path.display()
+            );
         } else {
             panic!("expected Link intent");
         }

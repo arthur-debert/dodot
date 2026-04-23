@@ -11,7 +11,7 @@ teardown() {
 }
 
 @test "up reports error when target is an existing unmanaged file" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
     create_home_file ".vimrc" "existing content"
 
     run dodot up

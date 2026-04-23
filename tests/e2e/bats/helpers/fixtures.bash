@@ -24,7 +24,7 @@ create_pack() {
 }
 
 # Create a file inside a pack.
-# Usage: create_pack_file "vim" "vimrc" "set nocompatible"
+# Usage: create_pack_file "vim" "home.vimrc" "set nocompatible"
 # Handles nested paths (creates parent dirs).
 create_pack_file() {
     local pack="$1"
@@ -228,10 +228,10 @@ eval_init_sh() {
 create_realistic_dotfiles() {
     # vim: symlink + shell
     instrumented_shell "vim" "aliases.sh" 'alias vi=vim'
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     # git: symlink
-    create_pack_file "git" "gitconfig" "[user]\n  name = testuser\n  email = test@example.com"
+    create_pack_file "git" "home.gitconfig" "[user]\n  name = testuser\n  email = test@example.com"
 
     # zsh: all three shell file types
     instrumented_shell "zsh" "aliases.sh" 'alias ll="ls -la"'

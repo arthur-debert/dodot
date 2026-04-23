@@ -11,7 +11,7 @@ teardown() {
 }
 
 @test "status shows pending before up" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     run dodot status
     [ "$status" -eq 0 ]
@@ -21,7 +21,7 @@ teardown() {
 }
 
 @test "status shows deployed after up" {
-    create_pack_file "vim" "vimrc" "set nocompatible"
+    create_pack_file "vim" "home.vimrc" "set nocompatible"
 
     dodot up
     run dodot status
@@ -32,8 +32,8 @@ teardown() {
 }
 
 @test "status filters by pack name" {
-    create_pack_file "vim" "vimrc" "x"
-    create_pack_file "git" "gitconfig" "x"
+    create_pack_file "vim" "home.vimrc" "x"
+    create_pack_file "git" "home.gitconfig" "x"
 
     run dodot status vim
     [ "$status" -eq 0 ]
@@ -78,7 +78,7 @@ teardown() {
 }
 
 @test "status skips ignored packs from main listing but shows them as ignored" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
     create_pack_file "disabled" "file" "x"
     mark_ignored "disabled"
 
@@ -95,7 +95,7 @@ teardown() {
 }
 
 @test "status returns pending after down" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
 
     dodot up
     dodot down

@@ -155,7 +155,7 @@ fn verify_symlink(
         // #44: a non-symlink file whose content is byte-identical to the
         // source is also NOT a conflict — the executor will auto-replace
         // it without `--force`. Stay plain `pending` for that case.
-        let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
+        let user_target = resolve_target(pack, rel_path, is_dir, config, ctx.paths.as_ref());
         if !ctx.fs.is_symlink(&user_target) && ctx.fs.exists(&user_target) {
             if crate::equivalence::is_equivalent(&user_target, source, ctx.fs.as_ref()) {
                 return Health::Pending;
@@ -182,7 +182,7 @@ fn verify_symlink(
     }
 
     // Step 4: Check user link at the currently-resolved target
-    let user_target = resolve_target(rel_path, is_dir, config, ctx.paths.as_ref());
+    let user_target = resolve_target(pack, rel_path, is_dir, config, ctx.paths.as_ref());
 
     if ctx.fs.is_symlink(&user_target) {
         match ctx.fs.readlink(&user_target) {
@@ -382,7 +382,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
             // Compute actual target path for symlink handler display
             let user_target = if m.handler == HANDLER_SYMLINK {
-                let target = resolve_target(&rel_str, m.is_dir, &pack.config, ctx.paths.as_ref());
+                let target = resolve_target(
+                    &pack.name,
+                    &rel_str,
+                    m.is_dir,
+                    &pack.config,
+                    ctx.paths.as_ref(),
+                );
                 let home = ctx.paths.home_dir();
                 let display = if let Ok(rel) = target.strip_prefix(home) {
                     format!("~/{}", rel.display())

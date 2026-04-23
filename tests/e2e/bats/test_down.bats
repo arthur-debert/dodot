@@ -11,10 +11,10 @@ teardown() {
 }
 
 @test "down removes deployed state" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
 
     dodot up
-    assert_exists "$XDG_DATA_HOME/dodot/packs/vim/symlink/vimrc"
+    assert_exists "$XDG_DATA_HOME/dodot/packs/vim/symlink/home.vimrc"
 
     run dodot down
     [ "$status" -eq 0 ]
@@ -25,7 +25,7 @@ teardown() {
 }
 
 @test "down makes status return to pending" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
 
     dodot up
     dodot down
@@ -37,7 +37,7 @@ teardown() {
 }
 
 @test "down --dry-run shows plan without changes" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
 
     dodot up
     run dodot down --dry-run
@@ -50,8 +50,8 @@ teardown() {
 }
 
 @test "down removes selected packs only" {
-    create_pack_file "vim" "vimrc" "x"
-    create_pack_file "git" "gitconfig" "x"
+    create_pack_file "vim" "home.vimrc" "x"
+    create_pack_file "git" "home.gitconfig" "x"
 
     dodot up
     dodot down vim
@@ -64,7 +64,7 @@ teardown() {
 }
 
 @test "down on already-inactive packs is safe" {
-    create_pack_file "vim" "vimrc" "x"
+    create_pack_file "vim" "home.vimrc" "x"
 
     # Never deployed — down should succeed
     run dodot down
