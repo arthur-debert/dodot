@@ -16,18 +16,22 @@
 //! `$PATH`, it just won't be directly runnable until the user fixes
 //! permissions manually.
 
+use std::path::{Path, PathBuf};
+
 use tracing::{debug, info};
 
 use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::handlers::HANDLER_PATH;
 use crate::operations::{HandlerIntent, Operation, OperationResult};
+use crate::paths::Pather;
 use crate::Result;
 
 /// Executes handler intents by dispatching to the DataStore.
 pub struct Executor<'a> {
     datastore: &'a dyn DataStore,
     fs: &'a dyn Fs,
+    paths: &'a dyn Pather,
     dry_run: bool,
     force: bool,
     provision_rerun: bool,
@@ -38,6 +42,7 @@ impl<'a> Executor<'a> {
     pub fn new(
         datastore: &'a dyn DataStore,
         fs: &'a dyn Fs,
+        paths: &'a dyn Pather,
         dry_run: bool,
         force: bool,
         provision_rerun: bool,
@@ -46,6 +51,7 @@ impl<'a> Executor<'a> {
         Self {
             datastore,
             fs,
+            paths,
             dry_run,
             force,
             provision_rerun,
@@ -102,6 +108,23 @@ impl<'a> Executor<'a> {
                     user_path = %user_path.display(),
                     "executing link intent"
                 );
+
+                // Refuse to deploy when an ancestor of user_path is a symlink
+                // that resolves back into the pack store or dodot data dir.
+                // Writing through such an ancestor lands back inside the pack
+                // (clobbering source files) or creates a pack↔data-dir cycle.
+                if let Some((ancestor, target)) = self.ancestor_cycles_into_store(user_path) {
+                    let op = Operation::CreateUserLink {
+                        pack: pack.clone(),
+                        handler: handler.clone(),
+                        datastore_path: Default::default(),
+                        user_path: user_path.clone(),
+                    };
+                    return Ok(vec![OperationResult::fail(
+                        op,
+                        cycle_message(user_path, &ancestor, &target),
+                    )]);
+                }
 
                 // Pre-check: does a non-symlink file exist at user_path?
                 // We check BEFORE creating the data link to avoid leaving
@@ -407,6 +430,20 @@ impl<'a> Executor<'a> {
                 source,
                 user_path,
             } => {
+                // Surface ancestor-into-pack-store cycles in dry-run too so
+                // the user sees the problem before committing.
+                if let Some((ancestor, target)) = self.ancestor_cycles_into_store(user_path) {
+                    return vec![OperationResult::fail(
+                        Operation::CreateUserLink {
+                            pack: pack.clone(),
+                            handler: handler.clone(),
+                            datastore_path: Default::default(),
+                            user_path: user_path.clone(),
+                        },
+                        cycle_message(user_path, &ancestor, &target),
+                    )];
+                }
+
                 // Check for conflicts even in dry-run
                 if !self.fs.is_symlink(user_path) && self.fs.exists(user_path) {
                     if self.force {
@@ -499,6 +536,43 @@ impl<'a> Executor<'a> {
             }
         }
     }
+
+    /// Walk `user_path`'s ancestors. If any is a symlink whose single-hop
+    /// resolved target lives under `dotfiles_root` or `data_dir`, return
+    /// `(ancestor, resolved_target)`. Writing through such an ancestor
+    /// lands back inside the store and is always wrong — either it
+    /// clobbers a pack source or builds a pack↔data-dir cycle.
+    fn ancestor_cycles_into_store(&self, user_path: &Path) -> Option<(PathBuf, PathBuf)> {
+        let dotfiles_root = self.paths.dotfiles_root();
+        let data_dir = self.paths.data_dir();
+        let mut current = user_path.parent()?;
+        loop {
+            if self.fs.is_symlink(current) {
+                if let Ok(raw_target) = self.fs.readlink(current) {
+                    let resolved = crate::equivalence::resolve_symlink_target(current, &raw_target);
+                    if resolved.starts_with(dotfiles_root) || resolved.starts_with(data_dir) {
+                        return Some((current.to_path_buf(), resolved));
+                    }
+                }
+            }
+            match current.parent() {
+                Some(p) if p != current => current = p,
+                _ => return None,
+            }
+        }
+    }
+}
+
+fn cycle_message(user_path: &Path, ancestor: &Path, target: &Path) -> String {
+    format!(
+        "cycle: {} is a symlink into the dodot store (-> {}); \
+         deploying {} through it would write back into the store. \
+         Remove or move {} and re-run.",
+        ancestor.display(),
+        target.display(),
+        user_path.display(),
+        ancestor.display(),
+    )
 }
 
 #[cfg(test)]
@@ -547,7 +621,15 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -577,7 +659,15 @@ mod tests {
             .home_file(".vimrc", "existing content")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -620,7 +710,15 @@ mod tests {
             .home_file(".vimrc", "existing content")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, true, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            true,
+            false,
+            true,
+        );
 
         let source = env.dotfiles_root.join("vim/vimrc");
         let user_path = env.home.join(".vimrc");
@@ -655,7 +753,15 @@ mod tests {
             .home_file(".vimrc", "existing content")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
 
         let results = executor
             .execute(vec![
@@ -698,7 +804,15 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
 
         let source = env.dotfiles_root.join("vim/aliases.sh");
 
@@ -725,7 +839,15 @@ mod tests {
     fn execute_run_creates_sentinel() {
         let env = TempEnvironment::builder().build();
         let (ds, runner) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
 
         let results = executor
             .execute(vec![HandlerIntent::Run {
@@ -755,7 +877,15 @@ mod tests {
             .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
@@ -784,7 +914,15 @@ mod tests {
             .write_file(&sentinel_dir.join("install.sh-abc123"), b"completed|12345")
             .unwrap();
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, true, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            true,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Run {
                 pack: "vim".into(),
@@ -813,7 +951,15 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true,
+            false,
+            false,
+            true,
+        );
 
         let results = executor
             .execute(vec![
@@ -861,7 +1007,15 @@ mod tests {
             .home_file(".vimrc", "existing")
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true,
+            false,
+            false,
+            true,
+        );
 
         let results = executor
             .execute(vec![HandlerIntent::Link {
@@ -886,7 +1040,15 @@ mod tests {
             .done()
             .build();
         let (ds, _) = make_datastore(&env);
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
 
         let results = executor
             .execute(vec![
@@ -944,7 +1106,15 @@ mod tests {
             "file should start non-executable"
         );
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "tools".into(),
@@ -984,7 +1154,15 @@ mod tests {
         let tool_path = env.dotfiles_root.join("tools/bin/mytool");
         env.fs.set_permissions(&tool_path, 0o755).unwrap();
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "tools".into(),
@@ -1014,7 +1192,15 @@ mod tests {
         let (ds, _) = make_datastore(&env);
 
         // auto_chmod_exec = false
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, false);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            false,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "tools".into(),
@@ -1048,7 +1234,15 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "tools".into(),
@@ -1081,7 +1275,15 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "vim".into(),
@@ -1109,7 +1311,15 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), true, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "tools".into(),
@@ -1149,7 +1359,15 @@ mod tests {
             .build();
         let (ds, _) = make_datastore(&env);
 
-        let executor = Executor::new(&ds, env.fs.as_ref(), false, false, false, true);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
         let results = executor
             .execute(vec![HandlerIntent::Stage {
                 pack: "tools".into(),
@@ -1174,5 +1392,191 @@ mod tests {
             let meta = env.fs.stat(&path).unwrap();
             assert_ne!(meta.mode & 0o111, 0, "{name} should be executable");
         }
+    }
+
+    // ── Ancestor-cycle detection ────────────────────────────────────
+
+    /// If an ancestor of `user_path` is a symlink into the pack store,
+    /// deploy must refuse before touching anything — otherwise the
+    /// write goes through the ancestor and lands inside the pack,
+    /// clobbering source files or building a pack↔data-dir cycle.
+    #[test]
+    fn link_refuses_when_user_path_parent_symlinks_into_pack() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        // Legacy setup: ~/.config/warp is a symlink into the pack itself.
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.symlink(&pack_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "expected failure, got: {:?}", results);
+        assert!(
+            results[0].message.contains("cycle"),
+            "expected cycle message, got: {}",
+            results[0].message
+        );
+
+        // No data link created, source file untouched.
+        env.assert_no_handler_state("warp", "symlink");
+        env.assert_file_contents(&source, "keep me");
+    }
+
+    /// Same check but the ancestor points into `data_dir`. Writing
+    /// through it would land in the datastore and still wedge the
+    /// system.
+    #[test]
+    fn link_refuses_when_user_path_parent_symlinks_into_data_dir() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.mkdir_all(&env.data_dir).unwrap();
+        env.fs.symlink(&env.data_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            false,
+            false,
+            true,
+        );
+
+        let source = env.dotfiles_root.join("warp/keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path: user_path.clone(),
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(results[0].message.contains("cycle"));
+        env.assert_no_handler_state("warp", "symlink");
+    }
+
+    /// Dry-run must surface the same error, not silently report
+    /// "would link".
+    #[test]
+    fn simulate_link_reports_ancestor_cycle() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.symlink(&pack_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            true, // dry_run
+            false,
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source,
+                user_path,
+            }])
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert!(
+            results[0].message.contains("cycle"),
+            "msg: {}",
+            results[0].message
+        );
+    }
+
+    /// --force must NOT bypass the ancestor-cycle check. A cycle can
+    /// never be "forced through" — it would corrupt the pack.
+    #[test]
+    fn force_does_not_bypass_ancestor_cycle_check() {
+        let env = TempEnvironment::builder()
+            .pack("warp")
+            .file("keybindings.yaml", "keep me")
+            .done()
+            .build();
+        let pack_dir = env.dotfiles_root.join("warp");
+        let config_warp = env.config_home.join("warp");
+        env.fs.mkdir_all(&env.config_home).unwrap();
+        env.fs.symlink(&pack_dir, &config_warp).unwrap();
+
+        let (ds, _) = make_datastore(&env);
+        let executor = Executor::new(
+            &ds,
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            false,
+            true, // force
+            false,
+            true,
+        );
+
+        let source = pack_dir.join("keybindings.yaml");
+        let user_path = config_warp.join("keybindings.yaml");
+
+        let results = executor
+            .execute(vec![HandlerIntent::Link {
+                pack: "warp".into(),
+                handler: "symlink".into(),
+                source: source.clone(),
+                user_path,
+            }])
+            .unwrap();
+
+        assert!(!results[0].success, "force must not bypass cycle check");
+        env.assert_file_contents(&source, "keep me");
     }
 }
