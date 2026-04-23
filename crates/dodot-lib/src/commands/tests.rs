@@ -857,6 +857,128 @@ fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
     );
 }
 
+/// **Round-trip property** — the critical contract between `adopt` and
+/// `resolve_target`. For every `$HOME` source that `adopt` accepts,
+/// feeding the `derive_pack_filename` result back through
+/// `resolve_target` must return the original source path.
+///
+/// `derive_pack_filename` encodes the *inverse* of `resolve_target`'s
+/// priority rules (force_home, home. prefix, _home/ directory). The
+/// two functions are separately implemented but must stay lockstep;
+/// this test catches any drift directly.
+///
+/// Cases cover every accepted branch:
+///   - force_home file (`~/.bashrc`)
+///   - force_home directory (`~/.ssh`)
+///   - dotted non-force_home file (`~/.vimrc`)
+///   - dotted non-force_home directory (`~/.weechat`)
+///
+/// The refused branch (non-dotted $HOME entry) is covered by the
+/// explicit refusal test `adopt_refuses_non_dotted_home_entry`.
+#[test]
+fn pack_filename_round_trips_through_resolve_target() {
+    use crate::commands::adopt::derive_pack_filename;
+    use crate::handlers::symlink::resolve_target;
+
+    // Default force_home: match what dodot ships (keep this minimal
+    // and explicit so test failures point at a real behavior change).
+    let force_home: Vec<String> = vec![
+        "ssh".into(),
+        "gnupg".into(),
+        "aws".into(),
+        "kube".into(),
+        "bashrc".into(),
+        "zshrc".into(),
+        "profile".into(),
+        "inputrc".into(),
+    ];
+    let config = crate::handlers::HandlerConfig {
+        force_home: force_home.clone(),
+        ..crate::handlers::HandlerConfig::default()
+    };
+
+    let paths = crate::paths::XdgPather::builder()
+        .home("/home/alice")
+        .dotfiles_root("/home/alice/dotfiles")
+        .xdg_config_home("/home/alice/.config")
+        .build()
+        .unwrap();
+
+    struct Case {
+        pack: &'static str,
+        // The file/dir name as it would appear inside $HOME (.vimrc, .ssh, …).
+        home_name: &'static str,
+        is_dir: bool,
+        // What `derive_pack_filename` should produce (here as documentation; the
+        // test only asserts the round-trip, not the literal pack filename — a
+        // future refactor of the inverse rules is allowed to pick a different
+        // internal representation as long as the round-trip still holds).
+        expected_pack_filename: &'static str,
+    }
+
+    let cases = [
+        Case {
+            pack: "shell",
+            home_name: ".bashrc",
+            is_dir: false,
+            expected_pack_filename: "bashrc",
+        },
+        Case {
+            pack: "net",
+            home_name: ".ssh",
+            is_dir: true,
+            expected_pack_filename: "ssh",
+        },
+        Case {
+            pack: "vim",
+            home_name: ".vimrc",
+            is_dir: false,
+            expected_pack_filename: "home.vimrc",
+        },
+        Case {
+            pack: "chats",
+            home_name: ".weechat",
+            is_dir: true,
+            expected_pack_filename: "_home/weechat",
+        },
+    ];
+
+    for c in &cases {
+        let derived =
+            derive_pack_filename(c.home_name, c.is_dir, &force_home).unwrap_or_else(|e| {
+                panic!(
+                    "derive_pack_filename refused accepted case {:?}: {e}",
+                    c.home_name
+                )
+            });
+        assert_eq!(
+            derived, c.expected_pack_filename,
+            "documentation-expected pack filename drifted for {}",
+            c.home_name
+        );
+
+        let target = resolve_target(c.pack, &derived, &config, &paths);
+        let expected_source = std::path::PathBuf::from(format!("/home/alice/{}", c.home_name));
+        assert_eq!(
+            target,
+            expected_source,
+            "round-trip broke for {}: derive_pack_filename → {} → resolve_target → {} \
+             (expected back at {})",
+            c.home_name,
+            derived,
+            target.display(),
+            expected_source.display(),
+        );
+    }
+
+    // Refused case: non-dotted entry — no round-trip path exists.
+    let refused = derive_pack_filename("my_script.sh", false, &force_home);
+    assert!(
+        refused.is_err(),
+        "non-dotted $HOME entry must be refused, got: {refused:?}"
+    );
+}
+
 #[test]
 fn adopt_preserves_inner_symlinks_as_symlinks() {
     // Uses a dotted directory (post-#2: non-dotted $HOME entries are

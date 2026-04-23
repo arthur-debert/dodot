@@ -128,6 +128,60 @@ pub fn adopt(
     Ok(result)
 }
 
+// ── Pack-filename derivation ─────────────────────────────────────
+//
+// The inverse of `handlers::symlink::resolve_target`: given a
+// `$HOME/<file_name>` source we want to adopt, pick a pack-relative
+// filename such that re-deploying with `dodot up` lands the symlink
+// back at the *exact* original location.
+//
+// Goal: round-trip preservation. If a future change to `resolve_target`
+// adds a new convention or reorders priorities and this function is
+// not updated in lockstep, `pack_filename_round_trips_through_resolve_target`
+// (the property test in `commands::tests`) catches the drift.
+
+/// Decide the pack-relative filename to use when adopting a
+/// `$HOME/<file_name>` source.
+///
+/// Rules (mirror of `resolve_target`'s priority list, run in reverse):
+///   - In `force_home`: pack file `<stripped>`. The symlink handler's
+///     `force_home` rule routes deploys back to `$HOME/.<stripped>`.
+///   - Dotted file (e.g. `.vimrc`): pack file `home.<stripped>`. The
+///     per-file `home.X` convention routes back to `$HOME/.<stripped>`.
+///   - Dotted directory (e.g. `.weechat`): pack subdir
+///     `_home/<stripped>/`. The per-subtree `_home/` directory prefix
+///     routes contents back to `$HOME/.<stripped>/...`.
+///   - Non-dotted file or directory: no automatic round-trip path
+///     exists. Returns `Err` with a user-facing reason.
+pub(crate) fn derive_pack_filename(
+    file_name: &str,
+    is_dir: bool,
+    force_home: &[String],
+) -> std::result::Result<String, String> {
+    let stripped = file_name.strip_prefix('.').unwrap_or(file_name);
+    let in_force_home = force_home
+        .iter()
+        .any(|entry| entry.strip_prefix('.').unwrap_or(entry) == stripped);
+
+    if in_force_home {
+        Ok(stripped.to_string())
+    } else if file_name.starts_with('.') {
+        if is_dir {
+            Ok(format!("_home/{stripped}"))
+        } else {
+            Ok(format!("home.{stripped}"))
+        }
+    } else {
+        Err(format!(
+            "a non-dotted entry in $HOME has no automatic round-trip path \
+             under the post-#48 XDG default. Either rename to a dotted name \
+             (e.g. .{stripped}) before adopting, or copy into the pack \
+             manually and add a [symlink.targets] override pinning the \
+             deploy path."
+        ))
+    }
+}
+
 // ── Pre-flight ───────────────────────────────────────────────────
 
 fn preflight(
@@ -256,66 +310,12 @@ fn preflight(
             .to_string_lossy()
             .into_owned();
 
-        // Pack-filename derivation for a `$HOME/.<name>` source.
-        // Goal: `dodot up` after `dodot adopt` should put the symlink
-        // back at the *exact* original location. Under #48's pack-
-        // namespaced XDG default, naming the pack file just `<name>`
-        // (the legacy strip-the-dot behavior) would route deploys to
-        // `$XDG_CONFIG_HOME/<pack>/<name>` instead of `$HOME/.<name>` —
-        // breaking the round-trip and silently relocating the file.
-        //
-        // Rules:
-        //   - In `force_home` (bashrc, ssh, gpg, …): pack file `<name>`.
-        //     The symlink handler's `force_home` rule routes deploys
-        //     back to `$HOME/.<name>` automatically.
-        //   - Dotted file (e.g. `~/.vimrc`): pack file `home.<name>`.
-        //     The per-file `home.X` convention routes back to `$HOME/.<name>`.
-        //   - Dotted directory (e.g. `~/.weechat/`): pack subdirectory
-        //     `_home/<name>/`. The per-subtree `_home/` directory prefix
-        //     routes contents back to `$HOME/.<name>/...`. (There's no
-        //     per-file `home.X` convention for directories; `_home/` is
-        //     the equivalent at the directory level.)
-        //   - Non-dotted file (rare in $HOME) and non-dotted directory:
-        //     no automatic round-trip path exists. The caller can use
-        //     `[symlink.targets]` to pin a custom destination after
-        //     adoption; meanwhile we refuse rather than silently
-        //     relocating the file under XDG. See review item #2.
-        let stripped = file_name.strip_prefix('.').unwrap_or(&file_name);
-        let in_force_home = pack_config
-            .symlink
-            .force_home
-            .iter()
-            .any(|entry| entry.strip_prefix('.').unwrap_or(entry) == stripped);
-        let pack_filename = if in_force_home {
-            stripped.to_string()
-        } else if file_name.starts_with('.') {
-            if is_dir {
-                // Place under `_home/<stripped>/`. The `_home/` per-subtree
-                // escape hatch routes everything inside back to `$HOME`.
-                format!("_home/{stripped}")
-            } else {
-                format!("home.{stripped}")
-            }
-        } else {
-            // Non-dotted file or directory in $HOME: no automatic
-            // round-trip path exists post-#48 (the default would route
-            // re-deploys to `$XDG_CONFIG_HOME/<pack>/<name>` rather
-            // than back to the original $HOME location). Refuse rather
-            // than silently relocating.
-            //
-            // The user's options: rename the file in $HOME to a dotted
-            // name first, or — if they really want it under XDG —
-            // move it into the pack manually and add a
-            // `[symlink.targets]` override pinning the target.
-            return Err(DodotError::Other(format!(
-                "refusing to adopt {}: a non-dotted entry in $HOME has no \
-                 automatic round-trip path under the post-#48 XDG default. \
-                 Either rename to a dotted name (e.g. .{stripped}) before \
-                 adopting, or copy into the pack manually and add a \
-                 [symlink.targets] override pinning the deploy path.",
-                abs.display()
-            )));
-        };
+        let pack_filename =
+            derive_pack_filename(&file_name, is_dir, &pack_config.symlink.force_home).map_err(
+                |reason| {
+                    DodotError::Other(format!("refusing to adopt {}: {reason}", abs.display()))
+                },
+            )?;
 
         // Filename-ignore check against pack + root ignore patterns.
         if rules::should_skip_entry(&pack_filename, &ignore_patterns) {
