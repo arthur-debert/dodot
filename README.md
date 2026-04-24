@@ -87,10 +87,10 @@ dodot matches files to handlers by name convention:
 | Handler    | Matches                                     | Action                        |
 |------------|---------------------------------------------|-------------------------------|
 | **symlink**| Most files (default)                        | Symlink under `~/.config/<pack>/` |
-| **shell**  | `*.sh`, `aliases.*`, `profile.*`, `login.*` | Sourced via shell init script |
+| **shell**  | `{aliases,profile,login,env}.{sh,bash,zsh}` | Sourced via shell init script |
 | **path**   | `bin/` directories                          | Added to `$PATH`              |
 | **homebrew** | `Brewfile`                                | `brew bundle install`         |
-| **install**| `install.sh`, `install`                     | Run once (checksum-tracked)   |
+| **install**| `install.sh`, `install.bash`, `install.zsh` | Run once (checksum-tracked)   |
 
 Symlink targets are resolved smartly:
 - Pack-root entries default to `$XDG_CONFIG_HOME/<pack>/<rel_path>` (e.g. `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`)

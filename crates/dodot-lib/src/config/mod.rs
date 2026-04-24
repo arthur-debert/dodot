@@ -148,12 +148,26 @@ pub struct MappingsSection {
     #[config(default = "bin")]
     pub path: String,
 
-    /// Filename pattern for install scripts.
-    #[config(default = "install.sh")]
-    pub install: String,
+    /// Filename patterns for install scripts.
+    ///
+    /// The extension selects the interpreter used to run the script
+    /// (`.sh`/`.bash` → `bash`, `.zsh` → `zsh`); see the install handler
+    /// for the exact mapping.
+    #[config(default = ["install.sh", "install.bash", "install.zsh"])]
+    pub install: Vec<String>,
 
-    /// Filename patterns for shell scripts to source.
-    #[config(default = ["aliases.sh", "profile.sh", "login.sh", "env.sh"])]
+    /// Filename patterns for shell scripts to source at login.
+    ///
+    /// Sourced files run *in the user's shell* (whichever shell reads
+    /// `dodot-init.sh`), so `.zsh` files will only parse cleanly in zsh
+    /// sessions and `.bash` files in bash sessions. `.sh` is the
+    /// portable bucket for snippets that work in either.
+    #[config(default = [
+        "aliases.sh", "aliases.bash", "aliases.zsh",
+        "profile.sh", "profile.bash", "profile.zsh",
+        "login.sh", "login.bash", "login.zsh",
+        "env.sh", "env.bash", "env.zsh",
+    ])]
     pub shell: Vec<String>,
 
     /// Filename pattern for Homebrew Brewfile.
@@ -206,13 +220,15 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
     }
 
     // Install handler
-    if !mappings.install.is_empty() {
-        rules.push(Rule {
-            pattern: mappings.install.clone(),
-            handler: "install".into(),
-            priority: 10,
-            options: HashMap::new(),
-        });
+    for pattern in &mappings.install {
+        if !pattern.is_empty() {
+            rules.push(Rule {
+                pattern: pattern.clone(),
+                handler: "install".into(),
+                priority: 10,
+                options: HashMap::new(),
+            });
+        }
     }
 
     // Shell handler
@@ -394,11 +410,27 @@ mod tests {
 
         // ── mappings defaults ───────────────────────────────────
         assert_eq!(cfg.mappings.path, "bin");
-        assert_eq!(cfg.mappings.install, "install.sh");
+        assert_eq!(
+            cfg.mappings.install,
+            vec!["install.sh", "install.bash", "install.zsh"]
+        );
         assert_eq!(cfg.mappings.homebrew, "Brewfile");
         assert_eq!(
             cfg.mappings.shell,
-            vec!["aliases.sh", "profile.sh", "login.sh", "env.sh"]
+            vec![
+                "aliases.sh",
+                "aliases.bash",
+                "aliases.zsh",
+                "profile.sh",
+                "profile.bash",
+                "profile.zsh",
+                "login.sh",
+                "login.bash",
+                "login.zsh",
+                "env.sh",
+                "env.bash",
+                "env.zsh",
+            ]
         );
         assert!(cfg.mappings.skip.is_empty());
     }
@@ -413,7 +445,7 @@ mod tests {
                 &env.dotfiles_root.join(".dodot.toml"),
                 br#"
 [mappings]
-install = "setup.sh"
+install = ["setup.sh"]
 homebrew = "MyBrewfile"
 "#,
             )
@@ -422,7 +454,7 @@ homebrew = "MyBrewfile"
         let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
         let cfg = mgr.root_config().unwrap();
 
-        assert_eq!(cfg.mappings.install, "setup.sh");
+        assert_eq!(cfg.mappings.install, vec!["setup.sh"]);
         assert_eq!(cfg.mappings.homebrew, "MyBrewfile");
         // Unset fields keep defaults
         assert_eq!(cfg.mappings.path, "bin");
@@ -439,7 +471,7 @@ homebrew = "MyBrewfile"
 ignore = ["*.bak"]
 
 [mappings]
-install = "vim-setup.sh"
+install = ["vim-setup.sh"]
 "#,
             )
             .done()
@@ -451,7 +483,7 @@ install = "vim-setup.sh"
                 &env.dotfiles_root.join(".dodot.toml"),
                 br#"
 [mappings]
-install = "install.sh"
+install = ["install.sh"]
 homebrew = "RootBrewfile"
 "#,
             )
@@ -461,12 +493,12 @@ homebrew = "RootBrewfile"
 
         // Root config
         let root_cfg = mgr.root_config().unwrap();
-        assert_eq!(root_cfg.mappings.install, "install.sh");
+        assert_eq!(root_cfg.mappings.install, vec!["install.sh"]);
 
         // Pack config merges root + pack
         let pack_path = env.dotfiles_root.join("vim");
         let pack_cfg = mgr.config_for_pack(&pack_path).unwrap();
-        assert_eq!(pack_cfg.mappings.install, "vim-setup.sh"); // overridden
+        assert_eq!(pack_cfg.mappings.install, vec!["vim-setup.sh"]); // overridden
         assert_eq!(pack_cfg.mappings.homebrew, "RootBrewfile"); // inherited
         assert_eq!(pack_cfg.pack.ignore, vec!["*.bak"]); // from pack
     }
@@ -475,7 +507,7 @@ homebrew = "RootBrewfile"
     fn mappings_to_rules_produces_expected_rules() {
         let mappings = MappingsSection {
             path: "bin".into(),
-            install: "install.sh".into(),
+            install: vec!["install.sh".into(), "install.zsh".into()],
             shell: vec!["aliases.sh".into(), "profile.sh".into()],
             homebrew: "Brewfile".into(),
             skip: vec!["*.tmp".into()],
@@ -483,8 +515,8 @@ homebrew = "RootBrewfile"
 
         let rules = mappings_to_rules(&mappings);
 
-        // Should have: path, install, 2x shell, homebrew, 1x exclude, catchall = 7
-        assert_eq!(rules.len(), 7, "rules: {rules:#?}");
+        // Should have: path, 2x install, 2x shell, homebrew, 1x exclude, catchall = 8
+        assert_eq!(rules.len(), 8, "rules: {rules:#?}");
 
         let handler_names: Vec<&str> = rules.iter().map(|r| r.handler.as_str()).collect();
         assert!(handler_names.contains(&"path"));

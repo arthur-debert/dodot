@@ -86,3 +86,15 @@ touch "$HOME/.should-not-exist"'
     run dodot status
     assert_output_contains "never run"
 }
+
+@test "install.bash runs with bash interpreter" {
+    # Uses bash arrays (supported since bash 3.2, unlike ${var^^} which
+    # needs 4+) to prove the script is run by bash and not POSIX sh.
+    create_pack_script "tools" "install.bash" '#!/usr/bin/env bash
+arr=("ran")
+echo "${arr[0]}" > "$HOME/.bash-ran"'
+
+    dodot up
+    assert_exists "$HOME/.bash-ran"
+    assert_file_contains "$HOME/.bash-ran" "ran"
+}
