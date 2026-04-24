@@ -88,13 +88,13 @@ touch "$HOME/.should-not-exist"'
 }
 
 @test "install.bash runs with bash interpreter" {
-    # Uses a bash-only feature (${var^^} uppercasing) to prove the
-    # script is actually run by bash and not POSIX sh.
+    # Uses bash arrays (supported since bash 3.2, unlike ${var^^} which
+    # needs 4+) to prove the script is run by bash and not POSIX sh.
     create_pack_script "tools" "install.bash" '#!/usr/bin/env bash
-msg="hello"
-echo "${msg^^}" > "$HOME/.bash-ran"'
+arr=("ran")
+echo "${arr[0]}" > "$HOME/.bash-ran"'
 
     dodot up
     assert_exists "$HOME/.bash-ran"
-    assert_file_contains "$HOME/.bash-ran" "HELLO"
+    assert_file_contains "$HOME/.bash-ran" "ran"
 }

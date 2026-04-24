@@ -16,7 +16,7 @@ Handlers
 
     1.2. shell
 
-        Arranges for shell scripts to be sourced at login. Matches `aliases.*`, `profile.*`, `login.*`, and `env.*` in `.sh`, `.bash`, and `.zsh` flavors by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore and emits `source` lines for every matched shell file.
+        Arranges for shell scripts to be sourced at login. Matches `{aliases,profile,login,env}.{sh,bash,zsh}` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore and emits `source` lines for every matched shell file.
 
         The extension convention is load-bearing: sourced files run in *your* shell, so `.zsh` files only parse cleanly in zsh sessions and `.bash` files in bash sessions. `.sh` is the portable bucket — use it for snippets that work in either. In practice most users run one shell, and the mismatch simply doesn't come up; users who switch shells occasionally can split their shell config by extension.
 
@@ -29,6 +29,8 @@ Handlers
         Runs an arbitrary shell script once, tracked by a sentinel file so it doesn't re-run on every deploy. Matches `install.sh`, `install.bash`, and `install.zsh` by convention. Use this for machine-specific setup that isn't covered by the other handlers: installing language toolchains, configuring window managers, creating directories, setting system defaults.
 
         The script's extension picks the interpreter — `.sh` and `.bash` run under `bash`, `.zsh` runs under `zsh` — not the user's login shell. An install script runs in a fresh subprocess, so the user's interactive shell state (aliases, functions, options) is not visible to it regardless; only the interpreter choice matters, and the extension is the contract the pack author declares.
+
+        A pack with more than one matched install file (say, both `install.sh` and `install.zsh`) runs *all* of them, each tracked by its own sentinel. There is no "pick the best one" logic — if you only want one to run, only ship one.
 
     1.5. homebrew
 
