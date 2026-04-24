@@ -44,15 +44,40 @@ Handlers
 
     The scanner that produces matches works only at the pack's top level — it does not recurse. A handler that receives a directory entry decides how to treat its contents. The path handler stages the whole directory into `$PATH`; the symlink handler creates one symlink for the directory as a whole. If you want a nested path handled independently, you declare it explicitly in `.dodot.toml` (via `[symlink.targets]` or by naming a file inside it in `[symlink] protected_paths`).
 
-3. Configuration vs Code Execution
+3. Execution Order
 
-    Handlers fall into two categories that behave differently at deploy time.
+    Within a single pack, handlers run in a fixed, documented order. The order is driven by an `ExecutionPhase` enum whose variants are declared in execution order — adding or moving a phase is a visible, deliberate code change, not an accident of alphabetical sort.
 
-    3.1. Configuration handlers
+    Phases, in order:
+
+        | Phase         | Handler   | Why here                                                           |
+        | `Provision`   | homebrew  | Installs packages. Anything later may depend on tools it exposes.  |
+        | `Setup`       | install   | User-authored scripts that can lean on Provision completing first. |
+        | `PathExport`  | path      | Stages `bin/` onto PATH; runs before ShellInit.                    |
+        | `ShellInit`   | shell     | Shell startup files that may reference binaries from PathExport.   |
+        | `Link`        | symlink   | Catchall; must be last so precise handlers claim their files.      |
+
+    :: table align=llll ::
+
+    Two design invariants pin this order down.
+
+    The catchall phase is always last.
+        `symlink` is the only catchall handler (`MatchMode::Catchall`). Running it before any precise handler would let it claim files that belong elsewhere. `Link` sitting at the bottom of the enum is not a convention — it's the shape of "precise before catchall" written into the type.
+
+    Code-execution phases run before configuration phases.
+        `Provision` and `Setup` produce a filesystem a user's shell needs to see (installed binaries, `brew` formulae, generated files). `PathExport`, `ShellInit`, and `Link` deploy configuration that may reference those outputs. Reversing them would let a shell rc file try to source a program that hasn't been installed yet.
+
+    The preprocessing layer (`.tmpl`, `.plist.xml`, `.age`) sits *upstream* of this ordering — templates are rendered before rules match, so by the time the phase order kicks in every match is a concrete file. See [./pre-processors.lex] for how preprocessors fit into the pipeline.
+
+4. Configuration vs Code Execution
+
+    Handlers fall into two categories that behave differently at deploy time. Category is derived from phase (`Provision` and `Setup` are Code Execution; the rest are Configuration).
+
+    4.1. Configuration handlers
 
         symlink, shell, and path. Their operations are idempotent filesystem work: create a link, stage a file. Running them a second time produces the same result as running them once; no special tracking is required. `dodot up` always runs them in full.
 
-    3.2. Code execution handlers
+    4.2. Code execution handlers
 
         install and homebrew. Their operations run user-authored shell commands. These are assumed _not_ to be idempotent in general — `install.sh` might install packages, write files, mutate the system — and re-running them on every `dodot up` would be slow, surprising, or both. Even Brewfile processing, though nominally idempotent, can take many seconds per pack.
 
@@ -63,20 +88,20 @@ Handlers
 
         When the content of a code-execution input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches, and the handler re-runs automatically. You only need `--provision-rerun` when you want to re-run without an input change.
 
-4. Quick Reference
+5. Quick Reference
 
-    Handler summary:
+    Handler summary (rows in execution order):
 
-        | Handler  | Category       | Default claims                                  | Effect                              |
-        | symlink  | Configuration  | Anything else (catchall)                        | Link to `~` or `~/.config/`         |
-        | shell    | Configuration  | `aliases.sh`, `profile.sh`, `login.sh`          | Sourced at shell login              |
-        | path     | Configuration  | `bin/`                                          | Prepended to `$PATH`                |
-        | install  | Code Execution | `install.sh`                                    | Run once per content hash           |
-        | homebrew | Code Execution | `Brewfile`                                      | `brew bundle` once per content hash |
+        | Handler  | Phase       | Category       | Default claims                         | Effect                              |
+        | homebrew | Provision   | Code Execution | `Brewfile`                             | `brew bundle` once per content hash |
+        | install  | Setup       | Code Execution | `install.sh`                           | Run once per content hash           |
+        | path     | PathExport  | Configuration  | `bin/`                                 | Prepended to `$PATH`                |
+        | shell    | ShellInit   | Configuration  | `aliases.sh`, `profile.sh`, `login.sh` | Sourced at shell login              |
+        | symlink  | Link        | Configuration  | Anything else (catchall)               | Link to `~` or `~/.config/`         |
 
-    :: table align=llll ::
+    :: table align=lllll ::
 
-5. Why Handlers Look the Way They Do
+6. Why Handlers Look the Way They Do
 
     A few design decisions worth naming.
 

@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::datastore::DataStore;
 use crate::fs::Fs;
-use crate::handlers::{Handler, HandlerCategory, HandlerConfig, HandlerStatus, HANDLER_HOMEBREW};
+use crate::handlers::{ExecutionPhase, Handler, HandlerConfig, HandlerStatus, HANDLER_HOMEBREW};
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
 use crate::rules::RuleMatch;
@@ -28,8 +28,8 @@ impl Handler for HomebrewHandler<'_> {
         HANDLER_HOMEBREW
     }
 
-    fn category(&self) -> HandlerCategory {
-        HandlerCategory::CodeExecution
+    fn phase(&self) -> ExecutionPhase {
+        ExecutionPhase::Provision
     }
 
     fn to_intents(

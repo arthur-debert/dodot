@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::datastore::DataStore;
 use crate::fs::Fs;
-use crate::handlers::{Handler, HandlerCategory, HandlerConfig, HandlerStatus, HANDLER_INSTALL};
+use crate::handlers::{ExecutionPhase, Handler, HandlerConfig, HandlerStatus, HANDLER_INSTALL};
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
 use crate::rules::RuleMatch;
@@ -28,8 +28,8 @@ impl Handler for InstallHandler<'_> {
         HANDLER_INSTALL
     }
 
-    fn category(&self) -> HandlerCategory {
-        HandlerCategory::CodeExecution
+    fn phase(&self) -> ExecutionPhase {
+        ExecutionPhase::Setup
     }
 
     fn to_intents(

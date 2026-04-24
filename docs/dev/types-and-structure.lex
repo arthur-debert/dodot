@@ -93,7 +93,8 @@ Types and Structure
 
             pub trait Handler: Send + Sync {
                 fn name(&self) -> &str;
-                fn category(&self) -> HandlerCategory;
+                fn phase(&self) -> ExecutionPhase;
+                fn category(&self) -> HandlerCategory { self.phase().category() }
                 fn match_mode(&self) -> MatchMode { MatchMode::Precise }
                 fn scope(&self) -> HandlerScope { HandlerScope::Exclusive }
                 fn to_intents(
@@ -113,7 +114,21 @@ Types and Structure
 
         :: rust ::
 
-        `category` splits handlers into Configuration and Code Execution (see [./../reference/handlers.lex]). `match_mode` and `scope` are the classification axes from the matching model. `to_intents` produces the handler's plan; `fs` is passed read-only for tasks like enumerating a matched directory to decide wholesale vs per-file linking. `check_status` reports whether a single file has been deployed by this handler.
+        `phase` places the handler in the intra-pack execution order (see [./../reference/handlers.lex] for the phase list and ordering rationale). `category` is derived from phase — Configuration vs Code Execution — and drives `--no-provision`. `match_mode` and `scope` are the classification axes from the matching model. `to_intents` produces the handler's plan; `fs` is passed read-only for tasks like enumerating a matched directory to decide wholesale vs per-file linking. `check_status` reports whether a single file has been deployed by this handler.
+
+        Execution phases:
+
+            pub enum ExecutionPhase {
+                Provision,   // homebrew
+                Setup,       // install
+                PathExport,  // path
+                ShellInit,   // shell
+                Link,        // symlink (catchall, always last)
+            }
+
+        :: rust ::
+
+        The enum's *declaration order* is the execution order — `derive(Ord)` does the rest. `rules::handler_execution_order` sorts handler-name groups by looking up each name's phase in the registry and ordering on that. Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers.
 
     4.4. `HandlerIntent`
 
