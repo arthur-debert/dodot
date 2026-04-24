@@ -121,12 +121,19 @@ Configuration
 
         [mappings]
         path = "bin"
-        install = "install.sh"
-        shell = ["aliases.sh", "profile.sh", "login.sh"]
+        install = ["install.sh", "install.bash", "install.zsh"]
+        shell = [
+            "aliases.sh", "aliases.bash", "aliases.zsh",
+            "profile.sh", "profile.bash", "profile.zsh",
+            "login.sh",   "login.bash",   "login.zsh",
+            "env.sh",     "env.bash",     "env.zsh",
+        ]
         homebrew = "Brewfile"
         skip = []
 
     :: toml ::
+
+    Shell extensions (`.sh`, `.bash`, `.zsh`) carry real meaning in dodot. For `install`, the extension selects the interpreter that runs the script: `.sh` and `.bash` run under `bash`, `.zsh` runs under `zsh`. For `shell`, the files are sourced into whatever shell reads `dodot-init.sh` — put zsh-only syntax in `.zsh`, bash-only syntax in `.bash`, and portable snippets in `.sh`. The user's login shell does not affect which `install.*` interpreter is picked; the extension is the contract.
 
     The `skip` key is the odd one out. It is _not_ a handler; it is a list of patterns that should be excluded from handler processing entirely. Distinct from `[pack] ignore`: `skip` applies only to handler dispatch, while `ignore` affects pack discovery and scanning.
 
