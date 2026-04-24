@@ -93,6 +93,8 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         notes: Vec::new(),
         conflicts: Vec::new(),
         ignored_packs: Vec::new(),
+        view_mode: ctx.view_mode.as_str().into(),
+        group_mode: ctx.group_mode.as_str().into(),
     })
 }
 
@@ -132,8 +134,5 @@ fn build_dry_run_display(
             });
         }
     }
-    Ok(DisplayPack {
-        name: pack.name.clone(),
-        files,
-    })
+    Ok(DisplayPack::new(pack.name.clone(), files))
 }

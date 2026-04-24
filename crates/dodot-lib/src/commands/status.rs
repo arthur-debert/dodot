@@ -411,10 +411,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             });
         }
 
-        display_packs.push(DisplayPack {
-            name: pack.name.clone(),
-            files,
-        });
+        display_packs.push(DisplayPack::new(pack.name.clone(), files));
     }
 
     // Detect and surface cross-pack conflicts as structured display data
@@ -441,5 +438,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         notes,
         conflicts: display_conflicts,
         ignored_packs,
+        view_mode: ctx.view_mode.as_str().into(),
+        group_mode: ctx.group_mode.as_str().into(),
     })
 }

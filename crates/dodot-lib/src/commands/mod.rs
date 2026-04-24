@@ -87,6 +87,61 @@ pub struct DisplayFile {
 pub struct DisplayPack {
     pub name: String,
     pub files: Vec<DisplayFile>,
+    /// Aggregated pack-level status, one of `"error"`, `"pending"`,
+    /// `"deployed"`. Rollup rules: `error` ← any file with `error` or
+    /// `broken`; otherwise `pending` ← any file with `pending`,
+    /// `warning`, or `stale`; otherwise `deployed`. Always populated so
+    /// JSON consumers and short-mode templates can use it uniformly.
+    pub summary_status: String,
+    /// Number of files in the pack whose status rolls up to
+    /// `summary_status`. Displayed as `(N)` in short-mode output.
+    pub summary_count: usize,
+}
+
+impl DisplayPack {
+    /// Compute aggregated status and count from the pack's files.
+    pub fn new(name: String, files: Vec<DisplayFile>) -> Self {
+        let (summary_status, summary_count) = aggregate_status(&files);
+        DisplayPack {
+            name,
+            files,
+            summary_status,
+            summary_count,
+        }
+    }
+
+    /// Recompute `summary_status` / `summary_count` after mutating
+    /// `files` (e.g. after `overlay_errors` flips a row to `error` or
+    /// adopt failures synthesize new rows).
+    pub fn recompute_summary(&mut self) {
+        let (status, count) = aggregate_status(&self.files);
+        self.summary_status = status;
+        self.summary_count = count;
+    }
+}
+
+/// Roll up per-file statuses into one of `error`, `pending`, `deployed`
+/// (precedence: error > pending > deployed). Returns the bucket name
+/// and the number of files that fall into it.
+fn aggregate_status(files: &[DisplayFile]) -> (String, usize) {
+    let mut errors = 0usize;
+    let mut pendings = 0usize;
+    let mut deployeds = 0usize;
+    for f in files {
+        match f.status.as_str() {
+            "error" | "broken" => errors += 1,
+            "pending" | "warning" | "stale" => pendings += 1,
+            "deployed" => deployeds += 1,
+            _ => {}
+        }
+    }
+    if errors > 0 {
+        ("error".into(), errors)
+    } else if pendings > 0 {
+        ("pending".into(), pendings)
+    } else {
+        ("deployed".into(), deployeds)
+    }
 }
 
 /// A command-wide note (error / inline conflict) referenced by
@@ -202,4 +257,45 @@ pub struct PackStatusResult {
     /// baffled when a directory they expected doesn't appear.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ignored_packs: Vec<String>,
+    /// `"full"` (default) shows per-file listing; `"short"` collapses
+    /// each pack to a single summary line.
+    pub view_mode: String,
+    /// `"name"` (default) lists packs in their discovery order;
+    /// `"status"` groups packs under Ignored / Deployed / Pending /
+    /// Error banners.
+    pub group_mode: String,
+}
+
+/// View style for pack-status output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ViewMode {
+    #[default]
+    Full,
+    Short,
+}
+
+impl ViewMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ViewMode::Full => "full",
+            ViewMode::Short => "short",
+        }
+    }
+}
+
+/// Grouping style for pack-status output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GroupMode {
+    #[default]
+    Name,
+    Status,
+}
+
+impl GroupMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GroupMode::Name => "name",
+            GroupMode::Status => "status",
+        }
+    }
 }

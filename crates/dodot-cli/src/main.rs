@@ -1,5 +1,8 @@
 use clap::{Arg, ArgAction, Command as ClapCommand};
 use standout::cli::{App, CommandGroup};
+use standout::EmbeddedTemplates;
+
+use dodot_lib::render;
 
 mod handlers;
 mod logging;
@@ -75,10 +78,22 @@ fn main() {
     }
 }
 
+/// Templates shared with `dodot-lib` (via its `render` module). The
+/// CLI ships no private templates of its own, so we build the embedded
+/// source directly from the `pub const` strings exported by the lib
+/// rather than scanning a separate `src/templates` directory — this
+/// keeps the lib self-contained (no cross-crate `include_str!`) while
+/// still giving standout the same `EmbeddedTemplates` handle.
+static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
+    ("pack-status.jinja", render::TEMPLATE_PACK_STATUS),
+    ("list.jinja", render::TEMPLATE_LIST),
+    ("message.jinja", render::TEMPLATE_MESSAGE),
+];
+
 fn build_app() -> App {
     App::builder()
         .help_handling(true)
-        .templates(standout::embed_templates!("src/templates"))
+        .templates(EmbeddedTemplates::new(TEMPLATE_ENTRIES, ""))
         .styles(standout::embed_styles!("src/styles"))
         .default_theme("dodot")
         .command("status", handlers::status_handler, "pack-status")
@@ -150,6 +165,38 @@ fn build_clap_command() -> ClapCommand {
                 .long("debug")
                 .help("Enable debug logging to stderr (implies --verbose)")
                 .global(true)
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("short")
+                .long("short")
+                .help("Collapse each pack to one summary line")
+                .global(true)
+                .conflicts_with("full")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("full")
+                .long("full")
+                .help("Show every file per pack (default)")
+                .global(true)
+                .conflicts_with("short")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("by-status")
+                .long("by-status")
+                .help("Group packs by aggregated status (deployed / pending / error)")
+                .global(true)
+                .conflicts_with("by-name")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("by-name")
+                .long("by-name")
+                .help("List packs in discovery order (default)")
+                .global(true)
+                .conflicts_with("by-status")
                 .action(ArgAction::SetTrue),
         )
         .subcommand(

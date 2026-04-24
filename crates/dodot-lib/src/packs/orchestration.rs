@@ -32,6 +32,18 @@ pub struct ExecutionContext {
     pub no_provision: bool,
     pub provision_rerun: bool,
     pub force: bool,
+    /// How pack-status output should render rows: `Full` keeps today's
+    /// per-file listing, `Short` collapses each pack to one summary
+    /// line. Consumed by every command that renders through the
+    /// `pack-status` template (`status`, `up`, `down`, `adopt`);
+    /// ignored by commands that emit `message` / `list` output.
+    pub view_mode: crate::commands::ViewMode,
+    /// How packs are ordered in pack-status output: `Name` (flat
+    /// alphabetical / discovery order) or `Status` (grouped under
+    /// Ignored / Deployed / Pending / Error banners). Consumed by
+    /// every command that renders through the `pack-status` template;
+    /// ignored by commands that emit `message` / `list` output.
+    pub group_mode: crate::commands::GroupMode,
 }
 
 impl ExecutionContext {
@@ -65,6 +77,8 @@ impl ExecutionContext {
             no_provision: false,
             provision_rerun: false,
             force: false,
+            view_mode: crate::commands::ViewMode::default(),
+            group_mode: crate::commands::GroupMode::default(),
         })
     }
 }
@@ -489,6 +503,8 @@ mod tests {
             no_provision: true, // skip install/homebrew in tests
             provision_rerun: false,
             force: false,
+            view_mode: crate::commands::ViewMode::Full,
+            group_mode: crate::commands::GroupMode::Name,
         }
     }
 
@@ -643,6 +659,8 @@ mod tests {
             no_provision: true,
             provision_rerun: false,
             force: false,
+            view_mode: crate::commands::ViewMode::Full,
+            group_mode: crate::commands::GroupMode::Name,
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();
