@@ -3,7 +3,9 @@ set -euo pipefail
 
 # Cut a release. Everything runs in CI — this just triggers it.
 #
-# Usage:  scripts/release <new-version>      e.g. scripts/release 0.18.0
+# Usage:  scripts/release <new-version>       e.g. scripts/release 0.18.0
+#    or:  scripts/release <bump-level>        e.g. scripts/release minor
+#                                                  (one of: major, minor, patch)
 #
 # What CI does (all on GitHub):
 #   1. Bumps version in Cargo.toml files + refreshes Cargo.lock
@@ -20,17 +22,46 @@ set -euo pipefail
 #
 # After the script returns, `gh run watch` follows the workflow.
 
+# semver parser (adapted from Cloudflare's semver.sh). Writes into the
+# variable names passed as $2..$5.
+semverParseInto() {
+    local RE='[^0-9]*\([0-9]*\)[.]\([0-9]*\)[.]\([0-9]*\)\([0-9A-Za-z-]*\)'
+    eval "$2"=$(echo "$1" | sed -e "s#$RE#\1#")
+    eval "$3"=$(echo "$1" | sed -e "s#$RE#\2#")
+    eval "$4"=$(echo "$1" | sed -e "s#$RE#\3#")
+    eval "$5"=$(echo "$1" | sed -e "s#$RE#\4#")
+}
+
 if [ $# -ne 1 ]; then
-    echo "usage: $(basename "$0") <new-version>  (e.g. 0.18.0)" >&2
+    echo "usage: $(basename "$0") <major|minor|patch|X.Y.Z>" >&2
     exit 2
 fi
 
-new_version="$1"
+arg="$1"
+repo_root=$(git rev-parse --show-toplevel)
 
-if ! [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "version must be MAJOR.MINOR.PATCH (got: $new_version)" >&2
-    exit 2
-fi
+case "$arg" in
+    major|minor|patch)
+        current=$(grep -E '^version' "$repo_root/crates/dodot-lib/Cargo.toml" \
+            | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+        MAJOR=0; MINOR=0; PATCH=0; SPECIAL=""
+        semverParseInto "$current" MAJOR MINOR PATCH SPECIAL
+        case "$arg" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+        esac
+        new_version="${MAJOR}.${MINOR}.${PATCH}"
+        echo "Bumping ${arg}: ${current} -> ${new_version}"
+        ;;
+    *)
+        if ! [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version must be MAJOR.MINOR.PATCH or one of: major, minor, patch (got: $arg)" >&2
+            exit 2
+        fi
+        new_version="$arg"
+        ;;
+esac
 
 if ! command -v gh >/dev/null 2>&1; then
     echo "gh CLI not found — install from https://cli.github.com/" >&2
