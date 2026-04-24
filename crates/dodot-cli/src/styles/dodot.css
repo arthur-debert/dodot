@@ -22,6 +22,17 @@
 .group-banner-error    { font-weight: bold; }
 .group-banner-ignored  { font-weight: bold; dim: true; }
 
+/* Help-screen tags emitted by standout's built-in help renderer.
+ * Registering `.default_theme("dodot")` replaces standout's built-in
+ * default_help_theme() wholesale, so these have to live here or the
+ * help output gets `[item?]text[/item?]` unknown-tag markers.
+ * Values mirror standout's defaults (item = bold, others = plain). */
+.item                 { font-weight: bold; }
+.desc                 { }
+.usage                { }
+.about                { }
+.example              { }
+
 @media (prefers-color-scheme: light) {
     .pack-name        { color: #000; }
     .handler-symbol   { color: #999; }
