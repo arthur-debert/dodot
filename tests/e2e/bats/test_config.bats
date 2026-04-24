@@ -20,7 +20,7 @@ teardown() {
 }
 
 @test "config get retrieves specific values" {
-    create_root_config '[mappings]\ninstall = "setup.sh"'
+    create_root_config '[mappings]\ninstall = ["setup.sh"]'
 
     run dodot config get mappings.install
     [ "$status" -eq 0 ]
@@ -28,9 +28,9 @@ teardown() {
 }
 
 @test "config list with pack override shows merged result" {
-    create_root_config '[mappings]\ninstall = "install.sh"'
+    create_root_config '[mappings]\ninstall = ["install.sh"]'
     create_pack "vim"
-    create_pack_config "vim" '[mappings]\ninstall = "vim-setup.sh"'
+    create_pack_config "vim" '[mappings]\ninstall = ["vim-setup.sh"]'
 
     # Root config should still show install.sh
     run dodot config list

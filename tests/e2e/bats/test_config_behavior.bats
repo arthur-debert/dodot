@@ -109,13 +109,13 @@ teardown() {
 
 @test "per-pack mapping override changes handler assignment" {
     # Root uses default install.sh
-    create_root_config '[mappings]\ninstall = "install.sh"'
+    create_root_config '[mappings]\ninstall = ["install.sh"]'
 
     # This pack uses setup.sh instead
     create_pack_script "custom" "setup.sh" '#!/bin/sh
 mkdir -p "$HOME/.dodot-markers"
 echo "executed" > "$HOME/.dodot-markers/custom.install"'
-    create_pack_config "custom" '[mappings]\ninstall = "setup.sh"'
+    create_pack_config "custom" '[mappings]\ninstall = ["setup.sh"]'
 
     dodot up
     assert_install_ran "custom"
