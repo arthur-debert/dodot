@@ -152,6 +152,38 @@ fn build_clap_command() -> ClapCommand {
                 .global(true)
                 .action(ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("short")
+                .long("short")
+                .help("Collapse each pack to one summary line")
+                .global(true)
+                .conflicts_with("full")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("full")
+                .long("full")
+                .help("Show every file per pack (default)")
+                .global(true)
+                .conflicts_with("short")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("by-status")
+                .long("by-status")
+                .help("Group packs by aggregated status (deployed / pending / error)")
+                .global(true)
+                .conflicts_with("by-name")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("by-name")
+                .long("by-name")
+                .help("List packs in discovery order (default)")
+                .global(true)
+                .conflicts_with("by-status")
+                .action(ArgAction::SetTrue),
+        )
         .subcommand(
             ClapCommand::new("status")
                 .about("Show deployment status of packs")

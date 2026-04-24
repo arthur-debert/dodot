@@ -5,18 +5,22 @@
  * values invert between modes and dark-mode variants of chromatic colors
  * stay legible on dark backgrounds. */
 
-.pack-name        { font-weight: bold; }
-.handler-symbol   { font-weight: bold; }
-.description      { dim: true; }
-.error            { font-weight: bold; }
-.dry-run          { font-style: italic; }
-.dim              { dim: true; }
-.header           { font-weight: bold; }
-.conflict-banner  { font-weight: bold; }
-.conflict-header  { font-weight: bold; }
-.conflict-target  { font-weight: bold; }
-.conflict-hint    { dim: true; }
-.ignored-pack     { dim: true; font-style: italic; }
+.pack-name            { font-weight: bold; }
+.handler-symbol       { font-weight: bold; }
+.description          { dim: true; }
+.error                { font-weight: bold; }
+.dry-run              { font-style: italic; }
+.dim                  { dim: true; }
+.header               { font-weight: bold; }
+.conflict-banner      { font-weight: bold; }
+.conflict-header      { font-weight: bold; }
+.conflict-target      { font-weight: bold; }
+.conflict-hint        { dim: true; }
+.ignored-pack         { dim: true; font-style: italic; }
+.group-banner-deployed { font-weight: bold; }
+.group-banner-pending  { font-weight: bold; }
+.group-banner-error    { font-weight: bold; }
+.group-banner-ignored  { font-weight: bold; dim: true; }
 
 @media (prefers-color-scheme: light) {
     .pack-name        { color: #000; }
@@ -24,6 +28,8 @@
     .deployed         { color: #008700; }
     .pending          { color: #000; background: #f8f8f8; }
     .error            { color: #D70000; }
+    .broken           { color: #D70000; }
+    .stale            { color: #AF8700; }
     .warning          { color: #AF8700; }
     .message          { color: #005F87; }
     .dry-run          { color: #AF8700; }
@@ -31,6 +37,9 @@
     .conflict-header  { color: #FFFFFF; background: #D70000; }
     .conflict-target  { color: #D70000; }
     .conflict-pack    { color: #D70000; }
+    .group-banner-deployed { color: #008700; }
+    .group-banner-pending  { color: #AF8700; }
+    .group-banner-error    { color: #D70000; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -39,6 +48,8 @@
     .deployed         { color: #5FD75F; }
     .pending          { color: #FFFFFF; background: #303030; }
     .error            { color: #FF5F5F; }
+    .broken           { color: #FF5F5F; }
+    .stale            { color: #FFD75F; }
     .warning          { color: #FFD75F; }
     .message          { color: #5FAFD7; }
     .dry-run          { color: #FFD75F; }
@@ -46,4 +57,7 @@
     .conflict-header  { color: #FFFFFF; background: #D70000; }
     .conflict-target  { color: #FF5F5F; }
     .conflict-pack    { color: #FF5F5F; }
+    .group-banner-deployed { color: #5FD75F; }
+    .group-banner-pending  { color: #FFD75F; }
+    .group-banner-error    { color: #FF5F5F; }
 }

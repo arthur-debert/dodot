@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use standout::cli::{CommandContext, HandlerResult, Output};
 
-use dodot_lib::commands;
+use dodot_lib::commands::{self, GroupMode, ViewMode};
 use dodot_lib::packs::orchestration::ExecutionContext;
 
 /// Read a boolean flag, returning false if the flag is not defined
@@ -35,14 +35,35 @@ fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Err
     ctx.no_provision = flag_or_false(matches, "no-provision");
     ctx.provision_rerun = flag_or_false(matches, "provision-rerun");
     ctx.force = flag_or_false(matches, "force");
+    ctx.view_mode = view_mode_from(matches);
+    ctx.group_mode = group_mode_from(matches);
 
     Ok(ctx)
 }
 
 /// Build a read-only context (no dry-run/provision flags).
-fn build_readonly_ctx() -> Result<ExecutionContext, anyhow::Error> {
+fn build_readonly_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
-    Ok(ExecutionContext::production(&dotfiles_root)?)
+    let mut ctx = ExecutionContext::production(&dotfiles_root)?;
+    ctx.view_mode = view_mode_from(matches);
+    ctx.group_mode = group_mode_from(matches);
+    Ok(ctx)
+}
+
+fn view_mode_from(matches: &clap::ArgMatches) -> ViewMode {
+    if flag_or_false(matches, "short") {
+        ViewMode::Short
+    } else {
+        ViewMode::Full
+    }
+}
+
+fn group_mode_from(matches: &clap::ArgMatches) -> GroupMode {
+    if flag_or_false(matches, "by-status") {
+        GroupMode::Status
+    } else {
+        GroupMode::Name
+    }
 }
 
 /// Extract pack filter from positional "packs" argument.
@@ -86,7 +107,7 @@ pub fn status_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_readonly_ctx()?;
+    let ctx = build_readonly_ctx(matches)?;
     let filter = pack_filter(matches);
     let result = commands::status::status(filter.as_deref(), &ctx)?;
     print_warnings(&result.warnings);
@@ -125,10 +146,10 @@ fn print_warnings(warnings: &[String]) {
 }
 
 pub fn list_handler(
-    _matches: &clap::ArgMatches,
+    matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::list::ListResult> {
-    let ctx = build_readonly_ctx()?;
+    let ctx = build_readonly_ctx(matches)?;
     let result = commands::list::list(&ctx)?;
     Ok(Output::Render(result))
 }
@@ -137,7 +158,7 @@ pub fn init_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::init::InitResult> {
-    let ctx = build_readonly_ctx()?;
+    let ctx = build_readonly_ctx(matches)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::init::init(pack_name, &ctx)?;
     Ok(Output::Render(result))
@@ -147,7 +168,7 @@ pub fn fill_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::fill::FillResult> {
-    let ctx = build_readonly_ctx()?;
+    let ctx = build_readonly_ctx(matches)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::fill::fill(pack_name, &ctx)?;
     Ok(Output::Render(result))
@@ -157,7 +178,7 @@ pub fn adopt_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
-    let ctx = build_readonly_ctx()?;
+    let ctx = build_readonly_ctx(matches)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let files: Vec<PathBuf> = matches
         .get_many::<String>("files")
@@ -183,7 +204,7 @@ pub fn addignore_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::addignore::AddIgnoreResult> {
-    let ctx = build_readonly_ctx()?;
+    let ctx = build_readonly_ctx(matches)?;
     let pack_name = matches.get_one::<String>("pack").expect("pack is required");
     let result = commands::addignore::addignore(pack_name, &ctx)?;
     Ok(Output::Render(result))

@@ -153,6 +153,8 @@ mod tests {
             no_provision: false,
             provision_rerun: false,
             force: false,
+            view_mode: crate::commands::ViewMode::Full,
+            group_mode: crate::commands::GroupMode::Name,
         }
     }
 

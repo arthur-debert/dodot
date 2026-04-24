@@ -161,6 +161,8 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         notes,
         conflicts: Vec::new(),
         ignored_packs: Vec::new(),
+        view_mode: ctx.view_mode.as_str().into(),
+        group_mode: ctx.group_mode.as_str().into(),
     })
 }
 
@@ -260,10 +262,7 @@ fn render_intents(
                 });
             }
 
-            DisplayPack {
-                name: pr.pack_name.clone(),
-                files,
-            }
+            DisplayPack::new(pr.pack_name.clone(), files)
         })
         .collect();
     (packs, notes)
@@ -396,6 +395,9 @@ pub(crate) fn overlay_errors(
                 }
             }
         }
+    }
+    for pack in &mut packs {
+        pack.recompute_summary();
     }
     packs
 }

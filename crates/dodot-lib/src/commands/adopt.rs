@@ -147,6 +147,7 @@ pub fn adopt(
                 handler: String::new(),
                 note_ref,
             });
+            pack.recompute_summary();
         }
     }
     Ok(result)

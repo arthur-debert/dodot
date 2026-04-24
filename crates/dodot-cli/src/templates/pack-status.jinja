@@ -1,12 +1,27 @@
+{%- macro render_pack(pack, view_mode) -%}
+{%- if view_mode == "short" -%}
+{{ pack.name | col(32) }} ({{ pack.summary_count }}) [{{ pack.summary_status }}]{{ pack.summary_status }}[/{{ pack.summary_status }}]
+{% else -%}
+[pack-name]{{ pack.name }}[/pack-name]
+{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]{% if file.note_ref %} [dim][{{ file.note_ref }}][/dim]{% endif %}
+{% endfor %}
+{%- endif -%}
+{%- endmacro -%}
 {% if conflicts %}[conflict-banner] ✗ Cross-pack conflicts detected — see details below [/conflict-banner]
 {% endif %}{% if message %}[message]{{ message }}[/message]
 {% endif %}{% if dry_run %}[dry-run]  (dry run — no changes made)[/dry-run]
-{% endif %}{% for pack in packs %}[pack-name]{{ pack.name }}[/pack-name]
-{% for file in pack.files %}  {{ file.name | col(24) }} [handler-symbol]{{ file.symbol }}[/handler-symbol] [description]{{ file.description | col(30) }}[/description]  [{{ file.status }}]{{ file.status_label }}[/{{ file.status }}]{% if file.note_ref %} [dim][{{ file.note_ref }}][/dim]{% endif %}
-{% endfor %}
-{% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
+{% endif %}{% if group_mode == "status" %}{% if ignored_packs %}[group-banner-ignored]Ignored Packs[/group-banner-ignored]
 {% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
-{% endfor %}{% endif %}{% if notes %}
+{% endfor %}
+{% endif %}{% set deployed_group = packs | selectattr("summary_status", "equalto", "deployed") | list %}{% if deployed_group %}[group-banner-deployed]Deployed Packs[/group-banner-deployed]
+{% for pack in deployed_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
+{% endif %}{% set pending_group = packs | selectattr("summary_status", "equalto", "pending") | list %}{% if pending_group %}[group-banner-pending]Pending Packs[/group-banner-pending]
+{% for pack in pending_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
+{% endif %}{% set error_group = packs | selectattr("summary_status", "equalto", "error") | list %}{% if error_group %}[group-banner-error]Error Packs[/group-banner-error]
+{% for pack in error_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
+{% endif %}{% else %}{% for pack in packs %}{{ render_pack(pack, view_mode) }}{% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
+{% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
+{% endfor %}{% endif %}{% endif %}{% if notes %}
 [header]Errors:[/header]
 {% for note in notes %}  [dim][{{ loop.index }}][/dim] {{ note.body }}
 {% if note.hint %}      [dim]hint:[/dim] {{ note.hint }}

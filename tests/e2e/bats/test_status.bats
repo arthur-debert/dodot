@@ -104,3 +104,60 @@ teardown() {
     assert_output_contains "pending"
     assert_output_not_contains "deployed"
 }
+
+@test "status --short collapses each pack to one summary line" {
+    create_pack_file "vim" "home.vimrc" "x"
+    create_pack_file "nvim" "home.config/nvim/init.lua" "x"
+
+    run dodot status --short
+    [ "$status" -eq 0 ]
+    assert_output_contains "vim"
+    assert_output_contains "nvim"
+    assert_output_contains "(1) pending"
+    # Short mode hides per-file rows
+    assert_output_not_contains "vimrc"
+    assert_output_not_contains "init.lua"
+}
+
+@test "status --by-status groups packs under banners" {
+    create_pack_file "vim" "home.vimrc" "x"
+
+    run dodot status --by-status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Pending Packs"
+    assert_output_contains "vim"
+    # No deployed or error packs — banners for empty groups are hidden
+    assert_output_not_contains "Deployed Packs"
+    assert_output_not_contains "Error Packs"
+}
+
+@test "status --by-status after up shows only deployed banner" {
+    create_pack_file "vim" "home.vimrc" "x"
+    dodot up
+
+    run dodot status --by-status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Deployed Packs"
+    assert_output_not_contains "Pending Packs"
+    assert_output_not_contains "Error Packs"
+}
+
+@test "status --short --by-status combines both" {
+    create_pack_file "vim" "home.vimrc" "x"
+
+    run dodot status --short --by-status
+    [ "$status" -eq 0 ]
+    assert_output_contains "Pending Packs"
+    assert_output_contains "(1) pending"
+    assert_output_not_contains "vimrc"
+}
+
+@test "status rejects --short and --full together" {
+    run dodot status --short --full
+    [ "$status" -ne 0 ]
+}
+
+@test "status rejects --by-name and --by-status together" {
+    run dodot status --by-name --by-status
+    [ "$status" -ne 0 ]
+}

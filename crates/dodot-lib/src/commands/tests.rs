@@ -42,6 +42,8 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         no_provision: true,
         provision_rerun: false,
         force: false,
+        view_mode: crate::commands::ViewMode::Full,
+        group_mode: crate::commands::GroupMode::Name,
     }
 }
 
@@ -2995,4 +2997,168 @@ fn status_reports_template_pending_before_up() {
     assert_eq!(files.len(), 1);
     assert_eq!(files[0].name, "greet");
     assert_eq!(files[0].status, "pending");
+}
+
+// ── view-mode / group-mode tests ────────────────────────────
+
+#[test]
+fn summary_aggregates_all_deployed_as_deployed() {
+    use crate::commands::{DisplayFile, DisplayPack};
+
+    let files = vec![
+        DisplayFile {
+            name: "a".into(),
+            symbol: "➞".into(),
+            description: "".into(),
+            status: "deployed".into(),
+            status_label: "deployed".into(),
+            handler: "symlink".into(),
+            note_ref: None,
+        },
+        DisplayFile {
+            name: "b".into(),
+            symbol: "➞".into(),
+            description: "".into(),
+            status: "deployed".into(),
+            status_label: "deployed".into(),
+            handler: "symlink".into(),
+            note_ref: None,
+        },
+    ];
+    let pack = DisplayPack::new("vim".into(), files);
+    assert_eq!(pack.summary_status, "deployed");
+    assert_eq!(pack.summary_count, 2);
+}
+
+#[test]
+fn summary_rolls_up_error_over_pending_over_deployed() {
+    use crate::commands::{DisplayFile, DisplayPack};
+
+    let mk = |status: &str| DisplayFile {
+        name: status.into(),
+        symbol: "➞".into(),
+        description: "".into(),
+        status: status.into(),
+        status_label: status.into(),
+        handler: "symlink".into(),
+        note_ref: None,
+    };
+
+    // error beats pending beats deployed
+    let pack = DisplayPack::new(
+        "mixed".into(),
+        vec![mk("error"), mk("pending"), mk("deployed")],
+    );
+    assert_eq!(pack.summary_status, "error");
+    assert_eq!(pack.summary_count, 1);
+
+    // broken rolls into error bucket
+    let pack = DisplayPack::new("b".into(), vec![mk("broken"), mk("deployed")]);
+    assert_eq!(pack.summary_status, "error");
+
+    // stale and warning roll into pending bucket
+    let pack = DisplayPack::new("s".into(), vec![mk("stale"), mk("deployed")]);
+    assert_eq!(pack.summary_status, "pending");
+    let pack = DisplayPack::new("w".into(), vec![mk("warning"), mk("deployed")]);
+    assert_eq!(pack.summary_status, "pending");
+
+    // count counts only files in the winning bucket
+    let pack = DisplayPack::new(
+        "counts".into(),
+        vec![
+            mk("error"),
+            mk("broken"),
+            mk("pending"),
+            mk("pending"),
+            mk("deployed"),
+        ],
+    );
+    assert_eq!(pack.summary_status, "error");
+    assert_eq!(pack.summary_count, 2);
+}
+
+#[test]
+fn short_mode_renders_one_line_per_pack_with_count() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("nvim")
+        .file("init.lua", "x")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.view_mode = crate::commands::ViewMode::Short;
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+
+    // Short mode: one line per pack, count + status word, no per-file rows
+    assert!(output.contains("vim"), "output: {output}");
+    assert!(output.contains("nvim"), "output: {output}");
+    assert!(output.contains("(1) pending"), "output: {output}");
+    assert!(
+        !output.contains("vimrc"),
+        "short mode should not render individual files: {output}"
+    );
+    assert!(
+        !output.contains("init.lua"),
+        "short mode should not render individual files: {output}"
+    );
+}
+
+#[test]
+fn by_status_groups_packs_under_banners() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("nvim")
+        .file("init.lua", "x")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.group_mode = crate::commands::GroupMode::Status;
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+
+    // All packs pending, so only the Pending banner appears
+    assert!(output.contains("Pending Packs"), "output: {output}");
+    assert!(
+        !output.contains("Deployed Packs"),
+        "no deployed packs — deployed banner should be hidden: {output}"
+    );
+    assert!(
+        !output.contains("Error Packs"),
+        "no error packs — error banner should be hidden: {output}"
+    );
+    // Pack names still render within the group
+    assert!(output.contains("vim"), "output: {output}");
+    assert!(output.contains("nvim"), "output: {output}");
+}
+
+#[test]
+fn by_status_folds_ignored_packs_into_ignored_group() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("disabled")
+        .file("stuff", "x")
+        .ignored()
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.group_mode = crate::commands::GroupMode::Status;
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+
+    assert!(output.contains("Ignored Packs"), "output: {output}");
+    assert!(output.contains("disabled"), "output: {output}");
+    assert!(output.contains("Pending Packs"), "output: {output}");
 }
