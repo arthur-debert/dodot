@@ -44,18 +44,33 @@ jobs:
           fi
 
           TAG="v$NEW_VERSION"
-          if git rev-parse "$TAG" >/dev/null 2>&1 || \
-             git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
-            echo "::error::tag $TAG already exists"
+          CLI_TOML="crates/dodot-cli/Cargo.toml"
+          LIB_TOML="crates/dodot-lib/Cargo.toml"
+          CURRENT_VERSION=$(grep -E '^version = ' "$CLI_TOML" | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+          git fetch --tags origin >/dev/null 2>&1 || true
+
+          # Resume case: tag already exists AND main is already at that
+          # version AND the tag points to HEAD. Happens when a previous
+          # run committed+tagged+published to crates.io but a downstream
+          # job (e.g. a binary build) failed. Skip the bump so the rest
+          # of the workflow reruns and fills in what's missing.
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            TAG_SHA=$(git rev-list -n 1 "$TAG")
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$CURRENT_VERSION" = "$NEW_VERSION" ] && [ "$TAG_SHA" = "$HEAD_SHA" ]; then
+              echo "tag $TAG already at HEAD ($HEAD_SHA) — resuming release"
+              echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+              echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::tag $TAG already exists but repo state doesn't match (Cargo.toml=$CURRENT_VERSION, tag_sha=$TAG_SHA, head=$HEAD_SHA)"
             exit 1
           fi
 
-          CLI_TOML="crates/dodot-cli/Cargo.toml"
-          LIB_TOML="crates/dodot-lib/Cargo.toml"
-          OLD_VERSION=$(grep -E '^version = ' "$CLI_TOML" | head -1 | sed 's/version = "\(.*\)"/\1/')
-
+          OLD_VERSION="$CURRENT_VERSION"
           if [ "$OLD_VERSION" = "$NEW_VERSION" ]; then
-            echo "::error::Cargo.toml is already at $NEW_VERSION"
+            echo "::error::Cargo.toml is already at $NEW_VERSION (but no tag)"
             exit 1
           fi
 
@@ -187,7 +202,11 @@ jobs:
 
       - name: Install cross
         if: matrix.cross && steps.check_asset.outputs.exists != 'true'
-        run: cargo install cross --git https://github.com/cross-rs/cross --force
+        # Pinned to 0.2.5: cross's `:main` image has a glibc mismatch
+        # with newer rustc that breaks build scripts (GLIBC_2.32+ not
+        # found in container's libc). 0.2.5 ships its own compatible
+        # `:0.2.5` image tags.
+        run: cargo install cross --version 0.2.5 --locked
 
       - name: Build binary
         id: build
