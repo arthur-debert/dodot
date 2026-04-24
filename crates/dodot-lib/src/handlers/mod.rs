@@ -39,6 +39,55 @@ pub enum HandlerCategory {
     CodeExecution,
 }
 
+/// The ordered execution phase a handler belongs to.
+///
+/// Phases run in declaration order — the derived [`Ord`] drives
+/// [`crate::rules::handler_execution_order`]. Each handler belongs to
+/// exactly one phase, so adding a handler is a deliberate design
+/// choice: *where does this fit in the pipeline?* rather than a silent
+/// answer from alphabetical sort.
+///
+/// # Why this order
+///
+/// - [`Provision`](Self::Provision) installs packages. Anything later
+///   (including user `install.sh` scripts) may depend on the tools it
+///   put on PATH.
+/// - [`Setup`](Self::Setup) runs user-authored setup scripts that can
+///   lean on Provision having completed (`brew` and formulas available).
+/// - [`PathExport`](Self::PathExport) stages `bin/` directories onto
+///   `$PATH`. It runs before [`ShellInit`](Self::ShellInit) so shell
+///   init scripts can reference the executables it exposes.
+/// - [`ShellInit`](Self::ShellInit) registers shell startup files.
+/// - [`Link`](Self::Link) is the catchall symlink phase. It runs last
+///   because the symlink handler is catchall — precise handlers above
+///   must have already claimed their files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+pub enum ExecutionPhase {
+    /// Install packages (homebrew).
+    Provision,
+    /// Run user setup scripts (install).
+    Setup,
+    /// Stage directories onto `$PATH` (path).
+    PathExport,
+    /// Register shell init files (shell).
+    ShellInit,
+    /// Catchall: link remaining files (symlink). Always last.
+    Link,
+}
+
+impl ExecutionPhase {
+    /// The category this phase belongs to.
+    ///
+    /// Provision and Setup run user-authored code and are gated by
+    /// sentinels; the rest are idempotent filesystem work.
+    pub fn category(self) -> HandlerCategory {
+        match self {
+            Self::Provision | Self::Setup => HandlerCategory::CodeExecution,
+            Self::PathExport | Self::ShellInit | Self::Link => HandlerCategory::Configuration,
+        }
+    }
+}
+
 /// Whether a handler matches specific names or acts as a catchall.
 ///
 /// [`MatchMode::Precise`] handlers only match whitelisted patterns
@@ -91,8 +140,20 @@ pub trait Handler: Send + Sync {
     /// Unique name for this handler (e.g. `"symlink"`, `"install"`).
     fn name(&self) -> &str;
 
+    /// Execution phase for this handler.
+    ///
+    /// Determines where this handler runs in the per-pack pipeline.
+    /// See [`ExecutionPhase`] for the ordering and the rationale for
+    /// each slot.
+    fn phase(&self) -> ExecutionPhase;
+
     /// Whether this is a configuration or code-execution handler.
-    fn category(&self) -> HandlerCategory;
+    ///
+    /// Derived from [`Self::phase`]; override only if a handler's
+    /// phase doesn't imply its category (none today).
+    fn category(&self) -> HandlerCategory {
+        self.phase().category()
+    }
 
     /// How this handler decides what to claim.
     ///
@@ -247,6 +308,52 @@ mod tests {
     }
 
     #[test]
+    fn execution_phase_declaration_order_drives_ord() {
+        assert!(ExecutionPhase::Provision < ExecutionPhase::Setup);
+        assert!(ExecutionPhase::Setup < ExecutionPhase::PathExport);
+        assert!(ExecutionPhase::PathExport < ExecutionPhase::ShellInit);
+        assert!(ExecutionPhase::ShellInit < ExecutionPhase::Link);
+    }
+
+    #[test]
+    fn execution_phase_category_mapping() {
+        assert_eq!(
+            ExecutionPhase::Provision.category(),
+            HandlerCategory::CodeExecution
+        );
+        assert_eq!(
+            ExecutionPhase::Setup.category(),
+            HandlerCategory::CodeExecution
+        );
+        assert_eq!(
+            ExecutionPhase::PathExport.category(),
+            HandlerCategory::Configuration
+        );
+        assert_eq!(
+            ExecutionPhase::ShellInit.category(),
+            HandlerCategory::Configuration
+        );
+        assert_eq!(
+            ExecutionPhase::Link.category(),
+            HandlerCategory::Configuration
+        );
+    }
+
+    #[test]
+    fn builtin_handler_phases() {
+        let fs = crate::fs::OsFs::new();
+        let registry = create_registry(&fs);
+        assert_eq!(
+            registry[HANDLER_HOMEBREW].phase(),
+            ExecutionPhase::Provision
+        );
+        assert_eq!(registry[HANDLER_INSTALL].phase(), ExecutionPhase::Setup);
+        assert_eq!(registry[HANDLER_PATH].phase(), ExecutionPhase::PathExport);
+        assert_eq!(registry[HANDLER_SHELL].phase(), ExecutionPhase::ShellInit);
+        assert_eq!(registry[HANDLER_SYMLINK].phase(), ExecutionPhase::Link);
+    }
+
+    #[test]
     fn handler_status_serializes() {
         let status = HandlerStatus {
             file: "vimrc".into(),
@@ -288,8 +395,8 @@ mod tests {
             fn name(&self) -> &str {
                 "fake"
             }
-            fn category(&self) -> HandlerCategory {
-                HandlerCategory::Configuration
+            fn phase(&self) -> ExecutionPhase {
+                ExecutionPhase::Link
             }
             fn match_mode(&self) -> MatchMode {
                 MatchMode::Catchall

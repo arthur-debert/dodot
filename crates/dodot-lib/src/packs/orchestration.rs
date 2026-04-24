@@ -354,11 +354,11 @@ fn collect_pack_intents_inner(
 
     // Phase 4: Group by handler
     let groups = rules::group_by_handler(&matches);
-    let order = rules::handler_execution_order(&groups);
-    debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
-    // Build handler registry
+    // Build handler registry (drives the phase-based execution order).
     let registry = handlers::create_registry(ctx.fs.as_ref());
+    let order = rules::handler_execution_order(&groups, &registry);
+    debug!(pack = %pack.name, handlers = ?order, "handler execution order");
 
     // Generate intents from each handler
     let mut all_intents = Vec::new();

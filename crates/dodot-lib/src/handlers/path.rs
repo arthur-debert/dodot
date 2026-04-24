@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::datastore::DataStore;
 use crate::fs::Fs;
-use crate::handlers::{Handler, HandlerCategory, HandlerConfig, HandlerStatus, HANDLER_PATH};
+use crate::handlers::{ExecutionPhase, Handler, HandlerConfig, HandlerStatus, HANDLER_PATH};
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
 use crate::rules::RuleMatch;
@@ -17,8 +17,8 @@ impl Handler for PathHandler {
         HANDLER_PATH
     }
 
-    fn category(&self) -> HandlerCategory {
-        HandlerCategory::Configuration
+    fn phase(&self) -> ExecutionPhase {
+        ExecutionPhase::PathExport
     }
 
     fn to_intents(

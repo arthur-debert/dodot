@@ -44,6 +44,8 @@ Architecture
 
         Matches are grouped by the handler that claimed them. Each group is handed to its handler as a batch. This lets handlers make decisions that span multiple files — the symlink handler, for example, can reason about whether a whole directory should be linked wholesale or per-file based on whether any nested path was independently claimed.
 
+        The groups are processed in a fixed order: `Provision` → `Setup` → `PathExport` → `ShellInit` → `Link`. The order is encoded as an `ExecutionPhase` enum declared in execution order, so it's explicit and type-checked rather than an accident of handler naming. See [./handlers.lex] §3 for the phase list and the rationale behind each slot.
+
     2.5. Intents
 
         Each handler inspects its group and produces a list of intents. An intent is a declaration: "I want this file linked to that target"; "I want this script executable and sourced at login"; "I want this command run once, keyed by this sentinel." Intents are shape-limited to three kinds — link, stage, run — so the executor has a small surface to handle.

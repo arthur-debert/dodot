@@ -21,8 +21,7 @@ use std::path::{Path, PathBuf};
 use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::handlers::{
-    Handler, HandlerCategory, HandlerConfig, HandlerScope, HandlerStatus, MatchMode,
-    HANDLER_SYMLINK,
+    ExecutionPhase, Handler, HandlerConfig, HandlerScope, HandlerStatus, MatchMode, HANDLER_SYMLINK,
 };
 use crate::operations::HandlerIntent;
 use crate::paths::Pather;
@@ -36,8 +35,8 @@ impl Handler for SymlinkHandler {
         HANDLER_SYMLINK
     }
 
-    fn category(&self) -> HandlerCategory {
-        HandlerCategory::Configuration
+    fn phase(&self) -> ExecutionPhase {
+        ExecutionPhase::Link
     }
 
     fn match_mode(&self) -> MatchMode {
