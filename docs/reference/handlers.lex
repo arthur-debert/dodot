@@ -57,7 +57,7 @@ Handlers
         | `ShellInit`   | shell     | Shell startup files that may reference binaries from PathExport.   |
         | `Link`        | symlink   | Catchall; must be last so precise handlers claim their files.      |
 
-    :: table align=llll ::
+    :: table align=lll ::
 
     Two design invariants pin this order down.
 
