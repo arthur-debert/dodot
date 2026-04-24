@@ -34,11 +34,15 @@ pub struct ExecutionContext {
     pub force: bool,
     /// How pack-status output should render rows: `Full` keeps today's
     /// per-file listing, `Short` collapses each pack to one summary
-    /// line. Ignored by non-status commands.
+    /// line. Consumed by every command that renders through the
+    /// `pack-status` template (`status`, `up`, `down`, `adopt`);
+    /// ignored by commands that emit `message` / `list` output.
     pub view_mode: crate::commands::ViewMode,
     /// How packs are ordered in pack-status output: `Name` (flat
     /// alphabetical / discovery order) or `Status` (grouped under
-    /// Ignored / Deployed / Pending / Error banners).
+    /// Ignored / Deployed / Pending / Error banners). Consumed by
+    /// every command that renders through the `pack-status` template;
+    /// ignored by commands that emit `message` / `list` output.
     pub group_mode: crate::commands::GroupMode,
 }
 

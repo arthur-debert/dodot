@@ -82,6 +82,22 @@ conflict-hint:
 ignored-pack:
   dim: true
   italic: true
+
+group-banner-deployed:
+  fg: green
+  bold: true
+
+group-banner-pending:
+  fg: yellow
+  bold: true
+
+group-banner-error:
+  fg: red
+  bold: true
+
+group-banner-ignored:
+  dim: true
+  bold: true
 "#;
 
 // ── Templates ───────────────────────────────────────────────────
@@ -92,17 +108,13 @@ ignored-pack:
 /// their bodies render in a dedicated `Errors:` section at the bottom so
 /// the per-file columns stay single-line and aligned regardless of how
 /// long an individual error message is.
-pub const TEMPLATE_PACK_STATUS: &str =
-    include_str!("../../../dodot-cli/src/templates/pack-status.jinja");
+pub const TEMPLATE_PACK_STATUS: &str = include_str!("../templates/pack-status.jinja");
 
 /// List — just pack names.
-pub const TEMPLATE_LIST: &str = r#"{% for pack in packs %}{{ pack.name }}{% if pack.ignored %} [dim](ignored)[/dim]{% endif %}
-{% endfor %}"#;
+pub const TEMPLATE_LIST: &str = include_str!("../templates/list.jinja");
 
 /// Simple message output (init, fill, adopt, addignore).
-pub const TEMPLATE_MESSAGE: &str = r#"{% if message %}[message]{{ message }}[/message]
-{% endif %}{% for line in details %}  {{ line }}
-{% endfor %}"#;
+pub const TEMPLATE_MESSAGE: &str = include_str!("../templates/message.jinja");
 
 // ── Renderer ────────────────────────────────────────────────────
 
