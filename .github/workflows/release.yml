@@ -50,21 +50,23 @@ jobs:
 
           git fetch --tags origin >/dev/null 2>&1 || true
 
-          # Resume case: tag already exists AND main is already at that
-          # version AND the tag points to HEAD. Happens when a previous
-          # run committed+tagged+published to crates.io but a downstream
-          # job (e.g. a binary build) failed. Skip the bump so the rest
-          # of the workflow reruns and fills in what's missing.
+          # Resume case: tag already exists and its commit has Cargo.toml
+          # at NEW_VERSION. Happens when a previous run committed+tagged+
+          # published to crates.io but a downstream job (e.g. a binary
+          # build) failed. Skip the bump so downstream jobs re-run against
+          # the tagged commit (release-sha) and fill in what's missing.
+          # Note: this does not require tag==HEAD, because follow-up CI
+          # fixes may have advanced main past the tag.
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             TAG_SHA=$(git rev-list -n 1 "$TAG")
-            HEAD_SHA=$(git rev-parse HEAD)
-            if [ "$CURRENT_VERSION" = "$NEW_VERSION" ] && [ "$TAG_SHA" = "$HEAD_SHA" ]; then
-              echo "tag $TAG already at HEAD ($HEAD_SHA) — resuming release"
+            TAG_VERSION=$(git show "$TAG_SHA:$CLI_TOML" | grep -E '^version = ' | head -1 | sed 's/version = "\(.*\)"/\1/')
+            if [ "$TAG_VERSION" = "$NEW_VERSION" ]; then
+              echo "tag $TAG already exists at $TAG_SHA (Cargo.toml=$TAG_VERSION) — resuming release"
               echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-              echo "sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+              echo "sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::error::tag $TAG already exists but repo state doesn't match (Cargo.toml=$CURRENT_VERSION, tag_sha=$TAG_SHA, head=$HEAD_SHA)"
+            echo "::error::tag $TAG exists but Cargo.toml at that commit is $TAG_VERSION, not $NEW_VERSION"
             exit 1
           fi
 
