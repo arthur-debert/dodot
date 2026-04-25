@@ -61,7 +61,12 @@ pub fn adopt(
         return Err(DodotError::Other("no files specified".into()));
     }
 
-    let pack_path = ctx.paths.pack_path(pack_name);
+    // Resolve the user's input (display name `nvim` or raw `010-nvim`)
+    // to the on-disk directory; the pack subtree is keyed by the raw
+    // form, every status/display surface by the display form.
+    let pack_dir = orchestration::resolve_pack_dir_name(pack_name, ctx)?;
+    let pack_display = packs::display_name_for(&pack_dir).to_string();
+    let pack_path = ctx.paths.pack_path(&pack_dir);
     if !ctx.fs.exists(&pack_path) {
         return Err(DodotError::PackNotFound {
             name: pack_name.into(),
@@ -75,11 +80,11 @@ pub fn adopt(
     }
 
     let (plans, skipped_already_adopted) =
-        preflight(pack_name, &pack_path, sources, force, no_follow, ctx)?;
+        preflight(&pack_dir, &pack_path, sources, force, no_follow, ctx)?;
 
     // If every input was already adopted, there's nothing to do.
     if plans.is_empty() {
-        let mut result = status::status(Some(&[pack_name.to_string()]), ctx)?;
+        let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
         result.dry_run = dry_run;
         for msg in skipped_already_adopted {
             result.warnings.push(msg);
@@ -102,7 +107,7 @@ pub fn adopt(
     // Dry-run stops here: we've verified the plan is viable, now unwind.
     if dry_run {
         cleanup_pack_copies(&plans, ctx.fs.as_ref());
-        let mut result = status::status(Some(&[pack_name.to_string()]), ctx)?;
+        let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
         result.dry_run = true;
         for msg in skipped_already_adopted {
             result.warnings.push(msg);
@@ -113,7 +118,7 @@ pub fn adopt(
     // Phase 2 — per-source atomic swap. Failures are recorded, not fatal.
     let failures = swap_all(&plans, ctx.fs.as_ref());
 
-    let mut result = status::status(Some(&[pack_name.to_string()]), ctx)?;
+    let mut result = status::status(Some(std::slice::from_ref(&pack_display)), ctx)?;
     result.dry_run = false;
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
@@ -137,7 +142,7 @@ pub fn adopt(
             hint: None,
         });
         let note_ref = Some(result.notes.len() as u32);
-        if let Some(pack) = result.packs.iter_mut().find(|p| p.name == pack_name) {
+        if let Some(pack) = result.packs.iter_mut().find(|p| p.name == pack_display) {
             pack.files.push(DisplayFile {
                 name: src_name,
                 symbol: "×".into(),
@@ -525,7 +530,7 @@ fn check_deploy_conflicts(ctx: &ExecutionContext) -> Result<()> {
         // rather than risk a false negative that lets us mutate into a
         // state `dodot up` will later reject.
         let intents = orchestration::collect_pack_intents(&pack, ctx)?;
-        pack_intents.push((pack.name.clone(), intents));
+        pack_intents.push((pack.display_name.clone(), intents));
     }
 
     let conflicts = conflicts::detect_cross_pack_conflicts(&pack_intents, ctx.fs.as_ref());

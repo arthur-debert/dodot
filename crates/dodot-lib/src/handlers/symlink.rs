@@ -241,6 +241,13 @@ pub(crate) fn resolve_target(
     config: &HandlerConfig,
     paths: &dyn Pather,
 ) -> PathBuf {
+    // Strip any `NNN-` ordering prefix from the pack name before
+    // computing the deployed path. The pack's *display name* — not its
+    // on-disk directory name — is what the user expects in
+    // `~/.config/<pack>/`. A pack `010-nvim/init.lua` deploys to
+    // `~/.config/nvim/init.lua` (which is where `nvim` actually reads
+    // its config), not `~/.config/010-nvim/init.lua`.
+    let pack = crate::packs::display_name_for(pack);
     let home = paths.home_dir();
     let xdg_config = paths.xdg_config_home();
 
@@ -412,6 +419,39 @@ mod tests {
         let config = HandlerConfig::default();
         let target = resolve_target("warp", "themes", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/warp/themes"));
+    }
+
+    // ── Pack ordering: prefix is stripped before path computation ─
+
+    #[test]
+    fn prefixed_pack_deploys_under_display_name_dir() {
+        // `010-nvim/init.lua` deploys to `~/.config/nvim/init.lua` —
+        // where neovim actually reads its config — not under
+        // `~/.config/010-nvim/`. The ordering prefix lives on disk
+        // and on the sort axis; it must not leak into the user's
+        // filesystem.
+        let config = HandlerConfig::default();
+        let target = resolve_target("010-nvim", "init.lua", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/nvim/init.lua"));
+    }
+
+    #[test]
+    fn prefixed_pack_works_with_underscore_separator() {
+        let config = HandlerConfig::default();
+        let target = resolve_target("020_zsh", "zshrc", &config, &test_pather());
+        // `force_home` defaults are off here; default-rule path holds.
+        assert_eq!(target, PathBuf::from("/home/alice/.config/zsh/zshrc"));
+    }
+
+    #[test]
+    fn prefixed_pack_with_force_home_still_strips_prefix() {
+        // The `force_home` matching is keyed on the pack-relative
+        // path (`ssh/config`), not the pack name, so this test mostly
+        // confirms that prefix stripping doesn't perturb that path —
+        // and that nested resolution still lands at `~/.ssh/config`
+        // regardless of how the pack directory is named.
+        let target = resolve_target("030-net", "ssh/config", &default_config(), &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.ssh/config"));
     }
 
     /// Regression for the 0.16.0 pilot: pack `ghostty` with top-level

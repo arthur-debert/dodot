@@ -75,15 +75,53 @@ Handlers
 
     The preprocessing layer (`.tmpl`, `.plist.xml`, `.age`) sits *upstream* of this ordering — templates are rendered before rules match, so by the time the phase order kicks in every match is a concrete file. See [./pre-processors.lex] for how preprocessors fit into the pipeline.
 
-4. Configuration vs Code Execution
+4. Cross-Pack Ordering
+
+    Within a pack, handlers run in the phase order above. *Across* packs, dodot processes packs in lexicographic order of their on-disk directory names — and that order determines every cross-pack effect: shell init source order, `$PATH` entry order, install and homebrew execution order.
+
+    Most users never have to think about this. The `nvim` pack and the `git` pack don't care whose shell snippets are sourced first, and lex order over readable names lands somewhere sensible.
+
+    A few cases do care:
+
+        - The Homebrew shell environment must be set up before any pack that calls `brew`.
+        - `compinit` must run after completion-providing plugins but before `fzf-tab`.
+        - On a fresh install, baseline setup (xcode-select, license acceptance) must precede anything that compiles.
+
+    For those, dodot's stance is the one borrowed from `/etc/init.d` and `/etc/cron.d`: name your directories so lex order produces the order you want. Prefixing a few directories with three digits and a separator — `010-brew`, `100-zsh`, `900-starship` — works, and is the recommended pattern for the small minority of packs where ordering actually matters. Most setups get away with a handful of `0NN-`-prefixed baseline packs at the front; the rest stays unprefixed.
+
+    :: note :: dodot does not have, and is not planning to add, a formal dependency graph or `before` / `after` declarations. The cost of getting those right is high, and the lex-order escape hatch handles the real cases.
+
+    4.1. The Prefix Grammar
+
+        When a pack directory matches `^(\d+)[-_](.+)$` — that is, a run of digits followed by `-` or `_` followed by a non-empty stem — dodot treats the prefix as ordering metadata, not as part of the pack's logical name. Three things follow:
+
+            - The full directory name is the *sort key*: `010-brew` < `020-zsh` < `nvim` < `starship`. Prefixed packs interleave with unprefixed ones via lex order, no special casing.
+            - The *display name* is the stripped stem: `010-brew` → `brew`. That's what `dodot status`, `dodot list`, error messages, generated shell-init comments, and log lines all use. The prefix is invisible to every user-facing surface.
+            - CLI arguments resolve against the display name first and fall back to the raw on-disk directory: `dodot up brew` and `dodot up 010-brew` find the same pack. The display form is the recommended one; the raw form keeps muscle-memory and scripts working.
+
+        Symlink targets follow the display name too: a `010-nvim/init.lua` deploys to `~/.config/nvim/init.lua` (where `nvim` actually reads its config), not `~/.config/010-nvim/init.lua`. The prefix lives on disk and on the sort axis; it does not leak into the user's filesystem.
+
+        The 10/20/30 gap convention from `/etc/init.d` carries over: leave room between numbers so you can insert without renumbering. Three digits with leading zeros (`010`, `020`, `100`, `900`) keeps lex order matching numeric order past the 99 → 100 boundary; two digits work but break sort once you cross.
+
+        Three classes of collision are rejected at scan time, with both offending paths in the error message:
+
+            - A pack `nvim` and a pack `010-nvim` both exist — the display name `nvim` is ambiguous.
+            - Both `010-nvim` and `020-nvim` exist — the display name `nvim` resolves to two packs.
+            - A directory like `010-` or `010_` with no stem after the separator — a pack must have a name.
+
+        Two packs with the same prefix and different stems (`010-brew` and `010-zsh`) are fine; lex order on the stem decides between them.
+
+    See [./../user/getting-started.lex] (Shell Integration) for what belongs *above* the dodot init line in your shell rc — the small set of bootstrap concerns that have to exist before dodot itself can run, and therefore can't live in a pack at all.
+
+5. Configuration vs Code Execution
 
     Handlers fall into two categories that behave differently at deploy time. Category is derived from phase (`Provision` and `Setup` are Code Execution; the rest are Configuration).
 
-    4.1. Configuration handlers
+    5.1. Configuration handlers
 
         symlink, shell, and path. Their operations are idempotent filesystem work: create a link, stage a file. Running them a second time produces the same result as running them once; no special tracking is required. `dodot up` always runs them in full.
 
-    4.2. Code execution handlers
+    5.2. Code execution handlers
 
         install and homebrew. Their operations run user-authored shell commands. These are assumed _not_ to be idempotent in general — `install.sh` might install packages, write files, mutate the system — and re-running them on every `dodot up` would be slow, surprising, or both. Even Brewfile processing, though nominally idempotent, can take many seconds per pack.
 
@@ -94,7 +132,7 @@ Handlers
 
         When the content of a code-execution input changes (you edited `install.sh`, or the rendered output of `install.sh.tmpl` changed), the sentinel's content hash no longer matches, and the handler re-runs automatically. You only need `--provision-rerun` when you want to re-run without an input change.
 
-5. Quick Reference
+6. Quick Reference
 
     Handler summary (rows in execution order):
 
@@ -107,7 +145,7 @@ Handlers
 
     :: table align=lllll ::
 
-6. Why Handlers Look the Way They Do
+7. Why Handlers Look the Way They Do
 
     A few design decisions worth naming.
 
