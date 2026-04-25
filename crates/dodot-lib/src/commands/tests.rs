@@ -686,6 +686,188 @@ fn up_force_overwrites_existing_files() {
     assert_eq!(content, "[user]\n  name = new");
 }
 
+// ── up: reconcile non-provisioning state (#58) ─────────────
+
+/// `dodot up` was additive only: a deleted source file would leave its
+/// datastore entry behind, so the regenerated init script kept sourcing
+/// a now-missing path. The fix wipes configuration-handler state per
+/// pack at the start of `up` and re-applies from current source.
+#[test]
+fn up_reconciles_deleted_shell_source() {
+    let env = TempEnvironment::builder()
+        .pack("gh")
+        .file("aliases.sh", "alias g=git")
+        .file("profile.sh", "export GH=true")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let shell_dir = env.paths.handler_data_dir("gh", "shell");
+    let mut before = env.list_dir_names(&shell_dir);
+    before.sort();
+    assert_eq!(before, vec!["aliases.sh", "profile.sh"]);
+
+    // Delete one source from the pack and re-run up.
+    env.fs
+        .remove_file(&env.dotfiles_root.join("gh/profile.sh"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let after = env.list_dir_names(&shell_dir);
+    assert_eq!(
+        after,
+        vec!["aliases.sh"],
+        "orphan datastore entry persisted after re-up"
+    );
+
+    let init = env
+        .fs
+        .read_to_string(&env.paths.init_script_path())
+        .unwrap();
+    assert!(
+        !init.contains("profile.sh"),
+        "regenerated init still references deleted file:\n{init}"
+    );
+    assert!(init.contains("aliases.sh"), "init: {init}");
+}
+
+#[test]
+fn up_reconciles_deleted_symlink_source() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .file("gvimrc", "set guifont=Mono")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let symlink_dir = env.paths.handler_data_dir("vim", "symlink");
+    let mut before = env.list_dir_names(&symlink_dir);
+    before.sort();
+    assert_eq!(before, vec!["gvimrc", "vimrc"]);
+
+    env.fs
+        .remove_file(&env.dotfiles_root.join("vim/gvimrc"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let after = env.list_dir_names(&symlink_dir);
+    assert_eq!(
+        after,
+        vec!["vimrc"],
+        "orphan datastore symlink persisted after re-up"
+    );
+}
+
+#[test]
+fn up_reconciles_deleted_path_dir() {
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("bin/foo", "#!/bin/sh\necho foo")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let path_dir = env.paths.handler_data_dir("tools", "path");
+    assert_eq!(env.list_dir_names(&path_dir), vec!["bin"]);
+
+    // Drop the bin/ directory entirely.
+    env.fs
+        .remove_dir_all(&env.dotfiles_root.join("tools/bin"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let after = env.list_dir_names(&path_dir);
+    assert!(
+        after.is_empty(),
+        "path datastore should be empty after source dir removed, got: {after:?}"
+    );
+
+    let init = env
+        .fs
+        .read_to_string(&env.paths.init_script_path())
+        .unwrap();
+    assert!(
+        !init.contains("tools/bin"),
+        "init script still exports deleted PATH entry:\n{init}"
+    );
+}
+
+/// Provisioning handlers (install, homebrew) must NOT be wiped — their
+/// sentinels record "did this run with this content?" and re-running
+/// would defeat the point of sentinels (reinstall on every up).
+#[test]
+fn up_preserves_install_sentinel_when_source_persists() {
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh", "#!/bin/sh\necho hi")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    commands::up::up(None, &ctx).unwrap();
+
+    let install_dir = env.paths.handler_data_dir("setup", "install");
+    let sentinels_before = env.list_dir_names(&install_dir);
+    assert_eq!(
+        sentinels_before.len(),
+        1,
+        "expected one sentinel, got {sentinels_before:?}"
+    );
+    let original = sentinels_before.into_iter().next().unwrap();
+
+    // Re-run up with no source change. The sentinel must persist —
+    // wiping it would force the script to re-execute every time.
+    commands::up::up(None, &ctx).unwrap();
+    let sentinels_after = env.list_dir_names(&install_dir);
+    assert_eq!(
+        sentinels_after,
+        vec![original],
+        "install sentinel should persist across re-up"
+    );
+}
+
+#[test]
+fn up_preserves_install_sentinel_when_source_deleted() {
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh", "#!/bin/sh\necho hi")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    commands::up::up(None, &ctx).unwrap();
+    let install_dir = env.paths.handler_data_dir("setup", "install");
+    let sentinels_before = env.list_dir_names(&install_dir);
+    assert_eq!(sentinels_before.len(), 1);
+
+    // Source vanishes — but the sentinel still records that *some*
+    // version of this script has run, and we don't want the wipe to
+    // erase that history just because the source is no longer in the
+    // pack right now.
+    env.fs
+        .remove_file(&env.dotfiles_root.join("setup/install.sh"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let sentinels_after = env.list_dir_names(&install_dir);
+    assert_eq!(
+        sentinels_after, sentinels_before,
+        "deleting an install source must not wipe its sentinel"
+    );
+}
+
 // ── down ────────────────────────────────────────────────────
 
 #[test]
