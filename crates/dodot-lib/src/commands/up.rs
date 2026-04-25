@@ -19,6 +19,8 @@
 //! Dry-run keeps the per-intent rendering since there's no
 //! post-execution state to verify.
 
+use std::collections::HashMap;
+
 use tracing::{debug, info};
 
 use crate::commands::{
@@ -102,22 +104,29 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     } else {
         handlers::configuration_handler_names(ctx.fs.as_ref())
     };
+    // pack_intents was built from `packs`, so every display_name maps
+    // to exactly one Pack. Keying by &str avoids cloning and makes the
+    // missing-pack case a bug rather than silent skip.
+    let pack_by_display: HashMap<&str, &Pack> =
+        packs.iter().map(|p| (p.display_name.as_str(), p)).collect();
 
     for (pack_name, intents) in pack_intents {
         info!(pack = %pack_name, intents = intents.len(), "executing pack");
 
         if !ctx.dry_run {
-            if let Some(pack) = packs.iter().find(|p| p.display_name == pack_name) {
-                if let Err(e) = wipe_configuration_state(pack, &config_handlers, ctx) {
-                    info!(pack = %pack_name, error = %e, "reconcile failed");
-                    pack_results.push(PackResult {
-                        pack_name,
-                        success: false,
-                        operations: Vec::new(),
-                        error: Some(format!("reconcile error: {e}")),
-                    });
-                    continue;
-                }
+            let pack = pack_by_display
+                .get(pack_name.as_str())
+                .copied()
+                .expect("pack_intents was built from packs; lookup must succeed");
+            if let Err(e) = wipe_configuration_state(pack, &config_handlers, ctx) {
+                info!(pack = %pack_name, error = %e, "reconcile failed");
+                pack_results.push(PackResult {
+                    pack_name,
+                    success: false,
+                    operations: Vec::new(),
+                    error: Some(format!("reconcile error: {e}")),
+                });
+                continue;
             }
         }
 
