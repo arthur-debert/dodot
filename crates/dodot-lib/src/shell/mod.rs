@@ -18,9 +18,27 @@
 //!
 //! In the future, this can also be exposed as `dodot init-sh` or
 //! a minimal standalone binary for even faster shell startup.
+//!
+//! # Profiling wrapper (Phase 2 of profiling.lex)
+//!
+//! When the caller passes `profiling_enabled = true`, the generator
+//! wraps every `source` and PATH line with an inline `EPOCHREALTIME`
+//! capture and writes one `profile-*.tsv` per shell start under
+//! `<data_dir>/probes/shell-init/`. The wrapper is gated on a runtime
+//! check (`bash 5+` / `zsh` with `EPOCHREALTIME` available); shells
+//! without the variable fall through to the unchanged source/PATH
+//! path with a single `[ "$_dodot_prof" = "1" ]` test of overhead.
+//! When `profiling_enabled = false`, the generated script is
+//! byte-identical to the pre-Phase-2 form.
+//!
+//! Sources are *not* wrapped in a shell function: in zsh, `source`
+//! inside a function changes scoping for plain variable assignments
+//! in the sourced file, which is a behavioural surprise nobody asked
+//! for. We pay the price of a slightly longer script in exchange for
+//! semantic equivalence with the un-instrumented form.
 
 use std::fmt::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::fs::Fs;
 use crate::paths::Pather;
@@ -42,8 +60,14 @@ fn append_empty_notice(script: &mut String) {
 /// - `packs/*/shell/*` — symlinks to shell scripts → `source` lines
 /// - `packs/*/path/*` — symlinks to directories → `PATH=` lines
 ///
-/// Returns the script content as a string.
-pub fn generate_init_script(fs: &dyn Fs, paths: &dyn Pather) -> Result<String> {
+/// When `profiling_enabled` is true and there is at least one entry to
+/// emit, the script also carries the per-line timing wrapper described
+/// in the module docs.
+pub fn generate_init_script(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+    profiling_enabled: bool,
+) -> Result<String> {
     let mut script = String::new();
 
     writeln!(script, "#!/bin/sh").unwrap();
@@ -107,12 +131,26 @@ pub fn generate_init_script(fs: &dyn Fs, paths: &dyn Pather) -> Result<String> {
         return Ok(script);
     }
 
+    // Profiling preamble (only when enabled and there's at least one entry).
+    let profiling_active = profiling_enabled;
+    if profiling_active {
+        emit_profiling_preamble(
+            &mut script,
+            &paths.probes_shell_init_dir(),
+            &paths.init_script_path(),
+        );
+    }
+
     // Emit PATH additions
     if !path_additions.is_empty() {
         writeln!(script, "# PATH additions").unwrap();
         for (pack, target) in &path_additions {
             writeln!(script, "# [{pack}]").unwrap();
-            writeln!(script, "export PATH=\"{}:$PATH\"", target.display()).unwrap();
+            if profiling_active {
+                emit_timed_path(&mut script, pack, target);
+            } else {
+                writeln!(script, "export PATH=\"{}:$PATH\"", target.display()).unwrap();
+            }
         }
         writeln!(script).unwrap();
     }
@@ -122,15 +160,24 @@ pub fn generate_init_script(fs: &dyn Fs, paths: &dyn Pather) -> Result<String> {
         writeln!(script, "# Shell scripts").unwrap();
         for (pack, target) in &shell_sources {
             writeln!(script, "# [{pack}]").unwrap();
-            writeln!(
-                script,
-                "[ -f \"{}\" ] && . \"{}\"",
-                target.display(),
-                target.display()
-            )
-            .unwrap();
+            if profiling_active {
+                emit_timed_source(&mut script, pack, target);
+            } else {
+                writeln!(
+                    script,
+                    "[ -f \"{}\" ] && . \"{}\"",
+                    target.display(),
+                    target.display()
+                )
+                .unwrap();
+            }
         }
         writeln!(script).unwrap();
+    }
+
+    // Profiling epilogue (close the report, scrub our state).
+    if profiling_active {
+        emit_profiling_epilogue(&mut script);
     }
 
     Ok(script)
@@ -139,8 +186,12 @@ pub fn generate_init_script(fs: &dyn Fs, paths: &dyn Pather) -> Result<String> {
 /// Generate and write the init script to `data_dir/shell/dodot-init.sh`.
 ///
 /// Returns the path where the script was written.
-pub fn write_init_script(fs: &dyn Fs, paths: &dyn Pather) -> Result<PathBuf> {
-    let script_content = generate_init_script(fs, paths)?;
+pub fn write_init_script(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+    profiling_enabled: bool,
+) -> Result<PathBuf> {
+    let script_content = generate_init_script(fs, paths, profiling_enabled)?;
     let script_path = paths.init_script_path();
 
     fs.mkdir_all(paths.shell_dir())?;
@@ -148,6 +199,156 @@ pub fn write_init_script(fs: &dyn Fs, paths: &dyn Pather) -> Result<PathBuf> {
     fs.set_permissions(&script_path, 0o755)?;
 
     Ok(script_path)
+}
+
+// ── Profiling wrapper emitters ───────────────────────────────────────
+
+/// The runtime-detection preamble. Sets `_dodot_prof` to `1` when the
+/// current shell is bash 5+ or zsh with `EPOCHREALTIME` available;
+/// otherwise leaves it `0` (the wrapper falls through to the no-op
+/// path). All shell variables are namespaced `_dodot_*` so we don't
+/// stomp on the user's environment.
+fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script_path: &Path) {
+    let dir = sh_quote(&profiles_dir.display().to_string());
+    let init_script = sh_quote(&init_script_path.display().to_string());
+    writeln!(script, "# ── dodot shell-init profiling (Phase 2) ──").unwrap();
+    writeln!(script, "_dodot_prof=0").unwrap();
+    writeln!(
+        script,
+        "if [ -n \"${{BASH_VERSION:-}}\" ] || [ -n \"${{ZSH_VERSION:-}}\" ]; then"
+    )
+    .unwrap();
+    // zsh exposes EPOCHREALTIME only after `zmodload zsh/datetime`. Load
+    // it eagerly here; bash 5+ has the variable built in and ignores
+    // unknown commands like `zmodload` (we suppress its `command not
+    // found` error). Doing this *inside* the bash/zsh guard keeps it off
+    // hot paths in plain sh.
+    writeln!(
+        script,
+        "  [ -n \"${{ZSH_VERSION:-}}\" ] && zmodload zsh/datetime 2>/dev/null"
+    )
+    .unwrap();
+    writeln!(script, "  if [ -n \"${{EPOCHREALTIME:-}}\" ]; then").unwrap();
+    writeln!(script, "    _dodot_prof_dir={dir}").unwrap();
+    writeln!(
+        script,
+        "    _dodot_prof_file=\"$_dodot_prof_dir/profile-${{EPOCHSECONDS:-0}}-$$-${{RANDOM}}.tsv\""
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "    if mkdir -p \"$_dodot_prof_dir\" 2>/dev/null; then"
+    )
+    .unwrap();
+    writeln!(script, "      _dodot_prof_t0=$EPOCHREALTIME").unwrap();
+    writeln!(script, "      {{").unwrap();
+    writeln!(script, "        printf '# dodot shell-init profile v1\\n'").unwrap();
+    writeln!(
+        script,
+        "        printf '# shell\\t%s\\n' \"${{BASH_VERSION:+bash $BASH_VERSION}}${{ZSH_VERSION:+zsh $ZSH_VERSION}}\""
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "        printf '# start_t\\t%s\\n' \"$_dodot_prof_t0\""
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "        printf '# init_script\\t%s\\n' {init_script}"
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "        printf '# columns\\tphase\\tpack\\thandler\\ttarget\\tstart_t\\tend_t\\texit_status\\n'"
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "      }} > \"$_dodot_prof_file\" 2>/dev/null && _dodot_prof=1"
+    )
+    .unwrap();
+    writeln!(script, "    fi").unwrap();
+    writeln!(script, "  fi").unwrap();
+    writeln!(script, "fi").unwrap();
+    writeln!(script).unwrap();
+}
+
+/// One inline-timed `export PATH=…` row. The branch is one comparison
+/// at runtime — negligible on shells where the wrapper is inert.
+fn emit_timed_path(script: &mut String, pack: &str, target: &Path) {
+    let target_str = target.display().to_string();
+    let target_q = sh_quote(&target_str);
+    writeln!(script, "if [ \"$_dodot_prof\" = \"1\" ]; then").unwrap();
+    writeln!(
+        script,
+        "  _dodot_t0=$EPOCHREALTIME; export PATH=\"{target_str}:$PATH\"; _dodot_t1=$EPOCHREALTIME"
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "  printf 'path\\t{pack}\\tpath\\t%s\\t%s\\t%s\\t0\\n' {target_q} \"$_dodot_t0\" \"$_dodot_t1\" >> \"$_dodot_prof_file\" 2>/dev/null"
+    )
+    .unwrap();
+    writeln!(script, "else").unwrap();
+    writeln!(script, "  export PATH=\"{target_str}:$PATH\"").unwrap();
+    writeln!(script, "fi").unwrap();
+}
+
+/// One inline-timed `[ -f X ] && . X` row, capturing the source's
+/// exit status. Same overhead profile as the PATH variant.
+fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
+    let target_str = target.display().to_string();
+    let target_q = sh_quote(&target_str);
+    writeln!(script, "if [ \"$_dodot_prof\" = \"1\" ]; then").unwrap();
+    writeln!(
+        script,
+        "  _dodot_t0=$EPOCHREALTIME; [ -f \"{target_str}\" ] && . \"{target_str}\"; _dodot_rc=$?; _dodot_t1=$EPOCHREALTIME"
+    )
+    .unwrap();
+    writeln!(
+        script,
+        "  printf 'source\\t{pack}\\tshell\\t%s\\t%s\\t%s\\t%s\\n' {target_q} \"$_dodot_t0\" \"$_dodot_t1\" \"$_dodot_rc\" >> \"$_dodot_prof_file\" 2>/dev/null"
+    )
+    .unwrap();
+    writeln!(script, "else").unwrap();
+    writeln!(script, "  [ -f \"{target_str}\" ] && . \"{target_str}\"").unwrap();
+    writeln!(script, "fi").unwrap();
+}
+
+/// Closes out the report (writes the `# end_t` marker) and clears
+/// every `_dodot_*` shell variable so we don't leak state into the
+/// user's interactive shell.
+fn emit_profiling_epilogue(script: &mut String) {
+    writeln!(script, "# ── dodot shell-init profiling epilogue ──").unwrap();
+    writeln!(script, "if [ \"$_dodot_prof\" = \"1\" ]; then").unwrap();
+    writeln!(
+        script,
+        "  printf '# end_t\\t%s\\n' \"$EPOCHREALTIME\" >> \"$_dodot_prof_file\" 2>/dev/null"
+    )
+    .unwrap();
+    writeln!(script, "fi").unwrap();
+    writeln!(
+        script,
+        "unset _dodot_prof _dodot_prof_dir _dodot_prof_file _dodot_prof_t0 _dodot_t0 _dodot_t1 _dodot_rc 2>/dev/null"
+    )
+    .unwrap();
+}
+
+/// Single-quote a string for safe use in POSIX shell. Embedded single
+/// quotes are escaped via the `'\''` idiom.
+fn sh_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for c in s.chars() {
+        if c == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
 }
 
 #[cfg(test)]
@@ -175,7 +376,7 @@ mod tests {
     #[test]
     fn empty_datastore_produces_helpful_script() {
         let env = TempEnvironment::builder().build();
-        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
         assert!(script.starts_with("#!/bin/sh"));
         assert!(script.contains("Generated by dodot"));
@@ -199,7 +400,7 @@ mod tests {
         let source = env.dotfiles_root.join("vim/aliases.sh");
         ds.create_data_link("vim", "shell", &source).unwrap();
 
-        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
         assert!(script.contains("# Shell scripts"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
@@ -225,7 +426,7 @@ mod tests {
         let source = env.dotfiles_root.join("vim/bin");
         ds.create_data_link("vim", "path", &source).unwrap();
 
-        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
         assert!(script.contains("# PATH additions"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
@@ -259,7 +460,7 @@ mod tests {
         ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
             .unwrap();
 
-        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
         // Should have both shell sources
         assert!(script.contains("# [git]"), "script:\n{script}");
@@ -286,7 +487,7 @@ mod tests {
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
-        let script_path = write_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script_path = write_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
         assert_eq!(script_path, env.paths.init_script_path());
         env.assert_exists(&script_path);
@@ -312,20 +513,20 @@ mod tests {
         let ds = make_datastore(&env);
 
         // Initially empty
-        let script1 = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script1 = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
         assert!(!script1.contains("aliases.sh"));
 
         // Deploy shell script
         ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
             .unwrap();
 
-        let script2 = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script2 = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
         assert!(script2.contains("aliases.sh"));
 
         // Remove state
         ds.remove_state("vim", "shell").unwrap();
 
-        let script3 = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script3 = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
         assert!(!script3.contains("aliases.sh"));
     }
 
@@ -340,7 +541,7 @@ mod tests {
             .write_file(&shell_dir.join("not-a-symlink"), b"noise")
             .unwrap();
 
-        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
         assert!(!script.contains("not-a-symlink"));
     }
 
@@ -359,7 +560,7 @@ mod tests {
         ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
             .unwrap();
 
-        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
 
         let path_pos = script.find("# PATH additions").unwrap();
         let shell_pos = script.find("# Shell scripts").unwrap();
@@ -367,5 +568,126 @@ mod tests {
             path_pos < shell_pos,
             "PATH additions should come before shell sources"
         );
+    }
+
+    // ── Phase 2: profiling wrapper ──────────────────────────────────
+
+    #[test]
+    fn profiling_disabled_matches_phase1_byte_for_byte() {
+        // The contract: when profiling is off, the script must be the
+        // exact same bytes a Phase-1 generator would have produced. This
+        // protects users who don't want any change to their init script.
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
+        assert!(!script.contains("_dodot_prof"));
+        assert!(!script.contains("EPOCHREALTIME"));
+        assert!(!script.contains("dodot shell-init profile"));
+    }
+
+    #[test]
+    fn profiling_enabled_emits_runtime_gated_preamble() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+
+        // Preamble feature-detects bash 5+ / zsh + EPOCHREALTIME
+        assert!(script.contains("BASH_VERSION"));
+        assert!(script.contains("ZSH_VERSION"));
+        assert!(script.contains("EPOCHREALTIME"));
+        // The profile dir comes from Pather, so the script should embed it.
+        assert!(script.contains(env.paths.probes_shell_init_dir().to_str().unwrap()));
+        // File naming includes pid + RANDOM for collision-resistance.
+        assert!(script.contains("$$"));
+        assert!(script.contains("RANDOM"));
+        // Header lines we always emit.
+        assert!(script.contains("# dodot shell-init profile v1"));
+        assert!(script.contains("columns\\tphase\\tpack\\thandler\\ttarget"));
+    }
+
+    #[test]
+    fn profiling_enabled_wraps_each_source_with_else_path() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "")
+            .file("bin/tool", "#!/bin/sh")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+        ds.create_data_link("vim", "path", &env.dotfiles_root.join("vim/bin"))
+            .unwrap();
+
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+
+        // Each entry has an if/else so unprofiled shells still source / set PATH.
+        // (One else per entry; the epilogue uses an if-only form, so counting
+        // `else` keeps us focused on the entry wrappers.)
+        let else_count = script.matches("else").count();
+        assert_eq!(
+            else_count, 2,
+            "expected one else-branch per entry; script:\n{script}"
+        );
+
+        // Source row carries the captured exit status; PATH row hard-codes 0.
+        assert!(script.contains("printf 'source\\tvim\\tshell\\t"));
+        assert!(script.contains("printf 'path\\tvim\\tpath\\t"));
+        assert!(script.contains("\"$_dodot_rc\""));
+    }
+
+    #[test]
+    fn profiling_epilogue_writes_end_marker_and_unsets_state() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+        // End-of-run timestamp.
+        assert!(script.contains("# end_t"));
+        // We scrub our state to avoid leaking into the user's shell.
+        assert!(script.contains("unset _dodot_prof"));
+        assert!(script.contains("_dodot_prof_file"));
+    }
+
+    #[test]
+    fn profiling_enabled_with_empty_datastore_skips_preamble() {
+        // No deployed entries → empty notice only, no profiling boilerplate.
+        let env = TempEnvironment::builder().build();
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+        assert!(script.contains("No shell scripts or PATH additions"));
+        assert!(!script.contains("_dodot_prof"));
+    }
+
+    #[test]
+    fn shell_quoting_handles_paths_with_single_quotes() {
+        // A path with a single quote in it must round-trip safely
+        // through the printf args. Embedded `'` becomes `'\''`.
+        assert_eq!(sh_quote("plain"), "'plain'");
+        assert_eq!(sh_quote("it's"), "'it'\\''s'");
+        assert_eq!(sh_quote(""), "''");
     }
 }

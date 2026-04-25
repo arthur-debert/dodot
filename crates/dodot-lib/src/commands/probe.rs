@@ -12,7 +12,10 @@
 use serde::Serialize;
 
 use crate::packs::orchestration::ExecutionContext;
-use crate::probe::{collect_data_dir_tree, collect_deployment_map, DeploymentMapEntry, TreeNode};
+use crate::probe::{
+    collect_data_dir_tree, collect_deployment_map, group_profile, read_latest_profile,
+    DeploymentMapEntry, GroupedProfile, TreeNode,
+};
 use crate::Result;
 
 /// Default max depth for `probe show-data-dir`. Enough to show
@@ -79,6 +82,54 @@ pub enum ProbeResult {
         /// link-entry size).
         total_size: u64,
     },
+    /// `dodot probe shell-init` — the most recent shell-startup profile,
+    /// grouped by pack and handler.
+    ShellInit(ShellInitView),
+}
+
+/// Display payload for `probe shell-init`. Pulled into its own struct
+/// so the JSON view stays clean and the variant constructor in
+/// `shell_init()` reads naturally.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitView {
+    /// Source filename of the report (for "which run is this?" UX).
+    /// Empty when no profile has been written yet.
+    pub filename: String,
+    /// Shell label as recorded in the preamble (e.g. `bash 5.3.9`).
+    pub shell: String,
+    /// True when the profiling wrapper is enabled in config.
+    pub profiling_enabled: bool,
+    /// True when the directory exists and contained a parseable file.
+    pub has_profile: bool,
+    /// Pre-grouped rows for the template; empty when `has_profile` is
+    /// false.
+    pub groups: Vec<ShellInitGroup>,
+    pub user_total_us: u64,
+    pub framing_us: u64,
+    pub total_us: u64,
+    /// Where the profiles live on disk (so the user can `ls` it).
+    pub profiles_dir: String,
+}
+
+/// Display row for one entry in a shell-init group.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitRow {
+    pub target: String,
+    pub duration_us: u64,
+    pub duration_label: String,
+    pub exit_status: i32,
+    /// `"ok"` or `"err"` — drives the styling tag in the template.
+    pub status_class: &'static str,
+}
+
+/// Display group: one (pack, handler) bucket of shell-init rows.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitGroup {
+    pub pack: String,
+    pub handler: String,
+    pub rows: Vec<ShellInitRow>,
+    pub group_total_us: u64,
+    pub group_total_label: String,
 }
 
 /// One entry in the `probe` summary listing.
@@ -95,6 +146,10 @@ pub const PROBE_SUBCOMMANDS: &[ProbeSubcommandInfo] = &[
     ProbeSubcommandInfo {
         name: "deployment-map",
         description: "Source↔deployed map — what dodot linked where.",
+    },
+    ProbeSubcommandInfo {
+        name: "shell-init",
+        description: "Per-source timings for the most recent shell startup.",
     },
     ProbeSubcommandInfo {
         name: "show-data-dir",
@@ -129,6 +184,95 @@ pub fn deployment_map(ctx: &ExecutionContext) -> Result<ProbeResult> {
         map_path: ctx.paths.deployment_map_path().display().to_string(),
         entries,
     })
+}
+
+/// Render the most recent shell-init profile.
+///
+/// When no profile has been written yet (fresh install, or profiling
+/// disabled, or the user hasn't started a shell since the last `up`),
+/// returns a "no data" view with `has_profile = false`. The template
+/// uses that flag to print a hint instead of an empty table.
+pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+
+    let profile_opt = read_latest_profile(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+
+    let view = match profile_opt {
+        Some(profile) => {
+            let grouped = group_profile(&profile);
+            ShellInitView {
+                filename: profile.filename.clone(),
+                shell: profile.shell.clone(),
+                profiling_enabled,
+                has_profile: true,
+                groups: shell_init_groups(&grouped),
+                user_total_us: grouped.user_total_us,
+                framing_us: grouped.framing_us,
+                total_us: grouped.total_us,
+                profiles_dir,
+            }
+        }
+        None => ShellInitView {
+            filename: String::new(),
+            shell: String::new(),
+            profiling_enabled,
+            has_profile: false,
+            groups: Vec::new(),
+            user_total_us: 0,
+            framing_us: 0,
+            total_us: 0,
+            profiles_dir,
+        },
+    };
+
+    Ok(ProbeResult::ShellInit(view))
+}
+
+fn shell_init_groups(grouped: &GroupedProfile) -> Vec<ShellInitGroup> {
+    grouped
+        .groups
+        .iter()
+        .map(|g| ShellInitGroup {
+            pack: g.pack.clone(),
+            handler: g.handler.clone(),
+            rows: g
+                .rows
+                .iter()
+                .map(|r| ShellInitRow {
+                    target: short_target(&r.target),
+                    duration_us: r.duration_us,
+                    duration_label: humanize_us(r.duration_us),
+                    exit_status: r.exit_status,
+                    status_class: if r.exit_status == 0 { "ok" } else { "error" },
+                })
+                .collect(),
+            group_total_us: g.group_total_us,
+            group_total_label: humanize_us(g.group_total_us),
+        })
+        .collect()
+}
+
+/// Display-friendly basename for a target path. The fully-qualified
+/// path is in the on-disk profile already; the rendered table is
+/// narrow.
+fn short_target(target: &str) -> String {
+    std::path::Path::new(target)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| target.to_string())
+}
+
+/// Compact human duration: "0 µs" / "1.2 ms" / "350 ms" / "1.4 s".
+pub fn humanize_us(us: u64) -> String {
+    if us < 1_000 {
+        format!("{us} µs")
+    } else if us < 1_000_000 {
+        format!("{:.1} ms", us as f64 / 1_000.0)
+    } else {
+        format!("{:.2} s", us as f64 / 1_000_000.0)
+    }
 }
 
 /// Render the data-dir tree.

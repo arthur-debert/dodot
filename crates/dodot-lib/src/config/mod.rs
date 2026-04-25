@@ -40,6 +40,9 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub preprocessor: PreprocessorSection,
+
+    #[config(nested)]
+    pub profiling: ProfilingSection,
 }
 
 /// Pack-level settings.
@@ -139,6 +142,29 @@ pub struct PreprocessorTemplateSection {
     /// as var names raises an error at load time.
     #[config(default = {})]
     pub vars: std::collections::HashMap<String, String>,
+}
+
+/// Shell-init profiling settings. Root-only — per-pack overrides are
+/// meaningless (the init script is one thing; you can't half-profile it).
+///
+/// See `docs/proposals/profiling.lex` for the full design.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct ProfilingSection {
+    /// Whether the generated `dodot-init.sh` carries the timing wrapper
+    /// around each `source` and PATH line. When false, the init script
+    /// is byte-identical to the pre-Phase-2 form. When true, bash 5+ /
+    /// zsh sessions emit one TSV per shell startup under
+    /// `<data_dir>/probes/shell-init/`; older shells fall through to
+    /// the no-op path even with the wrapper present.
+    #[config(default = true)]
+    pub enabled: bool,
+
+    /// Maximum number of `<data_dir>/probes/shell-init/profile-*.tsv`
+    /// files to retain. Older files are pruned at the end of every
+    /// `dodot up`. At ~4 KB per run, the default budget is roughly
+    /// 400 KB on disk.
+    #[config(default = 100)]
+    pub keep_last_runs: usize,
 }
 
 /// File-to-handler mapping patterns.
@@ -433,6 +459,26 @@ mod tests {
             ]
         );
         assert!(cfg.mappings.skip.is_empty());
+
+        // ── profiling defaults ──────────────────────────────────
+        assert!(cfg.profiling.enabled);
+        assert_eq!(cfg.profiling.keep_last_runs, 100);
+    }
+
+    #[test]
+    fn profiling_section_overridable() {
+        let env = TempEnvironment::builder().build();
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                b"[profiling]\nenabled = false\nkeep_last_runs = 25\n",
+            )
+            .unwrap();
+
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert!(!cfg.profiling.enabled);
+        assert_eq!(cfg.profiling.keep_last_runs, 25);
     }
 
     #[test]

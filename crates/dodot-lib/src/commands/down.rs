@@ -70,7 +70,11 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     // the removed state).
     if !ctx.dry_run {
         info!("regenerating shell init script");
-        shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        shell::write_init_script(
+            ctx.fs.as_ref(),
+            ctx.paths.as_ref(),
+            root_config.profiling.enabled,
+        )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     }

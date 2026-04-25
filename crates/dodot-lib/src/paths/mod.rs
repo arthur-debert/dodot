@@ -64,6 +64,12 @@ pub trait Pather: Send + Sync {
     fn deployment_map_path(&self) -> PathBuf {
         self.data_dir().join("deployment-map.tsv")
     }
+
+    /// Directory where shell-init profile reports are written, one TSV
+    /// per shell start. See `docs/proposals/profiling.lex` §3.1.
+    fn probes_shell_init_dir(&self) -> PathBuf {
+        self.data_dir().join("probes").join("shell-init")
+    }
 }
 
 /// XDG-compliant path resolver.

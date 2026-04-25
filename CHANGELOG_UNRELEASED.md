@@ -34,6 +34,29 @@ Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
   mtime touches.
 - `Pather::deployment_map_path()` trait method, returning
   `<data_dir>/deployment-map.tsv`.
+- **Shell-init profiling** (Phase 2 of `docs/proposals/profiling.lex`).
+  When `[profiling] enabled = true` (the default) the generated
+  `dodot-init.sh` carries a runtime-detected timing wrapper around each
+  `source` and `PATH` line. On bash 5+ / zsh, every shell startup writes
+  one TSV under `<data_dir>/probes/shell-init/profile-<unix_ts>-<pid>-<rand>.tsv`
+  with microsecond `EPOCHREALTIME` start/end pairs and the source's exit
+  status — turning silent failures in user shell scripts into visible
+  data. Older shells (`/bin/sh`, bash <5) fall through to the
+  unmodified source/PATH path with one extra `[ "$_dodot_prof" = "1" ]`
+  comparison of overhead. Disable via `[profiling] enabled = false` in
+  the root `.dodot.toml`; the resulting init script is byte-identical to
+  Phase 1.
+- **`dodot probe shell-init`** — reads the most recent profile TSV and
+  renders it grouped by pack and handler, with per-row durations,
+  per-group subtotals, and a final user-sourced / dodot-framing / grand
+  total breakdown. Falls back to a hint when no profile has been written
+  yet, or when profiling is disabled in config.
+- New `[profiling]` config section (root-only): `enabled` (default
+  `true`) and `keep_last_runs` (default `100`, capped at the
+  configured number per `dodot up`'s rotation pass; `0` disables
+  rotation defensively rather than wiping history).
+- `Pather::probes_shell_init_dir()` trait method, returning
+  `<data_dir>/probes/shell-init`.
 
 ## Changed
 

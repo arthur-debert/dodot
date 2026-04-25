@@ -163,14 +163,14 @@ Design Specification: Profiling and the Probe Command
 
 7. Phased Implementation
 
-    Phase 1: deployment map and `probe show-data-dir`.
+    Phase 1: deployment map and `probe show-data-dir`. **(Shipped.)**
         No init-script changes. Wire `deployment-map.tsv` writing into the tail of `commands::up` and `commands::down` alongside `shell::write_init_script`. Ship `probe`, `probe show-data-dir`, and `probe deployment-map`. This alone unblocks `dodot refresh` from @./magic.lex.
 
-    Phase 2: shell-init timing.
-        Extend `shell::generate_init_script` to emit the per-file timing wrapper and the preamble writer. Wire `probe shell-init` reader and the default (single-run) view. Add the `profiling` config section.
+    Phase 2: shell-init timing. **(Shipped.)**
+        Extend `shell::generate_init_script` to emit the per-file timing wrapper and the preamble writer. Wire `probe shell-init` reader and the default (single-run) view. Add the `profiling` config section. Rotation also lands here (cheaper to ship together than to defer): the writer side has no rotation logic, but `dodot up` prunes `<data_dir>/probes/shell-init/` to `keep_last_runs` at the end of every run.
 
     Phase 3: aggregation.
-        Add `--runs N` and `--history` flags to `probe shell-init`. Rotation runs at `dodot up` time (prune `<data_dir>/probes/shell-init/` to `keep_last_runs` entries by filename sort).
+        Add `--runs N` and `--history` flags to `probe shell-init` for cross-run views (p50/p95/max per target, trend over recent runs). Rotation already runs in Phase 2, so this phase is purely additive on the reader side.
 
     Phase 4: regression hints (optional).
         If phase 3 reveals an appetite for it, teach `probe shell-init` to highlight targets whose current-run duration is above their historical p95. Pure presentation; same data. We do not plan this as table stakes.
