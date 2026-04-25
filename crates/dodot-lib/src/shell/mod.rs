@@ -163,11 +163,16 @@ pub fn generate_init_script(
             if profiling_active {
                 emit_timed_source(&mut script, pack, target);
             } else {
+                // Loud-failure wrapper: if the source command itself
+                // exits non-zero, print a dodot-attributed message to
+                // stderr alongside the shell's own error so the user
+                // can see *which* dodot-managed file failed. The
+                // shell's native message already carries the line
+                // number; we add the breadcrumb back to dodot.
                 writeln!(
                     script,
-                    "[ -f \"{}\" ] && . \"{}\"",
-                    target.display(),
-                    target.display()
+                    "[ -f \"{p}\" ] && {{ . \"{p}\" || echo \"dodot: shell source exited $?: {p}\" >&2; }}",
+                    p = target.display()
                 )
                 .unwrap();
             }
@@ -297,6 +302,11 @@ fn emit_timed_path(script: &mut String, pack: &str, target: &Path) {
 
 /// One inline-timed `[ -f X ] && . X` row, capturing the source's
 /// exit status. Same overhead profile as the PATH variant.
+///
+/// Both branches (profiling-active and unprofiled fallback) emit the
+/// loud-failure message on a non-zero source exit, so users see the
+/// dodot breadcrumb whether or not their shell supports the timing
+/// path.
 fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
     let target_str = target.display().to_string();
     let target_q = sh_quote(&target_str);
@@ -311,8 +321,17 @@ fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
         "  printf 'source\\t{pack}\\tshell\\t%s\\t%s\\t%s\\t%s\\n' {target_q} \"$_dodot_t0\" \"$_dodot_t1\" \"$_dodot_rc\" >> \"$_dodot_prof_file\" 2>/dev/null"
     )
     .unwrap();
+    writeln!(
+        script,
+        "  [ \"$_dodot_rc\" -ne 0 ] && echo \"dodot: shell source exited $_dodot_rc: {target_str}\" >&2"
+    )
+    .unwrap();
     writeln!(script, "else").unwrap();
-    writeln!(script, "  [ -f \"{target_str}\" ] && . \"{target_str}\"").unwrap();
+    writeln!(
+        script,
+        "  [ -f \"{target_str}\" ] && {{ . \"{target_str}\" || echo \"dodot: shell source exited $?: {target_str}\" >&2; }}"
+    )
+    .unwrap();
     writeln!(script, "fi").unwrap();
 }
 
@@ -404,11 +423,12 @@ mod tests {
 
         assert!(script.contains("# Shell scripts"), "script:\n{script}");
         assert!(script.contains("# [vim]"), "script:\n{script}");
+        // Loud-failure wrapper: existence-guarded source, with a
+        // dodot-attributed echo on non-zero exit.
         assert!(
             script.contains(&format!(
-                "[ -f \"{}\" ] && . \"{}\"",
-                source.display(),
-                source.display()
+                "[ -f \"{p}\" ] && {{ . \"{p}\" || echo \"dodot: shell source exited $?: {p}\" >&2; }}",
+                p = source.display()
             )),
             "script:\n{script}"
         );
@@ -680,6 +700,46 @@ mod tests {
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
         assert!(script.contains("No shell scripts or PATH additions"));
         assert!(!script.contains("_dodot_prof"));
+    }
+
+    #[test]
+    fn loud_failure_wrapper_present_in_both_modes() {
+        // A non-zero exit from a sourced file must surface as a
+        // dodot-attributed message on stderr, regardless of whether
+        // profiling is on. This is the user-facing breadcrumb that
+        // says "the dodot-managed source exited non-zero" alongside
+        // the shell's own line-numbered error.
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        // Profiling off: inline OR-echo form.
+        let plain = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), false).unwrap();
+        assert!(
+            plain.contains("dodot: shell source exited $?:"),
+            "plain script missing loud-failure echo:\n{plain}"
+        );
+
+        // Profiling on: timed branch echoes after the printf when
+        // _dodot_rc != 0; unprofiled fallback uses the same OR-echo
+        // form as the plain path.
+        let timed = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+        assert!(
+            timed.contains(
+                "[ \"$_dodot_rc\" -ne 0 ] && echo \"dodot: shell source exited $_dodot_rc:"
+            ),
+            "timed script missing profiled-branch echo:\n{timed}"
+        );
+        assert!(
+            timed.contains("dodot: shell source exited $?:"),
+            "timed script missing fallback-branch echo:\n{timed}"
+        );
     }
 
     #[test]
