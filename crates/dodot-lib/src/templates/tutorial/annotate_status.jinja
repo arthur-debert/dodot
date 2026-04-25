@@ -1,0 +1,13 @@
+[header]Reading that output[/header]
+
+  [handler-symbol]➞[/handler-symbol]  symlink (default — file appears at the listed target)
+  [handler-symbol]⚙[/handler-symbol]  shell snippet (sourced) or [pack-name]Brewfile[/pack-name] (installed)
+  [handler-symbol]+[/handler-symbol]  [pack-name]bin/[/pack-name] directory (added to $PATH)
+  [handler-symbol]×[/handler-symbol]  [pack-name]install.sh[/pack-name] (run-once script)
+
+  [pending]pending[/pending]   not deployed yet
+  [deployed]deployed[/deployed]  already linked / sourced / installed
+  [error]error[/error]     something is wrong — read the message at the bottom
+
+If your status above looks wrong (missing files, surprising targets), exit now and
+adjust file names or add a [pack-name].dodot.toml[/pack-name] in the pack — then re-run.

@@ -6,6 +6,7 @@ use dodot_lib::render;
 
 mod handlers;
 mod logging;
+mod tutorial;
 
 fn main() {
     let app = build_app();
@@ -52,6 +53,23 @@ fn main() {
     // Passthrough: init-sh (raw stdout for shell eval)
     if matches.subcommand_matches("init-sh").is_some() {
         if let Err(e) = handlers::init_sh_passthrough() {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
+    // Passthrough: tutorial (interactive — multiple prompts and outputs,
+    // doesn't fit standout's one-shot render-and-print dispatch).
+    if let Some(("tutorial", sub)) = matches.subcommand() {
+        let opts = tutorial::Options {
+            reset: sub.get_flag("reset"),
+            from: sub.get_one::<String>("from").cloned(),
+            mode: standout::OutputMode::Auto,
+        };
+        let stdout = std::io::stdout();
+        let mut handle = stdout.lock();
+        if let Err(e) = tutorial::run(opts, &mut handle) {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
@@ -163,6 +181,7 @@ fn build_app() -> App {
                 title: "Misc".into(),
                 help: None,
                 commands: vec![
+                    Some("tutorial".into()),
                     Some("init-sh".into()),
                     Some("config".into()),
                     Some("help".into()),
@@ -339,6 +358,23 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
+        )
+        .subcommand(
+            ClapCommand::new("tutorial")
+                .about("Interactive walkthrough using your real dotfiles")
+                .arg(
+                    Arg::new("reset")
+                        .long("reset")
+                        .help("Discard saved tutorial state and start over")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("from")
+                        .long("from")
+                        .help("Jump to a specific step (intro|check_root|pick_pack|...)")
+                        .value_name("STEP")
+                        .num_args(1),
+                ),
         )
         .subcommand(
             ClapCommand::new("probe")

@@ -1,0 +1,11 @@
+[header]Step 3 — what dodot would do with [pack-name]{{ chosen_pack }}[/pack-name][/header]
+
+dodot has three core commands:
+  [message]up[/message]      deploy a pack (symlinks, shell snippets, install scripts)
+  [message]down[/message]    undo deployment (provisioning artifacts left alone)
+  [message]status[/message]  show what each file in a pack will become
+
+Always start with [message]status[/message] — it tells you what [message]up[/message] is going to do
+without touching anything. Here's [message]dodot status {{ chosen_pack }}[/message]:
+
+{{ status_output }}

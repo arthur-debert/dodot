@@ -1,0 +1,9 @@
+[header]Step 4 — where files will land[/header]
+
+By default, dodot symlinks files into [pack-name]$XDG_CONFIG_HOME/<pack>/<file>[/pack-name]
+(usually [pack-name]~/.config/<pack>/<file>[/pack-name]) — [warning]not[/warning] [pack-name]~/.<file>[/pack-name].
+
+If a tool needs [pack-name]~/.<file>[/pack-name] (like [pack-name].zshrc[/pack-name] or [pack-name].gitconfig[/pack-name]),
+prefix the filename with [message]home.[/message] in the pack: [pack-name]git/home.gitconfig[/pack-name] →
+[pack-name]~/.gitconfig[/pack-name]. Most modern tools (nvim, helix, fish, ghostty)
+already read XDG paths, so the default usually just works.

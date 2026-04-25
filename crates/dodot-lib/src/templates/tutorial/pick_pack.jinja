@@ -1,0 +1,9 @@
+[header]Step 2 — pick a pack to start with[/header]
+
+A [pack-name]pack[/pack-name] is just a top-level directory in your repo. Group related
+config there ([pack-name]vim/[/pack-name], [pack-name]git/[/pack-name], …) and dodot handles the rest.
+
+I found {{ packs | length }} pack{% if packs|length != 1 %}s{% endif %}:
+
+{% for p in packs %}  {{ p.name | col(20) }} [dim]{{ p.kind }}[/dim]{% if p.recommended %}  [deployed]← recommended starter[/deployed]{% endif %}
+{% endfor %}

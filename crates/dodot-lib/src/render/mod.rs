@@ -98,6 +98,14 @@ group-banner-error:
 group-banner-ignored:
   dim: true
   bold: true
+
+# Tutorial prompt question text. The interactive `dodot tutorial`
+# uses inquire for the prompt UI; this style is mirrored by hand into
+# its `RenderConfig` (see `tutorial.rs::tutorial_render_config`). Keep
+# attributes here in sync with that function so users have one place
+# to change the look.
+tutorial-prompt:
+  italic: true
 "#;
 
 // ── Templates ───────────────────────────────────────────────────
@@ -119,6 +127,70 @@ pub const TEMPLATE_MESSAGE: &str = include_str!("../templates/message.jinja");
 /// Probe — deployment map, data-dir tree, summary. Branches on the
 /// `kind` field of the serialized result.
 pub const TEMPLATE_PROBE: &str = include_str!("../templates/probe.jinja");
+
+// ── Tutorial step templates ─────────────────────────────────────
+//
+// One per step of the interactive tutorial. The CLI driver renders
+// the appropriate template before each prompt.
+
+pub const TEMPLATE_TUTORIAL_INTRO: &str = include_str!("../templates/tutorial/intro.jinja");
+pub const TEMPLATE_TUTORIAL_CHECK_ROOT: &str =
+    include_str!("../templates/tutorial/check_root.jinja");
+pub const TEMPLATE_TUTORIAL_PICK_PACK: &str = include_str!("../templates/tutorial/pick_pack.jinja");
+pub const TEMPLATE_TUTORIAL_NO_PACKS: &str = include_str!("../templates/tutorial/no_packs.jinja");
+pub const TEMPLATE_TUTORIAL_SHOW_STATUS: &str =
+    include_str!("../templates/tutorial/show_status.jinja");
+pub const TEMPLATE_TUTORIAL_ANNOTATE_STATUS: &str =
+    include_str!("../templates/tutorial/annotate_status.jinja");
+pub const TEMPLATE_TUTORIAL_CONCEPT_TARGETS: &str =
+    include_str!("../templates/tutorial/concept_targets.jinja");
+pub const TEMPLATE_TUTORIAL_CONCEPT_SHELL: &str =
+    include_str!("../templates/tutorial/concept_shell.jinja");
+pub const TEMPLATE_TUTORIAL_DRY_RUN: &str = include_str!("../templates/tutorial/dry_run.jinja");
+pub const TEMPLATE_TUTORIAL_REAL_UP: &str = include_str!("../templates/tutorial/real_up.jinja");
+pub const TEMPLATE_TUTORIAL_OUTRO: &str = include_str!("../templates/tutorial/outro.jinja");
+
+/// Pairs of (name, body) for every tutorial step template. The CLI
+/// driver registers all of these on a single `Renderer` once at
+/// startup; step bodies render by name.
+pub const TUTORIAL_STEP_TEMPLATES: &[(&str, &str)] = &[
+    ("tutorial.intro", TEMPLATE_TUTORIAL_INTRO),
+    ("tutorial.check_root", TEMPLATE_TUTORIAL_CHECK_ROOT),
+    ("tutorial.pick_pack", TEMPLATE_TUTORIAL_PICK_PACK),
+    ("tutorial.no_packs", TEMPLATE_TUTORIAL_NO_PACKS),
+    ("tutorial.show_status", TEMPLATE_TUTORIAL_SHOW_STATUS),
+    (
+        "tutorial.annotate_status",
+        TEMPLATE_TUTORIAL_ANNOTATE_STATUS,
+    ),
+    (
+        "tutorial.concept_targets",
+        TEMPLATE_TUTORIAL_CONCEPT_TARGETS,
+    ),
+    ("tutorial.concept_shell", TEMPLATE_TUTORIAL_CONCEPT_SHELL),
+    ("tutorial.dry_run", TEMPLATE_TUTORIAL_DRY_RUN),
+    ("tutorial.real_up", TEMPLATE_TUTORIAL_REAL_UP),
+    ("tutorial.outro", TEMPLATE_TUTORIAL_OUTRO),
+];
+
+/// Render a tutorial step template with the dodot theme.
+///
+/// `mode` controls colour output: `OutputMode::Term` for ANSI in a
+/// real terminal, `OutputMode::Text` for tests / non-TTY.
+pub fn render_tutorial_step<T: serde::Serialize>(
+    step: &str,
+    data: &T,
+    mode: OutputMode,
+) -> Result<String> {
+    let body = TUTORIAL_STEP_TEMPLATES
+        .iter()
+        .find_map(|(name, body)| (*name == step).then_some(*body))
+        .ok_or_else(|| crate::DodotError::Other(format!("unknown tutorial template: {step}")))?;
+
+    let theme = create_theme();
+    render_with_output(body, data, &theme, mode)
+        .map_err(|e| crate::DodotError::Other(format!("tutorial render: {e}")))
+}
 
 // ── Renderer ────────────────────────────────────────────────────
 
@@ -228,6 +300,51 @@ mod tests {
         assert!(output.contains("vim"));
         assert!(output.contains("vimrc"));
         assert!(output.contains("deployed"));
+    }
+
+    #[test]
+    fn all_tutorial_templates_render_in_text_mode() {
+        // Every tutorial step template must parse and render with a
+        // populated context — this catches Jinja-syntax mistakes at
+        // build time rather than mid-tutorial.
+        use crate::commands::tutorial::{TutorialCtx, TutorialPack};
+
+        let ctx = TutorialCtx {
+            dotfiles_root: "/home/example/dotfiles".into(),
+            via: "DOTFILES_ROOT env var".into(),
+            packs: vec![
+                TutorialPack {
+                    name: "vim".into(),
+                    kind: "config only".into(),
+                    recommended: true,
+                },
+                TutorialPack {
+                    name: "zsh".into(),
+                    kind: "config + shell".into(),
+                    recommended: false,
+                },
+            ],
+            chosen_pack: Some("vim".into()),
+            chosen_pack_kind: Some("config only".into()),
+            status_output: Some("(rendered status would go here)".into()),
+            dry_run_output: Some("(dry-run output)".into()),
+            up_output: Some("(up output)".into()),
+            shell_integration: Some(crate::commands::tutorial::ShellIntegration {
+                shell_kind: "zsh".into(),
+                rc_path: "~/.zshrc".into(),
+                rc_path_abs: std::path::PathBuf::new(),
+                line_present: false,
+                eval_line: r#"eval "$(dodot init-sh)""#.into(),
+            }),
+            eval_line: r#"eval "$(dodot init-sh)""#.into(),
+            ..Default::default()
+        };
+
+        for (name, _) in TUTORIAL_STEP_TEMPLATES {
+            let out = render_tutorial_step(name, &ctx, OutputMode::Text)
+                .unwrap_or_else(|e| panic!("template {name} failed: {e}"));
+            assert!(!out.is_empty(), "template {name} produced empty output");
+        }
     }
 
     #[test]
