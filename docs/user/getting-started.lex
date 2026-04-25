@@ -60,7 +60,8 @@ dodot: Up and Running in 5 Minutes
         # install = "install.sh"
         # shell = ["aliases.sh", "profile.sh", "login.sh"]
         # homebrew = "Brewfile"
-        # skip = []
+        # ignore = []                                 # silent drop
+        # skip   = ["README.*", "LICENSE.*", ...]    # listed in status as `skipped`
 
         # Preview what will happen without making changes
         $ dodot up nvim --dry-run

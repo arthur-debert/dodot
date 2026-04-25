@@ -301,9 +301,9 @@ Design Specification: Secret Handling
             [secret.providers.op]
             enabled = false
 
-        Per-file (via existing mappings skip):
+        Per-file (via the `mappings.ignore` filter handler):
             [mappings]
-            skip = ["config.toml.tmpl"]
+            ignore = ["config.toml.tmpl"]
 
         When secrets are globally disabled, any `secret()` call in a rendered template produces a render-time error rather than a silent empty string.
 

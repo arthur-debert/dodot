@@ -2,8 +2,10 @@
 //!
 //! A rule pairs a file pattern with a handler name. The [`Scanner`]
 //! walks a pack directory and matches each file against the rule set.
-//! Exclusion rules are checked first, then inclusion rules by priority
-//! (descending). The first match wins.
+//! Rules are checked in descending priority order; the first match
+//! wins. Filter handlers (`ignore`, `skip`) sit at the highest priority
+//! tier so a file the user wants dropped never gets claimed by a
+//! precise mapping or the catchall.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -20,7 +22,6 @@ use crate::Result;
 #[derive(Debug, Clone, Serialize)]
 pub struct Rule {
     /// Pattern to match against (e.g. `"install.sh"`, `"*.sh"`, `"bin/"`).
-    /// Prefixed with `!` for exclusion rules (e.g. `"!*.tmp"`).
     pub pattern: String,
 
     /// Handler to use for matching files (e.g. `"symlink"`, `"install"`).
@@ -29,9 +30,20 @@ pub struct Rule {
     /// Higher priority rules are checked first. Default is 0.
     pub priority: i32,
 
+    /// Match the basename case-insensitively. Set by `mappings.skip`
+    /// patterns so README/Readme/readme all hit the same rule without
+    /// forcing every config writer to enumerate every casing. Defaults
+    /// to false (case-sensitive, matches glob conventions).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub case_insensitive: bool,
+
     /// Handler-specific options passed through from config.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub options: HashMap<String, String>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 /// A raw file entry discovered during directory walking (before rule matching).
@@ -132,11 +144,9 @@ enum CompiledPattern {
 #[derive(Debug)]
 struct CompiledRule {
     pattern: CompiledPattern,
-    is_exclusion: bool,
-    /// Match case-insensitively against the basename. Set for the
-    /// synthetic `"excluded"` handler so README/Readme/readme all hit
-    /// the same rule without forcing every config writer to enumerate
-    /// every casing.
+    /// Mirror of [`Rule::case_insensitive`]. The pattern itself is
+    /// already lowercased at compile time when this is true; the
+    /// matcher lowercases the candidate filename to match.
     case_insensitive: bool,
     handler: String,
     priority: i32,
@@ -147,13 +157,8 @@ fn compile_rules(rules: &[Rule]) -> Vec<CompiledRule> {
     rules
         .iter()
         .map(|rule| {
-            let (raw_pattern, is_exclusion) = if let Some(rest) = rule.pattern.strip_prefix('!') {
-                (rest.to_string(), true)
-            } else {
-                (rule.pattern.clone(), false)
-            };
-
-            let case_insensitive = rule.handler == "excluded";
+            let raw_pattern = rule.pattern.clone();
+            let case_insensitive = rule.case_insensitive;
 
             // For case-insensitive rules, lowercase the pattern at
             // compile time; the matcher lowercases the filename to mirror.
@@ -182,7 +187,6 @@ fn compile_rules(rules: &[Rule]) -> Vec<CompiledRule> {
 
             CompiledRule {
                 pattern,
-                is_exclusion,
                 case_insensitive,
                 handler: rule.handler.clone(),
                 priority: rule.priority,
@@ -298,6 +302,10 @@ impl<'a> Scanner<'a> {
         // requested case-insensitive matching, match_file can skip the
         // per-entry `to_lowercase` allocation entirely.
         let has_ci_rules = compiled.iter().any(|r| r.case_insensitive);
+        // Sort once per scan, then reuse the ordered slice for every entry.
+        let mut sorted: Vec<&CompiledRule> = compiled.iter().collect();
+        sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
+
         let mut matches = Vec::new();
 
         for entry in entries {
@@ -308,7 +316,7 @@ impl<'a> Scanner<'a> {
                 .unwrap_or_default();
 
             if let Some(rule_match) = match_file(
-                &compiled,
+                &sorted,
                 has_ci_rules,
                 &filename,
                 entry.is_dir,
@@ -420,10 +428,13 @@ impl<'a> Scanner<'a> {
 
 /// Match a single file against the compiled rules.
 ///
-/// 1. Check exclusion rules first — if any match, file is skipped.
-/// 2. Check inclusion rules by priority (descending), first match wins.
-fn match_file(
-    compiled: &[CompiledRule],
+/// Walks rules in descending priority order; first match wins. There
+/// is no separate "exclusion" phase — filter handlers (`ignore`, `skip`)
+/// win because they sit at the highest priority tier set by
+/// [`mappings_to_rules`](crate::config::mappings_to_rules), not because
+/// the matcher knows their names.
+fn match_file<'a>(
+    sorted: &'a [&'a CompiledRule],
     has_ci_rules: bool,
     filename: &str,
     is_dir: bool,
@@ -432,8 +443,8 @@ fn match_file(
     pack: &str,
 ) -> Option<RuleMatch> {
     // Only allocate the lowercased form when at least one rule actually
-    // wants case-insensitive matching. The common case — no `excluded`
-    // rules at all, or the user has set `mappings.exclude = []` — pays
+    // wants case-insensitive matching. The common case — no `skip`
+    // rules at all, or the user has set `mappings.skip = []` — pays
     // zero allocations here.
     let lowered = if has_ci_rules {
         Some(filename.to_lowercase())
@@ -448,20 +459,7 @@ fn match_file(
         }
     };
 
-    // Phase 1: check exclusions
-    for rule in compiled {
-        if rule.is_exclusion && matches_entry(&rule.pattern, pick(rule), is_dir) {
-            return None;
-        }
-    }
-
-    // Phase 2: find first matching inclusion rule (sorted by priority desc)
-    // We sort a copy so we don't modify the original
-    let mut inclusion_rules: Vec<&CompiledRule> =
-        compiled.iter().filter(|r| !r.is_exclusion).collect();
-    inclusion_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
-
-    for rule in inclusion_rules {
+    for rule in sorted {
         if matches_entry(&rule.pattern, pick(rule), is_dir) {
             return Some(RuleMatch {
                 relative_path: rel_path.to_path_buf(),
@@ -509,36 +507,42 @@ mod tests {
                 pattern: "bin/".into(),
                 handler: "path".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "install.sh".into(),
                 handler: "install".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "aliases.sh".into(),
                 handler: "shell".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "profile.sh".into(),
                 handler: "shell".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "Brewfile".into(),
                 handler: "homebrew".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "*".into(),
                 handler: "symlink".into(),
                 priority: 0,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
         ]
@@ -552,6 +556,7 @@ mod tests {
             pattern: "install.sh".into(),
             handler: "install".into(),
             priority: 0,
+            case_insensitive: false,
             options: HashMap::new(),
         }]);
         assert!(matches_entry(&compiled[0].pattern, "install.sh", false));
@@ -564,6 +569,7 @@ mod tests {
             pattern: "*.sh".into(),
             handler: "shell".into(),
             priority: 0,
+            case_insensitive: false,
             options: HashMap::new(),
         }]);
         assert!(matches_entry(&compiled[0].pattern, "aliases.sh", false));
@@ -577,6 +583,7 @@ mod tests {
             pattern: "bin/".into(),
             handler: "path".into(),
             priority: 0,
+            case_insensitive: false,
             options: HashMap::new(),
         }]);
         assert!(matches_entry(&compiled[0].pattern, "bin", true));
@@ -585,15 +592,18 @@ mod tests {
     }
 
     #[test]
-    fn exclusion_prefix() {
+    fn case_insensitive_pattern_lowercases_at_compile_time() {
         let compiled = compile_rules(&[Rule {
-            pattern: "!*.tmp".into(),
-            handler: "exclude".into(),
-            priority: 100,
+            pattern: "README.*".into(),
+            handler: "skip".into(),
+            priority: 50,
+            case_insensitive: true,
             options: HashMap::new(),
         }]);
-        assert!(compiled[0].is_exclusion);
-        assert!(matches_entry(&compiled[0].pattern, "scratch.tmp", false));
+        assert!(compiled[0].case_insensitive);
+        // Pattern is lowercased at compile time; matcher lowercases the
+        // candidate filename to mirror.
+        assert!(matches_entry(&compiled[0].pattern, "readme.md", false));
     }
 
     #[test]
@@ -602,6 +612,7 @@ mod tests {
             pattern: "*".into(),
             handler: "symlink".into(),
             priority: 0,
+            case_insensitive: false,
             options: HashMap::new(),
         }]);
         assert!(matches_entry(&compiled[0].pattern, "anything", false));
@@ -724,7 +735,12 @@ mod tests {
     }
 
     #[test]
-    fn scan_pack_exclusion_rules_override_catchall() {
+    fn scan_pack_ignore_rule_outranks_catchall() {
+        // The ignore filter handler at priority 100 wins over the
+        // priority-0 catchall, and emits a match with handler="ignore".
+        // Status display filters those out before rendering, but at the
+        // matcher level they ARE matches — the catchall must not also
+        // claim them.
         let env = TempEnvironment::builder()
             .pack("test")
             .file("good.txt", "yes")
@@ -737,27 +753,34 @@ mod tests {
 
         let rules = vec![
             Rule {
-                pattern: "!*.tmp".into(),
-                handler: "exclude".into(),
+                pattern: "*.tmp".into(),
+                handler: "ignore".into(),
                 priority: 100,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "*".into(),
                 handler: "symlink".into(),
                 priority: 0,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
         ];
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
-        let names: Vec<String> = matches
-            .iter()
-            .map(|m| m.relative_path.to_string_lossy().to_string())
-            .collect();
 
-        assert!(names.contains(&"good.txt".to_string()));
-        assert!(!names.contains(&"bad.tmp".to_string()));
+        let bad = matches
+            .iter()
+            .find(|m| m.relative_path.to_string_lossy() == "bad.tmp")
+            .expect("bad.tmp must still appear as a match");
+        assert_eq!(bad.handler, "ignore");
+
+        let good = matches
+            .iter()
+            .find(|m| m.relative_path.to_string_lossy() == "good.txt")
+            .expect("good.txt must appear as a match");
+        assert_eq!(good.handler, "symlink");
     }
 
     #[test]
@@ -777,18 +800,21 @@ mod tests {
                 pattern: "*.sh".into(),
                 handler: "generic-shell".into(),
                 priority: 5,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "aliases.sh".into(),
                 handler: "specific-shell".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "*".into(),
                 handler: "symlink".into(),
                 priority: 0,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
         ];
@@ -799,7 +825,7 @@ mod tests {
     }
 
     #[test]
-    fn excluded_handler_matches_case_insensitively() {
+    fn skip_handler_matches_case_insensitively() {
         // Note: case-only filename variants like "README" and "Readme"
         // collide on case-insensitive filesystems (macOS HFS+/APFS
         // default), so the fixture uses different basenames + casings
@@ -819,26 +845,30 @@ mod tests {
         let rules = vec![
             Rule {
                 pattern: "README".into(),
-                handler: "excluded".into(),
+                handler: "skip".into(),
                 priority: 50,
+                case_insensitive: true,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "README.*".into(),
-                handler: "excluded".into(),
+                handler: "skip".into(),
                 priority: 50,
+                case_insensitive: true,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "LICENSE.*".into(),
-                handler: "excluded".into(),
+                handler: "skip".into(),
                 priority: 50,
+                case_insensitive: true,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "*".into(),
                 handler: "symlink".into(),
                 priority: 0,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
         ];
@@ -852,19 +882,19 @@ mod tests {
                 acc
             });
 
-        let mut excluded = by_handler.get("excluded").cloned().unwrap_or_default();
-        excluded.sort();
-        assert_eq!(excluded, vec!["License.txt", "README", "readme.md"]);
+        let mut skipped = by_handler.get("skip").cloned().unwrap_or_default();
+        skipped.sort();
+        assert_eq!(skipped, vec!["License.txt", "README", "readme.md"]);
 
         let symlinked = by_handler.get("symlink").cloned().unwrap_or_default();
         assert_eq!(symlinked, vec!["notes.md"]);
     }
 
     #[test]
-    fn excluded_handler_outranks_precise_handler() {
-        // Priority 50 (excluded) must beat the priority 10 mappings
-        // routes — otherwise a `mappings.shell = ["README.sh"]` mistake
-        // would silently source a README as a shell file.
+    fn skip_handler_outranks_precise_handler() {
+        // Priority 50 (skip) must beat the priority 10 mappings routes
+        // — otherwise a `mappings.shell = ["README.sh"]` mistake would
+        // silently source a README as a shell file.
         let env = TempEnvironment::builder()
             .pack("test")
             .file("README.sh", "x")
@@ -877,28 +907,30 @@ mod tests {
         let rules = vec![
             Rule {
                 pattern: "README.*".into(),
-                handler: "excluded".into(),
+                handler: "skip".into(),
                 priority: 50,
+                case_insensitive: true,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "*.sh".into(),
                 handler: "shell".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
         ];
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
         assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].handler, "excluded");
+        assert_eq!(matches[0].handler, "skip");
     }
 
     #[test]
-    fn skip_rule_outranks_excluded() {
-        // mappings.skip (priority 100, exclusion phase) must still win
-        // over excluded (priority 50, inclusion phase) — the silent
-        // exclusion is the stronger signal.
+    fn ignore_rule_outranks_skip() {
+        // mappings.ignore (priority 100) must win over mappings.skip
+        // (priority 50) — silent-drop is the stronger signal than
+        // listed-but-not-acted-on.
         let env = TempEnvironment::builder()
             .pack("test")
             .file("README.md", "x")
@@ -910,30 +942,31 @@ mod tests {
 
         let rules = vec![
             Rule {
-                pattern: "!README.md".into(),
-                handler: "exclude".into(),
+                pattern: "README.md".into(),
+                handler: "ignore".into(),
                 priority: 100,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "README.*".into(),
-                handler: "excluded".into(),
+                handler: "skip".into(),
                 priority: 50,
+                case_insensitive: true,
                 options: HashMap::new(),
             },
             Rule {
                 pattern: "*".into(),
                 handler: "symlink".into(),
                 priority: 0,
+                case_insensitive: false,
                 options: HashMap::new(),
             },
         ];
 
         let matches = scanner.scan_pack(&pack, &rules, &[]).unwrap();
-        assert!(
-            matches.is_empty(),
-            "skip should fully suppress: {matches:?}"
-        );
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].handler, "ignore");
     }
 
     #[test]

@@ -17,7 +17,7 @@ use crate::commands::{
 use crate::config::mappings_to_rules;
 use crate::conflicts;
 use crate::handlers::symlink::resolve_target;
-use crate::handlers::{self, HANDLER_SYMLINK};
+use crate::handlers::{self, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
@@ -43,10 +43,10 @@ enum Health {
     /// Data link exists and is healthy, but the user link is not at the
     /// path that current config would produce. A re-deploy would move it.
     Stale(String),
-    /// File matched the `mappings.exclude` list (README, LICENSE, …).
+    /// File matched the `mappings.skip` list (README, LICENSE, …).
     /// No handler runs on it, but it surfaces in status so users can see
     /// the rule applied rather than wondering why the file is "missing."
-    Ignored,
+    Skipped,
 }
 
 impl Health {
@@ -59,7 +59,7 @@ impl Health {
             Health::DeployedWithError { .. } => "broken",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
-            Health::Ignored => "ignored",
+            Health::Skipped => "skipped",
         }
     }
 
@@ -85,7 +85,7 @@ impl Health {
             Health::DeployedWithError { label, .. } => label.clone(),
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
-            Health::Ignored => "ignored".into(),
+            Health::Skipped => "skipped".into(),
         }
     }
 
@@ -463,11 +463,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
+            // The `ignore` filter handler claims files only to keep them
+            // off the catchall and out of status. Drop them here so the
+            // user sees nothing — same contract as `.gitignore`.
+            if m.handler == HANDLER_IGNORE {
+                continue;
+            }
+
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
-                "excluded" => Health::Ignored,
+                h if h == HANDLER_SKIP => Health::Skipped,
                 "symlink" => {
                     verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
                 }

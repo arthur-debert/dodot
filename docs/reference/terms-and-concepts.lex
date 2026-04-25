@@ -70,8 +70,8 @@ Terms and Concepts
     `_home/` and `_xdg/` directories:
         Explicit routing overrides. Files under `<pack>/_home/` deploy to `$HOME` regardless of XDG settings; files under `<pack>/_xdg/` deploy to `$XDG_CONFIG_HOME`. See [./symlink-paths.lex].
 
-    `.dodotignore`:
-        A marker file that tells dodot to skip a pack entirely. Useful for directories that live in the dotfiles root but aren't meant to be deployed (scratch, notes, README-only packs).
+    `.dodotignore` (pack-ignore):
+        A marker file that tells dodot to skip a pack entirely — the "pack-ignore" mechanism. Pure file-presence check; the file's contents are never read. Useful for directories that live in the dotfiles root but aren't meant to be deployed (scratch, notes, README-only packs). Distinct from the intra-pack `[mappings] ignore`/`skip` keys, which drop individual files inside a known pack.
 
     `.dodot.toml`:
         Per-pack or root-level configuration. Overrides defaults for mappings, symlink targets, preprocessor settings, and more. Root config applies to all packs; pack config overrides root for that pack.
