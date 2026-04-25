@@ -208,10 +208,13 @@ pub struct MappingsSection {
     #[config(default = [])]
     pub ignore: Vec<String>,
 
-    /// Filename patterns the catchall symlink handler should not pick up.
-    /// Matched case-insensitively against the basename. Files that match
-    /// are surfaced in `dodot status` as "skipped" but no handler runs on
-    /// them. The defaults cover the common documentation/legal files that
+    /// Filename patterns routed to the `skip` filter handler.
+    /// Matched case-insensitively against the basename. Sits at
+    /// priority 50, above every precise mapping (priority 10) and the
+    /// catchall symlink (priority 0), so a match suppresses *all*
+    /// downstream handlers — not just the catchall. Matches surface in
+    /// `dodot status` as "skipped"; no executable intent is produced.
+    /// The defaults cover the common documentation/legal files that
     /// packs ship alongside real config; clear the list (or override
     /// per-pack) to deploy a README intentionally.
     #[config(default = [

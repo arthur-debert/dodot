@@ -17,7 +17,7 @@ use crate::commands::{
 use crate::config::mappings_to_rules;
 use crate::conflicts;
 use crate::handlers::symlink::resolve_target;
-use crate::handlers::{self, HANDLER_SYMLINK};
+use crate::handlers::{self, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
@@ -466,7 +466,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             // The `ignore` filter handler claims files only to keep them
             // off the catchall and out of status. Drop them here so the
             // user sees nothing — same contract as `.gitignore`.
-            if m.handler == "ignore" {
+            if m.handler == HANDLER_IGNORE {
                 continue;
             }
 
@@ -474,7 +474,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
-                "skip" => Health::Skipped,
+                h if h == HANDLER_SKIP => Health::Skipped,
                 "symlink" => {
                     verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
                 }

@@ -138,12 +138,12 @@ Configuration
 
     `install` is list-only: even a single install script must be written as a TOML array (`install = ["install.sh"]`). The older single-string form (`install = "install.sh"`) no longer parses — update any older configs that use it.
 
-    Two of the keys do not run a handler — they tell the pipeline to drop a file:
+    Two of the keys map to _filter handlers_ — real handlers that claim a match but produce no executable intent. Their job is to keep matching files away from the deploying handlers (precise mappings, catchall symlink):
 
-    - `ignore` — matching files are silently dropped, mirroring `.gitignore`. Nothing surfaces in `dodot status`.
-    - `skip` — matching files appear in `dodot status` as `skipped` but no handler runs on them. Defaults cover the documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally.
+    - `ignore` — the `ignore` filter handler claims matches and drops them silently, mirroring `.gitignore`. Nothing surfaces in `dodot status`.
+    - `skip` — the `skip` filter handler claims matches and surfaces them in `dodot status` as `skipped`, but does not deploy them. Defaults cover the documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally.
 
-    `ignore` wins over `skip` when both match, and both win over precise mappings (`shell`, `install`, …) and the catchall symlink — so a file the user said to drop is dropped, full stop.
+    When both could match, `ignore` wins over `skip`; both win over precise mappings (`shell`, `install`, …) and the catchall symlink — so a file the user said to drop is dropped, full stop.
 
     Distinct from `[pack] ignore`: `[mappings] ignore`/`skip` apply only to handler dispatch within a known pack, while `[pack] ignore` affects pack discovery and scanning. To skip an entire pack, drop a `.dodotignore` marker file (the "pack-ignore" mechanism).
 
