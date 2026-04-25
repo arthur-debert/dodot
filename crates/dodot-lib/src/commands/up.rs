@@ -57,12 +57,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     for pack in &packs {
         match orchestration::collect_pack_intents(pack, ctx) {
             Ok(intents) => {
-                pack_intents.push((pack.name.clone(), intents));
+                pack_intents.push((pack.display_name.clone(), intents));
             }
             Err(e) => {
-                info!(pack = %pack.name, error = %e, "intent collection failed");
+                info!(pack = %pack.display_name, error = %e, "intent collection failed");
                 intent_errors.push(PackResult {
-                    pack_name: pack.name.clone(),
+                    pack_name: pack.display_name.clone(),
                     success: false,
                     operations: Vec::new(),
                     error: Some(format!("intent collection error: {e}")),
@@ -181,7 +181,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     let (display_packs, notes) = if ctx.dry_run {
         render_intents(&pack_results, ctx.paths.home_dir())
     } else {
-        let pack_names: Vec<String> = packs.iter().map(|p| p.name.clone()).collect();
+        let pack_names: Vec<String> = packs.iter().map(|p| p.display_name.clone()).collect();
         let status_result = status::status(Some(&pack_names), ctx)?;
         // status::status() may have populated notes (PendingConflict etc.);
         // preserve them and continue numbering from there.

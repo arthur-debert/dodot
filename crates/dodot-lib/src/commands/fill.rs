@@ -5,7 +5,7 @@
 
 use serde::Serialize;
 
-use crate::packs::orchestration::ExecutionContext;
+use crate::packs::orchestration::{self, ExecutionContext};
 use crate::{DodotError, Result};
 
 #[derive(Debug, Clone, Serialize)]
@@ -75,13 +75,20 @@ echo "Installing PACK_NAME..."
 /// Skips files that already exist. Replaces `PACK_NAME` in templates
 /// with the actual pack name.
 pub fn fill(pack_name: &str, ctx: &ExecutionContext) -> Result<FillResult> {
-    let pack_path = ctx.paths.dotfiles_root().join(pack_name);
+    // Resolve the user's input (display or raw on-disk name) to the
+    // actual directory.
+    let pack_dir = orchestration::resolve_pack_dir_name(pack_name, ctx)?;
+    let pack_path = ctx.paths.pack_path(&pack_dir);
 
     if !ctx.fs.exists(&pack_path) {
         return Err(DodotError::PackNotFound {
             name: pack_name.into(),
         });
     }
+
+    // Templates substitute `PACK_NAME` with the pack's *display name* —
+    // a user-facing identifier in shell snippets and install scripts.
+    let display = crate::packs::display_name_for(&pack_dir);
 
     let mut details = Vec::new();
     let mut created = 0;
@@ -94,7 +101,7 @@ pub fn fill(pack_name: &str, ctx: &ExecutionContext) -> Result<FillResult> {
             continue;
         }
 
-        let content = template.content.replace("PACK_NAME", pack_name);
+        let content = template.content.replace("PACK_NAME", display);
         ctx.fs.write_file(&file_path, content.as_bytes())?;
 
         // Make install.sh executable
@@ -107,9 +114,9 @@ pub fn fill(pack_name: &str, ctx: &ExecutionContext) -> Result<FillResult> {
     }
 
     let message = if created == 0 {
-        format!("Pack '{pack_name}' already has all template files.")
+        format!("Pack '{display}' already has all template files.")
     } else {
-        format!("Added {created} template file(s) to '{pack_name}'.")
+        format!("Added {created} template file(s) to '{display}'.")
     };
 
     Ok(FillResult { message, details })

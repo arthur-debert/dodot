@@ -26,6 +26,12 @@ pub enum DodotError {
     #[error("pack is invalid: {name}: {reason}")]
     PackInvalid { name: String, reason: String },
 
+    #[error("pack ordering collision: display name `{display_name}` resolves to multiple packs:\n{}", .paths.iter().map(|p| format!("  - {}", p.display())).collect::<Vec<_>>().join("\n"))]
+    PackOrderingCollision {
+        display_name: String,
+        paths: Vec<PathBuf>,
+    },
+
     #[error("handler not found: {name}")]
     HandlerNotFound { name: String },
 

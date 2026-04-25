@@ -168,7 +168,7 @@ pub fn execute(
         let _warnings = validate_pack_names(names, ctx)?;
         // Warnings are handled by the calling command (status/up/down)
         debug!(filter = ?names, "applying pack filter");
-        all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+        all_packs.retain(|p| names.iter().any(|n| n == &p.display_name || n == &p.name));
         info!(count = all_packs.len(), "packs after filter");
     }
 
@@ -258,7 +258,7 @@ pub fn prepare_packs(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> 
     if let Some(names) = pack_filter {
         let _warnings = validate_pack_names(names, ctx)?;
         debug!(filter = ?names, "applying pack filter");
-        all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+        all_packs.retain(|p| names.iter().any(|n| n == &p.display_name || n == &p.name));
         info!(count = all_packs.len(), "packs after filter");
     }
 
@@ -443,18 +443,75 @@ pub fn run_handler_pipeline(pack: &Pack, ctx: &ExecutionContext) -> Result<Vec<O
     execute_intents(intents, ctx)
 }
 
+/// Resolve a user-typed pack identifier to its on-disk directory
+/// name. Tries display name first, falls back to the raw on-disk
+/// name — so `dodot adopt nvim` and `dodot adopt 010-nvim` both find
+/// the same pack on disk.
+///
+/// Use this in commands that take a single pack-name argument and
+/// then need the directory path for filesystem or datastore work
+/// (`adopt`, `addignore`, `fill`). Errors with [`DodotError::PackNotFound`]
+/// when no match exists, and resolves through both active and ignored
+/// packs (the caller decides whether being ignored is fatal).
+pub fn resolve_pack_dir_name(input: &str, ctx: &ExecutionContext) -> crate::Result<String> {
+    let root_config = ctx.config_manager.root_config()?;
+    let scanned = packs::scan_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
+    if let Some(p) = scanned
+        .packs
+        .iter()
+        .find(|p| p.display_name == *input || p.name == *input)
+    {
+        return Ok(p.name.clone());
+    }
+    if let Some(dir) = scanned
+        .ignored
+        .iter()
+        .find(|d| d.as_str() == input || packs::display_name_for(d) == input)
+    {
+        return Ok(dir.clone());
+    }
+    Err(crate::DodotError::PackNotFound { name: input.into() })
+}
+
 /// Validate that requested pack names exist. Returns error for nonexistent
 /// packs and collects warnings for ignored packs.
+///
+/// Names resolve against the pack's *display name* (e.g. `nvim` for an
+/// on-disk `010-nvim`) first, then fall back to the raw on-disk name —
+/// so `dodot up nvim` and `dodot up 010-nvim` both find the same pack.
+/// The display name is the recommended form.
 pub fn validate_pack_names(names: &[String], ctx: &ExecutionContext) -> crate::Result<Vec<String>> {
+    let root_config = ctx.config_manager.root_config()?;
+    let scanned = packs::scan_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
+
     let mut warnings = Vec::new();
-    for name in names {
-        let pack_dir = ctx.paths.pack_path(name);
-        if !ctx.fs.exists(&pack_dir) {
-            return Err(crate::DodotError::PackNotFound { name: name.clone() });
+    for input in names {
+        if scanned
+            .packs
+            .iter()
+            .any(|p| p.display_name == *input || p.name == *input)
+        {
+            continue;
         }
-        if ctx.fs.exists(&pack_dir.join(".dodotignore")) {
-            warnings.push(format!("warning: pack '{}' is ignored, skipping", name));
+        if scanned
+            .ignored
+            .iter()
+            .any(|dir| dir == input || packs::display_name_for(dir) == input)
+        {
+            warnings.push(format!("warning: pack '{}' is ignored, skipping", input));
+            continue;
         }
+        return Err(crate::DodotError::PackNotFound {
+            name: input.clone(),
+        });
     }
     Ok(warnings)
 }
@@ -525,8 +582,11 @@ mod tests {
         fn execute_for_pack(&self, pack: &Pack, ctx: &ExecutionContext) -> Result<PackResult> {
             let operations = run_handler_pipeline(pack, ctx)?;
             let success = operations.iter().all(|r| r.success);
+            // Mirror what the real up/down commands do: the user-facing
+            // pack identifier carried in `PackResult.pack_name` is the
+            // pack's display name, not its raw on-disk directory.
             Ok(PackResult {
-                pack_name: pack.name.clone(),
+                pack_name: pack.display_name.clone(),
                 success,
                 operations,
                 error: None,
@@ -594,6 +654,87 @@ mod tests {
     }
 
     #[test]
+    fn execute_filter_resolves_display_name_to_prefixed_pack() {
+        let env = TempEnvironment::builder()
+            .pack("010-brew")
+            .file("Brewfile", "x")
+            .done()
+            .pack("nvim")
+            .file("init.lua", "x")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let filter = vec!["brew".into()];
+        let result = execute(&TestUpCommand, Some(&filter), &ctx).unwrap();
+
+        // Filter `brew` resolves to the on-disk `010-brew` pack via display name.
+        assert_eq!(result.total_packs, 1);
+        assert_eq!(result.pack_results[0].pack_name, "brew");
+    }
+
+    #[test]
+    fn execute_filter_accepts_raw_directory_name_as_fallback() {
+        let env = TempEnvironment::builder()
+            .pack("010-brew")
+            .file("Brewfile", "x")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let filter = vec!["010-brew".into()];
+        let result = execute(&TestUpCommand, Some(&filter), &ctx).unwrap();
+
+        // The raw directory name is a valid fallback for muscle memory or scripts.
+        assert_eq!(result.total_packs, 1);
+        // PackResult.pack_name surfaces the display-name form regardless of how
+        // the user typed the filter — that's what every render path expects.
+        assert_eq!(result.pack_results[0].pack_name, "brew");
+    }
+
+    #[test]
+    fn resolve_pack_dir_name_finds_pack_by_display_name() {
+        let env = TempEnvironment::builder()
+            .pack("010-nvim")
+            .file("init.lua", "x")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let resolved = resolve_pack_dir_name("nvim", &ctx).unwrap();
+        assert_eq!(resolved, "010-nvim");
+    }
+
+    #[test]
+    fn resolve_pack_dir_name_finds_pack_by_raw_directory_name() {
+        let env = TempEnvironment::builder()
+            .pack("010-nvim")
+            .file("init.lua", "x")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let resolved = resolve_pack_dir_name("010-nvim", &ctx).unwrap();
+        assert_eq!(resolved, "010-nvim");
+    }
+
+    #[test]
+    fn resolve_pack_dir_name_errors_on_unknown_pack() {
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("vimrc", "x")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let err = resolve_pack_dir_name("nope", &ctx).unwrap_err();
+        assert!(matches!(
+            err,
+            crate::DodotError::PackNotFound { ref name } if name == "nope"
+        ));
+    }
+
+    #[test]
     fn execute_skips_dodotignored_packs() {
         let env = TempEnvironment::builder()
             .pack("vim")
@@ -622,15 +763,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "vim".into(),
-            path: env.dotfiles_root.join("vim"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "vim".into(),
+            env.dotfiles_root.join("vim"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("vim"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let results = run_handler_pipeline(&pack, &ctx).unwrap();
         assert!(results.iter().all(|r| r.success));
@@ -690,15 +830,14 @@ mod tests {
 
         let ctx = make_context(&env); // no_provision = true
 
-        let pack = Pack {
-            name: "vim".into(),
-            path: env.dotfiles_root.join("vim"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "vim".into(),
+            env.dotfiles_root.join("vim"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("vim"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let results = run_handler_pipeline(&pack, &ctx).unwrap();
 
@@ -722,15 +861,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
@@ -779,15 +917,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
@@ -835,15 +972,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
@@ -875,15 +1011,14 @@ mod tests {
             .unwrap();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
@@ -917,15 +1052,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "vim".into(),
-            path: env.dotfiles_root.join("vim"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "vim".into(),
+            env.dotfiles_root.join("vim"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("vim"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         // No preprocessor registry at all
         let intents = collect_pack_intents_with_preprocessors(&pack, &ctx, None).unwrap();
@@ -953,15 +1087,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
@@ -1017,15 +1150,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "tools".into(),
-            path: env.dotfiles_root.join("tools"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "tools".into(),
+            env.dotfiles_root.join("tools"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("tools"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
         registry.register(Box::new(
@@ -1049,15 +1181,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         // Register both identity and unarchive preprocessors
         let mut registry = crate::preprocessing::PreprocessorRegistry::new();
@@ -1114,15 +1245,14 @@ mod tests {
         enc.finish().unwrap();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "tools".into(),
-            path: env.dotfiles_root.join("tools"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "tools".into(),
+            env.dotfiles_root.join("tools"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("tools"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         // Call the real production entrypoint — no explicit registry.
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
@@ -1157,15 +1287,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
         let user_path = match &intents[0] {
@@ -1195,15 +1324,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "tools".into(),
-            path: env.dotfiles_root.join("tools"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "tools".into(),
+            env.dotfiles_root.join("tools"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("tools"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
         assert_eq!(intents.len(), 1);
@@ -1239,15 +1367,14 @@ mod tests {
             .unwrap();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
         match &intents[0] {
@@ -1275,15 +1402,14 @@ mod tests {
             .unwrap();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
         // With preprocessing disabled, the .tmpl file is treated as a
@@ -1317,15 +1443,14 @@ mod tests {
             .build();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let err = collect_pack_intents(&pack, &ctx).unwrap_err();
         match err {
@@ -1358,15 +1483,14 @@ mod tests {
             .unwrap();
 
         let ctx = make_context(&env);
-        let pack = Pack {
-            name: "app".into(),
-            path: env.dotfiles_root.join("app"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("app"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let err = collect_pack_intents(&pack, &ctx).unwrap_err();
         assert!(
@@ -1393,15 +1517,14 @@ mod tests {
         let mut ctx = make_context(&env);
         ctx.no_provision = false; // actually run install this time
 
-        let pack = Pack {
-            name: "setup".into(),
-            path: env.dotfiles_root.join("setup"),
-            config: ctx
-                .config_manager
+        let pack = Pack::new(
+            "setup".into(),
+            env.dotfiles_root.join("setup"),
+            ctx.config_manager
                 .config_for_pack(&env.dotfiles_root.join("setup"))
                 .unwrap()
                 .to_handler_config(),
-        };
+        );
 
         let intents = collect_pack_intents(&pack, &ctx).unwrap();
         let (sentinel, rendered_path) = match &intents[0] {

@@ -38,7 +38,7 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     info!(count = all_packs.len(), "discovered packs");
 
     if let Some(names) = pack_filter {
-        all_packs.retain(|p| names.iter().any(|n| n == &p.name));
+        all_packs.retain(|p| names.iter().any(|n| n == &p.display_name || n == &p.name));
     }
 
     let mut affected_packs = Vec::new();
@@ -46,16 +46,19 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
     let mut any_removed = false;
 
     for pack in &all_packs {
+        // Datastore is keyed by the on-disk directory name, not the
+        // display name — the directory `010-nvim` keeps its `010-nvim/`
+        // subtree in the datastore.
         let handlers = ctx.datastore.list_pack_handlers(&pack.name)?;
 
         if handlers.is_empty() {
-            debug!(pack = %pack.name, "already down, skipping");
+            debug!(pack = %pack.display_name, "already down, skipping");
             continue;
         }
 
-        info!(pack = %pack.name, handlers = ?handlers, "removing pack state");
+        info!(pack = %pack.display_name, handlers = ?handlers, "removing pack state");
         any_removed = true;
-        affected_packs.push(pack.name.clone());
+        affected_packs.push(pack.display_name.clone());
 
         if ctx.dry_run {
             dry_run_display.push(build_dry_run_display(pack, &handlers, ctx)?);
@@ -142,5 +145,5 @@ fn build_dry_run_display(
             });
         }
     }
-    Ok(DisplayPack::new(pack.name.clone(), files))
+    Ok(DisplayPack::new(pack.display_name.clone(), files))
 }

@@ -241,6 +241,13 @@ pub(crate) fn resolve_target(
     config: &HandlerConfig,
     paths: &dyn Pather,
 ) -> PathBuf {
+    // Strip any `NNN-` ordering prefix from the pack name before
+    // computing the deployed path. The pack's *display name* — not its
+    // on-disk directory name — is what the user expects in
+    // `~/.config/<pack>/`. A pack `010-nvim/init.lua` deploys to
+    // `~/.config/nvim/init.lua` (which is where `nvim` actually reads
+    // its config), not `~/.config/010-nvim/init.lua`.
+    let pack = crate::packs::display_name_for(pack);
     let home = paths.home_dir();
     let xdg_config = paths.xdg_config_home();
 
