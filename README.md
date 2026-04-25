@@ -114,7 +114,7 @@ All conventions can be overridden via `.dodot.toml` in the pack or the dotfiles 
 | `init`       | Create a new pack with template files            |
 | `adopt`      | Move existing files into a pack, symlink back    |
 | `fill`       | Add template files to an existing pack           |
-| `addignore`  | Mark a pack as ignored                           |
+| `addignore`  | Drop a `.dodotignore` marker (pack-ignore)       |
 | `init-sh`    | Print shell init script for `eval`               |
 | `config`     | Inspect and modify configuration                 |
 
@@ -132,8 +132,11 @@ dodot uses a layered TOML configuration:
 # git/.dodot.toml
 [mappings]
 shell = ["aliases.sh", "profile.sh"]
-skip = ["README.md"]
+ignore = ["scratch.txt"]   # drop entirely (silent, like .gitignore)
+skip   = []                # clear defaults to deploy README/LICENSE
 ```
+
+`mappings.ignore` matches files dodot should drop without a trace; `mappings.skip` matches files that show up in `dodot status` as `skipped` but aren't deployed (defaults cover `README`, `LICENSE`, `CHANGELOG`, and friends).
 
 Generate a starter config with `dodot config gen -o .dodot.toml`.
 

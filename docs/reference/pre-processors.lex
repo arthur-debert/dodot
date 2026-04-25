@@ -96,6 +96,6 @@ Preprocessors
 
     - Global: `[preprocessor] enabled = false` in the root `.dodot.toml`. All preprocessing is skipped; `.tmpl` files deploy verbatim.
     - Per preprocessor: `[preprocessor.template] enabled = false` disables template rendering but leaves other preprocessors active.
-    - Per file: add the filename to `[mappings] skip` and the file is ignored entirely.
+    - Per file: add the filename to `[mappings] ignore` and the file is dropped entirely (silent — same contract as `.gitignore`). Use `[mappings] skip` instead if you'd like the file to remain visible in `dodot status` as `skipped`.
 
     Pack-level `.dodot.toml` overrides the root for any of these keys, so you can flip a setting on or off for a single pack.
