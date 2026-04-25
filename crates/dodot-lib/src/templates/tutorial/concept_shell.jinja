@@ -1,0 +1,10 @@
+[header]Step 5 — shell integration[/header]
+
+This pack has shell snippets or a [pack-name]bin/[/pack-name] directory. To make them take
+effect in your shell, add this line to [pack-name]{{ shell_integration.rc_path }}[/pack-name]:
+
+  [message]{{ shell_integration.eval_line }}[/message]
+
+{% if shell_integration.line_present %}[deployed]✓ already present — nothing to do.[/deployed]
+{% else %}[warning]Not present yet.[/warning] You can have me write it for you, copy it to clipboard,
+or skip and add it manually.{% endif %}

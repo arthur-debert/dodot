@@ -13,6 +13,7 @@ pub mod init;
 pub mod list;
 pub mod probe;
 pub mod status;
+pub mod tutorial;
 pub mod up;
 
 #[cfg(test)]
