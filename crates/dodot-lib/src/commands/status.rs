@@ -33,6 +33,11 @@ enum Health {
     PendingConflict { reason: String },
     /// Deployed and all links verified correct.
     Deployed,
+    /// Deployed and the chain is healthy, but the file has a known
+    /// quality issue: pre-flight syntax error or recurring runtime
+    /// failures observed by the profiling instrumentation. `label` is
+    /// the short status-column text, `reason` is the footnote body.
+    DeployedWithError { label: String, reason: String },
     /// Deployed but the chain is broken.
     Broken(String),
     /// Data link exists and is healthy, but the user link is not at the
@@ -47,6 +52,7 @@ impl Health {
             Health::Pending => "pending",
             Health::PendingConflict { .. } => "warning",
             Health::Deployed => "deployed",
+            Health::DeployedWithError { .. } => "broken",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
         }
@@ -71,16 +77,18 @@ impl Health {
                 "homebrew" => "installed".into(),
                 _ => "deployed".into(),
             },
+            Health::DeployedWithError { label, .. } => label.clone(),
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
         }
     }
 
-    /// If this health represents a pending conflict, return the reason
-    /// (suitable for use as a footnote). `None` otherwise.
+    /// If this health carries a footnote-worthy reason (pending conflict,
+    /// deployed-with-error), return it. `None` otherwise.
     fn footnote_reason(&self) -> Option<&str> {
         match self {
             Health::PendingConflict { reason } => Some(reason.as_str()),
+            Health::DeployedWithError { reason, .. } => Some(reason.as_str()),
             _ => None,
         }
     }
@@ -214,6 +222,9 @@ fn verify_symlink(
 /// Verify shell/path handler chain for a single file.
 ///
 /// Checks: data link exists → points to source → source exists.
+/// For shell handler, also checks for a syntax-error sidecar from the
+/// pre-flight check that runs at `dodot up` time — its presence flips
+/// a healthy chain to `DeployedWithSyntaxError`.
 fn verify_staged(
     source: &std::path::Path,
     pack: &str,
@@ -246,7 +257,91 @@ fn verify_staged(
         return Health::Broken("broken: source file missing".into());
     }
 
+    // Shell handler only: layered post-deploy quality checks. Both
+    // signals fire only for shell sources. Syntax error wins over
+    // runtime failures — fix-the-parse is the more fundamental issue,
+    // and a file that doesn't parse can't have meaningful runtime
+    // exit-code data anyway.
+    if handler == "shell" {
+        let filename_str = filename.to_string_lossy();
+
+        // (1) Pre-flight syntax-error sidecar from `dodot up`.
+        let sidecar = crate::shell::error_sidecar_path(ctx.paths.as_ref(), pack, &filename_str);
+        if ctx.fs.exists(&sidecar) {
+            if let Ok(body) = ctx.fs.read_to_string(&sidecar) {
+                let reason = body.trim().to_string();
+                if !reason.is_empty() {
+                    return Health::DeployedWithError {
+                        label: "syntax error".into(),
+                        reason,
+                    };
+                }
+            }
+        }
+
+        // (2) Runtime exit-code data from the profiling instrumentation,
+        //     if any has been collected. Returns None when profiling is
+        //     off, when no profiles exist yet, or when this source has
+        //     run cleanly in every recent shell.
+        if let Some((label, reason)) = recent_runtime_failures(source, ctx) {
+            return Health::DeployedWithError { label, reason };
+        }
+    }
+
     Health::Deployed
+}
+
+/// How many recent shell-init profiles to scan for runtime failures.
+/// Five is enough to catch the "fails sometimes" case without making
+/// status I/O-heavy; users who want deeper history reach for
+/// `dodot probe shell-init --history`.
+const RUNTIME_FAILURE_WINDOW: usize = 5;
+
+/// Look at the last few shell-init profiles for any non-zero exit
+/// status from `source`. Returns `Some((short_label, footnote_body))`
+/// if at least one failure was seen; `None` otherwise (including when
+/// profiling is off, so no profiles exist).
+fn recent_runtime_failures(
+    source: &std::path::Path,
+    ctx: &ExecutionContext,
+) -> Option<(String, String)> {
+    let profiles = crate::probe::shell_init::read_recent_profiles(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        RUNTIME_FAILURE_WINDOW,
+    )
+    .ok()?;
+    if profiles.is_empty() {
+        return None;
+    }
+    let target_str = source.to_string_lossy();
+
+    let mut runs_seen = 0;
+    let mut runs_failed = 0;
+    let mut last_exit: i32 = 0;
+    for profile in &profiles {
+        if let Some(entry) = profile
+            .entries
+            .iter()
+            .find(|e| e.phase == "source" && e.target == target_str)
+        {
+            runs_seen += 1;
+            if entry.exit_status != 0 {
+                runs_failed += 1;
+                last_exit = entry.exit_status;
+            }
+        }
+    }
+    if runs_failed == 0 {
+        return None;
+    }
+
+    let label = format!("exited {last_exit} ({runs_failed}/{runs_seen})");
+    let reason = format!(
+        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last exit: {last_exit}). \
+         See `dodot probe shell-init --history` for details."
+    );
+    Some((label, reason))
 }
 
 /// Run the `status` command: scan packs and verify deployment chain per file.

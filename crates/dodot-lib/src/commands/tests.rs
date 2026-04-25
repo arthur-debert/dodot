@@ -368,6 +368,127 @@ fn up_generates_shell_init() {
 }
 
 #[test]
+fn status_surfaces_syntax_error_sidecar_for_deployed_shell_file() {
+    use crate::shell::{SyntaxCheckResult, SyntaxChecker};
+    use std::path::Path;
+
+    struct FlagAliases;
+    impl SyntaxChecker for FlagAliases {
+        fn check(&self, _interpreter: &str, file: &Path) -> SyntaxCheckResult {
+            if file.file_name().and_then(|s| s.to_str()) == Some("aliases.sh") {
+                SyntaxCheckResult::SyntaxError {
+                    stderr: "/path/aliases.sh: line 47: bad substitution\n".into(),
+                }
+            } else {
+                SyntaxCheckResult::Ok
+            }
+        }
+    }
+
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "echo ${broken")
+        .file("env.sh", "export FOO=bar")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.syntax_checker = Arc::new(FlagAliases);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Now run status — should flag aliases.sh as broken and leave
+    // env.sh as plain deployed.
+    let result = commands::status::status(None, &ctx).unwrap();
+    let pack = &result.packs[0];
+
+    let aliases = pack
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+    assert_eq!(aliases.status, "broken", "row: {aliases:?}");
+    assert_eq!(aliases.status_label, "syntax error");
+    let note_idx = aliases
+        .note_ref
+        .expect("aliases.sh should carry a note ref") as usize;
+    assert!(
+        result.notes[note_idx - 1].body.contains("bad substitution"),
+        "note: {:?}",
+        result.notes[note_idx - 1]
+    );
+
+    let env_row = pack
+        .files
+        .iter()
+        .find(|f| f.name == "env.sh")
+        .expect("env.sh row missing");
+    assert_eq!(env_row.status, "deployed");
+    assert_eq!(env_row.status_label, "sourced");
+}
+
+#[test]
+fn status_surfaces_runtime_failures_from_recent_profiles() {
+    // A clean source (passes syntax) that exits non-zero in 2 of the
+    // 3 most recent shell startups should be flagged as broken with a
+    // footnote summarizing the failure rate.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Write three fake profile TSVs by hand: two with exit_status=1
+    // for aliases.sh, one with exit_status=0. Newer filenames sort
+    // last lexically; the reader walks newest-first.
+    let source_path = env.dotfiles_root.join("vim/aliases.sh");
+    let target = source_path.display().to_string();
+    let probes_dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&probes_dir).unwrap();
+    let make_profile = |t0: u64, exit: i32| {
+        let body = format!(
+            "# dodot shell-init profile v1\n\
+             # shell\tbash 5.0\n\
+             # start_t\t{t0}.000000\n\
+             source\tvim\tshell\t{target}\t{t0}.000100\t{t0}.000900\t{exit}\n\
+             # end_t\t{t0}.001000\n",
+        );
+        env.fs
+            .write_file(
+                &probes_dir.join(format!("profile-{t0:010}-100-1.tsv")),
+                body.as_bytes(),
+            )
+            .unwrap();
+    };
+    make_profile(1714000001, 1);
+    make_profile(1714000002, 0);
+    make_profile(1714000003, 1);
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let row = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+
+    assert_eq!(row.status, "broken", "row: {row:?}");
+    assert!(
+        row.status_label.contains("exited 1") && row.status_label.contains("2/3"),
+        "status_label was: {}",
+        row.status_label
+    );
+    let note_idx = row.note_ref.expect("expected note ref") as usize;
+    let note = &result.notes[note_idx - 1];
+    assert!(
+        note.body.contains("2 of 3 recent shell startups"),
+        "note body: {}",
+        note.body
+    );
+}
+
+#[test]
 fn up_writes_syntax_error_sidecar_when_check_fails() {
     use crate::shell::{SyntaxCheckResult, SyntaxChecker};
     use std::path::Path;
