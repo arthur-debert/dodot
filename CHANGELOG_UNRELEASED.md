@@ -26,10 +26,12 @@ Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
   `<data_dir>/deployment-map.tsv` alongside the regenerated shell init
   script. The file is plain-text TSV with a `# dodot deployment map v1`
   header, one row per datastore entry (`pack\thandler\tkind\tsource\tdatastore`),
-  overwritten on every run. Skipped during `--dry-run`. The TSV is what
-  `dodot probe deployment-map` reads, and is also the file that the
-  forthcoming `dodot refresh` (see `docs/proposals/magic.lex`) will
-  consume for source-template mtime touches.
+  overwritten on every run. Skipped during `--dry-run`. `dodot probe
+  deployment-map` renders its table live from the datastore, not from
+  this file; the TSV is a written snapshot for machine-to-machine
+  consumers, including the forthcoming `dodot refresh` (see
+  `docs/proposals/magic.lex`), which will use it for source-template
+  mtime touches.
 - `Pather::deployment_map_path()` trait method, returning
   `<data_dir>/deployment-map.tsv`.
 

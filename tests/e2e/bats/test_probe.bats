@@ -131,16 +131,27 @@ echo hi'
 
 @test "probe never modifies the dotfiles root" {
     create_pack_file "vim" "aliases.sh" "alias vi=vim"
-    # Snapshot: list of files + their contents hashes.
+
+    # Snapshot per-file cksum digests, excluding `.git/` (sandbox_setup
+    # runs `git init`, and git's internal state can tick over as a side
+    # effect of subprocesses finding themselves inside a repo — we only
+    # care that no *pack content* changed). cksum is POSIX, binary-safe,
+    # and fast enough for a small sandbox.
+    _snapshot_dotfiles() {
+        cd "$DOTFILES_ROOT" && find . -path './.git' -prune -o -type f -print0 \
+            | sort -z \
+            | xargs -0 cksum
+    }
+
     local before
-    before="$(cd "$DOTFILES_ROOT" && find . -type f | sort | xargs -I{} sh -c 'printf "%s %s\n" "{}" "$(cat "{}")"')"
+    before="$(_snapshot_dotfiles)"
 
     dodot probe
     dodot probe deployment-map
     dodot probe show-data-dir
 
     local after
-    after="$(cd "$DOTFILES_ROOT" && find . -type f | sort | xargs -I{} sh -c 'printf "%s %s\n" "{}" "$(cat "{}")"')"
+    after="$(_snapshot_dotfiles)"
 
     [ "$before" = "$after" ]
 }

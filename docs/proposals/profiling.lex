@@ -35,7 +35,7 @@ Design Specification: Profiling and the Probe Command
 
     2.2. Plain Text, No Ceremony
 
-        Every file dodot writes in service of this feature is plain text (TSV). No JSON, no TOML, no schema versioning header. The reader is dodot itself and, when the user cares, `awk`. This matters because the shell writer has to be simple enough to be obviously correct by inspection, and because the user should never feel they need dodot to read dodot's own records.
+        Every file dodot writes in service of this feature is plain text (TSV). No JSON, no TOML, no heavyweight schema envelope. A file may begin with one or more `#`-prefixed comment lines — a short `# dodot <name> v1` marker plus a column legend — and that is the extent of any "header" we allow ourselves. Comments must be ignorable by line-oriented readers, so `awk '$1 !~ /^#/'` is a complete parser. The reader is dodot itself and, when the user cares, `awk`. This matters because the shell writer has to be simple enough to be obviously correct by inspection, and because the user should never feel they need dodot to read dodot's own records.
 
     2.3. Opt-Out, Not Opt-In
 
@@ -139,7 +139,7 @@ Design Specification: Profiling and the Probe Command
 
     5.4. `probe deployment-map`
 
-        Reads `deployment-map.tsv` and renders it as a table grouped by pack. This is the human-facing view of the file that `refresh` consumes machine-to-machine.
+        Renders the source→deployed mapping as a table grouped by pack. The view is derived live from the datastore — not from the on-disk `deployment-map.tsv` — so `dodot probe deployment-map` tells the truth even if the user has never run `dodot up` since the feature shipped, and even if `up`/`down` last ran with `--dry-run`. The TSV on disk (§3.2) is a separate artifact produced by `up`/`down` for machine-to-machine consumers such as `refresh`; both views are derived from the same datastore, and under normal operation they agree.
 
 
 6. Prior Art

@@ -1,12 +1,14 @@
 //! The deployment map.
 //!
 //! The deployment map is a plain-text TSV under `<data_dir>/deployment-map.tsv`
-//! with one row per datastore entry:
+//! with a two-line `#`-comment preamble followed by one TSV row per
+//! datastore entry. An example file:
 //!
 //! ```text
 //! # dodot deployment map v1
-//! # columns: pack, handler, kind, source, datastore
-//! pack\thandler\tkind\tsource\tdatastore
+//! # columns: pack\thandler\tkind\tsource\tdatastore
+//! vim\tshell\tsymlink\t/home/alice/dotfiles/vim/aliases.sh\t/home/alice/.local/share/dodot/packs/vim/shell/aliases.sh
+//! git\tsymlink\tsymlink\t/home/alice/dotfiles/git/gitconfig\t/home/alice/.local/share/dodot/packs/git/symlink/gitconfig
 //! ```
 //!
 //! The file is overwritten on every `dodot up` / `dodot down` so it
