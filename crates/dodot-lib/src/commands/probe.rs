@@ -13,8 +13,9 @@ use serde::Serialize;
 
 use crate::packs::orchestration::ExecutionContext;
 use crate::probe::{
-    collect_data_dir_tree, collect_deployment_map, group_profile, read_latest_profile,
-    DeploymentMapEntry, GroupedProfile, TreeNode,
+    aggregate_profiles, collect_data_dir_tree, collect_deployment_map, group_profile,
+    read_latest_profile, read_recent_profiles, summarize_history, AggregatedTarget,
+    DeploymentMapEntry, GroupedProfile, HistoryEntry, TreeNode,
 };
 use crate::Result;
 
@@ -85,6 +86,78 @@ pub enum ProbeResult {
     /// `dodot probe shell-init` — the most recent shell-startup profile,
     /// grouped by pack and handler.
     ShellInit(ShellInitView),
+    /// `dodot probe shell-init --runs N` — per-target percentile stats
+    /// across the last N runs.
+    ShellInitAggregate(ShellInitAggregateView),
+    /// `dodot probe shell-init --history` — one summary line per recent
+    /// run, oldest run first (so the latest is closest to the eye in a
+    /// terminal where output scrolls down).
+    ShellInitHistory(ShellInitHistoryView),
+}
+
+/// Display payload for `--runs N`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitAggregateView {
+    /// How many profiles were actually loaded (may be smaller than the
+    /// requested N if there aren't enough on disk yet).
+    pub runs: usize,
+    /// User-requested N (echoed back so the renderer can say
+    /// "showing 4 of last 10 requested").
+    pub requested_runs: usize,
+    pub profiling_enabled: bool,
+    pub profiles_dir: String,
+    pub rows: Vec<ShellInitAggregateRow>,
+}
+
+/// One per-target aggregate row, durations pre-humanised for the
+/// template.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitAggregateRow {
+    pub pack: String,
+    pub handler: String,
+    pub target: String,
+    pub p50_label: String,
+    pub p95_label: String,
+    pub max_label: String,
+    pub p50_us: u64,
+    pub p95_us: u64,
+    pub max_us: u64,
+    /// e.g. `"7/10"` — formatted at the lib so JSON consumers and the
+    /// template both render identically.
+    pub seen_label: String,
+    pub runs_seen: usize,
+    pub runs_total: usize,
+}
+
+/// Display payload for `--history`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitHistoryView {
+    pub profiling_enabled: bool,
+    pub profiles_dir: String,
+    pub rows: Vec<ShellInitHistoryRow>,
+}
+
+/// One per-run row in `--history`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitHistoryRow {
+    /// Filename of the underlying TSV — useful for cross-reference and
+    /// keeps history rows traceable to the on-disk artefact.
+    pub filename: String,
+    /// Unix timestamp parsed from the filename (or `0` when the
+    /// filename doesn't follow the expected pattern). Surfaced in JSON
+    /// so machine consumers can do their own date math without
+    /// re-parsing `filename`.
+    pub unix_ts: u64,
+    /// Compact `YYYY-MM-DD HH:MM` formatted from the unix timestamp in
+    /// the filename. Empty when the timestamp couldn't be parsed.
+    pub when: String,
+    pub shell: String,
+    pub total_label: String,
+    pub user_total_label: String,
+    pub total_us: u64,
+    pub user_total_us: u64,
+    pub failed_entries: usize,
+    pub entry_count: usize,
 }
 
 /// Display payload for `probe shell-init`. Pulled into its own struct
@@ -280,6 +353,119 @@ pub fn humanize_us(us: u64) -> String {
     } else {
         format!("{:.2} s", us as f64 / 1_000_000.0)
     }
+}
+
+/// Default `--runs` value when the flag is supplied without one.
+/// Picked to be larger than typical day-to-day usage but cheap to load.
+pub const DEFAULT_RUNS: usize = 10;
+
+/// Aggregate the last `runs` profiles into per-target percentile stats.
+pub fn shell_init_aggregate(ctx: &ExecutionContext, runs: usize) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
+    let view = aggregate_profiles(&profiles);
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+
+    Ok(ProbeResult::ShellInitAggregate(ShellInitAggregateView {
+        runs: view.runs,
+        requested_runs: runs,
+        profiling_enabled,
+        profiles_dir,
+        rows: view.targets.into_iter().map(into_aggregate_row).collect(),
+    }))
+}
+
+fn into_aggregate_row(t: AggregatedTarget) -> ShellInitAggregateRow {
+    ShellInitAggregateRow {
+        pack: t.pack,
+        handler: t.handler,
+        target: short_target(&t.target),
+        p50_label: humanize_us(t.p50_us),
+        p95_label: humanize_us(t.p95_us),
+        max_label: humanize_us(t.max_us),
+        p50_us: t.p50_us,
+        p95_us: t.p95_us,
+        max_us: t.max_us,
+        seen_label: format!("{}/{}", t.runs_seen, t.runs_total),
+        runs_seen: t.runs_seen,
+        runs_total: t.runs_total,
+    }
+}
+
+/// Default cap on the number of history rows emitted, so a user with
+/// hundreds of profiles doesn't get a page-fillingrace down their
+/// terminal.
+pub const DEFAULT_HISTORY_LIMIT: usize = 50;
+
+/// Render the per-run history view (one summary line per profile).
+pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+    let mut profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), limit)?;
+    // read_recent_profiles returns newest-first; reverse so output reads
+    // chronologically (oldest at top, latest at the bottom near the
+    // user's prompt).
+    profiles.reverse();
+    let history = summarize_history(&profiles);
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+
+    Ok(ProbeResult::ShellInitHistory(ShellInitHistoryView {
+        profiling_enabled,
+        profiles_dir,
+        rows: history.into_iter().map(into_history_row).collect(),
+    }))
+}
+
+fn into_history_row(h: HistoryEntry) -> ShellInitHistoryRow {
+    ShellInitHistoryRow {
+        filename: h.filename,
+        unix_ts: h.unix_ts,
+        when: format_unix_ts(h.unix_ts),
+        shell: h.shell,
+        total_label: humanize_us(h.total_us),
+        user_total_label: humanize_us(h.user_total_us),
+        total_us: h.total_us,
+        user_total_us: h.user_total_us,
+        failed_entries: h.failed_entries,
+        entry_count: h.entry_count,
+    }
+}
+
+/// Format a unix timestamp as `YYYY-MM-DD HH:MM` in UTC. Returns an
+/// empty string for `0` (parse-failure sentinel) so the renderer can
+/// just print a blank cell.
+///
+/// Does the calendar math by hand to avoid pulling a dep — chrono is
+/// overkill for one display string. Algorithm: Howard Hinnant's
+/// civil_from_days.
+pub fn format_unix_ts(ts: u64) -> String {
+    if ts == 0 {
+        return String::new();
+    }
+    let secs_per_day: u64 = 86_400;
+    let days = (ts / secs_per_day) as i64;
+    let secs_of_day = ts % secs_per_day;
+    let hour = secs_of_day / 3600;
+    let minute = (secs_of_day % 3600) / 60;
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02} {hour:02}:{minute:02}")
+}
+
+/// Howard Hinnant's `civil_from_days`: convert days since 1970-01-01
+/// (UTC) into `(year, month, day)`. Public-domain algorithm.
+fn civil_from_days(z: i64) -> (i32, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = doy - (153 * mp + 2) / 5 + 1; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as i32, m as u32, d as u32)
 }
 
 /// Render the data-dir tree.

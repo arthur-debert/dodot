@@ -77,23 +77,37 @@ impl Profile {
 /// Read the most recently written profile under `<data_dir>/probes/shell-init/`,
 /// or `None` if the directory is empty / missing.
 pub fn read_latest_profile(fs: &dyn Fs, paths: &dyn Pather) -> Result<Option<Profile>> {
+    let mut profiles = read_recent_profiles(fs, paths, 1)?;
+    Ok(profiles.pop())
+}
+
+/// Read up to `limit` most recent profiles, newest first.
+///
+/// Profiles are returned in reverse chronological order (newest first).
+/// The cap exists because callers know how much they need — `--runs 5`
+/// asks for five — and the directory may have hundreds of files.
+/// Filenames are lexically sorted, which is equivalent to chronological
+/// since the leading `profile-<unix_ts>` segment is monotonic.
+pub fn read_recent_profiles(fs: &dyn Fs, paths: &dyn Pather, limit: usize) -> Result<Vec<Profile>> {
     let dir = paths.probes_shell_init_dir();
-    if !fs.is_dir(&dir) {
-        return Ok(None);
+    if !fs.is_dir(&dir) || limit == 0 {
+        return Ok(Vec::new());
     }
-    let mut entries = fs.read_dir(&dir)?;
-    // Filenames start with `profile-<unix_ts>-…`, so a lexical sort
-    // is equivalent to chronological order (the timestamp segment is
-    // fixed-width as long as we stay below year 2286 — fine).
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-    let Some(latest) = entries
+    let mut entries: Vec<_> = fs
+        .read_dir(&dir)?
         .into_iter()
-        .rfind(|e| e.is_file && e.name.starts_with("profile-") && e.name.ends_with(".tsv"))
-    else {
-        return Ok(None);
-    };
-    let content = fs.read_to_string(&latest.path)?;
-    Ok(Some(parse_profile(&latest.name, &content)))
+        .filter(|e| e.is_file && e.name.starts_with("profile-") && e.name.ends_with(".tsv"))
+        .collect();
+    // Sort newest-first by filename (lex == chrono per filename format).
+    entries.sort_by(|a, b| b.name.cmp(&a.name));
+    entries.truncate(limit);
+
+    let mut profiles = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let content = fs.read_to_string(&entry.path)?;
+        profiles.push(parse_profile(&entry.name, &content));
+    }
+    Ok(profiles)
 }
 
 /// Parse the textual content of a profile file. Tolerates missing
@@ -266,6 +280,142 @@ pub fn group_profile(profile: &Profile) -> GroupedProfile {
         framing_us,
         total_us,
     }
+}
+
+// ── Multi-run aggregation (`probe shell-init --runs N`) ───────────────
+
+/// Per-target stats across N runs.
+#[derive(Debug, Clone, Serialize)]
+pub struct AggregatedTarget {
+    pub pack: String,
+    pub handler: String,
+    pub target: String,
+    pub p50_us: u64,
+    pub p95_us: u64,
+    pub max_us: u64,
+    /// How many of the considered runs had this target. Surfaced because
+    /// targets can appear/disappear across deploys; "p95 from 2/10 runs"
+    /// is a different signal than "p95 from 10/10".
+    pub runs_seen: usize,
+    pub runs_total: usize,
+}
+
+/// Aggregate output, one row per `(pack, handler, target)` keyed by all
+/// the profiles passed in.
+#[derive(Debug, Clone, Serialize)]
+pub struct AggregatedView {
+    pub runs: usize,
+    pub targets: Vec<AggregatedTarget>,
+}
+
+/// Roll up a slice of profiles into per-target percentile stats.
+///
+/// Targets are returned sorted by `(pack, handler, target)` for
+/// readability (matches `group_profile`'s ordering convention).
+pub fn aggregate_profiles(profiles: &[Profile]) -> AggregatedView {
+    use std::collections::BTreeMap;
+
+    // Bucket durations by (pack, handler, target).
+    let mut buckets: BTreeMap<(String, String, String), Vec<u64>> = BTreeMap::new();
+    for p in profiles {
+        for e in &p.entries {
+            buckets
+                .entry((e.pack.clone(), e.handler.clone(), e.target.clone()))
+                .or_default()
+                .push(e.duration_us);
+        }
+    }
+
+    let runs_total = profiles.len();
+    let targets = buckets
+        .into_iter()
+        .map(|((pack, handler, target), mut durs)| {
+            durs.sort_unstable();
+            AggregatedTarget {
+                pack,
+                handler,
+                target,
+                p50_us: percentile(&durs, 50),
+                p95_us: percentile(&durs, 95),
+                max_us: *durs.last().unwrap_or(&0),
+                runs_seen: durs.len(),
+                runs_total,
+            }
+        })
+        .collect();
+
+    AggregatedView {
+        runs: runs_total,
+        targets,
+    }
+}
+
+/// Nearest-rank percentile (no interpolation): the smallest value at
+/// or above the cumulative-frequency threshold. For p95 over 1 sample
+/// returns that sample; over 10 samples returns the 10th (max).
+///
+/// `sorted` must be sorted ascending. Returns 0 for an empty slice.
+fn percentile(sorted: &[u64], pct: u8) -> u64 {
+    if sorted.is_empty() {
+        return 0;
+    }
+    let n = sorted.len();
+    // ceil(p/100 * n) maps to a 1-indexed rank; subtract 1 for 0-indexed.
+    // Saturate at n-1 to handle any rounding edge cases.
+    let rank = ((pct as f64 / 100.0) * n as f64).ceil() as usize;
+    let idx = rank.saturating_sub(1).min(n - 1);
+    sorted[idx]
+}
+
+// ── History (`probe shell-init --history`) ────────────────────────────
+
+/// One row in the history view: a single run's headline metrics.
+#[derive(Debug, Clone, Serialize)]
+pub struct HistoryEntry {
+    pub filename: String,
+    /// Best-effort unix timestamp parsed from the filename. `0` if the
+    /// filename doesn't match `profile-<unix_ts>-…`.
+    pub unix_ts: u64,
+    pub shell: String,
+    pub total_us: u64,
+    pub user_total_us: u64,
+    /// Count of entries with non-zero exit_status — surfaces silent
+    /// breakage at a glance.
+    pub failed_entries: usize,
+    pub entry_count: usize,
+}
+
+/// Build a history view from a slice of profiles (newest-first input,
+/// preserved order in the output — caller decides cadence).
+pub fn summarize_history(profiles: &[Profile]) -> Vec<HistoryEntry> {
+    profiles.iter().map(history_entry_from).collect()
+}
+
+fn history_entry_from(profile: &Profile) -> HistoryEntry {
+    HistoryEntry {
+        filename: profile.filename.clone(),
+        unix_ts: parse_unix_ts_from_filename(&profile.filename),
+        shell: profile.shell.clone(),
+        total_us: profile.total_duration_us,
+        user_total_us: profile.entries_duration_us(),
+        failed_entries: profile
+            .entries
+            .iter()
+            .filter(|e| e.exit_status != 0)
+            .count(),
+        entry_count: profile.entries.len(),
+    }
+}
+
+/// Extract the leading `<unix_ts>` from `profile-<unix_ts>-<pid>-<rand>.tsv`,
+/// returning `0` for any unparseable filename. The renderer formats this
+/// into a date string; storing it as an integer keeps JSON output stable.
+fn parse_unix_ts_from_filename(filename: &str) -> u64 {
+    filename
+        .strip_prefix("profile-")
+        .and_then(|rest| rest.split('-').next())
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -542,5 +692,182 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         assert_eq!(g.user_total_us, 500);
         assert_eq!(g.total_us, 500);
         assert_eq!(g.framing_us, 0);
+    }
+
+    // ── read_recent_profiles ──────────────────────────────────────
+
+    #[test]
+    fn read_recent_returns_newest_first_capped_at_limit() {
+        let env = TempEnvironment::builder().build();
+        for i in 1..=5 {
+            write_profile(
+                &env,
+                &format!("profile-{i}-1-1.tsv"),
+                "# columns\tphase\tpack\thandler\ttarget\tstart_t\tend_t\texit_status\n",
+            );
+        }
+        let recent = read_recent_profiles(env.fs.as_ref(), env.paths.as_ref(), 3).unwrap();
+        let names: Vec<&str> = recent.iter().map(|p| p.filename.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "profile-5-1-1.tsv",
+                "profile-4-1-1.tsv",
+                "profile-3-1-1.tsv",
+            ]
+        );
+    }
+
+    #[test]
+    fn read_recent_with_limit_zero_returns_empty() {
+        let env = TempEnvironment::builder().build();
+        write_profile(&env, "profile-1-1-1.tsv", "x");
+        let recent = read_recent_profiles(env.fs.as_ref(), env.paths.as_ref(), 0).unwrap();
+        assert!(recent.is_empty());
+    }
+
+    #[test]
+    fn read_recent_handles_fewer_files_than_limit() {
+        let env = TempEnvironment::builder().build();
+        write_profile(&env, "profile-1-1-1.tsv", "");
+        let recent = read_recent_profiles(env.fs.as_ref(), env.paths.as_ref(), 100).unwrap();
+        assert_eq!(recent.len(), 1);
+    }
+
+    // ── percentile + aggregate ────────────────────────────────────
+
+    #[test]
+    fn percentile_nearest_rank_basic_cases() {
+        // Ten samples 1..=10. p50 = 5 (lower-median, nearest-rank
+        // doesn't interpolate); p95 = 10 (max-ish, since ceil(0.95*10)=10).
+        let v: Vec<u64> = (1..=10).collect();
+        assert_eq!(percentile(&v, 50), 5);
+        assert_eq!(percentile(&v, 95), 10);
+        // Single sample → all percentiles return it.
+        assert_eq!(percentile(&[42], 50), 42);
+        assert_eq!(percentile(&[42], 95), 42);
+        // Empty slice safely returns 0.
+        assert_eq!(percentile(&[], 50), 0);
+    }
+
+    #[test]
+    fn aggregate_profiles_buckets_by_pack_handler_target() {
+        let p1 = Profile {
+            filename: "profile-1-1-1.tsv".into(),
+            shell: "bash".into(),
+            total_duration_us: 0,
+            entries: vec![
+                entry("vim", "shell", "/a", 100),
+                entry("vim", "shell", "/b", 200),
+            ],
+        };
+        let p2 = Profile {
+            filename: "profile-2-1-1.tsv".into(),
+            shell: "bash".into(),
+            total_duration_us: 0,
+            entries: vec![
+                entry("vim", "shell", "/a", 110),
+                entry("vim", "shell", "/b", 250),
+            ],
+        };
+        let p3 = Profile {
+            filename: "profile-3-1-1.tsv".into(),
+            shell: "bash".into(),
+            total_duration_us: 0,
+            entries: vec![entry("vim", "shell", "/a", 120)],
+            // /b absent in this run (sparse target presence).
+        };
+        let agg = aggregate_profiles(&[p1, p2, p3]);
+        assert_eq!(agg.runs, 3);
+        assert_eq!(agg.targets.len(), 2);
+        let a = agg.targets.iter().find(|t| t.target == "/a").unwrap();
+        assert_eq!(a.runs_seen, 3);
+        assert_eq!(a.runs_total, 3);
+        assert_eq!(a.p50_us, 110); // sorted: 100,110,120 → idx ceil(0.5*3)-1=1
+        assert_eq!(a.max_us, 120);
+        let b = agg.targets.iter().find(|t| t.target == "/b").unwrap();
+        assert_eq!(b.runs_seen, 2);
+        assert_eq!(b.runs_total, 3);
+        assert_eq!(b.max_us, 250);
+    }
+
+    #[test]
+    fn aggregate_empty_profiles_returns_empty_view() {
+        let agg = aggregate_profiles(&[]);
+        assert_eq!(agg.runs, 0);
+        assert!(agg.targets.is_empty());
+    }
+
+    #[test]
+    fn aggregate_targets_sort_by_pack_handler_target() {
+        // Inputs scrambled; output must be (pack, handler, target)-sorted.
+        let p = Profile {
+            filename: "p".into(),
+            shell: "".into(),
+            total_duration_us: 0,
+            entries: vec![
+                entry("vim", "shell", "/z", 1),
+                entry("git", "shell", "/a", 1),
+                entry("vim", "path", "/x", 1),
+                entry("git", "shell", "/y", 1),
+            ],
+        };
+        let agg = aggregate_profiles(&[p]);
+        let keys: Vec<(&str, &str, &str)> = agg
+            .targets
+            .iter()
+            .map(|t| (t.pack.as_str(), t.handler.as_str(), t.target.as_str()))
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("git", "shell", "/a"),
+                ("git", "shell", "/y"),
+                ("vim", "path", "/x"),
+                ("vim", "shell", "/z"),
+            ]
+        );
+    }
+
+    // ── history ───────────────────────────────────────────────────
+
+    #[test]
+    fn summarize_history_pulls_basic_metrics_per_run() {
+        let p1 = Profile {
+            filename: "profile-1714000000-12-34.tsv".into(),
+            shell: "bash 5.3".into(),
+            total_duration_us: 500,
+            entries: vec![
+                entry("vim", "shell", "/a", 100),
+                ProfileEntry {
+                    phase: "source".into(),
+                    pack: "gh".into(),
+                    handler: "shell".into(),
+                    target: "/x".into(),
+                    duration_us: 50,
+                    exit_status: 1, // hidden failure
+                },
+            ],
+        };
+        let h = summarize_history(&[p1]);
+        assert_eq!(h.len(), 1);
+        assert_eq!(h[0].unix_ts, 1714000000);
+        assert_eq!(h[0].shell, "bash 5.3");
+        assert_eq!(h[0].total_us, 500);
+        assert_eq!(h[0].user_total_us, 150);
+        assert_eq!(h[0].failed_entries, 1);
+        assert_eq!(h[0].entry_count, 2);
+    }
+
+    #[test]
+    fn parse_unix_ts_handles_unparseable_filenames() {
+        // Best-effort: an unrecognised filename returns 0 rather than
+        // crashing the history view.
+        assert_eq!(
+            parse_unix_ts_from_filename("profile-1714000000-1-1.tsv"),
+            1714000000
+        );
+        assert_eq!(parse_unix_ts_from_filename("garbage.txt"), 0);
+        assert_eq!(parse_unix_ts_from_filename("profile-notanum-1-1.tsv"), 0);
     }
 }

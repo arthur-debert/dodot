@@ -24,6 +24,7 @@ pub use deployment_map::{
     DeploymentMapEntry,
 };
 pub use shell_init::{
-    group_profile, parse_profile, read_latest_profile, rotate_profiles, GroupedProfile, Profile,
-    ProfileEntry, ProfileGroup,
+    aggregate_profiles, group_profile, parse_profile, read_latest_profile, read_recent_profiles,
+    rotate_profiles, summarize_history, AggregatedTarget, AggregatedView, GroupedProfile,
+    HistoryEntry, Profile, ProfileEntry, ProfileGroup,
 };

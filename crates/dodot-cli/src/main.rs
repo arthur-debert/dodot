@@ -361,9 +361,24 @@ fn build_clap_command() -> ClapCommand {
                         ),
                 )
                 .subcommand(
-                    ClapCommand::new("shell-init").about(
-                        "Per-source timings for the most recent shell startup",
-                    ),
+                    ClapCommand::new("shell-init")
+                        .about("Per-source timings for the most recent shell startup")
+                        .arg(
+                            Arg::new("runs")
+                                .long("runs")
+                                .help(
+                                    "Aggregate the last N runs into per-target p50/p95/max",
+                                )
+                                .value_parser(clap::value_parser!(usize))
+                                .num_args(1)
+                                .conflicts_with("history"),
+                        )
+                        .arg(
+                            Arg::new("history")
+                                .long("history")
+                                .help("Show one summary row per recent run, oldest first")
+                                .action(ArgAction::SetTrue),
+                        ),
                 ),
         )
 }

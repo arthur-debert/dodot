@@ -179,3 +179,90 @@ echo hi'
     assert_exists "$d/profile-5-1-1.tsv"
     assert_not_exists "$d/profile-1-1-1.tsv"
 }
+
+# ── Phase 3: --runs N (aggregate) and --history ───────────────────
+
+@test "probe shell-init --runs aggregates over recent profiles" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+    # Three sub-shells → three profiles.
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
+    run dodot probe shell-init --runs 3
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell-init aggregate"
+    assert_output_contains "p50"
+    assert_output_contains "p95"
+    assert_output_contains "aliases.sh"
+    # All three runs saw the target.
+    assert_output_contains "3/3"
+}
+
+@test "probe shell-init --runs warns when fewer profiles than requested" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
+    # Asked for 10, only one exists.
+    run dodot probe shell-init --runs 10
+    [ "$status" -eq 0 ]
+    assert_output_contains "requested 10"
+}
+
+@test "probe shell-init --runs with no profiles shows empty hint" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+
+    run dodot probe shell-init --runs 5
+    [ "$status" -eq 0 ]
+    assert_output_contains "no profiles yet"
+}
+
+@test "probe shell-init --history lists per-run summaries" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
+    run dodot probe shell-init --history
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell-init history"
+    assert_output_contains "when (UTC)"
+    # Two rows → at least two rendered lines under the header.
+    local row_count
+    row_count=$(echo "$output" | grep -cE '^\s+20[0-9]{2}-[0-9]{2}-[0-9]{2}' || true)
+    [ "$row_count" -ge 2 ]
+}
+
+@test "probe shell-init --runs and --history are mutually exclusive" {
+    run dodot probe shell-init --runs 3 --history
+    # clap's conflicts_with should make this fail.
+    [ "$status" -ne 0 ]
+}
+
+@test "probe shell-init --runs --output json has the right shape" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
+    run dodot --output json probe shell-init --runs 5
+    [ "$status" -eq 0 ]
+    assert_output_contains '"kind"'
+    assert_output_contains '"shell-init-aggregate"'
+    assert_output_contains '"requested_runs"'
+    assert_output_contains '"rows"'
+}
+
+@test "probe shell-init --history --output json has the right shape" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
+    run dodot --output json probe shell-init --history
+    [ "$status" -eq 0 ]
+    assert_output_contains '"kind"'
+    assert_output_contains '"shell-init-history"'
+    assert_output_contains '"unix_ts"'
+}
