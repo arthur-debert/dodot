@@ -44,7 +44,7 @@ Configuration
 
     `ignore` is glob patterns that dodot skips during pack discovery and file scanning. Matching files are not considered for any handler. The defaults cover version-control noise, editor swapfiles, and a few directories that are notoriously never meant to be deployed.
 
-    Note: to skip an _entire pack_, drop a `.dodotignore` marker file in that pack's directory. `[pack] ignore` is for patterns within a pack.
+    Note: to skip an _entire pack_, drop a `.dodotignore` marker file in that pack's directory (the "pack-ignore" mechanism). `[pack] ignore` is for patterns within a pack.
 
 3. The `[symlink]` Section
 
@@ -129,7 +129,8 @@ Configuration
             "env.sh",     "env.bash",     "env.zsh",
         ]
         homebrew = "Brewfile"
-        skip = []
+        ignore = []
+        skip = ["README", "README.*", "LICENSE", "LICENSE.*", "CHANGELOG", "CHANGELOG.*", "CONTRIBUTING", "CONTRIBUTING.*", "AUTHORS", "AUTHORS.*", "NOTICE", "NOTICE.*", "COPYING", "COPYING.*"]
 
     :: toml ::
 
@@ -137,7 +138,14 @@ Configuration
 
     `install` is list-only: even a single install script must be written as a TOML array (`install = ["install.sh"]`). The older single-string form (`install = "install.sh"`) no longer parses — update any older configs that use it.
 
-    The `skip` key is the odd one out. It is _not_ a handler; it is a list of patterns that should be excluded from handler processing entirely. Distinct from `[pack] ignore`: `skip` applies only to handler dispatch, while `ignore` affects pack discovery and scanning.
+    Two of the keys do not run a handler — they tell the pipeline to drop a file:
+
+    - `ignore` — matching files are silently dropped, mirroring `.gitignore`. Nothing surfaces in `dodot status`.
+    - `skip` — matching files appear in `dodot status` as `skipped` but no handler runs on them. Defaults cover the documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally.
+
+    `ignore` wins over `skip` when both match, and both win over precise mappings (`shell`, `install`, …) and the catchall symlink — so a file the user said to drop is dropped, full stop.
+
+    Distinct from `[pack] ignore`: `[mappings] ignore`/`skip` apply only to handler dispatch within a known pack, while `[pack] ignore` affects pack discovery and scanning. To skip an entire pack, drop a `.dodotignore` marker file (the "pack-ignore" mechanism).
 
 5. The `[preprocessor]` Section
 

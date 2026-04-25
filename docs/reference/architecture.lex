@@ -26,11 +26,11 @@ Architecture
 
     2.1. Pack Discovery
 
-        dodot enumerates top-level directories of the dotfiles root, skipping any that contain `.dodotignore` and any that match global ignore patterns (`.git`, `node_modules`, etc.). The result is the set of packs to process. When a command is invoked with explicit pack names (`dodot up git nvim`), only those are discovered.
+        dodot enumerates top-level directories of the dotfiles root, skipping any that contain `.dodotignore` (the pack-ignore marker) and any that match global ignore patterns (`.git`, `node_modules`, etc.). The result is the set of packs to process. When a command is invoked with explicit pack names (`dodot up git nvim`), only those are discovered.
 
     2.2. Rule Matching
 
-        Each pack's top-level entries (files and directories immediately under the pack root) are matched against the rule set. Rules declare patterns, the handler that should claim a match, and a priority. Higher priority wins; first match wins at equal priority. Exclusion rules (prefixed `!`) remove entries from consideration before any handler sees them.
+        Each pack's top-level entries (files and directories immediately under the pack root) are matched against the rule set. Rules declare patterns, the handler that should claim a match, and a priority. Higher priority wins; first match wins at equal priority. The two filter handlers (`ignore`, `skip`) sit at the highest priority tier so a file the user wants dropped never gets claimed by a precise mapping or the catchall.
 
         The scanner is top-level only. It does _not_ recurse into subdirectories. A handler that receives a directory entry decides for itself what to do with the contents.
 

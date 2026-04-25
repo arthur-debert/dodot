@@ -10,10 +10,17 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
-- `mappings.exclude` config list: filenames matched here are surfaced in
-  `dodot status` as `ignored` instead of being claimed by the catchall
-  symlink handler. Defaults cover documentation/legal files (`README`,
-  `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING`
-  and their `.*` variants), matched case-insensitively. Override per-pack
-  by setting `[mappings] exclude = []` (or a different list) in the
-  pack's `.dodot.toml`.
+- `[mappings] ignore` and `[mappings] skip` config lists, backed by two
+  new filter handlers in a dedicated execution phase that runs before
+  every other phase:
+  - `ignore` (default `[]`): silently drops matching files, mirroring
+    `.gitignore` — nothing surfaces in `dodot status`.
+  - `skip` (defaults: `README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`,
+    `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants, matched
+    case-insensitively): listed in `dodot status` as `skipped`, but no
+    handler runs on them. Override per-pack with `[mappings] skip = []`
+    to deploy a README intentionally.
+  Filter handlers are real registered handlers (no synthetic-name
+  dispatch) and win over precise mappings and the catchall via ordinary
+  rule priority. The pack-level `.dodotignore` marker is unchanged but
+  is now referred to as the "pack-ignore" mechanism in docs.

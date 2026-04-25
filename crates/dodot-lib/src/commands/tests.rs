@@ -76,10 +76,10 @@ fn status_shows_pending_before_up() {
 }
 
 #[test]
-fn status_marks_readme_and_license_as_ignored() {
-    // Files matched by `mappings.exclude` (defaults: README, LICENSE,
-    // CHANGELOG, …) should appear in status with handler "excluded"
-    // and status "ignored" rather than being silently dropped or
+fn status_marks_readme_and_license_as_skipped() {
+    // Files matched by `mappings.skip` (defaults: README, LICENSE,
+    // CHANGELOG, …) should appear in status with handler "skip"
+    // and status "skipped" rather than being silently dropped or
     // routed to the symlink catchall.
     let env = TempEnvironment::builder()
         .pack("vim")
@@ -98,15 +98,15 @@ fn status_marks_readme_and_license_as_ignored() {
         pack.files.iter().map(|f| (f.name.as_str(), f)).collect();
 
     let readme = by_name.get("README.md").expect("README.md in status");
-    assert_eq!(readme.handler, "excluded");
-    assert_eq!(readme.status, "ignored");
-    assert_eq!(readme.status_label, "ignored");
+    assert_eq!(readme.handler, "skip");
+    assert_eq!(readme.status, "skipped");
+    assert_eq!(readme.status_label, "skipped");
 
     let license = by_name.get("license").expect("license in status");
-    assert_eq!(license.handler, "excluded", "case-insensitive match");
+    assert_eq!(license.handler, "skip", "case-insensitive match");
 
     let changelog = by_name.get("CHANGELOG").expect("CHANGELOG in status");
-    assert_eq!(changelog.handler, "excluded");
+    assert_eq!(changelog.handler, "skip");
 
     let vimrc = by_name.get("vimrc").expect("vimrc in status");
     assert_eq!(vimrc.handler, "symlink");
