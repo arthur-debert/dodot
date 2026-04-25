@@ -376,8 +376,12 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     info!(count = all_packs.len(), "discovered packs");
 
     if let Some(names) = pack_filter {
-        all_packs.retain(|p| names.iter().any(|n| n == &p.name));
-        ignored_packs.retain(|name| names.iter().any(|n| n == name));
+        all_packs.retain(|p| names.iter().any(|n| n == &p.display_name || n == &p.name));
+        ignored_packs.retain(|name| {
+            names
+                .iter()
+                .any(|n| n == name || n == crate::packs::display_name_for(name))
+        });
     }
 
     let registry = handlers::create_registry(ctx.fs.as_ref());
@@ -388,7 +392,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     let mut pack_intents = Vec::new();
 
     for mut pack in all_packs {
-        info!(pack = %pack.name, "checking pack status");
+        info!(pack = %pack.display_name, "checking pack status");
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
         let rules = mappings_to_rules(&pack_config.mappings);
@@ -421,7 +425,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                         // intent-collection attempt below.
                         warnings.push(format!(
                             "preprocessing failed for pack '{}': {}",
-                            pack.name, err
+                            pack.display_name, err
                         ));
                         crate::preprocessing::pipeline::PreprocessResult::passthrough(Vec::new())
                     }
@@ -435,15 +439,18 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         let all_entries = preprocess_result.merged_entries();
         let matches = scanner.match_entries(&all_entries, &rules, &pack.name);
 
-        // Collect intents for conflict detection
+        // Collect intents for conflict detection. The first tuple
+        // element is the user-facing label that surfaces in any
+        // resulting `DisplayConflict.claimants` entry, so it tracks
+        // the pack's display name rather than its raw on-disk name.
         match orchestration::collect_pack_intents(&pack, ctx) {
             Ok(intents) => {
-                pack_intents.push((pack.name.clone(), intents));
+                pack_intents.push((pack.display_name.clone(), intents));
             }
             Err(err) => {
                 warnings.push(format!(
                     "could not collect intents for pack '{}'; conflict detection may be incomplete: {}",
-                    pack.name, err
+                    pack.display_name, err
                 ));
             }
         }
@@ -513,7 +520,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             });
         }
 
-        display_packs.push(DisplayPack::new(pack.name.clone(), files));
+        display_packs.push(DisplayPack::new(pack.display_name.clone(), files));
     }
 
     // Detect and surface cross-pack conflicts as structured display data
@@ -532,6 +539,15 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         debug!("no cross-pack conflicts");
     }
 
+    // Surface ignored packs by their display name, not the raw
+    // on-disk directory — the prefix grammar must stay invisible to
+    // the rendered "Ignored Packs" section just like every other
+    // user-facing surface.
+    let ignored_display: Vec<String> = ignored_packs
+        .iter()
+        .map(|d| crate::packs::display_name_for(d).to_string())
+        .collect();
+
     Ok(PackStatusResult {
         message: None,
         dry_run: false,
@@ -539,7 +555,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         warnings,
         notes,
         conflicts: display_conflicts,
-        ignored_packs,
+        ignored_packs: ignored_display,
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })

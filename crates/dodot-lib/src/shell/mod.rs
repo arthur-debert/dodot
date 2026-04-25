@@ -99,10 +99,16 @@ pub fn generate_init_script(
         if !pack_entry.is_dir {
             continue;
         }
-        let pack_name = &pack_entry.name;
+        // The datastore subtree is keyed by the on-disk directory
+        // name (e.g. `010-nvim`), but the comment we emit in the
+        // generated init script uses the pack's display name
+        // (`nvim`) — that's what the user sees in `dodot status` and
+        // expects to recognise here.
+        let pack_dir = &pack_entry.name;
+        let pack_display = crate::packs::display_name_for(pack_dir).to_string();
 
         // Shell handler: source scripts
-        let shell_dir = paths.handler_data_dir(pack_name, "shell");
+        let shell_dir = paths.handler_data_dir(pack_dir, "shell");
         if fs.is_dir(&shell_dir) {
             if let Ok(entries) = fs.read_dir(&shell_dir) {
                 for entry in entries {
@@ -111,13 +117,13 @@ pub fn generate_init_script(
                     }
                     // Follow the symlink to get the actual file path
                     let target = fs.readlink(&entry.path)?;
-                    shell_sources.push((pack_name.clone(), target));
+                    shell_sources.push((pack_display.clone(), target));
                 }
             }
         }
 
         // Path handler: add to PATH
-        let path_dir = paths.handler_data_dir(pack_name, "path");
+        let path_dir = paths.handler_data_dir(pack_dir, "path");
         if fs.is_dir(&path_dir) {
             if let Ok(entries) = fs.read_dir(&path_dir) {
                 for entry in entries {
@@ -125,7 +131,7 @@ pub fn generate_init_script(
                         continue;
                     }
                     let target = fs.readlink(&entry.path)?;
-                    path_additions.push((pack_name.clone(), target));
+                    path_additions.push((pack_display.clone(), target));
                 }
             }
         }

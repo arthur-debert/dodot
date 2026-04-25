@@ -461,11 +461,7 @@ mod tests {
     use crate::testing::TempEnvironment;
 
     fn make_pack(name: &str, path: PathBuf) -> Pack {
-        Pack {
-            name: name.into(),
-            path,
-            config: HandlerConfig::default(),
-        }
+        Pack::new(name.into(), path, HandlerConfig::default())
     }
 
     fn default_rules() -> Vec<Rule> {

@@ -295,11 +295,7 @@ mod tests {
     use std::sync::Arc;
 
     fn make_pack(name: &str, path: PathBuf) -> Pack {
-        Pack {
-            name: name.into(),
-            path,
-            config: HandlerConfig::default(),
-        }
+        Pack::new(name.into(), path, HandlerConfig::default())
     }
 
     fn make_registry() -> PreprocessorRegistry {
