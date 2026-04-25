@@ -8,7 +8,7 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 `### Removed`, `### Fixed`, `### Security`) so they nest cleanly under the
 `## [version]` heading the release workflow inserts.
 
-### Documentation
+### Changed
 
 - Documented the cross-pack ordering contract: dodot processes packs in
   lexicographic order of their on-disk directory names, and that order

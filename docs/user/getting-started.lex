@@ -106,7 +106,7 @@ dodot: Up and Running in 5 Minutes
 
     This is a one-time step per machine. The init script is regenerated on every `dodot up` and `dodot down`, so you never need to touch this line again.
 
-    A small footnote on what belongs *above* this line, in raw shell rc: anything that has to exist before dodot itself can run. The two real cases are Homebrew's shell environment (the `eval "$(/opt/homebrew/bin/brew shellenv)"` that puts `dodot` on `$PATH` in the first place) and OS-level prereqs that block any pack from succeeding (xcode-select, license acceptance). Everything else belongs in a pack. See [./../reference/handlers.lex] (Cross-Pack Ordering) for how packs are ordered relative to each other once dodot does take over.
+    A small footnote on what belongs *above* this line, in raw shell rc: anything that has to exist before dodot itself can run. The two real cases are Homebrew's shell environment (the `eval "$(... brew shellenv)"` line — with whatever absolute path your install uses, typically `/opt/homebrew/bin/brew` on Apple Silicon and `/usr/local/bin/brew` on Intel — that puts `dodot` on `$PATH` in the first place) and OS-level prereqs that block any pack from succeeding (xcode-select, license acceptance). Everything else belongs in a pack. See [./../reference/handlers.lex] (Cross-Pack Ordering) for how packs are ordered relative to each other once dodot does take over.
 
 3. What's Next
 
