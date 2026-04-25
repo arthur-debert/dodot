@@ -200,6 +200,21 @@ echo hi'
     assert_output_contains "3/3"
 }
 
+@test "probe shell-init --runs without value defaults to 10" {
+    create_pack_file "vim" "aliases.sh" "alias vi=vim"
+    dodot up
+    bash -c ". \"$XDG_DATA_HOME/dodot/shell/dodot-init.sh\""
+
+    # `--runs` with no value should aggregate over up to 10 runs (the
+    # clap default_missing_value), not error or require an explicit N.
+    run dodot probe shell-init --runs
+    [ "$status" -eq 0 ]
+    assert_output_contains "Shell-init aggregate"
+    # Only one profile exists, but we requested 10, so the renderer
+    # warns about the mismatch.
+    assert_output_contains "requested 10"
+}
+
 @test "probe shell-init --runs warns when fewer profiles than requested" {
     create_pack_file "vim" "aliases.sh" "alias vi=vim"
     dodot up

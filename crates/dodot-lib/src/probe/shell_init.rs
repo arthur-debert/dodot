@@ -86,21 +86,24 @@ pub fn read_latest_profile(fs: &dyn Fs, paths: &dyn Pather) -> Result<Option<Pro
 /// Profiles are returned in reverse chronological order (newest first).
 /// The cap exists because callers know how much they need — `--runs 5`
 /// asks for five — and the directory may have hundreds of files.
-/// Filenames are lexically sorted, which is equivalent to chronological
-/// since the leading `profile-<unix_ts>` segment is monotonic.
+///
+/// Implementation: `Fs::read_dir` already returns entries sorted by
+/// name, and `profile-<unix_ts>-…` is fixed-prefix monotonic, so
+/// lexical-ascending == chronological-ascending. We `.rev()` the
+/// iterator to walk newest-first, filter, and `take(limit)` so we
+/// only allocate the rows we'll actually return.
 pub fn read_recent_profiles(fs: &dyn Fs, paths: &dyn Pather, limit: usize) -> Result<Vec<Profile>> {
     let dir = paths.probes_shell_init_dir();
     if !fs.is_dir(&dir) || limit == 0 {
         return Ok(Vec::new());
     }
-    let mut entries: Vec<_> = fs
+    let entries: Vec<_> = fs
         .read_dir(&dir)?
         .into_iter()
+        .rev()
         .filter(|e| e.is_file && e.name.starts_with("profile-") && e.name.ends_with(".tsv"))
+        .take(limit)
         .collect();
-    // Sort newest-first by filename (lex == chrono per filename format).
-    entries.sort_by(|a, b| b.name.cmp(&a.name));
-    entries.truncate(limit);
 
     let mut profiles = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -202,7 +205,10 @@ pub fn rotate_profiles(fs: &dyn Fs, paths: &dyn Pather, keep: usize) -> Result<u
     if !fs.is_dir(&dir) {
         return Ok(0);
     }
-    let mut entries: Vec<_> = fs
+    // `Fs::read_dir` returns entries already sorted by name, and
+    // `profile-<unix_ts>-…` is fixed-prefix monotonic, so the result
+    // is chronological-ascending; oldest entries are at the front.
+    let entries: Vec<_> = fs
         .read_dir(&dir)?
         .into_iter()
         .filter(|e| e.is_file && e.name.starts_with("profile-") && e.name.ends_with(".tsv"))
@@ -210,7 +216,6 @@ pub fn rotate_profiles(fs: &dyn Fs, paths: &dyn Pather, keep: usize) -> Result<u
     if entries.len() <= keep {
         return Ok(0);
     }
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
     let to_remove = entries.len() - keep;
     let mut removed = 0;
     for entry in entries.into_iter().take(to_remove) {

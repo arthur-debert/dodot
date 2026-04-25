@@ -367,10 +367,13 @@ fn build_clap_command() -> ClapCommand {
                             Arg::new("runs")
                                 .long("runs")
                                 .help(
-                                    "Aggregate the last N runs into per-target p50/p95/max",
+                                    "Aggregate the last N runs into per-target p50/p95/max (defaults to 10 if N is omitted)",
                                 )
                                 .value_parser(clap::value_parser!(usize))
-                                .num_args(1)
+                                // Optional value: `--runs` alone uses
+                                // DEFAULT_RUNS, `--runs 5` overrides.
+                                .num_args(0..=1)
+                                .default_missing_value("10")
                                 .conflicts_with("history"),
                         )
                         .arg(

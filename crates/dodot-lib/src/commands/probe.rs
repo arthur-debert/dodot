@@ -355,11 +355,13 @@ pub fn humanize_us(us: u64) -> String {
     }
 }
 
-/// Default `--runs` value when the flag is supplied without one.
-/// Picked to be larger than typical day-to-day usage but cheap to load.
-pub const DEFAULT_RUNS: usize = 10;
-
 /// Aggregate the last `runs` profiles into per-target percentile stats.
+///
+/// The CLI applies a default of 10 when the user passes `--runs`
+/// without a value (see `clap`'s `default_missing_value` in
+/// `dodot-cli/src/main.rs`); this function takes the resolved count
+/// directly so it stays useful from external callers (tests, custom
+/// harnesses) that pick their own N.
 pub fn shell_init_aggregate(ctx: &ExecutionContext, runs: usize) -> Result<ProbeResult> {
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
@@ -394,7 +396,7 @@ fn into_aggregate_row(t: AggregatedTarget) -> ShellInitAggregateRow {
 }
 
 /// Default cap on the number of history rows emitted, so a user with
-/// hundreds of profiles doesn't get a page-fillingrace down their
+/// hundreds of profiles doesn't get a page-filling race down their
 /// terminal.
 pub const DEFAULT_HISTORY_LIMIT: usize = 50;
 
@@ -440,11 +442,18 @@ fn into_history_row(h: HistoryEntry) -> ShellInitHistoryRow {
 /// overkill for one display string. Algorithm: Howard Hinnant's
 /// civil_from_days.
 pub fn format_unix_ts(ts: u64) -> String {
-    if ts == 0 {
+    // 0 is the parse-failure sentinel from `parse_unix_ts_from_filename`;
+    // anything past year 9999 is also nonsense in a shell-startup
+    // profile (the file format itself is the giveaway). Returning an
+    // empty string keeps the renderer predictable even in the face of
+    // a tampered-with filename, and bounds the i64 cast on `days`
+    // safely below i64::MAX regardless of input.
+    const MAX_REASONABLE_TS: u64 = 253_402_300_799; // 9999-12-31T23:59:59 UTC.
+    if ts == 0 || ts > MAX_REASONABLE_TS {
         return String::new();
     }
     let secs_per_day: u64 = 86_400;
-    let days = (ts / secs_per_day) as i64;
+    let days = (ts / secs_per_day) as i64; // safe: ts < 2.5e11 → days < 3e6
     let secs_of_day = ts % secs_per_day;
     let hour = secs_of_day / 3600;
     let minute = (secs_of_day % 3600) / 60;
@@ -627,6 +636,21 @@ mod tests {
         assert_eq!(humanize_bytes(1024), "1.0 KB");
         assert_eq!(humanize_bytes(1024 * 1024), "1.0 MB");
         assert_eq!(humanize_bytes(1024 * 1024 * 1024), "1.0 GB");
+    }
+
+    #[test]
+    fn format_unix_ts_handles_zero_and_out_of_range() {
+        // Sentinel for parse-failure → empty, not a date.
+        assert_eq!(format_unix_ts(0), "");
+        // Real timestamp → formatted.
+        assert_eq!(format_unix_ts(1_714_000_000), "2024-04-24 23:06");
+        // Past year 9999 → empty (defensive ceiling so a tampered
+        // filename doesn't produce a nonsense date or risk overflow
+        // during the i64 cast on `days`).
+        assert_eq!(format_unix_ts(u64::MAX), "");
+        assert_eq!(format_unix_ts(253_402_300_800), ""); // 1s past year 9999.
+                                                         // Right below the ceiling still renders.
+        assert_eq!(format_unix_ts(253_402_300_799), "9999-12-31 23:59");
     }
 
     #[test]
