@@ -440,9 +440,11 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // Write three fake profile TSVs by hand: two with exit_status=1
-    // for aliases.sh, one with exit_status=0. Newer filenames sort
-    // last lexically; the reader walks newest-first.
+    // Write three fake profile TSVs by hand. Distinct exit codes for
+    // the old vs. new failure — if the aggregator overwrites
+    // last_failure_exit while iterating newest→oldest, this test
+    // catches it: oldest=2, newest=1, so the label must say "exited 1"
+    // (the most-recent failure), not "exited 2".
     let source_path = env.dotfiles_root.join("vim/aliases.sh");
     let target = source_path.display().to_string();
     let probes_dir = env.paths.probes_shell_init_dir();
@@ -462,9 +464,9 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
             )
             .unwrap();
     };
-    make_profile(1714000001, 1);
-    make_profile(1714000002, 0);
-    make_profile(1714000003, 1);
+    make_profile(1714000001, 2); // oldest failure
+    make_profile(1714000002, 0); // clean run in the middle
+    make_profile(1714000003, 1); // most recent failure
 
     let result = commands::status::status(None, &ctx).unwrap();
     let row = result.packs[0]
@@ -474,9 +476,16 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
         .expect("aliases.sh row missing");
 
     assert_eq!(row.status, "broken", "row: {row:?}");
+    // Label must report the *most recent* failure's exit code (1),
+    // not the older one (2).
     assert!(
         row.status_label.contains("exited 1") && row.status_label.contains("2/3"),
         "status_label was: {}",
+        row.status_label
+    );
+    assert!(
+        !row.status_label.contains("exited 2"),
+        "status_label should report newest failure, not older: {}",
         row.status_label
     );
     let note_idx = row.note_ref.expect("expected note ref") as usize;
@@ -484,6 +493,11 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
     assert!(
         note.body.contains("2 of 3 recent shell startups"),
         "note body: {}",
+        note.body
+    );
+    assert!(
+        note.body.contains("last failure: exit 1"),
+        "note should mention most recent failure exit code: {}",
         note.body
     );
 }

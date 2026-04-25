@@ -317,9 +317,13 @@ fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
     let target_str = target.display().to_string();
     let target_q = sh_quote(&target_str);
     writeln!(script, "if [ \"$_dodot_prof\" = \"1\" ]; then").unwrap();
+    // `_dodot_rc` is initialised to 0 *before* the source attempt so a
+    // missing file (the `[ -f … ]` test failing) does not get reported
+    // as "exited 1". The compound `&& { … }` only sets `_dodot_rc` from
+    // the actual `.` invocation; otherwise it stays 0.
     writeln!(
         script,
-        "  _dodot_t0=$EPOCHREALTIME; [ -f \"{target_str}\" ] && . \"{target_str}\"; _dodot_rc=$?; _dodot_t1=$EPOCHREALTIME"
+        "  _dodot_rc=0; _dodot_t0=$EPOCHREALTIME; [ -f \"{target_str}\" ] && {{ . \"{target_str}\"; _dodot_rc=$?; }}; _dodot_t1=$EPOCHREALTIME"
     )
     .unwrap();
     writeln!(
@@ -706,6 +710,39 @@ mod tests {
         let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
         assert!(script.contains("No shell scripts or PATH additions"));
         assert!(!script.contains("_dodot_prof"));
+    }
+
+    #[test]
+    fn profiled_source_initialises_rc_so_missing_file_isnt_reported_as_failure() {
+        // Regression: previously the profiled branch was
+        //
+        //   _dodot_rc=$?  # after `[ -f X ] && . X`
+        //
+        // which captured the file-test exit (1) when the file was
+        // absent — falsely classifying "file missing" as "source
+        // exited 1". The fix initialises _dodot_rc to 0 before the
+        // attempt, and only updates it inside the `&& { . X; rc=$?; }`
+        // group when the source actually ran.
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "alias vi=vim")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+        // Pre-attempt initialisation present.
+        assert!(
+            script.contains("_dodot_rc=0;"),
+            "profiled branch must seed _dodot_rc=0 before the source attempt:\n{script}"
+        );
+        // Source is wrapped so the rc only updates when `.` ran.
+        assert!(
+            script.contains("&& { . "),
+            "profiled branch must guard the rc update inside `&& {{ … }}`:\n{script}"
+        );
     }
 
     #[test]

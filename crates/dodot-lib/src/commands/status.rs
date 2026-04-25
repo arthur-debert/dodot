@@ -224,7 +224,7 @@ fn verify_symlink(
 /// Checks: data link exists → points to source → source exists.
 /// For shell handler, also checks for a syntax-error sidecar from the
 /// pre-flight check that runs at `dodot up` time — its presence flips
-/// a healthy chain to `DeployedWithSyntaxError`.
+/// a healthy chain to `DeployedWithError`.
 fn verify_staged(
     source: &std::path::Path,
     pack: &str,
@@ -316,9 +316,13 @@ fn recent_runtime_failures(
     }
     let target_str = source.to_string_lossy();
 
+    // `profiles` is newest-first. We want the *most recent* non-zero
+    // exit for the label/footnote — set on the first failure we see
+    // and never overwritten. (An older failure is irrelevant to the
+    // user's current understanding of the file's state.)
     let mut runs_seen = 0;
     let mut runs_failed = 0;
-    let mut last_exit: i32 = 0;
+    let mut last_failure_exit: Option<i32> = None;
     for profile in &profiles {
         if let Some(entry) = profile
             .entries
@@ -328,17 +332,20 @@ fn recent_runtime_failures(
             runs_seen += 1;
             if entry.exit_status != 0 {
                 runs_failed += 1;
-                last_exit = entry.exit_status;
+                if last_failure_exit.is_none() {
+                    last_failure_exit = Some(entry.exit_status);
+                }
             }
         }
     }
+    let last_exit = last_failure_exit?;
     if runs_failed == 0 {
         return None;
     }
 
     let label = format!("exited {last_exit} ({runs_failed}/{runs_seen})");
     let reason = format!(
-        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last exit: {last_exit}). \
+        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last failure: exit {last_exit}). \
          See `dodot probe shell-init --history` for details."
     );
     Some((label, reason))
