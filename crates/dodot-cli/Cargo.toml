@@ -23,5 +23,5 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-dodot-lib = { version = "0.20.0", path = "../dodot-lib", features = ["test-utils"] }
+dodot-lib = { version = "0.21.0", path = "../dodot-lib", features = ["test-utils"] }
 tempfile = "3"
