@@ -294,6 +294,10 @@ impl<'a> Scanner<'a> {
         pack_name: &str,
     ) -> Vec<RuleMatch> {
         let compiled = compile_rules(rules);
+        // Compute once per scan rather than per file: when no rule
+        // requested case-insensitive matching, match_file can skip the
+        // per-entry `to_lowercase` allocation entirely.
+        let has_ci_rules = compiled.iter().any(|r| r.case_insensitive);
         let mut matches = Vec::new();
 
         for entry in entries {
@@ -305,6 +309,7 @@ impl<'a> Scanner<'a> {
 
             if let Some(rule_match) = match_file(
                 &compiled,
+                has_ci_rules,
                 &filename,
                 entry.is_dir,
                 &entry.relative_path,
@@ -419,16 +424,25 @@ impl<'a> Scanner<'a> {
 /// 2. Check inclusion rules by priority (descending), first match wins.
 fn match_file(
     compiled: &[CompiledRule],
+    has_ci_rules: bool,
     filename: &str,
     is_dir: bool,
     rel_path: &Path,
     abs_path: &Path,
     pack: &str,
 ) -> Option<RuleMatch> {
-    let lowered = filename.to_lowercase();
+    // Only allocate the lowercased form when at least one rule actually
+    // wants case-insensitive matching. The common case — no `excluded`
+    // rules at all, or the user has set `mappings.exclude = []` — pays
+    // zero allocations here.
+    let lowered = if has_ci_rules {
+        Some(filename.to_lowercase())
+    } else {
+        None
+    };
     let pick = |rule: &CompiledRule| -> &str {
         if rule.case_insensitive {
-            lowered.as_str()
+            lowered.as_deref().unwrap_or(filename)
         } else {
             filename
         }
