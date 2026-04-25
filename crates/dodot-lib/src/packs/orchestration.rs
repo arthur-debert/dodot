@@ -28,6 +28,10 @@ pub struct ExecutionContext {
     pub datastore: Arc<dyn DataStore>,
     pub paths: Arc<dyn Pather>,
     pub config_manager: Arc<ConfigManager>,
+    /// Pre-flight syntax checker for shell sources. Production wires
+    /// up [`SystemSyntaxChecker`](crate::shell::SystemSyntaxChecker)
+    /// (spawns real `bash`/`zsh -n`); tests inject a mock.
+    pub syntax_checker: Arc<dyn crate::shell::SyntaxChecker>,
     pub dry_run: bool,
     pub no_provision: bool,
     pub provision_rerun: bool,
@@ -73,6 +77,7 @@ impl ExecutionContext {
             datastore,
             paths,
             config_manager,
+            syntax_checker: Arc::new(crate::shell::SystemSyntaxChecker),
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
@@ -499,6 +504,7 @@ mod tests {
             datastore,
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
+            syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
             dry_run: false,
             no_provision: true, // skip install/homebrew in tests
             provision_rerun: false,
@@ -655,6 +661,7 @@ mod tests {
             datastore,
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
+            syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
             dry_run: true,
             no_provision: true,
             provision_rerun: false,

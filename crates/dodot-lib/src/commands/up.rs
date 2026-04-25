@@ -132,6 +132,35 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         if removed > 0 {
             debug!(removed, "pruned old shell-init profiles");
         }
+
+        // Pre-flight syntax check: parse-only run of bash/zsh against
+        // each deployed shell source so a typo in `aliases.sh` shows up
+        // here instead of silently breaking next shell startup. The
+        // sidecar files this writes are read back by `dodot status`.
+        // The checker is injected via context so tests can stub it out.
+        let report = shell::validate_shell_sources(
+            ctx.fs.as_ref(),
+            ctx.paths.as_ref(),
+            ctx.syntax_checker.as_ref(),
+        )?;
+        if !report.failures.is_empty() {
+            info!(
+                count = report.failures.len(),
+                "shell syntax check found failures"
+            );
+            eprintln!(
+                "dodot: {} shell file{} failed pre-flight syntax check (see `dodot status`)",
+                report.failures.len(),
+                if report.failures.len() == 1 { "" } else { "s" }
+            );
+        }
+        for interp in &report.missing_interpreters {
+            // One-line skip notice per missing interpreter, not per
+            // file. Doesn't fail the run — the file is still deployed.
+            eprintln!(
+                "dodot: `{interp}` not on PATH, skipped syntax check for matching shell files"
+            );
+        }
     }
 
     let has_failures = pack_results
