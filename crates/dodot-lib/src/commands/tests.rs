@@ -3214,6 +3214,164 @@ fn probe_deployment_map_json_mode_is_kind_tagged() {
     assert!(parsed["entries"].is_array());
 }
 
+// ── probe shell-init Phase 3 (--runs / --history) ─────────────────
+
+fn write_fake_profile(env: &TempEnvironment, name: &str, lines: &[&str]) {
+    let dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&dir).unwrap();
+    let mut content =
+        String::from("# columns\tphase\tpack\thandler\ttarget\tstart_t\tend_t\texit_status\n");
+    for l in lines {
+        content.push_str(l);
+        content.push('\n');
+    }
+    env.fs
+        .write_file(&dir.join(name), content.as_bytes())
+        .unwrap();
+}
+
+#[test]
+fn probe_shell_init_aggregate_renders_percentile_table() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    // Three fake profiles with the same target; verify p50/p95/max
+    // surface in the rendered text.
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000002-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000200\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000003-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000300\t0"],
+    );
+    let result = commands::probe::shell_init_aggregate(&ctx, 5).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("aggregate"),
+        "header missing; got:\n{output}"
+    );
+    assert!(output.contains("aliases.sh"), "row missing; got:\n{output}");
+    assert!(output.contains("3/3"), "seen-label missing; got:\n{output}");
+}
+
+#[test]
+fn probe_shell_init_aggregate_warns_when_fewer_runs_than_requested() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000100\t0"],
+    );
+    // Asked for 10, only 1 on disk.
+    let result = commands::probe::shell_init_aggregate(&ctx, 10).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("requested 10"),
+        "expected mismatch warning; got:\n{output}"
+    );
+}
+
+#[test]
+fn probe_shell_init_aggregate_empty_state_shows_hint() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_aggregate(&ctx, 5).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("no profiles yet"),
+        "expected empty hint; got:\n{output}"
+    );
+}
+
+#[test]
+fn probe_shell_init_history_renders_one_row_per_run_oldest_first() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    // Three profiles with distinct timestamps in their filenames.
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/a.sh\t1.000000\t1.000100\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/a.sh\t1.000000\t1.000200\t1"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714007200-1-1.tsv",
+        &["source\tvim\tshell\t/a.sh\t1.000000\t1.000300\t0"],
+    );
+    let result = commands::probe::shell_init_history(&ctx, 50).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("history"), "header missing; got:\n{output}");
+    // Date stamps from the timestamps (1714000000 ≈ 2024-04-24 23:06 UTC).
+    assert!(
+        output.contains("2024-04-24"),
+        "date missing; got:\n{output}"
+    );
+    // Three rendered rows; ordering check via JSON because the text
+    // template's column padding makes substring offsets fragile.
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let rows = parsed["rows"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    // Oldest unix_ts first, newest last.
+    let timestamps: Vec<u64> = rows
+        .iter()
+        .map(|r| r["unix_ts"].as_u64().unwrap_or(0))
+        .collect();
+    assert_eq!(timestamps, vec![1714000000, 1714003600, 1714007200]);
+    // Middle row had a non-zero exit_status.
+    assert_eq!(rows[1]["failed_entries"].as_u64().unwrap(), 1);
+    assert_eq!(rows[0]["failed_entries"].as_u64().unwrap(), 0);
+    assert_eq!(rows[2]["failed_entries"].as_u64().unwrap(), 0);
+}
+
+#[test]
+fn probe_shell_init_history_empty_state_shows_hint() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_history(&ctx, 50).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("no profiles yet"),
+        "expected empty hint; got:\n{output}"
+    );
+}
+
+#[test]
+fn probe_shell_init_aggregate_json_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_aggregate(&ctx, 1).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "shell-init-aggregate");
+    assert!(parsed["rows"].is_array());
+    assert!(parsed["requested_runs"].is_number());
+}
+
+#[test]
+fn probe_shell_init_history_json_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_history(&ctx, 1).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "shell-init-history");
+    assert!(parsed["rows"].is_array());
+}
+
 // ── deployment map (written on up/down alongside the init script) ──
 
 #[test]

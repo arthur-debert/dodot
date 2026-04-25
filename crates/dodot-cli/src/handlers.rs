@@ -242,12 +242,27 @@ pub fn probe_show_data_dir_handler(
 }
 
 /// `dodot probe shell-init` — most recent shell-startup profile.
+///
+/// Three views, switched by mutually-exclusive flags:
+/// - default: single-run detail (most recent profile)
+/// - `--runs N`: per-target percentile aggregate over the last N runs
+/// - `--history`: one-row-per-run trend, oldest first
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
     let ctx = build_readonly_ctx(matches)?;
-    Ok(Output::Render(commands::probe::shell_init(&ctx)?))
+    let runs = matches.get_one::<usize>("runs").copied();
+    let history = flag_or_false(matches, "history");
+
+    let result = if let Some(n) = runs {
+        commands::probe::shell_init_aggregate(&ctx, n)?
+    } else if history {
+        commands::probe::shell_init_history(&ctx, commands::probe::DEFAULT_HISTORY_LIMIT)?
+    } else {
+        commands::probe::shell_init(&ctx)?
+    };
+    Ok(Output::Render(result))
 }
 
 // ── Passthrough handlers (bypass standout rendering) ────────────
