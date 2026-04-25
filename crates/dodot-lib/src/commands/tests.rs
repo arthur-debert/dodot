@@ -38,6 +38,7 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         datastore,
         paths: env.paths.clone() as Arc<dyn Pather>,
         config_manager,
+        syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
         dry_run: false,
         no_provision: true,
         provision_rerun: false,
@@ -364,6 +365,48 @@ fn up_generates_shell_init() {
         init_content.contains("aliases.sh"),
         "init script: {init_content}"
     );
+}
+
+#[test]
+fn up_writes_syntax_error_sidecar_when_check_fails() {
+    use crate::shell::{SyntaxCheckResult, SyntaxChecker};
+    use std::path::Path;
+
+    // A checker that flags `aliases.sh` as broken so we can verify
+    // up wires the validation pass through correctly.
+    struct FlagAliases;
+    impl SyntaxChecker for FlagAliases {
+        fn check(&self, _interpreter: &str, file: &Path) -> SyntaxCheckResult {
+            if file.file_name().and_then(|s| s.to_str()) == Some("aliases.sh") {
+                SyntaxCheckResult::SyntaxError {
+                    stderr: "aliases.sh: line 1: unexpected token\n".into(),
+                }
+            } else {
+                SyntaxCheckResult::Ok
+            }
+        }
+    }
+
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "if [ x = y\nfi")
+        .file("env.sh", "export FOO=bar")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.syntax_checker = Arc::new(FlagAliases);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Sidecar present for the failing file…
+    let bad = crate::shell::error_sidecar_path(env.paths.as_ref(), "vim", "aliases.sh");
+    assert!(env.fs.exists(&bad), "expected sidecar at {}", bad.display());
+    let body = env.fs.read_to_string(&bad).unwrap();
+    assert!(body.contains("unexpected token"), "sidecar:\n{body}");
+
+    // …and not for the clean file.
+    let good = crate::shell::error_sidecar_path(env.paths.as_ref(), "vim", "env.sh");
+    assert!(!env.fs.exists(&good));
 }
 
 #[test]

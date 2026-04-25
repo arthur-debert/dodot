@@ -44,6 +44,12 @@ use crate::fs::Fs;
 use crate::paths::Pather;
 use crate::Result;
 
+pub mod validate;
+pub use validate::{
+    error_sidecar_path, validate_shell_sources, NoopSyntaxChecker, ShellValidationFailure,
+    ShellValidationReport, SyntaxCheckResult, SyntaxChecker, SystemSyntaxChecker, ERRORS_SUBDIR,
+};
+
 /// Append the "nothing to do" notice for an empty init script.
 fn append_empty_notice(script: &mut String) {
     writeln!(script, "# No shell scripts or PATH additions to load.").unwrap();

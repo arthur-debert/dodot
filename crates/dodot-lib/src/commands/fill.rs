@@ -149,6 +149,7 @@ mod tests {
             datastore,
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
+            syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
