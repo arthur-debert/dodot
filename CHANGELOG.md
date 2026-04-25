@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-04-25
+
+### Added
+
+- **Interactive `dodot tutorial` subcommand.** Walks new users through
+  their first pack deployment using their actual dotfiles repo. A
+  hand-rolled state machine over 12 named steps renders templated
+  bodies (via `standout-render`) and asks one question per step
+  through a `Prompts` trait. `InquirePrompts` (production) wraps
+  `inquire` with italic prompt styling tied to a new `tutorial-prompt`
+  theme key; `ScriptedPrompts` (tests) feeds canned answers, surfacing
+  wizard-reorder bugs at the offending step. `TutorialEnv` bundles
+  fs/paths/datastore/config so tests run against a `TempEnvironment`
+  fixture instead of process env. Branches handle the empty-repo case
+  (offers `dodot init`), config-only packs (skip the shell-integration
+  step), and the eval-line prompt (append/clipboard/skip). Resume
+  state lives at `$XDG_DATA_HOME/dodot/tutorial.json` and is cleared
+  on completion.
+
 ## [0.21.0] - 2026-04-25
 
 ### Added
