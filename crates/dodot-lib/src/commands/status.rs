@@ -539,6 +539,15 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         debug!("no cross-pack conflicts");
     }
 
+    // Surface ignored packs by their display name, not the raw
+    // on-disk directory — the prefix grammar must stay invisible to
+    // the rendered "Ignored Packs" section just like every other
+    // user-facing surface.
+    let ignored_display: Vec<String> = ignored_packs
+        .iter()
+        .map(|d| crate::packs::display_name_for(d).to_string())
+        .collect();
+
     Ok(PackStatusResult {
         message: None,
         dry_run: false,
@@ -546,7 +555,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         warnings,
         notes,
         conflicts: display_conflicts,
-        ignored_packs,
+        ignored_packs: ignored_display,
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })

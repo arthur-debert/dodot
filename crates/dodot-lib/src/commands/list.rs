@@ -24,41 +24,46 @@ pub struct ListPack {
 ///
 /// Packs appear in the order dodot would apply them (lexicographic by
 /// on-disk directory name); see the `packs` module docs for the pack
-/// ordering contract.
+/// ordering contract. Goes through [`packs::scan_packs`] so list
+/// output respects the same `pack.ignore` patterns and surfaces the
+/// same scan-time errors (empty-stem prefix directories, ordering
+/// collisions) that every other command does — `dodot list` should
+/// never show ambiguous duplicates that `dodot up` would refuse.
 pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
-    let _root_config = ctx.config_manager.root_config()?;
+    let root_config = ctx.config_manager.root_config()?;
+    let scanned = packs::scan_packs(
+        ctx.fs.as_ref(),
+        ctx.paths.dotfiles_root(),
+        &root_config.pack.ignore,
+    )?;
 
-    // Get all directories (including ignored ones for display)
-    let entries = ctx.fs.read_dir(ctx.paths.dotfiles_root())?;
-    let mut entries: Vec<_> = entries
-        .into_iter()
-        .filter(|e| {
-            e.is_dir
-                && (!e.name.starts_with('.') || e.name == ".config")
-                && is_valid_pack_name(&e.name)
-        })
-        .collect();
-
-    // Sort by raw on-disk name so the displayed order matches deploy order.
-    entries.sort_by(|a, b| a.name.cmp(&b.name));
-
-    let packs = entries
-        .into_iter()
-        .map(|entry| {
-            let ignored = ctx.fs.exists(&entry.path.join(".dodotignore"));
+    // Two streams in: active packs (already carry display_name) and
+    // dodotignore-marked dirs (raw names). Merge into one list with
+    // the `ignored` flag, preserving lex order on the on-disk name
+    // so the displayed order still matches deploy order.
+    let mut entries: Vec<(String, ListPack)> = Vec::new();
+    for p in scanned.packs {
+        entries.push((
+            p.name.clone(),
             ListPack {
-                name: packs::display_name_for(&entry.name).to_string(),
-                ignored,
-            }
-        })
-        .collect();
+                name: p.display_name,
+                ignored: false,
+            },
+        ));
+    }
+    for dir in scanned.ignored {
+        let display = packs::display_name_for(&dir).to_string();
+        entries.push((
+            dir,
+            ListPack {
+                name: display,
+                ignored: true,
+            },
+        ));
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    Ok(ListResult { packs })
-}
-
-fn is_valid_pack_name(name: &str) -> bool {
-    !name.is_empty()
-        && name
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
+    Ok(ListResult {
+        packs: entries.into_iter().map(|(_, p)| p).collect(),
+    })
 }
