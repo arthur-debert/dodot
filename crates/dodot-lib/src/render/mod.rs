@@ -116,6 +116,10 @@ pub const TEMPLATE_LIST: &str = include_str!("../templates/list.jinja");
 /// Simple message output (init, fill, adopt, addignore).
 pub const TEMPLATE_MESSAGE: &str = include_str!("../templates/message.jinja");
 
+/// Probe — deployment map, data-dir tree, summary. Branches on the
+/// `kind` field of the serialized result.
+pub const TEMPLATE_PROBE: &str = include_str!("../templates/probe.jinja");
+
 // ── Renderer ────────────────────────────────────────────────────
 
 /// Create the dodot theme from the embedded YAML definition.
@@ -132,6 +136,7 @@ pub fn create_renderer() -> Renderer {
         .unwrap();
     renderer.add_template("list", TEMPLATE_LIST).unwrap();
     renderer.add_template("message", TEMPLATE_MESSAGE).unwrap();
+    renderer.add_template("probe", TEMPLATE_PROBE).unwrap();
     renderer
 }
 
@@ -154,6 +159,7 @@ pub fn render<T: serde::Serialize>(
         "pack-status" => TEMPLATE_PACK_STATUS,
         "list" => TEMPLATE_LIST,
         "message" => TEMPLATE_MESSAGE,
+        "probe" => TEMPLATE_PROBE,
         other => {
             return Err(crate::DodotError::Other(format!(
                 "unknown template: {other}"

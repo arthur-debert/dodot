@@ -6,6 +6,35 @@ CHANGELOG.md under a new version heading and clear this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Use sections: Added, Changed, Deprecated, Removed, Fixed, Security.
 
+## Added
+
+- **`dodot probe`** — a new diagnostics command tree for introspecting
+  deployed state. Three subcommands:
+  - `dodot probe` — summary listing the available probe subcommands.
+  - `dodot probe deployment-map` — rendered `pack / handler / kind /
+    source / datastore` table derived live from the datastore. Paths are
+    shortened to `~/…` where possible.
+  - `dodot probe show-data-dir [--depth N]` — bounded-depth tree view of
+    `<data_dir>` with per-node sizes and symlink targets. Truncated
+    subtrees report `(… N more)` so nothing disappears silently. Default
+    depth is 4; symlinks are never followed. Directories sort before
+    files.
+
+  All three honour `--output json` and emit a `{"kind": "…"}`-tagged
+  document for programmatic consumers.
+- **Deployment map file.** `dodot up` and `dodot down` now also write
+  `<data_dir>/deployment-map.tsv` alongside the regenerated shell init
+  script. The file is plain-text TSV with a `# dodot deployment map v1`
+  header, one row per datastore entry (`pack\thandler\tkind\tsource\tdatastore`),
+  overwritten on every run. Skipped during `--dry-run`. `dodot probe
+  deployment-map` renders its table live from the datastore, not from
+  this file; the TSV is a written snapshot for machine-to-machine
+  consumers, including the forthcoming `dodot refresh` (see
+  `docs/proposals/magic.lex`), which will use it for source-template
+  mtime touches.
+- `Pather::deployment_map_path()` trait method, returning
+  `<data_dir>/deployment-map.tsv`.
+
 ## Changed
 
 - Shell-related handlers now recognize `.bash` and `.zsh` extensions in

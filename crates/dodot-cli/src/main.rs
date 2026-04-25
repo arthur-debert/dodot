@@ -88,6 +88,7 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
     ("pack-status.jinja", render::TEMPLATE_PACK_STATUS),
     ("list.jinja", render::TEMPLATE_LIST),
     ("message.jinja", render::TEMPLATE_MESSAGE),
+    ("probe.jinja", render::TEMPLATE_PROBE),
 ];
 
 fn build_app() -> App {
@@ -112,6 +113,20 @@ fn build_app() -> App {
         .expect("register adopt")
         .command("addignore", handlers::addignore_handler, "message")
         .expect("register addignore")
+        .command("probe", handlers::probe_summary_handler, "probe")
+        .expect("register probe")
+        .command(
+            "probe.deployment-map",
+            handlers::probe_deployment_map_handler,
+            "probe",
+        )
+        .expect("register probe.deployment-map")
+        .command(
+            "probe.show-data-dir",
+            handlers::probe_show_data_dir_handler,
+            "probe",
+        )
+        .expect("register probe.show-data-dir")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -132,6 +147,11 @@ fn build_app() -> App {
                     Some("fill".into()),
                     Some("addignore".into()),
                 ],
+            },
+            CommandGroup {
+                title: "Diagnostics".into(),
+                help: None,
+                commands: vec![Some("probe".into())],
             },
             CommandGroup {
                 title: "Misc".into(),
@@ -313,5 +333,26 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
+        )
+        .subcommand(
+            ClapCommand::new("probe")
+                .about("Introspect deployed state (deployment map, data directory)")
+                .subcommand_required(false)
+                .arg_required_else_help(false)
+                .subcommand(
+                    ClapCommand::new("deployment-map")
+                        .about("Show the source↔deployed map"),
+                )
+                .subcommand(
+                    ClapCommand::new("show-data-dir")
+                        .about("Tree view of dodot's data directory")
+                        .arg(
+                            Arg::new("depth")
+                                .long("depth")
+                                .help("Maximum tree depth (default 4)")
+                                .value_parser(clap::value_parser!(usize))
+                                .num_args(1),
+                        ),
+                ),
         )
 }

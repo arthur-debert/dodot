@@ -11,6 +11,7 @@ pub mod operations;
 pub mod packs;
 pub mod paths;
 pub mod preprocessing;
+pub mod probe;
 pub mod render;
 pub mod rules;
 pub mod shell;

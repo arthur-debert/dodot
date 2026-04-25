@@ -3140,6 +3140,157 @@ fn by_status_groups_packs_under_banners() {
     assert!(output.contains("nvim"), "output: {output}");
 }
 
+// ── probe ──────────────────────────────────────────────────────
+
+#[test]
+fn probe_summary_lists_available_subcommands() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::summary(&ctx).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("deployment-map"), "output:\n{output}");
+    assert!(output.contains("show-data-dir"), "output:\n{output}");
+}
+
+#[test]
+fn probe_deployment_map_renders_rows_after_up() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::probe::deployment_map(&ctx).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("vim"), "output:\n{output}");
+    assert!(output.contains("shell"), "output:\n{output}");
+    assert!(output.contains("aliases.sh"), "output:\n{output}");
+}
+
+#[test]
+fn probe_deployment_map_empty_state_shows_hint() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::deployment_map(&ctx).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("nothing deployed"),
+        "empty probe should point the user at `dodot up`; got:\n{output}"
+    );
+}
+
+#[test]
+fn probe_show_data_dir_renders_tree_with_sizes() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let result = commands::probe::show_data_dir(&ctx, 4).unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("packs"), "output:\n{output}");
+    assert!(output.contains("vim"), "output:\n{output}");
+    assert!(output.contains("shell"), "output:\n{output}");
+    // Tree should use box-drawing glyphs somewhere.
+    assert!(
+        output.contains("├") || output.contains("└"),
+        "expected branch glyphs in tree; got:\n{output}"
+    );
+}
+
+#[test]
+fn probe_deployment_map_json_mode_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::deployment_map(&ctx).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "deployment-map");
+    assert!(parsed["entries"].is_array());
+}
+
+// ── deployment map (written on up/down alongside the init script) ──
+
+#[test]
+fn up_writes_deployment_map() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .file("bin/tool", "#!/bin/sh")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    env.assert_exists(&env.paths.deployment_map_path());
+    let content = env
+        .fs
+        .read_to_string(&env.paths.deployment_map_path())
+        .unwrap();
+    assert!(content.starts_with("# dodot deployment map v1"));
+    assert!(
+        content.contains("vim\tshell\tsymlink\t"),
+        "expected a vim/shell row; content:\n{content}"
+    );
+    assert!(
+        content.contains("vim\tpath\tsymlink\t"),
+        "expected a vim/path row; content:\n{content}"
+    );
+}
+
+#[test]
+fn down_refreshes_deployment_map_to_empty() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    // Precondition: map has a row.
+    let content_before = env
+        .fs
+        .read_to_string(&env.paths.deployment_map_path())
+        .unwrap();
+    assert!(content_before.contains("aliases.sh"));
+
+    commands::down::down(None, &ctx).unwrap();
+
+    let content_after = env
+        .fs
+        .read_to_string(&env.paths.deployment_map_path())
+        .unwrap();
+    // Header stays; data rows are gone.
+    assert!(content_after.starts_with("# dodot deployment map v1"));
+    assert!(
+        !content_after.contains("aliases.sh"),
+        "map should be empty after down; got:\n{content_after}"
+    );
+}
+
+#[test]
+fn up_dry_run_does_not_touch_deployment_map() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.dry_run = true;
+    commands::up::up(None, &ctx).unwrap();
+
+    // Map file should not have been written for a dry-run.
+    env.assert_not_exists(&env.paths.deployment_map_path());
+}
+
 #[test]
 fn by_status_folds_ignored_packs_into_ignored_group() {
     let env = TempEnvironment::builder()
