@@ -65,6 +65,14 @@ pub trait Pather: Send + Sync {
         self.data_dir().join("deployment-map.tsv")
     }
 
+    /// Path to a single-line file recording the unix timestamp of the
+    /// most recent successful `dodot up`. Used by `dodot probe
+    /// shell-init` to flag profiles captured before that `up` as stale.
+    /// Absent until the first `up` runs.
+    fn last_up_path(&self) -> PathBuf {
+        self.data_dir().join("last-up-at")
+    }
+
     /// Directory where shell-init profile reports are written, one TSV
     /// per shell start. See `docs/proposals/profiling.lex` §3.1.
     fn probes_shell_init_dir(&self) -> PathBuf {

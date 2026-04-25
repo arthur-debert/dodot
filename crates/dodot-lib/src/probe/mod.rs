@@ -16,6 +16,7 @@
 
 pub mod data_dir_tree;
 pub mod deployment_map;
+pub mod last_up;
 pub mod shell_init;
 
 pub use data_dir_tree::{collect_data_dir_tree, TreeNode};
@@ -23,8 +24,10 @@ pub use deployment_map::{
     collect_deployment_map, read_deployment_map, write_deployment_map, DeploymentKind,
     DeploymentMapEntry,
 };
+pub use last_up::{read_last_up_marker, write_last_up_marker};
 pub use shell_init::{
-    aggregate_profiles, group_profile, parse_profile, read_latest_profile, read_recent_profiles,
-    rotate_profiles, summarize_history, AggregatedTarget, AggregatedView, GroupedProfile,
-    HistoryEntry, Profile, ProfileEntry, ProfileGroup,
+    aggregate_profiles, group_profile, parse_profile, parse_unix_ts_from_filename,
+    read_latest_profile, read_recent_profiles, rotate_profiles, summarize_history,
+    AggregatedTarget, AggregatedView, GroupedProfile, HistoryEntry, Profile, ProfileEntry,
+    ProfileGroup,
 };
