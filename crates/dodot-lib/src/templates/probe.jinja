@@ -1,0 +1,23 @@
+{%- if kind == "summary" -%}
+[header]dodot probe[/header]
+  [dim]data_dir:[/dim] {{ data_dir }}
+
+[header]Subcommands:[/header]
+{% for sub in available %}  [pack-name]{{ sub.name | col(20) }}[/pack-name] [description]{{ sub.description }}[/description]
+{% endfor %}
+{%- elif kind == "deployment-map" -%}
+[header]Deployment map[/header]
+  [dim]file:[/dim] {{ map_path }}
+
+{% if entries %}  [dim]{{ "pack" | col(16) }} {{ "handler" | col(10) }} {{ "kind" | col(10) }} {{ "source" | col(40) }} datastore[/dim]
+{% for e in entries %}  [pack-name]{{ e.pack | col(16) }}[/pack-name] [handler-symbol]{{ e.handler | col(10) }}[/handler-symbol] [description]{{ e.kind | col(10) }}[/description] {{ e.source | col(40) }} [dim]{{ e.datastore }}[/dim]
+{% endfor %}{% else %}  [dim](nothing deployed — run `dodot up` first)[/dim]
+{% endif %}
+{%- elif kind == "show-data-dir" -%}
+[header]Data directory[/header]
+  [dim]root:[/dim] {{ data_dir }}
+  [dim]nodes:[/dim] {{ total_nodes }}   [dim]size:[/dim] {{ total_size }} B
+
+{% for line in lines %}{{ line.prefix }}{{ line.name }}{% if line.annotation %} [dim]{{ line.annotation }}[/dim]{% endif %}
+{% endfor %}
+{%- endif -%}

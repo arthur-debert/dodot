@@ -210,6 +210,37 @@ pub fn addignore_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot probe` — bare summary of probe subcommands.
+pub fn probe_summary_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::probe::ProbeResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    Ok(Output::Render(commands::probe::summary(&ctx)?))
+}
+
+/// `dodot probe deployment-map` — source↔deployed map view.
+pub fn probe_deployment_map_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::probe::ProbeResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    Ok(Output::Render(commands::probe::deployment_map(&ctx)?))
+}
+
+/// `dodot probe show-data-dir [--depth N]` — data-dir tree view.
+pub fn probe_show_data_dir_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::probe::ProbeResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let depth = matches
+        .get_one::<usize>("depth")
+        .copied()
+        .unwrap_or(commands::probe::DEFAULT_SHOW_DATA_DIR_DEPTH);
+    Ok(Output::Render(commands::probe::show_data_dir(&ctx, depth)?))
+}
+
 // ── Passthrough handlers (bypass standout rendering) ────────────
 
 /// `dodot config` — delegates to clapfig's config subcommands.

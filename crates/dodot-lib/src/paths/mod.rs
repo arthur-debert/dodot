@@ -58,6 +58,12 @@ pub trait Pather: Send + Sync {
     fn init_script_path(&self) -> PathBuf {
         self.shell_dir().join("dodot-init.sh")
     }
+
+    /// Path to the deployment map TSV, overwritten on every `up` / `down`.
+    /// See `docs/proposals/profiling.lex` §3.2.
+    fn deployment_map_path(&self) -> PathBuf {
+        self.data_dir().join("deployment-map.tsv")
+    }
 }
 
 /// XDG-compliant path resolver.

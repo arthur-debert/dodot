@@ -29,6 +29,7 @@ use crate::conflicts;
 use crate::datastore::format_command_for_display;
 use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext, PackResult};
+use crate::probe;
 use crate::shell;
 use crate::Result;
 
@@ -109,10 +110,12 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         }
     }
 
-    // Regenerate shell init script
+    // Regenerate shell init script and deployment map
     if !ctx.dry_run {
         info!("regenerating shell init script");
         shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        info!("writing deployment map");
+        probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     }
 
     let has_failures = pack_results

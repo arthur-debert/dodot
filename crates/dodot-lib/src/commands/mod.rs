@@ -11,6 +11,7 @@ pub mod down;
 pub mod fill;
 pub mod init;
 pub mod list;
+pub mod probe;
 pub mod status;
 pub mod up;
 

@@ -15,6 +15,7 @@ use crate::commands::{handler_symbol, status, DisplayFile, DisplayPack, PackStat
 use crate::handlers::HANDLER_SYMLINK;
 use crate::packs;
 use crate::packs::orchestration::{self, ExecutionContext};
+use crate::probe;
 use crate::shell;
 use crate::Result;
 
@@ -65,10 +66,13 @@ pub fn down(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pa
         }
     }
 
-    // Regenerate shell init script (now empty for removed packs)
+    // Regenerate shell init script and deployment map (now reflecting
+    // the removed state).
     if !ctx.dry_run {
         info!("regenerating shell init script");
         shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        info!("writing deployment map");
+        probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     }
 
     let display_packs = if ctx.dry_run {
