@@ -225,7 +225,14 @@ pub struct ProfileGroup {
 }
 
 /// Roll up a profile into per-(pack, handler) groups for display.
-/// The pack-then-handler ordering matches the deployment-map view.
+///
+/// Groups are returned sorted by `(pack, handler)` so the rendered
+/// table ordering matches `dodot probe deployment-map` — eyeballing
+/// the two side-by-side should not require mental remapping. The init
+/// script emits PATH lines before shell sources (a phase-ordering
+/// concern of its own), so the raw entry order would otherwise show
+/// all `path` groups before any `shell` group, which is not what the
+/// user expects when reading a per-pack table.
 pub fn group_profile(profile: &Profile) -> GroupedProfile {
     let user_total_us = profile.entries_duration_us();
     let total_us = profile.total_duration_us.max(user_total_us);
@@ -250,6 +257,8 @@ pub fn group_profile(profile: &Profile) -> GroupedProfile {
             }),
         }
     }
+
+    groups.sort_by(|a, b| a.pack.cmp(&b.pack).then(a.handler.cmp(&b.handler)));
 
     GroupedProfile {
         groups,
@@ -391,9 +400,13 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         let env = TempEnvironment::builder().build();
         let dir = env.paths.probes_shell_init_dir();
         env.fs.mkdir_all(&dir).unwrap();
-        env.fs
-            .write_file(&dir.join("profile-1-1-1.tsv"), b"")
-            .unwrap();
+        // Five profile files (more than `keep`), plus two non-profile
+        // files that the rotator must leave alone.
+        for i in 1..=5 {
+            env.fs
+                .write_file(&dir.join(format!("profile-{i}-1-1.tsv")), b"")
+                .unwrap();
+        }
         env.fs
             .write_file(&dir.join("README"), b"do not delete")
             .unwrap();
@@ -401,9 +414,19 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             .write_file(&dir.join("notes.txt"), b"keep me")
             .unwrap();
 
-        let removed = rotate_profiles(env.fs.as_ref(), env.paths.as_ref(), 0).unwrap();
-        assert_eq!(removed, 0);
-        // All non-profile files survive even if we asked to rotate.
+        // keep=2 forces the pruning path (5 profiles → 2 should remain).
+        let removed = rotate_profiles(env.fs.as_ref(), env.paths.as_ref(), 2).unwrap();
+        assert_eq!(removed, 3);
+
+        // The two newest profiles survive.
+        assert!(env.fs.exists(&dir.join("profile-4-1-1.tsv")));
+        assert!(env.fs.exists(&dir.join("profile-5-1-1.tsv")));
+        // The three oldest are gone.
+        assert!(!env.fs.exists(&dir.join("profile-1-1-1.tsv")));
+        assert!(!env.fs.exists(&dir.join("profile-2-1-1.tsv")));
+        assert!(!env.fs.exists(&dir.join("profile-3-1-1.tsv")));
+
+        // Non-profile files are untouched.
         assert!(env.fs.exists(&dir.join("README")));
         assert!(env.fs.exists(&dir.join("notes.txt")));
     }
@@ -443,13 +466,59 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         };
         let g = group_profile(&p);
         assert_eq!(g.groups.len(), 2);
+        // Groups are sorted by (pack, handler), not by emission order:
+        // "path" comes before "shell" alphabetically within `vim`.
         assert_eq!(g.groups[0].pack, "vim");
-        assert_eq!(g.groups[0].handler, "shell");
-        assert_eq!(g.groups[0].group_total_us, 300);
-        assert_eq!(g.groups[1].handler, "path");
+        assert_eq!(g.groups[0].handler, "path");
+        assert_eq!(g.groups[0].group_total_us, 5);
+        assert_eq!(g.groups[1].handler, "shell");
+        assert_eq!(g.groups[1].group_total_us, 300);
         assert_eq!(g.user_total_us, 305);
         assert_eq!(g.total_us, 10_000);
         assert_eq!(g.framing_us, 9_695);
+    }
+
+    #[test]
+    fn group_profile_sorts_across_packs() {
+        // Entries arrive in deliberately scrambled order; the result
+        // must still be (pack, handler)-sorted.
+        let p = Profile {
+            filename: "x".into(),
+            shell: "bash".into(),
+            total_duration_us: 0,
+            entries: vec![
+                entry("vim", "shell", "/a", 1),
+                entry("git", "symlink", "/b", 1),
+                entry("vim", "path", "/c", 1),
+                entry("git", "shell", "/d", 1),
+            ],
+        };
+        let g = group_profile(&p);
+        let keys: Vec<(String, String)> = g
+            .groups
+            .iter()
+            .map(|gp| (gp.pack.clone(), gp.handler.clone()))
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("git".into(), "shell".into()),
+                ("git".into(), "symlink".into()),
+                ("vim".into(), "path".into()),
+                ("vim".into(), "shell".into()),
+            ]
+        );
+    }
+
+    fn entry(pack: &str, handler: &str, target: &str, dur_us: u64) -> ProfileEntry {
+        ProfileEntry {
+            phase: "source".into(),
+            pack: pack.into(),
+            handler: handler.into(),
+            target: target.into(),
+            duration_us: dur_us,
+            exit_status: 0,
+        }
     }
 
     #[test]

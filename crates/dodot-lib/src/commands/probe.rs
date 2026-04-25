@@ -118,7 +118,10 @@ pub struct ShellInitRow {
     pub duration_us: u64,
     pub duration_label: String,
     pub exit_status: i32,
-    /// `"ok"` or `"err"` — drives the styling tag in the template.
+    /// `"deployed"` (success — rendered green) or `"error"` (non-zero
+    /// source exit). These map directly to existing styles in
+    /// `crate::render`'s theme; using fresh names here would require
+    /// theme additions for no UX gain.
     pub status_class: &'static str,
 }
 
@@ -245,7 +248,11 @@ fn shell_init_groups(grouped: &GroupedProfile) -> Vec<ShellInitGroup> {
                     duration_us: r.duration_us,
                     duration_label: humanize_us(r.duration_us),
                     exit_status: r.exit_status,
-                    status_class: if r.exit_status == 0 { "ok" } else { "error" },
+                    status_class: if r.exit_status == 0 {
+                        "deployed"
+                    } else {
+                        "error"
+                    },
                 })
                 .collect(),
             group_total_us: g.group_total_us,
