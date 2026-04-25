@@ -1,9 +1,13 @@
 //! `tutorial` — data and introspection for the interactive tutorial.
 //!
 //! The interactive driver lives in `dodot-cli`; this module provides
-//! the side-effect-free building blocks: pack classification, shell-
-//! integration detection, state persistence, and a serializable
-//! [`TutorialCtx`] that the CLI passes to step templates.
+//! the building blocks it composes: pack classification, shell-
+//! integration detection (read-only inspection plus an explicit
+//! append helper), JSON state persistence for resume, and the
+//! serializable [`TutorialCtx`] that the CLI passes to step
+//! templates. Reads are pure; writes (`append_shell_integration`,
+//! `save_state`, `clear_state`) only run on explicit user consent
+//! from the driver.
 
 use std::path::{Path, PathBuf};
 
@@ -70,7 +74,6 @@ pub fn classify_pack(pack: &packs::Pack) -> PackKind {
 
     let mut has_install = false;
     let mut has_shell = false;
-    let mut has_other = false;
     let mut any = false;
 
     for entry in entries.flatten() {
@@ -84,27 +87,22 @@ pub fn classify_pack(pack: &packs::Pack) -> PackKind {
         let is_dir = path.is_dir();
 
         if !is_dir {
-            if matches!(name.as_str(), "install.sh" | "install.bash" | "install.zsh") {
+            if matches!(
+                name.as_str(),
+                "install.sh" | "install.bash" | "install.zsh" | "Brewfile"
+            ) {
                 has_install = true;
-                continue;
-            }
-            if name == "Brewfile" {
-                has_install = true;
-                continue;
-            }
-            if is_shell_filename(&name) {
+            } else if is_shell_filename(&name) {
                 has_shell = true;
-                continue;
             }
-            has_other = true;
+            // Otherwise it's a default-symlink file — no flag to set;
+            // any non-empty pack with no shell/install evidence falls
+            // through to ConfigOnly below.
         } else if name == "bin" {
             has_shell = true;
-        } else {
-            has_other = true;
         }
     }
 
-    let _ = has_other;
     if !any {
         return PackKind::Empty;
     }

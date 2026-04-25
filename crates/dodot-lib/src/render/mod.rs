@@ -150,9 +150,12 @@ pub const TEMPLATE_TUTORIAL_DRY_RUN: &str = include_str!("../templates/tutorial/
 pub const TEMPLATE_TUTORIAL_REAL_UP: &str = include_str!("../templates/tutorial/real_up.jinja");
 pub const TEMPLATE_TUTORIAL_OUTRO: &str = include_str!("../templates/tutorial/outro.jinja");
 
-/// Pairs of (name, body) for every tutorial step template. The CLI
-/// driver registers all of these on a single `Renderer` once at
-/// startup; step bodies render by name.
+/// Pairs of `(name, body)` for every tutorial step template.
+///
+/// `render_tutorial_step` looks up the body by name and renders
+/// against a fresh theme each call — no shared `Renderer` is
+/// retained, since each tutorial run renders fewer than a dozen
+/// templates and the per-call cost is negligible.
 pub const TUTORIAL_STEP_TEMPLATES: &[(&str, &str)] = &[
     ("tutorial.intro", TEMPLATE_TUTORIAL_INTRO),
     ("tutorial.check_root", TEMPLATE_TUTORIAL_CHECK_ROOT),

@@ -107,12 +107,19 @@ impl Prompts for InquirePrompts {
         pad_before_prompt();
         // Inquire's Text returns an error on empty submit by default;
         // with_default("") makes empty acceptable so just hitting
-        // enter advances.
-        let _ = inquire::Text::new("(press enter to continue)")
+        // enter advances. Ctrl-C / Esc still surface as a cancel so
+        // the driver can exit cleanly — the intro promises Ctrl-C
+        // works at *any* prompt, including these.
+        match inquire::Text::new("(press enter to continue)")
             .with_default("")
             .with_render_config(tutorial_render_config())
-            .prompt();
-        Ok(())
+            .prompt()
+        {
+            Ok(_) => Ok(()),
+            Err(inquire::InquireError::OperationCanceled)
+            | Err(inquire::InquireError::OperationInterrupted) => Err(anyhow!("cancelled")),
+            Err(e) => Err(anyhow!("{e}")),
+        }
     }
 }
 
@@ -565,7 +572,11 @@ fn step_concept_targets(
         return Ok(Next::Quit);
     }
 
-    if ctx.has_shell_files || ctx.has_install_files {
+    // The shell-integration step explains the `eval "$(dodot init-sh)"`
+    // line, which is what makes shell snippets get sourced and `bin/`
+    // dirs get added to PATH. Install scripts and Brewfile run once
+    // and don't need init-sh, so they don't trigger this step.
+    if ctx.has_shell_files {
         Ok(Next::Go("concept_shell"))
     } else {
         Ok(Next::Go("dry_run"))
