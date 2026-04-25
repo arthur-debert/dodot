@@ -127,6 +127,12 @@ fn build_app() -> App {
             "probe",
         )
         .expect("register probe.show-data-dir")
+        .command(
+            "probe.shell-init",
+            handlers::probe_shell_init_handler,
+            "probe",
+        )
+        .expect("register probe.shell-init")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -353,6 +359,11 @@ fn build_clap_command() -> ClapCommand {
                                 .value_parser(clap::value_parser!(usize))
                                 .num_args(1),
                         ),
+                )
+                .subcommand(
+                    ClapCommand::new("shell-init").about(
+                        "Per-source timings for the most recent shell startup",
+                    ),
                 ),
         )
 }

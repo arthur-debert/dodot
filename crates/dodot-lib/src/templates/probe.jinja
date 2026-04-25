@@ -20,4 +20,23 @@
 
 {% for line in lines %}{{ line.prefix }}{{ line.name }}{% if line.annotation %} [dim]{{ line.annotation }}[/dim]{% endif %}
 {% endfor %}
+{%- elif kind == "shell-init" -%}
+[header]Shell-init profile[/header]
+{% if has_profile %}  [dim]run:[/dim] {{ filename }}
+  [dim]shell:[/dim] {{ shell }}
+
+{% for g in groups %}  [pack-name]{{ g.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ g.handler }}[/handler-symbol] [dim]({{ g.group_total_label }})[/dim]
+{% for r in g.rows %}    {{ r.target | col(36) }} [{{ r.status_class }}]{{ r.duration_label | col(10) }}[/{{ r.status_class }}]{% if r.exit_status != 0 %} [error]exit {{ r.exit_status }}[/error]{% endif %}
+{% endfor %}{% endfor %}
+  [dim]──[/dim]
+  user-sourced total   [deployed]{{ user_total_us }} µs[/deployed]
+  dodot framing        [dim]{{ framing_us }} µs[/dim]
+  grand total          [header]{{ total_us }} µs[/header]
+{% else %}{% if profiling_enabled %}  [dim](no profile yet — open a new shell that sources `dodot-init.sh`,[/dim]
+  [dim] then re-run `dodot probe shell-init`)[/dim]
+{% else %}  [dim](profiling is disabled in config — set [profiling] enabled = true,[/dim]
+  [dim] run `dodot up`, then start a new shell)[/dim]
+{% endif %}{% endif %}
+  [dim]profiles dir:[/dim] {{ profiles_dir }}
+  [dim]for intra-file profiling, see `zprof` (zsh) or PS4 tracing (bash).[/dim]
 {%- endif -%}

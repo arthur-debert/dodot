@@ -16,9 +16,14 @@
 
 pub mod data_dir_tree;
 pub mod deployment_map;
+pub mod shell_init;
 
 pub use data_dir_tree::{collect_data_dir_tree, TreeNode};
 pub use deployment_map::{
     collect_deployment_map, read_deployment_map, write_deployment_map, DeploymentKind,
     DeploymentMapEntry,
+};
+pub use shell_init::{
+    group_profile, parse_profile, read_latest_profile, rotate_profiles, GroupedProfile, Profile,
+    ProfileEntry, ProfileGroup,
 };

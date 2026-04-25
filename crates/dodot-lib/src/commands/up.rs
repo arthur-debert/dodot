@@ -113,9 +113,25 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // Regenerate shell init script and deployment map
     if !ctx.dry_run {
         info!("regenerating shell init script");
-        shell::write_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        let root_config = ctx.config_manager.root_config()?;
+        shell::write_init_script(
+            ctx.fs.as_ref(),
+            ctx.paths.as_ref(),
+            root_config.profiling.enabled,
+        )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        // Prune old shell-init profile reports. Cheap (one read_dir +
+        // a few unlinks at most) and runs in dodot's process, not the
+        // user's shell.
+        let removed = probe::rotate_profiles(
+            ctx.fs.as_ref(),
+            ctx.paths.as_ref(),
+            root_config.profiling.keep_last_runs,
+        )?;
+        if removed > 0 {
+            debug!(removed, "pruned old shell-init profiles");
+        }
     }
 
     let has_failures = pack_results

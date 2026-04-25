@@ -241,6 +241,15 @@ pub fn probe_show_data_dir_handler(
     Ok(Output::Render(commands::probe::show_data_dir(&ctx, depth)?))
 }
 
+/// `dodot probe shell-init` — most recent shell-startup profile.
+pub fn probe_shell_init_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::probe::ProbeResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    Ok(Output::Render(commands::probe::shell_init(&ctx)?))
+}
+
 // ── Passthrough handlers (bypass standout rendering) ────────────
 
 /// `dodot config` — delegates to clapfig's config subcommands.
@@ -287,7 +296,12 @@ fn clean_debug_format(input: &str) -> String {
 pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
     let ctx = ExecutionContext::production(&dotfiles_root)?;
-    let script = dodot_lib::shell::generate_init_script(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let root_config = ctx.config_manager.root_config()?;
+    let script = dodot_lib::shell::generate_init_script(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        root_config.profiling.enabled,
+    )?;
     print!("{script}");
     Ok(())
 }
