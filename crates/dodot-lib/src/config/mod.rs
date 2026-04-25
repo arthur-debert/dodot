@@ -204,6 +204,23 @@ pub struct MappingsSection {
     /// within a pack. Distinct from [pack] ignore which controls discovery.
     #[config(default = [])]
     pub skip: Vec<String>,
+
+    /// Filename patterns the catchall symlink handler should not pick up.
+    /// Matched case-insensitively against the basename. Files that match
+    /// are surfaced in `dodot status` as "ignored" but no handler runs on
+    /// them. The defaults cover the common documentation/legal files that
+    /// packs ship alongside real config; clear the list (or override
+    /// per-pack) to deploy a README intentionally.
+    #[config(default = [
+        "README", "README.*",
+        "LICENSE", "LICENSE.*",
+        "CHANGELOG", "CHANGELOG.*",
+        "CONTRIBUTING", "CONTRIBUTING.*",
+        "AUTHORS", "AUTHORS.*",
+        "NOTICE", "NOTICE.*",
+        "COPYING", "COPYING.*",
+    ])]
+    pub exclude: Vec<String>,
 }
 
 // ── Conversions ─────────────────────────────────────────────────
@@ -286,6 +303,23 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
                 pattern: format!("!{pattern}"),
                 handler: "exclude".into(),
                 priority: 100, // exclusions checked first
+                options: HashMap::new(),
+            });
+        }
+    }
+
+    // Exclude patterns: matched case-insensitively, route to the
+    // synthetic "excluded" handler (no registry entry — produces no
+    // intent, surfaces in `dodot status` as ignored). Priority 50 sits
+    // above precise mappings (10) so README-like files cannot be
+    // accidentally claimed by `mappings.shell` or similar, but below
+    // skip exclusions (100) so silent-skip still wins when both apply.
+    for pattern in &mappings.exclude {
+        if !pattern.is_empty() {
+            rules.push(Rule {
+                pattern: pattern.clone(),
+                handler: "excluded".into(),
+                priority: 50,
                 options: HashMap::new(),
             });
         }
@@ -557,6 +591,7 @@ homebrew = "RootBrewfile"
             shell: vec!["aliases.sh".into(), "profile.sh".into()],
             homebrew: "Brewfile".into(),
             skip: vec!["*.tmp".into()],
+            exclude: vec![],
         };
 
         let rules = mappings_to_rules(&mappings);
@@ -579,6 +614,26 @@ homebrew = "RootBrewfile"
         // Catchall should be lowest priority
         let catchall = rules.iter().find(|r| r.pattern == "*").unwrap();
         assert_eq!(catchall.priority, 0);
+    }
+
+    #[test]
+    fn mappings_exclude_emits_priority_50_excluded_rules() {
+        let mappings = MappingsSection {
+            path: String::new(),
+            install: vec![],
+            shell: vec![],
+            homebrew: String::new(),
+            skip: vec![],
+            exclude: vec!["README".into(), "README.*".into(), "LICENSE".into()],
+        };
+
+        let rules = mappings_to_rules(&mappings);
+        let excluded: Vec<&Rule> = rules.iter().filter(|r| r.handler == "excluded").collect();
+        assert_eq!(excluded.len(), 3);
+        for rule in &excluded {
+            assert_eq!(rule.priority, 50);
+            assert!(!rule.pattern.starts_with('!'));
+        }
     }
 
     #[test]

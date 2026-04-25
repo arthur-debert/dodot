@@ -43,6 +43,10 @@ enum Health {
     /// Data link exists and is healthy, but the user link is not at the
     /// path that current config would produce. A re-deploy would move it.
     Stale(String),
+    /// File matched the `mappings.exclude` list (README, LICENSE, …).
+    /// No handler runs on it, but it surfaces in status so users can see
+    /// the rule applied rather than wondering why the file is "missing."
+    Ignored,
 }
 
 impl Health {
@@ -55,6 +59,7 @@ impl Health {
             Health::DeployedWithError { .. } => "broken",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
+            Health::Ignored => "ignored",
         }
     }
 
@@ -80,6 +85,7 @@ impl Health {
             Health::DeployedWithError { label, .. } => label.clone(),
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
+            Health::Ignored => "ignored".into(),
         }
     }
 
@@ -461,6 +467,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
+                "excluded" => Health::Ignored,
                 "symlink" => {
                     verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
                 }

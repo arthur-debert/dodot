@@ -76,6 +76,43 @@ fn status_shows_pending_before_up() {
 }
 
 #[test]
+fn status_marks_readme_and_license_as_ignored() {
+    // Files matched by `mappings.exclude` (defaults: README, LICENSE,
+    // CHANGELOG, …) should appear in status with handler "excluded"
+    // and status "ignored" rather than being silently dropped or
+    // routed to the symlink catchall.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .file("README.md", "# vim pack")
+        .file("license", "MIT")
+        .file("CHANGELOG", "v1: initial")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let pack = &result.packs[0];
+    let by_name: std::collections::HashMap<&str, &commands::DisplayFile> =
+        pack.files.iter().map(|f| (f.name.as_str(), f)).collect();
+
+    let readme = by_name.get("README.md").expect("README.md in status");
+    assert_eq!(readme.handler, "excluded");
+    assert_eq!(readme.status, "ignored");
+    assert_eq!(readme.status_label, "ignored");
+
+    let license = by_name.get("license").expect("license in status");
+    assert_eq!(license.handler, "excluded", "case-insensitive match");
+
+    let changelog = by_name.get("CHANGELOG").expect("CHANGELOG in status");
+    assert_eq!(changelog.handler, "excluded");
+
+    let vimrc = by_name.get("vimrc").expect("vimrc in status");
+    assert_eq!(vimrc.handler, "symlink");
+}
+
+#[test]
 fn status_renders_with_standout() {
     let env = TempEnvironment::builder()
         .pack("vim")

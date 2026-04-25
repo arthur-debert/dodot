@@ -912,7 +912,7 @@ mod tests {
         let env = TempEnvironment::builder()
             .pack("app")
             .file("config.toml.identity", "preprocessed content")
-            .file("readme.txt", "regular content")
+            .file("plain.txt", "regular content")
             .done()
             .build();
 
@@ -951,7 +951,7 @@ mod tests {
         let has_preprocessed = intent_sources.iter().any(|s| s.contains("preprocessed"));
         let has_regular = intent_sources
             .iter()
-            .any(|s| s.contains("dotfiles/app/readme.txt"));
+            .any(|s| s.contains("dotfiles/app/plain.txt"));
         assert!(
             has_preprocessed,
             "should have a preprocessed source: {intent_sources:?}"
