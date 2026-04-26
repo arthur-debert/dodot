@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-latest_tag=$(git tag --list --sort=-version:refname | head -n1)
+latest_tag=$(git tag --list 'v*' --sort=-version:refname | head -n1)
 
 if [ -z "$latest_tag" ]; then
     echo "No release tags found"
