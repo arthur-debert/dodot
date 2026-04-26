@@ -415,7 +415,7 @@ fn history_entry_from(profile: &Profile) -> HistoryEntry {
 /// Extract the leading `<unix_ts>` from `profile-<unix_ts>-<pid>-<rand>.tsv`,
 /// returning `0` for any unparseable filename. The renderer formats this
 /// into a date string; storing it as an integer keeps JSON output stable.
-fn parse_unix_ts_from_filename(filename: &str) -> u64 {
+pub(crate) fn parse_unix_ts_from_filename(filename: &str) -> u64 {
     filename
         .strip_prefix("profile-")
         .and_then(|rest| rest.split('-').next())

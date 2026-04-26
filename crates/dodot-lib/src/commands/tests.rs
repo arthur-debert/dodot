@@ -3550,6 +3550,203 @@ fn probe_shell_init_history_json_is_kind_tagged() {
     assert!(parsed["rows"].is_array());
 }
 
+// ── probe shell-init: staleness banner (#59) ────────────────
+
+/// Plant a `last-up-at` marker at the given unix timestamp so tests
+/// don't depend on real wall-clock writes.
+fn write_last_up_marker_at(env: &TempEnvironment, ts: u64) {
+    env.fs.mkdir_all(env.paths.data_dir()).unwrap();
+    env.fs
+        .write_file(&env.paths.last_up_path(), ts.to_string().as_bytes())
+        .unwrap();
+}
+
+/// Profile filenames encode the unix timestamp. Profile pre-dates the
+/// last `up`, so the staleness banner must fire.
+#[test]
+fn probe_shell_init_banner_when_profile_predates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+    // Up happened one hour after the profile.
+    write_last_up_marker_at(&env, 1714003600);
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("warning:"),
+        "expected staleness banner, got:\n{text}"
+    );
+    // Banner mentions both timestamps so the user can verify the comparison.
+    assert!(
+        text.contains("2024-04-24") && text.contains("2024-04-25"),
+        "banner should reference both capture and up timestamps, got:\n{text}"
+    );
+    assert!(
+        text.contains("capture a fresh profile"),
+        "banner should explain the remediation, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_no_banner_when_profile_postdates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    // Up first, profile after — the user already opened a shell, so
+    // the displayed profile reflects the post-up state. No banner.
+    write_last_up_marker_at(&env, 1714000000);
+    write_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], false);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("warning:"),
+        "no banner expected when profile is fresh, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_no_banner_when_no_last_up_marker() {
+    // Profile exists but `up` has never run on this machine — we have
+    // nothing to compare against, so the safe default is "no banner".
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("warning:"),
+        "no banner without an up marker, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_no_banner_when_no_profile() {
+    // Marker exists, but there's no profile yet (e.g. user just ran
+    // first `up`). The empty-state hint is enough; no warning.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_last_up_marker_at(&env, 1714000000);
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("warning:"),
+        "no banner when there's no profile to flag, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_aggregate_banner_when_newest_predates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000100\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000002-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000200\t0"],
+    );
+    // Up happened after the newest profile.
+    write_last_up_marker_at(&env, 1714000003);
+
+    let result = commands::probe::shell_init_aggregate(&ctx, 5).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("warning:"),
+        "aggregate view should show banner, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_history_banner_when_newest_predates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000100\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000200\t0"],
+    );
+    // Up after the newest history row.
+    write_last_up_marker_at(&env, 1714007200);
+
+    let result = commands::probe::shell_init_history(&ctx, 50).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("warning:"),
+        "history view should show banner, got:\n{text}"
+    );
+}
+
+#[test]
+fn up_writes_last_up_marker() {
+    // The marker is what the staleness check compares against, so the
+    // up command must always leave one behind on a successful run.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    assert!(
+        !env.fs.exists(&env.paths.last_up_path()),
+        "marker should not exist before first up"
+    );
+    commands::up::up(None, &ctx).unwrap();
+    assert!(
+        env.fs.exists(&env.paths.last_up_path()),
+        "marker should be written by up"
+    );
+
+    let raw = env.fs.read_to_string(&env.paths.last_up_path()).unwrap();
+    let parsed: u64 = raw.trim().parse().expect("marker should be a unix ts");
+    // Sanity: post-2023.
+    assert!(parsed > 1_700_000_000, "ts should look recent: {parsed}");
+}
+
 // ── deployment map (written on up/down alongside the init script) ──
 
 #[test]

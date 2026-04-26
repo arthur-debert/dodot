@@ -14,8 +14,9 @@ use serde::Serialize;
 use crate::packs::orchestration::ExecutionContext;
 use crate::probe::{
     aggregate_profiles, collect_data_dir_tree, collect_deployment_map, group_profile,
-    read_latest_profile, read_recent_profiles, summarize_history, AggregatedTarget,
-    DeploymentMapEntry, GroupedProfile, HistoryEntry, TreeNode,
+    parse_unix_ts_from_filename, read_last_up_marker, read_latest_profile, read_recent_profiles,
+    summarize_history, AggregatedTarget, DeploymentMapEntry, GroupedProfile, HistoryEntry,
+    TreeNode,
 };
 use crate::Result;
 
@@ -107,6 +108,16 @@ pub struct ShellInitAggregateView {
     pub profiling_enabled: bool,
     pub profiles_dir: String,
     pub rows: Vec<ShellInitAggregateRow>,
+    /// True when the newest aggregated profile was captured before the
+    /// most recent `dodot up`. The renderer prints a freshness banner
+    /// in that case so the user knows to open a new shell.
+    pub stale: bool,
+    /// `YYYY-MM-DD HH:MM` capture time of the newest aggregated
+    /// profile; empty when no profiles were loaded.
+    pub latest_profile_when: String,
+    /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
+    /// `up` has never run on this machine.
+    pub last_up_when: String,
 }
 
 /// One per-target aggregate row, durations pre-humanised for the
@@ -135,6 +146,16 @@ pub struct ShellInitHistoryView {
     pub profiling_enabled: bool,
     pub profiles_dir: String,
     pub rows: Vec<ShellInitHistoryRow>,
+    /// True when the newest row was captured before the most recent
+    /// `dodot up`. Older rows in the history are obviously older —
+    /// they're not flagged individually.
+    pub stale: bool,
+    /// `YYYY-MM-DD HH:MM` capture time of the newest history row;
+    /// empty when no profiles exist.
+    pub latest_profile_when: String,
+    /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
+    /// `up` has never run on this machine.
+    pub last_up_when: String,
 }
 
 /// One per-run row in `--history`.
@@ -182,6 +203,16 @@ pub struct ShellInitView {
     pub total_us: u64,
     /// Where the profiles live on disk (so the user can `ls` it).
     pub profiles_dir: String,
+    /// True when the displayed profile was captured before the most
+    /// recent `dodot up`. The renderer prints a freshness banner so
+    /// the user knows the timings reflect a pre-up shell.
+    pub stale: bool,
+    /// `YYYY-MM-DD HH:MM` capture time of the displayed profile;
+    /// empty when no profile is available.
+    pub profile_when: String,
+    /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
+    /// `up` has never run on this machine.
+    pub last_up_when: String,
 }
 
 /// Display row for one entry in a shell-init group.
@@ -274,10 +305,14 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
 
     let profile_opt = read_latest_profile(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
 
     let view = match profile_opt {
         Some(profile) => {
             let grouped = group_profile(&profile);
+            let profile_ts = parse_unix_ts_from_filename(&profile.filename);
+            let stale = is_stale(profile_ts, last_up_ts);
             ShellInitView {
                 filename: profile.filename.clone(),
                 shell: profile.shell.clone(),
@@ -288,6 +323,9 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
                 framing_us: grouped.framing_us,
                 total_us: grouped.total_us,
                 profiles_dir,
+                stale,
+                profile_when: format_unix_ts(profile_ts),
+                last_up_when,
             }
         }
         None => ShellInitView {
@@ -300,10 +338,20 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
             framing_us: 0,
             total_us: 0,
             profiles_dir,
+            stale: false,
+            profile_when: String::new(),
+            last_up_when,
         },
     };
 
     Ok(ProbeResult::ShellInit(view))
+}
+
+/// Decide whether a profile timestamp predates the last `dodot up`.
+/// Returns false when either timestamp is unknown — we never warn on
+/// guesswork, only when we have both reference points.
+fn is_stale(profile_ts: u64, last_up_ts: Option<u64>) -> bool {
+    matches!(last_up_ts, Some(last) if profile_ts > 0 && profile_ts < last)
 }
 
 fn shell_init_groups(grouped: &GroupedProfile) -> Vec<ShellInitGroup> {
@@ -366,8 +414,15 @@ pub fn shell_init_aggregate(ctx: &ExecutionContext, runs: usize) -> Result<Probe
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
     let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
+    // read_recent_profiles returns newest-first, so the first entry's
+    // filename is the most recent capture.
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
     let view = aggregate_profiles(&profiles);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
 
     Ok(ProbeResult::ShellInitAggregate(ShellInitAggregateView {
         runs: view.runs,
@@ -375,6 +430,9 @@ pub fn shell_init_aggregate(ctx: &ExecutionContext, runs: usize) -> Result<Probe
         profiling_enabled,
         profiles_dir,
         rows: view.targets.into_iter().map(into_aggregate_row).collect(),
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when: last_up_ts.map(format_unix_ts).unwrap_or_default(),
     }))
 }
 
@@ -405,17 +463,27 @@ pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeR
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
     let mut profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), limit)?;
+    // Capture the newest ts before we reverse for display (the freshness
+    // check looks at the most recent run, not the bottom row).
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
     // read_recent_profiles returns newest-first; reverse so output reads
     // chronologically (oldest at top, latest at the bottom near the
     // user's prompt).
     profiles.reverse();
     let history = summarize_history(&profiles);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
 
     Ok(ProbeResult::ShellInitHistory(ShellInitHistoryView {
         profiling_enabled,
         profiles_dir,
         rows: history.into_iter().map(into_history_row).collect(),
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when: last_up_ts.map(format_unix_ts).unwrap_or_default(),
     }))
 }
 

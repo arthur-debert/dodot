@@ -121,6 +121,13 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        // Record the unix timestamp of this up so `dodot probe shell-init`
+        // can flag profiles captured before it as stale. Best effort —
+        // a clock skip would only affect the staleness banner, never the
+        // deployment itself, so we don't fail the run on a write error.
+        if let Err(e) = probe::write_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref()) {
+            debug!(error = %e, "failed to write last-up marker");
+        }
         // Prune old shell-init profile reports. Cheap (one read_dir +
         // a few unlinks at most) and runs in dodot's process, not the
         // user's shell.

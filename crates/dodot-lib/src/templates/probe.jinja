@@ -22,7 +22,11 @@
 {% endfor %}
 {%- elif kind == "shell-init" -%}
 [header]Shell-init profile[/header]
-{% if has_profile %}  [dim]run:[/dim] {{ filename }}
+{% if stale %}  [warning]warning:[/warning] this profile was captured at {{ profile_when }} — before
+           your most recent `dodot up` at {{ last_up_when }}. Open a new
+           shell to capture a fresh profile.
+
+{% endif %}{% if has_profile %}  [dim]run:[/dim] {{ filename }}
   [dim]shell:[/dim] {{ shell }}
 
 {% for g in groups %}  [pack-name]{{ g.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ g.handler }}[/handler-symbol] [dim]({{ g.group_total_label }})[/dim]
@@ -41,7 +45,11 @@
   [dim]for intra-file profiling, see `zprof` (zsh) or PS4 tracing (bash).[/dim]
 {%- elif kind == "shell-init-aggregate" -%}
 [header]Shell-init aggregate[/header]
-  [dim]runs:[/dim] {{ runs }}{% if runs != requested_runs %} [warning](requested {{ requested_runs }})[/warning]{% endif %}
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
+
+{% endif %}  [dim]runs:[/dim] {{ runs }}{% if runs != requested_runs %} [warning](requested {{ requested_runs }})[/warning]{% endif %}
 
 {% if rows %}  [dim]{{ "pack" | col(14) }} {{ "handler" | col(8) }} {{ "target" | col(28) }} {{ "p50" | col(10) }} {{ "p95" | col(10) }} {{ "max" | col(10) }} runs[/dim]
 {% for r in rows %}  [pack-name]{{ r.pack | col(14) }}[/pack-name] [handler-symbol]{{ r.handler | col(8) }}[/handler-symbol] {{ r.target | col(28) }} [deployed]{{ r.p50_label | col(10) }}[/deployed] {{ r.p95_label | col(10) }} {{ r.max_label | col(10) }} [dim]{{ r.seen_label }}[/dim]
@@ -53,7 +61,11 @@
   [dim]profiles dir:[/dim] {{ profiles_dir }}
 {%- elif kind == "shell-init-history" -%}
 [header]Shell-init history[/header]
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
 
+{% endif %}
 {% if rows %}  [dim]{{ "when (UTC)" | col(18) }} {{ "shell" | col(20) }} {{ "total" | col(10) }} {{ "user" | col(10) }} {{ "entries" | col(8) }} fail[/dim]
 {% for r in rows %}  {{ r.when | col(18) }} {{ r.shell | col(20) }} [deployed]{{ r.total_label | col(10) }}[/deployed] {{ r.user_total_label | col(10) }} {{ r.entry_count | string | col(8) }} {% if r.failed_entries > 0 %}[error]{{ r.failed_entries }}[/error]{% else %}[dim]0[/dim]{% endif %}
 {% endfor %}{% else %}{% if profiling_enabled %}  [dim](no profiles yet — open a shell that sources `dodot-init.sh`)[/dim]
