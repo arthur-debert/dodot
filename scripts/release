@@ -50,8 +50,12 @@ case "$arg" in
     major|minor|patch)
         current=$(grep -E '^version' "$repo_root/crates/dodot-lib/Cargo.toml" \
             | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+        # Strip any pre-release suffix before parsing. The bump shortcuts
+        # operate on the core MAJOR.MINOR.PATCH; if you want to step from
+        # 1.0.0-rc.1 to 1.0.0, type the version literally.
+        current_core="${current%%-*}"
         MAJOR=0; MINOR=0; PATCH=0; SPECIAL=""
-        semverParseInto "$current" MAJOR MINOR PATCH SPECIAL
+        semverParseInto "$current_core" MAJOR MINOR PATCH SPECIAL
         case "$arg" in
             major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
             minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
@@ -61,7 +65,7 @@ case "$arg" in
         echo "Bumping ${arg}: ${current} -> ${new_version}"
         ;;
     *)
-        if ! [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+        if ! [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "version must be MAJOR.MINOR.PATCH[-PRERELEASE] or one of: major, minor, patch (got: $arg)" >&2
             exit 2
         fi
