@@ -239,6 +239,25 @@ pub const HANDLER_PATH: &str = "path";
 pub const HANDLER_INSTALL: &str = "install";
 pub const HANDLER_HOMEBREW: &str = "homebrew";
 
+/// Names of all configuration-category handlers in the registry.
+///
+/// Returned in no particular order. Used by `dodot up` to wipe stale
+/// per-pack state before re-applying current source: every successful
+/// `up` for these handlers is equivalent to "down (these handlers) +
+/// up", so a deleted source file no longer leaves an orphan entry.
+///
+/// Code-execution handlers (install, homebrew) are excluded — their
+/// sentinels record "did this run with this content?" and must persist
+/// across re-runs of `up` so install scripts and `brew bundle` aren't
+/// re-executed every time.
+pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
+    create_registry(fs)
+        .iter()
+        .filter(|(_, h)| h.category() == HandlerCategory::Configuration)
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
 /// Create the default handler registry.
 ///
 /// Returns a map from handler name to handler instance. The `fs`

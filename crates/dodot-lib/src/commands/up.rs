@@ -19,6 +19,8 @@
 //! Dry-run keeps the per-intent rendering since there's no
 //! post-execution state to verify.
 
+use std::collections::HashMap;
+
 use tracing::{debug, info};
 
 use crate::commands::{
@@ -27,8 +29,10 @@ use crate::commands::{
 };
 use crate::conflicts;
 use crate::datastore::format_command_for_display;
+use crate::handlers;
 use crate::operations::HandlerIntent;
 use crate::packs::orchestration::{self, ExecutionContext, PackResult};
+use crate::packs::Pack;
 use crate::probe;
 use crate::shell;
 use crate::Result;
@@ -80,11 +84,52 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     }
     debug!("no cross-pack conflicts");
 
-    // Phase 3: Execute intents for each pack
+    // Phase 3: Reconcile non-provisioning state, then execute intents.
+    //
+    // For configuration handlers (path, shell, symlink), every `up` is
+    // equivalent to "down (those handlers) + up": we wipe the stored
+    // state for each pack before re-applying current source. That way
+    // a file deleted from the pack stops appearing in the regenerated
+    // init script and the deployed user-side links — instead of
+    // lingering as a stale entry that points at a now-missing source.
+    //
+    // Provisioning handlers (install, homebrew) are deliberately left
+    // alone. Their sentinels record "did this run with this content?"
+    // independently of whether the source still exists right now;
+    // wiping them would force install scripts and `brew bundle` to
+    // re-execute on every up, defeating the sentinel mechanism.
     let mut pack_results: Vec<PackResult> = intent_errors;
+    let config_handlers = if ctx.dry_run {
+        Vec::new()
+    } else {
+        handlers::configuration_handler_names(ctx.fs.as_ref())
+    };
+    // pack_intents was built from `packs`, so every display_name maps
+    // to exactly one Pack. Keying by &str avoids cloning and makes the
+    // missing-pack case a bug rather than silent skip.
+    let pack_by_display: HashMap<&str, &Pack> =
+        packs.iter().map(|p| (p.display_name.as_str(), p)).collect();
 
     for (pack_name, intents) in pack_intents {
         info!(pack = %pack_name, intents = intents.len(), "executing pack");
+
+        if !ctx.dry_run {
+            let pack = pack_by_display
+                .get(pack_name.as_str())
+                .copied()
+                .expect("pack_intents was built from packs; lookup must succeed");
+            if let Err(e) = wipe_configuration_state(pack, &config_handlers, ctx) {
+                info!(pack = %pack_name, error = %e, "reconcile failed");
+                pack_results.push(PackResult {
+                    pack_name,
+                    success: false,
+                    operations: Vec::new(),
+                    error: Some(format!("reconcile error: {e}")),
+                });
+                continue;
+            }
+        }
+
         match orchestration::execute_intents(intents, ctx) {
             Ok(operations) => {
                 let success = operations.iter().all(|r| r.success);
@@ -254,6 +299,20 @@ pub fn up_or_status_for_conflict(
         }
         Err(e) => Err(e),
     }
+}
+
+/// Remove datastore state for a pack across the given configuration
+/// handlers. Datastore is keyed by on-disk directory name (e.g.
+/// `010-nvim`), not the display name (`nvim`).
+fn wipe_configuration_state(
+    pack: &Pack,
+    config_handlers: &[String],
+    ctx: &ExecutionContext,
+) -> Result<()> {
+    for handler in config_handlers {
+        ctx.datastore.remove_state(&pack.name, handler)?;
+    }
+    Ok(())
 }
 
 /// Render operations directly from pack_results — used for dry-run, where
