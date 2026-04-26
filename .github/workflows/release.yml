@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to release (e.g. 0.18.0)'
+        description: 'Version to release (e.g. 0.18.0 or 1.0.0-rc.1)'
         required: true
         type: string
 
@@ -21,6 +21,7 @@ jobs:
     outputs:
       version: ${{ steps.bump.outputs.version }}
       release-sha: ${{ steps.bump.outputs.sha }}
+      prerelease: ${{ steps.bump.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,10 +39,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::version must be MAJOR.MINOR.PATCH (got: $NEW_VERSION)"
+          if ! [[ "$NEW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::version must be MAJOR.MINOR.PATCH[-PRERELEASE] (got: $NEW_VERSION)"
             exit 1
           fi
+
+          IS_PRERELEASE=false
+          if [[ "$NEW_VERSION" == *-* ]]; then
+            IS_PRERELEASE=true
+          fi
+          echo "prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
 
           TAG="v$NEW_VERSION"
           CLI_TOML="crates/dodot-cli/Cargo.toml"
@@ -88,24 +95,35 @@ jobs:
           sed -i -E "s/^dodot-lib = \\{ version = \"$OLD_VERSION\"/dodot-lib = { version = \"$NEW_VERSION\"/" "$CLI_TOML"
           cargo update -p dodot -p dodot-lib
 
-          TODAY=$(date -u +%Y-%m-%d)
-          SECTION=$(mktemp)
-          {
-            printf '## [%s] - %s\n\n' "$NEW_VERSION" "$TODAY"
-            printf '%s\n\n' "$BODY"
-          } > "$SECTION"
-          awk -v section_file="$SECTION" '
-              !inserted && /^## \[/ {
-                  while ((getline line < section_file) > 0) print line
-                  close(section_file)
-                  inserted=1
-              }
-              { print }
-          ' CHANGELOG.md > CHANGELOG.md.tmp
-          mv CHANGELOG.md.tmp CHANGELOG.md
-          rm -f "$SECTION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          cat > CHANGELOG_UNRELEASED.md <<'EOF'
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            # Pre-releases share the unreleased entries with the final they
+            # lead up to: don't roll into CHANGELOG.md and don't clear
+            # CHANGELOG_UNRELEASED.md. Subsequent rc.N / the final release
+            # will see the same entries.
+            git add "$CLI_TOML" "$LIB_TOML" Cargo.lock
+            git commit -m "chore: Release $TAG"
+          else
+            TODAY=$(date -u +%Y-%m-%d)
+            SECTION=$(mktemp)
+            {
+              printf '## [%s] - %s\n\n' "$NEW_VERSION" "$TODAY"
+              printf '%s\n\n' "$BODY"
+            } > "$SECTION"
+            awk -v section_file="$SECTION" '
+                !inserted && /^## \[/ {
+                    while ((getline line < section_file) > 0) print line
+                    close(section_file)
+                    inserted=1
+                }
+                { print }
+            ' CHANGELOG.md > CHANGELOG.md.tmp
+            mv CHANGELOG.md.tmp CHANGELOG.md
+            rm -f "$SECTION"
+
+            cat > CHANGELOG_UNRELEASED.md <<'EOF'
           # Unreleased Changes
 
           Add entries here as changes are made. On release, copy this content into
@@ -117,10 +135,9 @@ jobs:
           `## [version]` heading the release workflow inserts.
           EOF
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$CLI_TOML" "$LIB_TOML" Cargo.lock CHANGELOG.md CHANGELOG_UNRELEASED.md
-          git commit -m "chore: Release $TAG"
+            git add "$CLI_TOML" "$LIB_TOML" Cargo.lock CHANGELOG.md CHANGELOG_UNRELEASED.md
+            git commit -m "chore: Release $TAG"
+          fi
           git tag -a "$TAG" -m "Release $TAG"
           git push origin main
           git push origin "$TAG"
@@ -139,8 +156,15 @@ jobs:
       - name: Extract release notes from CHANGELOG
         env:
           VERSION: ${{ needs.prepare-release.outputs.version }}
+          PRERELEASE: ${{ needs.prepare-release.outputs.prerelease }}
         run: |
-          awk '/^## \['"$VERSION"'\]/{found=1; next} /^## \[/{if(found) exit} found{print}' CHANGELOG.md > release-notes.md
+          if [ "$PRERELEASE" = "true" ]; then
+            # Pre-releases haven't rolled into CHANGELOG.md — read the
+            # still-uncleared unreleased entries instead.
+            awk '/^### /{found=1} found{print}' CHANGELOG_UNRELEASED.md > release-notes.md
+          else
+            awk '/^## \['"$VERSION"'\]/{found=1; next} /^## \[/{if(found) exit} found{print}' CHANGELOG.md > release-notes.md
+          fi
           if [ ! -s release-notes.md ]; then
             echo "Release v$VERSION" > release-notes.md
           fi
@@ -153,6 +177,7 @@ jobs:
           name: v${{ needs.prepare-release.outputs.version }}
           body_path: release-notes.md
           draft: false
+          prerelease: ${{ needs.prepare-release.outputs.prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

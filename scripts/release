@@ -7,16 +7,22 @@ set -euo pipefail
 #    or:  scripts/release <bump-level>        e.g. scripts/release minor
 #                                                  (one of: major, minor, patch)
 #
+# Pre-releases: pass a semver pre-release suffix to cut a release candidate
+# or beta, e.g. scripts/release 1.0.0-rc.1. CI marks the GitHub Release as
+# "pre-release" (so it isn't shown as Latest) and skips rolling
+# CHANGELOG_UNRELEASED.md into CHANGELOG.md, so subsequent RCs / the final
+# release can still draw from the same unreleased entries.
+#
 # What CI does (all on GitHub):
 #   1. Bumps version in Cargo.toml files + refreshes Cargo.lock
-#   2. Rolls CHANGELOG_UNRELEASED.md into CHANGELOG.md
+#   2. Rolls CHANGELOG_UNRELEASED.md into CHANGELOG.md (final releases only)
 #   3. Commits "chore: Release vX.Y.Z" on main + creates+pushes tag
-#   4. Creates GitHub Release with notes from CHANGELOG
+#   4. Creates GitHub Release with notes from CHANGELOG / unreleased file
 #   5. Builds binaries (macOS arm64, linux x64+arm64), signs+notarizes macOS
 #   6. Publishes dodot-lib and dodot to crates.io
 #
 # Preconditions (checked by CI before mutating anything):
-#   - version is MAJOR.MINOR.PATCH and does not already exist as a tag
+#   - version is MAJOR.MINOR.PATCH[-PRERELEASE] and does not already exist as a tag
 #   - Cargo.toml version differs from the requested version
 #   - CHANGELOG_UNRELEASED.md has entries
 #
@@ -55,8 +61,8 @@ case "$arg" in
         echo "Bumping ${arg}: ${current} -> ${new_version}"
         ;;
     *)
-        if ! [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "version must be MAJOR.MINOR.PATCH or one of: major, minor, patch (got: $arg)" >&2
+        if ! [[ "$arg" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must be MAJOR.MINOR.PATCH[-PRERELEASE] or one of: major, minor, patch (got: $arg)" >&2
             exit 2
         fi
         new_version="$arg"
