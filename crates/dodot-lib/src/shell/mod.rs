@@ -252,6 +252,19 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
         "    _dodot_prof_file=\"$_dodot_prof_dir/profile-${{EPOCHSECONDS:-0}}-$$-${{RANDOM}}.tsv\""
     )
     .unwrap();
+    // Sibling errors log: one record per source whose stderr was non-empty.
+    // Format: `@@\t<target>\t<exit_status>` header line, followed by the
+    // captured stderr verbatim, followed by a trailing newline. Loaded
+    // alongside the profile by `probe::shell_init::read_recent_profiles`
+    // and parsed by `probe::shell_init::parse_errors_log`.
+    writeln!(
+        script,
+        "    _dodot_err_file=\"${{_dodot_prof_file%.tsv}}.errors.log\""
+    )
+    .unwrap();
+    // Per-shell scratch file for capturing each source's stderr. Reused
+    // across every source in this shell startup; truncated each time.
+    writeln!(script, "    _dodot_err_tmp=\"$_dodot_prof_dir/.errtmp-$$\"").unwrap();
     writeln!(
         script,
         "    if mkdir -p \"$_dodot_prof_dir\" 2>/dev/null; then"
@@ -285,6 +298,11 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
         "      }} > \"$_dodot_prof_file\" 2>/dev/null && _dodot_prof=1"
     )
     .unwrap();
+    // Errors log is created lazily — see `emit_timed_source`. Most shell
+    // startups have no stderr from any source, and writing an empty
+    // header file for each one would defeat the "fast path is free"
+    // claim. The first source that actually emits stderr seeds the
+    // header before appending its record.
     writeln!(script, "    fi").unwrap();
     writeln!(script, "  fi").unwrap();
     writeln!(script, "fi").unwrap();
@@ -313,7 +331,9 @@ fn emit_timed_path(script: &mut String, pack: &str, target: &Path) {
 }
 
 /// One inline-timed `[ -f X ] && . X` row, capturing the source's
-/// exit status. Same overhead profile as the PATH variant.
+/// exit status and stderr. Same overhead profile as the PATH variant
+/// when the sourced file is silent; one extra `[ -s ]` test plus an
+/// append when stderr is non-empty.
 ///
 /// Both branches (profiling-active and unprofiled fallback) emit the
 /// loud-failure message on a non-zero source exit, so users see the
@@ -326,10 +346,13 @@ fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
     // `_dodot_rc` is initialised to 0 *before* the source attempt so a
     // missing file (the `[ -f … ]` test failing) does not get reported
     // as "exited 1". The compound `&& { … }` only sets `_dodot_rc` from
-    // the actual `.` invocation; otherwise it stays 0.
+    // the actual `.` invocation; otherwise it stays 0. Stderr from the
+    // source is redirected to `_dodot_err_tmp`; if non-empty, we
+    // re-emit it to the user's stderr (preserving the shell's own
+    // error display) and append it to the per-shell errors log.
     writeln!(
         script,
-        "  _dodot_rc=0; _dodot_t0=$EPOCHREALTIME; [ -f \"{target_str}\" ] && {{ . \"{target_str}\"; _dodot_rc=$?; }}; _dodot_t1=$EPOCHREALTIME"
+        "  _dodot_rc=0; : > \"$_dodot_err_tmp\" 2>/dev/null; _dodot_t0=$EPOCHREALTIME; [ -f \"{target_str}\" ] && {{ . \"{target_str}\" 2>\"$_dodot_err_tmp\"; _dodot_rc=$?; }}; _dodot_t1=$EPOCHREALTIME"
     )
     .unwrap();
     writeln!(
@@ -337,11 +360,39 @@ fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
         "  printf 'source\\t{pack}\\tshell\\t%s\\t%s\\t%s\\t%s\\n' {target_q} \"$_dodot_t0\" \"$_dodot_t1\" \"$_dodot_rc\" >> \"$_dodot_prof_file\" 2>/dev/null"
     )
     .unwrap();
+    // Stderr-handling block. Skipped entirely when the sourced file was
+    // silent (the common case). When non-empty, we print to the user's
+    // stderr and append a record to the errors log. The errors log is
+    // seeded with its `v1` header on first use — keeping creation lazy
+    // means a clean shell startup leaves no orphan `*.errors.log` on
+    // disk. The trailing `\n` after each record guarantees the next
+    // record's `@@` header starts on its own line even if the captured
+    // stderr didn't end with a newline.
+    writeln!(script, "  if [ -s \"$_dodot_err_tmp\" ]; then").unwrap();
+    writeln!(script, "    cat \"$_dodot_err_tmp\" >&2").unwrap();
     writeln!(
         script,
-        "  [ \"$_dodot_rc\" -ne 0 ] && echo \"dodot: shell source exited $_dodot_rc: {target_str}\" >&2"
+        "    [ -f \"$_dodot_err_file\" ] || printf '# dodot shell-init errors v1\\n' > \"$_dodot_err_file\" 2>/dev/null"
     )
     .unwrap();
+    writeln!(script, "    {{").unwrap();
+    writeln!(
+        script,
+        "      printf '@@\\t%s\\t%s\\n' {target_q} \"$_dodot_rc\""
+    )
+    .unwrap();
+    writeln!(script, "      cat \"$_dodot_err_tmp\"").unwrap();
+    writeln!(script, "      printf '\\n'").unwrap();
+    writeln!(script, "    }} >> \"$_dodot_err_file\" 2>/dev/null").unwrap();
+    writeln!(script, "  elif [ \"$_dodot_rc\" -ne 0 ]; then").unwrap();
+    // Non-zero exit with empty stderr — still emit the loud breadcrumb
+    // so the user knows dodot saw a failure (matches prior behaviour).
+    writeln!(
+        script,
+        "    echo \"dodot: shell source exited $_dodot_rc: {target_str}\" >&2"
+    )
+    .unwrap();
+    writeln!(script, "  fi").unwrap();
     writeln!(script, "else").unwrap();
     writeln!(
         script,
@@ -362,10 +413,17 @@ fn emit_profiling_epilogue(script: &mut String) {
         "  printf '# end_t\\t%s\\n' \"$EPOCHREALTIME\" >> \"$_dodot_prof_file\" 2>/dev/null"
     )
     .unwrap();
+    // Remove the per-shell stderr scratch file. It's reused across
+    // sources within one shell startup; here at exit we tidy up.
+    writeln!(
+        script,
+        "  [ -n \"${{_dodot_err_tmp:-}}\" ] && rm -f \"$_dodot_err_tmp\" 2>/dev/null"
+    )
+    .unwrap();
     writeln!(script, "fi").unwrap();
     writeln!(
         script,
-        "unset _dodot_prof _dodot_prof_dir _dodot_prof_file _dodot_prof_t0 _dodot_t0 _dodot_t1 _dodot_rc 2>/dev/null"
+        "unset _dodot_prof _dodot_prof_dir _dodot_prof_file _dodot_err_file _dodot_err_tmp _dodot_prof_t0 _dodot_t0 _dodot_t1 _dodot_rc 2>/dev/null"
     )
     .unwrap();
 }
@@ -690,6 +748,52 @@ mod tests {
     }
 
     #[test]
+    fn profiling_captures_source_stderr_into_errors_log() {
+        // The wrapper must redirect each source's stderr to the per-shell
+        // scratch file and append a versioned record (`@@\ttarget\texit`)
+        // to the errors.log sibling whenever stderr is non-empty.
+        let env = TempEnvironment::builder()
+            .pack("vim")
+            .file("aliases.sh", "")
+            .done()
+            .build();
+        let ds = make_datastore(&env);
+        ds.create_data_link("vim", "shell", &env.dotfiles_root.join("vim/aliases.sh"))
+            .unwrap();
+
+        let script = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
+
+        // Errors-log sibling is derived from the profile-file path.
+        assert!(
+            script.contains("_dodot_err_file=\"${_dodot_prof_file%.tsv}.errors.log\""),
+            "errors-log path must be a sibling of the profile TSV:\n{script}"
+        );
+        // Versioned header is seeded lazily — only on first stderr from
+        // a sourced file, guarded by `[ -f "$_dodot_err_file" ]` so an
+        // all-silent shell startup leaves no sidecar on disk.
+        assert!(
+            script.contains("[ -f \"$_dodot_err_file\" ] || printf '# dodot shell-init errors v1"),
+            "errors-log header must be seeded lazily on first stderr:\n{script}"
+        );
+        // Stderr is redirected to the per-shell scratch file during the source.
+        assert!(
+            script.contains("2>\"$_dodot_err_tmp\""),
+            "source must redirect stderr to scratch file:\n{script}"
+        );
+        // Truncation before each source so a previous source's stderr
+        // doesn't leak into the next record.
+        assert!(
+            script.contains(": > \"$_dodot_err_tmp\""),
+            "scratch file must be truncated before each source:\n{script}"
+        );
+        // The record header uses the @@ sentinel + tab-separated target/exit.
+        assert!(
+            script.contains("printf '@@\\t%s\\t%s\\n'"),
+            "errors-log records must use @@ header format:\n{script}"
+        );
+    }
+
+    #[test]
     fn profiling_epilogue_writes_end_marker_and_unsets_state() {
         let env = TempEnvironment::builder()
             .pack("vim")
@@ -775,19 +879,24 @@ mod tests {
             "plain script missing loud-failure echo:\n{plain}"
         );
 
-        // Profiling on: timed branch echoes after the printf when
-        // _dodot_rc != 0; unprofiled fallback uses the same OR-echo
-        // form as the plain path.
+        // Profiling on: timed branch echoes from the elif-empty-stderr
+        // arm (silent failure case); the with-stderr arm relies on
+        // re-emitting the captured stderr to the user's TTY. Unprofiled
+        // fallback uses the OR-echo form like the plain path.
         let timed = generate_init_script(env.fs.as_ref(), env.paths.as_ref(), true).unwrap();
         assert!(
-            timed.contains(
-                "[ \"$_dodot_rc\" -ne 0 ] && echo \"dodot: shell source exited $_dodot_rc:"
-            ),
-            "timed script missing profiled-branch echo:\n{timed}"
+            timed.contains("echo \"dodot: shell source exited $_dodot_rc:"),
+            "timed script missing silent-failure echo:\n{timed}"
         );
         assert!(
             timed.contains("dodot: shell source exited $?:"),
             "timed script missing fallback-branch echo:\n{timed}"
+        );
+        // Captured stderr is re-emitted to the user's TTY before being
+        // appended to the errors log, so they still see it live.
+        assert!(
+            timed.contains("cat \"$_dodot_err_tmp\" >&2"),
+            "timed script must echo captured stderr to user's TTY:\n{timed}"
         );
     }
 

@@ -37,6 +37,35 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   a banner names both timestamps and prompts the user to open a new
   shell. Closes #59.
 
+- **Per-source stderr capture and drill-down view for shell-init.**
+  Until now, when a sourced shell file emitted to stderr or exited
+  non-zero, dodot showed only an exit-code count in `--history` — the
+  actual error message was on the user's terminal at startup time and
+  gone. The shell wrapper now redirects each `. file` stderr to a
+  per-shell scratch, re-emits live to the TTY (preserving the existing
+  breadcrumb), and on non-empty stderr appends a record to a sibling
+  `profile-<id>.errors.log` next to the TSV. Empty-stderr sources stay
+  on the fast path — one `[ -s ]` test of overhead. Two new views read
+  the sidecar:
+  - `dodot probe shell-init <pack>[/<file>]` drills into one target's
+    history across recent runs, inlining captured stderr under each
+    failed run.
+  - `dodot probe shell-init --errors-only` lists every target with a
+    non-zero exit somewhere in the window, sorted by failure count desc.
+
+  The `dodot status` runtime-failure footnote was also upgraded to
+  inline a stderr excerpt from the most recent failing run (when
+  captured) and to point users at the per-file probe view instead of
+  `--history` (which only shows aggregate counts).
+
+### Changed
+
+- **`probe shell-init --history` lists newest first.** Previously the
+  history table was reversed to put the latest run nearest the prompt;
+  in practice this was confusing because every other dated listing in
+  the tool reads newest-first. Now `--history` matches that
+  convention.
+
 ### Fixed
 
 - **`dodot up` reconciles deleted source files.** `up` was additive only:

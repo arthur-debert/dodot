@@ -59,6 +59,36 @@
   [dim] run `dodot up`, then start a new shell)[/dim]
 {% endif %}{% endif %}
   [dim]profiles dir:[/dim] {{ profiles_dir }}
+{%- elif kind == "shell-init-errors" -%}
+[header]Shell-init errors[/header]
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
+
+{% endif %}  [dim]examined:[/dim] {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %}
+
+{% if targets %}{% for t in targets %}  [pack-name]{{ t.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ t.handler }}[/handler-symbol] [dim]/[/dim] {{ t.display_target }} [error]({{ t.failure_count }} failed)[/error]
+  [dim]{{ t.target }}[/dim]
+{% for r in t.runs %}    {{ r.when | col(18) }} [error]{{ r.duration_label | col(10) }}[/error] [error]exit {{ r.exit_status }}[/error]
+{% for line in r.stderr_lines %}      [dim]>[/dim] [error]{{ line }}[/error]
+{% endfor %}{% endfor %}
+{% endfor %}{% else %}  [deployed](no failed sources in the last {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %})[/deployed]
+{% endif %}  [dim]profiles dir:[/dim] {{ profiles_dir }}
+{%- elif kind == "shell-init-filter" -%}
+[header]Shell-init filter[/header] [pack-name]{{ filter }}[/pack-name]
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
+
+{% endif %}  [dim]examined:[/dim] {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %}
+
+{% if targets %}{% for t in targets %}  [pack-name]{{ t.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ t.handler }}[/handler-symbol] [dim]/[/dim] {{ t.display_target }}{% if t.failure_count > 0 %} [error]({{ t.failure_count }} failed)[/error]{% endif %}
+  [dim]{{ t.target }}[/dim]
+{% for r in t.runs %}    {{ r.when | col(18) }} [{{ r.status_class }}]{{ r.duration_label | col(10) }}[/{{ r.status_class }}]{% if r.exit_status != 0 %} [error]exit {{ r.exit_status }}[/error]{% else %} [dim]exit 0[/dim]{% endif %}
+{% for line in r.stderr_lines %}      [dim]>[/dim] [error]{{ line }}[/error]
+{% endfor %}{% endfor %}
+{% endfor %}{% else %}  [dim](no entries matched `{{ filter }}` in the last {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %})[/dim]
+{% endif %}  [dim]profiles dir:[/dim] {{ profiles_dir }}
 {%- elif kind == "shell-init-history" -%}
 [header]Shell-init history[/header]
 {% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
