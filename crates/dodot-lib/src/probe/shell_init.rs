@@ -22,6 +22,7 @@
 //! probe shell-init` working, just with a short report.
 
 use serde::Serialize;
+use tracing::warn;
 
 use crate::fs::Fs;
 use crate::paths::Pather;
@@ -129,12 +130,21 @@ pub fn read_recent_profiles(fs: &dyn Fs, paths: &dyn Pather, limit: usize) -> Re
         let content = fs.read_to_string(&entry.path)?;
         let mut profile = parse_profile(&entry.name, &content);
         // Sibling errors log: same path with `.tsv` swapped for
-        // `.errors.log`. Missing file is normal (no errors captured),
-        // so we silently treat it as empty.
+        // `.errors.log`. Missing file is normal (no errors captured)
+        // and is silently treated as empty. A read failure on a file
+        // that does exist is suspicious — likely permissions or
+        // corruption — so we log it instead of dropping silently. We
+        // still don't fail the whole call: callers want as much profile
+        // data as possible even with one bad sidecar.
         let errors_path = errors_log_path_for(&entry.path);
         if fs.exists(&errors_path) {
-            if let Ok(err_content) = fs.read_to_string(&errors_path) {
-                profile.errors = parse_errors_log(&err_content);
+            match fs.read_to_string(&errors_path) {
+                Ok(err_content) => profile.errors = parse_errors_log(&err_content),
+                Err(e) => warn!(
+                    path = %errors_path.display(),
+                    error = %e,
+                    "errors-log sidecar exists but could not be read; treating as empty"
+                ),
             }
         }
         profiles.push(profile);

@@ -425,7 +425,7 @@ fn build_clap_command() -> ClapCommand {
                         .arg(
                             Arg::new("history")
                                 .long("history")
-                                .help("Show one summary row per recent run, oldest first")
+                                .help("Show one summary row per recent run, newest first")
                                 .action(ArgAction::SetTrue),
                         )
                         .arg(

@@ -558,6 +558,28 @@ pub const DEFAULT_HISTORY_LIMIT: usize = 50;
 /// output stays readable.
 pub const DEFAULT_FILTER_RUNS: usize = 20;
 
+/// Match a profile target path against a filename-or-subpath filter.
+///
+/// Returns true when:
+/// - the filter is a bare basename (`env.sh`) and `target`'s last path
+///   component equals it, or
+/// - the filter is a subpath (`subdir/env.sh`) and `target` ends with
+///   that subpath at a path boundary.
+///
+/// The boundary check (`/{filter}` suffix) prevents `env.sh` from
+/// matching `nvenv.sh` or other filenames that happen to end with the
+/// same characters.
+fn target_matches_filter(target: &str, filter: &str) -> bool {
+    if !filter.contains('/') {
+        return std::path::Path::new(target)
+            .file_name()
+            .is_some_and(|s| s == std::ffi::OsStr::new(filter));
+    }
+    // Subpath form: must end at a path boundary so `dir/env.sh` doesn't
+    // accidentally match `otherdir/env.sh`.
+    target.ends_with(&format!("/{filter}")) || target == filter
+}
+
 /// Render the filtered drill-down view for a `<pack>[/<file>]` filter.
 ///
 /// `runs` controls how many recent profiles are examined; the caller
@@ -597,11 +619,7 @@ pub fn shell_init_filter(ctx: &ExecutionContext, filter: &str, runs: usize) -> R
                 continue;
             }
             if let Some(name) = &filter_filename {
-                let basename = std::path::Path::new(&entry.target)
-                    .file_name()
-                    .map(|s| s.to_string_lossy().into_owned())
-                    .unwrap_or_default();
-                if &basename != name {
+                if !target_matches_filter(&entry.target, name) {
                     continue;
                 }
             }

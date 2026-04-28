@@ -249,12 +249,13 @@ pub fn probe_show_data_dir_handler(
 
 /// `dodot probe shell-init` — most recent shell-startup profile.
 ///
-/// Four views, picked by argument shape:
+/// Five views, picked by argument shape:
 /// - `<pack>[/<file>]` positional: drill-down across recent runs with
 ///   captured stderr (wins over flags — the user is asking a specific
 ///   question)
+/// - `--errors-only`: cross-history list of failing targets
 /// - `--runs N`: per-target percentile aggregate over the last N runs
-/// - `--history`: one-row-per-run trend, oldest first
+/// - `--history`: one-row-per-run trend, newest first
 /// - default: single-run detail (most recent profile)
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,

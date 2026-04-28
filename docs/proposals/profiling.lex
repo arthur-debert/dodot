@@ -79,7 +79,7 @@ Design Specification: Profiling and the Probe Command
 
         :: text ::
 
-        The `@@` sentinel marks the start of a record; subsequent lines until the next `@@` (or EOF) are the captured stderr verbatim. The wrapper appends a trailing newline after each record so the next header lands on its own line. The file is created lazily — when nothing prints to stderr (the common case), no errors log exists for that run, and the cost on the hot path is one `[ -s ]` test per source. The reader (`probe shell-init <pack>/<file>`, `--errors-only`) loads the sibling automatically when present and silently treats absence as "no errors captured".
+        The `@@` sentinel marks the start of a record; subsequent lines until the next `@@` (or EOF) are the captured stderr verbatim. The wrapper appends a trailing newline after each record so the next header lands on its own line. The file is created lazily — the version-banner header is written by the *first* source whose stderr is non-empty, so a clean shell startup leaves no errors log on disk and the cost on the hot path is one `[ -s ]` test per source. The reader (`probe shell-init <pack>/<file>`, `--errors-only`) loads the sibling automatically when present and silently treats absence as "no errors captured".
 
     3.2. Deployment Map
 

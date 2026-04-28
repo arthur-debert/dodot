@@ -254,8 +254,9 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
     .unwrap();
     // Sibling errors log: one record per source whose stderr was non-empty.
     // Format: `@@\t<target>\t<exit_status>` header line, followed by the
-    // captured stderr verbatim, followed by a trailing newline. Read by
-    // `probe::shell_init::read_profile_errors`.
+    // captured stderr verbatim, followed by a trailing newline. Loaded
+    // alongside the profile by `probe::shell_init::read_recent_profiles`
+    // and parsed by `probe::shell_init::parse_errors_log`.
     writeln!(
         script,
         "    _dodot_err_file=\"${{_dodot_prof_file%.tsv}}.errors.log\""
@@ -297,14 +298,11 @@ fn emit_profiling_preamble(script: &mut String, profiles_dir: &Path, init_script
         "      }} > \"$_dodot_prof_file\" 2>/dev/null && _dodot_prof=1"
     )
     .unwrap();
-    // Seed the errors log with its version header. The file is created
-    // empty here; per-source stderr records are appended only when a
-    // sourced file actually emits to stderr.
-    writeln!(
-        script,
-        "      [ \"$_dodot_prof\" = \"1\" ] && printf '# dodot shell-init errors v1\\n' > \"$_dodot_err_file\" 2>/dev/null"
-    )
-    .unwrap();
+    // Errors log is created lazily — see `emit_timed_source`. Most shell
+    // startups have no stderr from any source, and writing an empty
+    // header file for each one would defeat the "fast path is free"
+    // claim. The first source that actually emits stderr seeds the
+    // header before appending its record.
     writeln!(script, "    fi").unwrap();
     writeln!(script, "  fi").unwrap();
     writeln!(script, "fi").unwrap();
@@ -364,11 +362,19 @@ fn emit_timed_source(script: &mut String, pack: &str, target: &Path) {
     .unwrap();
     // Stderr-handling block. Skipped entirely when the sourced file was
     // silent (the common case). When non-empty, we print to the user's
-    // stderr and append a record to the errors log. The trailing `\n`
-    // guarantees the next record's `@@` header starts on its own line
-    // even if the captured stderr didn't end with a newline.
+    // stderr and append a record to the errors log. The errors log is
+    // seeded with its `v1` header on first use — keeping creation lazy
+    // means a clean shell startup leaves no orphan `*.errors.log` on
+    // disk. The trailing `\n` after each record guarantees the next
+    // record's `@@` header starts on its own line even if the captured
+    // stderr didn't end with a newline.
     writeln!(script, "  if [ -s \"$_dodot_err_tmp\" ]; then").unwrap();
     writeln!(script, "    cat \"$_dodot_err_tmp\" >&2").unwrap();
+    writeln!(
+        script,
+        "    [ -f \"$_dodot_err_file\" ] || printf '# dodot shell-init errors v1\\n' > \"$_dodot_err_file\" 2>/dev/null"
+    )
+    .unwrap();
     writeln!(script, "    {{").unwrap();
     writeln!(
         script,
@@ -762,10 +768,12 @@ mod tests {
             script.contains("_dodot_err_file=\"${_dodot_prof_file%.tsv}.errors.log\""),
             "errors-log path must be a sibling of the profile TSV:\n{script}"
         );
-        // Versioned header is seeded once per shell.
+        // Versioned header is seeded lazily — only on first stderr from
+        // a sourced file, guarded by `[ -f "$_dodot_err_file" ]` so an
+        // all-silent shell startup leaves no sidecar on disk.
         assert!(
-            script.contains("# dodot shell-init errors v1"),
-            "errors-log must carry a version header:\n{script}"
+            script.contains("[ -f \"$_dodot_err_file\" ] || printf '# dodot shell-init errors v1"),
+            "errors-log header must be seeded lazily on first stderr:\n{script}"
         );
         // Stderr is redirected to the per-shell scratch file during the source.
         assert!(

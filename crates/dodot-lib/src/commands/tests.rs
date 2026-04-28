@@ -4165,6 +4165,75 @@ fn probe_shell_init_filter_renders_with_template() {
 }
 
 #[test]
+fn probe_shell_init_filter_supports_nested_subpaths() {
+    // A target deployed under a subdirectory (e.g. `pack/sub/dir/x.sh`)
+    // should be matchable both by basename (`x.sh`) and by subpath
+    // (`sub/dir/x.sh`). The latter is the disambiguator when two files
+    // share a basename.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/sub/dir/env.sh\t1.0\t1.001\t1",
+            "source\tgpg\tshell\t/p/gpg/other/env.sh\t1.0\t1.001\t0",
+        ],
+    );
+
+    // Subpath filter narrows to the matching nested file only.
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/sub/dir/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].target, "/p/gpg/sub/dir/env.sh");
+
+    // Bare basename still matches both nested files.
+    let result_basename = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view_basename = match result_basename {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view_basename.targets.len(), 2);
+}
+
+#[test]
+fn probe_shell_init_filter_basename_does_not_partial_match() {
+    // Boundary check: `env.sh` filter must not match `nvenv.sh`.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tnv\tshell\t/p/nv/nvenv.sh\t1.0\t1.001\t0",
+            "source\tnv\tshell\t/p/nv/env.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result =
+        commands::probe::shell_init_filter(&ctx, "nv/env.sh", commands::probe::DEFAULT_FILTER_RUNS)
+            .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].target, "/p/nv/env.sh");
+}
+
+#[test]
 fn probe_shell_init_filter_empty_when_no_match() {
     let env = TempEnvironment::builder().build();
     let ctx = make_ctx(&env);
