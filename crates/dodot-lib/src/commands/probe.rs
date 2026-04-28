@@ -91,8 +91,8 @@ pub enum ProbeResult {
     /// across the last N runs.
     ShellInitAggregate(ShellInitAggregateView),
     /// `dodot probe shell-init --history` — one summary line per recent
-    /// run, oldest run first (so the latest is closest to the eye in a
-    /// terminal where output scrolls down).
+    /// run, newest first (matches every other dated listing in the tool;
+    /// the user can pipe through `tac` if they want the inverse).
     ShellInitHistory(ShellInitHistoryView),
     /// `dodot probe shell-init <pack>[/<file>]` — drill-down view of
     /// one target (or one pack) across recent runs. Emits per-run
