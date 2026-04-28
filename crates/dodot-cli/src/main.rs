@@ -1,14 +1,29 @@
 use clap::{Arg, ArgAction, Command as ClapCommand};
 use standout::cli::{App, CommandGroup};
-use standout::EmbeddedTemplates;
+use standout::{EmbeddedTemplates, OutputMode};
 
 use dodot_lib::render;
 
 mod handlers;
+mod help;
 mod logging;
 mod tutorial;
 
 fn main() {
+    // Intercept --help / -h / `help [...]` ourselves before standout's
+    // help dispatch runs. Each command has hand-written help text in
+    // src/help/<cmd>.txt — see the `help` module docstring for why we
+    // own the dispatch instead of plumbing through standout's data
+    // extractor.
+    let raw_args: Vec<String> = std::env::args().collect();
+    if let Some(path) = help::detect_help_request(&raw_args) {
+        let text = help::lookup(&path);
+        // Help text is for humans — render with Auto so it picks up
+        // ANSI styling on a TTY and stays plain on pipes.
+        print!("{}", help::render(text, OutputMode::Auto));
+        return;
+    }
+
     let app = build_app();
 
     // parse_with handles help rendering (with command groups) and exits if help requested

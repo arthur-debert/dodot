@@ -141,6 +141,6 @@ Commands
     - `--output <format>` — select output format (`term`, `text`, `json`, `yaml`, `term-debug`)
     - `--verbose` — verbose logging to stderr
     - `--debug` — debug logging to stderr (implies `--verbose`)
-    - `--help` — per-command help
+    - `--help` (or `-h`, or `dodot help <command>`) — per-command help with usage, options, examples, and cross-references
 
     The dotfiles root is not a flag. dodot resolves it by checking `$DOTFILES_ROOT` first, then falling back to `git rev-parse --show-toplevel` (the enclosing git repo root), then the current working directory. The common case — running commands from inside your dotfiles repo — just works.

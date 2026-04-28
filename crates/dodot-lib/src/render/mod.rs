@@ -106,6 +106,21 @@ group-banner-ignored:
 # to change the look.
 tutorial-prompt:
   italic: true
+
+# CLI help tags. The hand-written --help text in `dodot-cli/src/help/`
+# uses these alongside the semantic tags above. Mirror standout's
+# default help theme so the look matches the rest of dodot's output:
+#   item    — bold (command names, option flags)
+#   desc    — plain (descriptions next to items)
+#   usage   — plain (the usage line)
+#   example — plain (example blocks)
+#   about   — plain (intro / about text)
+item:
+  bold: true
+desc: {}
+usage: {}
+example: {}
+about: {}
 "#;
 
 // ── Templates ───────────────────────────────────────────────────

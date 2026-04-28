@@ -1,0 +1,46 @@
+[header]dodot tutorial[/header] — Interactive walkthrough using your real dotfiles.
+
+[message]This is the recommended starting point for new users. The tutorial
+takes about 10 minutes and uses your actual repo — no toy examples,
+no scratch directories. Nothing is changed without your explicit
+say-so at every step.[/message]
+
+[desc]An interactive guide that takes one of your packs from "discovered"
+to "live on this machine," explaining what dodot is doing as it
+goes. The flow:
+
+  [dim]1.[/dim] Locate your dotfiles repo (env var, git toplevel, or cwd)
+  [dim]2.[/dim] Pick a pack to start with (we recommend a config-only one)
+  [dim]3.[/dim] Show its [item]status[/item] and explain what each row means
+  [dim]4.[/dim] Walk through the deploy targets and shell integration
+  [dim]5.[/dim] Run [item]up --dry-run[/item], then for real if you say yes
+  [dim]6.[/dim] Confirm the result
+
+The tutorial saves its position. If you Ctrl-C partway through,
+re-running [item]dodot tutorial[/item] offers to resume where you left off.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot tutorial [OPTIONS][/usage]
+
+[header]OPTIONS[/header]
+  [item]--reset[/item]            [desc]Discard saved tutorial state and start over[/desc]
+  [item]--from <STEP>[/item]      [desc]Jump to a specific step (e.g. [item]intro[/item], [item]pick_pack[/item], [item]dry_run[/item])[/desc]
+
+[header]STEPS[/header]
+  [desc]Step IDs accepted by [item]--from[/item]:[/desc]
+    [dim]intro[/dim], [dim]check_root[/dim], [dim]list_packs[/dim], [dim]no_packs[/dim], [dim]pick_pack[/dim],
+    [dim]show_status[/dim], [dim]annotate_status[/dim], [dim]concept_targets[/dim],
+    [dim]concept_shell[/dim], [dim]dry_run[/dim], [dim]real_up[/dim], [dim]outro[/dim]
+
+[header]EXAMPLES[/header]
+  [example]dodot tutorial                 [dim]# start, or resume if interrupted[/dim]
+  dodot tutorial --reset         [dim]# discard saved progress and start over[/dim]
+  dodot tutorial --from dry_run  [dim]# jump to a specific step[/dim][/example]
+
+[header]CANCELLING[/header]
+  [desc]Ctrl-C at any prompt exits cleanly. Your saved position is kept
+  so you can resume on the next run.[/desc]
+
+[header]SEE ALSO[/header]
+  [item]dodot status[/item]                       [desc]Inspect a pack the way the tutorial does[/desc]
+  [item]docs/user/getting-started.lex[/item]    [desc]The same content as a written guide[/desc]
