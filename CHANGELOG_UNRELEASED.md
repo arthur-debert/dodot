@@ -10,6 +10,22 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
+- **Install-script visibility: header block, `# status:` markers, and `--verbose`.**
+  `dodot up` previously discarded install-script stdout/stderr entirely,
+  so a long-running script looked frozen and a misbehaving one was
+  undebuggable. Three additions, all targeting install scripts:
+  - The script's leading comment block (contiguous `#`-prefixed lines
+    after the optional shebang) is printed when the script starts, so
+    the user sees what's about to run.
+  - Lines on stdout matching `# status: <message>` (or `#status:`) are
+    streamed live as progress markers while the script runs. The
+    convention is tool-agnostic: the markers are just shell comments
+    when the script is run by hand.
+  - `dodot up --verbose` (reusing the existing global flag) streams the
+    script's raw stdout/stderr in real time. On failure, captured
+    stderr is dumped automatically even without `--verbose` so the
+    error is debuggable.
+
 - **`probe shell-init` warns on stale profiles.** Shell-init profiles are
   written by `dodot-init.sh` only when a new shell starts, so running
   `dodot probe shell-init` from a shell that pre-dates the most recent

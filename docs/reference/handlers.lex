@@ -2,21 +2,21 @@ Handlers
 
     A handler is the thing that decides what to do with a file once dodot has decided to process it. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, run install scripts once, or install Brewfiles. This document describes the handlers dodot ships, the rules for how matches flow to them, and the distinction between handlers that always run and handlers that run once.
 
-    :: note :: See [./terms-and-concepts.lex] for terminology used throughout.
+    See [./terms-and-concepts.lex] for terminology used throughout.
 
 1. The Built-in Handlers
 
-    dodot ships with five handlers, covering the overwhelming majority of what dotfile repositories need.
+    dodot ships with five handlers, covering the overwhelming majority of what dotfile management needs.
 
-    1.1. symlink
+    1.1. Symlink
 
-        Creates a symlink from a deployed location (typically `~/` or `~/.config/`) back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
+        Creates a symlink from a deployed location back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
 
         Path resolution is smart: every pack-root entry — file or directory — defaults to `$XDG_CONFIG_HOME/<pack>/<name>` (so `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`). A small list of exceptions force `$HOME` placement regardless of XDG (`ssh`, `bashrc`, `zshrc`, etc.); the per-file `home.X` prefix and per-subtree `_home/` directory route opt-in single files or whole subtrees to `$HOME/.X`. For the full path rules, see [./symlink-paths.lex].
 
-    1.2. shell
+    1.2. Shell
 
-        Arranges for shell scripts to be sourced at login. Matches `{aliases,profile,login,env}.{sh,bash,zsh}` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore and emits `source` lines for every matched shell file.
+        Arranges for shell scripts to be sourced at login. Matches `{aliases,profile,login,env}.{sh,bash,zsh}` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore (see [./data-layer.lex]) and emits `source` lines for every matched shell file.
 
         The extension convention is load-bearing: sourced files run in *your* shell, so `.zsh` files only parse cleanly in zsh sessions and `.bash` files in bash sessions. `.sh` is the portable bucket — use it for snippets that work in either. In practice most users run one shell, and the mismatch simply doesn't come up; users who switch shells occasionally can split their shell config by extension.
 
@@ -31,6 +31,8 @@ Handlers
         The script's extension picks the interpreter — `.sh` and `.bash` run under `bash`, `.zsh` runs under `zsh` — not the user's login shell. An install script runs in a fresh subprocess, so the user's interactive shell state (aliases, functions, options) is not visible to it regardless; only the interpreter choice matters, and the extension is the contract the pack author declares.
 
         A pack with more than one matched install file (say, both `install.sh` and `install.zsh`) runs *all* of them, each tracked by its own sentinel. There is no "pick the best one" logic — if you only want one to run, only ship one.
+
+        Output is quiet by default — start/end markers, the script's leading comment block, and any `# status: <message>` lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or `dodot up --verbose` is passed (which streams the raw output). The `# status:` convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. See [./../user/handlers.md] for the user-facing details and examples.
 
     1.5. homebrew
 

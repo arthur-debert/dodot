@@ -163,6 +163,7 @@ mod tests {
             force: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
+            verbose: false,
         }
     }
 

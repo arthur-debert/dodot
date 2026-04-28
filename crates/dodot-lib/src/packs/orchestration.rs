@@ -48,6 +48,12 @@ pub struct ExecutionContext {
     /// every command that renders through the `pack-status` template;
     /// ignored by commands that emit `message` / `list` output.
     pub group_mode: crate::commands::GroupMode,
+    /// When true, install-script execution streams raw stdout/stderr
+    /// to the user's terminal. The default (`false`) keeps output
+    /// quiet — only the `# status:` progress markers and the leading
+    /// comment block of each script are surfaced. Wired from the CLI
+    /// global `--verbose`/`--debug` flag.
+    pub verbose: bool,
 }
 
 impl ExecutionContext {
@@ -55,8 +61,11 @@ impl ExecutionContext {
     ///
     /// Wires up the real filesystem, XDG paths, filesystem-backed
     /// datastore with shell command runner, and clapfig config manager.
-    /// Callers only need to override specific fields (e.g. `dry_run`).
-    pub fn production(dotfiles_root: &std::path::Path) -> crate::Result<Self> {
+    /// `verbose` controls whether install-script stdout/stderr is
+    /// streamed to the terminal; the field is also stored on the
+    /// returned context for any other consumer that cares. Callers
+    /// only need to override specific fields (e.g. `dry_run`).
+    pub fn production(dotfiles_root: &std::path::Path, verbose: bool) -> crate::Result<Self> {
         let paths = Arc::new(
             crate::paths::XdgPather::builder()
                 .dotfiles_root(dotfiles_root)
@@ -64,7 +73,7 @@ impl ExecutionContext {
         );
         let fs: Arc<dyn Fs> = Arc::new(crate::fs::OsFs::new());
         let runner: Arc<dyn crate::datastore::CommandRunner> =
-            Arc::new(crate::datastore::ShellCommandRunner);
+            Arc::new(crate::datastore::ShellCommandRunner::new(verbose));
         let datastore: Arc<dyn DataStore> = Arc::new(crate::datastore::FilesystemDataStore::new(
             fs.clone(),
             paths.clone(),
@@ -84,6 +93,7 @@ impl ExecutionContext {
             force: false,
             view_mode: crate::commands::ViewMode::default(),
             group_mode: crate::commands::GroupMode::default(),
+            verbose,
         })
     }
 }
@@ -568,6 +578,7 @@ mod tests {
             force: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
+            verbose: false,
         }
     }
 
@@ -808,6 +819,7 @@ mod tests {
             force: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
+            verbose: false,
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();

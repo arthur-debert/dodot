@@ -235,7 +235,7 @@ impl TutorialEnv {
         );
         let fs: Arc<dyn Fs> = Arc::new(dodot_lib::fs::OsFs::new());
         let runner: Arc<dyn dodot_lib::datastore::CommandRunner> =
-            Arc::new(dodot_lib::datastore::ShellCommandRunner);
+            Arc::new(dodot_lib::datastore::ShellCommandRunner::new(false));
         let datastore: Arc<dyn DataStore> = Arc::new(
             dodot_lib::datastore::FilesystemDataStore::new(fs.clone(), paths.clone(), runner),
         );
@@ -264,6 +264,7 @@ impl TutorialEnv {
             force: false,
             view_mode: ViewMode::Full,
             group_mode: GroupMode::Name,
+            verbose: false,
         }
     }
 }
