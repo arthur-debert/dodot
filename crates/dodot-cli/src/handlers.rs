@@ -22,6 +22,12 @@ fn flag_or_false(matches: &clap::ArgMatches, name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Resolve the global verbosity flag. `--debug` implies `--verbose`,
+/// matching the precedence already used by the logging subsystem.
+fn verbose_from(matches: &clap::ArgMatches) -> bool {
+    flag_or_false(matches, "verbose") || flag_or_false(matches, "debug")
+}
+
 /// Build an ExecutionContext from the current environment.
 ///
 /// Uses `ExecutionContext::production()` with the dotfiles root
@@ -29,7 +35,7 @@ fn flag_or_false(matches: &clap::ArgMatches, name: &str) -> bool {
 /// to false for flags not defined on the current subcommand.
 fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
-    let mut ctx = ExecutionContext::production(&dotfiles_root)?;
+    let mut ctx = ExecutionContext::production(&dotfiles_root, verbose_from(matches))?;
 
     ctx.dry_run = flag_or_false(matches, "dry-run");
     ctx.no_provision = flag_or_false(matches, "no-provision");
@@ -44,7 +50,7 @@ fn build_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Err
 /// Build a read-only context (no dry-run/provision flags).
 fn build_readonly_ctx(matches: &clap::ArgMatches) -> Result<ExecutionContext, anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
-    let mut ctx = ExecutionContext::production(&dotfiles_root)?;
+    let mut ctx = ExecutionContext::production(&dotfiles_root, verbose_from(matches))?;
     ctx.view_mode = view_mode_from(matches);
     ctx.group_mode = group_mode_from(matches);
     Ok(ctx)
@@ -310,7 +316,7 @@ fn clean_debug_format(input: &str) -> String {
 /// `dodot init-sh` — prints shell init script for `eval "$(dodot init-sh)"`.
 pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
-    let ctx = ExecutionContext::production(&dotfiles_root)?;
+    let ctx = ExecutionContext::production(&dotfiles_root, false)?;
     let root_config = ctx.config_manager.root_config()?;
     let script = dodot_lib::shell::generate_init_script(
         ctx.fs.as_ref(),

@@ -305,7 +305,7 @@ mod tests {
     }
 
     fn make_datastore(env: &TempEnvironment) -> FilesystemDataStore {
-        let runner = Arc::new(crate::datastore::ShellCommandRunner);
+        let runner = Arc::new(crate::datastore::ShellCommandRunner::new(false));
         FilesystemDataStore::new(env.fs.clone(), env.paths.clone(), runner)
     }
 

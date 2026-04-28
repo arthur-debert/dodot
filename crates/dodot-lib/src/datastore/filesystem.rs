@@ -35,6 +35,33 @@ fn validate_safe_relative(raw: &str, base: &Path) -> Result<PathBuf> {
     Ok(cleaned)
 }
 
+/// Extract the leading documentation comment block from a script.
+///
+/// Skips an optional `#!` shebang and any blank lines, then collects
+/// contiguous `#`-prefixed lines (with the `#` and one optional space
+/// stripped from each). Stops at the first non-comment, non-blank
+/// line. Used to print "what does this script do" before kicking it
+/// off, so the user has context while it runs.
+pub(crate) fn extract_header_block(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut iter = content.lines().peekable();
+    if matches!(iter.peek(), Some(l) if l.starts_with("#!")) {
+        iter.next();
+    }
+    while matches!(iter.peek(), Some(l) if l.trim().is_empty()) {
+        iter.next();
+    }
+    for line in iter {
+        let t = line.trim_start();
+        if !t.starts_with('#') || t.starts_with("#!") {
+            break;
+        }
+        let stripped = t.trim_start_matches('#').trim_start().to_string();
+        out.push(stripped);
+    }
+    out
+}
+
 /// [`DataStore`] implementation backed by the real filesystem.
 ///
 /// State is stored as symlinks and sentinel files under the XDG data
@@ -130,15 +157,20 @@ impl DataStore for FilesystemDataStore {
         // start/end markers on stderr so the user knows what's running and
         // whether it succeeded. The script's own stdout/stderr still flows
         // through the runner as before.
-        let display_name = arguments
+        let script_path = arguments
             .iter()
             .rev()
-            .find_map(|arg| {
+            .find(|arg| {
                 Path::new(arg)
                     .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .filter(|n| n.contains('.'))
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.contains('.'))
             })
+            .cloned();
+        let display_name = script_path
+            .as_deref()
+            .and_then(|p| Path::new(p).file_name())
+            .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| executable.to_string());
         let header = format!("==== {pack} → {handler} → {display_name}");
         let tty = std::io::IsTerminal::is_terminal(&std::io::stderr());
@@ -147,6 +179,23 @@ impl DataStore for FilesystemDataStore {
         let red = if tty { "\x1b[31m" } else { "" };
         let reset = if tty { "\x1b[0m" } else { "" };
         eprintln!("{header}  {dim}running…{reset}");
+
+        // Best-effort: print the script's leading comment block so the
+        // user knows what's about to run. Silently skipped on read error
+        // (script could be a binary, missing, or unreadable).
+        if let Some(path_str) = script_path.as_deref() {
+            if let Ok(content) = self.fs.read_to_string(Path::new(path_str)) {
+                let lines = extract_header_block(&content);
+                if !lines.is_empty() {
+                    let stdout = std::io::stdout();
+                    let mut h = stdout.lock();
+                    use std::io::Write;
+                    for line in lines {
+                        let _ = writeln!(h, "{dim}    {line}{reset}");
+                    }
+                }
+            }
+        }
 
         let result = self.runner.run(executable, arguments);
         match &result {
@@ -255,6 +304,60 @@ mod tests {
     use crate::datastore::{CommandOutput, CommandRunner};
     use crate::testing::TempEnvironment;
     use std::sync::Mutex;
+
+    #[test]
+    fn extract_header_block_skips_shebang() {
+        let content = "#!/bin/bash\n# Install nvm\n# Requires curl\necho hi\n";
+        assert_eq!(
+            extract_header_block(content),
+            vec!["Install nvm".to_string(), "Requires curl".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_header_block_no_shebang() {
+        let content = "# header line\necho hi\n";
+        assert_eq!(extract_header_block(content), vec!["header line"]);
+    }
+
+    #[test]
+    fn extract_header_block_blanks_between_shebang_and_comments() {
+        let content = "#!/bin/bash\n\n\n# first\n# second\nstuff\n";
+        assert_eq!(
+            extract_header_block(content),
+            vec!["first".to_string(), "second".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_header_block_stops_at_first_non_comment() {
+        let content = "# a\n# b\necho mid\n# late\n";
+        assert_eq!(
+            extract_header_block(content),
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_header_block_strips_extra_hashes_and_spaces() {
+        // Common style: `## section` or `#  spaced`. Strip all leading
+        // `#` then a single optional space.
+        let content = "## Section\n#   spaced\n";
+        assert_eq!(
+            extract_header_block(content),
+            vec!["Section".to_string(), "spaced".to_string()]
+        );
+    }
+
+    #[test]
+    fn extract_header_block_empty_input() {
+        assert!(extract_header_block("").is_empty());
+    }
+
+    #[test]
+    fn extract_header_block_no_comments() {
+        assert!(extract_header_block("#!/bin/bash\necho hi\n").is_empty());
+    }
 
     /// Mock command runner that records calls and can be configured to
     /// succeed or fail.
