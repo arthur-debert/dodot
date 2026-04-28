@@ -136,7 +136,7 @@ pub struct CommandOutput {
 /// markers, and captured output is returned via [`CommandOutput`] for
 /// callers that want it.
 pub struct ShellCommandRunner {
-    pub verbose: bool,
+    verbose: bool,
 }
 
 impl ShellCommandRunner {
@@ -219,22 +219,45 @@ impl CommandRunner for ShellCommandRunner {
         let verbose = self.verbose;
         let stderr_buf = Arc::new(Mutex::new(String::new()));
 
+        // Read raw bytes (not `BufRead::lines()`) so non-UTF-8 output
+        // doesn't stop draining mid-stream — a stalled drain would
+        // deadlock the child once the pipe buffer fills. Decode each
+        // line lossily for display/capture; binary garbage becomes U+FFFD
+        // rather than aborting the read.
+        fn pop_eol(buf: &mut Vec<u8>) {
+            if buf.last() == Some(&b'\n') {
+                buf.pop();
+            }
+            if buf.last() == Some(&b'\r') {
+                buf.pop();
+            }
+        }
+
         // Drain stderr in a worker thread to avoid pipe-buffer deadlock
         // (a chatty stderr can block the child if no one's reading).
         let stderr_thread = {
             let buf = stderr_buf.clone();
             thread::spawn(move || {
-                let reader = BufReader::new(stderr_pipe);
+                let mut reader = BufReader::new(stderr_pipe);
                 let host_stderr = std::io::stderr();
-                for line in reader.lines().map_while(std::io::Result::ok) {
-                    {
-                        let mut guard = buf.lock().expect("stderr buf poisoned");
-                        guard.push_str(&line);
-                        guard.push('\n');
-                    }
-                    if verbose {
-                        let mut h = host_stderr.lock();
-                        let _ = writeln!(h, "{line}");
+                let mut bytes = Vec::new();
+                loop {
+                    bytes.clear();
+                    match reader.read_until(b'\n', &mut bytes) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {
+                            pop_eol(&mut bytes);
+                            let line = String::from_utf8_lossy(&bytes);
+                            {
+                                let mut guard = buf.lock().expect("stderr buf poisoned");
+                                guard.push_str(&line);
+                                guard.push('\n');
+                            }
+                            if verbose {
+                                let mut h = host_stderr.lock();
+                                let _ = writeln!(h, "{line}");
+                            }
+                        }
                     }
                 }
             })
@@ -244,19 +267,28 @@ impl CommandRunner for ShellCommandRunner {
         // optionally passthrough.
         let mut stdout_buf = String::new();
         {
-            let reader = BufReader::new(stdout_pipe);
+            let mut reader = BufReader::new(stdout_pipe);
             let host_stdout = std::io::stdout();
-            for line in reader.lines().map_while(std::io::Result::ok) {
-                stdout_buf.push_str(&line);
-                stdout_buf.push('\n');
+            let mut bytes = Vec::new();
+            loop {
+                bytes.clear();
+                match reader.read_until(b'\n', &mut bytes) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        pop_eol(&mut bytes);
+                        let line = String::from_utf8_lossy(&bytes);
+                        stdout_buf.push_str(&line);
+                        stdout_buf.push('\n');
 
-                if let Some(msg) = parse_status_line(&line) {
-                    let mut h = host_stdout.lock();
-                    let _ = writeln!(h, "{dim}{arrow}{reset} {msg}");
-                }
-                if verbose {
-                    let mut h = host_stdout.lock();
-                    let _ = writeln!(h, "{line}");
+                        if let Some(msg) = parse_status_line(&line) {
+                            let mut h = host_stdout.lock();
+                            let _ = writeln!(h, "{dim}{arrow}{reset} {msg}");
+                        }
+                        if verbose {
+                            let mut h = host_stdout.lock();
+                            let _ = writeln!(h, "{line}");
+                        }
+                    }
                 }
             }
         }

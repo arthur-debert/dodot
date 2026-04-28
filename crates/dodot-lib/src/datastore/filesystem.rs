@@ -38,10 +38,11 @@ fn validate_safe_relative(raw: &str, base: &Path) -> Result<PathBuf> {
 /// Extract the leading documentation comment block from a script.
 ///
 /// Skips an optional `#!` shebang and any blank lines, then collects
-/// contiguous `#`-prefixed lines (with the `#` and one optional space
-/// stripped from each). Stops at the first non-comment, non-blank
-/// line. Used to print "what does this script do" before kicking it
-/// off, so the user has context while it runs.
+/// contiguous `#`-prefixed lines. From each line, every leading `#`
+/// character and any following whitespace is stripped, so `## Section`
+/// becomes `Section`. Stops at the first non-comment, non-blank line.
+/// Used to print "what does this script do" before kicking it off, so
+/// the user has context while it runs.
 pub(crate) fn extract_header_block(content: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut iter = content.lines().peekable();
@@ -157,16 +158,14 @@ impl DataStore for FilesystemDataStore {
         // start/end markers on stderr so the user knows what's running and
         // whether it succeeded. The script's own stdout/stderr still flows
         // through the runner as before.
-        let script_path = arguments
-            .iter()
-            .rev()
-            .find(|arg| {
-                Path::new(arg)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .is_some_and(|n| n.contains('.'))
-            })
-            .cloned();
+        //
+        // The script path is the last argument by convention: install
+        // invokes `bash -- <path>` / `zsh -- <path>` and homebrew invokes
+        // `brew bundle --file <path>`. Using the last arg directly (vs a
+        // filename-with-dot heuristic) means extensionless install scripts
+        // — which the install handler explicitly supports — also get a
+        // header block printed.
+        let script_path = arguments.last().cloned();
         let display_name = script_path
             .as_deref()
             .and_then(|p| Path::new(p).file_name())

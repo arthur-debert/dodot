@@ -10,13 +10,13 @@ Handlers
 
     1.1. Symlink
 
-        Creates a symlink from a deployed location ,  back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
+        Creates a symlink from a deployed location back to a file or directory in your pack. This is the default for any file that no other handler claims — anything that looks like plain configuration flows through here.
 
         Path resolution is smart: every pack-root entry — file or directory — defaults to `$XDG_CONFIG_HOME/<pack>/<name>` (so `nvim/init.lua` → `~/.config/nvim/init.lua`, `warp/themes/` → `~/.config/warp/themes/`). A small list of exceptions force `$HOME` placement regardless of XDG (`ssh`, `bashrc`, `zshrc`, etc.); the per-file `home.X` prefix and per-subtree `_home/` directory route opt-in single files or whole subtrees to `$HOME/.X`. For the full path rules, see [./symlink-paths.lex].
 
     1.2. Shell
 
-        Arranges for shell scripts to be sourced at login. Matches `{aliases,profile,login,env}.{sh,bash,zsh}` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore [./data-layer.lex]  and emits `source` lines for every matched shell file.
+        Arranges for shell scripts to be sourced at login. Matches `{aliases,profile,login,env}.{sh,bash,zsh}` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore (see [./data-layer.lex]) and emits `source` lines for every matched shell file.
 
         The extension convention is load-bearing: sourced files run in *your* shell, so `.zsh` files only parse cleanly in zsh sessions and `.bash` files in bash sessions. `.sh` is the portable bucket — use it for snippets that work in either. In practice most users run one shell, and the mismatch simply doesn't come up; users who switch shells occasionally can split their shell config by extension.
 
