@@ -501,6 +501,76 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
         "note should mention most recent failure exit code: {}",
         note.body
     );
+    // The footnote should point users at the per-file probe view (not
+    // `--history`, which only shows aggregate counts).
+    assert!(
+        note.body.contains("dodot probe shell-init vim/aliases.sh"),
+        "note should point at the filtered probe view: {}",
+        note.body
+    );
+}
+
+#[test]
+fn status_inlines_captured_stderr_into_runtime_failure_footnote() {
+    // When a recent failing run also has a sibling errors.log entry,
+    // the status footnote should inline a snippet of the stderr so the
+    // user sees the actual error inline, not just the exit code.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let source_path = env.dotfiles_root.join("vim/aliases.sh");
+    let target = source_path.display().to_string();
+    let probes_dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&probes_dir).unwrap();
+    let prof_name = "profile-1714000003-100-1.tsv";
+    let body = format!(
+        "# dodot shell-init profile v1\n\
+         # shell\tbash 5.0\n\
+         # start_t\t1714000003.000000\n\
+         source\tvim\tshell\t{target}\t1714000003.000100\t1714000003.000900\t1\n\
+         # end_t\t1714000003.001000\n",
+    );
+    env.fs
+        .write_file(&probes_dir.join(prof_name), body.as_bytes())
+        .unwrap();
+    let err_log = format!(
+        "# dodot shell-init errors v1\n@@\t{target}\t1\nzsh: command not found: gpg-agent\n"
+    );
+    env.fs
+        .write_file(
+            &probes_dir.join("profile-1714000003-100-1.errors.log"),
+            err_log.as_bytes(),
+        )
+        .unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let row = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+    let note_idx = row.note_ref.expect("expected note ref") as usize;
+    let note = &result.notes[note_idx - 1];
+    assert!(
+        note.body.contains("stderr:"),
+        "footnote should label the stderr excerpt: {}",
+        note.body
+    );
+    assert!(
+        note.body.contains("zsh: command not found: gpg-agent"),
+        "footnote should inline the captured stderr: {}",
+        note.body
+    );
+    assert!(
+        note.body.contains("dodot probe shell-init vim/aliases.sh"),
+        "footnote should point at the per-file probe view: {}",
+        note.body
+    );
 }
 
 #[test]
@@ -3653,7 +3723,7 @@ fn probe_shell_init_aggregate_empty_state_shows_hint() {
 }
 
 #[test]
-fn probe_shell_init_history_renders_one_row_per_run_oldest_first() {
+fn probe_shell_init_history_renders_one_row_per_run_newest_first() {
     let env = TempEnvironment::builder().build();
     let ctx = make_ctx(&env);
     // Three profiles with distinct timestamps in their filenames.
@@ -3686,12 +3756,12 @@ fn probe_shell_init_history_renders_one_row_per_run_oldest_first() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     let rows = parsed["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 3);
-    // Oldest unix_ts first, newest last.
+    // Newest unix_ts first, oldest last (descending).
     let timestamps: Vec<u64> = rows
         .iter()
         .map(|r| r["unix_ts"].as_u64().unwrap_or(0))
         .collect();
-    assert_eq!(timestamps, vec![1714000000, 1714003600, 1714007200]);
+    assert_eq!(timestamps, vec![1714007200, 1714003600, 1714000000]);
     // Middle row had a non-zero exit_status.
     assert_eq!(rows[1]["failed_entries"].as_u64().unwrap(), 1);
     assert_eq!(rows[0]["failed_entries"].as_u64().unwrap(), 0);
@@ -3731,6 +3801,29 @@ fn probe_shell_init_history_json_is_kind_tagged() {
     let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(parsed["kind"], "shell-init-history");
     assert!(parsed["rows"].is_array());
+}
+
+#[test]
+fn probe_shell_init_filter_json_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_filter(&ctx, "vim", 5).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "shell-init-filter");
+    assert!(parsed["targets"].is_array());
+    assert_eq!(parsed["filter_pack"], "vim");
+}
+
+#[test]
+fn probe_shell_init_errors_json_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_errors(&ctx, 5).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "shell-init-errors");
+    assert!(parsed["targets"].is_array());
 }
 
 // ── probe shell-init: staleness banner (#59) ────────────────
@@ -3902,6 +3995,284 @@ fn probe_shell_init_history_banner_when_newest_predates_last_up() {
         "history view should show banner, got:\n{text}"
     );
 }
+
+// ── shell-init filter (positional pack[/file] drill-down) ──
+
+fn write_fake_errors_log(env: &TempEnvironment, profile_name: &str, body: &str) {
+    let dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&dir).unwrap();
+    let stem = profile_name.trim_end_matches(".tsv");
+    let path = dir.join(format!("{stem}.errors.log"));
+    let mut content = String::from("# dodot shell-init errors v1\n");
+    content.push_str(body);
+    env.fs.write_file(&path, content.as_bytes()).unwrap();
+}
+
+#[test]
+fn probe_shell_init_filter_pack_only_lists_each_target_in_pack() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1",
+            "source\tgpg\tshell\t/p/gpg/aliases.sh\t1.0\t1.001\t0",
+            "source\tvim\tshell\t/p/vim/aliases.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result =
+        commands::probe::shell_init_filter(&ctx, "gpg", commands::probe::DEFAULT_FILTER_RUNS)
+            .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.filter_pack, "gpg");
+    assert!(view.filter_filename.is_none());
+    assert_eq!(view.targets.len(), 2, "expected both gpg targets");
+    let names: Vec<&str> = view
+        .targets
+        .iter()
+        .map(|t| t.display_target.as_str())
+        .collect();
+    assert!(names.contains(&"env.sh"));
+    assert!(names.contains(&"aliases.sh"));
+}
+
+#[test]
+fn probe_shell_init_filter_with_filename_narrows_to_single_target() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1",
+            "source\tgpg\tshell\t/p/gpg/aliases.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.filter_pack, "gpg");
+    assert_eq!(view.filter_filename.as_deref(), Some("env.sh"));
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].display_target, "env.sh");
+    assert_eq!(view.targets[0].failure_count, 1);
+}
+
+#[test]
+fn probe_shell_init_filter_attaches_captured_stderr_to_matching_run() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1"],
+    );
+    write_fake_errors_log(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        "@@\t/p/gpg/env.sh\t1\nfirst error line\nsecond error line\n",
+    );
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].runs.len(), 1);
+    assert_eq!(
+        view.targets[0].runs[0].stderr_lines,
+        vec!["first error line", "second error line"]
+    );
+}
+
+#[test]
+fn probe_shell_init_filter_runs_are_newest_first() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    // Three runs with monotonically increasing timestamps in the
+    // filename — the filter view should display them newest first
+    // (most recent run at the top of the per-target block).
+    for ts in [1714000001u64, 1714000002, 1714000003] {
+        write_fake_profile(
+            &env,
+            &format!("profile-{ts}-1-1.tsv"),
+            &["source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t0"],
+        );
+    }
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    let runs = &view.targets[0].runs;
+    assert_eq!(runs.len(), 3);
+    assert_eq!(runs[0].profile_filename, "profile-1714000003-1-1.tsv");
+    assert_eq!(runs[2].profile_filename, "profile-1714000001-1-1.tsv");
+}
+
+#[test]
+fn probe_shell_init_filter_renders_with_template() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1"],
+    );
+    write_fake_errors_log(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        "@@\t/p/gpg/env.sh\t1\nboom\n",
+    );
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("Shell-init filter"),
+        "header missing:\n{output}"
+    );
+    assert!(output.contains("env.sh"), "target missing:\n{output}");
+    assert!(output.contains("exit 1"), "exit code missing:\n{output}");
+    assert!(
+        output.contains("boom"),
+        "captured stderr missing:\n{output}"
+    );
+}
+
+#[test]
+fn probe_shell_init_filter_empty_when_no_match() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/p/vim/aliases.sh\t1.0\t1.001\t0"],
+    );
+    let result =
+        commands::probe::shell_init_filter(&ctx, "missing", commands::probe::DEFAULT_FILTER_RUNS)
+            .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert!(view.targets.is_empty());
+    assert_eq!(view.runs_examined, 1);
+}
+
+// ── shell-init --errors-only ─────────────────────────────────────
+
+#[test]
+fn probe_shell_init_errors_only_keeps_only_failed_runs() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1",
+            "source\tvim\tshell\t/p/vim/aliases.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result =
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitErrors(v) => v,
+        other => panic!("expected ShellInitErrors, got {other:?}"),
+    };
+    // vim/aliases.sh succeeded — must not appear. Only gpg/env.sh.
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].display_target, "env.sh");
+    assert_eq!(view.targets[0].failure_count, 1);
+}
+
+#[test]
+fn probe_shell_init_errors_only_sorts_by_failure_count_desc() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    // Three profiles: target A fails twice, B fails once.
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\ta\tshell\t/p/a.sh\t1.0\t1.001\t1",
+            "source\tb\tshell\t/p/b.sh\t1.0\t1.001\t1",
+        ],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000002-1-1.tsv",
+        &["source\ta\tshell\t/p/a.sh\t1.0\t1.001\t1"],
+    );
+    let result =
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitErrors(v) => v,
+        other => panic!("expected ShellInitErrors, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 2);
+    assert_eq!(
+        view.targets[0].pack, "a",
+        "most-broken target must come first"
+    );
+    assert_eq!(view.targets[0].failure_count, 2);
+    assert_eq!(view.targets[1].pack, "b");
+    assert_eq!(view.targets[1].failure_count, 1);
+}
+
+#[test]
+fn probe_shell_init_errors_only_clean_window_says_so() {
+    // Only successful runs in the window — view shows 0 targets and
+    // the renderer surfaces a cheerful "no failed sources" line.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/p/aliases.sh\t1.0\t1.001\t0"],
+    );
+    let result =
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS).unwrap();
+    match &result {
+        commands::probe::ProbeResult::ShellInitErrors(v) => {
+            assert!(v.targets.is_empty());
+            assert_eq!(v.runs_examined, 1);
+        }
+        other => panic!("expected ShellInitErrors, got {other:?}"),
+    }
+
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("no failed sources"),
+        "clean-window message missing:\n{output}"
+    );
+}
+
+// ── up command misc ─────────────────────────────────────────────
 
 #[test]
 fn up_writes_last_up_marker() {

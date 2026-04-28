@@ -400,6 +400,16 @@ fn build_clap_command() -> ClapCommand {
                     ClapCommand::new("shell-init")
                         .about("Per-source timings for the most recent shell startup")
                         .arg(
+                            Arg::new("filter")
+                                .help(
+                                    "Drill into one pack or file (e.g. `gpg` or `gpg/env.sh`) — shows per-run exit codes and captured stderr across recent runs",
+                                )
+                                .value_name("PACK[/FILE]")
+                                .num_args(0..=1)
+                                .conflicts_with("runs")
+                                .conflicts_with("history"),
+                        )
+                        .arg(
                             Arg::new("runs")
                                 .long("runs")
                                 .help(
@@ -417,6 +427,17 @@ fn build_clap_command() -> ClapCommand {
                                 .long("history")
                                 .help("Show one summary row per recent run, oldest first")
                                 .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("errors-only")
+                                .long("errors-only")
+                                .help(
+                                    "List every target with a non-zero exit across recent runs, sorted by failure count",
+                                )
+                                .action(ArgAction::SetTrue)
+                                .conflicts_with("runs")
+                                .conflicts_with("history")
+                                .conflicts_with("filter"),
                         ),
                 ),
         )

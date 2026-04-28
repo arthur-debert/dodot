@@ -283,7 +283,7 @@ fn verify_staged(
         //     if any has been collected. Returns None when profiling is
         //     off, when no profiles exist yet, or when this source has
         //     run cleanly in every recent shell.
-        if let Some((label, reason)) = recent_runtime_failures(source, ctx) {
+        if let Some((label, reason)) = recent_runtime_failures(source, pack, &filename_str, ctx) {
             return Health::DeployedWithError { label, reason };
         }
     }
@@ -297,12 +297,26 @@ fn verify_staged(
 /// `dodot probe shell-init --history`.
 const RUNTIME_FAILURE_WINDOW: usize = 5;
 
+/// Maximum number of stderr characters to inline into the status
+/// footnote. Long stderr (stack traces, dumps) is truncated with an
+/// ellipsis; the user can run `dodot probe shell-init <pack>/<file>`
+/// for the full text.
+const STATUS_STDERR_BUDGET: usize = 240;
+
 /// Look at the last few shell-init profiles for any non-zero exit
 /// status from `source`. Returns `Some((short_label, footnote_body))`
 /// if at least one failure was seen; `None` otherwise (including when
 /// profiling is off, so no profiles exist).
+///
+/// When the most recent failing run also has stderr captured (in its
+/// sibling `errors.log`), the footnote inlines a trimmed excerpt so
+/// the user sees the actual error message without having to chase
+/// down a separate command. The pointer at the bottom of the footnote
+/// directs them to the per-file probe view for the full picture.
 fn recent_runtime_failures(
     source: &std::path::Path,
+    pack: &str,
+    filename: &str,
     ctx: &ExecutionContext,
 ) -> Option<(String, String)> {
     let profiles = crate::probe::shell_init::read_recent_profiles(
@@ -323,6 +337,7 @@ fn recent_runtime_failures(
     let mut runs_seen = 0;
     let mut runs_failed = 0;
     let mut last_failure_exit: Option<i32> = None;
+    let mut last_failure_stderr: Option<String> = None;
     for profile in &profiles {
         if let Some(entry) = profile
             .entries
@@ -334,6 +349,15 @@ fn recent_runtime_failures(
                 runs_failed += 1;
                 if last_failure_exit.is_none() {
                     last_failure_exit = Some(entry.exit_status);
+                    // Pull the matching stderr record, if the run has
+                    // an errors.log sibling. Pre-stderr-capture profiles
+                    // and clean-stderr failures both yield None here.
+                    last_failure_stderr = profile
+                        .errors
+                        .iter()
+                        .find(|er| er.target == target_str)
+                        .map(|er| er.message.trim_end().to_string())
+                        .filter(|s| !s.is_empty());
                 }
             }
         }
@@ -344,11 +368,29 @@ fn recent_runtime_failures(
     }
 
     let label = format!("exited {last_exit} ({runs_failed}/{runs_seen})");
-    let reason = format!(
-        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last failure: exit {last_exit}). \
-         See `dodot probe shell-init --history` for details."
+    let mut reason = format!(
+        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last failure: exit {last_exit})."
     );
+    if let Some(stderr) = last_failure_stderr {
+        reason.push_str(" stderr: ");
+        reason.push_str(&truncate_for_footnote(&stderr, STATUS_STDERR_BUDGET));
+    }
+    reason.push_str(&format!(
+        " Run `dodot probe shell-init {pack}/{filename}` for per-run history and full stderr."
+    ));
     Some((label, reason))
+}
+
+/// Trim multi-line stderr to a single-line excerpt that fits the
+/// footnote budget. Newlines become `↵` so the user sees a hint that
+/// more lines exist; over-long messages get an ellipsis.
+fn truncate_for_footnote(stderr: &str, budget: usize) -> String {
+    let one_line = stderr.replace('\n', " ↵ ");
+    if one_line.chars().count() <= budget {
+        return one_line;
+    }
+    let truncated: String = one_line.chars().take(budget).collect();
+    format!("{truncated}…")
 }
 
 /// Run the `status` command: scan packs and verify deployment chain per file.

@@ -249,19 +249,28 @@ pub fn probe_show_data_dir_handler(
 
 /// `dodot probe shell-init` — most recent shell-startup profile.
 ///
-/// Three views, switched by mutually-exclusive flags:
-/// - default: single-run detail (most recent profile)
+/// Four views, picked by argument shape:
+/// - `<pack>[/<file>]` positional: drill-down across recent runs with
+///   captured stderr (wins over flags — the user is asking a specific
+///   question)
 /// - `--runs N`: per-target percentile aggregate over the last N runs
 /// - `--history`: one-row-per-run trend, oldest first
+/// - default: single-run detail (most recent profile)
 pub fn probe_shell_init_handler(
     matches: &clap::ArgMatches,
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::probe::ProbeResult> {
     let ctx = build_readonly_ctx(matches)?;
+    let filter = matches.get_one::<String>("filter").cloned();
     let runs = matches.get_one::<usize>("runs").copied();
     let history = flag_or_false(matches, "history");
+    let errors_only = flag_or_false(matches, "errors-only");
 
-    let result = if let Some(n) = runs {
+    let result = if errors_only {
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS)?
+    } else if let Some(f) = filter {
+        commands::probe::shell_init_filter(&ctx, &f, commands::probe::DEFAULT_FILTER_RUNS)?
+    } else if let Some(n) = runs {
         commands::probe::shell_init_aggregate(&ctx, n)?
     } else if history {
         commands::probe::shell_init_history(&ctx, commands::probe::DEFAULT_HISTORY_LIMIT)?

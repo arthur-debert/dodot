@@ -43,6 +43,19 @@ pub struct ProfileEntry {
     pub exit_status: i32,
 }
 
+/// One captured stderr record from a sourced shell file. The shell
+/// wrapper writes one record per source whose stderr was non-empty,
+/// regardless of exit status (warnings emitted on a successful source
+/// are surfaced too).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ProfileErrorRecord {
+    pub target: String,
+    pub exit_status: i32,
+    /// Captured stderr verbatim, with trailing newline preserved if
+    /// present in the original. May be multiple lines.
+    pub message: String,
+}
+
 /// A whole profile file, post-parse.
 #[derive(Debug, Clone, Serialize)]
 pub struct Profile {
@@ -55,6 +68,12 @@ pub struct Profile {
     /// `# end_t`. `0` if either marker is missing (e.g. crashed shell).
     pub total_duration_us: u64,
     pub entries: Vec<ProfileEntry>,
+    /// Stderr records loaded from the sibling `*.errors.log` file, if
+    /// any. Empty when no errors were captured for this run, when the
+    /// log is missing, or when running with an older profile that
+    /// pre-dates the errors-log feature.
+    #[serde(default)]
+    pub errors: Vec<ProfileErrorRecord>,
 }
 
 impl Profile {
@@ -108,9 +127,100 @@ pub fn read_recent_profiles(fs: &dyn Fs, paths: &dyn Pather, limit: usize) -> Re
     let mut profiles = Vec::with_capacity(entries.len());
     for entry in entries {
         let content = fs.read_to_string(&entry.path)?;
-        profiles.push(parse_profile(&entry.name, &content));
+        let mut profile = parse_profile(&entry.name, &content);
+        // Sibling errors log: same path with `.tsv` swapped for
+        // `.errors.log`. Missing file is normal (no errors captured),
+        // so we silently treat it as empty.
+        let errors_path = errors_log_path_for(&entry.path);
+        if fs.exists(&errors_path) {
+            if let Ok(err_content) = fs.read_to_string(&errors_path) {
+                profile.errors = parse_errors_log(&err_content);
+            }
+        }
+        profiles.push(profile);
     }
     Ok(profiles)
+}
+
+/// Sibling errors-log path for a profile TSV.
+///
+/// Mirrors the shell wrapper: `${prof_file%.tsv}.errors.log`. Falls back
+/// to appending `.errors.log` if the input doesn't end in `.tsv` (a
+/// belt-and-braces guard for filenames the wrapper would never emit).
+fn errors_log_path_for(profile_path: &std::path::Path) -> std::path::PathBuf {
+    let s = profile_path.to_string_lossy();
+    if let Some(stem) = s.strip_suffix(".tsv") {
+        std::path::PathBuf::from(format!("{stem}.errors.log"))
+    } else {
+        std::path::PathBuf::from(format!("{s}.errors.log"))
+    }
+}
+
+/// Parse the textual content of an errors log. Format:
+///
+/// ```text
+/// # dodot shell-init errors v1
+/// @@\t<target>\t<exit_status>
+/// <stderr line 1>
+/// <stderr line 2>
+/// @@\t<target>\t<exit_status>
+/// <stderr line 1>
+/// ```
+///
+/// Lines starting with `# ` are headers (ignored). A line beginning with
+/// `@@\t` opens a new record; subsequent lines until the next `@@\t`
+/// (or EOF) are the captured stderr. Records with malformed headers are
+/// skipped. The trailing newline written after each record by the
+/// shell wrapper appears as a blank line; we strip exactly one trailing
+/// newline from each record's `message` to keep round-tripping clean.
+pub fn parse_errors_log(content: &str) -> Vec<ProfileErrorRecord> {
+    let mut out: Vec<ProfileErrorRecord> = Vec::new();
+    let mut current: Option<(String, i32, String)> = None;
+
+    let flush = |slot: &mut Option<(String, i32, String)>, out: &mut Vec<ProfileErrorRecord>| {
+        if let Some((target, exit_status, mut message)) = slot.take() {
+            // Drop exactly one trailing newline (the wrapper's record
+            // terminator). Preserve any extra blank lines inside.
+            if message.ends_with('\n') {
+                message.pop();
+            }
+            out.push(ProfileErrorRecord {
+                target,
+                exit_status,
+                message,
+            });
+        }
+    };
+
+    for raw_line in content.lines() {
+        let line = raw_line.trim_end_matches('\r');
+        if let Some(rest) = line.strip_prefix("@@\t") {
+            // New record header. Flush any in-progress record first.
+            flush(&mut current, &mut out);
+            let mut parts = rest.splitn(2, '\t');
+            let Some(target) = parts.next() else { continue };
+            let Some(exit_str) = parts.next() else {
+                continue;
+            };
+            let Ok(exit_status) = exit_str.parse::<i32>() else {
+                continue;
+            };
+            current = Some((target.to_string(), exit_status, String::new()));
+            continue;
+        }
+        if line.starts_with('#') && current.is_none() {
+            // Top-of-file version banner; ignore.
+            continue;
+        }
+        if let Some((_, _, ref mut message)) = current {
+            message.push_str(line);
+            message.push('\n');
+        }
+        // Lines outside any record (e.g. trailing junk before the first
+        // `@@`) are silently dropped.
+    }
+    flush(&mut current, &mut out);
+    out
 }
 
 /// Parse the textual content of a profile file. Tolerates missing
@@ -156,6 +266,7 @@ pub fn parse_profile(filename: &str, content: &str) -> Profile {
         shell,
         total_duration_us,
         entries,
+        errors: Vec::new(),
     }
 }
 
@@ -222,6 +333,10 @@ pub fn rotate_profiles(fs: &dyn Fs, paths: &dyn Pather, keep: usize) -> Result<u
         if fs.remove_file(&entry.path).is_ok() {
             removed += 1;
         }
+        // Best-effort: remove the sibling errors log too, so a long-
+        // running install doesn't accumulate orphan `.errors.log` files.
+        let sidecar = errors_log_path_for(&entry.path);
+        let _ = fs.remove_file(&sidecar);
     }
     Ok(removed)
 }
@@ -592,6 +707,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "x".into(),
             shell: "bash".into(),
             total_duration_us: 10_000,
+            errors: Vec::new(),
             entries: vec![
                 ProfileEntry {
                     phase: "source".into(),
@@ -641,6 +757,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "x".into(),
             shell: "bash".into(),
             total_duration_us: 0,
+            errors: Vec::new(),
             entries: vec![
                 entry("vim", "shell", "/a", 1),
                 entry("git", "symlink", "/b", 1),
@@ -684,6 +801,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "x".into(),
             shell: "".into(),
             total_duration_us: 0,
+            errors: Vec::new(),
             entries: vec![ProfileEntry {
                 phase: "source".into(),
                 pack: "vim".into(),
@@ -761,6 +879,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "profile-1-1-1.tsv".into(),
             shell: "bash".into(),
             total_duration_us: 0,
+            errors: Vec::new(),
             entries: vec![
                 entry("vim", "shell", "/a", 100),
                 entry("vim", "shell", "/b", 200),
@@ -770,6 +889,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "profile-2-1-1.tsv".into(),
             shell: "bash".into(),
             total_duration_us: 0,
+            errors: Vec::new(),
             entries: vec![
                 entry("vim", "shell", "/a", 110),
                 entry("vim", "shell", "/b", 250),
@@ -779,6 +899,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "profile-3-1-1.tsv".into(),
             shell: "bash".into(),
             total_duration_us: 0,
+            errors: Vec::new(),
             entries: vec![entry("vim", "shell", "/a", 120)],
             // /b absent in this run (sparse target presence).
         };
@@ -810,6 +931,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "p".into(),
             shell: "".into(),
             total_duration_us: 0,
+            errors: Vec::new(),
             entries: vec![
                 entry("vim", "shell", "/z", 1),
                 entry("git", "shell", "/a", 1),
@@ -842,6 +964,7 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
             filename: "profile-1714000000-12-34.tsv".into(),
             shell: "bash 5.3".into(),
             total_duration_us: 500,
+            errors: Vec::new(),
             entries: vec![
                 entry("vim", "shell", "/a", 100),
                 ProfileEntry {
@@ -874,5 +997,105 @@ source\tvim\tshell\t/x\t1714000000.001000\t1714000000.002000\t0\n";
         );
         assert_eq!(parse_unix_ts_from_filename("garbage.txt"), 0);
         assert_eq!(parse_unix_ts_from_filename("profile-notanum-1-1.tsv"), 0);
+    }
+
+    // ── errors log parsing ────────────────────────────────────────
+
+    #[test]
+    fn parse_errors_log_handles_single_record() {
+        let content = "# dodot shell-init errors v1\n\
+@@\t/p/aliases.sh\t1\n\
+zsh: parse error near unexpected token\n\
+";
+        let recs = parse_errors_log(content);
+        assert_eq!(recs.len(), 1);
+        assert_eq!(recs[0].target, "/p/aliases.sh");
+        assert_eq!(recs[0].exit_status, 1);
+        assert_eq!(recs[0].message, "zsh: parse error near unexpected token");
+    }
+
+    #[test]
+    fn parse_errors_log_handles_multiple_records_with_multiline_stderr() {
+        let content = "# dodot shell-init errors v1\n\
+@@\t/p/a.sh\t2\n\
+line one\n\
+line two\n\
+\n\
+@@\t/p/b.sh\t0\n\
+warning: deprecated\n\
+";
+        let recs = parse_errors_log(content);
+        assert_eq!(recs.len(), 2);
+        assert_eq!(recs[0].target, "/p/a.sh");
+        assert_eq!(recs[0].exit_status, 2);
+        assert_eq!(recs[0].message, "line one\nline two\n");
+        assert_eq!(recs[1].target, "/p/b.sh");
+        assert_eq!(recs[1].exit_status, 0); // success with warnings
+        assert_eq!(recs[1].message, "warning: deprecated");
+    }
+
+    #[test]
+    fn parse_errors_log_skips_malformed_headers() {
+        // A header missing the exit status, and one with non-integer exit.
+        let content = "@@\t/p/a.sh\n\
+some line\n\
+@@\t/p/b.sh\tnotanint\n\
+some line\n\
+@@\t/p/c.sh\t3\n\
+real error\n\
+";
+        let recs = parse_errors_log(content);
+        assert_eq!(recs.len(), 1);
+        assert_eq!(recs[0].target, "/p/c.sh");
+        assert_eq!(recs[0].exit_status, 3);
+    }
+
+    #[test]
+    fn parse_errors_log_returns_empty_for_empty_or_header_only() {
+        assert!(parse_errors_log("").is_empty());
+        assert!(parse_errors_log("# dodot shell-init errors v1\n").is_empty());
+    }
+
+    #[test]
+    fn read_recent_loads_sibling_errors_log_when_present() {
+        let env = TempEnvironment::builder().build();
+        // A profile with one source entry...
+        write_profile(
+            &env,
+            "profile-1000-1-1.tsv",
+            "# shell\tbash\n\
+# start_t\t1.0\n\
+source\tvim\tshell\t/p/aliases.sh\t1.0\t1.001\t1\n\
+# end_t\t1.002\n",
+        );
+        // ...and a sibling errors log containing one record.
+        let dir = env.paths.probes_shell_init_dir();
+        env.fs
+            .write_file(
+                &dir.join("profile-1000-1-1.errors.log"),
+                b"# dodot shell-init errors v1\n@@\t/p/aliases.sh\t1\nboom\n",
+            )
+            .unwrap();
+
+        let profiles = read_recent_profiles(env.fs.as_ref(), env.paths.as_ref(), 5).unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].errors.len(), 1);
+        assert_eq!(profiles[0].errors[0].target, "/p/aliases.sh");
+        assert_eq!(profiles[0].errors[0].message, "boom");
+    }
+
+    #[test]
+    fn read_recent_with_no_sibling_errors_log_yields_empty_errors() {
+        // Older profiles (pre-feature) and clean runs both have no
+        // sibling log; we treat both as "no errors captured".
+        let env = TempEnvironment::builder().build();
+        write_profile(
+            &env,
+            "profile-1000-1-1.tsv",
+            "# shell\tbash\n# start_t\t1.0\n# end_t\t1.001\n",
+        );
+        let profiles = read_recent_profiles(env.fs.as_ref(), env.paths.as_ref(), 5).unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert!(profiles[0].errors.is_empty());
     }
 }

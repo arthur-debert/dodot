@@ -64,6 +64,23 @@ Design Specification: Profiling and the Probe Command
 
         A realistic file on a well-groomed dotfiles install runs 20–40 rows and lands under 4 KB.
 
+        Alongside the TSV, when a sourced file emits anything to stderr the wrapper writes a sibling errors log:
+
+            profile-<unix-ts>-<pid>-<rand>.errors.log
+
+        :: text ::
+
+        Format follows the same plain-text discipline as the TSV — a `# dodot shell-init errors v1` banner, then one record per source-with-stderr in this shape:
+
+            @@<TAB><target><TAB><exit_status>
+            <captured stderr line 1>
+            <captured stderr line 2>
+            ...
+
+        :: text ::
+
+        The `@@` sentinel marks the start of a record; subsequent lines until the next `@@` (or EOF) are the captured stderr verbatim. The wrapper appends a trailing newline after each record so the next header lands on its own line. The file is created lazily — when nothing prints to stderr (the common case), no errors log exists for that run, and the cost on the hot path is one `[ -s ]` test per source. The reader (`probe shell-init <pack>/<file>`, `--errors-only`) loads the sibling automatically when present and silently treats absence as "no errors captured".
+
     3.2. Deployment Map
 
         At the end of every `dodot up` and `dodot down`, dodot also writes `<data_dir>/deployment-map.tsv` with one row per deployed artifact:
@@ -102,12 +119,15 @@ Design Specification: Profiling and the Probe Command
 
         `probe` is registered as a standout command group following the pattern of the existing `status`/`up`/`down` commands [../crates/dodot-cli/src/main.rs]:
 
-            dodot probe                        # help + summary of last run
-            dodot probe shell-init             # detailed timings, last run
-            dodot probe shell-init --runs N    # aggregate over last N runs
-            dodot probe shell-init --history   # one-line trend across runs
-            dodot probe show-data-dir          # tree of <data_dir>
-            dodot probe deployment-map         # source -> deployed table
+            dodot probe                          # help + summary of last run
+            dodot probe shell-init               # detailed timings, last run
+            dodot probe shell-init --runs N      # aggregate over last N runs
+            dodot probe shell-init --history     # one-row-per-run trend, newest first
+            dodot probe shell-init <pack>        # all targets in <pack> across recent runs
+            dodot probe shell-init <pack>/<file> # one target's per-run history + stderr
+            dodot probe shell-init --errors-only # every failing target, ranked by frequency
+            dodot probe show-data-dir            # tree of <data_dir>
+            dodot probe deployment-map           # source -> deployed table
 
         :: text ::
 
@@ -129,7 +149,9 @@ Design Specification: Profiling and the Probe Command
 
         :: text ::
 
-        The `--runs N` flag aggregates across the most recent N reports and shows p50 / p95 / max per target. This is the view for spotting regressions: the eye catches a `p95` that is much worse than `p50`. `--history` is the same data collapsed to one row per run, dated, for a trend glance.
+        The `--runs N` flag aggregates across the most recent N reports and shows p50 / p95 / max per target. This is the view for spotting regressions: the eye catches a `p95` that is much worse than `p50`. `--history` is the same data collapsed to one row per run, dated, newest first, for a trend glance.
+
+        The positional `<pack>[/<file>]` filter is the drill-down view. Pack-only (`gpg`) lists every target in that pack across the last 20 runs; `<pack>/<file>` (`gpg/env.sh`) narrows to one target. Per-run rows show duration, exit status, and — when the run captured any — the stderr inlined under each row. This is the view that answers "*why* did this fail?" instead of just "did it fail?". The `--errors-only` flag is the inverse query: every target with a non-zero exit somewhere in the window, sorted by failure count desc, so the most-broken file is at the top. Both views read the same `*.errors.log` sidecar described in §3.1.
 
         A footer always prints "for intra-file profiling, see `zprof` (zsh) or `PS4` tracing (bash)" — this keeps us honest about our scope (§3.3).
 
@@ -170,9 +192,18 @@ Design Specification: Profiling and the Probe Command
         Extend `shell::generate_init_script` to emit the per-file timing wrapper and the preamble writer. Wire `probe shell-init` reader and the default (single-run) view. Add the `profiling` config section. Rotation also lands here (cheaper to ship together than to defer): the writer side has no rotation logic, but `dodot up` prunes `<data_dir>/probes/shell-init/` to `keep_last_runs` at the end of every run.
 
     Phase 3: aggregation. **(Shipped.)**
-        `--runs N` and `--history` flags on `probe shell-init` for cross-run views — p50/p95/max per target (nearest-rank, no interpolation) and a per-run trend table. Rotation already ran in Phase 2, so this phase was purely additive on the reader side. The history row's `failed_entries` column also subsumes part of what regression-hints (phase 4) would have done: silent source failures across runs are visible at a glance.
+        `--runs N` and `--history` flags on `probe shell-init` for cross-run views — p50/p95/max per target (nearest-rank, no interpolation) and a per-run trend table. Rotation already ran in Phase 2, so this phase was purely additive on the reader side. The history row's `failed_entries` column also subsumes part of what regression-hints (now phase 5) would have done: silent source failures across runs are visible at a glance.
 
-    Phase 4: regression hints (optional, deferred).
+    Phase 4: error visibility. **(Shipped.)**
+        The exit-status column from Phase 2 turned silent failures into a visible counter, but a count without context still leaves the user reaching for a separate tool. This phase closes that loop:
+
+        - The shell wrapper now redirects each `. file` stderr into a per-shell scratch, re-emits live to the user's TTY (preserving the existing breadcrumb), and on non-empty stderr appends a record to a sibling `*.errors.log` next to the TSV (§3.1). Empty-stderr sources still take the fast path — one `[ -s ]` test of overhead.
+        - `dodot probe shell-init <pack>[/<file>]` is the drill-down view: per-run rows with duration, exit, and inlined stderr for one target across recent runs. `--errors-only` is the cross-history "what's broken" listing, sorted by failure count.
+        - `dodot status` was already surfacing recent-run failures via `recent_runtime_failures`. The footnote was upgraded to inline a stderr excerpt from the most recent failing run (when captured) and to point at `dodot probe shell-init <pack>/<file>` for the full picture, not at `--history` (which only shows aggregate counts).
+
+        Rotation was extended to remove the sibling errors log alongside its profile so long-running installs don't accumulate orphan sidecars. The `--history` view's row order was also corrected to newest-first, matching every other dated-listing in the tool.
+
+    Phase 5: regression hints (optional, deferred).
         Would highlight targets whose current-run duration is above their historical p95. Pure presentation; same data. Skipped for now — phase 3's tabular view of p95 next to current run already tells the story for users who care to look, and adding automatic flagging is the kind of thing that's better implemented after observing real usage.
 
 

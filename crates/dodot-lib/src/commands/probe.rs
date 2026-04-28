@@ -94,6 +94,15 @@ pub enum ProbeResult {
     /// run, oldest run first (so the latest is closest to the eye in a
     /// terminal where output scrolls down).
     ShellInitHistory(ShellInitHistoryView),
+    /// `dodot probe shell-init <pack>[/<file>]` — drill-down view of
+    /// one target (or one pack) across recent runs. Emits per-run
+    /// duration, exit status, and captured stderr (when any) so the
+    /// user can pinpoint *what* a failing source file printed.
+    ShellInitFilter(ShellInitFilterView),
+    /// `dodot probe shell-init --errors-only` — every target with at
+    /// least one non-zero exit across the examined window, grouped by
+    /// target and sorted by failure count (most-broken first).
+    ShellInitErrors(ShellInitErrorsView),
 }
 
 /// Display payload for `--runs N`.
@@ -237,6 +246,90 @@ pub struct ShellInitGroup {
     pub rows: Vec<ShellInitRow>,
     pub group_total_us: u64,
     pub group_total_label: String,
+}
+
+/// Display payload for the filtered drill-down view.
+///
+/// Renders per-run history of one target (when the filter narrows to a
+/// single file) or every target in a pack across recent runs. Emits the
+/// captured stderr inline so the user can see exactly what each failing
+/// source printed without leaving the terminal.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitFilterView {
+    pub profiling_enabled: bool,
+    pub profiles_dir: String,
+    /// Filter as the user typed it — echoed in the header.
+    pub filter: String,
+    /// Pack portion of the filter (always set).
+    pub filter_pack: String,
+    /// Filename portion of the filter, if any (the part after `/`).
+    pub filter_filename: Option<String>,
+    /// Number of profiles examined.
+    pub runs_examined: usize,
+    /// One block per matching target. When the filter is a specific
+    /// file, this contains at most one block. When it's a pack-only
+    /// filter, one block per target seen in the pack across the
+    /// examined runs.
+    pub targets: Vec<ShellInitFilterTarget>,
+    pub stale: bool,
+    pub latest_profile_when: String,
+    pub last_up_when: String,
+}
+
+/// One target's runs across the examined window.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitFilterTarget {
+    /// Full source path as recorded in the profile.
+    pub target: String,
+    /// Basename for header display.
+    pub display_target: String,
+    /// Pack the target belongs to.
+    pub pack: String,
+    /// Handler (`shell` for sourced files, `path` for PATH exports).
+    pub handler: String,
+    /// Per-run rows, newest first.
+    pub runs: Vec<ShellInitFilterRun>,
+    /// How many of `runs` had a non-zero exit status.
+    pub failure_count: usize,
+}
+
+/// Display payload for `--errors-only`. Same shape as the filter view
+/// minus the user-typed filter string — the implicit filter is "non-
+/// zero exit, any pack, any target".
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitErrorsView {
+    pub profiling_enabled: bool,
+    pub profiles_dir: String,
+    pub runs_examined: usize,
+    /// Targets with at least one failed run in the window, sorted by
+    /// failure count desc (then by pack/target asc as a tiebreaker so
+    /// the order is stable across runs with the same counts).
+    pub targets: Vec<ShellInitFilterTarget>,
+    pub stale: bool,
+    pub latest_profile_when: String,
+    pub last_up_when: String,
+}
+
+/// One per-run row inside a target block.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitFilterRun {
+    /// `YYYY-MM-DD HH:MM` of the run.
+    pub when: String,
+    /// Pre-humanised duration label (e.g. `"83 µs"`).
+    pub duration_label: String,
+    pub duration_us: u64,
+    pub exit_status: i32,
+    /// `"deployed"` (success) or `"error"` (non-zero exit) — maps to
+    /// the same theme styles used by the unfiltered view.
+    pub status_class: &'static str,
+    /// Captured stderr split into individual lines. Empty when the
+    /// source printed nothing to stderr in this run. Pre-split because
+    /// the template engine doesn't expose a `.split()` filter, and
+    /// rendering each line with its own indent is cleaner than fighting
+    /// the template language.
+    pub stderr_lines: Vec<String>,
+    /// Source TSV filename, for cross-reference.
+    pub profile_filename: String,
 }
 
 /// One entry in the `probe` summary listing.
@@ -458,21 +551,241 @@ fn into_aggregate_row(t: AggregatedTarget) -> ShellInitAggregateRow {
 /// terminal.
 pub const DEFAULT_HISTORY_LIMIT: usize = 50;
 
-/// Render the per-run history view (one summary line per profile).
-pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeResult> {
+/// Default window for the filtered drill-down view. Wider than
+/// `RUNTIME_FAILURE_WINDOW` (used by `status`) so a user looking at
+/// `dodot probe shell-init <file>` gets enough history to see whether
+/// the failure is recurring or one-off, but bounded so the rendered
+/// output stays readable.
+pub const DEFAULT_FILTER_RUNS: usize = 20;
+
+/// Render the filtered drill-down view for a `<pack>[/<file>]` filter.
+///
+/// `runs` controls how many recent profiles are examined; the caller
+/// passes [`DEFAULT_FILTER_RUNS`] unless it has a specific reason to
+/// look further or fewer.
+pub fn shell_init_filter(ctx: &ExecutionContext, filter: &str, runs: usize) -> Result<ProbeResult> {
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
-    let mut profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), limit)?;
-    // Capture the newest ts before we reverse for display (the freshness
-    // check looks at the most recent run, not the bottom row).
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
+
+    // Filter parsing: `pack` or `pack/file`. Trim a leading `./` and a
+    // trailing `/` defensively so users can paste tab-completed paths.
+    let trimmed = filter.trim().trim_start_matches("./").trim_end_matches('/');
+    let (filter_pack, filter_filename) = match trimmed.split_once('/') {
+        Some((p, f)) if !p.is_empty() && !f.is_empty() => (p.to_string(), Some(f.to_string())),
+        _ => (trimmed.to_string(), None),
+    };
+
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
     let latest_profile_ts = profiles
         .first()
         .map(|p| parse_unix_ts_from_filename(&p.filename))
         .unwrap_or(0);
-    // read_recent_profiles returns newest-first; reverse so output reads
-    // chronologically (oldest at top, latest at the bottom near the
-    // user's prompt).
-    profiles.reverse();
+
+    // Bucket per `(pack, handler, target)`. Order: targets sorted by
+    // path so output is stable; runs within each target stay newest-
+    // first (matching the input slice order).
+    use std::collections::BTreeMap;
+    let mut buckets: BTreeMap<(String, String, String), Vec<ShellInitFilterRun>> = BTreeMap::new();
+
+    for profile in &profiles {
+        let when = format_unix_ts(parse_unix_ts_from_filename(&profile.filename));
+        for entry in &profile.entries {
+            if entry.pack != filter_pack {
+                continue;
+            }
+            if let Some(name) = &filter_filename {
+                let basename = std::path::Path::new(&entry.target)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                if &basename != name {
+                    continue;
+                }
+            }
+            let stderr_lines: Vec<String> = profile
+                .errors
+                .iter()
+                .find(|er| er.target == entry.target)
+                .map(|er| {
+                    er.message
+                        .trim_end()
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            buckets
+                .entry((
+                    entry.pack.clone(),
+                    entry.handler.clone(),
+                    entry.target.clone(),
+                ))
+                .or_default()
+                .push(ShellInitFilterRun {
+                    when: when.clone(),
+                    duration_us: entry.duration_us,
+                    duration_label: humanize_us(entry.duration_us),
+                    exit_status: entry.exit_status,
+                    status_class: if entry.exit_status == 0 {
+                        "deployed"
+                    } else {
+                        "error"
+                    },
+                    stderr_lines,
+                    profile_filename: profile.filename.clone(),
+                });
+        }
+    }
+
+    let targets: Vec<ShellInitFilterTarget> = buckets
+        .into_iter()
+        .map(|((pack, handler, target), runs_vec)| {
+            let display_target = std::path::Path::new(&target)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| target.clone());
+            let failure_count = runs_vec.iter().filter(|r| r.exit_status != 0).count();
+            ShellInitFilterTarget {
+                target,
+                display_target,
+                pack,
+                handler,
+                runs: runs_vec,
+                failure_count,
+            }
+        })
+        .collect();
+
+    Ok(ProbeResult::ShellInitFilter(ShellInitFilterView {
+        profiling_enabled,
+        profiles_dir,
+        filter: filter.trim().to_string(),
+        filter_pack,
+        filter_filename,
+        runs_examined: profiles.len(),
+        targets,
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when,
+    }))
+}
+
+/// Render the cross-history errors view.
+///
+/// Scans the last `runs` profiles, keeps only entries with non-zero
+/// exit status, groups them by target, and orders by failure count
+/// (most-broken first). The `runs` parameter follows the same window
+/// convention as [`shell_init_filter`].
+pub fn shell_init_errors(ctx: &ExecutionContext, runs: usize) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
+
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
+
+    use std::collections::BTreeMap;
+    let mut buckets: BTreeMap<(String, String, String), Vec<ShellInitFilterRun>> = BTreeMap::new();
+
+    for profile in &profiles {
+        let when = format_unix_ts(parse_unix_ts_from_filename(&profile.filename));
+        for entry in &profile.entries {
+            // Errors-only: skip clean runs entirely.
+            if entry.exit_status == 0 {
+                continue;
+            }
+            let stderr_lines: Vec<String> = profile
+                .errors
+                .iter()
+                .find(|er| er.target == entry.target)
+                .map(|er| {
+                    er.message
+                        .trim_end()
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            buckets
+                .entry((
+                    entry.pack.clone(),
+                    entry.handler.clone(),
+                    entry.target.clone(),
+                ))
+                .or_default()
+                .push(ShellInitFilterRun {
+                    when: when.clone(),
+                    duration_us: entry.duration_us,
+                    duration_label: humanize_us(entry.duration_us),
+                    exit_status: entry.exit_status,
+                    status_class: "error",
+                    stderr_lines,
+                    profile_filename: profile.filename.clone(),
+                });
+        }
+    }
+
+    let mut targets: Vec<ShellInitFilterTarget> = buckets
+        .into_iter()
+        .map(|((pack, handler, target), runs_vec)| {
+            let display_target = std::path::Path::new(&target)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| target.clone());
+            let failure_count = runs_vec.len();
+            ShellInitFilterTarget {
+                target,
+                display_target,
+                pack,
+                handler,
+                runs: runs_vec,
+                failure_count,
+            }
+        })
+        .collect();
+
+    // Sort: most-broken first, with a stable (pack, handler, target)
+    // tiebreaker so two targets with the same failure count don't swap
+    // positions across runs.
+    targets.sort_by(|a, b| {
+        b.failure_count
+            .cmp(&a.failure_count)
+            .then_with(|| a.pack.cmp(&b.pack))
+            .then_with(|| a.handler.cmp(&b.handler))
+            .then_with(|| a.target.cmp(&b.target))
+    });
+
+    Ok(ProbeResult::ShellInitErrors(ShellInitErrorsView {
+        profiling_enabled,
+        profiles_dir,
+        runs_examined: profiles.len(),
+        targets,
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when,
+    }))
+}
+
+/// Render the per-run history view (one summary line per profile).
+pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), limit)?;
+    // `read_recent_profiles` already returns newest-first, which is the
+    // order users expect for a history listing (most recent at the top
+    // of the table). Don't reverse.
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
     let history = summarize_history(&profiles);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
     let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
