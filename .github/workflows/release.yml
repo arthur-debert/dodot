@@ -441,19 +441,16 @@ jobs:
       - name: Setup Rust
         uses: ./.github/actions/rust-setup
 
+      # Use scripts/ci-publish-crate.sh for the robust two-tier check:
+      # 1. Pre-check via crates.io JSON API (skips re-publish entirely)
+      # 2. Grep cargo's publish output for "already exists"/"already uploaded"
+      #    Replaces the prior `cargo search ... | grep VERSION` heuristic,
+      # which broke when re-publishing an older rc — `cargo search` only
+      # returns the LATEST version, so the grep wouldn't match older ones.
       - name: Publish dodot-lib
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          cargo publish -p dodot-lib 2>&1 || {
-            if cargo search dodot-lib --limit 1 2>/dev/null | grep -q "dodot-lib.*\"$VERSION\""; then
-              echo "dodot-lib@$VERSION already published, skipping"
-            else
-              echo "Failed to publish dodot-lib"
-              exit 1
-            fi
-          }
+        run: scripts/ci-publish-crate.sh dodot-lib
 
       - name: Wait for crates.io to index dodot-lib
         run: sleep 30
@@ -461,16 +458,7 @@ jobs:
       - name: Publish dodot
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_KEY }}
-          VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          cargo publish -p dodot 2>&1 || {
-            if cargo search dodot --limit 1 2>/dev/null | grep -q "dodot.*\"$VERSION\""; then
-              echo "dodot@$VERSION already published, skipping"
-            else
-              echo "Failed to publish dodot"
-              exit 1
-            fi
-          }
+        run: scripts/ci-publish-crate.sh dodot
 
   homebrew-formula:
     # Generates a Homebrew formula from .github/homebrew-formula.rb.tmpl
