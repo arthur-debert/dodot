@@ -392,7 +392,7 @@ jobs:
       # leaves debug info as-is (matches the macOS/tarball binaries).
       - name: Install cargo-deb
         if: matrix.deb_arch != '' && env.ENABLE_DEB == 'true' && steps.check_asset.outputs.exists != 'true' && steps.build.outcome == 'success'
-        run: cargo install cargo-deb --locked
+        run: command -v cargo-deb >/dev/null 2>&1 || cargo install cargo-deb --locked
 
       - name: Build .deb package
         id: deb
