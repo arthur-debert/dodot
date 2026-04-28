@@ -26,6 +26,11 @@ env:
   # keep even before the secret is configured.
   HOMEBREW_TAP: arthur-debert/homebrew-tools
   HOMEBREW_FORMULA: dodot
+  # ─── Debian package gate ──────────────────────────────────────────────
+  # Build .deb packages for linux targets and attach to the GitHub
+  # Release. Set to "false" to skip. Requires `[package.metadata.deb]`
+  # in the crate's Cargo.toml.
+  ENABLE_DEB: "true"
 
 jobs:
   prepare-release:
@@ -205,16 +210,19 @@ jobs:
             artifact: dodot-aarch64-apple-darwin
             cross: false
             sign: true
+            deb_arch: ""
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: dodot-x86_64-linux-gnu
             cross: false
             sign: false
+            deb_arch: amd64
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
             artifact: dodot-aarch64-linux-gnu
             cross: true
             sign: false
+            deb_arch: arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -375,6 +383,49 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      # ─── Debian package (linux targets only, gated on ENABLE_DEB) ────
+      # cargo-deb reads [package.metadata.deb] from crates/dodot-cli/Cargo.toml.
+      # `--no-build` reuses the release binary built above; `--no-strip`
+      # leaves debug info as-is (matches the macOS/tarball binaries).
+      - name: Install cargo-deb
+        if: matrix.deb_arch != '' && env.ENABLE_DEB == 'true' && steps.check_asset.outputs.exists != 'true' && steps.build.outcome == 'success'
+        run: cargo install cargo-deb --locked
+
+      - name: Build .deb package
+        id: deb
+        if: matrix.deb_arch != '' && env.ENABLE_DEB == 'true' && steps.check_asset.outputs.exists != 'true' && steps.build.outcome == 'success'
+        run: |
+          # cargo-deb derives the Debian Architecture: field from --target
+          # automatically — no --variant flag needed. The empty variants
+          # declared in Cargo.toml are extensibility hooks for future per-arch
+          # customization (e.g. arch-specific depends).
+          cargo deb -p dodot \
+            --target ${{ matrix.target }} \
+            --no-build \
+            --no-strip
+
+      - name: Upload .deb to GitHub Release
+        if: always() && !cancelled() && steps.deb.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.prepare-release.outputs.version }}"
+          DEB=$(ls target/${{ matrix.target }}/debian/*.deb | head -1)
+          if [ -z "$DEB" ]; then
+            echo "::error::No .deb found at target/${{ matrix.target }}/debian/"
+            exit 1
+          fi
+          gh release upload "$TAG" "$DEB" --clobber
+
+      - name: Upload .deb as workflow artifact
+        if: always() && !cancelled() && steps.deb.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dodot-${{ matrix.deb_arch }}-deb
+          path: target/${{ matrix.target }}/debian/*.deb
           if-no-files-found: error
           retention-days: 7
 
