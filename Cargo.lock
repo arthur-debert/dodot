@@ -1890,9 +1890,9 @@ dependencies = [
 
 [[package]]
 name = "standout-bbparser"
-version = "7.6.0"
+version = "7.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e917bbd7a52f4b00c966ce628006d086c882b36ac1d38c06aae8f86829dec566"
+checksum = "0c54bd25a991839432f958655f2dae0cf1d8bd5ad2a452235564cd06114963db"
 dependencies = [
  "console",
 ]
@@ -1944,9 +1944,9 @@ dependencies = [
 
 [[package]]
 name = "standout-render"
-version = "7.6.0"
+version = "7.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07354995f1a0cd8b7e4ad4ea5025b07822edd9ad898e0bfa256fcbc62cc6b778"
+checksum = "02a7e1710d335cb8997b4f127b2b3c8c501c8e2a99a27a4a4ff5e74258954a8f"
 dependencies = [
  "console",
  "cssparser",
