@@ -25,7 +25,7 @@ dodot is a Rust CLI dotfile manager. Cargo workspace; binary crate at
 
 ## What will get pushed back on
 
-- Suggestions that ignore `CLAUDE.md` or content under `docs/`.
+- Suggestions that ignore content under `docs/`.
 - Style nits in code that already follows the project's style.
 - Defensive error handling for invariants the type system already enforces.
 - Comments that restate what the code does.
