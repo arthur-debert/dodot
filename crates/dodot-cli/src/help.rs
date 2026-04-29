@@ -23,8 +23,8 @@ use dodot_lib::render::create_theme;
 /// Embedded help texts, keyed by command path (`""` for top-level,
 /// `"up"` for `dodot up`, `"probe.shell-init"` for `dodot probe shell-init`).
 ///
-/// Order matters only for `match_command_path` below — longer keys are
-/// checked first so `probe.shell-init` wins over `probe`.
+/// Order matters: longer, more specific keys must come before shorter
+/// prefixes so `probe.shell-init` wins over `probe` in `lookup`.
 const HELP_TEXTS: &[(&str, &str)] = &[
     ("", include_str!("help/dodot.txt")),
     ("up", include_str!("help/up.txt")),
@@ -84,28 +84,39 @@ where
     // (non-flag, non-empty) before the marker as the command path.
     // For `dodot help foo bar`, the marker is the bare `help` token and
     // everything after it is the command path.
+    //
+    // Honor `--` as end-of-options: after it appears, tokens that look
+    // like flags (including `--help` / `-h`) are treated as positional
+    // arguments and must not trigger handwritten help — matching clap's
+    // behavior so e.g. `dodot adopt pack -- --help` adopts a file
+    // literally named `--help` instead of showing help.
     let mut path: Vec<String> = Vec::new();
     let mut found_marker = false;
     let mut consume_rest_as_path = false;
+    let mut options_terminated = false;
 
     for arg in &args {
+        if !options_terminated && arg == "--" {
+            options_terminated = true;
+            continue;
+        }
         if consume_rest_as_path {
-            if arg.starts_with('-') {
+            if !options_terminated && arg.starts_with('-') {
                 continue;
             }
             path.push(arg.clone());
             continue;
         }
-        if arg == "--help" || arg == "-h" {
+        if !options_terminated && (arg == "--help" || arg == "-h") {
             found_marker = true;
             break;
         }
-        if arg == "help" && path.is_empty() {
+        if !options_terminated && arg == "help" && path.is_empty() {
             found_marker = true;
             consume_rest_as_path = true;
             continue;
         }
-        if arg.starts_with('-') {
+        if !options_terminated && arg.starts_with('-') {
             // skip flags / values (we don't care about flag values for
             // path detection — they can't precede the help marker in a
             // meaningful way for our command set)
@@ -192,6 +203,21 @@ mod tests {
     fn no_help_request_returns_none() {
         assert_eq!(detect_help_request(["dodot", "up"]), None);
         assert_eq!(detect_help_request(["dodot", "status", "git"]), None);
+    }
+
+    #[test]
+    fn double_dash_terminates_options() {
+        // After `--`, `--help` is a positional arg, not a help marker.
+        assert_eq!(
+            detect_help_request(["dodot", "adopt", "pack", "--", "--help"]),
+            None
+        );
+        assert_eq!(detect_help_request(["dodot", "--", "-h"]), None);
+        // But `--help` before `--` still triggers help.
+        assert_eq!(
+            detect_help_request(["dodot", "up", "--help", "--", "x"]),
+            Some("up".into())
+        );
     }
 
     #[test]
