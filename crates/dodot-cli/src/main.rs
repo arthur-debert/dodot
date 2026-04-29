@@ -334,13 +334,19 @@ fn build_clap_command() -> ClapCommand {
         .subcommand(
             ClapCommand::new("adopt")
                 .about("Move files into a pack, symlinking from original location")
-                .arg(Arg::new("pack").help("Pack to adopt into").required(true))
                 .arg(
                     Arg::new("files")
-                        .help("Files to adopt")
+                        .help("Files to adopt (pack inferred from path)")
                         .required(true)
                         .num_args(1..)
                         .action(ArgAction::Append),
+                )
+                .arg(
+                    Arg::new("into")
+                        .long("into")
+                        .value_name("PACK")
+                        .help("Force a destination pack (must already exist); overrides path-based inference")
+                        .num_args(1),
                 )
                 .arg(
                     Arg::new("force")

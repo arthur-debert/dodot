@@ -1057,7 +1057,7 @@ fn adopt_moves_file_and_creates_symlink() {
     let source = env.home.join(".vimrc");
 
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1103,7 +1103,7 @@ fn adopt_preserves_executable_permissions() {
 
     let ctx = make_ctx(&env);
     commands::adopt::adopt(
-        "tools",
+        Some("tools"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1136,7 +1136,7 @@ fn adopt_refuses_non_dotted_home_entry() {
     let ctx = make_ctx(&env);
     let source = env.home.join("script.sh");
     let err = commands::adopt::adopt(
-        "tools",
+        Some("tools"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1175,7 +1175,7 @@ fn adopt_destination_conflict_refused_without_force() {
     let source = env.home.join(".vimrc");
 
     let err = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1209,7 +1209,7 @@ fn adopt_destination_conflict_resolved_with_force() {
     let source = env.home.join(".vimrc");
 
     commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         true, // --force
         false,
@@ -1224,19 +1224,25 @@ fn adopt_destination_conflict_resolved_with_force() {
 
 #[test]
 fn adopt_directory_creates_symlink_and_preserves_contents() {
+    // Dotted-directory adoption from $HOME directly: contents move to
+    // pack/_home/<stripped>/, which round-trips back via the `_home/`
+    // subtree-escape (Priority 2) on `dodot up`. We use a non-XDG
+    // dotted dir so the test stays decoupled from the XDG-source
+    // inference rules — adopting `~/.config/` itself is now refused
+    // explicitly (see `adopt_xdg_root_itself_refused`).
     let env = TempEnvironment::builder()
-        .pack("nvim")
+        .pack("editor")
         .file("placeholder", "")
         .done()
-        .home_file(".config/nvim/init.lua", "-- config")
-        .home_file(".config/nvim/lua/mod.lua", "-- module")
+        .home_file(".vim/vimrc", "set nocompatible")
+        .home_file(".vim/colors/scheme.vim", "\" colors")
         .build();
 
     let ctx = make_ctx(&env);
-    let source = env.home.join(".config");
+    let source = env.home.join(".vim");
 
     commands::adopt::adopt(
-        "nvim",
+        Some("editor"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1245,14 +1251,10 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
     )
     .unwrap();
 
-    // The directory is moved under pack/_home/<stripped> (post-#48
-    // adopt rename for dotted directories — the `_home/` per-subtree
-    // escape hatch routes deploys back to ~/.config when `dodot up`
-    // runs, preserving the round-trip).
-    let pack_dir = env.dotfiles_root.join("nvim/_home/config");
+    let pack_dir = env.dotfiles_root.join("editor/_home/vim");
     env.assert_dir_exists(&pack_dir);
-    env.assert_regular_file(&pack_dir.join("nvim/init.lua"), "-- config");
-    env.assert_regular_file(&pack_dir.join("nvim/lua/mod.lua"), "-- module");
+    env.assert_regular_file(&pack_dir.join("vimrc"), "set nocompatible");
+    env.assert_regular_file(&pack_dir.join("colors/scheme.vim"), "\" colors");
 
     // Original path is now a symlink to the pack copy.
     assert!(env.fs.is_symlink(&source));
@@ -1277,7 +1279,7 @@ fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
     let source = env.home.join(".weechat");
 
     commands::adopt::adopt(
-        "chats",
+        Some("chats"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1445,7 +1447,7 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".mydir");
     commands::adopt::adopt(
-        "shell",
+        Some("shell"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1462,8 +1464,14 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
     );
 }
 
+/// `~/.config/<X>/<rest>` is now a recognized adopt source: the first
+/// segment under `$XDG_CONFIG_HOME` is the inferred pack name, and the
+/// remainder is the in-pack path. Round-trip is the resolver's default
+/// rule — pack `nvim` containing `init.lua` deploys to
+/// `$XDG_CONFIG_HOME/nvim/init.lua` on `dodot up`. (Pre-inference, this
+/// case was refused as a nested source.)
 #[test]
-fn adopt_nested_source_refused() {
+fn adopt_xdg_nested_file_lands_at_pack_root() {
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("placeholder", "")
@@ -1474,8 +1482,108 @@ fn adopt_nested_source_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".config/nvim/init.lua");
 
+    commands::adopt::adopt(
+        Some("nvim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // No prefix gymnastics: pack `nvim`'s default deploy rule (Priority
+    // 4 — `$XDG/<pack>/<rel>`) lands `init.lua` back at the original
+    // `~/.config/nvim/init.lua`. So the in-pack name is just `init.lua`.
+    let pack_file = env.dotfiles_root.join("nvim/init.lua");
+    env.assert_regular_file(&pack_file, "-- config");
+    assert!(env.fs.is_symlink(&source));
+    let target = env.fs.readlink(&source).unwrap();
+    assert_eq!(target, pack_file);
+}
+
+/// Pack name can be omitted when the source carries pack structure
+/// under `$XDG_CONFIG_HOME`: `dodot adopt ~/.config/nvim/init.lua` (no
+/// `--into`) auto-detects pack `nvim` and creates it if missing.
+#[test]
+fn adopt_xdg_source_infers_pack_and_auto_creates() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/ghostty/config", "theme = dark")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/ghostty/config");
+
+    commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Pack auto-created at `<dotfiles>/ghostty/`, file landed at root.
+    let pack_dir = env.dotfiles_root.join("ghostty");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("config"), "theme = dark");
+    assert!(env.fs.is_symlink(&source));
+}
+
+/// Adopting `~/.config/<X>/` (the pack-root directory itself) expands
+/// into per-child plans rather than making the directory one big
+/// symlink-to-pack-root. Each top-level entry becomes a top-level pack
+/// member, so `dodot up` deploys per-entry like any other pack.
+#[test]
+fn adopt_xdg_pack_root_directory_expands_to_children() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/helix/config.toml", "theme = \"onedark\"")
+        .home_file(".config/helix/themes/extra.toml", "fg = \"white\"")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/helix");
+
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Each top-level child of `~/.config/helix/` became its own pack
+    // entry — `config.toml` (file) and `themes/` (dir) — both at pack
+    // root, not nested under another `helix/`.
+    let pack_dir = env.dotfiles_root.join("helix");
+    env.assert_regular_file(&pack_dir.join("config.toml"), "theme = \"onedark\"");
+    env.assert_regular_file(&pack_dir.join("themes/extra.toml"), "fg = \"white\"");
+    // Original entries are now symlinks at their original paths
+    // (one per top-level child, not one for the whole helix/ dir).
+    assert!(env
+        .fs
+        .is_symlink(&env.home.join(".config/helix/config.toml")));
+    assert!(env.fs.is_symlink(&env.home.join(".config/helix/themes")));
+    // Parent directory `~/.config/helix/` itself stays a real directory
+    // — only its children became symlinks.
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// `~/.config/` itself is too broad to adopt as a single unit; refuse
+/// explicitly so the user adopts an app subdirectory instead.
+#[test]
+fn adopt_xdg_root_itself_refused() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- config")
+        .build();
+    let ctx = make_ctx(&env);
+    let source = env.config_home.clone();
+
     let err = commands::adopt::adopt(
-        "nvim",
+        None,
         std::slice::from_ref(&source),
         false,
         false,
@@ -1485,13 +1593,139 @@ fn adopt_nested_source_refused() {
     .unwrap_err();
     let msg = format!("{err}");
     assert!(
-        msg.contains("nested"),
-        "expected 'nested' in error message, got: {msg}"
+        msg.contains("$XDG_CONFIG_HOME"),
+        "expected XDG-root refusal, got: {msg}"
     );
+}
 
-    // Nothing mutated.
-    env.assert_regular_file(&source, "-- config");
-    env.assert_not_exists(&env.dotfiles_root.join("nvim/init.lua"));
+/// Pack-root directory expansion under `--into` reroute keeps the
+/// `_xdg/<X>/` prefix on each child so the round-trip survives the
+/// pack-name change. Without this, expanded children would land at
+/// pack root and `dodot up` would deploy them to `$XDG/<override>/...`
+/// instead of the original `$XDG/<X>/...`. (Regression for Copilot
+/// review on PR #85.)
+#[test]
+fn adopt_xdg_pack_root_expansion_with_override_uses_xdg_prefix() {
+    let env = TempEnvironment::builder()
+        .pack("toolbox")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/lazygit/config.yml", "gui:\n  theme: dark")
+        .home_file(".config/lazygit/themes/x.yml", "fg: white")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/lazygit");
+
+    commands::adopt::adopt(
+        Some("toolbox"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Each expanded child lives under `toolbox/_xdg/lazygit/...` so the
+    // resolver's Priority 2 `_xdg/` prefix routes back to
+    // `~/.config/lazygit/<child>` regardless of the override pack name.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml"),
+        "gui:\n  theme: dark",
+    );
+    env.assert_regular_file(
+        &env.dotfiles_root.join("toolbox/_xdg/lazygit/themes/x.yml"),
+        "fg: white",
+    );
+    // Each original child is now a symlink (per-child expansion); the
+    // pack-root dir itself stays a real directory.
+    assert!(env
+        .fs
+        .is_symlink(&env.home.join(".config/lazygit/config.yml")));
+    assert!(env.fs.is_symlink(&env.home.join(".config/lazygit/themes")));
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// `--into <pack>` for an XDG source where the override differs from
+/// the inferred pack name uses `_xdg/<X>/<rest>` so round-trip via
+/// Priority 2 still lands the deployed file at the original location.
+#[test]
+fn adopt_xdg_with_into_override_uses_xdg_prefix() {
+    let env = TempEnvironment::builder()
+        .pack("toolbox")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/lazygit/config.yml", "gui:\n  theme: dark")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/lazygit/config.yml");
+
+    commands::adopt::adopt(
+        Some("toolbox"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Round-trip via `_xdg/lazygit/config.yml`: the `_xdg/` prefix
+    // bypasses pack-namespacing so the deployed path is still
+    // `~/.config/lazygit/config.yml` despite the file living in
+    // pack `toolbox`.
+    let pack_file = env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml");
+    env.assert_regular_file(&pack_file, "gui:\n  theme: dark");
+    assert!(env.fs.is_symlink(&source));
+}
+
+/// Multiple sources whose inference picks different packs is refused
+/// (without `--into`); the message names the conflicting candidates.
+#[test]
+fn adopt_disagreeing_inferred_packs_refused() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- nvim")
+        .home_file(".config/helix/config.toml", "# helix")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let sources = vec![
+        env.home.join(".config/nvim/init.lua"),
+        env.home.join(".config/helix/config.toml"),
+    ];
+
+    let err = commands::adopt::adopt(None, &sources, false, false, false, &ctx).unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("different packs"),
+        "expected disagreement message, got: {msg}"
+    );
+    assert!(msg.contains("nvim") && msg.contains("helix"));
+}
+
+/// Without `--into`, a HOME source can't infer a pack and adopt fails
+/// with a hint pointing at `--into`.
+#[test]
+fn adopt_home_source_without_into_requires_pack() {
+    let env = TempEnvironment::builder()
+        .home_file(".vimrc", "set nocompatible")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("--into"), "expected '--into' hint, got: {msg}");
 }
 
 #[test]
@@ -1511,7 +1745,7 @@ fn adopt_already_adopted_source_is_skipped() {
 
     let ctx = make_ctx(&env);
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1558,7 +1792,7 @@ fn adopt_fully_managed_source_keeps_original_skip_message() {
     assert!(env.fs.is_symlink(&source));
 
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1694,7 +1928,7 @@ fn adopt_relative_path_with_curdir_normalizes() {
     std::env::set_current_dir(&env.home).unwrap();
     let ctx = make_ctx(&env);
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         &[std::path::PathBuf::from("./.vimrc")],
         false,
         false,
@@ -1721,7 +1955,7 @@ fn adopt_ignored_pack_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
     let err = commands::adopt::adopt(
-        "disabled",
+        Some("disabled"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1748,7 +1982,7 @@ fn adopt_filename_matching_pack_ignore_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc.bak");
     let err = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1781,7 +2015,7 @@ fn adopt_broken_pack_blocks_conflict_check() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
     let err = commands::adopt::adopt(
-        "target",
+        Some("target"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1820,7 +2054,7 @@ fn adopt_deploy_conflict_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".bashrc");
     let err = commands::adopt::adopt(
-        "work",
+        Some("work"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1854,7 +2088,7 @@ fn adopt_deploy_conflict_not_bypassed_by_force() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".bashrc");
     let err = commands::adopt::adopt(
-        "work",
+        Some("work"),
         std::slice::from_ref(&source),
         true, // --force should NOT bypass deploy conflicts
         false,
@@ -1881,7 +2115,7 @@ fn adopt_dry_run_makes_no_changes() {
     let source = env.home.join(".vimrc");
 
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1914,7 +2148,7 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
 
     let ctx = make_ctx(&env);
     commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         true, // --no-follow
@@ -1955,7 +2189,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
 
     let ctx = make_ctx(&env);
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         true, // --force
         false,
@@ -2005,7 +2239,7 @@ fn adopt_no_follow_on_dangling_symlink_succeeds() {
 
     let ctx = make_ctx(&env);
     commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         true, // --no-follow
@@ -2033,7 +2267,7 @@ fn adopt_nonexistent_source_errors() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".does-not-exist");
     let err = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -2052,7 +2286,7 @@ fn adopt_empty_sources_errors() {
         .done()
         .build();
     let ctx = make_ctx(&env);
-    let err = commands::adopt::adopt("vim", &[], false, false, false, &ctx).unwrap_err();
+    let err = commands::adopt::adopt(Some("vim"), &[], false, false, false, &ctx).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("no files"), "got: {msg}");
 }
@@ -2183,7 +2417,7 @@ fn adopt_nonexistent_pack_returns_pack_not_found() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
     let err = commands::adopt::adopt(
-        "newpack",
+        Some("newpack"),
         std::slice::from_ref(&source),
         false,
         false,

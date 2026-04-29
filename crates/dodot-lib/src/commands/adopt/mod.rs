@@ -1,6 +1,26 @@
 //! `adopt` command — move existing files into a pack, creating symlinks back.
 //!
-//! Two-phase model:
+//! ## Calling shape
+//!
+//! ```text
+//! dodot adopt <path>...                # pack name inferred per source
+//! dodot adopt <path>... --into <pack>  # all sources land in <pack>
+//! ```
+//!
+//! Inference (see [`infer::infer_target`]) reads each source's deployed
+//! location and determines:
+//!
+//! - **Pack name**, when the source root carries pack structure
+//!   (`$XDG_CONFIG_HOME/<X>/...` → `<X>`). HOME-rooted sources have no
+//!   inherent pack structure and require `--into <pack>`.
+//! - **In-pack path**, chosen so re-deploying with `dodot up` lands the
+//!   symlink back at the original source — round-trip preservation
+//!   relative to `handlers::symlink::resolve_target`.
+//! - **Whether the source is a pack-root directory** (e.g. `~/.config/nvim/`),
+//!   in which case we expand it into per-child plans rather than making
+//!   the whole directory one big symlink-to-pack-root.
+//!
+//! ## Two-phase model
 //!
 //! 1. **Copy phase** — recursively copy each source into the pack, preserving
 //!    inner symlinks and Unix permissions. Originals are never touched in this
@@ -16,7 +36,19 @@
 //! Cross-pack deployment conflicts are detected after the copy phase and before
 //! the swap phase — adoption is refused if deploying the adopted files would
 //! collide with another pack. This check is not bypassed by `--force`.
+//!
+//! ## Auto-creating packs
+//!
+//! When all sources point at a single inferred pack name and that pack
+//! doesn't exist on disk, adopt creates it (an empty directory — no
+//! `.dodot.toml` is written; the user can run `dodot config gen` later
+//! if they want one). When `--into <pack>` is supplied and `<pack>` does
+//! not exist, adopt refuses — explicit pack names are typo-checked
+//! against the existing pack inventory.
 
+mod infer;
+
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use crate::commands::status;
@@ -27,6 +59,18 @@ use crate::packs;
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::rules;
 use crate::{DodotError, Result};
+
+use self::infer::{infer_target, InferredTarget};
+
+/// Re-export so the round-trip property test in `commands::tests` can
+/// drive the same `home.X` / `_home/X/` conventions inference uses.
+/// Keeping this internal-but-cross-module ensures inference and the
+/// resolver don't drift apart. Test-only because production code
+/// always goes through the richer `infer_target` entry point.
+#[cfg(test)]
+pub(crate) use self::infer::derive_home_in_pack as derive_pack_filename;
+
+// ── Plans ────────────────────────────────────────────────────────────
 
 /// Plan for a single source: the resolved source path, what to call it in the
 /// pack, and the destination path.
@@ -46,11 +90,15 @@ struct AdoptPlan {
     destructive_overwrite: bool,
 }
 
+// ── Public entry point ───────────────────────────────────────────────
+
 /// Move sources into a pack, creating symlinks from their original locations.
 ///
-/// See the module-level docs for the two-phase model and failure semantics.
+/// `pack_override` is `Some(name)` when the user passed `--into <name>`;
+/// `None` lets per-source inference decide. See the module-level docs
+/// for the inference rules and two-phase failure semantics.
 pub fn adopt(
-    pack_name: &str,
+    pack_override: Option<&str>,
     sources: &[PathBuf],
     force: bool,
     no_follow: bool,
@@ -61,26 +109,53 @@ pub fn adopt(
         return Err(DodotError::Other("no files specified".into()));
     }
 
-    // Resolve the user's input (display name `nvim` or raw `010-nvim`)
-    // to the on-disk directory; the pack subtree is keyed by the raw
-    // form, every status/display surface by the display form.
-    let pack_dir = orchestration::resolve_pack_dir_name(pack_name, ctx)?;
-    let pack_display = packs::display_name_for(&pack_dir).to_string();
+    // ── Resolve pack: per-source inference, then aggregate ───────────
+    //
+    // Each source contributes a candidate pack name (its naturally-inferred
+    // pack, or None if the source root has no pack structure). We require
+    // exactly one pack per adopt invocation:
+    //
+    //   - All sources agree on a single inferred name → use it.
+    //   - Sources disagree → refuse; ask the user to split or use --into.
+    //   - All sources decline (HOME-only) → require --into.
+    //   - --into supplied → it wins regardless of inference.
+    //
+    // The single-pack constraint keeps the result shape (one
+    // PackStatusResult) and the conflict-check semantics simple. Future
+    // work can lift this to multi-pack invocations once the result
+    // structure supports it.
+    let resolved = resolve_pack_for_sources(pack_override, sources, ctx)?;
+
+    let pack_dir = resolved.pack_dir.clone();
+    let pack_display = resolved.display_name.clone();
     let pack_path = ctx.paths.pack_path(&pack_dir);
+
+    // ── Auto-create the pack if inferred and missing ─────────────────
+    //
+    // Inferred-but-absent packs are created as empty directories. The
+    // explicit `--into` path goes through `resolve_pack_dir_name` and
+    // errors on miss instead — that's the typo-guard the user opted
+    // into by naming a specific pack.
     if !ctx.fs.exists(&pack_path) {
-        return Err(DodotError::PackNotFound {
-            name: pack_name.into(),
-        });
+        ctx.fs.mkdir_all(&pack_path)?;
     }
+
     if ctx.fs.exists(&pack_path.join(".dodotignore")) {
         return Err(DodotError::PackInvalid {
-            name: pack_name.into(),
+            name: pack_display.clone(),
             reason: "pack is marked ignored via .dodotignore".into(),
         });
     }
 
-    let (plans, skipped_already_adopted) =
-        preflight(&pack_dir, &pack_path, sources, force, no_follow, ctx)?;
+    let (plans, skipped_already_adopted) = preflight(
+        &pack_dir,
+        &pack_path,
+        sources,
+        pack_override,
+        force,
+        no_follow,
+        ctx,
+    )?;
 
     // If every input was already adopted, there's nothing to do.
     if plans.is_empty() {
@@ -158,72 +233,132 @@ pub fn adopt(
     Ok(result)
 }
 
-// ── Pack-filename derivation ─────────────────────────────────────
-//
-// The inverse of `handlers::symlink::resolve_target`: given a
-// `$HOME/<file_name>` source we want to adopt, pick a pack-relative
-// filename such that re-deploying with `dodot up` lands the symlink
-// back at the *exact* original location.
-//
-// Goal: round-trip preservation. If a future change to `resolve_target`
-// adds a new convention or reorders priorities and this function is
-// not updated in lockstep, `pack_filename_round_trips_through_resolve_target`
-// (the property test in `commands::tests`) catches the drift.
+// ── Pack resolution (override / inference / aggregation) ─────────────
 
-/// Decide the pack-relative filename to use when adopting a
-/// `$HOME/<file_name>` source.
+/// Outcome of resolving the (single) pack the entire adopt invocation
+/// targets.
+struct ResolvedPack {
+    /// On-disk directory name (may carry a `NNN-` ordering prefix).
+    pack_dir: String,
+    /// User-facing display name (ordering prefix stripped).
+    display_name: String,
+}
+
+/// Determine which pack the entire adopt invocation lands in.
 ///
-/// Rules (mirror of `resolve_target`'s priority list, run in reverse):
-///   - In `force_home`: pack file `<stripped>`. The symlink handler's
-///     `force_home` rule routes deploys back to `$HOME/.<stripped>`.
-///   - Dotted file (e.g. `.vimrc`): pack file `home.<stripped>`. The
-///     per-file `home.X` convention routes back to `$HOME/.<stripped>`.
-///   - Dotted directory (e.g. `.weechat`): pack subdir
-///     `_home/<stripped>/`. The per-subtree `_home/` directory prefix
-///     routes contents back to `$HOME/.<stripped>/...`.
-///   - Non-dotted file or directory: no automatic round-trip path
-///     exists. Returns `Err` with a user-facing reason.
-pub(crate) fn derive_pack_filename(
-    file_name: &str,
-    is_dir: bool,
-    force_home: &[String],
-) -> std::result::Result<String, String> {
-    let stripped = file_name.strip_prefix('.').unwrap_or(file_name);
-    let in_force_home = force_home
-        .iter()
-        .any(|entry| entry.strip_prefix('.').unwrap_or(entry) == stripped);
+/// Two paths:
+///
+/// - `pack_override` is `Some(name)`: use exactly that name. The pack
+///   must already exist — this is the typo-guard the user opts into by
+///   spelling out `--into`. Resolved through `resolve_pack_dir_name`
+///   so display-name and raw-on-disk-name (`010-nvim` ↔ `nvim`) both
+///   work.
+/// - `pack_override` is `None`: run inference per source, require all
+///   to agree on a single inferred name (or all decline; in the latter
+///   case we error pointing at `--into`). The inferred name resolves
+///   through `resolve_pack_dir_name` for typo-equivalent matches; if
+///   no match exists, the inferred name is taken as the on-disk
+///   directory name and the pack is auto-created upstream.
+fn resolve_pack_for_sources(
+    pack_override: Option<&str>,
+    sources: &[PathBuf],
+    ctx: &ExecutionContext,
+) -> Result<ResolvedPack> {
+    if let Some(name) = pack_override {
+        // Explicit --into: resolve against existing packs, error on miss.
+        let pack_dir = orchestration::resolve_pack_dir_name(name, ctx)?;
+        let display_name = packs::display_name_for(&pack_dir).to_string();
+        return Ok(ResolvedPack {
+            pack_dir,
+            display_name,
+        });
+    }
 
-    if in_force_home {
-        Ok(stripped.to_string())
-    } else if file_name.starts_with('.') {
-        if is_dir {
-            Ok(format!("_home/{stripped}"))
-        } else {
-            Ok(format!("home.{stripped}"))
+    // No override: collect per-source inferences, demand consensus.
+    let force_home = ctx.config_manager.root_config()?.symlink.force_home.clone();
+
+    let fs = ctx.fs.as_ref();
+    let mut candidates: BTreeSet<String> = BTreeSet::new();
+    let mut declined: Vec<PathBuf> = Vec::new();
+    for raw in sources {
+        let abs = absolutize(raw)?;
+        // Existence check before inference: if a missing XDG pack-root
+        // dir (typo or not-yet-created path) reaches inference, it
+        // looks like a non-dir and gets refused as `LooseXdgFile`,
+        // which is misleading. Propagate NotFound here so the user
+        // sees the same "source does not exist" message they'd get for
+        // any missing source — preflight covers the same case but
+        // running it from this earlier inference pass keeps the error
+        // path uniform.
+        if !fs.exists(&abs) && !fs.is_symlink(&abs) {
+            return Err(DodotError::Fs {
+                path: abs,
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "source does not exist"),
+            });
         }
-    } else {
-        Err(format!(
-            "a non-dotted entry in $HOME has no automatic round-trip path \
-             under the post-#48 XDG default. Either rename to a dotted name \
-             (e.g. .{stripped}) before adopting, or copy into the pack \
-             manually and add a [symlink.targets] override pinning the \
-             deploy path."
-        ))
+        let is_dir = fs.stat(&abs).map(|m| m.is_dir).unwrap_or(false);
+        match infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home) {
+            Ok(t) => match t.natural_pack {
+                Some(name) => {
+                    candidates.insert(name);
+                }
+                None => declined.push(abs),
+            },
+            Err(e) => {
+                return Err(DodotError::Other(format!(
+                    "refusing to adopt {}: {e}",
+                    abs.display()
+                )))
+            }
+        }
+    }
+
+    match candidates.len() {
+        0 => Err(DodotError::Other(format!(
+            "could not infer a pack name for {} source(s); pass --into <pack>",
+            declined.len()
+        ))),
+        1 => {
+            // Sole candidate: prefer an existing pack with this display
+            // name (handles `010-nvim` on-disk vs `nvim` inferred), else
+            // fall through to use the inferred name as the on-disk dir.
+            let inferred = candidates.into_iter().next().unwrap();
+            let pack_dir = orchestration::resolve_pack_dir_name(&inferred, ctx)
+                .unwrap_or_else(|_| inferred.clone());
+            let display_name = packs::display_name_for(&pack_dir).to_string();
+            // If a HOME source declined inference but we still resolved
+            // a pack via the XDG sources, that's fine — they'll all land
+            // in the same pack. Their in-pack paths use the HOME prefixes
+            // so they round-trip regardless of pack name.
+            let _ = declined;
+            Ok(ResolvedPack {
+                pack_dir,
+                display_name,
+            })
+        }
+        _ => {
+            let names: Vec<String> = candidates.into_iter().collect();
+            Err(DodotError::Other(format!(
+                "sources infer different packs ({}); split into separate adopt \
+                 invocations or pass --into <pack> to force a single destination",
+                names.join(", ")
+            )))
+        }
     }
 }
 
-// ── Pre-flight ───────────────────────────────────────────────────
+// ── Pre-flight ───────────────────────────────────────────────────────
 
 fn preflight(
     pack_name: &str,
     pack_path: &Path,
     sources: &[PathBuf],
+    pack_override: Option<&str>,
     force: bool,
     no_follow: bool,
     ctx: &ExecutionContext,
 ) -> Result<(Vec<AdoptPlan>, Vec<String>)> {
     let fs = ctx.fs.as_ref();
-    let home = ctx.paths.home_dir().to_path_buf();
     let dotfiles_root = ctx.paths.dotfiles_root().to_path_buf();
     let data_dir = ctx.paths.data_dir().to_path_buf();
 
@@ -234,26 +369,21 @@ fn preflight(
         combined.extend(pack_config.pack.ignore.iter().cloned());
         combined
     };
+    // The merged force_home list: pack-level overrides root, but for
+    // adopt we feed both layers to inference so a user's pack-scoped
+    // force_home addition is honored. The resolver does the same merge
+    // when deploying.
+    let force_home = {
+        let mut combined = root_config.symlink.force_home.clone();
+        combined.extend(pack_config.symlink.force_home.iter().cloned());
+        combined
+    };
 
     let mut plans: Vec<AdoptPlan> = Vec::new();
     let mut skipped: Vec<String> = Vec::new();
 
     for raw_source in sources {
-        // Resolve to absolute, then normalize. Relative paths are resolved
-        // against CWD. We normalize logically (strip `.`, collapse `..`)
-        // rather than calling `canonicalize()` because canonicalize follows
-        // symlinks, which would break `--no-follow`.
-        let abs = if raw_source.is_absolute() {
-            raw_source.clone()
-        } else {
-            std::env::current_dir()
-                .map_err(|e| DodotError::Fs {
-                    path: raw_source.clone(),
-                    source: e,
-                })?
-                .join(raw_source)
-        };
-        let abs = normalize_path(&abs);
+        let abs = absolutize(raw_source)?;
 
         if !fs.exists(&abs) && !fs.is_symlink(&abs) {
             return Err(DodotError::Fs {
@@ -316,70 +446,63 @@ fn preflight(
             smeta.is_dir
         };
 
-        // Nested-source refusal: parent must be HOME (dodot's flat-at-top-level
-        // rule applied to source paths too). Allow adopting from HOME directly.
-        // Canonicalize the parent (not the source itself — that would follow
-        // a symlink source and break `--no-follow`) so OS-level path
-        // equivalences like `/var` ↔ `/private/var` on macOS compare equal.
-        let parent = abs
-            .parent()
-            .ok_or_else(|| DodotError::Other(format!("no parent directory: {}", abs.display())))?;
-        let canon_parent = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
-        let canon_home = std::fs::canonicalize(&home).unwrap_or_else(|_| home.clone());
-        if canon_parent != canon_home {
-            return Err(DodotError::Other(format!(
-                "nested source not allowed: {}\n  hint: adopt the top-level directory instead (parent must be {})",
-                abs.display(),
-                home.display()
-            )));
-        }
+        // ── Inference: source-root match + in-pack path computation ──
+        let inferred =
+            infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home).map_err(|reason| {
+                DodotError::Other(format!("refusing to adopt {}: {reason}", abs.display()))
+            })?;
 
-        let file_name = abs
-            .file_name()
-            .ok_or_else(|| DodotError::Other(format!("no filename: {}", abs.display())))?
-            .to_string_lossy()
-            .into_owned();
+        // Pick the override-aware encoding when --into changed the pack
+        // name. This keeps `_xdg/<X>/...` (and the future `_app/<X>/...`)
+        // round-trip-correct even when the user reroutes the file into
+        // a different pack than its source-root segment suggests.
+        let in_pack = match (&inferred.natural_pack, pack_override) {
+            (Some(natural), Some(over)) if natural != over => inferred.in_pack_override.clone(),
+            _ => inferred.in_pack_natural.clone(),
+        };
 
-        let pack_filename =
-            derive_pack_filename(&file_name, is_dir, &pack_config.symlink.force_home).map_err(
-                |reason| {
-                    DodotError::Other(format!("refusing to adopt {}: {reason}", abs.display()))
-                },
+        if inferred.expand_children {
+            // Source IS a pack-root directory under XDG (or AppSupport
+            // future) — enumerate children and adopt each as a top-level
+            // pack entry. This is the "I want this whole `~/.config/nvim/`
+            // to become the `nvim` pack" ergonomic.
+            //
+            // Override-aware: if `--into` rerouted the destination pack
+            // (so `pack_override` differs from the natural pack name),
+            // each child must use the explicit-prefix encoding
+            // (`_xdg/<X>/<child>`, `_app/<X>/<child>`) so the round-trip
+            // still lands the deployed file at the original location.
+            // The same rule that applies to file sources applies here.
+            let override_differs = matches!(
+                (&inferred.natural_pack, pack_override),
+                (Some(natural), Some(over)) if natural != over
+            );
+            let entries = fs.read_dir(&abs)?;
+            for entry in entries {
+                let child_in_pack = expand_child_in_pack(&inferred, &entry.name, override_differs);
+                push_plan(
+                    &mut plans,
+                    fs,
+                    &abs.join(&entry.name),
+                    pack_path,
+                    &child_in_pack,
+                    no_follow,
+                    force,
+                    &ignore_patterns,
+                )?;
+            }
+        } else {
+            push_plan(
+                &mut plans,
+                fs,
+                &abs,
+                pack_path,
+                &in_pack,
+                no_follow,
+                force,
+                &ignore_patterns,
             )?;
-
-        // Filename-ignore check against pack + root ignore patterns.
-        if rules::should_skip_entry(&pack_filename, &ignore_patterns) {
-            return Err(DodotError::Other(format!(
-                "refusing to adopt {}: name '{}' matches an ignore pattern or is reserved",
-                abs.display(),
-                pack_filename
-            )));
         }
-
-        let pack_dest = pack_path.join(&pack_filename);
-
-        // Destination conflict check. With --force, we'll remove the existing
-        // destination before copy; without, this is a hard refusal.
-        let dest_exists = fs.exists(&pack_dest) || fs.is_symlink(&pack_dest);
-        if dest_exists && !force {
-            return Err(DodotError::SymlinkConflict { path: pack_dest });
-        }
-
-        // Cross-plan filename collision: can't adopt two things with the same
-        // stripped name in a single invocation.
-        if plans.iter().any(|p| p.pack_dest == pack_dest) {
-            return Err(DodotError::Other(format!(
-                "two sources produce the same pack filename '{}'; adopt them separately",
-                pack_filename
-            )));
-        }
-
-        plans.push(AdoptPlan {
-            source: abs,
-            pack_dest,
-            is_dir,
-            destructive_overwrite: dest_exists, // only true under --force
-        });
     }
 
     // Permission pre-flight. We do this after planning so every error up to
@@ -397,6 +520,145 @@ fn preflight(
     }
 
     Ok((plans, skipped))
+}
+
+/// Compute the in-pack path for one child of an expanded pack-root
+/// directory.
+///
+/// `override_differs` is true when `--into <Y>` rerouted to a pack
+/// other than the source's natural pack name. In that case children
+/// need the explicit-prefix encoding (`_xdg/<X>/<child>`,
+/// `_app/<X>/<child>`) so Priority 2's directory prefixes bypass
+/// pack-namespacing — round-trip unchanged from the file-source case.
+///
+/// When `override_differs` is false (no override, or override matches
+/// inferred name), the natural-pack encoding wins: bare `<child>` for
+/// XDG (default rule routes back via the matching pack name), and
+/// `_app/<X>/<child>` for AppSupport (default rule routes through
+/// `$XDG`, not `app_support_dir`, so the prefix is mandatory even at
+/// natural pack name — see `docs/proposals/macos-paths.lex` §7.2).
+fn expand_child_in_pack(
+    parent: &InferredTarget,
+    child_name: &str,
+    override_differs: bool,
+) -> PathBuf {
+    use self::infer::SourceRoot;
+    match parent.source_root {
+        SourceRoot::XdgConfig => {
+            if override_differs {
+                // `parent.in_pack_override` is `_xdg/<X>` for the
+                // pack-root dir itself; append child basename per entry.
+                parent.in_pack_override.join(child_name)
+            } else {
+                PathBuf::from(child_name)
+            }
+        }
+        SourceRoot::AppSupport => {
+            // `parent.in_pack_override` is `_app/<X>` for the dir itself.
+            // AppSupport always needs the prefix (see §7.2 note), so the
+            // override flag doesn't change behavior here. Reserved for
+            // when Pather exposes app_support_dir() per macos-paths M1.
+            parent.in_pack_override.join(child_name)
+        }
+        SourceRoot::Home => {
+            // Not currently produced by inference (HOME never expands);
+            // fall back to bare child name to keep the helper total.
+            PathBuf::from(child_name)
+        }
+    }
+}
+
+/// Build and validate a single AdoptPlan, appending it to `plans`.
+///
+/// Centralises the destination-conflict, ignore-pattern, and per-invocation
+/// collision checks so they're applied uniformly between the regular
+/// path and the directory-expansion path.
+#[allow(clippy::too_many_arguments)]
+fn push_plan(
+    plans: &mut Vec<AdoptPlan>,
+    fs: &dyn Fs,
+    source: &Path,
+    pack_path: &Path,
+    in_pack: &Path,
+    no_follow: bool,
+    force: bool,
+    ignore_patterns: &[String],
+) -> Result<()> {
+    let lmeta = fs.lstat(source)?;
+    let is_source_symlink = lmeta.is_symlink;
+    let treat_as_link = is_source_symlink && no_follow;
+    let is_dir = if treat_as_link {
+        false
+    } else {
+        fs.stat(source)?.is_dir
+    };
+
+    // Filename-ignore check against pack + root ignore patterns.
+    //
+    // Ignore patterns apply to *top-level pack entries* (matching
+    // `rules::Scanner::walk_pack`'s semantics on `dodot up`). For a
+    // nested adopt like `lua/plugins/foo.lua`, the top-level entry is
+    // `lua/`, so we test the *first* path component — not the leaf
+    // basename. Using the leaf would let through adoptions that
+    // `dodot up` would later silently ignore (or vice versa).
+    use std::path::Component;
+    let top_level_name = in_pack
+        .components()
+        .find_map(|c| match c {
+            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .unwrap_or_else(|| in_pack.display().to_string());
+    if rules::should_skip_entry(&top_level_name, ignore_patterns) {
+        return Err(DodotError::Other(format!(
+            "refusing to adopt {}: top-level entry '{}' matches an ignore pattern or is reserved",
+            source.display(),
+            top_level_name
+        )));
+    }
+
+    let pack_dest = pack_path.join(in_pack);
+
+    // Destination conflict check. With --force, we'll remove the existing
+    // destination before copy; without, this is a hard refusal.
+    let dest_exists = fs.exists(&pack_dest) || fs.is_symlink(&pack_dest);
+    if dest_exists && !force {
+        return Err(DodotError::SymlinkConflict { path: pack_dest });
+    }
+
+    // Cross-plan filename collision: can't adopt two things with the same
+    // pack-relative path in a single invocation.
+    if plans.iter().any(|p| p.pack_dest == pack_dest) {
+        return Err(DodotError::Other(format!(
+            "two sources produce the same pack path '{}'; adopt them separately",
+            in_pack.display()
+        )));
+    }
+
+    plans.push(AdoptPlan {
+        source: source.to_path_buf(),
+        pack_dest,
+        is_dir,
+        destructive_overwrite: dest_exists,
+    });
+    Ok(())
+}
+
+/// Resolve a possibly-relative path to an absolute, lexically-normalized one.
+/// Mirrors the original adopt behavior: relative inputs resolve against
+/// CWD, then `..` and `.` are collapsed without touching the filesystem.
+fn absolutize(raw: &Path) -> Result<PathBuf> {
+    let abs = if raw.is_absolute() {
+        raw.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|e| DodotError::Fs {
+                path: raw.to_path_buf(),
+                source: e,
+            })?
+            .join(raw)
+    };
+    Ok(normalize_path(&abs))
 }
 
 fn check_writable(fs: &dyn Fs, dir: &Path) -> Result<()> {
@@ -425,6 +687,15 @@ fn check_readable(fs: &dyn Fs, path: &Path, is_dir: bool) -> Result<()> {
 fn copy_all(plans: &[AdoptPlan], fs: &dyn Fs) -> Result<()> {
     for plan in plans {
         let had_existing_dest = fs.exists(&plan.pack_dest) || fs.is_symlink(&plan.pack_dest);
+        // Ensure parent directory exists. Expansion under XDG can place
+        // children at the pack root (no missing parent), but a deeply
+        // nested in-pack path (e.g. `lua/plugins/foo.lua`) needs the
+        // intermediate directories created before copy.
+        if let Some(parent) = plan.pack_dest.parent() {
+            if !parent.as_os_str().is_empty() && !fs.exists(parent) {
+                fs.mkdir_all(parent)?;
+            }
+        }
         if had_existing_dest {
             // --force path: stage the new content into a sibling temp path
             // first so a failed copy leaves the old destination intact.

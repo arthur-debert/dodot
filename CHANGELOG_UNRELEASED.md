@@ -10,6 +10,34 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
+- **`dodot adopt` infers the destination pack from the source path.**
+  Adopt's CLI shifts from `dodot adopt <pack> <files...>` to
+  `dodot adopt <files...> [--into <pack>]`. Sources under
+  `~/.config/<X>/...` auto-infer pack `<X>` (created if missing) and
+  use the resolver's default rule for round-trip — no `_xdg/` prefix
+  in the pack tree when the inferred name matches. Sources under
+  `~/.config/<X>/` itself expand to per-child plans, so each top-level
+  entry of the directory becomes its own pack member instead of the
+  whole directory becoming one big symlink-to-pack-root. `$HOME`-direct
+  dotfiles (`~/.bashrc`, `~/.weechat/`) keep their existing
+  `home.X` / `_home/X/` conventions but now require `--into <pack>`
+  since HOME has no pack structure to mine. Multi-source invocations
+  must agree on a single pack (or pass `--into`); disagreement is
+  refused with a message naming the conflicting candidates.
+  `~/Library/Containers/` is refused unconditionally (sandboxed app
+  data) on every platform. See `docs/reference/symlink-paths.lex` §8
+  and `docs/proposals/macos-paths.lex` §7 (the proposal is updated to
+  reflect the implemented inference; the AppSupport row is reserved
+  pending Phase M1's `Pather::app_support_dir()`).
+
+  When `--into <Y>` differs from a source's natural pack name, adopt
+  switches the in-pack path to `_xdg/<X>/<rest>` so Priority 2's
+  `_xdg/` directory prefix bypasses pack-namespacing — the deployed
+  path is unchanged regardless of pack reroute. The `_app/<X>/<rest>`
+  override path is wired in the same way for the future AppSupport
+  case. Pack auto-creation only happens for inferred names; explicit
+  `--into <pack>` requires the pack to already exist (a typo guard).
+
 - **Hand-written `--help` for every command.** Every dodot command (and
   the top-level binary) now ships rich `--help` text written as a
   standalone file under `dodot-cli/src/help/`, embedded into the binary

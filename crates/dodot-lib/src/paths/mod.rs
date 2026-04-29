@@ -1,11 +1,53 @@
+//! Path resolution for dodot.
+//!
+//! `Pather` is dodot's single source of truth for *every* filesystem
+//! coordinate the rest of the codebase touches: `$HOME`, the dotfiles
+//! repo root, the XDG data/config/cache directories, and per-pack and
+//! per-handler subdirectories. Two reasons it's a trait, not free
+//! functions:
+//!
+//! 1. **Testability.** Constructing a `Pather` whose roots all live
+//!    under a `tempfile::TempDir` lets every command run end-to-end
+//!    against a real filesystem without ever touching the user's
+//!    actual `$HOME`. The `testing::TempEnvironment` builder does
+//!    exactly this.
+//!
+//! 2. **Centralisation of OS-shaped policy.** The XDG fallback chain,
+//!    the `DOTFILES_ROOT` env-var lookup, and (planned, per
+//!    `docs/proposals/macos-paths.lex`) the macOS `app_support_dir`
+//!    selection all live in one place. The resolver, the symlink
+//!    handler, and `adopt`'s source-path inference all consult the
+//!    same accessors — drift between them is impossible by construction.
+//!
+//! ## Adopt source-root invariants
+//!
+//! The inference function in `commands::adopt::infer` needs *stable
+//! root strings* it can prefix-match against canonicalised source
+//! paths. The accessors exposed here meet two requirements that make
+//! that work safely:
+//!
+//! - `home_dir()` and `xdg_config_home()` return paths that
+//!   `std::fs::canonicalize` resolves to themselves on a real
+//!   filesystem (they're real directories, not synthetic constants).
+//!   This is what makes the `/var` ↔ `/private/var` macOS equivalence
+//!   collapse cleanly when both a source and a root are canonicalised
+//!   before comparison.
+//!
+//! - On the default config (no `XDG_CONFIG_HOME` set), `xdg_config_home()`
+//!   is `home_dir().join(".config")` — i.e. *nested under* `$HOME`.
+//!   Inference must check the more-specific (XDG) root before HOME so
+//!   `~/.config/nvim/init.lua` matches XDG, not "nested under HOME".
+//!   That's enforced by the inference function, not by `Pather`, but
+//!   the nesting shape originates here.
+
 use std::path::{Path, PathBuf};
 
 use crate::Result;
 
 /// Provides all path calculations for dodot.
 ///
-/// Every path that dodot uses -- XDG directories, pack locations,
-/// handler data directories -- is computed through this trait. This
+/// Every path that dodot uses — XDG directories, pack locations,
+/// handler data directories — is computed through this trait. This
 /// keeps path logic centralised and makes testing straightforward:
 /// construct a `Pather` whose directories all live under a temp dir.
 ///
@@ -380,6 +422,82 @@ mod tests {
             PathBuf::from("/absolute/path")
         );
         assert_eq!(expand_tilde("relative", home), PathBuf::from("relative"));
+    }
+
+    /// Default-XDG nesting: with no explicit `xdg_config_home`, the
+    /// builder defaults to `$HOME/.config`. Adopt's inference relies on
+    /// XDG being checked *before* HOME (longest-prefix wins) precisely
+    /// because of this nesting; pin the layout so a future change that
+    /// flips the default to `$HOME/Library/...` (macOS) or somewhere
+    /// outside HOME forces a deliberate update to the inference rules.
+    #[test]
+    fn default_xdg_config_home_is_nested_under_home() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .data_dir("/u/.local/share/dodot")
+            .config_dir("/u/.config/dodot")
+            .cache_dir("/u/.cache/dodot")
+            // No xdg_config_home set; falls back to env or `$HOME/.config`.
+            .build()
+            .unwrap();
+        // The default fallback (no `XDG_CONFIG_HOME` env) is `$HOME/.config`.
+        // The assertion has to tolerate a user-set `XDG_CONFIG_HOME` since
+        // tests inherit the ambient env — `cargo test` from a developer
+        // shell with the env set would otherwise fail spuriously. The
+        // disjunct below means: either XDG nests under HOME (the default
+        // case the invariant talks about), OR the env override is set
+        // (the user opted out of the default; adopt's inference handles
+        // that case via root canonicalization, separate code path).
+        let xdg = pather.xdg_config_home();
+        let home = pather.home_dir();
+        assert!(
+            xdg.starts_with(home) || std::env::var("XDG_CONFIG_HOME").is_ok(),
+            "default xdg_config_home `{}` is not nested under home `{}` \
+             — adopt's inference assumes XDG ⊆ HOME on the default config; \
+             update both if this changes",
+            xdg.display(),
+            home.display()
+        );
+    }
+
+    /// Explicit `xdg_config_home(...)` takes precedence over env / defaults.
+    /// Critical for the test environment, where adopt-inference tests pin
+    /// XDG to a non-default location so prefix matches are unambiguous.
+    #[test]
+    fn explicit_xdg_config_home_overrides_default() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .xdg_config_home("/somewhere/else/.config")
+            .build()
+            .unwrap();
+        assert_eq!(
+            pather.xdg_config_home(),
+            Path::new("/somewhere/else/.config")
+        );
+    }
+
+    /// Each accessor returns a stable, distinct subdir layout. Adopt's
+    /// auto-create path lands the new pack at `dotfiles_root/<pack>`,
+    /// and the data layer keeps state at `data_dir/packs/<pack>/...`;
+    /// these must not alias.
+    #[test]
+    fn dotfiles_root_and_data_dir_are_distinct_namespaces() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .data_dir("/u/.local/share/dodot")
+            .build()
+            .unwrap();
+        let pack_dir = pather.pack_path("nvim");
+        let pack_data = pather.pack_data_dir("nvim");
+        assert!(
+            !pack_dir.starts_with(&pack_data) && !pack_data.starts_with(&pack_dir),
+            "pack_path `{}` and pack_data_dir `{}` overlap",
+            pack_dir.display(),
+            pack_data.display(),
+        );
     }
 
     // Compile-time check: Pather must be object-safe

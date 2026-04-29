@@ -131,3 +131,65 @@ Symlink Deployment Paths
         ]
 
     :: toml ::
+
+8. `dodot adopt`: Source-Path Inference
+
+    `dodot adopt` accepts a *deployed* path (where the file lives now) and works backwards to figure out which pack it belongs in and what to call it inside that pack — so re-deploying with `dodot up` lands the symlink back at the original location. The inference rules below are the inverse of §1–§5.
+
+    Calling shape:
+
+        dodot adopt <path>...                # pack name inferred per source
+        dodot adopt <path>... --into <pack>  # all sources land in <pack>
+
+    :: text ::
+
+    8.1. Inference Per Source Root
+
+        The source path's deployed location decides everything:
+
+        Source-root inference:
+            | Source path                                | Inferred pack | Pack-relative path                 |
+            | `~/.config/<X>/<rest>`                     | `<X>`             | `<rest>`                       |
+            | `~/.config/<X>/` (the directory itself)    | `<X>`             | (children expand individually) |
+            | `~/.<X>` (dotted file in $HOME)            | (require `--into`)| `home.<X>`                     |
+            | `~/.<X>/...` (dotted dir in $HOME)         | (require `--into`)| `_home/<X>/...`                |
+            | `~/.<X>` matching `force_home` (file/dir)  | (require `--into`)| `<X>` (bare, see §3)           |
+            | `~/<X>` non-dotted, not in `force_home`    | refused           | —                              |
+            | `~/Library/Application Support/<X>/<rest>` | `<X>`             | `_app/<X>/<rest>` (MacOs only) |
+            | `~/Library/Containers/...`                 | refused           | (sandboxed app data)           |
+            | anything else                              | refused           | use `[symlink.targets]`        |
+        :: table align=lll ::
+
+        XDG sources auto-infer because the first path segment under `~/.config/` *is* the pack name — the resolver's default rule (§1) handles the round-trip with no prefix gymnastics.
+
+        $HOME-rooted dotfiles don't infer a pack name because the structure isn't there to mine: `~/.bashrc` could plausibly belong in a `shell`, `bash`, or `dotfiles` pack, and adopt won't guess. What inference *does* compute is the in-pack path — the `home.X` / `_home/X/` / bare-name conventions from §2, §3, §5 — so the round-trip works regardless of the chosen pack name.
+
+    8.2. Pack-Root Directory Expansion
+
+        Adopting `~/.config/<X>/` (the whole directory) doesn't make the directory itself a single symlink. Instead, adopt enumerates its children and adopts each as a top-level pack member:
+
+        Example expansion of `~/.config/helix/`:
+
+            ~/.config/helix/config.toml      → helix/config.toml
+            ~/.config/helix/themes/          → helix/themes/
+
+        :: text ::
+
+        After adoption, each child of `~/.config/helix/` is its own symlink; `~/.config/helix/` itself stays a real directory. This matches what `dodot up` would do for a hand-built pack and avoids creating a pack whose root *is* a symlink target.
+
+        `~/.X/` directory sources keep the existing whole-subtree behavior (`_home/X/`): the directory itself becomes the symlink, because in $HOME the user's mental model is the directory *is* the file.
+
+    8.3. The `--into` Override
+
+        `--into <pack>` forces a destination pack regardless of inference. Two cases:
+
+            - **Override matches inferred pack** (or no inference happened, e.g. HOME source): the natural in-pack path is used.
+            - **Override differs from inferred pack** (XDG sources only): the in-pack path switches to `_xdg/<X>/<rest>` so the explicit `_xdg/` prefix from §5 bypasses pack-namespacing and lands the deployed file at the same place.
+
+        Concrete: `dodot adopt ~/.config/lazygit/config.yml --into toolbox` lands the file at `toolbox/_xdg/lazygit/config.yml`. Re-deploying still lands the symlink at `~/.config/lazygit/config.yml` even though the pack is `toolbox`.
+
+        Mixing HOME and XDG sources in one invocation is allowed: the HOME ones use their pack-name-independent prefixes, the XDG ones contribute the inferred pack name (or use `--into` if it differs). If two XDG sources infer different packs and no `--into` is given, adopt refuses and names both candidates so the user can split the invocation.
+
+    8.4. Auto-Creating Packs
+
+        When inference picks a single pack name and that pack does not exist on disk, adopt creates it (an empty directory). `--into <pack>` does *not* auto-create — the explicit name is a typo guard. Run `dodot init <pack>` first to bootstrap an explicit pack.
