@@ -1,14 +1,19 @@
-# Copilot Instructions — dodot
+# Copilot Instructions
 
-dodot is a Rust CLI dotfile manager. Cargo workspace; binary crate at
-`crates/dodot-cli`; library crates at `crates/dodot-*`.
+This is a Rust project (CLI, library crate, or workspace).
 
 ## Before suggesting a fix
 
-- Run `scripts/check` (umbrella for fmt + clippy + nextest). CI runs the same
-  script; suggestions that don't pass it won't merge.
+- Run the project's umbrella check script if one exists (in `scripts/`,
+  commonly named `check`, `pre-commit`, `rust-pre-commit`, or `ci.sh` — run
+  `ls scripts/` to see which); otherwise `cargo fmt --check && cargo clippy
+  -- -D warnings && cargo test` (some projects use `cargo nextest run`
+  instead of `cargo test`). CI runs the same; if your suggestion doesn't
+  pass, it won't merge — check `.github/workflows/` for the source of truth.
 - Never propose changes that leave tests failing.
-- Update `CHANGELOG_UNRELEASED.md` for user-visible changes.
+- Update the changelog's `Unreleased` section for user-visible changes
+  (`CHANGELOG_UNRELEASED.md` if the project has one, otherwise the
+  `## [Unreleased]` section of `CHANGELOG.md`).
 
 ## Style and scope
 
@@ -29,3 +34,6 @@ dodot is a Rust CLI dotfile manager. Cargo workspace; binary crate at
 - Style nits in code that already follows the project's style.
 - Defensive error handling for invariants the type system already enforces.
 - Comments that restate what the code does.
+- Pinning org-internal reusable workflows (e.g. `arthur-debert/dagentic`) to
+  SHA — the reusable pattern is "fix once, propagate", and same-owner
+  supply-chain risk is negligible.
