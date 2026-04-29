@@ -10,6 +10,25 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
+- **Hand-written `--help` for every command.** Every dodot command (and
+  the top-level binary) now ships rich `--help` text written as a
+  standalone file under `dodot-cli/src/help/`, embedded into the binary
+  via `include_str!` and rendered through the dodot theme with the
+  same `[styling]` BBCode tags the rest of the output uses. Each
+  command's help is a self-contained page with description, usage,
+  options, examples, and cross-references — replacing the prior
+  one-liner `about` strings that gave little more than a verb. The
+  top-level `dodot --help` opens with a `GETTING STARTED` callout
+  promoting `dodot tutorial` as the recommended starting point for
+  new users, and the same prominence is mirrored in the `LEARN MORE`
+  block at the bottom. The CLI intercepts `--help` / `-h` / `help [cmd]`
+  before standout's own help dispatch so the embedded text is always
+  what the user sees, including for nested probe subcommands. A
+  per-file rendering test exercises every help text in `TermDebug`
+  mode and fails the build if any styling tag isn't defined in the
+  theme, catching typos before they ship. Standout was bumped from
+  7.5 to 7.6 in passing.
+
 - **Install-script visibility: header block, `# status:` markers, and `--verbose`.**
   `dodot up` previously discarded install-script stdout/stderr entirely,
   so a long-running script looked frozen and a misbehaving one was

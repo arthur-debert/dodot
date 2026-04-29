@@ -1,0 +1,19 @@
+[header]dodot list[/header] — Enumerate every pack dodot can see.
+
+[desc]Walks the dotfiles root and prints the names of every directory that
+qualifies as a pack — i.e. is not ignored, does not contain a
+[item].dodotignore[/item] marker, and matches the discovery rules.
+
+A quick way to confirm dodot's view of your repo matches your
+expectation. If a pack is missing here, [item]up[/item] / [item]status[/item] will not see it
+either.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot list[/usage]
+
+[header]EXAMPLES[/header]
+  [example]dodot list                     [dim]# every pack name[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot status[/item]      [desc]Same listing plus per-file deployment state[/desc]
+  [item]dodot addignore[/item]   [desc]Hide a directory so it is no longer discovered[/desc]

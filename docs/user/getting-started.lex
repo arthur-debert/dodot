@@ -110,7 +110,9 @@ dodot: Up and Running in 5 Minutes
 
 3. What's Next
 
-    - `dodot --help` — every command and flag
+    - `dodot tutorial` — interactive 10-minute walkthrough using your real dotfiles
+    - `dodot --help` — every command and flag (with examples and cross-references)
+    - `dodot help <command>` — detailed help for any command
     - [./commands.lex] — command-by-command usage
     - [./configuration.lex] — the `.dodot.toml` schema
     - [./templates.lex] — per-machine config via templates

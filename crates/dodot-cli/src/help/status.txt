@@ -1,0 +1,39 @@
+[header]dodot status[/header] — Show what dodot sees for each pack.
+
+[desc]For every file in every pack: which handler claimed it, where it
+will be deployed, and whether it is [item]pending[/item] (not yet deployed),
+[item]deployed[/item] (live), or in [item]error[/item] (a conflict, missing target, etc.).
+
+[item]status[/item] never changes anything on disk. Run it any time — before [item]up[/item]
+to sanity-check what dodot detected, after [item]up[/item] to confirm everything
+landed.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot status [PACKS...][/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<PACKS>...[/item]   [desc]Packs to show. Empty means every discovered pack.[/desc]
+
+[header]OPTIONS[/header]
+  [desc]Inherits the global view options:[/desc]
+    [item]--full[/item]        [desc]Show every file per pack (default)[/desc]
+    [item]--short[/item]       [desc]Collapse each pack to a one-line summary[/desc]
+    [item]--by-name[/item]     [desc]List packs in discovery order (default)[/desc]
+    [item]--by-status[/item]   [desc]Group packs by aggregated status (deployed / pending / error)[/desc]
+
+[header]ICONS[/header]
+  [item]➞[/item]   [desc]symlink[/desc]
+  [item]⚙[/item]   [desc]shell source / homebrew[/desc]
+  [item]+[/item]   [desc]added to [item]$PATH[/item][/desc]
+  [item]×[/item]   [desc]install script[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot status                   [dim]# everything[/dim]
+  dodot status git               [dim]# one pack[/dim]
+  dodot status --short           [dim]# one line per pack[/dim]
+  dodot status --by-status       [dim]# group by deployed / pending / error[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot up[/item]      [desc]Apply the pending state[/desc]
+  [item]dodot list[/item]    [desc]Just list pack names[/desc]
+  [item]dodot probe[/item]   [desc]Lower-level inspection (deployment map, data dir)[/desc]

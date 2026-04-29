@@ -1,0 +1,24 @@
+[header]dodot probe show-data-dir[/header] — Tree view of dodot's data directory.
+
+[desc]Renders a [item]tree[/item]-style view of dodot's data directory
+([item]$XDG_DATA_HOME/dodot[/item], typically [item]~/.local/share/dodot[/item]). This is
+where dodot stages files for shell init, records install / Brewfile
+sentinels, and keeps the deployment metadata.
+
+Use this when you want to see dodot's bookkeeping without poking at
+the directory by hand. Read-only; nothing is changed.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot probe show-data-dir [OPTIONS][/usage]
+
+[header]OPTIONS[/header]
+  [item]--depth <N>[/item]    [desc]Maximum tree depth (default 4)[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot probe show-data-dir
+  dodot probe show-data-dir --depth 2     [dim]# shallow tree[/dim]
+  dodot probe show-data-dir --depth 8     [dim]# everything[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot probe deployment-map[/item]   [desc]Show source ↔ target symlink mapping[/desc]
+  [item]docs/dev/storage.lex[/item]         [desc]Reference for the data directory layout[/desc]

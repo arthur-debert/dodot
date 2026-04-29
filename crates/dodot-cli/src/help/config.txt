@@ -1,0 +1,43 @@
+[header]dodot config[/header] — Inspect, generate, or edit configuration.
+
+[desc]dodot ships sensible defaults for every option; you only put into
+[item].dodot.toml[/item] the values you want to override. Configuration is
+loaded in three layers, last wins:
+
+  [dim]1.[/dim] compiled-in defaults
+  [dim]2.[/dim] [item]$DOTFILES_ROOT/.dodot.toml[/item]   (root config — applies to every pack)
+  [dim]3.[/dim] [item]$DOTFILES_ROOT/<pack>/.dodot.toml[/item]   (pack config — that pack only)
+
+The [item]config[/item] subcommands let you see what's resolved, generate a
+fully-commented starter file, or get / set / unset individual keys.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot config [OPTIONS] [COMMAND][/usage]
+
+[header]COMMANDS[/header]
+  [item]list[/item]    [desc]Show all resolved configuration key/value pairs (default if no subcommand)[/desc]
+  [item]get[/item]     [desc]Show the resolved value and documentation for a single key[/desc]
+  [item]set[/item]     [desc]Persist a configuration value to the config file[/desc]
+  [item]unset[/item]   [desc]Remove a configuration value from the config file[/desc]
+  [item]gen[/item]     [desc]Generate a commented sample config file (or stdout)[/desc]
+  [item]schema[/item]  [desc]Emit a JSON Schema document describing the config struct[/desc]
+
+[header]OPTIONS[/header]
+  [item]--scope <SCOPE>[/item]   [desc]Target a named persist scope (e.g. [item]local[/item], [item]global[/item])[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot config                       [dim]# show resolved configuration[/dim]
+  dodot config gen                   [dim]# print a commented starter to stdout[/dim]
+  dodot config gen -o .dodot.toml    [dim]# write it to a file[/dim]
+  dodot config get symlink.force_home
+  dodot config set preprocessor.enabled false
+  dodot config unset preprocessor.template.vars.editor[/example]
+
+[header]NOTES[/header]
+  [desc]Merge rules for the three layers:
+    [dim]•[/dim] Scalars and arrays — override (later layer replaces earlier)
+    [dim]•[/dim] Maps — deep-merge (nested keys combine; scalars within still override)[/desc]
+
+[header]SEE ALSO[/header]
+  [item]docs/user/configuration.lex[/item]   [desc]Reference for every [item].dodot.toml[/item] key[/desc]
+  [item]docs/user/handlers.md[/item]         [desc]Per-handler configuration knobs[/desc]

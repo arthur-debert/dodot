@@ -1,0 +1,45 @@
+[header]dodot probe shell-init[/header] — Per-source timings for shell startup.
+
+[desc]The shell init script ([item]eval "$(dodot init-sh)"[/item]) records, for every
+file it sources, how long the source took and what exit code resulted.
+This subcommand surfaces those records.
+
+Three views, by flag:
+
+  [dim]•[/dim] [item]default[/item]               most recent run, sorted by time
+  [dim]•[/dim] [item]--runs [N][/item]            aggregate the last [item]N[/item] runs into per-target [item]p50[/item] / [item]p95[/item] / [item]max[/item]
+  [dim]•[/dim] [item]--history[/item]             one summary row per run, newest first
+  [dim]•[/dim] [item]--errors-only[/item]         every target with a non-zero exit, sorted by failure count
+  [dim]•[/dim] [item]<PACK>[/item] / [item]<PACK/FILE>[/item]   drill into one source — per-run exits and stderr
+
+Useful for: hunting slow shell startup, finding a pack whose
+[item]aliases.sh[/item] is failing silently, or auditing what a teammate's pack
+actually does on login.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot probe shell-init [OPTIONS] [PACK[/FILE]][/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<PACK[/FILE]>[/item]   [desc]Drill into one pack ([item]gpg[/item]) or one file ([item]gpg/env.sh[/item]).
+                  Conflicts with [item]--runs[/item] and [item]--history[/item].[/desc]
+
+[header]OPTIONS[/header]
+  [item]--runs [N][/item]       [desc]Aggregate the last [item]N[/item] runs into per-target [item]p50[/item] / [item]p95[/item] / [item]max[/item]
+                  (default 10 if [item]N[/item] is omitted). Conflicts with [item]--history[/item].[/desc]
+  [item]--history[/item]       [desc]Show one summary row per recent run, newest first[/desc]
+  [item]--errors-only[/item]   [desc]List every target with a non-zero exit across recent runs,
+                  sorted by failure count.
+                  Conflicts with [item]--runs[/item], [item]--history[/item], and [item]<PACK[/FILE]>[/item].[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot probe shell-init                     [dim]# most recent run, sorted by time[/dim]
+  dodot probe shell-init --runs              [dim]# last 10 runs, p50/p95/max per source[/dim]
+  dodot probe shell-init --runs 50           [dim]# last 50 runs[/dim]
+  dodot probe shell-init --history           [dim]# one row per run, newest first[/dim]
+  dodot probe shell-init --errors-only       [dim]# only sources that failed[/dim]
+  dodot probe shell-init gpg                 [dim]# drill into one pack[/dim]
+  dodot probe shell-init gpg/env.sh          [dim]# drill into one file[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot init-sh[/item]              [desc]The script that produced these timings[/desc]
+  [item]dodot probe deployment-map[/item] [desc]Where the sourced files live on disk[/desc]

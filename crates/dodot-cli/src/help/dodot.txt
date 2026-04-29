@@ -1,0 +1,62 @@
+[header]dodot[/header] — A dotfiles manager that uses symlinks for live editing.
+
+[desc]Organize your dotfiles into directories ([pack-name]packs[/pack-name]) and dodot deploys
+them by convention: symlinks for configs, shell sources for aliases,
+[item]bin/[/item] on [item]$PATH[/item], one-shot install scripts, and Brewfiles. Edits are
+always live — the deployed file [item]is[/item] the source file, through a symlink.[/desc]
+
+[header]GETTING STARTED[/header]
+  [message]New here? Run [item]dodot tutorial[/item] for a 10-minute interactive
+  walkthrough that uses your real dotfiles. It is the fastest path
+  from zero to a working setup.[/message]
+
+[header]USAGE[/header]
+  [usage]dodot [OPTIONS] <COMMAND>[/usage]
+
+[header]CORE[/header]
+  [item]up[/item]            [desc]Deploy packs (symlink, source, PATH, run install/Brewfile)[/desc]
+  [item]down[/item]          [desc]Remove deployed state for packs[/desc]
+  [item]status[/item]        [desc]Show what is deployed, pending, or in error[/desc]
+  [item]list[/item]          [desc]List discovered packs[/desc]
+
+[header]HELPERS[/header]
+  [item]adopt[/item]         [desc]Move existing files into a pack, leaving symlinks behind[/desc]
+  [item]init[/item]          [desc]Create a new pack with starter files[/desc]
+  [item]fill[/item]          [desc]Add missing handler placeholders to an existing pack[/desc]
+  [item]addignore[/item]     [desc]Mark a directory so dodot skips it during discovery[/desc]
+
+[header]DIAGNOSTICS[/header]
+  [item]probe[/item]         [desc]Inspect deployed state, data directory, shell-init timings[/desc]
+
+[header]MISC[/header]
+  [item]tutorial[/item]      [desc]Interactive walkthrough using your real dotfiles[/desc]
+  [item]init-sh[/item]       [desc]Print the shell init script (eval in your rc file)[/desc]
+  [item]config[/item]        [desc]Inspect, generate, or edit configuration[/desc]
+  [item]help[/item]          [desc]Print help for a command, e.g. [item]dodot help up[/item][/desc]
+
+[header]GLOBAL OPTIONS[/header]
+  [item]--verbose[/item]            [desc]Verbose logging to stderr[/desc]
+  [item]--debug[/item]              [desc]Debug logging to stderr (implies [item]--verbose[/item])[/desc]
+  [item]--short[/item]              [desc]Collapse each pack to one summary line[/desc]
+  [item]--full[/item]               [desc]Show every file per pack (default)[/desc]
+  [item]--by-status[/item]          [desc]Group packs by aggregated status[/desc]
+  [item]--by-name[/item]            [desc]List packs in discovery order (default)[/desc]
+  [item]--output <FORMAT>[/item]    [desc]term, text, json, yaml, term-debug[/desc]
+  [item]--help[/item], [item]-h[/item]          [desc]Show help (per command if a command is named)[/desc]
+  [item]--version[/item], [item]-V[/item]       [desc]Show version[/desc]
+
+[header]ABOUT THE DOTFILES ROOT[/header]
+  [desc]No flag — dodot resolves it in this order:[/desc]
+    [dim]1.[/dim] [item]$DOTFILES_ROOT[/item] env var
+    [dim]2.[/dim] enclosing git repo ([item]git rev-parse --show-toplevel[/item])
+    [dim]3.[/dim] current working directory
+  [desc]Running commands from inside your dotfiles repo just works.[/desc]
+
+[header]LEARN MORE[/header]
+  [item]dodot tutorial[/item]                 [desc]Interactive 10-minute walkthrough[/desc]
+  [item]dodot help <command>[/item]           [desc]Detailed help for any command[/desc]
+  [item]docs/user/getting-started.lex[/item]  [desc]Up and running in 5 minutes[/desc]
+  [item]docs/user/commands.lex[/item]         [desc]Command-by-command reference[/desc]
+  [item]docs/user/configuration.lex[/item]    [desc]The .dodot.toml schema[/desc]
+  [item]docs/user/handlers.md[/item]          [desc]Handler reference (symlink, shell, path, install, homebrew)[/desc]
+  [item]docs/reference/philosophy.lex[/item]  [desc]Why dodot is shaped the way it is[/desc]

@@ -17,7 +17,7 @@ clap = { version = "4", features = ["derive"] }
 dodot-lib = { version = "1.0.0-rc.5", path = "../dodot-lib" }
 serde = { version = "1", features = ["derive"] }
 inquire = "0.7"
-standout = "7.5"
+standout = "7.6"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
