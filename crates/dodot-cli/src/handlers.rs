@@ -185,7 +185,10 @@ pub fn adopt_handler(
     _ctx: &CommandContext,
 ) -> HandlerResult<commands::PackStatusResult> {
     let ctx = build_readonly_ctx(matches)?;
-    let pack_name = matches.get_one::<String>("pack").expect("pack is required");
+    // `--into` is optional. When absent, adopt infers the pack name
+    // from each source's deployed path (XDG layout) or requires the
+    // user to supply --into (HOME-direct dotfiles).
+    let into = matches.get_one::<String>("into");
     let files: Vec<PathBuf> = matches
         .get_many::<String>("files")
         .expect("files is required")
@@ -194,10 +197,12 @@ pub fn adopt_handler(
     let force = matches.get_flag("force");
     let no_follow = matches.get_flag("no-follow");
     let dry_run = matches.get_flag("dry-run");
-    let result = commands::adopt::adopt(pack_name, &files, force, no_follow, dry_run, &ctx)
+    let into_str = into.map(|s| s.as_str());
+    let result = commands::adopt::adopt(into_str, &files, force, no_follow, dry_run, &ctx)
         .map_err(|e| {
             if matches!(e, dodot_lib::DodotError::PackNotFound { .. }) {
-                anyhow::anyhow!("{e}\n  Hint: run 'dodot init {pack_name}' first to create it")
+                let hint_pack = into_str.unwrap_or("<pack>");
+                anyhow::anyhow!("{e}\n  Hint: run 'dodot init {hint_pack}' first to create it")
             } else {
                 e.into()
             }

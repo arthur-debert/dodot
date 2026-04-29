@@ -1,37 +1,40 @@
 [header]dodot adopt[/header] — Move existing files into a pack, leaving symlinks behind.
 
-[desc]Bring legacy [item]$HOME[/item] dotfiles ([item]~/.bashrc[/item], [item]~/.zshrc[/item], [item]~/.gitconfig[/item], …)
-under dodot's control without breaking anything. For each source
-file: move it into the named pack, then symlink the original location
-back to it. Nothing observable changes; the file just gained a stable
-home in your dotfiles repo.
+[desc]Bring deployed config files (legacy [item]$HOME[/item] dotfiles, [item]~/.config/<tool>/[/item]
+trees, …) under dodot's control without breaking anything. For each
+source: move it into the right pack, then symlink the original
+location back to it. Nothing observable changes; the file just gained
+a stable home in your dotfiles repo.
 
-Files whose parent is [item]$HOME[/item] are renamed inside the pack so the
-deploy round-trip works:
-  [item]~/.bashrc[/item]    → [item]<pack>/bashrc[/item]        (canonical [item]force_home[/item])
-  [item]~/.foo.conf[/item]  → [item]<pack>/home.foo.conf[/item]  (preserves the dot prefix on re-deploy)
-
-[message]Currently only sources directly under [item]$HOME[/item] are supported.
-Files under [item]~/.config/<tool>/[/item] need to be copied into the pack manually.[/message][/desc]
+The pack name is inferred from the source's deployed location. Pass
+[item]--into <pack>[/item] to force a single destination pack instead.[/desc]
 
 [header]USAGE[/header]
-  [usage]dodot adopt [OPTIONS] <PACK> <FILES>...[/usage]
+  [usage]dodot adopt [OPTIONS] <FILES>...[/usage]
 
 [header]ARGUMENTS[/header]
-  [item]<PACK>[/item]      [desc]Pack to adopt into (created if needed)[/desc]
-  [item]<FILES>...[/item]  [desc]One or more files to move into the pack[/desc]
+  [item]<FILES>...[/item]  [desc]One or more files or directories to adopt[/desc]
 
 [header]OPTIONS[/header]
-  [item]--force[/item]       [desc]Overwrite an existing destination file in the pack[/desc]
-  [item]--dry-run[/item]     [desc]Show the moves and symlinks without making changes[/desc]
-  [item]--no-follow[/item]   [desc]If the source is a symlink, move the link itself instead of its target[/desc]
+  [item]--into <PACK>[/item]  [desc]Force a destination pack (must already exist); overrides path-based inference[/desc]
+  [item]--force[/item]        [desc]Overwrite an existing destination file in the pack[/desc]
+  [item]--dry-run[/item]      [desc]Show the moves and symlinks without making changes[/desc]
+  [item]--no-follow[/item]    [desc]If the source is a symlink, move the link itself instead of its target[/desc]
+
+[header]PACK INFERENCE[/header]
+  Sources under [item]~/.config/<X>/[/item] auto-infer pack [item]<X>[/item] (created if missing).
+  Sources directly under [item]$HOME[/item] do not auto-infer; pass [item]--into <PACK>[/item].
+  Sources under [item]~/Library/Containers/[/item] are refused (sandboxed app data).
+
+  See [item]docs/reference/symlink-paths.lex[/item] §8 for the full inference table.
 
 [header]EXAMPLES[/header]
-  [example]dodot adopt shell ~/.bashrc                 [dim]# adopt one file[/dim]
-  dodot adopt git ~/.gitconfig ~/.gitignore_global
-  dodot adopt shell ~/.bashrc --force         [dim]# overwrite shell/bashrc if present[/dim]
-  dodot adopt shell ~/.bashrc --dry-run       [dim]# preview the move + symlink[/dim][/example]
+  [example]dodot adopt ~/.config/nvim/init.lua          [dim]# infers pack `nvim`[/dim]
+  dodot adopt ~/.config/helix/                  [dim]# expands children of helix/ into pack[/dim]
+  dodot adopt ~/.bashrc --into shell            [dim]# HOME-direct dotfile needs --into[/dim]
+  dodot adopt ~/.config/lazygit/ --into tools   [dim]# override → uses _xdg/lazygit/ in pack[/dim]
+  dodot adopt ~/.gitconfig --into git --dry-run [dim]# preview the move + symlink[/dim][/example]
 
 [header]SEE ALSO[/header]
-  [item]dodot init[/item]    [desc]Create the destination pack first if it does not exist[/desc]
+  [item]dodot init[/item]    [desc]Bootstrap an explicit pack (required before [item]--into <pack>[/item] for new packs)[/desc]
   [item]dodot status[/item]  [desc]Confirm the symlink chain after adopting[/desc]

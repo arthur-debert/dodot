@@ -332,34 +332,91 @@ Design Specification: MacOs Paths and the `_app/` Convention
 
 7. Adopt: Source Roots
 
-    7.1. Recognized Source Roots
+    The pre-inference adopt CLI took the form `dodot adopt <pack> <files...>` and refused any source whose parent was not `$HOME` (the "flat-at-top-level" rule). The inference framework — landed for HOME and XDG roots, with the AppSupport root reserved here for Phases M1–M4 — generalises that into a per-source path-inference pass that picks the pack name, the in-pack path, and the round-trip prefix from the source's deployed location.
 
-        `dodot adopt` currently refuses sources whose parent is not `$HOME` (the "flat-at-top-level" rule). This proposal extends the recognised parent set to three roots:
+    7.1. CLI Shape
+
+        New shape:
+
+            dodot adopt <path>...                # pack name inferred per source
+            dodot adopt <path>... --into <pack>  # all sources land in <pack>
+
+        :: text ::
+
+        `--into` is the override switch: it forces a single destination pack regardless of what inference would have picked. When the source's natural pack differs from the override, the in-pack path switches to the explicit-prefix encoding (`_xdg/<X>/<rest>`, `_app/<X>/<rest>`) so round-trip via Priority 2 still lands the deployed file at the original location. See §7.4.
+
+    7.2. Recognized Source Roots
+
+        Recognized adopt source roots, with the in-pack path each yields when the pack name is the *naturally inferred* one (i.e. `--into` agrees with inference, or `--into` is omitted). The override-aware path is in §7.4.
 
         Recognized adopt source roots:
-            | Source path under                          | Pack-relative path                      |
-            | `$HOME/<file>`                             | per existing rules (`home.X`, `_home/`) |
-            | `$XDG_CONFIG_HOME/<X>/<rest>`              | `_xdg/<X>/<rest>`                       |
-            | `~/Library/Application Support/<X>/<rest>` | `_app/<X>/<rest>`                       |
+            | Source path under                          | Inferred pack | In-pack path (natural) |
+            | `$HOME/.<X>` (file)                        | (require `--into`) | `home.<X>`        |
+            | `$HOME/.<X>/...` (dir)                     | (require `--into`) | `_home/<X>/...`   |
+            | `$HOME/<X>` (force_home match)             | (require `--into`) | `<X>` (bare)      |
+            | `$XDG_CONFIG_HOME/<X>/<rest>`              | `<X>`              | `<rest>`          |
+            | `$XDG_CONFIG_HOME/<X>/` (the dir itself)   | `<X>`              | (expand children) |
+            | `~/Library/Application Support/<X>/<rest>` | `<X>`              | `_app/<X>/<rest>` |
+            | `~/Library/Application Support/<X>/`       | `<X>`              | (expand children) |
+        :: table align=lll ::
+
+        Two design notes are load-bearing:
+
+            - **XDG sources use *bare* in-pack paths, not `_xdg/<X>/<rest>`.** The pack-name segment is *the* pack name; the resolver's default rule (Priority 6, `$XDG/<pack>/<rel>`) round-trips correctly without any prefix. This is a corrected reading versus an earlier draft of this section. The `_xdg/` prefix is the *override* encoding (§7.4), not the natural one.
+            - **AppSupport in-pack paths *do* use the `_app/<X>/` prefix even at natural pack name.** That's because the resolver's default rule routes pack `<X>` to `$XDG/<X>/`, *not* `<app_support_dir>/<X>/`. Without the `_app/` prefix the round-trip would land the file in `~/.config/<X>/` on MacOs (wrong root), so the prefix is mandatory. Alternative: declare `[symlink.app_aliases] <X> = "<X>"` in the pack and use bare paths; adopt may emit this aliasing form when the capitalization heuristic (§8.1) says the folder is a GUI app and the user opts in. By default adopt produces `_app/<X>/<rest>` with no config writes.
+
+    7.3. Inference Decline and `--into`
+
+        `$HOME/.X` sources (and force_home matches) carry no pack structure inference can mine: a file like `~/.bashrc` could plausibly belong in a `shell`, `bash`, or `dotfiles` pack. Inference declines and surfaces an error pointing at `--into`.
+
+        Multi-source invocations are required to agree on a single pack: if `~/.config/nvim/init.lua` and `~/.config/helix/config.toml` are passed together without `--into`, inference produces conflicting pack names (`nvim` and `helix`) and adopt refuses, naming both candidates so the user can split or specify `--into`.
+
+        Mixing HOME-decline and XDG-inferred sources in a single invocation is allowed: they all land in the (single) inferred pack, with the HOME sources using their pack-name-independent `home.X` / `_home/X/` prefixes.
+
+    7.4. Pack-Override Encoding
+
+        When `--into <Y>` is supplied and `<Y>` ≠ the source's natural pack name, the in-pack path switches to the explicit-prefix encoding so the deployed path stays the same:
+
+        Override-aware in-pack paths:
+            | Source root                                 | In-pack path (override)       |
+            | `$HOME/...`                                 | unchanged from §7.2 (already pack-name independent) |
+            | `$XDG_CONFIG_HOME/<X>/<rest>`               | `_xdg/<X>/<rest>`             |
+            | `~/Library/Application Support/<X>/<rest>`  | `_app/<X>/<rest>` (same as natural) |
         :: table align=ll ::
 
-        The "parent must be `$HOME`" check in `commands/adopt.rs::preflight` becomes "parent must be one of the recognized roots, with the pack-relative path derived per the source root's rule".
+        Concrete: `dodot adopt ~/.config/lazygit/config.yml --into toolbox` lands the file at `toolbox/_xdg/lazygit/config.yml`. The `_xdg/` Priority-2 prefix bypasses pack-namespacing, so re-deploying still lands the symlink at `~/.config/lazygit/config.yml` even though the pack is `toolbox`.
 
-    7.2. Pack-Relative Path Derivation
+    7.5. Pack-Root Directory Expansion
 
-        Extends `derive_pack_filename` to accept the source root as input:
+        When the source IS the pack-root directory under XDG or AppSupport (`~/.config/nvim/`, `~/Library/Application Support/Code/`), adopt enumerates the directory's children and creates one plan per top-level entry, instead of making the directory itself one big symlink-to-pack-root. Each child becomes a top-level pack member, so `dodot up` deploys per-entry like any other pack.
 
-            - Source under `$HOME`: existing logic (force_home → bare name; dotted → `home.X` for files, `_home/X` for dirs; non-dotted refused).
-            - Source under `$XDG_CONFIG_HOME/<X>/`: derive `_xdg/<X>/<rest>` (today this is refused as nested-source).
-            - Source under `~/Library/Application Support/<X>/`: derive `_app/<X>/<rest>`.
+        Concrete: `dodot adopt ~/.config/helix/` produces, per child of `~/.config/helix/`:
 
-        The cross-pack deploy-conflict check in adopt's preflight still applies. Adopting a path that already collides with another pack's deployment fails before the copy phase, regardless of root.
+            - `~/.config/helix/config.toml` → `helix/config.toml`
+            - `~/.config/helix/themes/` → `helix/themes/`
 
-    7.3. Sandboxed Apps
+        After adopt, each child of `~/.config/helix/` is its own symlink; `~/.config/helix/` itself stays a real directory.
+
+        Expansion does not apply to `$HOME/.X/` directory sources — those keep the existing `_home/<X>/` whole-subtree adoption (§7.2 row 2). The reason is asymmetric: `~/.weechat/` *is* the file the user wants symlinked back, whereas `~/.config/helix/` is a container *whose contents* are what the user wants symlinked.
+
+    7.6. Auto-Creating Packs
+
+        When all sources point at a single inferred pack name and that pack does not exist on disk, adopt creates it (an empty directory; no `.dodot.toml` written). When `--into <pack>` is supplied and `<pack>` does not exist, adopt refuses — the explicit name is a typo guard the user opted into. The user can run `dodot init <pack>` first to bootstrap an explicit pack.
+
+    7.7. AppSupport Source Implementation Status
+
+        The `~/Library/Application Support/<X>/<rest>` row of §7.2 is *specified* but not yet *plumbed*: the inference framework reserves a `SourceRoot::AppSupport` variant, but the matcher does not consult it because `Pather` does not yet expose `app_support_dir()` (Phase M1). When M1 lands, two changes complete the AppSupport adopt path:
+
+            - Add a third arm to the root-matching ladder in `commands::adopt::infer::infer_target` checking `app_support_dir`, between the XDG and HOME arms (longest-prefix order: AppSupport > XDG > HOME — though on Linux both AppSupport and XDG resolve to the same path and the AppSupport arm is unreachable in practice).
+            - In the natural in-pack path, prepend `_app/<X>/` so Priority 2c routes back to `<app_support_dir>/<X>/<rest>`. The override-aware path is already `_app/<X>/<rest>` (§7.4), so override behavior is symmetric.
+
+        Adopt's directory-expansion path (`SourceRoot::AppSupport`) is already wired through `expand_child_in_pack`: when a pack-root directory under AppSupport expands, each child gets `_app/<X>/<child>` as its in-pack path. This is the "pack `vscode` with `app_aliases.vscode = "Code"`" alternative's *non-aliased* implementation, kept simple by default and refinable via the capitalization heuristic (§8.1) once advisory probing lands.
+
+    7.8. Sandboxed Apps
 
         MacOs sandboxed apps (App Store apps and many first-party apps) write to `~/Library/Containers/<bundle-id>/Data/Library/Application Support/<X>/` rather than the canonical location. These containers are not intended for external editing and their contents are often partially managed by the system.
 
-        `dodot adopt` refuses sources under `~/Library/Containers/` with a clear message:
+        `dodot adopt` refuses sources under `~/Library/Containers/` with a clear message. The refusal is platform-agnostic: even on Linux a path matching that shape is rejected, so the same refusal text is the right thing to print on every OS (the path simply doesn't exist on Linux in practice).
 
         Refusal text:
 
