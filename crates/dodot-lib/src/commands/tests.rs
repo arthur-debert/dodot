@@ -1598,6 +1598,55 @@ fn adopt_xdg_root_itself_refused() {
     );
 }
 
+/// Pack-root directory expansion under `--into` reroute keeps the
+/// `_xdg/<X>/` prefix on each child so the round-trip survives the
+/// pack-name change. Without this, expanded children would land at
+/// pack root and `dodot up` would deploy them to `$XDG/<override>/...`
+/// instead of the original `$XDG/<X>/...`. (Regression for Copilot
+/// review on PR #85.)
+#[test]
+fn adopt_xdg_pack_root_expansion_with_override_uses_xdg_prefix() {
+    let env = TempEnvironment::builder()
+        .pack("toolbox")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/lazygit/config.yml", "gui:\n  theme: dark")
+        .home_file(".config/lazygit/themes/x.yml", "fg: white")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/lazygit");
+
+    commands::adopt::adopt(
+        Some("toolbox"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Each expanded child lives under `toolbox/_xdg/lazygit/...` so the
+    // resolver's Priority 2 `_xdg/` prefix routes back to
+    // `~/.config/lazygit/<child>` regardless of the override pack name.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml"),
+        "gui:\n  theme: dark",
+    );
+    env.assert_regular_file(
+        &env.dotfiles_root.join("toolbox/_xdg/lazygit/themes/x.yml"),
+        "fg: white",
+    );
+    // Each original child is now a symlink (per-child expansion); the
+    // pack-root dir itself stays a real directory.
+    assert!(env
+        .fs
+        .is_symlink(&env.home.join(".config/lazygit/config.yml")));
+    assert!(env.fs.is_symlink(&env.home.join(".config/lazygit/themes")));
+    assert!(!env.fs.is_symlink(&source));
+}
+
 /// `--into <pack>` for an XDG source where the override differs from
 /// the inferred pack name uses `_xdg/<X>/<rest>` so round-trip via
 /// Priority 2 still lands the deployed file at the original location.

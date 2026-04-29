@@ -441,10 +441,14 @@ mod tests {
             // No xdg_config_home set; falls back to env or `$HOME/.config`.
             .build()
             .unwrap();
-        // The default unwrap (no XDG_CONFIG_HOME env) is $HOME/.config.
-        // We don't read env in the test (would race with real env), so
-        // assert *only* that the result starts with home — which is the
-        // load-bearing invariant for adopt's longest-prefix-match.
+        // The default fallback (no `XDG_CONFIG_HOME` env) is `$HOME/.config`.
+        // The assertion has to tolerate a user-set `XDG_CONFIG_HOME` since
+        // tests inherit the ambient env — `cargo test` from a developer
+        // shell with the env set would otherwise fail spuriously. The
+        // disjunct below means: either XDG nests under HOME (the default
+        // case the invariant talks about), OR the env override is set
+        // (the user opted out of the default; adopt's inference handles
+        // that case via root canonicalization, separate code path).
         let xdg = pather.xdg_config_home();
         let home = pather.home_dir();
         assert!(

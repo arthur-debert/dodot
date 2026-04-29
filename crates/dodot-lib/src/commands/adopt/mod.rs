@@ -282,11 +282,20 @@ fn resolve_pack_for_sources(
     let mut declined: Vec<PathBuf> = Vec::new();
     for raw in sources {
         let abs = absolutize(raw)?;
-        // For pack-name aggregation we don't need symlink semantics —
-        // just enough metadata to know if the source IS a directory.
-        // Missing sources fail later in preflight with a precise error;
-        // here we silently treat them as non-dir so inference can proceed
-        // and produce its own structured error.
+        // Existence check before inference: if a missing XDG pack-root
+        // dir (typo or not-yet-created path) reaches inference, it
+        // looks like a non-dir and gets refused as `LooseXdgFile`,
+        // which is misleading. Propagate NotFound here so the user
+        // sees the same "source does not exist" message they'd get for
+        // any missing source — preflight covers the same case but
+        // running it from this earlier inference pass keeps the error
+        // path uniform.
+        if !fs.exists(&abs) && !fs.is_symlink(&abs) {
+            return Err(DodotError::Fs {
+                path: abs,
+                source: std::io::Error::new(std::io::ErrorKind::NotFound, "source does not exist"),
+            });
+        }
         let is_dir = fs.stat(&abs).map(|m| m.is_dir).unwrap_or(false);
         match infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home) {
             Ok(t) => match t.natural_pack {
@@ -457,9 +466,20 @@ fn preflight(
             // future) — enumerate children and adopt each as a top-level
             // pack entry. This is the "I want this whole `~/.config/nvim/`
             // to become the `nvim` pack" ergonomic.
+            //
+            // Override-aware: if `--into` rerouted the destination pack
+            // (so `pack_override` differs from the natural pack name),
+            // each child must use the explicit-prefix encoding
+            // (`_xdg/<X>/<child>`, `_app/<X>/<child>`) so the round-trip
+            // still lands the deployed file at the original location.
+            // The same rule that applies to file sources applies here.
+            let override_differs = matches!(
+                (&inferred.natural_pack, pack_override),
+                (Some(natural), Some(over)) if natural != over
+            );
             let entries = fs.read_dir(&abs)?;
             for entry in entries {
-                let child_in_pack = expand_child_in_pack(&inferred, &entry.name);
+                let child_in_pack = expand_child_in_pack(&inferred, &entry.name, override_differs);
                 push_plan(
                     &mut plans,
                     fs,
@@ -483,10 +503,6 @@ fn preflight(
                 &ignore_patterns,
             )?;
         }
-
-        // Touch `inferred` so unused-field lints stay quiet on the
-        // override-aware variant when no override is in play.
-        let _ = inferred.in_pack_override;
     }
 
     // Permission pre-flight. We do this after planning so every error up to
@@ -507,15 +523,40 @@ fn preflight(
 }
 
 /// Compute the in-pack path for one child of an expanded pack-root
-/// directory. For XDG the child becomes a top-level pack entry; for
-/// AppSupport (future) it stays under `_app/<X>/`.
-fn expand_child_in_pack(parent: &InferredTarget, child_name: &str) -> PathBuf {
+/// directory.
+///
+/// `override_differs` is true when `--into <Y>` rerouted to a pack
+/// other than the source's natural pack name. In that case children
+/// need the explicit-prefix encoding (`_xdg/<X>/<child>`,
+/// `_app/<X>/<child>`) so Priority 2's directory prefixes bypass
+/// pack-namespacing — round-trip unchanged from the file-source case.
+///
+/// When `override_differs` is false (no override, or override matches
+/// inferred name), the natural-pack encoding wins: bare `<child>` for
+/// XDG (default rule routes back via the matching pack name), and
+/// `_app/<X>/<child>` for AppSupport (default rule routes through
+/// `$XDG`, not `app_support_dir`, so the prefix is mandatory even at
+/// natural pack name — see `docs/proposals/macos-paths.lex` §7.2).
+fn expand_child_in_pack(
+    parent: &InferredTarget,
+    child_name: &str,
+    override_differs: bool,
+) -> PathBuf {
     use self::infer::SourceRoot;
     match parent.source_root {
-        SourceRoot::XdgConfig => PathBuf::from(child_name),
+        SourceRoot::XdgConfig => {
+            if override_differs {
+                // `parent.in_pack_override` is `_xdg/<X>` for the
+                // pack-root dir itself; append child basename per entry.
+                parent.in_pack_override.join(child_name)
+            } else {
+                PathBuf::from(child_name)
+            }
+        }
         SourceRoot::AppSupport => {
-            // `parent.in_pack_override` is `_app/<X>` for the dir itself;
-            // append the child basename for each entry. Reserved for
+            // `parent.in_pack_override` is `_app/<X>` for the dir itself.
+            // AppSupport always needs the prefix (see §7.2 note), so the
+            // override flag doesn't change behavior here. Reserved for
             // when Pather exposes app_support_dir() per macos-paths M1.
             parent.in_pack_override.join(child_name)
         }
@@ -552,19 +593,27 @@ fn push_plan(
         fs.stat(source)?.is_dir
     };
 
-    // Filename-ignore check against pack + root ignore patterns. The
-    // top-level path-component is the user-visible name; using it for
-    // the match keeps behavior consistent with the resolver's gitignore
-    // semantics.
-    let display_name = in_pack
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+    // Filename-ignore check against pack + root ignore patterns.
+    //
+    // Ignore patterns apply to *top-level pack entries* (matching
+    // `rules::Scanner::walk_pack`'s semantics on `dodot up`). For a
+    // nested adopt like `lua/plugins/foo.lua`, the top-level entry is
+    // `lua/`, so we test the *first* path component — not the leaf
+    // basename. Using the leaf would let through adoptions that
+    // `dodot up` would later silently ignore (or vice versa).
+    use std::path::Component;
+    let top_level_name = in_pack
+        .components()
+        .find_map(|c| match c {
+            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        })
         .unwrap_or_else(|| in_pack.display().to_string());
-    if rules::should_skip_entry(&display_name, ignore_patterns) {
+    if rules::should_skip_entry(&top_level_name, ignore_patterns) {
         return Err(DodotError::Other(format!(
-            "refusing to adopt {}: name '{}' matches an ignore pattern or is reserved",
+            "refusing to adopt {}: top-level entry '{}' matches an ignore pattern or is reserved",
             source.display(),
-            display_name
+            top_level_name
         )));
     }
 

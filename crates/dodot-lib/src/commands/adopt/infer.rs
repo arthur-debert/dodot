@@ -335,10 +335,13 @@ fn resolve_home_relative(
         // The source is nested deeper under HOME than a direct child
         // (e.g. `~/Documents/notes.txt`). We don't have rules for these
         // — `~/Documents/`, `~/Desktop/`, etc. are user data, not
-        // dotfiles. Refuse with a generic "outside recognized roots".
-        // The error propagation upstream will list both HOME and XDG as
-        // valid roots so the user knows where adopt looks.
-        return Err(InferenceError::UnrecognizedRoot { hint_roots: vec![] });
+        // dotfiles. Refuse with "outside recognized roots" and seed
+        // `hint_roots` with the *symbolic* root names so the rendered
+        // error stays readable. Empty hint_roots produces awkward
+        // "expected under one of: " text.
+        return Err(InferenceError::UnrecognizedRoot {
+            hint_roots: vec![PathBuf::from("$HOME"), PathBuf::from("$XDG_CONFIG_HOME")],
+        });
     }
 
     // Delegate to the string-shaped helper so both inference and the
