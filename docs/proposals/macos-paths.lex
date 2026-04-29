@@ -6,6 +6,8 @@ Design Specification: MacOs Paths and the `_app/` Convention
 
 1. The Problem
 
+    This proposal addresses a MacOs-specific gap: on Linux, GUI and CLI applications share the same XDG-compliant text-file hierarchy and the resolver's existing rules already cover them, whereas MacOs splits GUI app data into `~/Library/Application Support/` with app-specific folder names that rarely match the natural pack name.
+
     1.1. Two Roots Are Not Enough
 
         dodot's resolver recognizes two filesystem roots: `$HOME` (legacy unix canons — `.bashrc`, `.ssh/`, `.gnupg/`) and `$XDG_CONFIG_HOME` (everything else, namespaced under the pack name by default). The four escape hatches in `symlink-paths.lex` (`home.X`, `_home/`, `_xdg/`, `[symlink.targets]`) all express user intent within those two coordinates.
