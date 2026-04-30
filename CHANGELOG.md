@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-04-30
+
+### Fixed
+
+- **CLI exits non-zero on handler errors.** Every standout-dispatched
+  subcommand (`status`, `up`, `down`, `list`, `init`, `fill`, `adopt`,
+  `addignore`, `probe …`) was printing `Error: …` to stdout and
+  exiting **0** when the handler returned `Err`. Scripts piping with
+  `&&` or CI invocations checking `$?` saw success on every failure
+  path. The root cause was upstream in standout-dispatch: handler errors
+  got stuffed into the success variant `RunResult::Handled(...)` and
+  the binary couldn't tell them apart from real output. Fixed in
+  standout 7.6.2 (arthur-debert/standout#141), which adds
+  `RunResult::Error(String)`. dodot now matches that variant in
+  `main.rs`, prints the message to stderr, and exits 1 — fixes every
+  affected subcommand at once. A new `tests/e2e/bats/test_exit_codes.bats`
+  pins the contract for `status`, `up`, `down`, and `adopt` (both
+  pack-not-found and source-not-found shapes) so a future regression
+  shows up immediately. Closes #86.
+
 ## [1.1.0] - 2026-04-29
 
 ### Added
