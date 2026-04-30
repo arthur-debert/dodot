@@ -371,14 +371,18 @@ Symlink Deployment Paths
 
     10.2. Adopt Enrichment
 
-        When `dodot adopt ~/Library/Application Support/<X>/...` succeeds and `<X>` matches an installed cask's app-support folder, adopt appends two informational lines to `PackStatusResult.warnings`:
+        When `dodot adopt ~/Library/Application Support/<X>/...` succeeds and `<X>` matches an installed cask's app-support folder, adopt appends informational lines to `PackStatusResult.warnings`:
 
             - a confirmation: "homebrew cask `<token>` confirms this is the app-support directory for pack `<X>`",
             - a sibling-adoption suggestion when the cask's zap stanza lists Preferences plists: "homebrew also reports preferences for cask `<token>`: <plist-list>. Adopt them too with `dodot adopt ~/Library/Preferences/<file> --into <X>`."
 
+        Additionally, the M5 capitalization-heuristic rename tip (§9.1, emitted when the inferred pack name passes the GUI-app heuristic) is *cask-aware*: when a cask matches, the suggested rename uses the cask token instead of a whitespace-strip-lowercase fallback. For reverse-DNS bundle-ID folders this is the difference between a sane suggestion and an unusable one — `com.colliderli.iina` becomes `iina` (matches cask `iina`) rather than `comcolliderliiina`.
+
     10.3. Missing-Target Hints
 
-        `dodot up` and `dodot status` plan-pack passes check whether each `<app_support_dir>/<X>/` folder a pack will deploy into actually exists on disk. Missing folders surface a soft warning, optionally enriched with a matching cask token: "looks like cask `<token>` isn't installed yet — `<X>/...` will deploy but the app isn't here to read it." Resolver state is unaffected; the symlinks still get created.
+        `dodot up` and `dodot status` plan-pack passes check whether each `<app_support_dir>/<X>/` folder a pack will deploy into actually exists on disk. Missing folders surface a soft warning, optionally enriched with a matching *installed* cask token: "cask `<token>` is installed but `<folder>/` is missing — entries will deploy, but the app may not have created its config directory yet (try launching it once)." When no installed cask matches, the warning falls back to a generic "no matching installed app appears to provide it" message. Resolver state is unaffected; the symlinks still get created.
+
+        The matching layer is *installed-only*: the planner inspects `brew list --cask --versions` (cache-only on the planner hot path so no `brew info` subprocess fires during `up`/`status`). Any returned token is by construction installed, which is why the warning text says "is installed" rather than the misleading "isn't installed yet" form considered earlier in design.
 
     10.4. What Probes Don't Do
 
