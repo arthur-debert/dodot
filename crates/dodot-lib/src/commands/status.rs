@@ -502,6 +502,26 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         for m in &matches {
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
+            // Skip rows for symlink entries whose resolver returns
+            // `Resolution::Skip` — currently `_lib/<rest>` on non-macOS.
+            // The planner already drops the intent and `plan_pack`
+            // surfaces a "skipped on this platform" warning; rendering
+            // a "pending" row alongside the warning would contradict
+            // it and mislead users into thinking a deploy is pending.
+            if m.handler == HANDLER_SYMLINK
+                && matches!(
+                    crate::handlers::symlink::resolve_target_full(
+                        &pack.name,
+                        &rel_str,
+                        &pack.config,
+                        ctx.paths.as_ref(),
+                    ),
+                    crate::handlers::symlink::Resolution::Skip { .. }
+                )
+            {
+                continue;
+            }
+
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
                 "symlink" => {

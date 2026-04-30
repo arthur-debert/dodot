@@ -6,20 +6,19 @@ Symlink Deployment Paths
 
 0. The Scenario
 
-    After decades crowding user's ~ with dotfiles, the XDG spec tackles the issue. It fixes it, and fixes it well. It has actually succeeded, but between the many years it took the ecosystem to react and some compromises on the spirit of interoperability, public perception is often on the contrary.  This matters (hence the inclusion) because it sets the tone right: paths in dodot are XDG paths.
-    This sets the tone better. There are two exceptions to this rule: 
+    After decades of dotfiles crowding `$HOME`, the XDG spec tackled the issue — and it has succeeded. Adoption took years and the ecosystem still has rough edges, so public perception of XDG is more skeptical than the actual state warrants. Calling that out matters because it sets the tone for this document: paths in dodot are XDG paths by default.
 
-        1. The holdouts: some unix old timer's files (.ssh, .zshrc, .gpg ) have decades of deployment *and* tooling is built on top. This will expect the files to be under home. So breaking this would break lots of other things in the ecosystem. Note that there are about 10 of these only. Dodot handles this (more on it bellow). 
-        2. MacOs GUI Apps: a schism has surface, with the xdg paths pointing to the "correct" ~/Library directories (i.g. Application Support) being used by GUI Apps, and most cli software either both or ~/.config. If not on darwin, or not using dodot to handle GUI configs, this is immaterial.
+    There are two exceptions to that rule:
 
+        1. The holdouts: a handful of Unix files (`.ssh`, `.zshrc`, `.gnupg`, …) have decades of tooling that expects them in `$HOME`. Breaking that would cascade into the rest of the ecosystem. There are about ten of these in total; dodot handles them via the `force_home` list (§3).
+        2. macOS GUI apps: a schism exists between modern CLI tools (which use `~/.config`) and GUI apps (which use `~/Library/Application Support`). If you're not on Darwin or don't use dodot to manage GUI app config, this is immaterial — and dodot exposes the macOS-side routing via `_app/`, `_lib/`, `force_app`, and `app_aliases` (§6).
 
-    In a nutshell: 
-        dodot uses XDG fully, except for unix cannons. Additionally, since there are always exceptions this is fully controllable: 
-        - config: resolve to home  (unix cannons)
-        - file/dir names: 
-            - prefixing files with home. (i.e. home.some-config -> ~/.some-config)
-            - enclosing links under a _home directory or _xdg do the expect thing.
-        That is, if a you need to break convention, you get a simple, explicit mechanism for doing so. 
+    In a nutshell:
+        dodot uses XDG by default, except for Unix canons. Where you need to break convention, the mechanism is explicit:
+        - config: resolve to `$HOME` (Unix canons)
+        - file/dir names:
+            - prefix files with `home.` (e.g. `home.some-config` → `~/.some-config`)
+            - place links under a `_home/` or `_xdg/` directory for whole-subtree routing.
 
 
 
@@ -29,7 +28,7 @@ Symlink Deployment Paths
 
 1. The Default Rule
 
-    Dodot respects the `XDG_CONFIG_HOME` specification. If the user has set the `XDG_CONFIG_HOME` environments variable, dodot honors it; otherwise it defaults to `~/.config`. For brevity, this document refers to it as `$XDG_CONFIG_HOME`.
+    Dodot respects the `XDG_CONFIG_HOME` specification. If the user has set the `XDG_CONFIG_HOME` environment variable, dodot honors it; otherwise it defaults to `~/.config`. For brevity, this document refers to it as `$XDG_CONFIG_HOME`.
 
     The default rule for every pack-root entry — file or directory — is:
 
@@ -87,7 +86,7 @@ Symlink Deployment Paths
 
     3.1. Force App for GUI Application Folders
 
-        On MacOs, GUI app config lives at `~/Library/Application Support/<App>/`, a third filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`. Dodot ships a curated companion to `force_home` — `force_app` — listing common GUI-app folder names whose first path segment routes to `<app_support_dir>/<name>/<rest>` without requiring a `_app/` prefix in the pack tree.
+        On macOS, GUI app config lives at `~/Library/Application Support/<App>/`, a third filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`. Dodot ships a curated companion to `force_home` — `force_app` — listing common GUI-app folder names whose first path segment routes to `<app_support_dir>/<name>/<rest>` without requiring a `_app/` prefix in the pack tree.
 
         Force app:
 
@@ -101,9 +100,9 @@ Symlink Deployment Paths
 
         :: toml ::
 
-        Matching is case-sensitive and on the first path segment only — Library folder names are case-sensitive on MacOs, and `Code` (VS Code) must not collide with a hypothetical `code` CLI tool's `~/.config/code/` directory.
+        Matching is case-sensitive and on the first path segment only — Library folder names are case-sensitive on macOS, and `Code` (VS Code) must not collide with a hypothetical `code` CLI tool's `~/.config/code/` directory.
 
-        On Linux (or on MacOs with `app_uses_library = false`, see §6) the `app_support_dir` collapses onto `$XDG_CONFIG_HOME` and `force_app` routes through XDG instead — same mechanism, same rules, different destination.
+        On Linux (or on macOS with `app_uses_library = false`, see §6) the `app_support_dir` collapses onto `$XDG_CONFIG_HOME` and `force_app` routes through XDG instead — same mechanism, same rules, different destination.
 
 4. Linking Outside of `XDG_CONFIG_HOME`
 
@@ -130,18 +129,18 @@ Symlink Deployment Paths
 
     `_xdg/` is the escape hatch for when your pack name doesn't match the target program — e.g. a `term-config` pack containing configs for several terminals would put each at `term-config/_xdg/ghostty/config`, `term-config/_xdg/kitty/kitty.conf`, etc., and dodot deploys them straight to `$XDG_CONFIG_HOME/ghostty/config` and `$XDG_CONFIG_HOME/kitty/kitty.conf`. The pack name plays no role inside `_xdg/`.
 
-6. MacOs: `_app/`, `_lib/`, and Application Support
+6. macOS: `_app/`, `_lib/`, and Application Support
 
-    On MacOs, GUI applications read configuration from `~/Library/Application Support/<App>/` — a third filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`. Dodot models this as `app_support_dir` and exposes two new directory prefixes plus a pack-level alias mechanism so the same pack tree can deploy correctly on both Linux and MacOs without `if os == "darwin"` branching inside packs.
+    On macOS, GUI applications read configuration from `~/Library/Application Support/<App>/` — a third filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`. Dodot models this as `app_support_dir` and exposes two new directory prefixes plus a pack-level alias mechanism so the same pack tree can deploy correctly on both Linux and macOS without `if os == "darwin"` branching inside packs.
 
     Roots:
-        | Symbol             | MacOs                                 | Linux / other                |
+        | Symbol             | macOS                                 | Linux / other                |
         | `$HOME`            | `/Users/<user>`                       | `/home/<user>`               |
         | `$XDG_CONFIG_HOME` | `~/.config` (unless env-set)          | `~/.config` (unless env-set) |
         | `app_support_dir`  | `~/Library/Application Support`       | `$XDG_CONFIG_HOME`           |
     :: table align=lll ::
 
-    On Linux the second and third coordinates collapse to one location, so `_app/` and `app_aliases` route through `~/.config` — indistinguishable from `_xdg/` in effect, but the same pack tree still works. On MacOs the third coordinate diverges and the routing kicks in.
+    On Linux the second and third coordinates collapse to one location, so `_app/` and `app_aliases` route through `~/.config` — indistinguishable from `_xdg/` in effect, but the same pack tree still works. On macOS the third coordinate diverges and the routing kicks in.
 
     6.1. The `_app/` Directory Prefix
 
@@ -163,17 +162,17 @@ Symlink Deployment Paths
         deploys to:
 
             - Linux:  `~/.config/Code/User/settings.json`
-            - MacOs:  `~/Library/Application Support/Code/User/settings.json`
+            - macOS:  `~/Library/Application Support/Code/User/settings.json`
 
         :: text ::
 
         The pack literally states "this is GUI-app config under name `Code`". Dodot picks the root per platform.
 
-    6.2. The `_lib/` Directory Prefix (MacOs Only)
+    6.2. The `_lib/` Directory Prefix (macOS Only)
 
-        `_lib/` is the MacOs-only counterpart to `_app/`. Where `_app/` cross-routes between platforms, `_lib/` declares a hard MacOs-only target — appropriate for apps with no Linux equivalent:
+        `_lib/` is the macOS-only counterpart to `_app/`. Where `_app/` cross-routes between platforms, `_lib/` declares a hard macOS-only target — appropriate for apps with no Linux equivalent:
 
-            <pack>/_lib/<rest>  →  $HOME/Library/<rest>          # MacOs only
+            <pack>/_lib/<rest>  →  $HOME/Library/<rest>          # macOS only
 
         :: text ::
 
@@ -187,7 +186,7 @@ Symlink Deployment Paths
 
         :: text ::
 
-        On non-MacOs platforms, `_lib/` emits no symlink intent and produces a soft warning:
+        On non-macOS platforms, `_lib/` emits no symlink intent and produces a soft warning:
 
             warning: pack `<pack>` contains `_lib/<rest>` — macOS-only path,
                      skipping on this platform
@@ -208,13 +207,13 @@ Symlink Deployment Paths
 
         :: toml ::
 
-        When a pack name appears as a key in `app_aliases`, the *default rule* for that pack is rerouted: instead of `$XDG_CONFIG_HOME/<pack>/<rel_path>`, the deploy path becomes `<app_support_dir>/<value>/<rel_path>`. The pack `vscode` with `User/settings.json` then deploys to `~/Library/Application Support/Code/User/settings.json` on MacOs and `~/.config/Code/User/settings.json` on Linux — without any `_app/` prefix in the pack tree.
+        When a pack name appears as a key in `app_aliases`, the *default rule* for that pack is rerouted: instead of `$XDG_CONFIG_HOME/<pack>/<rel_path>`, the deploy path becomes `<app_support_dir>/<value>/<rel_path>`. The pack `vscode` with `User/settings.json` then deploys to `~/Library/Application Support/Code/User/settings.json` on macOS and `~/.config/Code/User/settings.json` on Linux — without any `_app/` prefix in the pack tree.
 
         Aliases compose with the rest of the priority ladder: `home.X` (Priority 1) and the directory prefixes (`_home/`, `_xdg/`, `_app/`, `_lib/` — Priority 2) all outrank the alias-driven default. A `[symlink.targets]` entry (Priority 0) still wins absolutely.
 
     6.4. The `app_uses_library` Switch
 
-        On MacOs the `app_support_dir` defaults to `~/Library/Application Support`. To opt the entire pack tree into Linux-style `~/.config` placement on MacOs (e.g. for a user who keeps everything XDG-style), set:
+        On macOS the `app_support_dir` defaults to `~/Library/Application Support`. To opt the entire pack tree into Linux-style `~/.config` placement on macOS (e.g. for a user who keeps everything XDG-style), set:
 
         Override:
 
@@ -227,7 +226,7 @@ Symlink Deployment Paths
 
     6.5. Priority Ladder Summary
 
-        With the MacOs additions, the resolver evaluates the following rules in order. The first matching rule wins:
+        With the macOS additions, the resolver evaluates the following rules in order. The first matching rule wins:
 
         Priorities (highest first):
 
@@ -237,7 +236,7 @@ Symlink Deployment Paths
                 a. `_home/<rest>` → `$HOME/.<rest>`
                 b. `_xdg/<rest>`  → `$XDG_CONFIG_HOME/<rest>`
                 c. `_app/<rest>`  → `<app_support_dir>/<rest>`
-                d. `_lib/<rest>`  → `$HOME/Library/<rest>` (MacOs only; warn elsewhere)
+                d. `_lib/<rest>`  → `$HOME/Library/<rest>` (macOS only; warn elsewhere)
             3. `force_home` list → `$HOME/.<first-segment>/<rest>`
             4. `force_app` list → `<app_support_dir>/<first-segment>/<rest>`
             5. `app_aliases[pack]` → `<app_support_dir>/<alias>/<rel_path>`
@@ -313,7 +312,7 @@ Symlink Deployment Paths
             | `~/.<X>/...` (dotted dir in $HOME)         | (require `--into`)| `_home/<X>/...`                |
             | `~/.<X>` matching `force_home` (file/dir)  | (require `--into`)| `<X>` (bare, see §3)           |
             | `~/<X>` non-dotted, not in `force_home`    | refused           | —                              |
-            | `~/Library/Application Support/<X>/<rest>` | `<X>`             | `_app/<X>/<rest>` (MacOs only) |
+            | `~/Library/Application Support/<X>/<rest>` | `<X>`             | `_app/<X>/<rest>` (macOS only) |
             | `~/Library/Containers/...`                 | refused           | (sandboxed app data)           |
             | anything else                              | refused           | use `[symlink.targets]`        |
         :: table align=lll ::

@@ -73,13 +73,14 @@ impl ExecutionContext {
         // everywhere even on macOS" escape hatch from
         // `docs/proposals/macos-paths.lex` §6.3 / §11.2.
         //
-        // Reading root config here means a malformed root .dodot.toml
-        // surfaces at context construction (the same place
-        // `ConfigManager::new` failures already surface) rather than
-        // later inside a command. Best-effort: if the root config is
-        // unreadable we fall through to platform defaults — that
-        // matches the rest of dodot's "broken config still lets you
-        // see status" posture.
+        // Soft-fail by design: a config-load failure here only blocks
+        // the `app_uses_library = false` override from being applied,
+        // not context construction itself. Real config errors (parse
+        // failures, missing required fields) bubble up the next time a
+        // command calls `config_manager.root_config()` — same surface,
+        // same error path, just without preempting Pather construction.
+        // If the read fails here we leave `app_support_dir` at the
+        // platform default and let the actual command surface the error.
         let mut paths_builder = crate::paths::XdgPather::builder().dotfiles_root(dotfiles_root);
         if let Ok(root_config) = config_manager.root_config() {
             if !root_config.symlink.app_uses_library {

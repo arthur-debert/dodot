@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# E2E tests for the MacOs paths feature: _app/, _lib/, force_app, app_aliases.
+# E2E tests for the macOS paths feature: _app/, _lib/, force_app, app_aliases.
 #
 # These run on every host. Where macOS and Linux behave differently,
 # tests assert the platform-appropriate outcome:

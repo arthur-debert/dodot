@@ -76,6 +76,68 @@ fn status_shows_pending_before_up() {
     }
 }
 
+/// On non-macOS, `_lib/<rest>` entries resolve to `Resolution::Skip`
+/// in the planner. Status must suppress the corresponding row and
+/// only surface the warning — otherwise the user sees a confusing
+/// "pending symlink" row alongside a "skipping on this platform"
+/// warning. Regression for review feedback on PR #90.
+#[test]
+fn status_suppresses_lib_prefix_rows_when_skipped() {
+    let env = TempEnvironment::builder()
+        .pack("macapps")
+        .file("_lib/LaunchAgents/com.example.foo.plist", "x")
+        .file("regular.toml", "y")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    // The pack is present either way; what we're pinning is the
+    // *file rows*: on non-macOS the `_lib/...` row is suppressed,
+    // on macOS it appears like any other pending symlink.
+    let pack = result
+        .packs
+        .iter()
+        .find(|p| p.name == "macapps")
+        .expect("macapps pack must appear");
+
+    let lib_row = pack
+        .files
+        .iter()
+        .find(|f| f.name.starts_with("_lib/") || f.name == "_lib");
+    let regular_row = pack.files.iter().find(|f| f.name == "regular.toml");
+
+    assert!(
+        regular_row.is_some(),
+        "non-_lib entry must always render; got files {:?}",
+        pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
+
+    if cfg!(target_os = "macos") {
+        assert!(
+            lib_row.is_some(),
+            "on macOS `_lib/` entries should render normally; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+    } else {
+        assert!(
+            lib_row.is_none(),
+            "on non-macOS `_lib/` rows must be suppressed; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        // The warning channel still carries the explanation.
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("_lib/") && w.contains("macOS-only")),
+            "expected `_lib/` macOS-only warning; got {:?}",
+            result.warnings
+        );
+    }
+}
+
 #[test]
 fn status_renders_with_standout() {
     let env = TempEnvironment::builder()
