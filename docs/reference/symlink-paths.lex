@@ -2,11 +2,34 @@ Symlink Deployment Paths
 
     Symlinking is the core of a dotfile manager, and dodot ships with smart defaults plus overrides for every case where the defaults are wrong. This document is the full reference for where files end up on deploy.
 
+    Dodot makes the extra effort to be simple and predictable, but path handling is anything but, and in the service of being useful, there is some magic behaviour around paths. This document goes over them. 
+
+0. The Scenario
+
+    After decades crowding user's ~ with dotfiles, the XDG spec tackles the issue. It fixes it, and fixes it well. It has actually succeeded, but between the many years it took the ecosystem to react and some compromises on the spirit of interoperability, public perception is often on the contrary.  This matters (hence the inclusion) because it sets the tone right: paths in dodot are XDG paths.
+    This sets the tone better. There are two exceptions to this rule: 
+
+        1. The holdouts: some unix old timer's files (.ssh, .zshrc, .gpg ) have decades of deployment *and* tooling is built on top. This will expect the files to be under home. So breaking this would break lots of other things in the ecosystem. Note that there are about 10 of these only. Dodot handles this (more on it bellow). 
+        2. MacOs GUI Apps: a schism has surface, with the xdg paths pointing to the "correct" ~/Library directories (i.g. Application Support) being used by GUI Apps, and most cli software either both or ~/.config. If not on darwin, or not using dodot to handle GUI configs, this is immaterial.
+
+
+    In a nutshell: 
+        dodot uses XDG fully, except for unix cannons. Additionally, since there are always exceptions this is fully controllable: 
+        - config: resolve to home  (unix cannons)
+        - file/dir names: 
+            - prefixing files with home. (i.e. home.some-config -> ~/.some-config)
+            - enclosing links under a _home directory or _xdg do the expect thing.
+        That is, if a you need to break convention, you get a simple, explicit mechanism for doing so. 
+
+
+
+
+
     :: note :: See [./terms-and-concepts.lex] for terminology used throughout.
 
 1. The Default Rule
 
-    Dodot respects the `XDG_CONFIG_HOME` specification. If the user has set the `XDG_CONFIG_HOME` environment variable, dodot honors it; otherwise it defaults to `~/.config`. For brevity, this document refers to it as `$XDG_CONFIG_HOME`.
+    Dodot respects the `XDG_CONFIG_HOME` specification. If the user has set the `XDG_CONFIG_HOME` environments variable, dodot honors it; otherwise it defaults to `~/.config`. For brevity, this document refers to it as `$XDG_CONFIG_HOME`.
 
     The default rule for every pack-root entry — file or directory — is:
 
@@ -80,8 +103,8 @@ Symlink Deployment Paths
 
     For a whole subtree of files, the `_home/` and `_xdg/` directory prefixes route every file under them to a fixed root, **skipping the pack-name namespace**:
 
-        <pack>/_home/aconf.ini   →  $HOME/.aconf.ini
-        <pack>/_xdg/aconfig.ini  →  $XDG_CONFIG_HOME/aconfig.ini
+        <pack>/_home/a-conf.ini   →  $HOME/.a-conf.ini
+        <pack>/_xdg/a-config.ini  →  $XDG_CONFIG_HOME/a-config.ini
 
     `_home/` is the per-subtree counterpart of the per-file `home.` convention (§2): use it when a group of files belongs at `$HOME/.X` rather than `$XDG_CONFIG_HOME/<pack>/X`.
 
