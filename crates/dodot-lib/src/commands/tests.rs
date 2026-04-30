@@ -1947,6 +1947,122 @@ fn adopt_app_support_emits_capitalization_hint() {
     );
 }
 
+/// Reverse-DNS bundle-ID folders (`com.colliderli.iina`,
+/// `dev.warp.Warp-Stable`) get a much better rename suggestion when
+/// the M6 brew probe identifies a matching cask: prefer the cask
+/// token (`iina`) over the awful whitespace-strip-lowercase fallback
+/// (`comcolliderliiina`). Real IINA case from user testing on PR #91.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn adopt_app_support_reverse_dns_uses_cask_token_in_tip() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/com.colliderli.iina/input_conf/mine.conf",
+            "x",
+        )
+        .build();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(&["brew", "list", "--cask", "--versions"], "iina 1.4.0\n", 0);
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "iina"],
+        r#"{"casks": [{
+            "token": "iina",
+            "artifacts": [
+                {"app": ["IINA.app"]},
+                {"zap": [{"trash": ["~/Library/Application Support/com.colliderli.iina"]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+    let source = env
+        .app_support
+        .join("com.colliderli.iina/input_conf/mine.conf");
+
+    let result = commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let tip = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("app_aliases"))
+        .unwrap_or_else(|| panic!("expected an app_aliases tip, got: {:?}", result.warnings));
+
+    // The good outcome: tip suggests `iina` as the rename target.
+    assert!(
+        tip.contains("renaming the pack to `iina`"),
+        "expected cask-token-based rename suggestion (`iina`), got: {tip}"
+    );
+    // And explicitly NOT the whitespace-strip-lowercase fallback,
+    // which would be `comcolliderliiina` for this folder.
+    assert!(
+        !tip.contains("comcolliderliiina"),
+        "rename suggestion fell back to lowercase mangling instead of cask token: {tip}"
+    );
+    // The tip credits the cask so the user knows where the
+    // recommendation came from.
+    assert!(
+        tip.contains("matches homebrew cask"),
+        "tip should credit the cask source, got: {tip}"
+    );
+}
+
+/// When no installed cask matches the folder, the tip falls back to
+/// the original whitespace-strip-lowercase suggestion. Pins the
+/// fallback so a refactor doesn't accidentally regress the no-cask
+/// path (the heuristic still triggers on uppercase folders even when
+/// brew has nothing to say).
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn adopt_app_support_falls_back_to_lowercase_when_no_cask_match() {
+    // `Tinkerbell` — uppercase enough to trigger the heuristic, but
+    // no real cask owns it, so the brew probe returns empty and the
+    // tip falls back to the lowercase suggestion.
+    let env = TempEnvironment::builder()
+        .home_file("Library/Application Support/Tinkerbell/settings.json", "{}")
+        .build();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(&["brew", "list", "--cask", "--versions"], "", 0);
+    let ctx = make_ctx_with_runner(&env, runner);
+    let source = env.app_support.join("Tinkerbell/settings.json");
+
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let tip = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("app_aliases"))
+        .unwrap_or_else(|| panic!("expected an app_aliases tip, got: {:?}", result.warnings));
+
+    // Fallback suggestion: lowercased pack name (no spaces here, but
+    // the casing transformation still applies).
+    assert!(
+        tip.contains("renaming the pack to `tinkerbell`"),
+        "expected fallback rename suggestion, got: {tip}"
+    );
+    assert!(
+        !tip.contains("matches homebrew cask"),
+        "tip should not claim a cask match when none exists: {tip}"
+    );
+}
+
 /// The advisory is suppressed when the user passed `--into <pack>`:
 /// they already chose their pack name, so suggesting another one
 /// would be noise. The pack used here (`Code`) only exists to satisfy

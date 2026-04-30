@@ -96,3 +96,12 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
       future advisory subprocess wrapper) reuse the same
       `CommandRunner` the datastore already drives. Tests inject a
       `CannedRunner` mock for deterministic probe coverage.
+    - **Cask-aware rename suggestion** — when M5's
+      capitalization-heuristic tip fires *and* the M6 brew probe
+      finds an installed cask matching the pack's app-support
+      folder, the suggested rename uses the cask token instead of a
+      whitespace-strip-lowercase fallback. For reverse-DNS bundle-ID
+      folders (`com.colliderli.iina` → cask `iina`) this is the
+      difference between `iina` (sane) and `comcolliderliiina`
+      (useless). The tip credits the cask so users know where the
+      recommendation came from.
