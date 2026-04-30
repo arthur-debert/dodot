@@ -135,6 +135,17 @@ pub trait Pather: Send + Sync {
     fn probes_shell_init_dir(&self) -> PathBuf {
         self.data_dir().join("probes").join("shell-init")
     }
+
+    /// On-disk cache for homebrew-cask probe data. One JSON file per
+    /// cask token; TTL-based invalidation. See
+    /// `docs/proposals/macos-paths.lex` §8.2.
+    ///
+    /// Lives under `cache_dir` (not `data_dir`) because the contents are
+    /// rederivable — losing them is fine, the next probe re-runs `brew
+    /// info`. Co-located with future probe caches under `probes/`.
+    fn probes_brew_cache_dir(&self) -> PathBuf {
+        self.cache_dir().join("probes").join("brew")
+    }
 }
 
 /// XDG-compliant path resolver.

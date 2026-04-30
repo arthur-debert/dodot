@@ -24,12 +24,53 @@ impl CommandRunner for MockCommandRunner {
     }
 }
 
+/// CommandRunner test double that returns canned outputs per `(exe,
+/// args...)` key. Used by probe::app integration tests so the brew /
+/// mdls / mdfind subprocesses don't actually run.
+struct CannedRunner {
+    responses: std::sync::Mutex<std::collections::HashMap<Vec<String>, CommandOutput>>,
+}
+
+impl CannedRunner {
+    fn new() -> Self {
+        Self {
+            responses: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+    fn respond(&self, args: &[&str], stdout: &str, exit_code: i32) {
+        let key: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        self.responses.lock().unwrap().insert(
+            key,
+            CommandOutput {
+                exit_code,
+                stdout: stdout.into(),
+                stderr: String::new(),
+            },
+        );
+    }
+}
+
+impl CommandRunner for CannedRunner {
+    fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        let mut full = vec![exe.to_string()];
+        full.extend(args.iter().cloned());
+        self.responses
+            .lock()
+            .unwrap()
+            .get(&full)
+            .cloned()
+            .ok_or_else(|| {
+                crate::DodotError::Other(format!("CannedRunner: no canned response for {full:?}"))
+            })
+    }
+}
+
 fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
-    let runner = Arc::new(MockCommandRunner);
+    let runner: Arc<dyn CommandRunner> = Arc::new(MockCommandRunner);
     let datastore = Arc::new(FilesystemDataStore::new(
         env.fs.clone(),
         env.paths.clone(),
-        runner,
+        runner.clone(),
     ));
     let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -39,6 +80,34 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         paths: env.paths.clone() as Arc<dyn Pather>,
         config_manager,
         syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+        command_runner: runner,
+        dry_run: false,
+        no_provision: true,
+        provision_rerun: false,
+        force: false,
+        view_mode: crate::commands::ViewMode::Full,
+        group_mode: crate::commands::GroupMode::Name,
+        verbose: false,
+    }
+}
+
+/// Variant of make_ctx that swaps in a [`CannedRunner`] so probe
+/// tests can exercise the brew/mdls/mdfind enrichment paths without
+/// spawning processes.
+fn make_ctx_with_runner(env: &TempEnvironment, runner: Arc<dyn CommandRunner>) -> ExecutionContext {
+    let datastore = Arc::new(FilesystemDataStore::new(
+        env.fs.clone(),
+        env.paths.clone(),
+        runner.clone(),
+    ));
+    let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
+    ExecutionContext {
+        fs: env.fs.clone() as Arc<dyn Fs>,
+        datastore,
+        paths: env.paths.clone() as Arc<dyn Pather>,
+        config_manager,
+        syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+        command_runner: runner,
         dry_run: false,
         no_provision: true,
         provision_rerun: false,
@@ -4961,4 +5030,239 @@ fn by_status_folds_ignored_packs_into_ignored_group() {
     assert!(output.contains("Ignored Packs"), "output: {output}");
     assert!(output.contains("disabled"), "output: {output}");
     assert!(output.contains("Pending Packs"), "output: {output}");
+}
+
+// ── M6: probe::app + advisory probes ─────────────────────────
+
+/// `dodot probe app <pack>` collects every folder this pack would
+/// route to (alias, force_app, _app/), checks each against the
+/// app-support root, and (with mocked brew + mdls) enriches the
+/// matching cask token, .app bundle, and bundle ID. The probe is
+/// advisory — resolver state is unchanged.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn probe_app_collects_alias_force_and_underscore_entries() {
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("settings.json", "{}")
+        .file("_app/Cursor/User/keys.json", "[]")
+        .file("Code/User/extra.json", "{}")
+        .config("[symlink.app_aliases]\nvscode = \"VSCodeAliased\"\n")
+        .done()
+        .build();
+    // Pre-create one of the target folders so `target_exists` differs
+    // across rows and the test pins the existence column.
+    env.fs.mkdir_all(&env.app_support.join("Cursor")).unwrap();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(
+        &["brew", "list", "--cask", "--versions"],
+        "cursor 0.42.0\n",
+        0,
+    );
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "cursor"],
+        r#"{"casks": [{
+            "token": "cursor",
+            "installed": "0.42.0",
+            "artifacts": [
+                {"app": ["Cursor.app"]},
+                {"zap": [{"trash": [
+                    "~/Library/Application Support/Cursor",
+                    "~/Library/Preferences/com.todesktop.Cursor.plist"
+                ]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    runner.respond(
+        &[
+            "mdls",
+            "-name",
+            "kMDItemCFBundleIdentifier",
+            "/Applications/Cursor.app",
+        ],
+        "kMDItemCFBundleIdentifier = \"com.todesktop.Cursor\"\n",
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    let result = commands::probe::app("vscode", false, &ctx).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::App(v) => v,
+        other => panic!("expected App variant, got {other:?}"),
+    };
+    assert_eq!(view.pack, "vscode");
+    assert!(view.macos);
+
+    // Three folders: VSCodeAliased (alias), Code (force_app default
+    // includes Code), Cursor (_app/ subtree).
+    let folders: Vec<&str> = view.entries.iter().map(|e| e.folder.as_str()).collect();
+    assert!(folders.contains(&"VSCodeAliased"), "folders: {folders:?}");
+    assert!(folders.contains(&"Code"), "folders: {folders:?}");
+    assert!(folders.contains(&"Cursor"), "folders: {folders:?}");
+
+    // Cursor is the only pre-created folder → exists; others missing.
+    let cursor_row = view.entries.iter().find(|e| e.folder == "Cursor").unwrap();
+    assert!(cursor_row.target_exists);
+    // `cask` is always an *installed* token (matching iterates only
+    // `brew list --cask --versions`), so a `Some` value implies
+    // installed — there's no separate field for it any more.
+    assert_eq!(cursor_row.cask.as_deref(), Some("cursor"));
+    assert_eq!(cursor_row.app_bundle.as_deref(), Some("Cursor.app"));
+    assert_eq!(
+        cursor_row.bundle_id.as_deref(),
+        Some("com.todesktop.Cursor")
+    );
+
+    // Sibling-adoption suggestions surfaced from cask zap.
+    assert!(
+        view.suggested_adoptions
+            .iter()
+            .any(|s| s.contains("Cursor.plist")),
+        "suggested adoptions: {:?}",
+        view.suggested_adoptions
+    );
+}
+
+/// `dodot probe app ..` (or any other path-traversing input) must
+/// not let `pack_path` traversal escape the dotfiles root. Probe
+/// validates that `pack_name` is a single-component path before
+/// passing it to `Pather::pack_path`. Regression for review feedback
+/// on PR #91.
+#[test]
+fn probe_app_rejects_path_traversal_input() {
+    let env = TempEnvironment::builder().build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    for evil in ["..", "foo/../bar", "../sibling", "/abs/path"] {
+        let result = commands::probe::app(evil, false, &ctx).unwrap();
+        let view = match result {
+            commands::probe::ProbeResult::App(v) => v,
+            other => panic!("expected App variant, got {other:?}"),
+        };
+        // Empty-but-named view: the pack name echoes back, but no
+        // entries are surfaced (filesystem traversal was skipped).
+        assert_eq!(view.pack, evil, "input echoed back unchanged");
+        assert!(
+            view.entries.is_empty(),
+            "path-traversing input must not produce entries: got {:?}",
+            view.entries
+        );
+    }
+}
+
+/// On non-macOS, probe::app still produces a useful view (folder
+/// existence under the collapsed app-support root) but skips brew /
+/// Spotlight enrichment entirely. `macos` is `false`.
+#[test]
+fn probe_app_non_macos_returns_minimal_view() {
+    if cfg!(target_os = "macos") {
+        // The cfg! gate inside probe::app keys off the host. On macOS
+        // hosts we can't simulate the Linux path; skip rather than
+        // contort the test fixture.
+        return;
+    }
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("Code/User/foo", "{}")
+        .done()
+        .build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    let result = commands::probe::app("vscode", false, &ctx).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::App(v) => v,
+        other => panic!("expected App variant, got {other:?}"),
+    };
+    assert!(!view.macos);
+    // No brew enrichment.
+    for entry in &view.entries {
+        assert!(entry.cask.is_none(), "row: {entry:?}");
+        assert!(entry.app_bundle.is_none(), "row: {entry:?}");
+        assert!(entry.bundle_id.is_none(), "row: {entry:?}");
+    }
+}
+
+/// `up` / `status` emit a missing-target hint when an app-support
+/// folder doesn't exist on disk and a brew cask matches. macOS-only
+/// — the orchestration gate is the same `cfg!(target_os = "macos")`.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only behavior")]
+fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
+    use crate::packs::orchestration;
+    use crate::packs::Pack;
+
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("settings.json", "{}")
+        .config("[symlink.app_aliases]\nvscode = \"Code\"\n")
+        .done()
+        .build();
+    // `Code` folder is intentionally absent — the hint should fire.
+    assert!(!env.app_support.join("Code").exists());
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(
+        &["brew", "list", "--cask", "--versions"],
+        "visual-studio-code 1.95.0\n",
+        0,
+    );
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "visual-studio-code"],
+        r#"{"casks": [{
+            "token": "visual-studio-code",
+            "artifacts": [
+                {"app": ["Visual Studio Code.app"]},
+                {"zap": [{"trash": ["~/Library/Application Support/Code"]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    // The planner uses cache_only=true to keep `up`/`status` fast —
+    // an empty cache produces the unenriched message. Pre-warm the
+    // cache by calling info_cask once (the on-demand path that may
+    // spawn brew). Production users get the same warm cache via
+    // `dodot probe app` or `dodot adopt`.
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let _ = crate::probe::brew::info_cask(
+        "visual-studio-code",
+        &cache_dir,
+        crate::probe::brew::now_secs_unix(),
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+    );
+
+    // Synthesize a Pack matching the on-disk pack we built.
+    let pack_path = env.dotfiles_root.join("vscode");
+    let pack_config = ctx.config_manager.config_for_pack(&pack_path).unwrap();
+    let pack = Pack {
+        name: "vscode".into(),
+        display_name: "vscode".into(),
+        path: pack_path,
+        config: pack_config.to_handler_config(),
+    };
+
+    let plan = orchestration::plan_pack(&pack, &ctx).unwrap();
+    let hint = plan.warnings.iter().find(|w| w.contains("Code"));
+    assert!(
+        hint.is_some(),
+        "expected missing-target hint mentioning `Code`; got {:?}",
+        plan.warnings
+    );
+    let hint_text = hint.unwrap();
+    assert!(
+        hint_text.contains("visual-studio-code"),
+        "expected cask-enriched hint, got: {hint_text}"
+    );
+    // Per review feedback: the cask is installed (we read it from
+    // `brew list`), so the message must NOT claim it isn't installed.
+    assert!(
+        !hint_text.contains("isn't installed"),
+        "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
+    );
 }

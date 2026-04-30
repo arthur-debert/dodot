@@ -184,6 +184,8 @@ fn build_app() -> App {
             "probe",
         )
         .expect("register probe.shell-init")
+        .command("probe.app", handlers::probe_app_handler, "probe")
+        .expect("register probe.app")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -433,6 +435,25 @@ fn build_clap_command() -> ClapCommand {
                                 .help("Maximum tree depth (default 4)")
                                 .value_parser(clap::value_parser!(usize))
                                 .num_args(1),
+                        ),
+                )
+                .subcommand(
+                    ClapCommand::new("app")
+                        .about(
+                            "Introspect macOS app-support routing for a pack (folders, casks, bundles)",
+                        )
+                        .arg(
+                            Arg::new("pack")
+                                .help("Pack name to probe")
+                                .value_name("PACK")
+                                .required(true)
+                                .num_args(1),
+                        )
+                        .arg(
+                            Arg::new("refresh")
+                                .long("refresh")
+                                .help("Invalidate the brew cache for this pack's tokens before probing")
+                                .action(ArgAction::SetTrue),
                         ),
                 )
                 .subcommand(

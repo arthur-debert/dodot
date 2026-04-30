@@ -54,3 +54,45 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
   Phase M6 (homebrew-cask probing, `dodot probe app` subcommand) is
   intentionally deferred to a separate PR.
+
+- **macOS paths advisory probes (Phase M6).** Adds an opt-in,
+  read-only enrichment layer on top of the deterministic resolver.
+  The cardinal rule from the proposal still holds: probes are
+  *advisory*, never authoritative — the resolver in §5 never consults
+  this code, and a probe failure (no `brew` on PATH, malformed JSON,
+  empty Spotlight result) never alters routing.
+    - **homebrew-cask probe** (`probe::brew`) — wraps
+      `brew list --cask --versions` and `brew info --json=v2 --cask
+      <token>` with on-disk caching at `<cache_dir>/probes/brew/`,
+      24-hour TTL, and `--refresh` invalidation. Parses each cask's
+      zap stanza to extract Application Support folder candidates and
+      Preferences plist paths.
+    - **macOS-native probes** (`probe::macos_native`) — thin wrappers
+      around `mdls` (bundle-id lookup) and `mdfind` (display-name →
+      `.app` bundle path). Both gate on `cfg!(target_os = "macos")`
+      and return `None` on every other host.
+    - **`dodot adopt` enrichment** — when an AppSupport source's pack
+      name matches an installed cask's app-support folder, adopt's
+      success result includes a confirmation line ("homebrew cask
+      `visual-studio-code` confirms this is …") and, when the cask's
+      zap stanza lists Preferences plists, a sibling-adoption hint
+      pointing at `dodot adopt ~/Library/Preferences/<file>`.
+    - **`dodot up` / `dodot status` missing-target hints** — when a
+      pack's planned deploy targets an `<app_support_dir>/<X>/`
+      folder that doesn't exist on disk, the planner emits a soft
+      warning (cask-enriched when the brew probe finds a match):
+      "looks like cask `X` isn't installed yet — `<X>/...` will
+      deploy but the app isn't here to read it". macOS-only;
+      suppressed on Linux where `app_support_dir` collapses onto
+      `xdg_config_home`.
+    - **`dodot probe app <pack> [--refresh]` subcommand** —
+      diagnostic surface listing every app-support folder a pack
+      will route to (alias / force_app / `_app/`), folder existence,
+      matching cask + install state, `.app` bundle, bundle ID, and
+      sibling-adoption candidates. Run on demand; not part of any
+      hot path.
+    - **`ExecutionContext.command_runner`** — the production runner
+      is now exposed on the orchestration context so probes (and any
+      future advisory subprocess wrapper) reuse the same
+      `CommandRunner` the datastore already drives. Tests inject a
+      `CannedRunner` mock for deterministic probe coverage.

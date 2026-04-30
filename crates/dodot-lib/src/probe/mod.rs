@@ -14,9 +14,11 @@
 //! `<data_dir>/probes/shell-init/`; that state lives in a sibling
 //! submodule when it lands.
 
+pub mod brew;
 pub mod data_dir_tree;
 pub mod deployment_map;
 pub mod last_up;
+pub mod macos_native;
 pub mod shell_init;
 
 pub use data_dir_tree::{collect_data_dir_tree, TreeNode};

@@ -350,3 +350,41 @@ Symlink Deployment Paths
     9.4. Auto-Creating Packs
 
         When inference picks a single pack name and that pack does not exist on disk, adopt creates it (an empty directory). `--into <pack>` does *not* auto-create — the explicit name is a typo guard. Run `dodot init <pack>` first to bootstrap an explicit pack.
+
+10. macOS Advisory Probes
+
+    Everything in §1–§9 is deterministic: the resolver operates on textual prefixes and configured lists, nothing else. On top of that deterministic core, dodot ships an *advisory* layer that consults macOS-native metadata to make adopt suggestions richer and `up`/`status` warnings more specific. The cardinal rule: *probes are advisory, never authoritative*. The resolver in §5 never consults them; a probe failure surfaces as a less-rich suggestion, not a wrong deployment.
+
+    10.1. The `dodot probe app` Subcommand
+
+        Diagnostic introspection for a single pack:
+
+            dodot probe app <pack> [--refresh]
+
+        :: text ::
+
+        Reports each app-support folder the pack would route to (via `[symlink.app_aliases]`, `force_app`, or `_app/<X>/` subtree), folder existence under `app_support_dir`, the matching homebrew cask token and install state, the `.app` bundle name and `kMDItemCFBundleIdentifier`, and sibling-adoption candidates surfaced from the cask's zap stanza.
+
+        On non-macOS hosts (or when `app_uses_library = false` collapses `app_support_dir` onto `$XDG_CONFIG_HOME`) the brew/Spotlight enrichment is skipped — the subcommand still renders the basic folder layout and existence check.
+
+        `--refresh` invalidates the brew cache for this pack's tokens, forcing a fresh `brew info` lookup on the next call. The cache is otherwise refreshed automatically every 24 hours.
+
+    10.2. Adopt Enrichment
+
+        When `dodot adopt ~/Library/Application Support/<X>/...` succeeds and `<X>` matches an installed cask's app-support folder, adopt appends two informational lines to `PackStatusResult.warnings`:
+
+            - a confirmation: "homebrew cask `<token>` confirms this is the app-support directory for pack `<X>`",
+            - a sibling-adoption suggestion when the cask's zap stanza lists Preferences plists: "homebrew also reports preferences for cask `<token>`: <plist-list>. Adopt them too with `dodot adopt ~/Library/Preferences/<file> --into <X>`."
+
+    10.3. Missing-Target Hints
+
+        `dodot up` and `dodot status` plan-pack passes check whether each `<app_support_dir>/<X>/` folder a pack will deploy into actually exists on disk. Missing folders surface a soft warning, optionally enriched with a matching cask token: "looks like cask `<token>` isn't installed yet — `<X>/...` will deploy but the app isn't here to read it." Resolver state is unaffected; the symlinks still get created.
+
+    10.4. What Probes Don't Do
+
+        Out of scope, deliberately:
+
+            - Auto-derive `force_app` from cask zap data — the curated list (§3.1) stays curated.
+            - Run a long-running daemon that watches LaunchServices.
+            - Use `defaults read/write` to manage plist contents — see [./../proposals/plists.lex] for that path.
+            - Mirror mackup's bundled app database. The combination of `_app/`, `app_aliases`, the curated `force_app`, and homebrew probing covers the same ground without the curation cost.

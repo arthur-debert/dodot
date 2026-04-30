@@ -180,6 +180,44 @@ expected_app_root() {
     assert_output_contains "Cursor"
 }
 
+# ── Probe app subcommand (M6) ──────────────────────────────────
+
+@test "probe app reports folder existence for a force_app pack" {
+    # `Code` ships in the default force_app list. With a top-level
+    # `Code/` directory in the pack and the target folder absent on
+    # disk, probe should mark it as `[missing]`.
+    create_pack_file "macapps" "Code/User/settings.json" '{}'
+
+    run dodot probe app macapps
+    [ "$status" -eq 0 ]
+    assert_output_contains "App-support probe"
+    assert_output_contains "Code"
+    assert_output_contains "force_app"
+}
+
+@test "probe app surfaces app_aliases entries" {
+    # A pack with an alias should show the aliased folder name.
+    create_pack_file "vscode" "User/settings.json" '{}'
+    create_pack_config "vscode" '[symlink.app_aliases]\nvscode = "Code"\n'
+
+    run dodot probe app vscode
+    [ "$status" -eq 0 ]
+    assert_output_contains "Code"
+    assert_output_contains "alias"
+}
+
+@test "probe app refresh flag works without brew" {
+    # The --refresh flag invalidates any cached brew probe data. Even
+    # with brew unavailable, the subcommand should still succeed and
+    # render the basic folder layout.
+    create_pack_file "vscode" "User/settings.json" '{}'
+    create_pack_config "vscode" '[symlink.app_aliases]\nvscode = "Code"\n'
+
+    run dodot probe app vscode --refresh
+    [ "$status" -eq 0 ]
+    assert_output_contains "Code"
+}
+
 # ── Sandboxed Containers refusal (cross-platform) ──────────────
 
 @test "adopt refuses ~/Library/Containers/ paths" {
