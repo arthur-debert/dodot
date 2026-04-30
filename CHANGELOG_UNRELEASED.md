@@ -52,9 +52,6 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
       ergonomic. Purely advisory; the resolver and pack tree are
       unaffected. See `docs/proposals/macos-paths.lex` §8.1.
 
-  Phase M6 (homebrew-cask probing, `dodot probe app` subcommand) is
-  intentionally deferred to a separate PR.
-
 - **macOS paths advisory probes (Phase M6).** Adds an opt-in,
   read-only enrichment layer on top of the deterministic resolver.
   The cardinal rule from the proposal still holds: probes are
@@ -80,9 +77,12 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
     - **`dodot up` / `dodot status` missing-target hints** — when a
       pack's planned deploy targets an `<app_support_dir>/<X>/`
       folder that doesn't exist on disk, the planner emits a soft
-      warning (cask-enriched when the brew probe finds a match):
-      "looks like cask `X` isn't installed yet — `<X>/...` will
-      deploy but the app isn't here to read it". macOS-only;
+      warning. Cask-enriched when the brew probe finds a matching
+      installed cask: "cask `<token>` is installed but `<folder>/`
+      is missing — entries will deploy, but the app may not have
+      created its config directory yet (try launching it once)".
+      Falls back to a generic "no matching installed app appears to
+      provide it" message when no cask matches. macOS-only;
       suppressed on Linux where `app_support_dir` collapses onto
       `xdg_config_home`.
     - **`dodot probe app <pack> [--refresh]` subcommand** —
