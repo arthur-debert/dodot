@@ -210,19 +210,20 @@ pub fn adopt(
     //   - `pack_override` is None (user didn't pre-pick a pack name)
     //   - the pack on disk is named `<X>` matching the heuristic
     //   - at least one source was AppSupport-rooted in this invocation
-    if pack_override.is_none() && infer::is_gui_app_folder(&pack_display) {
-        let force_home = ctx.config_manager.root_config()?.symlink.force_home.clone();
-        let any_app_support = sources.iter().any(|s| {
-            absolutize(s)
-                .ok()
-                .and_then(|abs| {
-                    let is_dir = ctx.fs.stat(&abs).map(|m| m.is_dir).unwrap_or(false);
-                    infer::infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home).ok()
-                })
-                .map(|t| t.source_root == infer::SourceRoot::AppSupport)
-                .unwrap_or(false)
-        });
-        if any_app_support {
+    let force_home = ctx.config_manager.root_config()?.symlink.force_home.clone();
+    let any_app_support = sources.iter().any(|s| {
+        absolutize(s)
+            .ok()
+            .and_then(|abs| {
+                let is_dir = ctx.fs.stat(&abs).map(|m| m.is_dir).unwrap_or(false);
+                infer::infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home).ok()
+            })
+            .map(|t| t.source_root == infer::SourceRoot::AppSupport)
+            .unwrap_or(false)
+    });
+
+    if pack_override.is_none() && infer::is_gui_app_folder(&pack_display) && any_app_support {
+        {
             // Pick a sensible lowercase suggestion: strip spaces and
             // lowercase the first segment. `Visual Studio Code` →
             // `visualstudiocode`; `Code` → `code`. The exact name is
@@ -241,6 +242,64 @@ pub fn adopt(
                      of `_app/{}/...`.",
                     pack_display, suggested_alias, suggested_alias, pack_display, pack_display,
                 ));
+            }
+        }
+    }
+
+    // Brew-cask enrichment (M6): when an AppSupport adopt's pack name
+    // matches a folder declared by an installed cask's zap stanza,
+    // append confirmation + sibling-adoption suggestions. macOS-only;
+    // probe::brew gates on cfg!(target_os = "macos") internally so on
+    // Linux this loop is a no-op even with mocked installed casks.
+    //
+    // Resolver/pack-tree state is unaffected — these are purely
+    // user-facing strings on PackStatusResult.warnings. See
+    // `docs/proposals/macos-paths.lex` §8.2.
+    if any_app_support {
+        let cache_dir = ctx.paths.probes_brew_cache_dir();
+        let now = crate::probe::brew::now_secs_unix();
+        let folders = vec![pack_display.clone()];
+        let hits = crate::probe::brew::match_folders_to_casks(
+            &folders,
+            ctx.command_runner.as_ref(),
+            &cache_dir,
+            now,
+            ctx.fs.as_ref(),
+        );
+        if let Some(token) = hits.get(&pack_display) {
+            result.warnings.push(format!(
+                "homebrew cask `{token}` confirms this is the app-support directory \
+                 for pack `{pack_display}`."
+            ));
+            // Pull cask info from cache (now warm) for sibling-plist
+            // suggestions. Failures are silent — the confirmation
+            // above is already enough signal.
+            if let Ok(Some(info)) = crate::probe::brew::info_cask(
+                token,
+                &cache_dir,
+                now,
+                ctx.fs.as_ref(),
+                ctx.command_runner.as_ref(),
+            ) {
+                let plists = info.preferences_plists();
+                let candidates: Vec<&str> = plists
+                    .iter()
+                    .filter_map(|p| {
+                        let leaf = p.split('/').next_back()?;
+                        if leaf.is_empty() {
+                            None
+                        } else {
+                            Some(leaf)
+                        }
+                    })
+                    .collect();
+                if !candidates.is_empty() {
+                    let list = candidates.join(", ");
+                    result.warnings.push(format!(
+                        "homebrew also reports preferences for cask `{token}`: {list}. \
+                         Adopt them too with `dodot adopt ~/Library/Preferences/<file> --into {pack_display}`."
+                    ));
+                }
             }
         }
     }

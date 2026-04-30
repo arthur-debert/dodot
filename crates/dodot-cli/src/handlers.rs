@@ -252,6 +252,22 @@ pub fn probe_show_data_dir_handler(
     Ok(Output::Render(commands::probe::show_data_dir(&ctx, depth)?))
 }
 
+/// `dodot probe app <pack> [--refresh]` — advisory introspection of
+/// macOS app-support paths for a pack. See
+/// `docs/proposals/macos-paths.lex` §8.4.
+pub fn probe_app_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::probe::ProbeResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let pack = matches
+        .get_one::<String>("pack")
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("missing required argument: pack"))?;
+    let refresh = flag_or_false(matches, "refresh");
+    Ok(Output::Render(commands::probe::app(&pack, refresh, &ctx)?))
+}
+
 /// `dodot probe shell-init` — most recent shell-startup profile.
 ///
 /// Five views, picked by argument shape:

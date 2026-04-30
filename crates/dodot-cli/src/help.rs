@@ -50,6 +50,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
         "probe.shell-init",
         include_str!("help/probe-shell-init.txt"),
     ),
+    ("probe.app", include_str!("help/probe-app.txt")),
     ("probe", include_str!("help/probe.txt")),
 ];
 

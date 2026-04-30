@@ -32,6 +32,13 @@ pub struct ExecutionContext {
     /// up [`SystemSyntaxChecker`](crate::shell::SystemSyntaxChecker)
     /// (spawns real `bash`/`zsh -n`); tests inject a mock.
     pub syntax_checker: Arc<dyn crate::shell::SyntaxChecker>,
+    /// Subprocess runner for advisory probes (homebrew-cask lookup,
+    /// macOS `mdls`/`mdfind`). Production reuses the same
+    /// [`ShellCommandRunner`](crate::datastore::ShellCommandRunner)
+    /// the datastore uses for handler-driven commands; tests inject a
+    /// mock that returns canned outputs without spawning processes.
+    /// See `docs/proposals/macos-paths.lex` §8.
+    pub command_runner: Arc<dyn crate::datastore::CommandRunner>,
     pub dry_run: bool,
     pub no_provision: bool,
     pub provision_rerun: bool,
@@ -104,7 +111,7 @@ impl ExecutionContext {
         let datastore: Arc<dyn DataStore> = Arc::new(crate::datastore::FilesystemDataStore::new(
             fs.clone(),
             paths.clone(),
-            runner,
+            runner.clone(),
         ));
 
         Ok(Self {
@@ -113,6 +120,7 @@ impl ExecutionContext {
             paths,
             config_manager,
             syntax_checker: Arc::new(crate::shell::SystemSyntaxChecker),
+            command_runner: runner,
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
@@ -484,6 +492,22 @@ fn plan_pack_inner(
         }
     }
 
+    // Missing-target hints (M6 §8.2) — macOS only.
+    //
+    // For each Link intent that lands under `app_support_dir`, check
+    // whether the immediate child folder exists on disk. If not, the
+    // user is about to deploy GUI-app config to a directory the app
+    // hasn't created yet — usually because the app isn't installed.
+    // Surface a soft hint, optionally enriched with a matching brew
+    // cask token. Resolver/intent state is unaffected.
+    //
+    // On Linux `app_support_dir` collapses to `xdg_config_home`, so
+    // this check would fire for *every* `~/.config/<X>/` deploy —
+    // not what we want. Gate on macOS strictly.
+    if cfg!(target_os = "macos") {
+        all_warnings.extend(missing_target_hints(&all_intents, ctx));
+    }
+
     info!(
         pack = %pack.name,
         intents = all_intents.len(),
@@ -494,6 +518,83 @@ fn plan_pack_inner(
         intents: all_intents,
         warnings: all_warnings,
     })
+}
+
+/// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
+/// emit a soft hint when the `<X>/` folder is missing on disk.
+///
+/// macOS-only — caller checks `cfg!(target_os = "macos")` first to
+/// avoid firing on Linux where every XDG-routed entry would otherwise
+/// hit this branch.
+fn missing_target_hints(
+    intents: &[crate::operations::HandlerIntent],
+    ctx: &ExecutionContext,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let app_support = ctx.paths.app_support_dir();
+    if app_support == ctx.paths.xdg_config_home() {
+        // `app_uses_library = false` collapsed the app-support root
+        // onto XDG; same Linux-style suppression applies.
+        return Vec::new();
+    }
+
+    // Distinct `<X>` folders referenced by intents — one warning per
+    // missing folder, regardless of how many files target it.
+    let mut needed: BTreeSet<String> = BTreeSet::new();
+    for intent in intents {
+        if let crate::operations::HandlerIntent::Link { user_path, .. } = intent {
+            if let Ok(rel) = user_path.strip_prefix(app_support) {
+                if let Some(first) = rel.components().find_map(|c| match c {
+                    std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+                    _ => None,
+                }) {
+                    needed.insert(first);
+                }
+            }
+        }
+    }
+    if needed.is_empty() {
+        return Vec::new();
+    }
+
+    let mut missing: Vec<String> = Vec::new();
+    for folder in &needed {
+        let target = app_support.join(folder);
+        if !ctx.fs.exists(&target) {
+            missing.push(folder.clone());
+        }
+    }
+    if missing.is_empty() {
+        return Vec::new();
+    }
+
+    // Brew enrichment: try to associate each missing folder with a
+    // cask token. Failures are silent — the unenriched message is
+    // still useful.
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let now = crate::probe::brew::now_secs_unix();
+    let cask_hits = crate::probe::brew::match_folders_to_casks(
+        &missing,
+        ctx.command_runner.as_ref(),
+        &cache_dir,
+        now,
+        ctx.fs.as_ref(),
+    );
+
+    missing
+        .into_iter()
+        .map(|folder| match cask_hits.get(&folder) {
+            Some(token) => format!(
+                "looks like cask `{token}` isn't installed yet — `{folder}/...` \
+                 will deploy but the app isn't here to read it"
+            ),
+            None => format!(
+                "target directory `{}/{folder}` doesn't exist yet — entries will \
+                 deploy but no matching app appears to be installed",
+                app_support.display()
+            ),
+        })
+        .collect()
 }
 
 /// Execute a pre-collected set of intents.
@@ -641,11 +742,11 @@ mod tests {
     }
 
     fn make_context(env: &TempEnvironment) -> ExecutionContext {
-        let runner = Arc::new(MockCommandRunner::new());
+        let runner: Arc<dyn crate::datastore::CommandRunner> = Arc::new(MockCommandRunner::new());
         let datastore = Arc::new(FilesystemDataStore::new(
             env.fs.clone(),
             env.paths.clone(),
-            runner,
+            runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -655,6 +756,7 @@ mod tests {
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
             syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+            command_runner: runner,
             dry_run: false,
             no_provision: true, // skip install/homebrew in tests
             provision_rerun: false,
@@ -882,11 +984,11 @@ mod tests {
             .done()
             .build();
 
-        let runner = Arc::new(MockCommandRunner::new());
+        let runner: Arc<dyn crate::datastore::CommandRunner> = Arc::new(MockCommandRunner::new());
         let datastore = Arc::new(FilesystemDataStore::new(
             env.fs.clone(),
             env.paths.clone(),
-            runner,
+            runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -896,6 +998,7 @@ mod tests {
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
             syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+            command_runner: runner,
             dry_run: true,
             no_provision: true,
             provision_rerun: false,

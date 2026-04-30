@@ -144,11 +144,11 @@ mod tests {
     }
 
     fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
-        let runner = Arc::new(NoopRunner);
+        let runner: Arc<dyn crate::datastore::CommandRunner> = Arc::new(NoopRunner);
         let datastore = Arc::new(FilesystemDataStore::new(
             env.fs.clone(),
             env.paths.clone(),
-            runner,
+            runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
         ExecutionContext {
@@ -157,6 +157,7 @@ mod tests {
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
             syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+            command_runner: runner,
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
