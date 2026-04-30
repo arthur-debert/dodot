@@ -108,25 +108,27 @@ impl Handler for SymlinkHandler {
         config: &HandlerConfig,
         paths: &dyn Pather,
     ) -> Vec<String> {
+        if cfg!(target_os = "macos") {
+            return Vec::new();
+        }
         let mut out = Vec::new();
         for m in matches {
             let rel_str = m.relative_path.to_string_lossy();
             if is_protected(&rel_str, &config.protected_paths) {
                 continue;
             }
-            // We only inspect `_lib/` for warnings; other rules return
-            // `Resolution::Path` so they have nothing to surface here.
-            // For directory matches we don't recurse — the resolver only
-            // hits `_lib/` for files (the wholesale dir branch never
-            // returns Skip), so a soft top-level signal is enough.
-            if let Some(stripped) = rel_str.strip_prefix("_lib/") {
-                if !cfg!(target_os = "macos") {
-                    out.push(format!(
-                        "warning: pack `{}` contains `_lib/{stripped}` — \
-                         macOS-only path, skipping on this platform",
-                        m.pack
-                    ));
-                }
+            // Surface a single warning per `_lib/` entry, regardless of
+            // whether the match is the top-level `_lib` directory (the
+            // common case via the catchall scanner) or a nested
+            // `_lib/<rest>` file. The resolver's `_lib/` branch returns
+            // `Resolution::Skip` on every non-macOS host; the warning
+            // explains why no symlink got created.
+            if rel_str == "_lib" || rel_str.starts_with("_lib/") {
+                out.push(format!(
+                    "warning: pack `{}` contains `{rel_str}` — \
+                     macOS-only path, skipping on this platform",
+                    m.pack
+                ));
             }
         }
         let _ = paths; // reserved for future per-warning path enrichment
@@ -242,13 +244,18 @@ fn collect_per_file_intents(
         if is_protected(&rel_str, &config.protected_paths) {
             continue;
         }
-        let user_path = resolve_target(&m.pack, &rel_str, config, paths);
-        out.push(HandlerIntent::Link {
-            pack: m.pack.clone(),
-            handler: HANDLER_SYMLINK.into(),
-            source: entry.path.clone(),
-            user_path,
-        });
+        // Use the full Resolution channel so `_lib/` on non-macOS is
+        // skipped (no Link intent produced); `warnings_for_matches`
+        // surfaces the user-visible warning out-of-band.
+        match resolve_target_full(&m.pack, &rel_str, config, paths) {
+            Resolution::Path(user_path) => out.push(HandlerIntent::Link {
+                pack: m.pack.clone(),
+                handler: HANDLER_SYMLINK.into(),
+                source: entry.path.clone(),
+                user_path,
+            }),
+            Resolution::Skip { .. } => continue,
+        }
     }
     Ok(())
 }
