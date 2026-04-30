@@ -199,17 +199,20 @@ pub fn adopt(
         result.warnings.push(msg);
     }
 
-    // Capitalization-heuristic advisory (M5): when a successfully
-    // adopted source comes from AppSupport and its naturally-inferred
-    // pack name passes the GUI-app heuristic (uppercase / space /
-    // reverse-DNS), suggest the `app_aliases` ergonomic. The hint is
-    // purely advisory — the resolver and the actual pack tree are
-    // unaffected. See `docs/proposals/macos-paths.lex` §8.1.
+    // M5 capitalization-heuristic advisory + M6 brew enrichment.
     //
-    // We only emit the hint when:
-    //   - `pack_override` is None (user didn't pre-pick a pack name)
-    //   - the pack on disk is named `<X>` matching the heuristic
-    //   - at least one source was AppSupport-rooted in this invocation
+    // Both gate on the same precondition (at least one AppSupport
+    // source) and consume the same brew probe data (the matching
+    // installed-cask token for the pack name). They were separate
+    // blocks pre-cask-aware-rename — the consolidation here lets the
+    // M5 rename suggestion *prefer the cask token* over a
+    // whitespace-stripped-lowercase folder name, which matters for
+    // reverse-DNS bundle IDs (`com.colliderli.iina` → `iina`, not
+    // `comcolliderliiina`). See `docs/proposals/macos-paths.lex`
+    // §8.1–§8.2.
+    //
+    // Resolver/pack-tree state is unaffected throughout — these are
+    // purely user-facing strings on `PackStatusResult.warnings`.
     let force_home = ctx.config_manager.root_config()?.symlink.force_home.clone();
     let any_app_support = sources.iter().any(|s| {
         absolutize(s)
@@ -222,87 +225,94 @@ pub fn adopt(
             .unwrap_or(false)
     });
 
-    if pack_override.is_none() && infer::is_gui_app_folder(&pack_display) && any_app_support {
-        {
-            // Pick a sensible lowercase suggestion: strip spaces and
-            // lowercase the first segment. `Visual Studio Code` →
-            // `visualstudiocode`; `Code` → `code`. The exact name is
-            // up to the user — this is a starting point, not a rule.
-            let suggested_alias: String = pack_display
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .flat_map(char::to_lowercase)
-                .collect();
-            if !suggested_alias.is_empty() && suggested_alias != pack_display {
-                result.warnings.push(format!(
-                    "tip: pack `{}` looks like a macOS GUI-app folder. Consider \
-                     renaming the pack to `{}` and adding\n  \
-                     [symlink.app_aliases]\n  {} = \"{}\"\n\
-                     to your .dodot.toml so future files can use bare paths instead \
-                     of `_app/{}/...`.",
-                    pack_display, suggested_alias, suggested_alias, pack_display, pack_display,
-                ));
-            }
-        }
-    }
-
-    // Brew-cask enrichment (M6): when an AppSupport adopt's pack name
-    // matches a folder declared by an installed cask's zap stanza,
-    // append confirmation + sibling-adoption suggestions. macOS-only;
-    // probe::brew gates on cfg!(target_os = "macos") internally so on
-    // Linux this loop is a no-op even with mocked installed casks.
-    //
-    // Resolver/pack-tree state is unaffected — these are purely
-    // user-facing strings on PackStatusResult.warnings. See
-    // `docs/proposals/macos-paths.lex` §8.2.
-    if any_app_support {
-        let cache_dir = ctx.paths.probes_brew_cache_dir();
-        let now = crate::probe::brew::now_secs_unix();
-        let folders = vec![pack_display.clone()];
-        // adopt is an interactive, on-demand command — populating the
-        // cache here is fine.
-        let matches = crate::probe::brew::match_folders_to_installed_casks(
-            &folders,
+    // Compute the cask match once — both the M5 rename tip and the
+    // M6 confirmation/sibling-plist block read from `matches`. adopt
+    // is an interactive, on-demand command so populating the cache
+    // here is fine (cache_only=false).
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let now = crate::probe::brew::now_secs_unix();
+    let cask_matches = if any_app_support {
+        crate::probe::brew::match_folders_to_installed_casks(
+            std::slice::from_ref(&pack_display),
             ctx.command_runner.as_ref(),
             &cache_dir,
             now,
             ctx.fs.as_ref(),
             /*cache_only=*/ false,
-        );
-        if let Some(token) = matches.folder_to_token.get(&pack_display) {
+        )
+    } else {
+        crate::probe::brew::InstalledCaskMatches::default()
+    };
+    let cask_token: Option<&str> = cask_matches
+        .folder_to_token
+        .get(&pack_display)
+        .map(String::as_str);
+
+    if pack_override.is_none() && infer::is_gui_app_folder(&pack_display) && any_app_support {
+        // Prefer the cask token as the rename suggestion when we have
+        // one — for reverse-DNS bundle IDs that's a *much* better
+        // suggestion than whitespace-strip-lowercase
+        // (`com.colliderli.iina` → `iina` instead of
+        // `comcolliderliiina`). Falls back to the lowercase fallback
+        // for the spaces/uppercase cases the heuristic also catches.
+        let lowercase_fallback: String = pack_display
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .flat_map(char::to_lowercase)
+            .collect();
+        let suggested_alias = cask_token.unwrap_or(lowercase_fallback.as_str());
+        if !suggested_alias.is_empty() && suggested_alias != pack_display {
+            let cask_credit = match cask_token {
+                Some(token) => format!(" (matches homebrew cask `{token}`)"),
+                None => String::new(),
+            };
             result.warnings.push(format!(
-                "homebrew cask `{token}` confirms this is the app-support directory \
-                 for pack `{pack_display}`."
+                "tip: pack `{pack_display}` looks like a macOS GUI-app folder{cask_credit}. \
+                 Consider renaming the pack to `{suggested_alias}` and adding\n  \
+                 [symlink.app_aliases]\n  {suggested_alias} = \"{pack_display}\"\n\
+                 to your .dodot.toml so future files can use bare paths instead \
+                 of `_app/{pack_display}/...`."
             ));
-            // Pull cask info from cache (now warm) for sibling-plist
-            // suggestions. Failures are silent — the confirmation
-            // above is already enough signal.
-            if let Ok(Some(info)) = crate::probe::brew::info_cask(
-                token,
-                &cache_dir,
-                now,
-                ctx.fs.as_ref(),
-                ctx.command_runner.as_ref(),
-            ) {
-                let plists = info.preferences_plists();
-                let candidates: Vec<&str> = plists
-                    .iter()
-                    .filter_map(|p| {
-                        let leaf = p.split('/').next_back()?;
-                        if leaf.is_empty() {
-                            None
-                        } else {
-                            Some(leaf)
-                        }
-                    })
-                    .collect();
-                if !candidates.is_empty() {
-                    let list = candidates.join(", ");
-                    result.warnings.push(format!(
-                        "homebrew also reports preferences for cask `{token}`: {list}. \
-                         Adopt them too with `dodot adopt ~/Library/Preferences/<file> --into {pack_display}`."
-                    ));
-                }
+        }
+    }
+
+    // Brew-cask enrichment (M6): when the pack name matched an
+    // installed cask, append confirmation + sibling-adoption
+    // suggestions. macOS-only via `match_folders_to_installed_casks`;
+    // on Linux `cask_token` stays `None` and this block is skipped.
+    if let Some(token) = cask_token {
+        result.warnings.push(format!(
+            "homebrew cask `{token}` confirms this is the app-support directory \
+             for pack `{pack_display}`."
+        ));
+        // Pull cask info from cache (now warm) for sibling-plist
+        // suggestions. Failures are silent — the confirmation above
+        // is already enough signal.
+        if let Ok(Some(info)) = crate::probe::brew::info_cask(
+            token,
+            &cache_dir,
+            now,
+            ctx.fs.as_ref(),
+            ctx.command_runner.as_ref(),
+        ) {
+            let plists = info.preferences_plists();
+            let candidates: Vec<&str> = plists
+                .iter()
+                .filter_map(|p| {
+                    let leaf = p.split('/').next_back()?;
+                    if leaf.is_empty() {
+                        None
+                    } else {
+                        Some(leaf)
+                    }
+                })
+                .collect();
+            if !candidates.is_empty() {
+                let list = candidates.join(", ");
+                result.warnings.push(format!(
+                    "homebrew also reports preferences for cask `{token}`: {list}. \
+                     Adopt them too with `dodot adopt ~/Library/Preferences/<file> --into {pack_display}`."
+                ));
             }
         }
     }
