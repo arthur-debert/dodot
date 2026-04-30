@@ -568,29 +568,37 @@ fn missing_target_hints(
         return Vec::new();
     }
 
-    // Brew enrichment: try to associate each missing folder with a
-    // cask token. Failures are silent — the unenriched message is
-    // still useful.
+    // Brew enrichment: try to associate each missing folder with an
+    // *installed* cask token. Cache-only mode keeps the planner fast:
+    // a stale or missing cache entry silently degrades to the
+    // unenriched message rather than spawning a `brew info` subprocess
+    // per installed cask. The on-demand `dodot probe app` subcommand
+    // populates the cache; this hint just consumes it.
     let cache_dir = ctx.paths.probes_brew_cache_dir();
     let now = crate::probe::brew::now_secs_unix();
-    let cask_hits = crate::probe::brew::match_folders_to_casks(
+    let matches = crate::probe::brew::match_folders_to_installed_casks(
         &missing,
         ctx.command_runner.as_ref(),
         &cache_dir,
         now,
         ctx.fs.as_ref(),
+        /*cache_only=*/ true,
     );
 
     missing
         .into_iter()
-        .map(|folder| match cask_hits.get(&folder) {
+        .map(|folder| match matches.folder_to_token.get(&folder) {
+            // The cask IS installed (we got the token from `brew list`)
+            // but the folder is empty — usually the user pre-deployed
+            // dotfiles before launching the app for the first time.
             Some(token) => format!(
-                "looks like cask `{token}` isn't installed yet — `{folder}/...` \
-                 will deploy but the app isn't here to read it"
+                "cask `{token}` is installed but `{folder}/` is missing — \
+                 entries will deploy, but the app may not have created its \
+                 config directory yet (try launching it once)"
             ),
             None => format!(
                 "target directory `{}/{folder}` doesn't exist yet — entries will \
-                 deploy but no matching app appears to be installed",
+                 deploy but no matching installed app appears to provide it",
                 app_support.display()
             ),
         })

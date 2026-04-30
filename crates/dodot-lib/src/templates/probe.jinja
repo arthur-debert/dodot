@@ -107,7 +107,7 @@
 [header]App-support probe: [pack-name]{{ pack }}[/pack-name][/header]
 {% if not macos %}  [dim](non-macOS host — brew/Spotlight metadata not available; folder existence reflects collapsed app_support_dir)[/dim]
 {% endif %}{% if entries %}{% for e in entries %}  [filename]{{ e.folder }}[/filename] [dim]({{ e.source_rule }})[/dim] {{ e.target_path }} {% if e.target_exists %}[deployed][exists][/deployed]{% else %}[warning][missing][/warning]{% endif %}
-{% if e.cask %}    cask:   [filename]{{ e.cask }}[/filename] {% if e.cask_installed %}[deployed][installed][/deployed]{% else %}[warning][not installed][/warning]{% endif %}
+{% if e.cask %}    cask:   [filename]{{ e.cask }}[/filename] [dim](installed)[/dim]
 {% endif %}{% if e.app_bundle %}    app:    [dim]/Applications/{{ e.app_bundle }}[/dim]
 {% endif %}{% if e.bundle_id %}    bundle: [dim]{{ e.bundle_id }}[/dim]
 {% endif %}{% endfor %}{% else %}  [dim](pack has no `_app/`, `force_app`, or `app_aliases` entries)[/dim]

@@ -259,14 +259,17 @@ pub fn adopt(
         let cache_dir = ctx.paths.probes_brew_cache_dir();
         let now = crate::probe::brew::now_secs_unix();
         let folders = vec![pack_display.clone()];
-        let hits = crate::probe::brew::match_folders_to_casks(
+        // adopt is an interactive, on-demand command — populating the
+        // cache here is fine.
+        let matches = crate::probe::brew::match_folders_to_installed_casks(
             &folders,
             ctx.command_runner.as_ref(),
             &cache_dir,
             now,
             ctx.fs.as_ref(),
+            /*cache_only=*/ false,
         );
-        if let Some(token) = hits.get(&pack_display) {
+        if let Some(token) = matches.folder_to_token.get(&pack_display) {
             result.warnings.push(format!(
                 "homebrew cask `{token}` confirms this is the app-support directory \
                  for pack `{pack_display}`."

@@ -5105,8 +5105,10 @@ fn probe_app_collects_alias_force_and_underscore_entries() {
     // Cursor is the only pre-created folder → exists; others missing.
     let cursor_row = view.entries.iter().find(|e| e.folder == "Cursor").unwrap();
     assert!(cursor_row.target_exists);
+    // `cask` is always an *installed* token (matching iterates only
+    // `brew list --cask --versions`), so a `Some` value implies
+    // installed — there's no separate field for it any more.
     assert_eq!(cursor_row.cask.as_deref(), Some("cursor"));
-    assert!(cursor_row.cask_installed);
     assert_eq!(cursor_row.app_bundle.as_deref(), Some("Cursor.app"));
     assert_eq!(
         cursor_row.bundle_id.as_deref(),
@@ -5121,6 +5123,34 @@ fn probe_app_collects_alias_force_and_underscore_entries() {
         "suggested adoptions: {:?}",
         view.suggested_adoptions
     );
+}
+
+/// `dodot probe app ..` (or any other path-traversing input) must
+/// not let `pack_path` traversal escape the dotfiles root. Probe
+/// validates that `pack_name` is a single-component path before
+/// passing it to `Pather::pack_path`. Regression for review feedback
+/// on PR #91.
+#[test]
+fn probe_app_rejects_path_traversal_input() {
+    let env = TempEnvironment::builder().build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    for evil in ["..", "foo/../bar", "../sibling", "/abs/path"] {
+        let result = commands::probe::app(evil, false, &ctx).unwrap();
+        let view = match result {
+            commands::probe::ProbeResult::App(v) => v,
+            other => panic!("expected App variant, got {other:?}"),
+        };
+        // Empty-but-named view: the pack name echoes back, but no
+        // entries are surfaced (filesystem traversal was skipped).
+        assert_eq!(view.pack, evil, "input echoed back unchanged");
+        assert!(
+            view.entries.is_empty(),
+            "path-traversing input must not produce entries: got {:?}",
+            view.entries
+        );
+    }
 }
 
 /// On non-macOS, probe::app still produces a useful view (folder
@@ -5193,6 +5223,20 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
     );
     let ctx = make_ctx_with_runner(&env, runner);
 
+    // The planner uses cache_only=true to keep `up`/`status` fast —
+    // an empty cache produces the unenriched message. Pre-warm the
+    // cache by calling info_cask once (the on-demand path that may
+    // spawn brew). Production users get the same warm cache via
+    // `dodot probe app` or `dodot adopt`.
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let _ = crate::probe::brew::info_cask(
+        "visual-studio-code",
+        &cache_dir,
+        crate::probe::brew::now_secs_unix(),
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+    );
+
     // Synthesize a Pack matching the on-disk pack we built.
     let pack_path = env.dotfiles_root.join("vscode");
     let pack_config = ctx.config_manager.config_for_pack(&pack_path).unwrap();
@@ -5214,5 +5258,11 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
     assert!(
         hint_text.contains("visual-studio-code"),
         "expected cask-enriched hint, got: {hint_text}"
+    );
+    // Per review feedback: the cask is installed (we read it from
+    // `brew list`), so the message must NOT claim it isn't installed.
+    assert!(
+        !hint_text.contains("isn't installed"),
+        "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
     );
 }

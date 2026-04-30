@@ -6,9 +6,10 @@ they exist on disk, the matching homebrew cask (if any), the
 enriched via `brew info` and Spotlight (`mdls` / `mdfind`); on
 other platforms only folder existence is reported.
 
-This is purely advisory — `dodot up` and `dodot status` never
-consult the same data, and a stale or missing probe never
-affects deployment routing.[/desc]
+Probes are advisory: `dodot up` and `dodot status` may consult
+cached probe data for warnings or hints, but stale or missing
+probe data never affects deployment routing or resolver
+decisions.[/desc]
 
 [header]USAGE[/header]
   [usage]dodot probe app <pack> [--refresh][/usage]

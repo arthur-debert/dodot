@@ -297,34 +297,88 @@ pub fn now_secs_unix() -> u64 {
         .unwrap_or(0)
 }
 
-/// Match `app_aliases` map values + every pack-relative `_app/<X>/...`
-/// folder against a cask's app-support candidates. Used by the
-/// `dodot probe app` subcommand to pair pack entries with installed
-/// casks.
+/// Outcome of a folder-to-cask matching pass.
 ///
-/// Returns a map of `(folder_name → cask_token)` so callers can
-/// surface the link without re-running the matching loop.
-pub fn match_folders_to_casks(
+/// `installed_tokens` carries the result of `brew list --cask
+/// --versions` so callers don't re-spawn the same subprocess for it.
+/// `folder_to_token` is the actual matches: each entry pairs a
+/// pack-relative folder name with the cask token that declares it in
+/// its zap stanza.
+#[derive(Debug, Clone, Default)]
+pub struct InstalledCaskMatches {
+    pub installed_tokens: Vec<String>,
+    pub folder_to_token: HashMap<String, String>,
+}
+
+/// Match `app_aliases` map values + every pack-relative `_app/<X>/...`
+/// folder against installed casks' Application Support candidates.
+///
+/// **Installed-only** — this iterates only the tokens
+/// `brew list --cask --versions` reports. A cask the user hasn't
+/// installed will never appear here. The name reflects that. If you
+/// need broader matching, you'd have to drive it off some other
+/// source (zap data isn't available for non-installed casks without
+/// further `brew info` calls per known token).
+///
+/// `cache_only` controls whether a cache miss triggers a fresh
+/// `brew info --json=v2 --cask <token>` subprocess: callers on a hot
+/// path (planner hints during `up`/`status`) pass `true` so a stale
+/// cache silently degrades to "no enrichment" rather than spawning
+/// dozens of subprocesses; the on-demand `dodot probe app` subcommand
+/// passes `false` to populate the cache fully.
+pub fn match_folders_to_installed_casks(
     folders: &[String],
     runner: &dyn CommandRunner,
     cache_dir: &Path,
     now_secs: u64,
     fs: &dyn Fs,
-) -> HashMap<String, String> {
-    let mut hits = HashMap::new();
+    cache_only: bool,
+) -> InstalledCaskMatches {
+    let mut out = InstalledCaskMatches::default();
     if !cfg!(target_os = "macos") {
-        return hits;
+        return out;
     }
-    for token in list_installed_casks(runner) {
-        if let Ok(Some(info)) = info_cask(&token, cache_dir, now_secs, fs, runner) {
+    out.installed_tokens = list_installed_casks(runner);
+    for token in &out.installed_tokens {
+        let info = if cache_only {
+            // Cache-only mode: read the on-disk entry if fresh, never
+            // spawn `brew info`. A miss leaves this token unmatched.
+            read_cache(&cache_path_for(cache_dir, token), fs)
+                .filter(|e| now_secs.saturating_sub(e.fetched_at) < CACHE_TTL_SECS)
+                .map(|e| e.info)
+        } else {
+            info_cask(token, cache_dir, now_secs, fs, runner)
+                .ok()
+                .flatten()
+        };
+        if let Some(info) = info {
             for cand in info.app_support_candidates() {
                 if folders.iter().any(|f| f == &cand) {
-                    hits.insert(cand, token.clone());
+                    out.folder_to_token.insert(cand, token.clone());
                 }
             }
         }
     }
-    hits
+    out
+}
+
+/// Best-effort wipe of the entire brew probe cache directory.
+///
+/// `dodot probe app --refresh` calls this so the user's "I want
+/// fresh data" gesture isn't bottlenecked by per-token invalidation
+/// requiring the caller to know which tokens to invalidate (which
+/// they wouldn't, before matching).
+pub fn invalidate_all_cache(cache_dir: &Path, fs: &dyn Fs) {
+    if !fs.exists(cache_dir) {
+        return;
+    }
+    if let Ok(entries) = fs.read_dir(cache_dir) {
+        for entry in entries {
+            if entry.name.ends_with(".json") {
+                let _ = fs.remove_file(&entry.path);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -562,6 +616,72 @@ mod tests {
         // On macOS hosts we'd hit the "no mock response" path which
         // returns Err → empty Vec via the function's loss-tolerant
         // outer match. Still expect no panic either way.
+    }
+
+    #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "macOS-only behavior")]
+    fn match_folders_cache_only_skips_brew_info_on_miss() {
+        // With cache_only=true and an empty cache, the matcher must
+        // not call `brew info` — the planner path uses this mode to
+        // keep `up`/`status` fast.
+        let (env, cache) = make_env();
+        let runner = MockRunner::new();
+        runner.respond(
+            &["list", "--cask", "--versions"],
+            "visual-studio-code 1.95.0\n",
+            0,
+        );
+        // No brew info response registered: a call would fail
+        // CannedRunner's lookup → propagating to info_cask returning
+        // None silently. We assert the call count remains 0.
+
+        let now = 1_000_000;
+        let result = match_folders_to_installed_casks(
+            &["Code".into()],
+            &runner,
+            &cache,
+            now,
+            env.fs.as_ref(),
+            /*cache_only=*/ true,
+        );
+        // Installed list still populated (brew list was called).
+        assert!(result
+            .installed_tokens
+            .contains(&"visual-studio-code".into()));
+        // No info → no folder match.
+        assert!(result.folder_to_token.is_empty());
+        // And brew info was never invoked.
+        assert_eq!(
+            runner.call_count(&["brew", "info", "--json=v2", "--cask", "visual-studio-code"]),
+            0,
+            "cache_only=true must not spawn brew info"
+        );
+    }
+
+    #[test]
+    #[cfg_attr(not(target_os = "macos"), ignore = "macOS-only behavior")]
+    fn invalidate_all_cache_clears_every_token() {
+        let (env, cache) = make_env();
+        let runner = MockRunner::new();
+        runner.respond(
+            &["info", "--json=v2", "--cask", "alpha"],
+            r#"{"casks": [{"token": "alpha"}]}"#,
+            0,
+        );
+        runner.respond(
+            &["info", "--json=v2", "--cask", "beta"],
+            r#"{"casks": [{"token": "beta"}]}"#,
+            0,
+        );
+        let now = 1_000_000;
+        let _ = info_cask("alpha", &cache, now, env.fs.as_ref(), &runner).unwrap();
+        let _ = info_cask("beta", &cache, now, env.fs.as_ref(), &runner).unwrap();
+        assert!(env.fs.exists(&cache.join("alpha.json")));
+        assert!(env.fs.exists(&cache.join("beta.json")));
+
+        invalidate_all_cache(&cache, env.fs.as_ref());
+        assert!(!env.fs.exists(&cache.join("alpha.json")));
+        assert!(!env.fs.exists(&cache.join("beta.json")));
     }
 
     #[test]
