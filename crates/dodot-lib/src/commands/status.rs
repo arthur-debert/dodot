@@ -502,22 +502,22 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         for m in &matches {
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
-            // Skip rows for symlink entries whose resolver returns
-            // `Resolution::Skip` — currently `_lib/<rest>` on non-macOS.
-            // The planner already drops the intent and `plan_pack`
-            // surfaces a "skipped on this platform" warning; rendering
-            // a "pending" row alongside the warning would contradict
-            // it and mislead users into thinking a deploy is pending.
+            // Skip rows for `_lib/` entries on non-macOS. Two cases
+            // need to be handled:
+            //
+            // - `_lib/<rest>` files — the resolver returns
+            //   `Resolution::Skip` and the planner drops the intent.
+            // - the top-level `_lib` directory itself — its match
+            //   reaches status but `dir_intents` forces per-file mode
+            //   and every nested file resolves to Skip, so nothing
+            //   under the directory is ever deployed.
+            //
+            // Either way, rendering a "pending symlink" row alongside
+            // the planner's "skipping on this platform" warning would
+            // contradict the warning and mislead users.
             if m.handler == HANDLER_SYMLINK
-                && matches!(
-                    crate::handlers::symlink::resolve_target_full(
-                        &pack.name,
-                        &rel_str,
-                        &pack.config,
-                        ctx.paths.as_ref(),
-                    ),
-                    crate::handlers::symlink::Resolution::Skip { .. }
-                )
+                && !cfg!(target_os = "macos")
+                && (rel_str == "_lib" || rel_str.starts_with("_lib/"))
             {
                 continue;
             }
