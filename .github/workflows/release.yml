@@ -335,7 +335,11 @@ jobs:
         if: matrix.sign && steps.notarize-submit.outputs.submission-id
         run: |
           ID="${{ steps.notarize-submit.outputs.submission-id }}"
-          for i in $(seq 1 60); do
+          # 120 polls × 30s = 60 min cap. Apple's queue usually returns
+          # in under 5 min, but slow-queue days can stretch past 30 min
+          # (observed in run 25177595282). 60 min absorbs that without
+          # holding a runner forever.
+          for i in $(seq 1 120); do
             RESULT=$(xcrun notarytool info "$ID" \
               --key "$RUNNER_TEMP/AuthKey.p8" \
               --key-id "${{ secrets.ASC_API_KEY_ID }}" \
@@ -344,7 +348,7 @@ jobs:
             STATUS=$(echo "$RESULT" | python3 -c \
               "import sys,json; print(json.load(sys.stdin).get('status','Unknown'))" \
               2>/dev/null || echo "Unknown")
-            echo "  [$i/60] status=$STATUS ($(date -u +%H:%M:%S))"
+            echo "  [$i/120] status=$STATUS ($(date -u +%H:%M:%S))"
             if [ "$STATUS" = "Accepted" ]; then exit 0; fi
             if [ "$STATUS" = "Invalid" ] || [ "$STATUS" = "Rejected" ]; then
               xcrun notarytool log "$ID" \
@@ -355,7 +359,7 @@ jobs:
             fi
             sleep 30
           done
-          echo "::warning::Notarization timed out after 30 min. Binary is signed but not notarized."
+          echo "::warning::Notarization timed out after 60 min — submission $ID last status: $STATUS. Binary is signed but Apple has not confirmed notarization yet. Check status with: xcrun notarytool info $ID --key <p8> --key-id <id> --issuer <id>. The published binary will still pass Gatekeeper online checks once Apple finishes (online verification only — not stapled, since stapling a standalone Mach-O is not supported)."
 
       - name: Package binary
         id: package
