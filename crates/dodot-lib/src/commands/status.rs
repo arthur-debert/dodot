@@ -485,9 +485,10 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // element is the user-facing label that surfaces in any
         // resulting `DisplayConflict.claimants` entry, so it tracks
         // the pack's display name rather than its raw on-disk name.
-        match orchestration::collect_pack_intents(&pack, ctx) {
-            Ok(intents) => {
-                pack_intents.push((pack.display_name.clone(), intents));
+        match orchestration::plan_pack(&pack, ctx) {
+            Ok(plan) => {
+                warnings.extend(plan.warnings);
+                pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(err) => {
                 warnings.push(format!(
@@ -500,6 +501,26 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         let mut files = Vec::new();
         for m in &matches {
             let rel_str = m.relative_path.to_string_lossy().into_owned();
+
+            // Skip rows for `_lib/` entries on non-macOS. Two cases
+            // need to be handled:
+            //
+            // - `_lib/<rest>` files — the resolver returns
+            //   `Resolution::Skip` and the planner drops the intent.
+            // - the top-level `_lib` directory itself — its match
+            //   reaches status but `dir_intents` forces per-file mode
+            //   and every nested file resolves to Skip, so nothing
+            //   under the directory is ever deployed.
+            //
+            // Either way, rendering a "pending symlink" row alongside
+            // the planner's "skipping on this platform" warning would
+            // contradict the warning and mislead users.
+            if m.handler == HANDLER_SYMLINK
+                && !cfg!(target_os = "macos")
+                && (rel_str == "_lib" || rel_str.starts_with("_lib/"))
+            {
+                continue;
+            }
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {

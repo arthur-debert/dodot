@@ -66,11 +66,38 @@ impl ExecutionContext {
     /// returned context for any other consumer that cares. Callers
     /// only need to override specific fields (e.g. `dry_run`).
     pub fn production(dotfiles_root: &std::path::Path, verbose: bool) -> crate::Result<Self> {
-        let paths = Arc::new(
-            crate::paths::XdgPather::builder()
-                .dotfiles_root(dotfiles_root)
-                .build()?,
-        );
+        let config_manager = Arc::new(ConfigManager::new(dotfiles_root)?);
+
+        // Honor `app_uses_library = false` by collapsing app_support_dir
+        // onto xdg_config_home — that's the "Linux-style ~/.config
+        // everywhere even on macOS" escape hatch from
+        // `docs/proposals/macos-paths.lex` §6.3 / §11.2.
+        //
+        // Soft-fail by design: a config-load failure here only blocks
+        // the `app_uses_library = false` override from being applied,
+        // not context construction itself. Real config errors (parse
+        // failures, missing required fields) bubble up the next time a
+        // command calls `config_manager.root_config()` — same surface,
+        // same error path, just without preempting Pather construction.
+        // If the read fails here we leave `app_support_dir` at the
+        // platform default and let the actual command surface the error.
+        let mut paths_builder = crate::paths::XdgPather::builder().dotfiles_root(dotfiles_root);
+        if let Ok(root_config) = config_manager.root_config() {
+            if !root_config.symlink.app_uses_library {
+                // Resolve XDG the way XdgPatherBuilder will, then pin
+                // app_support_dir at the same path. We can't read the
+                // builder's resolved xdg back out before build(), so
+                // duplicate the precedence here.
+                let home = std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/dodot-unknown-home"));
+                let xdg = std::env::var("XDG_CONFIG_HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| home.join(".config"));
+                paths_builder = paths_builder.app_support_dir(xdg);
+            }
+        }
+        let paths = Arc::new(paths_builder.build()?);
         let fs: Arc<dyn Fs> = Arc::new(crate::fs::OsFs::new());
         let runner: Arc<dyn crate::datastore::CommandRunner> =
             Arc::new(crate::datastore::ShellCommandRunner::new(verbose));
@@ -79,7 +106,6 @@ impl ExecutionContext {
             paths.clone(),
             runner,
         ));
-        let config_manager = Arc::new(ConfigManager::new(dotfiles_root)?);
 
         Ok(Self {
             fs,
@@ -321,6 +347,35 @@ pub fn collect_pack_intents_with_preprocessors(
     collect_pack_intents_inner(pack, ctx, &pack_config, preprocessors)
 }
 
+/// Plan for a single pack — the intents the executor will run plus
+/// any soft warnings the handlers emitted during planning.
+///
+/// Warnings are non-fatal, human-readable strings (currently the
+/// `_lib/` non-macOS skip notice from
+/// `docs/proposals/macos-paths.lex` §4.2). Callers that surface
+/// `PackStatusResult.warnings` should consume them; pure-execution
+/// callers can ignore the field.
+#[derive(Debug, Default, Clone)]
+pub struct PackPlan {
+    pub intents: Vec<crate::operations::HandlerIntent>,
+    pub warnings: Vec<String>,
+}
+
+/// Like [`collect_pack_intents`], but returns both intents and any
+/// soft warnings the handlers produced during planning.
+///
+/// Use this when surfacing per-pack warnings in user-facing output
+/// (e.g. `commands::up` populating `PackStatusResult.warnings`). Pure
+/// execution callers should keep using [`collect_pack_intents`].
+pub fn plan_pack(pack: &Pack, ctx: &ExecutionContext) -> Result<PackPlan> {
+    let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    let registry = crate::preprocessing::default_registry(
+        &pack_config.preprocessor.template,
+        ctx.paths.as_ref(),
+    )?;
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry))
+}
+
 /// Shared implementation that takes a pre-loaded pack config. Both
 /// entrypoints load the config once and pass it through so we don't
 /// re-merge config for every pack (the ConfigManager caches by path,
@@ -331,6 +386,18 @@ fn collect_pack_intents_inner(
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
+    plan_pack_inner(pack, ctx, pack_config, preprocessors).map(|p| p.intents)
+}
+
+/// Same scan/preprocess/match/group/intents pipeline as
+/// [`collect_pack_intents_inner`], but additionally collects
+/// per-handler `warnings_for_matches` output.
+fn plan_pack_inner(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    pack_config: &crate::config::DodotConfig,
+    preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
+) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
 
     // Phase 1: Walk pack directory
@@ -377,6 +444,7 @@ fn collect_pack_intents_inner(
 
     // Generate intents from each handler
     let mut all_intents = Vec::new();
+    let mut all_warnings = Vec::new();
     for handler_name in &order {
         let handler = match registry.get(handler_name.as_str()) {
             Some(h) => h,
@@ -406,11 +474,26 @@ fn collect_pack_intents_inner(
                 "generated intents"
             );
             all_intents.extend(intents);
+
+            let warnings =
+                handler.warnings_for_matches(handler_matches, &pack.config, ctx.paths.as_ref());
+            for w in &warnings {
+                tracing::warn!(pack = %pack.name, handler = %handler_name, "{w}");
+            }
+            all_warnings.extend(warnings);
         }
     }
 
-    info!(pack = %pack.name, intents = all_intents.len(), "collected intents");
-    Ok(all_intents)
+    info!(
+        pack = %pack.name,
+        intents = all_intents.len(),
+        warnings = all_warnings.len(),
+        "collected intents"
+    );
+    Ok(PackPlan {
+        intents: all_intents,
+        warnings: all_warnings,
+    })
 }
 
 /// Execute a pre-collected set of intents.

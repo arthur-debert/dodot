@@ -66,6 +66,37 @@ pub struct SymlinkSection {
     #[config(default = ["ssh", "aws", "kube", "bashrc", "zshrc", "profile", "bash_profile", "bash_login", "bash_logout", "inputrc"])]
     pub force_home: Vec<String>,
 
+    /// Whether `_app/` and `app_aliases` route through the macOS
+    /// `~/Library/Application Support` root. Defaults to `true` on
+    /// macOS, ignored on other platforms (where `app_support_dir`
+    /// always collapses to `xdg_config_home`).
+    ///
+    /// Setting this to `false` on macOS opts the user into Linux-style
+    /// `~/.config` placement for *every* `_app/` and `app_aliases`
+    /// entry. `_lib/` is unaffected — it explicitly targets
+    /// `~/Library/`.
+    ///
+    /// See `docs/proposals/macos-paths.lex` §11.2.
+    #[config(default = true)]
+    pub app_uses_library: bool,
+
+    /// Curated list of GUI-app folder names whose first path segment
+    /// routes to `<app_support_dir>/<seg>/<rest>` without requiring a
+    /// `_app/` prefix in the pack tree. Capped at 100 entries; see
+    /// `docs/proposals/macos-paths.lex` §3.4.
+    ///
+    /// Matching is case-sensitive (Library folder names are case-sensitive
+    /// on macOS) and on the first path segment only.
+    #[config(default = ["Code", "Cursor", "Zed", "Emacs"])]
+    pub force_app: Vec<String>,
+
+    /// Pack-name → GUI-app folder name rewrites. When the pack name
+    /// matches a key here, the resolver's default rule reroutes to
+    /// `<app_support_dir>/<value>/<rel_path>`. See
+    /// `docs/proposals/macos-paths.lex` §3.3.
+    #[config(default = {})]
+    pub app_aliases: std::collections::HashMap<String, String>,
+
     /// Paths that must not be symlinked for security reasons.
     #[config(default = [
         ".ssh/id_rsa", ".ssh/id_ed25519", ".ssh/id_dsa", ".ssh/id_ecdsa",
@@ -213,6 +244,13 @@ impl DodotConfig {
     pub fn to_handler_config(&self) -> HandlerConfig {
         HandlerConfig {
             force_home: self.symlink.force_home.clone(),
+            // `force_app` and `app_aliases` always pass through to the
+            // resolver. On non-macOS (and on macOS with
+            // `app_uses_library = false`) the `app_support_dir` accessor
+            // already collapses to `xdg_config_home`, so the routing is
+            // mechanically correct without an extra branch here.
+            force_app: self.symlink.force_app.clone(),
+            app_aliases: self.symlink.app_aliases.clone(),
             protected_paths: self.symlink.protected_paths.clone(),
             targets: self.symlink.targets.clone(),
             auto_chmod_exec: self.path.auto_chmod_exec,
@@ -589,6 +627,81 @@ homebrew = "RootBrewfile"
 
         let hcfg = cfg.to_handler_config();
         assert_eq!(hcfg.force_home, cfg.symlink.force_home);
+        assert_eq!(hcfg.force_app, cfg.symlink.force_app);
+        assert_eq!(hcfg.app_aliases, cfg.symlink.app_aliases);
         assert_eq!(hcfg.protected_paths, cfg.symlink.protected_paths);
+    }
+
+    /// Hard cap on the seeded `force_app` defaults — see
+    /// `docs/proposals/macos-paths.lex` §3.4.1. Adding entry 101 is
+    /// supposed to be a forcing function to drop the weakest-justified
+    /// existing entry; this test makes that forcing function *visible*
+    /// rather than relying on review discipline alone.
+    #[test]
+    fn default_force_app_under_hundred_entry_cap() {
+        let env = TempEnvironment::builder().build();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert!(
+            cfg.symlink.force_app.len() <= 100,
+            "force_app default has {} entries; cap is 100. \
+             Drop the weakest-justified entry before adding another. \
+             See docs/proposals/macos-paths.lex §3.4.1.",
+            cfg.symlink.force_app.len()
+        );
+    }
+
+    /// Compile-time sanity on the seeded force_app entries. These ship
+    /// in the default config and must stay correctly capitalized to
+    /// match the actual macOS Application Support folder names.
+    #[test]
+    fn default_force_app_seed_contains_expected_entries() {
+        let env = TempEnvironment::builder().build();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        for expected in ["Code", "Cursor", "Zed", "Emacs"] {
+            assert!(
+                cfg.symlink.force_app.iter().any(|e| e == expected),
+                "expected default force_app to contain `{expected}`; got {:?}",
+                cfg.symlink.force_app
+            );
+        }
+    }
+
+    #[test]
+    fn app_uses_library_default_is_true() {
+        let env = TempEnvironment::builder().build();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert!(
+            cfg.symlink.app_uses_library,
+            "app_uses_library must default to true; macOS gets the Library \
+             root, Linux already collapses app_support_dir to xdg_config_home"
+        );
+    }
+
+    #[test]
+    fn app_aliases_overridable_in_root_config() {
+        let env = TempEnvironment::builder().build();
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                br#"
+[symlink.app_aliases]
+vscode = "Code"
+warp = "dev.warp.Warp-Stable"
+"#,
+            )
+            .unwrap();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert_eq!(
+            cfg.symlink.app_aliases.get("vscode").map(String::as_str),
+            Some("Code")
+        );
+        assert_eq!(
+            cfg.symlink.app_aliases.get("warp").map(String::as_str),
+            Some("dev.warp.Warp-Stable")
+        );
     }
 }

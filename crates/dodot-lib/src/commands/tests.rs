@@ -76,6 +76,72 @@ fn status_shows_pending_before_up() {
     }
 }
 
+/// On non-macOS, `_lib/<rest>` entries resolve to `Resolution::Skip`
+/// in the planner. Status must suppress the corresponding row and
+/// only surface the warning — otherwise the user sees a confusing
+/// "pending symlink" row alongside a "skipping on this platform"
+/// warning. Regression for review feedback on PR #90.
+#[test]
+fn status_suppresses_lib_prefix_rows_when_skipped() {
+    let env = TempEnvironment::builder()
+        .pack("macapps")
+        .file("_lib/LaunchAgents/com.example.foo.plist", "x")
+        .file("regular.toml", "y")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    // The pack is present either way; what we're pinning is the
+    // *file rows*: on non-macOS the `_lib/...` row is suppressed,
+    // on macOS it appears like any other pending symlink.
+    let pack = result
+        .packs
+        .iter()
+        .find(|p| p.name == "macapps")
+        .expect("macapps pack must appear");
+
+    let lib_row = pack
+        .files
+        .iter()
+        .find(|f| f.name.starts_with("_lib/") || f.name == "_lib");
+    let regular_row = pack.files.iter().find(|f| f.name == "regular.toml");
+
+    assert!(
+        regular_row.is_some(),
+        "non-_lib entry must always render; got files {:?}",
+        pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
+
+    if cfg!(target_os = "macos") {
+        assert!(
+            lib_row.is_some(),
+            "on macOS `_lib/` entries should render normally; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+    } else {
+        assert!(
+            lib_row.is_none(),
+            "on non-macOS `_lib/` rows must be suppressed; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        // The warning channel still carries the explanation. The
+        // exact form depends on whether the catchall scanner matched
+        // the top-level `_lib` directory or a nested `_lib/<rest>`
+        // file — either way, the warning mentions `_lib` and the
+        // macOS-only constraint.
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("_lib") && w.contains("macOS-only")),
+            "expected a `_lib` macOS-only warning; got {:?}",
+            result.warnings
+        );
+    }
+}
+
 #[test]
 fn status_renders_with_standout() {
     let env = TempEnvironment::builder()
@@ -1679,6 +1745,199 @@ fn adopt_xdg_with_into_override_uses_xdg_prefix() {
     let pack_file = env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml");
     env.assert_regular_file(&pack_file, "gui:\n  theme: dark");
     assert!(env.fs.is_symlink(&source));
+}
+
+/// Adopting a file under `~/Library/Application Support/<X>/` infers
+/// pack `<X>`, places the file at `_app/<X>/<rest>` in the pack tree,
+/// and round-trips via the resolver's Priority 2c `_app/` prefix back
+/// to the original AppSupport location. The `TempEnvironment` pins
+/// `app_support_dir` under the temp HOME on every platform so this
+/// test runs identically on Linux and macOS.
+#[test]
+fn adopt_app_support_source_round_trips_through_app_prefix() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/Code/User/settings.json",
+            "{\"editor.fontSize\": 14}",
+        )
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Pack auto-created at `<dotfiles>/Code/`. The file lives at
+    // `_app/Code/User/settings.json` — the prefix is mandatory at
+    // natural pack name because the default rule routes through XDG,
+    // not app_support_dir.
+    let pack_file = env.dotfiles_root.join("Code/_app/Code/User/settings.json");
+    env.assert_regular_file(&pack_file, "{\"editor.fontSize\": 14}");
+
+    // Original deploy location is now a symlink — and the symlink
+    // chain points (eventually) back at the pack copy. Resolve via
+    // resolve_target_full to confirm round-trip.
+    assert!(env.fs.is_symlink(&source));
+
+    use crate::handlers::symlink::{resolve_target_full, Resolution};
+    let resolution = resolve_target_full(
+        "Code",
+        "_app/Code/User/settings.json",
+        &Default::default(),
+        env.paths.as_ref(),
+    );
+    match resolution {
+        Resolution::Path(p) => assert_eq!(p, source),
+        Resolution::Skip { reason } => panic!("expected Path, got Skip({reason})"),
+    }
+}
+
+/// Adopting `~/Library/Application Support/<X>/` (the directory
+/// itself) expands into per-child plans, mirroring the XDG pack-root
+/// expansion. Each top-level entry under the AppSupport folder
+/// becomes a top-level pack entry, prefixed with `_app/<X>/`.
+#[test]
+fn adopt_app_support_pack_root_directory_expands_to_children() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/Cursor/User/settings.json",
+            "{}",
+        )
+        .home_file(
+            "Library/Application Support/Cursor/User/keybindings.json",
+            "[]",
+        )
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Cursor");
+
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // The pack-root directory expanded: the single child of `Cursor/`
+    // is `User/`, so the pack contains `_app/Cursor/User/` (a
+    // directory whose contents come along).
+    let pack_dir = env.dotfiles_root.join("Cursor");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("_app/Cursor/User/settings.json"), "{}");
+    env.assert_regular_file(&pack_dir.join("_app/Cursor/User/keybindings.json"), "[]");
+    // The expanded child (`User/`) at the original AppSupport
+    // location is now a symlink, but the parent `Cursor/` itself
+    // stays a real directory.
+    assert!(env.fs.is_symlink(&env.app_support.join("Cursor/User")));
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// M5 capitalization-heuristic advisory: when a user adopts an
+/// AppSupport source whose folder name passes the GUI-app heuristic
+/// (`Code`, uppercase), adopt emits a tip pointing at the
+/// `app_aliases` ergonomic. The pack tree itself is unaffected — the
+/// hint is purely advisory.
+#[test]
+fn adopt_app_support_emits_capitalization_hint() {
+    let env = TempEnvironment::builder()
+        .home_file("Library/Application Support/Code/User/settings.json", "{}")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    let result = commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("app_aliases") && w.contains("Code")),
+        "expected an `app_aliases` tip in warnings, got: {:?}",
+        result.warnings
+    );
+}
+
+/// The advisory is suppressed when the user passed `--into <pack>`:
+/// they already chose their pack name, so suggesting another one
+/// would be noise. The pack used here (`Code`) only exists to satisfy
+/// `--into`'s typo-guard requirement.
+#[test]
+fn adopt_app_support_into_override_suppresses_hint() {
+    let env = TempEnvironment::builder()
+        .pack("Code")
+        .file("placeholder", "")
+        .done()
+        .home_file("Library/Application Support/Code/User/settings.json", "{}")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    let result = commands::adopt::adopt(
+        Some("Code"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("app_aliases")),
+        "expected no app_aliases tip with --into, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Lowercase CLI-tool-style folder names (`nvim`, `helix`, …) don't
+/// trigger the heuristic. An XDG adopt of a typical CLI tool stays
+/// hint-free.
+#[test]
+fn adopt_xdg_lowercase_pack_emits_no_hint() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- nvim")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/init.lua");
+
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("app_aliases")),
+        "expected no app_aliases tip for plain XDG adopt, got: {:?}",
+        result.warnings
+    );
 }
 
 /// Multiple sources whose inference picks different packs is refused
