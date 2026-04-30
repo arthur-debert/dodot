@@ -85,6 +85,26 @@ Symlink Deployment Paths
 
     Overriding this list allows you to change this behavior in case you need to, including adding other paths to force to home.
 
+    3.1. Force App for GUI Application Folders
+
+        On MacOs, GUI app config lives at `~/Library/Application Support/<App>/`, a third filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`. Dodot ships a curated companion to `force_home` — `force_app` — listing common GUI-app folder names whose first path segment routes to `<app_support_dir>/<name>/<rest>` without requiring a `_app/` prefix in the pack tree.
+
+        Force app:
+
+            [symlink]
+            force_app = [
+                "Code",       # VS Code
+                "Cursor",     # Cursor (AI fork of VS Code)
+                "Zed",        # Zed editor
+                "Emacs"       # Emacs.app
+            ]
+
+        :: toml ::
+
+        Matching is case-sensitive and on the first path segment only — Library folder names are case-sensitive on MacOs, and `Code` (VS Code) must not collide with a hypothetical `code` CLI tool's `~/.config/code/` directory.
+
+        On Linux (or on MacOs with `app_uses_library = false`, see §6) the `app_support_dir` collapses onto `$XDG_CONFIG_HOME` and `force_app` routes through XDG instead — same mechanism, same rules, different destination.
+
 4. Linking Outside of `XDG_CONFIG_HOME`
 
     You can tell dodot to link a file to any arbitrary location by using the `.dodot.toml` config.
@@ -110,7 +130,122 @@ Symlink Deployment Paths
 
     `_xdg/` is the escape hatch for when your pack name doesn't match the target program — e.g. a `term-config` pack containing configs for several terminals would put each at `term-config/_xdg/ghostty/config`, `term-config/_xdg/kitty/kitty.conf`, etc., and dodot deploys them straight to `$XDG_CONFIG_HOME/ghostty/config` and `$XDG_CONFIG_HOME/kitty/kitty.conf`. The pack name plays no role inside `_xdg/`.
 
-6. Security Restricted Symlink File Names
+6. MacOs: `_app/`, `_lib/`, and Application Support
+
+    On MacOs, GUI applications read configuration from `~/Library/Application Support/<App>/` — a third filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`. Dodot models this as `app_support_dir` and exposes two new directory prefixes plus a pack-level alias mechanism so the same pack tree can deploy correctly on both Linux and MacOs without `if os == "darwin"` branching inside packs.
+
+    Roots:
+        | Symbol             | MacOs                                 | Linux / other                |
+        | `$HOME`            | `/Users/<user>`                       | `/home/<user>`               |
+        | `$XDG_CONFIG_HOME` | `~/.config` (unless env-set)          | `~/.config` (unless env-set) |
+        | `app_support_dir`  | `~/Library/Application Support`       | `$XDG_CONFIG_HOME`           |
+    :: table align=lll ::
+
+    On Linux the second and third coordinates collapse to one location, so `_app/` and `app_aliases` route through `~/.config` — indistinguishable from `_xdg/` in effect, but the same pack tree still works. On MacOs the third coordinate diverges and the routing kicks in.
+
+    6.1. The `_app/` Directory Prefix
+
+        `_app/` is the per-subtree opt-in for "this is GUI-application config". Like `_xdg/` and `_home/`, it skips pack namespacing entirely:
+
+            <pack>/_app/<name>/<rest>  →  <app_support_dir>/<name>/<rest>
+
+        A portable `vscode` pack laid out as:
+
+            vscode/
+                _app/
+                    Code/
+                        User/
+                            settings.json
+                            keybindings.json
+
+        :: text ::
+
+        deploys to:
+
+            - Linux:  `~/.config/Code/User/settings.json`
+            - MacOs:  `~/Library/Application Support/Code/User/settings.json`
+
+        :: text ::
+
+        The pack literally states "this is GUI-app config under name `Code`". Dodot picks the root per platform.
+
+    6.2. The `_lib/` Directory Prefix (MacOs Only)
+
+        `_lib/` is the MacOs-only counterpart to `_app/`. Where `_app/` cross-routes between platforms, `_lib/` declares a hard MacOs-only target — appropriate for apps with no Linux equivalent:
+
+            <pack>/_lib/<rest>  →  $HOME/Library/<rest>          # MacOs only
+
+        :: text ::
+
+        Note that `_lib/` maps to `~/Library/`, *not* to `~/Library/Application Support/`. This gives access to other Library subtrees (`LaunchAgents/`, `Fonts/`, `Services/`) without further prefix proliferation. The user writes the full subpath:
+
+            <pack>/_lib/Application Support/Rectangle Pro/RectanglePro.json
+                →  ~/Library/Application Support/Rectangle Pro/RectanglePro.json
+
+            <pack>/_lib/LaunchAgents/com.example.foo.plist
+                →  ~/Library/LaunchAgents/com.example.foo.plist
+
+        :: text ::
+
+        On non-MacOs platforms, `_lib/` emits no symlink intent and produces a soft warning:
+
+            warning: pack `<pack>` contains `_lib/<rest>` — macOS-only path,
+                     skipping on this platform
+
+        :: text ::
+
+        The pack is otherwise unaffected; other entries deploy normally.
+
+    6.3. The `[symlink.app_aliases]` Map
+
+        Cross-platform packs frequently want a *natural* lowercase pack name (`vscode`) without writing `_app/Code/` for every entry. The `[symlink.app_aliases]` table lets a user declare a pack-level rewrite:
+
+        Pack-level alias:
+
+            [symlink.app_aliases]
+            vscode = "Code"
+            warp   = "dev.warp.Warp-Stable"
+
+        :: toml ::
+
+        When a pack name appears as a key in `app_aliases`, the *default rule* for that pack is rerouted: instead of `$XDG_CONFIG_HOME/<pack>/<rel_path>`, the deploy path becomes `<app_support_dir>/<value>/<rel_path>`. The pack `vscode` with `User/settings.json` then deploys to `~/Library/Application Support/Code/User/settings.json` on MacOs and `~/.config/Code/User/settings.json` on Linux — without any `_app/` prefix in the pack tree.
+
+        Aliases compose with the rest of the priority ladder: `home.X` (Priority 1) and the directory prefixes (`_home/`, `_xdg/`, `_app/`, `_lib/` — Priority 2) all outrank the alias-driven default. A `[symlink.targets]` entry (Priority 0) still wins absolutely.
+
+    6.4. The `app_uses_library` Switch
+
+        On MacOs the `app_support_dir` defaults to `~/Library/Application Support`. To opt the entire pack tree into Linux-style `~/.config` placement on MacOs (e.g. for a user who keeps everything XDG-style), set:
+
+        Override:
+
+            [symlink]
+            app_uses_library = false
+
+        :: toml ::
+
+        With this, `_app/` and `app_aliases` route through `~/.config/...` instead. `_lib/` is unaffected — it explicitly targets `~/Library/`, not `app_support_dir`.
+
+    6.5. Priority Ladder Summary
+
+        With the MacOs additions, the resolver evaluates the following rules in order. The first matching rule wins:
+
+        Priorities (highest first):
+
+            0. `[symlink.targets]` custom target
+            1. `home.X` prefix (top-level files only) → `$HOME/.X`
+            2. Directory prefixes (per-subtree, skip pack namespace):
+                a. `_home/<rest>` → `$HOME/.<rest>`
+                b. `_xdg/<rest>`  → `$XDG_CONFIG_HOME/<rest>`
+                c. `_app/<rest>`  → `<app_support_dir>/<rest>`
+                d. `_lib/<rest>`  → `$HOME/Library/<rest>` (MacOs only; warn elsewhere)
+            3. `force_home` list → `$HOME/.<first-segment>/<rest>`
+            4. `force_app` list → `<app_support_dir>/<first-segment>/<rest>`
+            5. `app_aliases[pack]` → `<app_support_dir>/<alias>/<rel_path>`
+            6. Default → `$XDG_CONFIG_HOME/<pack-display-name>/<rel_path>`
+
+        :: text ::
+
+7. Security Restricted Symlink File Names
 
     To avoid accidental security issues, dodot will not create symlinks for the following files and directories. This can also be configured.
 
@@ -133,7 +268,7 @@ Symlink Deployment Paths
 
     :: toml ::
 
-7. Ignored File Patterns
+8. Ignored File Patterns
 
     These are unlikely to be useful as symlinks, and are often present by accident or auto generated. These will not be linked, something you can override through config.
 
@@ -155,9 +290,9 @@ Symlink Deployment Paths
 
     :: toml ::
 
-8. `dodot adopt`: Source-Path Inference
+9. `dodot adopt`: Source-Path Inference
 
-    `dodot adopt` accepts a *deployed* path (where the file lives now) and works backwards to figure out which pack it belongs in and what to call it inside that pack — so re-deploying with `dodot up` lands the symlink back at the original location. The inference rules below are the inverse of §1–§5.
+    `dodot adopt` accepts a *deployed* path (where the file lives now) and works backwards to figure out which pack it belongs in and what to call it inside that pack — so re-deploying with `dodot up` lands the symlink back at the original location. The inference rules below are the inverse of §1–§6.
 
     Calling shape:
 
@@ -166,7 +301,7 @@ Symlink Deployment Paths
 
     :: text ::
 
-    8.1. Inference Per Source Root
+    9.1. Inference Per Source Root
 
         The source path's deployed location decides everything:
 
@@ -187,7 +322,7 @@ Symlink Deployment Paths
 
         $HOME-rooted dotfiles don't infer a pack name because the structure isn't there to mine: `~/.bashrc` could plausibly belong in a `shell`, `bash`, or `dotfiles` pack, and adopt won't guess. What inference *does* compute is the in-pack path — the `home.X` / `_home/X/` / bare-name conventions from §2, §3, §5 — so the round-trip works regardless of the chosen pack name.
 
-    8.2. Pack-Root Directory Expansion
+    9.2. Pack-Root Directory Expansion
 
         Adopting `~/.config/<X>/` (the whole directory) doesn't make the directory itself a single symlink. Instead, adopt enumerates its children and adopts each as a top-level pack member:
 
@@ -202,7 +337,7 @@ Symlink Deployment Paths
 
         `~/.X/` directory sources keep the existing whole-subtree behavior (`_home/X/`): the directory itself becomes the symlink, because in $HOME the user's mental model is the directory *is* the file.
 
-    8.3. The `--into` Override
+    9.3. The `--into` Override
 
         `--into <pack>` forces a destination pack regardless of inference. Two cases:
 
@@ -213,6 +348,6 @@ Symlink Deployment Paths
 
         Mixing HOME and XDG sources in one invocation is allowed: the HOME ones use their pack-name-independent prefixes, the XDG ones contribute the inferred pack name (or use `--into` if it differs). If two XDG sources infer different packs and no `--into` is given, adopt refuses and names both candidates so the user can split the invocation.
 
-    8.4. Auto-Creating Packs
+    9.4. Auto-Creating Packs
 
         When inference picks a single pack name and that pack does not exist on disk, adopt creates it (an empty directory). `--into <pack>` does *not* auto-create — the explicit name is a typo guard. Run `dodot init <pack>` first to bootstrap an explicit pack.

@@ -198,6 +198,53 @@ pub fn adopt(
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
     }
+
+    // Capitalization-heuristic advisory (M5): when a successfully
+    // adopted source comes from AppSupport and its naturally-inferred
+    // pack name passes the GUI-app heuristic (uppercase / space /
+    // reverse-DNS), suggest the `app_aliases` ergonomic. The hint is
+    // purely advisory — the resolver and the actual pack tree are
+    // unaffected. See `docs/proposals/macos-paths.lex` §8.1.
+    //
+    // We only emit the hint when:
+    //   - `pack_override` is None (user didn't pre-pick a pack name)
+    //   - the pack on disk is named `<X>` matching the heuristic
+    //   - at least one source was AppSupport-rooted in this invocation
+    if pack_override.is_none() && infer::is_gui_app_folder(&pack_display) {
+        let force_home = ctx.config_manager.root_config()?.symlink.force_home.clone();
+        let any_app_support = sources.iter().any(|s| {
+            absolutize(s)
+                .ok()
+                .and_then(|abs| {
+                    let is_dir = ctx.fs.stat(&abs).map(|m| m.is_dir).unwrap_or(false);
+                    infer::infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home).ok()
+                })
+                .map(|t| t.source_root == infer::SourceRoot::AppSupport)
+                .unwrap_or(false)
+        });
+        if any_app_support {
+            // Pick a sensible lowercase suggestion: strip spaces and
+            // lowercase the first segment. `Visual Studio Code` →
+            // `visualstudiocode`; `Code` → `code`. The exact name is
+            // up to the user — this is a starting point, not a rule.
+            let suggested_alias: String = pack_display
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .flat_map(char::to_lowercase)
+                .collect();
+            if !suggested_alias.is_empty() && suggested_alias != pack_display {
+                result.warnings.push(format!(
+                    "tip: pack `{}` looks like a macOS GUI-app folder. Consider \
+                     renaming the pack to `{}` and adding\n  \
+                     [symlink.app_aliases]\n  {} = \"{}\"\n\
+                     to your .dodot.toml so future files can use bare paths instead \
+                     of `_app/{}/...`.",
+                    pack_display, suggested_alias, suggested_alias, pack_display, pack_display,
+                ));
+            }
+        }
+    }
+
     // Adopt failures are real errors — surface them in the same
     // command-wide notes list that drives `[N]` markers for status/up.
     // To keep the model consistent ("every note is referenced by a row"),

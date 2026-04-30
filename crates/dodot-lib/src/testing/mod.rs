@@ -48,6 +48,11 @@ pub struct TempEnvironment {
     /// Simulated XDG config home (e.g. for symlink target mapping).
     pub config_home: PathBuf,
 
+    /// Simulated `~/Library/Application Support` root. Pinned to a
+    /// directory under the temp dir on every platform so `_app/` and
+    /// `app_aliases` tests behave identically on Linux and macOS.
+    pub app_support: PathBuf,
+
     /// Real filesystem handle.
     pub fs: Arc<OsFs>,
 
@@ -284,6 +289,11 @@ impl TempEnvironmentBuilder {
         let cache_dir = home.join(".cache").join("dodot");
         let shell_dir = data_dir.join("shell");
         let packs_data_dir = data_dir.join("packs");
+        // App-support root pinned under the temp dir on every platform.
+        // Real macOS uses `~/Library/Application Support`; tests pin it
+        // here so the `_app/` resolver branch routes somewhere we can
+        // make assertions about regardless of host OS.
+        let app_support = home.join("Library").join("Application Support");
 
         // Create base directories
         for dir in [
@@ -294,6 +304,7 @@ impl TempEnvironmentBuilder {
             &cache_dir,
             &shell_dir,
             &packs_data_dir,
+            &app_support,
         ] {
             fs.mkdir_all(dir)
                 .unwrap_or_else(|e| panic!("failed to create {}: {e}", dir.display()));
@@ -341,6 +352,7 @@ impl TempEnvironmentBuilder {
                 .config_dir(config_home.join("dodot"))
                 .cache_dir(&cache_dir)
                 .xdg_config_home(&config_home)
+                .app_support_dir(&app_support)
                 .build()
                 .expect("failed to build XdgPather for test environment"),
         );
@@ -351,6 +363,7 @@ impl TempEnvironmentBuilder {
             dotfiles_root,
             data_dir,
             config_home,
+            app_support,
             fs,
             paths,
         }
@@ -500,6 +513,7 @@ mod tests {
         assert_eq!(env.paths.dotfiles_root(), env.dotfiles_root);
         assert_eq!(env.paths.data_dir(), env.data_dir);
         assert_eq!(env.paths.xdg_config_home(), env.config_home);
+        assert_eq!(env.paths.app_support_dir(), env.app_support);
     }
 
     #[test]

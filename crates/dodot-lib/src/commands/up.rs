@@ -57,11 +57,13 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
 
     let mut pack_intents: Vec<(String, Vec<HandlerIntent>)> = Vec::with_capacity(packs.len());
     let mut intent_errors: Vec<PackResult> = Vec::new();
+    let mut planning_warnings: Vec<String> = Vec::new();
 
     for pack in &packs {
-        match orchestration::collect_pack_intents(pack, ctx) {
-            Ok(intents) => {
-                pack_intents.push((pack.display_name.clone(), intents));
+        match orchestration::plan_pack(pack, ctx) {
+            Ok(plan) => {
+                planning_warnings.extend(plan.warnings);
+                pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(e) => {
                 info!(pack = %pack.display_name, error = %e, "intent collection failed");
@@ -257,7 +259,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         message: Some(message),
         dry_run: ctx.dry_run,
         packs: display_packs,
-        warnings: Vec::new(),
+        warnings: planning_warnings,
         notes,
         conflicts: Vec::new(),
         ignored_packs: Vec::new(),

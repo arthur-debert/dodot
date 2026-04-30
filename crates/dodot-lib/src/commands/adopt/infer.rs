@@ -100,11 +100,11 @@ pub(crate) enum SourceRoot {
     Home,
     /// `$XDG_CONFIG_HOME` (e.g. `~/.config`, or whatever `XDG_CONFIG_HOME` points at).
     XdgConfig,
-    /// `~/Library/Application Support`. Currently never returned —
-    /// `Pather` does not yet expose `app_support_dir()` (Phase M1 of
-    /// `docs/proposals/macos-paths.lex`). The variant is reserved so the
-    /// inference framework is shape-stable when M1 lands.
-    #[allow(dead_code)]
+    /// `~/Library/Application Support` on macOS, or whatever
+    /// `Pather::app_support_dir()` returns. On Linux this collapses to
+    /// `xdg_config_home`, so the AppSupport arm is unreachable in
+    /// practice on non-macOS hosts (XDG matches first via
+    /// longest-prefix order).
     AppSupport,
 }
 
@@ -216,6 +216,7 @@ pub(crate) fn infer_target(
     let canon_source = canonicalize_parent_keep_basename(abs_source);
     let canon_home = canonicalize_for_match(pather.home_dir());
     let canon_xdg = canonicalize_for_match(pather.xdg_config_home());
+    let canon_app = canonicalize_for_match(pather.app_support_dir());
 
     // ── Sandboxed-container refusal ──────────────────────────────────
     //
@@ -228,6 +229,31 @@ pub(crate) fn infer_target(
     let containers_root = canon_home.join("Library").join("Containers");
     if canon_source.starts_with(&containers_root) {
         return Err(InferenceError::SandboxedContainer);
+    }
+
+    // ── AppSupport root (longest-prefix wins) ────────────────────────
+    //
+    // On macOS `app_support_dir` is `~/Library/Application Support` —
+    // strictly more specific than HOME and disjoint from XDG. Match it
+    // *before* XDG and HOME so a path like `~/Library/Application
+    // Support/Code/User/settings.json` produces an AppSupport-rooted
+    // inference instead of falling through to HOME and emitting a
+    // "nested under $HOME" verdict.
+    //
+    // On Linux `app_support_dir` collapses to `xdg_config_home`, so
+    // either: (a) `canon_app == canon_xdg`, in which case any source
+    // under XDG will match here too — but `resolve_xdg_relative`
+    // produces the right answer for that root, so we steer Linux
+    // sources back through the XDG branch by checking equality first;
+    // or (b) the user explicitly set `app_uses_library = false` on
+    // macOS, which similarly collapses the two — same handling.
+    if canon_app != canon_xdg {
+        if canon_source == canon_app {
+            return Err(InferenceError::XdgRootItself);
+        }
+        if let Ok(rel) = canon_source.strip_prefix(&canon_app) {
+            return resolve_app_support_relative(rel, is_dir);
+        }
     }
 
     // ── XDG_CONFIG_HOME root ─────────────────────────────────────────
@@ -253,9 +279,11 @@ pub(crate) fn infer_target(
     }
 
     // ── No root matched ──────────────────────────────────────────────
-    Err(InferenceError::UnrecognizedRoot {
-        hint_roots: vec![canon_xdg, canon_home],
-    })
+    let mut hint_roots = vec![canon_xdg, canon_home];
+    if canon_app != hint_roots[0] && canon_app != hint_roots[1] {
+        hint_roots.push(canon_app);
+    }
+    Err(InferenceError::UnrecognizedRoot { hint_roots })
 }
 
 /// Build inference output for a path relative to `$XDG_CONFIG_HOME`.
@@ -309,6 +337,62 @@ fn resolve_xdg_relative(rel: &Path, is_dir: bool) -> Result<InferredTarget, Infe
         in_pack_natural: rest_path.clone(),
         in_pack_override: PathBuf::from("_xdg").join(&first).join(&rest_path),
         source_root: SourceRoot::XdgConfig,
+        expand_children: false,
+    })
+}
+
+/// Build inference output for a path relative to `app_support_dir`.
+///
+/// `~/Library/Application Support/<X>/<rest>` infers pack `<X>` and
+/// in-pack path `_app/<X>/<rest>`. The `_app/` prefix is *mandatory*
+/// even at natural pack name because the resolver's default rule
+/// (Priority 6) routes `<pack>/<rel>` through `$XDG/<pack>/<rel>`, not
+/// `<app_support_dir>/<pack>/<rel>` — without the prefix the
+/// round-trip would land the file at `~/.config/<X>/...` on macOS,
+/// which is not where `dodot adopt` picked it up. See
+/// `docs/proposals/macos-paths.lex` §7.2.
+///
+/// The `app_aliases` form (declare `[symlink.app_aliases] <X> = "<X>"`
+/// in the pack and use bare paths) is an alternative the user can opt
+/// into manually; adopt's automatic output is the prefix form.
+fn resolve_app_support_relative(
+    rel: &Path,
+    is_dir: bool,
+) -> Result<InferredTarget, InferenceError> {
+    let mut comps = rel.components();
+    let first = match comps.next() {
+        Some(Component::Normal(s)) => s.to_string_lossy().into_owned(),
+        _ => return Err(InferenceError::XdgRootItself),
+    };
+    let rest_path: PathBuf = comps.as_path().to_path_buf();
+
+    if rest_path.as_os_str().is_empty() {
+        // Sole component: source IS the app's top-level Application
+        // Support directory. A directory expands; a loose file is
+        // refused (same shape as XDG's LooseXdgFile case).
+        if is_dir {
+            return Ok(InferredTarget {
+                natural_pack: Some(first.clone()),
+                in_pack_natural: PathBuf::from("_app").join(&first),
+                in_pack_override: PathBuf::from("_app").join(&first),
+                source_root: SourceRoot::AppSupport,
+                expand_children: true,
+            });
+        } else {
+            return Err(InferenceError::LooseXdgFile);
+        }
+    }
+
+    // Nested case: `<X>/<rest>`. Both natural and override encodings
+    // use the explicit `_app/<X>/...` prefix — the override flag
+    // doesn't change anything for AppSupport because the natural
+    // encoding is *already* prefixed (see §7.2 note).
+    let in_pack = PathBuf::from("_app").join(&first).join(&rest_path);
+    Ok(InferredTarget {
+        natural_pack: Some(first.clone()),
+        in_pack_natural: in_pack.clone(),
+        in_pack_override: in_pack,
+        source_root: SourceRoot::AppSupport,
         expand_children: false,
     })
 }
@@ -409,6 +493,45 @@ fn canonicalize_parent_keep_basename(source: &Path) -> PathBuf {
     }
 }
 
+/// Capitalization heuristic — does `name` look like a macOS GUI-app
+/// folder name?
+///
+/// macOS GUI apps under `~/Library/Application Support/` follow a
+/// strong naming pattern (uppercase letters, spaces, or reverse-DNS
+/// segments) that distinguishes them from CLI-tool folders under
+/// `~/.config/` (uniformly lowercase-hyphenated). We use this to drive
+/// adopt's *suggestion* output — never the resolver, which stays
+/// heuristic-free per `docs/proposals/macos-paths.lex` §8.1.
+///
+/// Returns `true` when:
+///
+/// - the name contains at least one uppercase letter (`Code`,
+///   `Cursor`, `IntelliJ IDEA`), or
+/// - the name contains a space (`Sublime Text 3`), or
+/// - the name matches a reverse-DNS pattern: at least two
+///   dot-separated segments where every segment is non-empty and
+///   lowercase (`com.apple.dt.Xcode`, `dev.warp.Warp-Stable` —
+///   the trailing "Warp-Stable" segment makes the latter qualify
+///   under the *uppercase* clause already, but we keep the rDNS
+///   check independent for fully-lowercase rDNS names).
+pub(crate) fn is_gui_app_folder(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    if name.chars().any(|c| c.is_ascii_uppercase()) {
+        return true;
+    }
+    if name.contains(' ') {
+        return true;
+    }
+    // Reverse-DNS: ≥2 dotted segments, every segment non-empty.
+    let segments: Vec<&str> = name.split('.').collect();
+    if segments.len() >= 2 && segments.iter().all(|s| !s.is_empty()) {
+        return true;
+    }
+    false
+}
+
 /// Compute the in-pack path for a `$HOME/<file_name>` source.
 ///
 /// Kept as a public-in-crate helper so the round-trip property test in
@@ -467,6 +590,11 @@ mod tests {
     /// the default `$HOME/.config` layout in most tests: it's the *harder*
     /// case (XDG nested under HOME), and we cover it explicitly in
     /// `xdg_inside_home_prefers_xdg_root`.
+    ///
+    /// `app_support_dir` is pinned to a path under HOME (mirroring the
+    /// real macOS layout). Tests that need to exercise the
+    /// non-macOS / collapsed AppSupport case use [`pather_app_collapsed`]
+    /// instead.
     fn pather(home: &str, xdg: &str) -> XdgPather {
         XdgPather::builder()
             .home(home)
@@ -475,6 +603,23 @@ mod tests {
             .config_dir(format!("{home}/.config/dodot"))
             .cache_dir(format!("{home}/.cache/dodot"))
             .xdg_config_home(xdg)
+            .app_support_dir(format!("{home}/Library/Application Support"))
+            .build()
+            .unwrap()
+    }
+
+    /// Variant of [`pather`] where `app_support_dir` collapses onto
+    /// `xdg_config_home` — the Linux default and the macOS
+    /// `app_uses_library = false` opt-out.
+    fn pather_app_collapsed(home: &str, xdg: &str) -> XdgPather {
+        XdgPather::builder()
+            .home(home)
+            .dotfiles_root(format!("{home}/dotfiles"))
+            .data_dir(format!("{home}/.local/share/dodot"))
+            .config_dir(format!("{home}/.config/dodot"))
+            .cache_dir(format!("{home}/.cache/dodot"))
+            .xdg_config_home(xdg)
+            .app_support_dir(xdg)
             .build()
             .unwrap()
     }
@@ -645,6 +790,150 @@ mod tests {
             }
             other => panic!("expected UnrecognizedRoot, got {other:?}"),
         }
+    }
+
+    // ── AppSupport source root ──────────────────────────────────
+
+    #[test]
+    fn app_support_nested_file_uses_app_prefix() {
+        // `~/Library/Application Support/Code/User/settings.json` →
+        // pack `Code`, in-pack `_app/Code/User/settings.json`. The
+        // `_app/` prefix is mandatory at natural pack name (see
+        // resolver Priority 6 → §7.2).
+        let p = pather("/u", "/x");
+        let t = infer_target(
+            Path::new("/u/Library/Application Support/Code/User/settings.json"),
+            false,
+            &p,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(t.natural_pack.as_deref(), Some("Code"));
+        assert_eq!(
+            t.in_pack_natural,
+            PathBuf::from("_app/Code/User/settings.json")
+        );
+        // The override-aware path is identical for AppSupport — the
+        // explicit prefix is required either way.
+        assert_eq!(
+            t.in_pack_override,
+            PathBuf::from("_app/Code/User/settings.json")
+        );
+        assert_eq!(t.source_root, SourceRoot::AppSupport);
+        assert!(!t.expand_children);
+    }
+
+    #[test]
+    fn app_support_pack_root_directory_triggers_expansion() {
+        // `~/Library/Application Support/Cursor/` (the directory) →
+        // pack `Cursor`, expand_children=true. The caller enumerates
+        // its children and adopts each as a top-level pack member.
+        let p = pather("/u", "/x");
+        let t = infer_target(
+            Path::new("/u/Library/Application Support/Cursor"),
+            /*is_dir=*/ true,
+            &p,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(t.natural_pack.as_deref(), Some("Cursor"));
+        assert!(t.expand_children);
+        // For AppSupport pack-root expansion, in_pack_override carries
+        // `_app/<X>` so per-child plans can join the child basename.
+        assert_eq!(t.in_pack_override, PathBuf::from("_app/Cursor"));
+    }
+
+    #[test]
+    fn app_support_outranks_home_when_distinct_root() {
+        // On a real macOS layout `~/Library/Application Support` lives
+        // under HOME — longest-prefix-wins requires AppSupport be
+        // checked first. `pather()` mirrors that layout.
+        let p = pather("/u", "/x");
+        let t = infer_target(
+            Path::new("/u/Library/Application Support/Zed/settings.json"),
+            false,
+            &p,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(t.source_root, SourceRoot::AppSupport);
+        assert_eq!(t.natural_pack.as_deref(), Some("Zed"));
+    }
+
+    #[test]
+    fn app_support_collapsed_falls_back_to_xdg_or_home() {
+        // When `app_support_dir == xdg_config_home` (Linux, or macOS
+        // with `app_uses_library = false`), the AppSupport arm is
+        // unreachable and a path that *would* have matched it falls
+        // through. A `~/Library/Application Support/...` path on
+        // Linux thus lands in HOME-rooted territory and produces the
+        // "nested under HOME" refusal — exactly what we want when the
+        // user is opting out of macOS-style routing.
+        let p = pather_app_collapsed("/u", "/x");
+        let err = infer_target(
+            Path::new("/u/Library/Application Support/Code/User/settings.json"),
+            false,
+            &p,
+            &[],
+        )
+        .unwrap_err();
+        assert!(matches!(err, InferenceError::UnrecognizedRoot { .. }));
+    }
+
+    // ── Capitalization heuristic ────────────────────────────────
+
+    #[test]
+    fn gui_app_heuristic_uppercase_yes() {
+        // Strong uppercase signal: any non-empty name with at least one
+        // uppercase ASCII letter qualifies. This is the dominant
+        // pattern for `~/Library/Application Support/` folder names.
+        assert!(is_gui_app_folder("Code"));
+        assert!(is_gui_app_folder("Cursor"));
+        assert!(is_gui_app_folder("IntelliJ"));
+        assert!(is_gui_app_folder("Visual Studio Code"));
+    }
+
+    #[test]
+    fn gui_app_heuristic_space_yes() {
+        // Spaces are the second-strongest signal: CLI tools don't put
+        // spaces in `~/.config/<X>/` for portability reasons.
+        assert!(is_gui_app_folder("sublime text"));
+        assert!(is_gui_app_folder("smart code ltd"));
+    }
+
+    #[test]
+    fn gui_app_heuristic_reverse_dns_yes() {
+        // Reverse-DNS is the third signal — captures bundle-ID-shaped
+        // names that some apps use (`dev.warp.Warp-Stable`,
+        // `com.apple.dt.Xcode`).
+        assert!(is_gui_app_folder("dev.warp.warp-stable"));
+        assert!(is_gui_app_folder("com.apple.dt.xcode"));
+        assert!(is_gui_app_folder("org.videolan.vlc"));
+    }
+
+    #[test]
+    fn gui_app_heuristic_lowercase_cli_tool_no() {
+        // The CLI-tool population is uniformly lowercase-hyphenated and
+        // never matches the rDNS shape (single segment, no dots).
+        assert!(!is_gui_app_folder("nvim"));
+        assert!(!is_gui_app_folder("helix"));
+        assert!(!is_gui_app_folder("ghostty"));
+        assert!(!is_gui_app_folder("lazygit"));
+        assert!(!is_gui_app_folder("starship"));
+    }
+
+    #[test]
+    fn gui_app_heuristic_empty_name_no() {
+        assert!(!is_gui_app_folder(""));
+    }
+
+    #[test]
+    fn gui_app_heuristic_dotted_but_empty_segment_no() {
+        // A name like `.bashrc` or `foo..bar` shouldn't slip through
+        // the rDNS branch — rDNS requires every segment non-empty.
+        assert!(!is_gui_app_folder(".bashrc"));
+        assert!(!is_gui_app_folder("foo..bar"));
+        assert!(!is_gui_app_folder("trailing."));
     }
 
     #[test]

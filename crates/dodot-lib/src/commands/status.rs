@@ -485,9 +485,10 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // element is the user-facing label that surfaces in any
         // resulting `DisplayConflict.claimants` entry, so it tracks
         // the pack's display name rather than its raw on-disk name.
-        match orchestration::collect_pack_intents(&pack, ctx) {
-            Ok(intents) => {
-                pack_intents.push((pack.display_name.clone(), intents));
+        match orchestration::plan_pack(&pack, ctx) {
+            Ok(plan) => {
+                warnings.extend(plan.warnings);
+                pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(err) => {
                 warnings.push(format!(

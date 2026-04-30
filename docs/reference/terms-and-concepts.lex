@@ -67,8 +67,17 @@ Terms and Concepts
     `dot.` prefix:
         A filename prefix dodot strips on deploy: `dot.bashrc` in a pack becomes `~/.bashrc`. Keeps dotfiles visible in your editor and `ls` output without losing the dot-file convention at the deployed location.
 
-    `_home/` and `_xdg/` directories:
-        Explicit routing overrides. Files under `<pack>/_home/` deploy to `$HOME` regardless of XDG settings; files under `<pack>/_xdg/` deploy to `$XDG_CONFIG_HOME`. See [./symlink-paths.lex].
+    `_home/`, `_xdg/`, `_app/`, and `_lib/` directories:
+        Explicit routing overrides. Files under `<pack>/_home/` deploy to `$HOME`; under `<pack>/_xdg/` to `$XDG_CONFIG_HOME`; under `<pack>/_app/` to `app_support_dir` (MacOs `~/Library/Application Support`, Linux `$XDG_CONFIG_HOME`); under `<pack>/_lib/` to `$HOME/Library/` (MacOs only — non-MacOs platforms emit a soft warning and skip). All four prefixes skip pack-namespacing. See [./symlink-paths.lex].
+
+    App-support root:
+        The third filesystem coordinate dodot routes against, alongside `$HOME` and `$XDG_CONFIG_HOME`. On MacOs it points at `~/Library/Application Support` (canonical home for GUI app config). On Linux it collapses onto `$XDG_CONFIG_HOME` so the same pack tree works on both. Toggleable on MacOs via `[symlink] app_uses_library = false`.
+
+    App alias:
+        A pack-name → app-folder-name rewrite declared via `[symlink.app_aliases]`. Lets a pack named `vscode` deploy to `<app_support_dir>/Code/...` so the pack name stays lowercase-ergonomic while the deployed folder name matches what the GUI app actually reads. Modifies the resolver's default rule only — explicit prefixes still win.
+
+    `force_app`:
+        Curated list of GUI-app folder names whose first path segment routes to `<app_support_dir>/<name>/<rest>` without requiring a `_app/` prefix. Mirror of `force_home` for the third coordinate. Case-sensitive, capped at 100 entries; ships with a small seed (Code, Cursor, Zed, Emacs).
 
     `.dodotignore`:
         A marker file that tells dodot to skip a pack entirely. Useful for directories that live in the dotfiles root but aren't meant to be deployed (scratch, notes, README-only packs).

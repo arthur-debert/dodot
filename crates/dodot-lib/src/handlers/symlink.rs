@@ -5,16 +5,32 @@
 //!
 //! 0. **Custom target** from `[symlink.targets]` config
 //! 1. **`home.X` prefix** (top-level files only) — routes to `$HOME/.X`
-//! 2. **`_home/` or `_xdg/` directory prefix** — raw `$HOME/.<rest>` or
-//!    `$XDG_CONFIG_HOME/<rest>` (escape hatches that skip pack
-//!    namespacing entirely)
+//! 2. **Directory prefixes** (per-subtree, skip pack namespace):
+//!    a. `_home/<rest>` → `$HOME/.<rest>`
+//!    b. `_xdg/<rest>`  → `$XDG_CONFIG_HOME/<rest>`
+//!    c. `_app/<rest>`  → `<app_support_dir>/<rest>` (macOS:
+//!    `~/Library/Application Support`; non-macOS: collapses to
+//!    `xdg_config_home`)
+//!    d. `_lib/<rest>`  → `$HOME/Library/<rest>` (macOS only; emits a
+//!    warning and skips on other platforms)
 //! 3. **`force_home` config list** — canonical `$HOME` tools (ssh, gpg,
 //!    bashrc, etc.)
-//! 4. **Default**: `$XDG_CONFIG_HOME/<pack>/<rel_path>` for every
+//! 4. **`force_app` config list** — curated GUI-app folders that route
+//!    to `<app_support_dir>/<first-segment>/<rest>` without requiring
+//!    a `_app/` prefix in the pack tree.
+//! 5. **`app_aliases[pack]`** — pack-level rewrite that reroutes the
+//!    *default rule* to `<app_support_dir>/<alias>/<rel_path>` so a
+//!    natural pack name (`vscode`) can deploy to a GUI-app folder
+//!    name (`Code`) without `_app/` prefixes everywhere.
+//! 6. **Default**: `$XDG_CONFIG_HOME/<pack>/<rel_path>` for every
 //!    pack-root entry (file or directory) and every nested file. The
 //!    pack name namespaces config under XDG, matching modern tool
 //!    conventions (nvim, helix, ghostty, …) without requiring users
 //!    to write `pack/program/` doubled paths.
+//!
+//! See `docs/proposals/macos-paths.lex` for the full rationale behind
+//! the third coordinate (`app_support_dir`) and the `_app/` / `_lib/`
+//! prefix family.
 
 use std::path::{Path, PathBuf};
 
@@ -67,17 +83,54 @@ impl Handler for SymlinkHandler {
             if m.is_dir {
                 intents.extend(dir_intents(m, config, paths, fs)?);
             } else {
-                let user_path = resolve_target(&m.pack, &rel_str, config, paths);
-                intents.push(HandlerIntent::Link {
-                    pack: m.pack.clone(),
-                    handler: HANDLER_SYMLINK.into(),
-                    source: m.absolute_path.clone(),
-                    user_path,
-                });
+                match resolve_target_full(&m.pack, &rel_str, config, paths) {
+                    Resolution::Path(user_path) => intents.push(HandlerIntent::Link {
+                        pack: m.pack.clone(),
+                        handler: HANDLER_SYMLINK.into(),
+                        source: m.absolute_path.clone(),
+                        user_path,
+                    }),
+                    Resolution::Skip { .. } => {
+                        // `_lib/` on non-macOS — silently skipped here;
+                        // `warnings_for_matches` produces the user-visible
+                        // text in PackStatusResult.warnings.
+                    }
+                }
             }
         }
 
         Ok(intents)
+    }
+
+    fn warnings_for_matches(
+        &self,
+        matches: &[RuleMatch],
+        config: &HandlerConfig,
+        paths: &dyn Pather,
+    ) -> Vec<String> {
+        let mut out = Vec::new();
+        for m in matches {
+            let rel_str = m.relative_path.to_string_lossy();
+            if is_protected(&rel_str, &config.protected_paths) {
+                continue;
+            }
+            // We only inspect `_lib/` for warnings; other rules return
+            // `Resolution::Path` so they have nothing to surface here.
+            // For directory matches we don't recurse — the resolver only
+            // hits `_lib/` for files (the wholesale dir branch never
+            // returns Skip), so a soft top-level signal is enough.
+            if let Some(stripped) = rel_str.strip_prefix("_lib/") {
+                if !cfg!(target_os = "macos") {
+                    out.push(format!(
+                        "warning: pack `{}` contains `_lib/{stripped}` — \
+                         macOS-only path, skipping on this platform",
+                        m.pack
+                    ));
+                }
+            }
+        }
+        let _ = paths; // reserved for future per-warning path enrichment
+        out
     }
 
     fn check_status(
@@ -135,12 +188,12 @@ fn dir_intents(
         .keys()
         .any(|k| k.starts_with(&dir_prefix) || k == rel_str.as_ref());
 
-    // `_home/` and `_xdg/` are per-subtree escape hatches that strip
-    // their prefix during file-level resolution. Wholesale-linking the
-    // top-level `_home` or `_xdg` dir would bake the prefix into the
-    // deploy path (e.g. `~/.config/<pack>/_home`) — clearly not what
-    // the user meant. Force per-file mode for these.
-    let is_escape_prefix_dir = matches!(rel_str.as_ref(), "_home" | "_xdg");
+    // `_home/`, `_xdg/`, `_app/`, and `_lib/` are per-subtree escape
+    // hatches that strip their prefix during file-level resolution.
+    // Wholesale-linking the top-level escape dir would bake the prefix
+    // into the deploy path (e.g. `~/.config/<pack>/_home`) — clearly
+    // not what the user meant. Force per-file mode for these.
+    let is_escape_prefix_dir = matches!(rel_str.as_ref(), "_home" | "_xdg" | "_app" | "_lib");
 
     if !has_override && !is_escape_prefix_dir {
         let user_path = resolve_target(&m.pack, &rel_str, config, paths);
@@ -222,25 +275,64 @@ fn strip_home_prefix(rel_path: &str) -> Option<String> {
     None
 }
 
+/// Outcome of resolving a single symlink target.
+///
+/// Most rules return a concrete path. The `_lib/` prefix on non-macOS
+/// platforms returns `Skip` so the handler emits a soft warning and
+/// drops the intent — the pack stays valid and other entries deploy
+/// normally. See `docs/proposals/macos-paths.lex` §4.2.
+#[derive(Debug, Clone)]
+pub(crate) enum Resolution {
+    /// Deploy at the given path.
+    Path(PathBuf),
+    /// Skip this entry; the caller surfaces a warning out-of-band via
+    /// [`Handler::warnings_for_matches`]. The `reason` field carries a
+    /// human-readable explanation for callers (and future diagnostics)
+    /// that want it inline.
+    Skip {
+        #[allow(dead_code)]
+        reason: String,
+    },
+}
+
 /// Resolve the target path for a symlink.
 ///
 /// `pack` is the pack name; it namespaces the default XDG target so
 /// `pack vim/vimrc` deploys under `$XDG_CONFIG_HOME/vim/vimrc` rather
 /// than `$XDG_CONFIG_HOME/vimrc`.
 ///
-/// Priority (highest first):
-/// 0. Custom target override from config (`[symlink.targets]`)
-/// 1. `home.X` prefix convention (top-level files only) → `$HOME/.X`
-/// 2. Explicit `_home/` or `_xdg/` directory prefix (escape hatches —
-///    skip pack namespacing entirely)
-/// 3. `force_home` config list (ssh, gpg, bashrc, …)
-/// 4. Default: `$XDG_CONFIG_HOME/<pack>/<rel_path>`
+/// See the module-level docs for the full priority ladder. This thin
+/// wrapper unwraps the [`Resolution`] back to a `PathBuf` for callers
+/// that only ever care about deployable rules; sites that need to
+/// honor `Skip` (the `_lib/` non-macOS branch) should call
+/// [`resolve_target_full`] directly.
 pub(crate) fn resolve_target(
     pack: &str,
     rel_path: &str,
     config: &HandlerConfig,
     paths: &dyn Pather,
 ) -> PathBuf {
+    match resolve_target_full(pack, rel_path, config, paths) {
+        Resolution::Path(p) => p,
+        Resolution::Skip { .. } => {
+            // Skip-routed entries still need *some* PathBuf for the few
+            // call sites that ignore the skip channel (mostly tests). A
+            // production caller goes through `resolve_target_full` and
+            // never sees this branch.
+            paths.xdg_config_home().to_path_buf()
+        }
+    }
+}
+
+/// Same as [`resolve_target`] but exposes the full [`Resolution`]
+/// outcome, including the `Skip` variant produced by `_lib/` on
+/// non-macOS platforms.
+pub(crate) fn resolve_target_full(
+    pack: &str,
+    rel_path: &str,
+    config: &HandlerConfig,
+    paths: &dyn Pather,
+) -> Resolution {
     // Strip any `NNN-` ordering prefix from the pack name before
     // computing the deployed path. The pack's *display name* — not its
     // on-disk directory name — is what the user expects in
@@ -250,40 +342,56 @@ pub(crate) fn resolve_target(
     let pack = crate::packs::display_name_for(pack);
     let home = paths.home_dir();
     let xdg_config = paths.xdg_config_home();
+    let app_support = paths.app_support_dir();
 
     // Priority 0: Custom target override from [symlink.targets]
     if let Some(target) = config.targets.get(rel_path) {
         if target.starts_with('/') {
             // Absolute path — use as-is
-            return PathBuf::from(target);
+            return Resolution::Path(PathBuf::from(target));
         }
         // Relative path — resolve from XDG_CONFIG_HOME
-        return xdg_config.join(target);
+        return Resolution::Path(xdg_config.join(target));
     }
 
     // Priority 1: home. prefix convention (per-file opt-in for $HOME placement)
     // home.bashrc → ~/.bashrc, home.vimrc → ~/.vimrc (top-level files only).
     if let Some(dotted) = strip_home_prefix(rel_path) {
-        return home.join(&dotted);
+        return Resolution::Path(home.join(&dotted));
     }
 
     // Priority 2: Explicit directory-prefix escape hatches.
     // _home/<rest> → $HOME/.<rest> (raw, no pack namespace)
     // _xdg/<rest>  → $XDG_CONFIG_HOME/<rest> (raw, no pack namespace)
+    // _app/<rest>  → <app_support_dir>/<rest> (raw, no pack namespace)
+    // _lib/<rest>  → $HOME/Library/<rest> (macOS only; warn elsewhere)
     if let Some(stripped) = rel_path.strip_prefix("_home/") {
         let parts: Vec<&str> = stripped.split('/').collect();
         if let Some(first) = parts.first() {
             if !first.is_empty() && !first.starts_with('.') {
                 let mut new_parts = vec![format!(".{first}")];
                 new_parts.extend(parts[1..].iter().map(|s| s.to_string()));
-                return home.join(new_parts.join("/"));
+                return Resolution::Path(home.join(new_parts.join("/")));
             }
         }
-        return home.join(stripped);
+        return Resolution::Path(home.join(stripped));
     }
 
     if let Some(stripped) = rel_path.strip_prefix("_xdg/") {
-        return xdg_config.join(stripped);
+        return Resolution::Path(xdg_config.join(stripped));
+    }
+
+    if let Some(stripped) = rel_path.strip_prefix("_app/") {
+        return Resolution::Path(app_support.join(stripped));
+    }
+
+    if let Some(stripped) = rel_path.strip_prefix("_lib/") {
+        if cfg!(target_os = "macos") {
+            return Resolution::Path(home.join("Library").join(stripped));
+        }
+        return Resolution::Skip {
+            reason: format!("_lib/{stripped} — macOS-only path, skipping on this platform"),
+        };
     }
 
     // Priority 3: force_home blacklist (ssh, gpg, bashrc, …)
@@ -302,7 +410,7 @@ pub(crate) fn resolve_target(
             for part in rest {
                 result = result.join(part);
             }
-            return result;
+            return Resolution::Path(result);
         }
 
         let filename = Path::new(rel_path)
@@ -314,16 +422,35 @@ pub(crate) fn resolve_target(
         } else {
             format!(".{filename}")
         };
-        return home.join(dotted);
+        return Resolution::Path(home.join(dotted));
     }
 
-    // Priority 4: Default — $XDG_CONFIG_HOME/<pack>/<rel_path>
+    // Priority 4: force_app — curated GUI-app folders that route to
+    // `<app_support_dir>/<first-segment>/<rest>` without a `_app/`
+    // prefix. Mirrors `force_home` semantics: first segment compared
+    // case-sensitively (Library folder names *are* case-sensitive).
+    if is_force_app(rel_path, &config.force_app) {
+        return Resolution::Path(app_support.join(rel_path));
+    }
+
+    // Priority 5: app_aliases — pack-level rewrite of the default rule.
+    // When the pack name appears in the alias map, route the deploy
+    // through `<app_support_dir>/<alias>/<rel_path>` instead of the
+    // XDG default. Aliases compose: higher-priority rules above (for
+    // `home.X`, `_home/`, `_xdg/`, `_app/`, `force_home`, `force_app`)
+    // already returned, so by the time we get here we're in the default
+    // bucket and the alias is the right rewrite to apply.
+    if let Some(alias) = config.app_aliases.get(pack) {
+        return Resolution::Path(app_support.join(alias).join(rel_path));
+    }
+
+    // Priority 6: Default — $XDG_CONFIG_HOME/<pack>/<rel_path>
     //
     // The pack name namespaces every entry by default so common modern
     // tools (nvim, helix, ghostty, …) work out of the box without
     // requiring `pack/program/` doubled paths. The escape hatches above
     // cover legacy `$HOME` tools and any user-specified overrides.
-    xdg_config.join(pack).join(rel_path)
+    Resolution::Path(xdg_config.join(pack).join(rel_path))
 }
 
 /// Check if a path matches any force_home entry.
@@ -335,6 +462,17 @@ fn is_force_home(rel_path: &str, force_home: &[String]) -> bool {
         let entry_without_dot = entry.strip_prefix('.').unwrap_or(entry);
         entry_without_dot == without_dot
     })
+}
+
+/// Check if a path matches any `force_app` entry.
+///
+/// Matching is *case-sensitive* on the first path segment — Library
+/// folder names on macOS are case-sensitive, and `Code` (VS Code) must
+/// not also match a hypothetical `code` CLI tool's `~/.config/code/`
+/// directory. See `docs/proposals/macos-paths.lex` §3.4.
+fn is_force_app(rel_path: &str, force_app: &[String]) -> bool {
+    let first_segment = rel_path.split('/').next().unwrap_or(rel_path);
+    force_app.iter().any(|entry| entry == first_segment)
 }
 
 /// Check if a path is in the protected paths list.
@@ -368,10 +506,14 @@ mod tests {
     use crate::paths::XdgPather;
 
     fn test_pather() -> XdgPather {
+        // Pin app_support_dir explicitly so resolver tests behave
+        // identically on Linux and macOS hosts. Production builds let
+        // the platform default kick in; unit tests need determinism.
         XdgPather::builder()
             .home("/home/alice")
             .dotfiles_root("/home/alice/dotfiles")
             .xdg_config_home("/home/alice/.config")
+            .app_support_dir("/home/alice/Library/Application Support")
             .build()
             .unwrap()
     }
@@ -520,6 +662,208 @@ mod tests {
             &test_pather(),
         );
         assert_eq!(target, PathBuf::from("/home/alice/.config/ghostty/config"));
+    }
+
+    // ── Priority 2c: _app/ prefix ───────────────────────────────
+
+    #[test]
+    fn app_prefix_routes_to_app_support_root() {
+        // _app/<rest> deploys raw under app_support_dir, no pack
+        // namespace. The pack-relative path mirrors the on-disk
+        // Application Support tree exactly.
+        let config = HandlerConfig::default();
+        let target = resolve_target(
+            "macapps",
+            "_app/Code/User/settings.json",
+            &config,
+            &test_pather(),
+        );
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Code/User/settings.json")
+        );
+    }
+
+    #[test]
+    fn app_prefix_outranks_default() {
+        // A pack literally named `Code` with `_app/Code/x` is covered by
+        // Priority 2c — the default rule (Priority 6) never sees it.
+        let config = HandlerConfig::default();
+        let target = resolve_target("Code", "_app/Code/x", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Code/x")
+        );
+    }
+
+    // ── Priority 2d: _lib/ prefix (macOS only) ──────────────────
+
+    #[test]
+    fn lib_prefix_resolution_full_returns_skip_on_non_macos() {
+        // The `_lib/` prefix is macOS-only. On every other host the
+        // resolver returns `Resolution::Skip` so the symlink handler
+        // can omit the intent and surface a soft warning. The test is
+        // gated on `cfg!(target_os = "macos")` for the positive case
+        // (the skip branch is the *only* branch on Linux CI).
+        let config = HandlerConfig::default();
+        let resolution = resolve_target_full(
+            "macapps",
+            "_lib/LaunchAgents/com.example.foo.plist",
+            &config,
+            &test_pather(),
+        );
+        if cfg!(target_os = "macos") {
+            match resolution {
+                Resolution::Path(p) => assert_eq!(
+                    p,
+                    PathBuf::from("/home/alice/Library/LaunchAgents/com.example.foo.plist")
+                ),
+                Resolution::Skip { reason } => {
+                    panic!("expected Path on macOS, got Skip({reason})")
+                }
+            }
+        } else {
+            assert!(
+                matches!(resolution, Resolution::Skip { .. }),
+                "_lib/ on non-macOS must skip; got {resolution:?}"
+            );
+        }
+    }
+
+    // ── Priority 4: force_app ───────────────────────────────────
+
+    #[test]
+    fn force_app_routes_first_segment_to_app_support() {
+        // `force_app = ["Code"]` makes a top-level `Code/...` entry
+        // route to <app_support_dir>/Code/... without a `_app/` prefix
+        // in the pack tree.
+        let config = HandlerConfig {
+            force_app: vec!["Code".into()],
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target(
+            "macapps",
+            "Code/User/settings.json",
+            &config,
+            &test_pather(),
+        );
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Code/User/settings.json")
+        );
+    }
+
+    #[test]
+    fn force_app_is_case_sensitive() {
+        // `Code` ≠ `code`. Library folder names are case-sensitive on
+        // macOS, and conflating `Code` (VS Code) with `code` (a CLI
+        // tool's `~/.config/code/`) would route the latter wrong.
+        let config = HandlerConfig {
+            force_app: vec!["Code".into()],
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("misc", "code/foo", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/misc/code/foo"));
+    }
+
+    #[test]
+    fn force_app_loses_to_explicit_app_prefix() {
+        // Priority 2c (`_app/`) outranks Priority 4 (`force_app`). A
+        // pack that mixes both gets the explicit prefix's routing.
+        let config = HandlerConfig {
+            force_app: vec!["Code".into()],
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("misc", "_app/Code/x", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Code/x")
+        );
+    }
+
+    // ── Priority 5: app_aliases ─────────────────────────────────
+
+    #[test]
+    fn app_alias_reroutes_default_rule() {
+        // Pack `vscode` aliased to `Code` deploys top-level files to
+        // <app_support_dir>/Code/... instead of $XDG/vscode/...
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("vscode".into(), "Code".into());
+        let config = HandlerConfig {
+            app_aliases: aliases,
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("vscode", "User/settings.json", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Code/User/settings.json")
+        );
+    }
+
+    #[test]
+    fn app_alias_loses_to_explicit_xdg_prefix() {
+        // Aliases only modify the default rule (Priority 6). A
+        // `_xdg/...` entry is Priority 2b and routes raw under XDG —
+        // explicit user intent wins over the alias.
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("vscode".into(), "Code".into());
+        let config = HandlerConfig {
+            app_aliases: aliases,
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("vscode", "_xdg/Code/User/foo", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/Code/User/foo"));
+    }
+
+    #[test]
+    fn app_alias_loses_to_home_prefix() {
+        // home.X (Priority 1) outranks alias-driven defaults — a
+        // `home.foo` file in an aliased pack still routes to ~/.foo.
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("vscode".into(), "Code".into());
+        let config = HandlerConfig {
+            app_aliases: aliases,
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("vscode", "home.editorconfig", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.editorconfig"));
+    }
+
+    #[test]
+    fn app_alias_uses_pack_display_name() {
+        // Pack ordering prefix is stripped before alias lookup, just
+        // like for the default rule. `010-vscode` aliased as `vscode`
+        // → `Code` still routes correctly.
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("vscode".into(), "Code".into());
+        let config = HandlerConfig {
+            app_aliases: aliases,
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("010-vscode", "settings.json", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Code/settings.json")
+        );
+    }
+
+    #[test]
+    fn force_app_outranks_app_alias() {
+        // `force_app` is Priority 4, `app_aliases` is Priority 5. If a
+        // pack has an alias and a top-level entry whose first segment
+        // is in force_app, the force_app routing wins.
+        let mut aliases = std::collections::HashMap::new();
+        aliases.insert("anything".into(), "AliasedFolder".into());
+        let config = HandlerConfig {
+            force_app: vec!["Cursor".into()],
+            app_aliases: aliases,
+            ..HandlerConfig::default()
+        };
+        let target = resolve_target("anything", "Cursor/x", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/Cursor/x")
+        );
     }
 
     // ── Protected paths ─────────────────────────────────────────
@@ -778,6 +1122,111 @@ mod tests {
         );
         if let HandlerIntent::Link { source, .. } = &intents[0] {
             assert!(source.ends_with("ssh/config"));
+        }
+    }
+
+    // ── _lib/ warnings emission ─────────────────────────────────
+
+    #[test]
+    fn lib_prefix_emits_warning_on_non_macos() {
+        // The symlink handler's `warnings_for_matches` surfaces the
+        // soft "_lib/<rest> — macOS-only path, skipping" notice on
+        // every non-macOS host. On macOS the rule resolves as a real
+        // path, so the warnings list stays empty.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("macapps")
+            .file("_lib/LaunchAgents/com.example.foo.plist", "# stub plist")
+            .done()
+            .build();
+
+        let m = RuleMatch {
+            relative_path: PathBuf::from("_lib/LaunchAgents/com.example.foo.plist"),
+            absolute_path: env
+                .dotfiles_root
+                .join("macapps/_lib/LaunchAgents/com.example.foo.plist"),
+            pack: "macapps".into(),
+            handler: HANDLER_SYMLINK.into(),
+            is_dir: false,
+            options: std::collections::HashMap::new(),
+            preprocessor_source: None,
+        };
+        let handler = SymlinkHandler;
+        let config = HandlerConfig::default();
+        let warnings =
+            handler.warnings_for_matches(std::slice::from_ref(&m), &config, env.paths.as_ref());
+
+        if cfg!(target_os = "macos") {
+            assert!(
+                warnings.is_empty(),
+                "_lib/ should not warn on macOS; got {warnings:?}"
+            );
+            // And the intent is generated as a real Link.
+            let intents = handler
+                .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+                .unwrap();
+            assert_eq!(intents.len(), 1);
+        } else {
+            assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+            assert!(
+                warnings[0].contains("macOS-only path"),
+                "warning text should mention macOS-only: {warnings:?}"
+            );
+            // And the intent is *omitted* — `to_intents` skips it.
+            let intents = handler
+                .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+                .unwrap();
+            assert!(
+                intents.is_empty(),
+                "_lib/ on non-macOS must not emit Link intents: {intents:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn top_level_app_and_lib_dirs_force_per_file_mode() {
+        // Regression: a top-level `_app` or `_lib` directory MUST NOT
+        // be wholesale-linked — that would bake the prefix into the
+        // deploy path (`~/.config/<pack>/_app/...`). Same per-file
+        // forcing as `_home` and `_xdg`. Discovered by the bats e2e
+        // suite for `_app/`.
+        for prefix in ["_app", "_lib"] {
+            let env = crate::testing::TempEnvironment::builder()
+                .pack("macapps")
+                .file(&format!("{prefix}/Code/x.json"), "x")
+                .done()
+                .build();
+            let m = build_dir_match(&env, "macapps", prefix);
+            let handler = SymlinkHandler;
+            let intents = handler
+                .to_intents(
+                    &[m],
+                    &HandlerConfig::default(),
+                    env.paths.as_ref(),
+                    env.fs.as_ref(),
+                )
+                .unwrap();
+            // _lib/ on non-macOS produces no intent (skipped). On
+            // macOS it produces 1 link. _app/ produces 1 link
+            // everywhere (collapses to xdg on Linux but still emits).
+            let expected = match prefix {
+                "_lib" if !cfg!(target_os = "macos") => 0,
+                _ => 1,
+            };
+            assert_eq!(
+                intents.len(),
+                expected,
+                "prefix={prefix}: expected {expected} intents, got {intents:?}"
+            );
+            // The user_path should NOT contain the literal prefix —
+            // the resolver stripped it. (Skip this check when no
+            // intents were produced.)
+            if let Some(HandlerIntent::Link { user_path, .. }) = intents.first() {
+                assert!(
+                    !user_path.to_string_lossy().contains(&format!("/{prefix}/")),
+                    "prefix={prefix} leaked into deploy path: {}",
+                    user_path.display()
+                );
+            }
         }
     }
 
