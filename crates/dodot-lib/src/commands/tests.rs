@@ -126,13 +126,17 @@ fn status_suppresses_lib_prefix_rows_when_skipped() {
             "on non-macOS `_lib/` rows must be suppressed; got files {:?}",
             pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
         );
-        // The warning channel still carries the explanation.
+        // The warning channel still carries the explanation. The
+        // exact form depends on whether the catchall scanner matched
+        // the top-level `_lib` directory or a nested `_lib/<rest>`
+        // file — either way, the warning mentions `_lib` and the
+        // macOS-only constraint.
         assert!(
             result
                 .warnings
                 .iter()
-                .any(|w| w.contains("_lib/") && w.contains("macOS-only")),
-            "expected `_lib/` macOS-only warning; got {:?}",
+                .any(|w| w.contains("_lib") && w.contains("macOS-only")),
+            "expected a `_lib` macOS-only warning; got {:?}",
             result.warnings
         );
     }
