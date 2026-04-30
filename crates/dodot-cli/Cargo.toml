@@ -17,7 +17,9 @@ clap = { version = "4", features = ["derive"] }
 dodot-lib = { version = "1.1.0", path = "../dodot-lib" }
 serde = { version = "1", features = ["derive"] }
 inquire = "0.7"
-standout = "7.6"
+# 7.6.2 introduced `RunResult::Error` — required for non-zero exit on
+# handler errors (see arthur-debert/standout#141, arthur-debert/dodot#86).
+standout = "7.6.2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
