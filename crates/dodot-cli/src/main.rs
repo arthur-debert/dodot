@@ -108,6 +108,24 @@ fn main() {
             );
             std::process::exit(1);
         }
+        // Handler / hook / output-write errors. standout 7.6.2's
+        // `RunResult::Error` carries the formatted error string; we
+        // print to stderr and exit non-zero so scripts piping with `&&`
+        // and CI invocations see failure correctly. Pre-7.6.2 these
+        // were misclassified as `Handled`, silently exiting 0 — fixes
+        // every standout-dispatched subcommand at once
+        // (status, up, down, list, init, fill, adopt, addignore, probe …).
+        standout::cli::RunResult::Error(msg) => {
+            eprintln!("{msg}");
+            std::process::exit(1);
+        }
+        // `RunResult` is `#[non_exhaustive]` cross-crate; the wildcard
+        // keeps dodot building if a future variant is added without
+        // surprising callers. Treat unknown variants as a soft error.
+        _ => {
+            eprintln!("error: unknown dispatch result variant");
+            std::process::exit(1);
+        }
     }
 }
 

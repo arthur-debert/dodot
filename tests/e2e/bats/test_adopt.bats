@@ -115,11 +115,10 @@ teardown() {
 @test "adopt without --into for HOME source errors with hint" {
     create_home_file ".vimrc" "set nocompatible"
 
-    # The CLI prints `Error: ...` but exits 0 (existing convention —
-    # other adopt failure tests in this file check output, not status).
-    # The error message points the user at --into since HOME has no
-    # inferable pack structure.
     run dodot adopt "$HOME/.vimrc"
+    # Post-standout-7.6.2: handler errors exit non-zero. Pin both the
+    # status and the message so a regression on either side is caught.
+    [ "$status" -ne 0 ]
     assert_output_contains "--into"
     assert_output_contains "could not infer"
 }
