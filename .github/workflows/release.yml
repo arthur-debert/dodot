@@ -359,7 +359,7 @@ jobs:
             fi
             sleep 30
           done
-          echo "::warning::Notarization timed out after 60 min — submission $ID still In Progress. Binary is signed but Apple has not confirmed notarization yet. Check status with: xcrun notarytool info $ID --key <p8> --key-id <id> --issuer <id>. The published binary will still pass Gatekeeper online checks once Apple finishes (online verification only — not stapled, since stapling a standalone Mach-O is not supported)."
+          echo "::warning::Notarization timed out after 60 min — submission $ID last status: $STATUS. Binary is signed but Apple has not confirmed notarization yet. Check status with: xcrun notarytool info $ID --key <p8> --key-id <id> --issuer <id>. The published binary will still pass Gatekeeper online checks once Apple finishes (online verification only — not stapled, since stapling a standalone Mach-O is not supported)."
 
       - name: Package binary
         id: package
