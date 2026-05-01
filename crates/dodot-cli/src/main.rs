@@ -29,6 +29,33 @@ fn main() {
     // parse_with handles help rendering (with command groups) and exits if help requested
     let matches = app.parse_with(build_clap_command());
 
+    // Passthrough: plist clean/smudge (git filter binary stdin/stdout).
+    // Dispatched BEFORE logging::init so git filters — which fire on
+    // every `git status` / `git diff` / `git add` — don't pay for
+    // log-dir creation, rotation, and the file-handle guard on every
+    // invocation. These filters also must bypass standout entirely —
+    // smudge emits binary plist bytes, and any extra logging on stdout
+    // would corrupt the filter output git stages or checks out.
+    if let Some(("plist", sub)) = matches.subcommand() {
+        let result = match sub.subcommand_name() {
+            Some("clean") => handlers::plist_clean_passthrough(),
+            Some("smudge") => handlers::plist_smudge_passthrough(),
+            _ => {
+                let _ = build_clap_command()
+                    .find_subcommand("plist")
+                    .cloned()
+                    .map(|mut c| c.print_help());
+                println!();
+                return;
+            }
+        };
+        if let Err(e) = result {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     // Initialize logging based on CLI flags
     let verbosity = if matches.get_flag("debug") {
         logging::Verbosity::Debug
@@ -218,6 +245,7 @@ fn build_app() -> App {
                 commands: vec![
                     Some("tutorial".into()),
                     Some("init-sh".into()),
+                    Some("plist".into()),
                     Some("config".into()),
                     Some("help".into()),
                 ],
@@ -399,6 +427,20 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
+        )
+        .subcommand(
+            ClapCommand::new("plist")
+                .about("Plist clean/smudge filters (stdin → stdout)")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("clean")
+                        .about("Convert any plist on stdin to canonical XML on stdout"),
+                )
+                .subcommand(
+                    ClapCommand::new("smudge")
+                        .about("Convert XML plist on stdin to binary plist on stdout"),
+                ),
         )
         .subcommand(
             ClapCommand::new("tutorial")

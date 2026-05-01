@@ -357,3 +357,33 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     print!("{script}");
     Ok(())
 }
+
+/// `dodot plist clean` — read any plist on stdin, write canonical XML on stdout.
+///
+/// Used as a git clean filter: `git add` invokes this on the working-tree
+/// binary and stores the resulting XML in the index.
+pub fn plist_clean_passthrough() -> Result<(), anyhow::Error> {
+    use std::io::{Read, Write};
+    let mut buf = Vec::new();
+    std::io::stdin().lock().read_to_end(&mut buf)?;
+    let out = dodot_lib::plists::clean(&buf)?;
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(&out)?;
+    stdout.flush()?;
+    Ok(())
+}
+
+/// `dodot plist smudge` — read XML on stdin, write binary plist on stdout.
+///
+/// Used as a git smudge filter: `git checkout` invokes this on the indexed
+/// XML and writes the resulting binary into the working tree.
+pub fn plist_smudge_passthrough() -> Result<(), anyhow::Error> {
+    use std::io::{Read, Write};
+    let mut buf = Vec::new();
+    std::io::stdin().lock().read_to_end(&mut buf)?;
+    let out = dodot_lib::plists::smudge(&buf)?;
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(&out)?;
+    stdout.flush()?;
+    Ok(())
+}

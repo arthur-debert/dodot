@@ -10,6 +10,7 @@ pub mod handlers;
 pub mod operations;
 pub mod packs;
 pub mod paths;
+pub mod plists;
 pub mod preprocessing;
 pub mod probe;
 pub mod render;

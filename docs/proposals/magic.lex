@@ -34,7 +34,7 @@ This is a revised version of an earlier draft. Two things changed our thinking. 
     4.1. Representational Transformations
 
         For perfectly revertible transforms, clean and smudge filters are all you need. They can deterministically describe their files, and hence produce correct `git diff` and `git status` output with no ambiguity.
-        Plists are the canonical example: `plutil -convert xml1` and `plutil -convert binary1` round-trip losslessly. Git stores the XML (canonical, diffable); the working tree holds the binary (what the application actually reads). The clean filter converts binary → XML on `git add`; the smudge filter converts XML → binary on `git checkout`. The user never sees the transform happen; `git diff` shows a sensible XML diff of what is otherwise a binary file.
+        Plists are the canonical example: XML and binary round-trip losslessly via the `plist` Rust crate (with recursive dict-key sort applied for byte-stable output). Git stores the canonical XML (diffable); the working tree holds the binary (what the application actually reads). The clean filter converts binary → XML on `git add`; the smudge filter converts XML → binary on `git checkout`. The user never sees the transform happen; `git diff` shows a sensible XML diff of what is otherwise a binary file. The full design lives in [./plists.lex].
         This case is clean, low-risk, and high-value. It's also logically independent of the rest of this proposal, so we plan to ship it on its own track.
 
     4.2. Generative Transformations
@@ -162,7 +162,7 @@ The User Experience
         Ship the preprocessing pipeline, the baseline cache (including the tracked-render field), burgertocow integration, `dodot transform check`, and the pre-commit hook (tier 1 above). At this point, users who adopt preprocessors get correct template-space diffs at commit time with no filter installed. This is the minimum viable magic.
 
     Phase 2: plist clean/smudge.
-        Ship plist support as an independent track — clean/smudge filters for `plutil` conversion, with their own install flow. Doesn't depend on anything in phase 1; can ship in parallel.
+        Ship plist support as an independent track — clean/smudge filters for binary↔canonical-XML conversion (via the `plist` crate, with recursive key sorting), with their own install flow shared with phase 3. Doesn't depend on anything in phase 1; can ship in parallel. Full spec in [./plists.lex].
 
     Phase 3: the template clean filter.
         Layer the clean filter on top of the phase-1 cache. This is the thin wrapper: hash-compare, fast-path, burgertocow on the slow path. The commit-time gate from phase 1 handles conflict markers. Opt-in filter install (the Y/n prompt on first deploy).

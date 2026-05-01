@@ -1,6 +1,6 @@
 Design Specification: Preprocessing Pipeline
 
-    This document specifies the generic preprocessing pipeline for dodot. The pipeline provides a unified architecture for files where the version-controlled source must be transformed before deployment. Template expansion, plist conversion, and secret decryption are concrete implementations of this design.
+    This document specifies the generic preprocessing pipeline for dodot. The pipeline provides a unified architecture for files where the version-controlled source must be transformed before deployment. Template expansion and secret decryption are concrete implementations of this design. Plist support, originally drafted as a Representational preprocessor, ships instead as a pair of git clean/smudge filters — see [./plists.lex] §2.3 for the rationale. The pipeline is still illustrated with plists in places below for didactic reasons (they remain a useful canonical example of a Representational transform), but the actual plist implementation does not flow through this pipeline.
 
     The preprocessing pipeline is a new phase in dodot's execution model, not a handler. It runs before handler dispatch, producing expanded files that downstream handlers (symlink, shell, path, install, homebrew) consume transparently.
 
@@ -119,7 +119,7 @@ Design Specification: Preprocessing Pipeline
     4.1. Shared Interface
 
         trait Preprocessor:
-            name()             -> &str               ("template", "plist", "gpg")
+            name()             -> &str               ("template", "gpg", ...)
             transform_type()   -> TransformType       (Generative, Representational, Opaque)
             matches_file()     -> bool                (extension check against config)
             expanded_filename() -> String             (strip .tmpl, .gpg, etc.)
@@ -141,7 +141,7 @@ Design Specification: Preprocessing Pipeline
 
         Each preprocessor provides:
 
-        - The transformation engine (MiniJinja for templates, plutil for plists, gpg for secrets)
+        - The transformation engine (MiniJinja for templates, gpg for secrets, etc.)
         - File extension matching rules
         - Filename stripping logic
         - For Representational: the reverse transformation (contract)
@@ -275,8 +275,8 @@ Design Specification: Preprocessing Pipeline
             extensions = ["tmpl", "template"] # which extensions trigger this preprocessor
             # ... preprocessor-specific config (variables, engine options, etc.)
 
-            [preprocessor.plist]
-            extensions = ["plist.xml"]
+            # Note: plists do not appear here — they ship as git clean/smudge
+            # filters, not as a preprocessor. See [./plists.lex] §2.3.
 
     7.2. Opt-Out Levels
 
@@ -350,16 +350,13 @@ Design Specification: Preprocessing Pipeline
 
         This is the most universal use case and the first to be implemented. See companion proposal: Template Expansion.
 
-    9.2. Plist Conversion (Representational)
+    9.2. Plist Conversion — Representational, but Not Through This Pipeline
 
-        Source: `com.app.plist.xml` (human-readable XML)
-        Expanded: `com.app.plist` (binary plist for macOS)
-        Reverse: Lossless via `plutil -convert xml1` (no heuristics needed)
-        Engine: system `plutil` command
+        Plists are the canonical Representational transform: `plutil` (and the `plist` Rust crate) round-trip XML and binary losslessly, so reverse is exact and no conflict markers are ever needed.
 
-        Unique property: as a representational transform, the reverse path is exact. Divergence detection still applies (to trigger the reverse conversion), but the merge workflow is fully automatic. The user never sees conflict markers.
+        Despite that fit on paper, plist support does *not* ship as a preprocessor in this pipeline. It ships as git clean/smudge filters instead. The reasoning is in [./plists.lex] §2.3; in summary: plists drift continuously (apps rewrite them on settings changes), and the pipeline's pre-commit-hook reverse path leaves drift invisible to `git status` between commits. Clean/smudge closes that gap by attaching the reverse to every git read, not just to commits.
 
-        Additionally, plist support can leverage git clean/smudge filters for seamless integration where the binary-to-XML conversion happens transparently on git add/checkout.
+        This pipeline retains plists as a didactic example of the Representational category, and the `Preprocessor::contract()` hook stays in the trait so that future Representational preprocessors with less continuous drift (one-off binary configs that don't rewrite themselves) can still go through it.
 
     9.3. Encrypted Files (Opaque)
 
