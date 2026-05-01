@@ -167,6 +167,13 @@ impl Preprocessor for TemplatePreprocessor {
         TransformType::Generative
     }
 
+    fn supports_reverse_merge(&self) -> bool {
+        // Templates emit a tracked_render and produce baselines; the
+        // reverse-merge pipeline (transform check, clean filter) reads
+        // those baselines to write template-space diffs back to source.
+        true
+    }
+
     fn matches_extension(&self, filename: &str) -> bool {
         // Extensions are normalized (no leading dot) at construction.
         // We require a literal "." before the extension to avoid e.g.

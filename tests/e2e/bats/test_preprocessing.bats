@@ -106,3 +106,26 @@ name = "Pack"'
     [ "$status" -eq 0 ]
     assert_file_contains "$HOME/.config/app/settings" "editor=nano"
 }
+
+@test "template with unresolved dodot-conflict markers is refused at deploy time" {
+    # Once `dodot transform check` has rewritten a template to flag
+    # ambiguous edits, the source carries dodot-conflict marker lines.
+    # `dodot up` must refuse to render that template — the markers
+    # would otherwise pass through MiniJinja verbatim and deploy as
+    # garbage. The error names the source path so the user knows
+    # exactly what to fix.
+    create_pack "app"
+    create_pack_file "app" "config.toml.tmpl" 'first = "ok"
+>>>>>> dodot-conflict (template)
+host = "{{ env.DB_HOST }}"
+====== dodot-conflict (deployed)
+host = "production.db"
+<<<<<< dodot-conflict
+last = "ok"'
+
+    run dodot up
+    assert_output_contains "config.toml.tmpl"
+    assert_output_contains "dodot-conflict"
+    # No partial deployment: the rendered file must not exist.
+    [ ! -e "$HOME/.config/app/config.toml" ]
+}
