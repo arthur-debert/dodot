@@ -74,6 +74,30 @@ fn main() {
         return;
     }
 
+    // Passthrough: plist clean/smudge (git filter binary stdin/stdout).
+    // These must bypass standout entirely — smudge emits binary plist
+    // bytes, and any extra logging on stdout would corrupt the filter
+    // output git stages or checks out.
+    if let Some(("plist", sub)) = matches.subcommand() {
+        let result = match sub.subcommand_name() {
+            Some("clean") => handlers::plist_clean_passthrough(),
+            Some("smudge") => handlers::plist_smudge_passthrough(),
+            _ => {
+                let _ = build_clap_command()
+                    .find_subcommand("plist")
+                    .cloned()
+                    .map(|mut c| c.print_help());
+                println!();
+                return;
+            }
+        };
+        if let Err(e) = result {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     // Passthrough: tutorial (interactive — multiple prompts and outputs,
     // doesn't fit standout's one-shot render-and-print dispatch).
     if let Some(("tutorial", sub)) = matches.subcommand() {
@@ -218,6 +242,7 @@ fn build_app() -> App {
                 commands: vec![
                     Some("tutorial".into()),
                     Some("init-sh".into()),
+                    Some("plist".into()),
                     Some("config".into()),
                     Some("help".into()),
                 ],
@@ -399,6 +424,20 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
+        )
+        .subcommand(
+            ClapCommand::new("plist")
+                .about("Plist clean/smudge filters (stdin → stdout)")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("clean")
+                        .about("Convert any plist on stdin to canonical XML on stdout"),
+                )
+                .subcommand(
+                    ClapCommand::new("smudge")
+                        .about("Convert XML plist on stdin to binary plist on stdout"),
+                ),
         )
         .subcommand(
             ClapCommand::new("tutorial")

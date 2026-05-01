@@ -1,0 +1,43 @@
+[header]dodot plist[/header] — Plist clean/smudge filters for git.
+
+[desc]A pair of stdin→stdout filters that translate macOS plists between
+their two on-disk forms:
+
+  [dim]•[/dim] [item]binary[/item]   — what apps read at [item]~/Library/Preferences/...[/item]
+  [dim]•[/dim] [item]canonical XML[/item] — what git stores in the index
+
+[item]dodot plist clean[/item] reads any plist on stdin and emits canonical XML on
+stdout: dictionary keys sorted recursively, byte-stable formatting.
+This is the [item]clean filter[/item] direction (working tree → index).
+
+[item]dodot plist smudge[/item] reads XML on stdin and emits a binary plist on
+stdout. This is the [item]smudge filter[/item] direction (index → working tree).
+
+You normally do not invoke these by hand. They are wired into git
+via [item].gitattributes[/item] + [item].git/config[/item]; see [item]docs/proposals/plists.lex[/item]
+§5 for the install flow.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot plist clean   < binary.plist > canonical.xml[/usage]
+  [usage]dodot plist smudge  < canonical.xml > binary.plist[/usage]
+
+[header]GIT CONFIG[/header]
+  [desc]The filter binding lives in two places. [item].gitattributes[/item] (committed
+  with the repo) attaches the filter to plist files:
+
+    [example]*.plist filter=dodot-plist[/example]
+
+  [item].git/config[/item] (per-clone, per-machine) registers the filter binary:
+
+    [example][filter "dodot-plist"]
+        clean  = dodot plist clean
+        smudge = dodot plist smudge
+        required = true[/example][/desc]
+
+[header]EXAMPLES[/header]
+  [example]plutil -convert binary1 -o - foo.xml | dodot plist clean   [dim]# canonicalise[/dim]
+  dodot plist smudge < foo.xml > foo.plist                       [dim]# render binary[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]docs/proposals/plists.lex[/item]   [desc]Architecture and rationale[/desc]
+  [item]docs/proposals/magic.lex[/item]    [desc]The broader clean/smudge story[/desc]

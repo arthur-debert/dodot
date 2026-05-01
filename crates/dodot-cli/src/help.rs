@@ -37,6 +37,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
     ("addignore", include_str!("help/addignore.txt")),
     ("tutorial", include_str!("help/tutorial.txt")),
     ("init-sh", include_str!("help/init-sh.txt")),
+    ("plist", include_str!("help/plist.txt")),
     ("config", include_str!("help/config.txt")),
     (
         "probe.deployment-map",
