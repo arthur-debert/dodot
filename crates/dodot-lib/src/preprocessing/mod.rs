@@ -9,6 +9,7 @@
 //! See `docs/proposals/preprocessing-pipeline.lex` for the full design.
 
 pub mod baseline;
+pub mod conflict;
 pub mod identity;
 pub mod pipeline;
 pub mod template;
@@ -105,6 +106,32 @@ pub trait Preprocessor: Send + Sync {
     /// consider adding a streaming path rather than materialising the
     /// entire decoded stream at once.
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>>;
+
+    /// Whether this preprocessor participates in the reverse-merge
+    /// pipeline. Reverse-merge is the cache-backed flow that lets
+    /// `dodot transform check` propagate edits from the deployed file
+    /// back into the source by writing a unified diff (and, for
+    /// ambiguous edits, dodot-conflict marker blocks).
+    ///
+    /// Default `false`. Generative preprocessors that emit a
+    /// [`tracked_render`](ExpandedFile::tracked_render) and want their
+    /// sources scanned for unresolved markers before expansion override
+    /// this to `true`. The pipeline uses the flag to:
+    ///
+    /// - Decide whether to run [`crate::preprocessing::conflict::
+    ///   ensure_no_unresolved_markers`] on the source bytes before
+    ///   calling `expand` — refusing to render a template that already
+    ///   carries an unresolved conflict block (otherwise the markers
+    ///   would deploy as garbage).
+    /// - Filter the set of files visited by `dodot transform check` to
+    ///   those whose preprocessor knows how to write reverse-diffs.
+    ///
+    /// A preprocessor that returns `true` here MUST also populate
+    /// `tracked_render` on its `ExpandedFile`s; otherwise the cache
+    /// layer has no marker stream to feed into burgertocow.
+    fn supports_reverse_merge(&self) -> bool {
+        false
+    }
 }
 
 /// Registry of available preprocessors.

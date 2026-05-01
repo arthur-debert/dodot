@@ -76,6 +76,12 @@ pub enum DodotError {
     #[error("template variable name \"{name}\" is reserved (dodot and env are built-in namespaces); choose a different name in [preprocessor.template.vars]")]
     TemplateReservedVar { name: String },
 
+    #[error("unresolved dodot-conflict markers in {} at line{} {}\n  resolve the conflict block(s) with `git diff {}` and remove the dodot-conflict marker lines, then re-run.", source_file.display(), if line_numbers.len() == 1 { "" } else { "s" }, line_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", "), source_file.display())]
+    UnresolvedConflictMarker {
+        source_file: PathBuf,
+        line_numbers: Vec<usize>,
+    },
+
     #[error("{0}")]
     Other(String),
 }
