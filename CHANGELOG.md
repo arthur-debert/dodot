@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-01
+
+
 ### Added
 
 - **`dodot adopt` recognises `~/Library/...` sources (macOS).** Adopting
@@ -118,7 +121,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Mach-O binaries. Direct downloads still pass Gatekeeper via online
   verification (requires internet); Homebrew installs are unaffected
   either way (no quarantine bit on `brew install`).
-
 ## [1.2.0] - 2026-04-30
 
 ### Added

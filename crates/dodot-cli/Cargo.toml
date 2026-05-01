@@ -1,6 +1,6 @@
 [package]
 name = "dodot"
-version = "1.2.0"
+version = "2.0.0"
 edition = "2021"
 license = "MIT"
 description = "A dotfiles manager that uses symlinks for live editing"
@@ -14,7 +14,7 @@ path = "src/main.rs"
 anyhow = "1"
 clapfig = "0.16"
 clap = { version = "4", features = ["derive"] }
-dodot-lib = { version = "1.2.0", path = "../dodot-lib" }
+dodot-lib = { version = "2.0.0", path = "../dodot-lib" }
 serde = { version = "1", features = ["derive"] }
 inquire = "0.7"
 # 7.6.2 introduced `RunResult::Error` — required for non-zero exit on
@@ -25,7 +25,7 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-dodot-lib = { version = "1.2.0", path = "../dodot-lib", features = ["test-utils"] }
+dodot-lib = { version = "2.0.0", path = "../dodot-lib", features = ["test-utils"] }
 tempfile = "3"
 
 # cargo-deb configuration. Driven by `cargo deb -p dodot` in CI.
