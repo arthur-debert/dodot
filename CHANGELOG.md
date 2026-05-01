@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Template preprocessor produces a marker-tracked render and per-file baseline cache** (R1 of the template-magic track). Templates now flow through [burgertocow](https://crates.io/crates/burgertocow-lib)'s `Tracker`, which wraps every `{{ var }}` emission in invisible marker bytes alongside the visible render. Each successful expansion writes a JSON baseline to `<cache_dir>/preprocessor/<pack>/preprocessed/<filename>.json` carrying the rendered content, the marker-annotated tracked render, source/context hashes, and timestamp. This is the foundation the upcoming `dodot transform check` and template clean filter will read to compute reverse-merge diffs *without* re-rendering — re-rendering at clean-filter time would re-trigger any secret-provider auth prompts on every `git status`. See `docs/proposals/preprocessing-pipeline.lex` §5.2 and `docs/proposals/magic.lex` §"Cache That Makes It Cheap".
+- **`Pather::preprocessor_baseline_path` / `preprocessor_baseline_dir`** for routing baseline-cache reads/writes under XDG `cache_dir`.
+
+### Changed
+
+- `preprocess_pack` takes an extra `paths: Option<&dyn Pather>` argument. Active callers (`dodot up`) pass `Some(...)` so baselines are written; passive callers (`dodot status`) pass `None` so they don't overwrite the last-`up` baseline.
+- `ExpandedFile` gains optional `tracked_render` and `context_hash` fields, populated by generative preprocessors that support cache-backed reverse-merge (templates) and left `None` otherwise (identity, unarchive). Tests use `..Default::default()` for ad-hoc construction.
+
 ## [2.0.0] - 2026-05-01
 
 

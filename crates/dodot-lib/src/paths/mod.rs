@@ -155,6 +155,35 @@ pub trait Pather: Send + Sync {
     fn prompts_path(&self) -> PathBuf {
         self.data_dir().join("prompts.json")
     }
+
+    /// Per-file baseline cache used by the preprocessing pipeline to
+    /// detect divergence and drive cache-backed reverse-merge.
+    ///
+    /// Layout: `<cache_dir>/preprocessor/<pack>/<handler>/<filename>.json`.
+    /// One JSON file per processed file, written on every successful
+    /// expansion in `dodot up`.
+    ///
+    /// Lives under `cache_dir` because the contents are rederivable —
+    /// losing them just forces the next `dodot up` to re-render and
+    /// re-baseline. See `docs/proposals/preprocessing-pipeline.lex` §5.2.
+    fn preprocessor_baseline_path(&self, pack: &str, handler: &str, filename: &str) -> PathBuf {
+        self.cache_dir()
+            .join("preprocessor")
+            .join(pack)
+            .join(handler)
+            .join(format!("{filename}.json"))
+    }
+
+    /// Root of the preprocessor baseline cache for a given pack and
+    /// handler — mostly useful for cache-cleanup operations like
+    /// `dodot down` and tests that want to scan an entire handler's
+    /// baselines.
+    fn preprocessor_baseline_dir(&self, pack: &str, handler: &str) -> PathBuf {
+        self.cache_dir()
+            .join("preprocessor")
+            .join(pack)
+            .join(handler)
+    }
 }
 
 /// XDG-compliant path resolver.
