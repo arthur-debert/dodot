@@ -303,6 +303,18 @@ pub fn transform_check_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot transform install-hook` — write `.git/hooks/pre-commit` with
+/// our `dodot transform check --strict` block. Idempotent and additive
+/// (preserves any existing hook content). See `commands::transform::
+/// install_hook` for behavior detail.
+pub fn transform_install_hook_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::transform::InstallHookResult> {
+    let ctx = build_ctx(matches)?;
+    Ok(Output::Render(commands::transform::install_hook(&ctx)?))
+}
+
 /// `dodot probe shell-init` — most recent shell-startup profile.
 ///
 /// Five views, picked by argument shape:
@@ -541,6 +553,99 @@ fn try_prompt_install_filters() -> Result<(), anyhow::Error> {
             //
             // For now, "no" means "not now"; a future ergonomics pass
             // can offer "no, and never ask again".
+        }
+    }
+    Ok(())
+}
+
+/// Post-`up` hook that offers to install the pre-commit hook when:
+///
+/// 1. stdin is a TTY (interactive — never prompt under CI / pipes),
+/// 2. the dotfiles root is a git working tree,
+/// 3. at least one template baseline exists (i.e. the user just
+///    deployed one or more templates),
+/// 4. the dodot pre-commit block is NOT yet installed,
+/// 5. the user has NOT previously dismissed the prompt.
+///
+/// All five must hold; otherwise the function returns silently.
+/// Symmetric in structure with [`maybe_prompt_install_filters`] — same
+/// "soft nudge" disposition: failures and skips go to the debug log,
+/// not stderr, so a noisy line never appears on routine `up` runs.
+pub fn maybe_prompt_install_template_hook() {
+    if let Err(e) = try_prompt_install_template_hook() {
+        tracing::debug!("template install-hook prompt skipped: {e}");
+    }
+}
+
+fn try_prompt_install_template_hook() -> Result<(), anyhow::Error> {
+    use dodot_lib::prompts::PromptRegistry;
+
+    if !crate::interactive::stdin_is_tty() {
+        return Ok(());
+    }
+
+    let dotfiles_root = discover_dotfiles_root()?;
+    let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
+
+    // No templates deployed → nothing to gate on.
+    let baselines = dodot_lib::preprocessing::divergence::collect_baselines(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+    )?;
+    if baselines.is_empty() {
+        return Ok(());
+    }
+
+    // Already installed → silent.
+    if commands::transform::hook_is_installed(&ctx)? {
+        return Ok(());
+    }
+
+    // Not a git working tree → installer would error; skip the prompt.
+    if !ctx.fs.is_dir(&ctx.paths.dotfiles_root().join(".git")) {
+        return Ok(());
+    }
+
+    let registry_path = ctx.paths.prompts_path();
+    let mut registry = PromptRegistry::load(ctx.fs.as_ref(), registry_path)?;
+    let prompt_key = "template.install_hook";
+    if registry.is_dismissed(prompt_key) {
+        return Ok(());
+    }
+
+    let header = format!("dodot deployed {} template file(s).", baselines.len());
+    let response = crate::interactive::prompt_yes_no_show(&[
+        &header,
+        "A pre-commit hook can keep template sources in sync with deployed-side edits",
+        "by running `dodot transform check --strict` automatically on every `git commit`.",
+        "Install the hook now? Run `dodot transform install-hook` to inspect or do it later.",
+    ])?;
+
+    match response {
+        crate::interactive::YesNoShow::Yes => {
+            let r = commands::transform::install_hook(&ctx)?;
+            eprintln!("Installed pre-commit hook at {}", r.hook_display_path);
+            registry.dismiss(prompt_key);
+            registry.save(ctx.fs.as_ref())?;
+        }
+        crate::interactive::YesNoShow::Show => {
+            eprintln!();
+            eprintln!("The hook block that would be added to .git/hooks/pre-commit:");
+            eprintln!();
+            for line in commands::transform::managed_block().lines() {
+                eprintln!("    {line}");
+            }
+            eprintln!();
+            eprintln!(
+                "Run `dodot transform install-hook` to install, \
+                 or `dodot prompts reset {prompt_key}` to skip and ask later."
+            );
+            // Don't dismiss — show is informational. The user has
+            // not committed to install or skip.
+        }
+        crate::interactive::YesNoShow::No => {
+            // Same convention as the plist prompt: "no" means "not
+            // now"; we'll re-prompt on the next up.
         }
     }
     Ok(())
