@@ -253,19 +253,25 @@ Design Specification: macOS Plist Support
 
     A user with existing settings in `~/Library/Preferences/com.app.plist` brings them into dodot via the existing adopt command:
 
-        dodot adopt <pack> ~/Library/Preferences/com.app.plist
+        dodot adopt --into <pack> ~/Library/Preferences/com.app.plist
 
     :: text ::
 
+    `--into` is required for `~/Library/...` sources because plist filenames are typically reverse-DNS bundle IDs (`com.colliderli.iina.plist`), which don't make useful pack names. Pack inference declines and the caller picks the pack name explicitly.
+
     With clean/smudge in the picture, adopt is simpler than it would be under the pipeline model:
 
-        1. Move the binary into the pack: `mv ~/Library/Preferences/com.app.plist <pack>/com.app.plist`.
-        2. Symlink back: `ln -s <pack>/com.app.plist ~/Library/Preferences/com.app.plist`.
-        3. Print a hint pointing at `dodot git-install-filters` if filters are not yet registered.
+        1. Move the binary into the pack at `<pack>/_lib/Preferences/com.app.plist`. The `_lib/` prefix is the resolver's Priority 2d encoding for `~/Library/...` paths (see [./macos-paths.lex] §4) — adopting under it preserves the round-trip on `dodot up` without requiring per-file `[symlink.targets]` entries.
+        2. Symlink back: `ln -s <pack>/_lib/Preferences/com.app.plist ~/Library/Preferences/com.app.plist`.
+        3. Print a `tip:` line pointing at `dodot git-install-filters` if filters are not yet registered.
 
     No extension renaming. No XML emission at adopt time. The first `git add` after adopt invokes the clean filter and produces canonical XML for the index.
 
-    7.1. Sandboxed Apps
+    7.1. Other `~/Library/` Subtrees
+
+        The same inference applies to every `~/Library/<subdir>/<file>` path. `~/Library/LaunchAgents/com.example.foo.plist` adopts to `<pack>/_lib/LaunchAgents/com.example.foo.plist`; `~/Library/Fonts/MyFont.otf` to `<pack>/_lib/Fonts/MyFont.otf`. The Library inference is gated on `cfg!(target_os = "macos")` so non-macOS hosts produce `UnrecognizedRoot` instead of plans that would warn-and-skip at deploy.
+
+    7.2. Sandboxed Apps
 
         macOS sandboxed apps write to `~/Library/Containers/<bundle-id>/Data/...` rather than the canonical location. As specified in [./macos-paths.lex] §7.8, `dodot adopt` refuses sources under `~/Library/Containers/`. Plist support inherits this refusal — the container path's contents are not intended for external editing, and the same refusal text applies whether or not the source happens to be a plist.
 

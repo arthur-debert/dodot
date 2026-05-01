@@ -106,6 +106,13 @@ pub(crate) enum SourceRoot {
     /// practice on non-macOS hosts (XDG matches first via
     /// longest-prefix order).
     AppSupport,
+    /// `$HOME/Library` on macOS — the parent of
+    /// `Application Support`, covering `Preferences/`, `LaunchAgents/`,
+    /// `Fonts/`, `Services/`, etc. Adopt sources here round-trip via
+    /// the `_lib/<rest>` priority-2d prefix. Match order in
+    /// [`infer_target`] places this AFTER `AppSupport` so the more
+    /// specific prefix wins for `Application Support/...` paths.
+    Library,
 }
 
 /// Why inference declined to produce a target.
@@ -130,6 +137,9 @@ pub(crate) enum InferenceError {
     /// is system-managed; adoption is refused per
     /// `docs/proposals/macos-paths.lex` §7.3.
     SandboxedContainer,
+    /// Source is `$HOME/Library` itself. Too broad to adopt as one
+    /// unit — caller should pick a subdirectory.
+    LibraryRootItself,
 }
 
 impl std::fmt::Display for InferenceError {
@@ -174,6 +184,12 @@ impl std::fmt::Display for InferenceError {
                 "this is a sandboxed app's container; its config is not \
                  intended to be edited externally. dodot does not support \
                  adopting from ~/Library/Containers/."
+            ),
+            InferenceError::LibraryRootItself => write!(
+                f,
+                "$HOME/Library itself is too broad to adopt — pick a \
+                 subdirectory like ~/Library/Preferences/ or \
+                 ~/Library/LaunchAgents/."
             ),
         }
     }
@@ -253,6 +269,31 @@ pub(crate) fn infer_target(
         }
         if let Ok(rel) = canon_source.strip_prefix(&canon_app) {
             return resolve_app_support_relative(rel, is_dir);
+        }
+    }
+
+    // ── $HOME/Library root (macOS only, after AppSupport) ────────────
+    //
+    // `~/Library/` covers Preferences/, LaunchAgents/, Fonts/, etc.
+    // Adopt sources here round-trip via the `_lib/<rest>` Priority 2d
+    // prefix. Matched AFTER AppSupport so a path under
+    // `~/Library/Application Support/` lands on the more specific
+    // `_app/` encoding instead of the broader `_lib/Application Support/`.
+    //
+    // Gated on `cfg!(target_os = "macos")` to mirror the symlink
+    // resolver: `_lib/` warns-and-skips on non-macOS at deploy time,
+    // so producing `_lib/...` plans for Linux sources would just
+    // generate guaranteed warnings on the next `up`. Letting Linux
+    // users fall through to `UnrecognizedRoot` keeps adopt's "if the
+    // file isn't somewhere I know how to deploy back to, refuse"
+    // contract clean.
+    if cfg!(target_os = "macos") {
+        let library_root = canon_home.join("Library");
+        if canon_source == library_root {
+            return Err(InferenceError::LibraryRootItself);
+        }
+        if let Ok(rel) = canon_source.strip_prefix(&library_root) {
+            return resolve_library_relative(rel, is_dir);
         }
     }
 
@@ -394,6 +435,51 @@ fn resolve_app_support_relative(
         in_pack_override: in_pack,
         source_root: SourceRoot::AppSupport,
         expand_children: false,
+    })
+}
+
+/// Build inference output for a path relative to `$HOME/Library`.
+///
+/// Library-rooted sources (`~/Library/Preferences/...`,
+/// `~/Library/LaunchAgents/...`, etc.) round-trip via the `_lib/<rest>`
+/// Priority 2d prefix. They carry no useful pack-name structure —
+/// filenames are typically reverse-DNS bundle IDs (`com.foo.bar.plist`)
+/// — so inference returns `natural_pack = None` and the caller must
+/// supply `--into <pack>`.
+fn resolve_library_relative(rel: &Path, is_dir: bool) -> Result<InferredTarget, InferenceError> {
+    if rel.as_os_str().is_empty() {
+        return Err(InferenceError::LibraryRootItself);
+    }
+    // Refuse `~/Library/Containers/...` defensively — the early-exit in
+    // [`infer_target`] already handles this, but bare-rel matching is a
+    // backstop in case a caller wires up `resolve_library_relative`
+    // directly in tests or future code paths.
+    if rel.starts_with("Containers") {
+        return Err(InferenceError::SandboxedContainer);
+    }
+
+    let in_pack = PathBuf::from("_lib").join(rel);
+    Ok(InferredTarget {
+        // No natural pack name to mine — bundle IDs and folder names
+        // like `Preferences`, `LaunchAgents` are not pack-shaped.
+        // Caller must supply `--into <pack>`.
+        natural_pack: None,
+        in_pack_natural: in_pack.clone(),
+        in_pack_override: in_pack,
+        source_root: SourceRoot::Library,
+        // Expand top-level `~/Library/<subdir>/` directories (e.g.
+        // `~/Library/LaunchAgents/`) so each child becomes its own
+        // `_lib/<subdir>/<child>` plan instead of adopting the
+        // directory itself as one big symlinked subtree. Deeper
+        // nested directories (e.g. `~/Library/Foo/Bar/`) stay as a
+        // single adoption unit — the user opted into the deeper
+        // path, so we don't second-guess them.
+        expand_children: is_dir
+            && rel
+                .components()
+                .next()
+                .is_some_and(|c| matches!(c, Component::Normal(_)))
+            && rel.components().count() == 1,
     })
 }
 
@@ -861,23 +947,38 @@ mod tests {
     }
 
     #[test]
-    fn app_support_collapsed_falls_back_to_xdg_or_home() {
+    fn app_support_collapsed_falls_back_to_lib_or_unrecognized() {
         // When `app_support_dir == xdg_config_home` (Linux, or macOS
         // with `app_uses_library = false`), the AppSupport arm is
-        // unreachable and a path that *would* have matched it falls
-        // through. A `~/Library/Application Support/...` path on
-        // Linux thus lands in HOME-rooted territory and produces the
-        // "nested under HOME" refusal — exactly what we want when the
-        // user is opting out of macOS-style routing.
+        // unreachable and a `~/Library/Application Support/...` path
+        // falls through.
+        //
+        // On macOS the Library recognizer catches it next and produces
+        // a `_lib/Application Support/Code/...` plan — that round-trips
+        // correctly on deploy because `_lib/` is unaffected by
+        // `app_uses_library` (per `macos-paths.lex` §11.2). On non-macOS
+        // the Library recognizer is cfg-gated off, the path falls all
+        // the way through, and the user gets an `UnrecognizedRoot`
+        // refusal — appropriate because `_lib/` warns-and-skips at
+        // deploy time on Linux anyway.
         let p = pather_app_collapsed("/u", "/x");
-        let err = infer_target(
+        let result = infer_target(
             Path::new("/u/Library/Application Support/Code/User/settings.json"),
             false,
             &p,
             &[],
-        )
-        .unwrap_err();
-        assert!(matches!(err, InferenceError::UnrecognizedRoot { .. }));
+        );
+        if cfg!(target_os = "macos") {
+            let t = result.expect("inference");
+            assert_eq!(t.source_root, SourceRoot::Library);
+            assert_eq!(
+                t.in_pack_natural,
+                Path::new("_lib/Application Support/Code/User/settings.json")
+            );
+        } else {
+            let err = result.unwrap_err();
+            assert!(matches!(err, InferenceError::UnrecognizedRoot { .. }));
+        }
     }
 
     // ── Capitalization heuristic ────────────────────────────────
@@ -934,6 +1035,92 @@ mod tests {
         assert!(!is_gui_app_folder(".bashrc"));
         assert!(!is_gui_app_folder("foo..bar"));
         assert!(!is_gui_app_folder("trailing."));
+    }
+
+    // ── Library/* (Preferences, LaunchAgents, …) ────────────────────────
+    //
+    // The Library recognizer is gated on `cfg!(target_os = "macos")` —
+    // on Linux it skips entirely so adopt doesn't generate plans that
+    // the deploy resolver would warn-and-skip on. Tests are
+    // correspondingly macOS-only; on non-macOS they're compiled out.
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn library_preferences_plist_uses_lib_prefix_and_requires_into() {
+        let p = pather("/u", "/x");
+        let t = infer_target(
+            Path::new("/u/Library/Preferences/com.colliderli.iina.plist"),
+            false,
+            &p,
+            &[],
+        )
+        .expect("inference");
+        assert_eq!(t.source_root, SourceRoot::Library);
+        assert_eq!(t.natural_pack, None, "Library sources require --into");
+        assert_eq!(
+            t.in_pack_natural,
+            Path::new("_lib/Preferences/com.colliderli.iina.plist")
+        );
+        assert_eq!(t.in_pack_natural, t.in_pack_override);
+        assert!(!t.expand_children);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn library_launch_agents_routes_through_lib_prefix() {
+        let p = pather("/u", "/x");
+        let t = infer_target(
+            Path::new("/u/Library/LaunchAgents/com.example.foo.plist"),
+            false,
+            &p,
+            &[],
+        )
+        .expect("inference");
+        assert_eq!(t.source_root, SourceRoot::Library);
+        assert_eq!(
+            t.in_pack_natural,
+            Path::new("_lib/LaunchAgents/com.example.foo.plist")
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn library_subdirectory_top_level_expands_children() {
+        // `~/Library/LaunchAgents/` as a directory source: the sole
+        // path component triggers expand_children so callers enumerate
+        // entries.
+        let p = pather("/u", "/x");
+        let t =
+            infer_target(Path::new("/u/Library/LaunchAgents"), true, &p, &[]).expect("inference");
+        assert!(t.expand_children);
+        assert_eq!(t.in_pack_natural, Path::new("_lib/LaunchAgents"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn library_root_itself_is_refused() {
+        let p = pather("/u", "/x");
+        let err = infer_target(Path::new("/u/Library"), true, &p, &[]).unwrap_err();
+        assert!(matches!(err, InferenceError::LibraryRootItself));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn library_application_support_still_routes_through_app_support() {
+        // The more-specific AppSupport prefix must win over the
+        // broader Library prefix; otherwise paths like
+        // `~/Library/Application Support/Code/...` would land at
+        // `_lib/Application Support/...` instead of `_app/Code/...`.
+        let p = pather("/u", "/x");
+        let t = infer_target(
+            Path::new("/u/Library/Application Support/Code/User/settings.json"),
+            false,
+            &p,
+            &[],
+        )
+        .expect("inference");
+        assert_eq!(t.source_root, SourceRoot::AppSupport);
+        assert!(t.in_pack_natural.starts_with("_app"));
     }
 
     #[test]

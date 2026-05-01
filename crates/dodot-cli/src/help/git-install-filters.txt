@@ -17,6 +17,23 @@ After this, ensure your [item].gitattributes[/item] (which IS committed) binds
 [item]dodot up[/item] will offer this command interactively the first time it
 spots a [item]*.plist[/item] file in a pack and finds the filter unregistered.[/desc]
 
+[header]PATH[/header]
+  [desc]The filter entry uses the bare command [item]dodot plist clean/smudge[/item],
+  so [item]dodot[/item] must be on [item]$PATH[/item] for whatever process invokes git —
+  shell, editor, GUI git client, etc. If a GUI tool runs git from a
+  reduced environment that does not see your shell's [item]$PATH[/item], git
+  will fail loudly (the [item]required = true[/item] setting forbids silently
+  skipping the filter). The fix is to either put [item]dodot[/item] on the
+  system [item]$PATH[/item] (e.g. [item]/usr/local/bin/dodot[/item]) or hand-edit the
+  config block to use an absolute path.[/desc]
+
+[header]CFPREFSD (macOS)[/header]
+  [desc]Pulling plist changes from another machine updates the on-disk
+  binary, but [item]cfprefsd[/item]'s in-memory cache may keep serving old
+  values to running apps. Run [item]killall cfprefsd[/item] to force a
+  re-read; cfprefsd auto-respawns. [item]git-install-filters[/item] surfaces
+  this reminder in its success output too.[/desc]
+
 [header]USAGE[/header]
   [usage]dodot git-install-filters[/usage]
 

@@ -74,6 +74,7 @@ pub fn install_filters(ctx: &ExecutionContext) -> Result<MessageResult> {
         root.display()
     )];
     append_gitattributes_hint(ctx, &mut details);
+    append_cfprefsd_hint(&mut details);
     Ok(MessageResult {
         message: "Installed plist clean/smudge filters.".into(),
         details,
@@ -198,6 +199,24 @@ fn scan_for_plists(
 }
 
 // ── internals ──────────────────────────────────────────────────────────
+
+/// macOS-only nudge appended to the `git-install-filters` success
+/// message. Apps cache plist values via `cfprefsd`, so even a correct
+/// `git pull` + `dodot up` won't be visible to a running app until
+/// either the app restarts or `cfprefsd` is killed (it auto-respawns).
+/// Surfacing the one-liner here avoids a "I deployed it but nothing
+/// changed" support thread.
+fn append_cfprefsd_hint(details: &mut Vec<String>) {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    details.push(String::new());
+    details.push("Note: macOS caches plist values in `cfprefsd`. After pulling".into());
+    details.push("plist changes from another machine, run:".into());
+    details.push("    killall cfprefsd".into());
+    details.push("to make running apps re-read their preferences. (No data loss;".into());
+    details.push("cfprefsd respawns immediately.)".into());
+}
 
 fn append_gitattributes_hint(ctx: &ExecutionContext, details: &mut Vec<String>) {
     let attrs_path = ctx.paths.dotfiles_root().join(".gitattributes");

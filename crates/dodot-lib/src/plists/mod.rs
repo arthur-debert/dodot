@@ -23,13 +23,13 @@ use crate::{DodotError, Result};
 /// byte-identical XML across runs, regardless of whether the source was
 /// binary or XML and regardless of the encoder's internal key order.
 pub fn clean(input: &[u8]) -> Result<Vec<u8>> {
-    let mut value = Value::from_reader(Cursor::new(input)).map_err(plist_err)?;
+    let mut value = Value::from_reader(Cursor::new(input)).map_err(|e| filter_err("clean", e))?;
     sort_keys_recursive(&mut value);
 
     let mut raw = Vec::with_capacity(input.len());
     value
         .to_writer_xml_with_options(&mut raw, &XmlWriteOptions::default())
-        .map_err(plist_err)?;
+        .map_err(|e| filter_err("clean", e))?;
 
     // Canonical output uses LF only. The current `plist`/quick-xml stack
     // emits LF, but we don't want determinism to depend on upstream
@@ -61,9 +61,11 @@ pub fn clean(input: &[u8]) -> Result<Vec<u8>> {
 /// Accepts XML input (the index form). Output is the binary plist that
 /// macOS apps read.
 pub fn smudge(input: &[u8]) -> Result<Vec<u8>> {
-    let value = Value::from_reader_xml(Cursor::new(input)).map_err(plist_err)?;
+    let value = Value::from_reader_xml(Cursor::new(input)).map_err(|e| filter_err("smudge", e))?;
     let mut out = Vec::new();
-    value.to_writer_binary(&mut out).map_err(plist_err)?;
+    value
+        .to_writer_binary(&mut out)
+        .map_err(|e| filter_err("smudge", e))?;
     Ok(out)
 }
 
@@ -89,8 +91,22 @@ fn sort_keys_recursive(value: &mut Value) {
     }
 }
 
-fn plist_err(e: plist::Error) -> DodotError {
-    DodotError::Other(format!("plist conversion failed: {e}"))
+/// Wrap a parse/serialise failure with a hint pointing at the most
+/// common cause: `.gitattributes` binding the filter to a non-plist
+/// path, or a corrupt plist on disk. Filter callers see this on stderr
+/// because git's `required = true` setting promotes filter failures to
+/// hard errors — making the message actionable saves users a debugging
+/// round-trip.
+fn filter_err(direction: &str, e: plist::Error) -> DodotError {
+    DodotError::Other(format!(
+        "plist {direction} failed: {e}\n  \
+         The input does not look like a valid plist. Common causes:\n  \
+           - .gitattributes binds *.plist (or a broader pattern) to the\n    \
+             dodot-plist filter, but the file matched is not actually a plist.\n  \
+           - A corrupt or truncated plist on disk; try `plutil -lint <file>`\n    \
+             to verify, or `plutil -convert xml1 <file>` to inspect.\n  \
+         Run `dodot git-show-filters` to review the current filter binding."
+    ))
 }
 
 #[cfg(test)]

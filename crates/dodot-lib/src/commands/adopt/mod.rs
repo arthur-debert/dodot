@@ -317,6 +317,27 @@ pub fn adopt(
         }
     }
 
+    // Plist-aware tip: if any of the adopted plans is a `.plist` file
+    // and the user has not yet registered the dodot-plist clean/smudge
+    // filters, point them at `dodot git-install-filters`. The up-time
+    // prompt also covers this, but adopt is the most likely first
+    // moment a user has a plist in a pack — surfacing the install
+    // command immediately saves them one round-trip.
+    let adopted_any_plist = plans.iter().any(|p| {
+        p.source
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.eq_ignore_ascii_case("plist"))
+            .unwrap_or(false)
+    });
+    if adopted_any_plist && !crate::commands::git_filters::is_installed(ctx).unwrap_or(true) {
+        result.warnings.push(
+            "tip: pack now contains a .plist file. Run `dodot git-install-filters` to enable \
+             canonical XML diffs (binary plists become diffable in `git status`/`git diff`)."
+                .into(),
+        );
+    }
+
     // Adopt failures are real errors — surface them in the same
     // command-wide notes list that drives `[N]` markers for status/up.
     // To keep the model consistent ("every note is referenced by a row"),
@@ -683,6 +704,14 @@ fn expand_child_in_pack(
             // Not currently produced by inference (HOME never expands);
             // fall back to bare child name to keep the helper total.
             PathBuf::from(child_name)
+        }
+        SourceRoot::Library => {
+            // `parent.in_pack_override` is `_lib/<sub>` (e.g.
+            // `_lib/Preferences`) when expansion is enabled; append the
+            // child filename to land each entry under
+            // `_lib/<sub>/<child>` so deploy routes back through the
+            // Priority 2d prefix.
+            parent.in_pack_override.join(child_name)
         }
     }
 }
