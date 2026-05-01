@@ -202,9 +202,18 @@ pub fn preprocess_pack(
         // config. Gated on `supports_reverse_merge` so non-tracking
         // preprocessors (unarchive, identity) don't pay the read cost
         // — their sources can't naturally carry the marker token.
+        //
+        // Lossy UTF-8 conversion: we read raw bytes and decode lossily
+        // so a non-UTF-8 source for a reverse-merge-capable
+        // preprocessor still gets a clean scan rather than failing
+        // with a generic UTF-8 decode error. The marker token is
+        // ASCII, so the lossy decode preserves it. Templates today
+        // are always UTF-8 in practice; this is defence-in-depth for
+        // future preprocessors.
         // See preprocessing-pipeline.lex §6.3.
         if preprocessor.supports_reverse_merge() {
-            let source_str = fs.read_to_string(&entry.absolute_path)?;
+            let source_bytes = fs.read_file(&entry.absolute_path)?;
+            let source_str = String::from_utf8_lossy(&source_bytes);
             crate::preprocessing::conflict::ensure_no_unresolved_markers(
                 &source_str,
                 &entry.absolute_path,
@@ -1840,6 +1849,114 @@ mod tests {
         assert!(
             matches!(err, DodotError::UnresolvedConflictMarker { .. }),
             "expected UnresolvedConflictMarker, got: {err}"
+        );
+    }
+
+    #[test]
+    fn gate_handles_non_utf8_source_via_lossy_decode() {
+        // Defence-in-depth: a reverse-merge-capable preprocessor with a
+        // non-UTF-8 source must not crash the gate with a generic
+        // UTF-8 decode error. The pipeline reads bytes and decodes
+        // lossily before scanning for markers — the marker token is
+        // ASCII so detection works, and a binary-ish source without
+        // markers passes cleanly.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tracked", "placeholder")
+            .done()
+            .build();
+
+        // Overwrite with non-UTF-8 bytes: a few invalid sequences plus
+        // valid ASCII surrounding them. No markers in the bytes.
+        let bytes: Vec<u8> = vec![
+            b'h', b'e', b'l', b'l', b'o', b'\n', 0xff, 0xfe, b'\n', b'w', b'o', b'r', b'l', b'd',
+            b'\n',
+        ];
+        env.fs
+            .write_file(&env.dotfiles_root.join("app/config.toml.tracked"), &bytes)
+            .unwrap();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "tracking-bytes",
+            extension: ".tracked",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("config.toml"),
+                content: b"x".to_vec(),
+                is_dir: false,
+                tracked_render: Some("x".into()),
+                context_hash: Some([0; 32]),
+            }],
+            supports_reverse_merge: true,
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "config.toml.tracked".into(),
+            absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
+            is_dir: false,
+        }];
+
+        // Should NOT error: the gate's lossy decode handles non-UTF-8
+        // gracefully, and there are no marker lines in the bytes.
+        let result = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
+            .expect("non-UTF-8 source without markers must not crash the gate");
+        assert_eq!(result.virtual_entries.len(), 1);
+    }
+
+    #[test]
+    fn gate_detects_markers_in_non_utf8_source() {
+        // Round-trip the lossy path: a source that's mostly invalid
+        // UTF-8 but has a real marker line in valid ASCII still trips
+        // the gate. This is the safety-critical scenario — we must
+        // not silently pass a marker-bearing source just because
+        // surrounding bytes happen to be invalid UTF-8.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tracked", "placeholder")
+            .done()
+            .build();
+
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice(b"prefix\n");
+        bytes.push(0xff);
+        bytes.push(0xfe);
+        bytes.push(b'\n');
+        bytes.extend_from_slice(crate::preprocessing::conflict::MARKER_START.as_bytes());
+        bytes.push(b'\n');
+        bytes.extend_from_slice(b"body\n");
+        env.fs
+            .write_file(&env.dotfiles_root.join("app/config.toml.tracked"), &bytes)
+            .unwrap();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "tracking-bytes",
+            extension: ".tracked",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("config.toml"),
+                content: b"x".to_vec(),
+                is_dir: false,
+                tracked_render: Some("x".into()),
+                context_hash: Some([0; 32]),
+            }],
+            supports_reverse_merge: true,
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "config.toml.tracked".into(),
+            absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
+            is_dir: false,
+        }];
+
+        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
+            .unwrap_err();
+        assert!(
+            matches!(err, DodotError::UnresolvedConflictMarker { .. }),
+            "expected UnresolvedConflictMarker even on non-UTF-8 source, got: {err}"
         );
     }
 

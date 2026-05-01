@@ -104,10 +104,13 @@ pub fn contains_unresolved_markers(content: &str) -> bool {
 /// rendering pipeline reports a clean diagnostic instead of silently
 /// committing a broken config to the deployed location.
 ///
-/// `content` is the source bytes interpreted as UTF-8 (lossy). Binary
-/// preprocessor sources (e.g. tar archives) won't naturally contain
-/// the literal marker token; running the check is harmless in that
-/// case.
+/// `content` must be valid UTF-8 (it's `&str`). Callers reading from
+/// disk should run the bytes through [`String::from_utf8_lossy`] first
+/// — that's how [`crate::preprocessing::pipeline::preprocess_pack`]
+/// invokes this helper, so a non-UTF-8 source for a reverse-merge-
+/// capable preprocessor still gets a clean scan rather than crashing
+/// the gate with a UTF-8 decode error. The marker token is ASCII, so
+/// detection works correctly under lossy decode.
 pub fn ensure_no_unresolved_markers(content: &str, source_file: &Path) -> Result<()> {
     let lines = find_unresolved_marker_lines(content);
     if lines.is_empty() {
@@ -232,7 +235,8 @@ mod tests {
     fn ensure_no_unresolved_markers_error_renders_actionable_message() {
         // The Display impl is what users see at the CLI; pin the parts
         // that should be there: source path, line numbers, and the
-        // recovery hint mentioning `git diff`.
+        // recovery hint with the shell-robust form (-- separator and
+        // single-quoted path).
         let p = Path::new("app/config.toml.tmpl");
         let content = format!("first\n{}\nsecond\n", MARKER_START);
         let err = ensure_no_unresolved_markers(&content, p).unwrap_err();
@@ -240,8 +244,40 @@ mod tests {
         assert!(msg.contains("app/config.toml.tmpl"), "msg: {msg}");
         assert!(msg.contains("line 2") || msg.contains("2"), "msg: {msg}");
         assert!(
-            msg.contains("git diff") || msg.contains("dodot-conflict"),
-            "expected actionable hint, got: {msg}"
+            msg.contains("git diff -- 'app/config.toml.tmpl'"),
+            "msg: {msg}"
+        );
+    }
+
+    #[test]
+    fn error_message_quotes_paths_with_spaces() {
+        // The recovery hint should render the path quoted so the user
+        // can copy-paste a working command for files in directories
+        // with spaces in their names. The quoting is single-quote
+        // based: shell-safe except for paths containing literal single
+        // quotes (which are pathological in dotfile repos).
+        let p = Path::new("My Configs/app.tmpl");
+        let content = format!("{}\nbody\n", MARKER_START);
+        let err = ensure_no_unresolved_markers(&content, p).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("'My Configs/app.tmpl'"),
+            "expected single-quoted path in hint, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn error_message_defangs_leading_dash_paths() {
+        // A path that starts with `-` (e.g. accidental `--cool.tmpl`)
+        // would be interpreted as a flag by `git diff` without the
+        // `--` separator. Pin that the hint includes the separator.
+        let p = Path::new("-weird-name.tmpl");
+        let content = format!("{}\nbody\n", MARKER_START);
+        let err = ensure_no_unresolved_markers(&content, p).unwrap_err();
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("git diff -- "),
+            "expected `--` separator in hint, got: {msg}"
         );
     }
 
