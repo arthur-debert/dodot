@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`dodot transform install-hook`** (R4 of the template-magic track). Writes `<dotfiles_root>/.git/hooks/pre-commit` with a guarded block that runs `dodot transform check --strict || exit 1` on every `git commit`. Idempotent (re-running detects the guard line and no-ops) and additive (preserves any existing hook content). The installed hook refuses to commit when reverse-merge has work to do or unresolved `dodot-conflict` markers remain — matching the contract R3 set up. See `docs/proposals/magic.lex` §"The Commit Tier".
-- **First-template-deploy prompt.** After a successful `dodot up` that leaves at least one template baseline in the cache, dodot offers (interactively, only when stdin is a TTY) to install the pre-commit hook. Y/n/show via the existing `PromptRegistry`; new catalog entry `template.install_hook`; soft failure pattern matching the plist filter prompt — never aborts `up`, never prints to stderr at default verbosity.
+- **First-template-deploy prompt.** After a successful `dodot up` that leaves at least one template baseline in the cache, dodot offers (interactively, only when stdin is a TTY) to install the pre-commit hook. Y/n/show via the existing `PromptRegistry`; new catalog entry `template.install_hook`; soft failure pattern matching the plist filter prompt — never aborts `up`, and any background failures (registry parse error, etc.) go to the debug log rather than stderr. The interactive prompt body itself prints to stderr by design (Y/n/show + the resulting confirmation/show output).
 
 ### Added (R3, prior)
 

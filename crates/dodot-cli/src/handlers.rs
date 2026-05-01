@@ -618,7 +618,7 @@ fn try_prompt_install_template_hook() -> Result<(), anyhow::Error> {
         &header,
         "A pre-commit hook can keep template sources in sync with deployed-side edits",
         "by running `dodot transform check --strict` automatically on every `git commit`.",
-        "Install the hook now? Run `dodot transform install-hook` to inspect or do it later.",
+        "Install the hook now? Pick `show` to see the block first, or run `dodot transform install-hook` later.",
     ])?;
 
     match response {

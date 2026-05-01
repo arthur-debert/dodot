@@ -326,8 +326,9 @@ pub fn install_hook(ctx: &ExecutionContext) -> Result<InstallHookResult> {
     if !ctx.fs.is_dir(&git_dir) {
         return Err(crate::DodotError::Other(format!(
             "no .git directory at {}; pre-commit hooks only apply to git working \
-             trees. Run `git init` in your dotfiles repo first.",
-            dotfiles_root.display()
+             trees. Run `git init` in {} first.",
+            git_dir.display(),
+            dotfiles_root.display(),
         )));
     }
 
