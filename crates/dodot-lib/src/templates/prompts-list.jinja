@@ -1,0 +1,7 @@
+[header]Prompts[/header]
+{% for row in rows %}
+  [item]{{ row.key }}[/item]
+    {% if row.status == "dismissed" %}[deployed]dismissed[/deployed]{% else %}[pending]active[/pending]{% endif %}  [description]{{ row.description }}[/description]
+{% endfor %}
+[dim]Registry: {{ registry_path }}
+Reset with [example]dodot prompts reset <key>[/example] or [example]dodot prompts reset --all[/example].[/dim]

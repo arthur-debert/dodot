@@ -146,6 +146,15 @@ pub trait Pather: Send + Sync {
     fn probes_brew_cache_dir(&self) -> PathBuf {
         self.cache_dir().join("probes").join("brew")
     }
+
+    /// Persistent record of prompts the user has dismissed (e.g.
+    /// onboarding hints, install offers). Content-agnostic: callers
+    /// pass opaque keys, the registry just tracks dismissed/active.
+    /// Lives under `data_dir` (not `cache_dir`) because losing it
+    /// would re-prompt the user — preference state, not cache.
+    fn prompts_path(&self) -> PathBuf {
+        self.data_dir().join("prompts.json")
+    }
 }
 
 /// XDG-compliant path resolver.

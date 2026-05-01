@@ -143,6 +143,12 @@ pub const TEMPLATE_MESSAGE: &str = include_str!("../templates/message.jinja");
 /// `kind` field of the serialized result.
 pub const TEMPLATE_PROBE: &str = include_str!("../templates/probe.jinja");
 
+/// Git filter installation snippets (`dodot git-show-filters`).
+pub const TEMPLATE_GIT_FILTERS: &str = include_str!("../templates/git-filters.jinja");
+
+/// Dismissed-prompt registry listing (`dodot prompts list`).
+pub const TEMPLATE_PROMPTS_LIST: &str = include_str!("../templates/prompts-list.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders
@@ -228,6 +234,12 @@ pub fn create_renderer() -> Renderer {
     renderer.add_template("message", TEMPLATE_MESSAGE).unwrap();
     renderer.add_template("probe", TEMPLATE_PROBE).unwrap();
     renderer
+        .add_template("git-filters", TEMPLATE_GIT_FILTERS)
+        .unwrap();
+    renderer
+        .add_template("prompts-list", TEMPLATE_PROMPTS_LIST)
+        .unwrap();
+    renderer
 }
 
 /// Render a template with the given data and output mode.
@@ -250,6 +262,8 @@ pub fn render<T: serde::Serialize>(
         "list" => TEMPLATE_LIST,
         "message" => TEMPLATE_MESSAGE,
         "probe" => TEMPLATE_PROBE,
+        "git-filters" => TEMPLATE_GIT_FILTERS,
+        "prompts-list" => TEMPLATE_PROMPTS_LIST,
         other => {
             return Err(crate::DodotError::Other(format!(
                 "unknown template: {other}"

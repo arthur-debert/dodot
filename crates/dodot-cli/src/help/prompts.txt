@@ -1,0 +1,33 @@
+[header]dodot prompts[/header] — Inspect and reset dismissed-prompt state.
+
+[desc]dodot occasionally surfaces one-time prompts — onboarding hints, install
+offers, configuration nudges. The registry tracks which prompts the user
+has dismissed (or implicitly satisfied), so the same nudge does not
+fire repeatedly.
+
+This subcommand lists the registry and lets you clear dismissals so a
+prompt fires again next time its condition is met.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot prompts list[/usage]
+  [usage]dodot prompts reset <key>[/usage]
+  [usage]dodot prompts reset --all[/usage]
+
+[header]LIST[/header]
+  [desc]Shows every known prompt with its current state ([item]active[/item] or
+  [item]dismissed[/item]) and a one-line description. Stale dismissals from older
+  dodot versions appear too, so you can clear them.[/desc]
+
+[header]RESET[/header]
+  [desc]A reset clears the dismissal so the prompt's caller will re-evaluate
+  next time. It does NOT trigger the prompt itself — only flags it for
+  re-evaluation. Pass a specific key, or [item]--all[/item] to clear every dismissal.[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot prompts list                              [dim]# what's active / dismissed[/dim]
+  dodot prompts reset plist.install_filters       [dim]# unhide one prompt[/dim]
+  dodot prompts reset --all                       [dim]# clear them all[/dim][/example]
+
+[header]REGISTRY LOCATION[/header]
+  [desc][item]<XDG_DATA_HOME>/dodot/prompts.json[/item] (defaults to [item]~/.local/share/dodot/[/item]).
+  Removing the file resets every dismissal — equivalent to [item]reset --all[/item].[/desc]
