@@ -358,6 +358,157 @@ pub fn init_sh_passthrough() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+// ── Prompts (registry CLI surface) ─────────────────────────────
+
+pub fn prompts_list_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::prompts::PromptsListResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let result = commands::prompts::list(&ctx)?;
+    Ok(Output::Render(result))
+}
+
+pub fn prompts_reset_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::MessageResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let key = matches.get_one::<String>("key").map(String::as_str);
+    let all = matches.get_flag("all");
+    if all && key.is_some() {
+        return Err(anyhow::anyhow!(
+            "`dodot prompts reset` accepts a key or --all, not both"
+        ));
+    }
+    if !all && key.is_none() {
+        return Err(anyhow::anyhow!(
+            "`dodot prompts reset` requires either a key or --all"
+        ));
+    }
+    let result = commands::prompts::reset(key, &ctx)?;
+    Ok(Output::Render(result))
+}
+
+// ── Git filters ─────────────────────────────────────────────────
+
+pub fn git_install_filters_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::MessageResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let result = commands::git_filters::install_filters(&ctx)?;
+    Ok(Output::Render(result))
+}
+
+pub fn git_show_filters_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::git_filters::ShowFiltersResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let result = commands::git_filters::show_filters(&ctx)?;
+    Ok(Output::Render(result))
+}
+
+/// Post-`up` hook that offers to install plist filters when:
+///
+/// 1. stdin is a TTY (we're interactive, not in CI/script),
+/// 2. at least one pack contains a `*.plist` file,
+/// 3. the dodot-plist filter is NOT yet registered in `.git/config`,
+/// 4. the user has NOT previously dismissed the prompt.
+///
+/// All four must hold; otherwise the function returns silently. Errors
+/// in any check (e.g. registry corrupt, git missing) are logged to
+/// stderr but never abort `up` — this is a nudge, not a critical step.
+pub fn maybe_prompt_install_filters() {
+    if let Err(e) = try_prompt_install_filters() {
+        // Soft failure: log and move on.
+        tracing::debug!("plist install-filters prompt skipped: {e}");
+    }
+}
+
+fn try_prompt_install_filters() -> Result<(), anyhow::Error> {
+    use dodot_lib::prompts::PromptRegistry;
+
+    if !crate::interactive::stdin_is_tty() {
+        return Ok(());
+    }
+
+    let dotfiles_root = discover_dotfiles_root()?;
+    let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
+
+    let plist_files = commands::git_filters::detect_plist_files(&ctx)?;
+    if plist_files.is_empty() {
+        return Ok(());
+    }
+    if commands::git_filters::is_installed(&ctx)? {
+        return Ok(());
+    }
+
+    let registry_path = ctx.paths.prompts_path();
+    let mut registry = PromptRegistry::load(ctx.fs.as_ref(), registry_path)?;
+    let prompt_key = "plist.install_filters";
+    if registry.is_dismissed(prompt_key) {
+        return Ok(());
+    }
+
+    // Pick a representative pack name for the prompt body — first
+    // file's parent (under dotfiles_root) gives us "<pack>".
+    let example_pack = plist_files
+        .first()
+        .and_then(|p| p.strip_prefix(ctx.paths.dotfiles_root()).ok())
+        .and_then(|rel| rel.components().next())
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .unwrap_or_else(|| "(unknown)".into());
+
+    let count = plist_files.len();
+    let header = format!("dodot detected {count} .plist file(s) in pack `{example_pack}`.");
+    let response = crate::interactive::prompt_yes_no_show(&[
+        &header,
+        "Plist support uses git clean/smudge filters to keep the source diffable.",
+        "Install filters now? Run `dodot git-show-filters` to inspect first.",
+    ])?;
+
+    match response {
+        crate::interactive::YesNoShow::Yes => {
+            let r = commands::git_filters::install_filters(&ctx)?;
+            eprintln!("{}", r.message);
+            for d in &r.details {
+                eprintln!("  {d}");
+            }
+            registry.dismiss(prompt_key);
+            registry.save(ctx.fs.as_ref())?;
+        }
+        crate::interactive::YesNoShow::Show => {
+            eprintln!();
+            eprintln!("Add to .git/config (per clone, per machine):");
+            eprintln!();
+            for line in commands::git_filters::config_block_text().lines() {
+                eprintln!("    {line}");
+            }
+            eprintln!();
+            eprintln!("Add to .gitattributes (committed in the repo):");
+            eprintln!("    {}", commands::git_filters::gitattributes_line());
+            eprintln!();
+            eprintln!(
+                "Run `dodot git-install-filters` to install, or `dodot prompts reset {prompt_key}` to skip and ask later."
+            );
+            // Don't dismiss — show is informational, the user hasn't
+            // committed to either install or skip.
+        }
+        crate::interactive::YesNoShow::No => {
+            // Don't dismiss — re-prompt next up. If the user wants to
+            // permanently silence it, they can run
+            // `dodot prompts reset <key>` later (well, the inverse —
+            // to dismiss it themselves we'd need a `dismiss` CLI verb).
+            //
+            // For now, "no" means "not now"; a future ergonomics pass
+            // can offer "no, and never ask again".
+        }
+    }
+    Ok(())
+}
+
 /// `dodot plist clean` — read any plist on stdin, write canonical XML on stdout.
 ///
 /// Used as a git clean filter: `git add` invokes this on the working-tree

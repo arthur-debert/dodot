@@ -6,6 +6,7 @@ use dodot_lib::render;
 
 mod handlers;
 mod help;
+mod interactive;
 mod logging;
 mod tutorial;
 
@@ -118,10 +119,21 @@ fn main() {
         return;
     }
 
-    // All other commands go through standout dispatch
+    // All other commands go through standout dispatch.
+    // Capture the matched subcommand name now so the post-dispatch hook
+    // (which runs after standout consumed `matches`) can know what ran.
+    let subcommand = matches.subcommand_name().map(str::to_string);
     let output_mode = app.extract_output_mode(&matches);
     match app.dispatch(matches, output_mode) {
-        standout::cli::RunResult::Handled(output) => println!("{output}"),
+        standout::cli::RunResult::Handled(output) => {
+            println!("{output}");
+            // Post-up nudge: if the user just deployed packs containing
+            // .plist files and hasn't installed the dodot-plist filter,
+            // offer to install it. Soft failure — never aborts up.
+            if subcommand.as_deref() == Some("up") {
+                handlers::maybe_prompt_install_filters();
+            }
+        }
         standout::cli::RunResult::Silent => {}
         standout::cli::RunResult::NoMatch(_) => {
             // No subcommand given — show help
@@ -167,6 +179,8 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
     ("list.jinja", render::TEMPLATE_LIST),
     ("message.jinja", render::TEMPLATE_MESSAGE),
     ("probe.jinja", render::TEMPLATE_PROBE),
+    ("git-filters.jinja", render::TEMPLATE_GIT_FILTERS),
+    ("prompts-list.jinja", render::TEMPLATE_PROMPTS_LIST),
 ];
 
 fn build_app() -> App {
@@ -213,6 +227,26 @@ fn build_app() -> App {
         .expect("register probe.shell-init")
         .command("probe.app", handlers::probe_app_handler, "probe")
         .expect("register probe.app")
+        .command(
+            "git-install-filters",
+            handlers::git_install_filters_handler,
+            "message",
+        )
+        .expect("register git-install-filters")
+        .command(
+            "git-show-filters",
+            handlers::git_show_filters_handler,
+            "git-filters",
+        )
+        .expect("register git-show-filters")
+        .command(
+            "prompts.list",
+            handlers::prompts_list_handler,
+            "prompts-list",
+        )
+        .expect("register prompts.list")
+        .command("prompts.reset", handlers::prompts_reset_handler, "message")
+        .expect("register prompts.reset")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -240,12 +274,21 @@ fn build_app() -> App {
                 commands: vec![Some("probe".into())],
             },
             CommandGroup {
+                title: "Plist filters".into(),
+                help: None,
+                commands: vec![
+                    Some("git-install-filters".into()),
+                    Some("git-show-filters".into()),
+                    Some("plist".into()),
+                ],
+            },
+            CommandGroup {
                 title: "Misc".into(),
                 help: None,
                 commands: vec![
                     Some("tutorial".into()),
                     Some("init-sh".into()),
-                    Some("plist".into()),
+                    Some("prompts".into()),
                     Some("config".into()),
                     Some("help".into()),
                 ],
@@ -440,6 +483,39 @@ fn build_clap_command() -> ClapCommand {
                 .subcommand(
                     ClapCommand::new("smudge")
                         .about("Convert XML plist on stdin to binary plist on stdout"),
+                ),
+        )
+        .subcommand(
+            ClapCommand::new("git-install-filters")
+                .about("Install plist clean/smudge filters into the dotfiles repo's .git/config"),
+        )
+        .subcommand(
+            ClapCommand::new("git-show-filters")
+                .about("Print the .git/config + .gitattributes snippets for plist filters"),
+        )
+        .subcommand(
+            ClapCommand::new("prompts")
+                .about("Inspect and reset dismissed-prompt state")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("list")
+                        .about("Show every known prompt with its dismissed/active state"),
+                )
+                .subcommand(
+                    ClapCommand::new("reset")
+                        .about("Clear a dismissed prompt so it fires again next time")
+                        .arg(
+                            Arg::new("key")
+                                .help("Prompt key to reset (omit when using --all)")
+                                .num_args(0..=1),
+                        )
+                        .arg(
+                            Arg::new("all")
+                                .long("all")
+                                .help("Reset every dismissed prompt")
+                                .action(ArgAction::SetTrue),
+                        ),
                 ),
         )
         .subcommand(

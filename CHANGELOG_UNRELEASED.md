@@ -10,6 +10,33 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
+- **`dodot git-install-filters` / `dodot git-show-filters`.** P2 of the
+  plist clean/smudge track. `git-install-filters` writes the
+  `[filter "dodot-plist"]` block to the dotfiles repo's `.git/config`
+  so `git status` / `git diff` / `git add` invoke `dodot plist clean`
+  and `smudge` automatically on tracked `*.plist` files. Idempotent;
+  per-clone, per-machine. `git-show-filters` prints the same snippet
+  (plus the `.gitattributes` line) without writing, for inspection or
+  manual install.
+- **Up-time filter-install prompt.** On the first `dodot up` of a pack
+  containing `*.plist` files, dodot now offers to install the filters
+  if they are not already registered. Three responses: `Y` installs
+  and dismisses the prompt; `n` skips (asks again next time); `show`
+  prints the config snippets without committing. The prompt fires
+  only on a TTY — CI runs and scripted invocations are unaffected.
+- **Generic prompt registry — `dodot prompts list/reset`.** A new
+  content-agnostic registry tracks "have I shown the user X yet?"
+  state (currently powering the plist filter-install prompt; future
+  callers slot in by picking a key). Persisted at
+  `<XDG_DATA_HOME>/dodot/prompts.json`. New CLI verbs:
+    - `dodot prompts list` — show every known prompt with its
+      dismissed/active state and a one-line description.
+    - `dodot prompts reset <key>` — clear one dismissal so the
+      prompt fires again next time.
+    - `dodot prompts reset --all` — clear every dismissal.
+  Unknown keys lurking from older dodot versions appear in `list` so
+  they can be reset.
+
 - **`dodot plist clean` / `dodot plist smudge` subcommands.** A pair
   of stdin→stdout filters that translate macOS plists between binary
   (what apps read at `~/Library/Preferences/...`) and canonical XML

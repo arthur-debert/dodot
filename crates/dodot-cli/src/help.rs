@@ -38,6 +38,15 @@ const HELP_TEXTS: &[(&str, &str)] = &[
     ("tutorial", include_str!("help/tutorial.txt")),
     ("init-sh", include_str!("help/init-sh.txt")),
     ("plist", include_str!("help/plist.txt")),
+    (
+        "git-install-filters",
+        include_str!("help/git-install-filters.txt"),
+    ),
+    (
+        "git-show-filters",
+        include_str!("help/git-show-filters.txt"),
+    ),
+    ("prompts", include_str!("help/prompts.txt")),
     ("config", include_str!("help/config.txt")),
     (
         "probe.deployment-map",

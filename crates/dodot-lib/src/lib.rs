@@ -13,6 +13,7 @@ pub mod paths;
 pub mod plists;
 pub mod preprocessing;
 pub mod probe;
+pub mod prompts;
 pub mod render;
 pub mod rules;
 pub mod shell;

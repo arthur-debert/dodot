@@ -1,0 +1,30 @@
+[header]dodot git-install-filters[/header] — Install plist clean/smudge filters.
+
+[desc]Writes the [item][filter "dodot-plist"][/item] block to the dotfiles repo's
+[item].git/config[/item], so future [item]git status[/item] / [item]git diff[/item] / [item]git add[/item] invocations
+on tracked [item]*.plist[/item] files run through [item]dodot plist clean[/item] (binary →
+canonical XML) and [item]dodot plist smudge[/item] (XML → binary).
+
+This is per-clone, per-machine state — [item].git/config[/item] is not carried by
+the repo. Run once per machine after cloning.
+
+After this, ensure your [item].gitattributes[/item] (which IS committed) binds
+[item]*.plist[/item] to the filter:
+
+    [example]echo '*.plist filter=dodot-plist' >> .gitattributes
+    git add .gitattributes && git commit -m 'enable plist filters'[/example]
+
+[item]dodot up[/item] will offer this command interactively the first time it
+spots a [item]*.plist[/item] file in a pack and finds the filter unregistered.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot git-install-filters[/usage]
+
+[header]EXAMPLES[/header]
+  [example]dodot git-install-filters       [dim]# install once per clone[/dim]
+  dodot git-show-filters         [dim]# inspect or install by hand[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot git-show-filters[/item]   [desc]Print the config without writing[/desc]
+  [item]dodot plist[/item]               [desc]The filter binary that git invokes[/desc]
+  [item]docs/proposals/plists.lex[/item] [desc]Architecture and rationale[/desc]

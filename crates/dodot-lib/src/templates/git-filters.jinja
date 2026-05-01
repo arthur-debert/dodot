@@ -1,0 +1,13 @@
+[header]Plist git-filter configuration[/header]
+
+[desc]Add to [item].git/config[/item] (per clone, per machine{% if installed_in_git_config %} — [item]already installed[/item]{% endif %}):[/desc]
+
+{% for line in config_block_lines %}    {{ line }}
+{% endfor %}
+[desc]Add to [item].gitattributes[/item] (committed in the repo{% if bound_in_gitattributes %} — [item]already present[/item]{% endif %}):[/desc]
+
+    {{ gitattributes_line }}
+
+[desc]Repo: [item]{{ repo_root }}[/item]
+
+Run [example]dodot git-install-filters[/example] to install the .git/config block automatically.[/desc]
