@@ -131,35 +131,33 @@ pub fn is_installed(ctx: &ExecutionContext) -> Result<bool> {
     filter_is_installed(runner, root)
 }
 
-/// Scan every pack under the dotfiles root and return the relative
-/// paths of any `*.plist` files. Used by `dodot up` to decide whether
-/// the user should be offered the filter-install prompt.
+/// Scan every active pack under the dotfiles root and return the
+/// absolute paths of any `*.plist` files within. Used by `dodot up`
+/// to decide whether the user should be offered the filter-install
+/// prompt.
 ///
-/// Detection is "any `*.plist` in any pack directory", not "tracked by
+/// Pack selection goes through [`packs::discover_packs`] so it honours
+/// the same conventions every other command does: `pack.ignore`
+/// patterns from config, `.dodotignore` markers, valid pack-name
+/// rules, and the `.config` exception. Pack-internal walking ignores
+/// nested dot-directories (`.git`, etc.) so we don't recurse into
+/// vendored repos that happen to live inside a pack.
+///
+/// Detection is "any `*.plist` in any active pack", not "tracked by
 /// git". The looser check is intentional: an untracked plist in a pack
-/// is almost certainly headed for a commit, and a false-positive prompt
-/// is harmless. A tighter check would require shelling out to
-/// `git ls-files` on every up.
+/// is almost certainly headed for a commit, and a false-positive
+/// prompt is harmless. A stricter check would require shelling out to
+/// `git ls-files` on every `up`.
 pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathBuf>> {
     let mut found = Vec::new();
     let root = ctx.paths.dotfiles_root();
     if !ctx.fs.is_dir(root) {
         return Ok(found);
     }
-    for entry in ctx.fs.read_dir(root)? {
-        if !entry.is_dir {
-            continue;
-        }
-        // Skip hidden / dotfile-tooling directories.
-        let name = entry
-            .path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        if name.starts_with('.') {
-            continue;
-        }
-        scan_for_plists(ctx.fs.as_ref(), &entry.path, &mut found)?;
+    let root_config = ctx.config_manager.root_config()?;
+    let packs = crate::packs::discover_packs(ctx.fs.as_ref(), root, &root_config.pack.ignore)?;
+    for pack in packs {
+        scan_for_plists(ctx.fs.as_ref(), &pack.path, &mut found)?;
     }
     Ok(found)
 }
@@ -300,23 +298,7 @@ mod tests {
         assert!(block.contains("required = true"));
     }
 
-    #[test]
-    fn detect_plist_files_finds_plists_in_packs() {
-        use crate::testing::TempEnvironment;
-        let env = TempEnvironment::builder()
-            .pack("mac-defaults")
-            .file("com.app.plist", "binary-or-xml")
-            .file("README.md", "no plist")
-            .done()
-            .pack("nvim")
-            .file("init.lua", "no plist")
-            .done()
-            .pack("system-prefs")
-            .file("nested/com.other.plist", "deeper")
-            .done()
-            .build();
-
-        // Build the same minimal context used elsewhere in tests.
+    fn make_test_ctx(env: &crate::testing::TempEnvironment) -> ExecutionContext {
         use crate::config::ConfigManager;
         use crate::datastore::{CommandOutput, CommandRunner, FilesystemDataStore};
         use crate::fs::Fs;
@@ -340,7 +322,7 @@ mod tests {
             runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
-        let ctx = ExecutionContext {
+        ExecutionContext {
             fs: env.fs.clone() as Arc<dyn Fs>,
             datastore,
             paths: env.paths.clone() as Arc<dyn Pather>,
@@ -354,8 +336,26 @@ mod tests {
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
-        };
+        }
+    }
 
+    #[test]
+    fn detect_plist_files_finds_plists_in_packs() {
+        use crate::testing::TempEnvironment;
+        let env = TempEnvironment::builder()
+            .pack("mac-defaults")
+            .file("com.app.plist", "binary-or-xml")
+            .file("README.md", "no plist")
+            .done()
+            .pack("nvim")
+            .file("init.lua", "no plist")
+            .done()
+            .pack("system-prefs")
+            .file("nested/com.other.plist", "deeper")
+            .done()
+            .build();
+
+        let ctx = make_test_ctx(&env);
         let found = detect_plist_files(&ctx).expect("detect");
         assert_eq!(found.len(), 2, "expected 2 plists, got: {found:?}");
         let names: Vec<String> = found
@@ -364,6 +364,35 @@ mod tests {
             .collect();
         assert!(names.contains(&"com.app.plist".to_string()));
         assert!(names.contains(&"com.other.plist".to_string()));
+    }
+
+    #[test]
+    fn detect_plist_files_skips_dodotignored_packs() {
+        use crate::testing::TempEnvironment;
+        let env = TempEnvironment::builder()
+            .pack("active")
+            .file("a.plist", "in active")
+            .done()
+            .pack("muted")
+            .file("b.plist", "in muted")
+            .ignored()
+            .done()
+            .build();
+
+        let ctx = make_test_ctx(&env);
+        let found = detect_plist_files(&ctx).expect("detect");
+        let names: Vec<String> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            names.contains(&"a.plist".to_string()),
+            "active pack's plist should be found"
+        );
+        assert!(
+            !names.contains(&"b.plist".to_string()),
+            ".dodotignore'd pack's plist should be excluded, got: {names:?}"
+        );
     }
 
     #[test]

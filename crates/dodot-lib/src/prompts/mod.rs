@@ -142,13 +142,23 @@ impl PromptRegistry {
     }
 
     /// Snapshot of dismissed prompts, sorted by key. Suitable for
-    /// rendering by `dodot prompts list`.
+    /// rendering by `dodot prompts list`. Allocates; if you only need
+    /// per-key lookups, prefer [`dismissed_at`](Self::dismissed_at).
     pub fn dismissed(&self) -> Vec<(&str, &PromptRecord)> {
         self.file
             .prompts
             .iter()
             .map(|(k, v)| (k.as_str(), v))
             .collect()
+    }
+
+    /// O(log n) lookup of a single prompt's dismissal timestamp.
+    /// Returns `None` if the prompt is currently active. Pair with
+    /// [`is_dismissed`](Self::is_dismissed) when you only need the
+    /// boolean — this returns the timestamp too for UIs that show
+    /// "dismissed at …".
+    pub fn dismissed_at(&self, key: &str) -> Option<u64> {
+        self.file.prompts.get(key).map(|r| r.dismissed_at)
     }
 }
 

@@ -418,11 +418,13 @@ pub fn git_show_filters_handler(
 /// 4. the user has NOT previously dismissed the prompt.
 ///
 /// All four must hold; otherwise the function returns silently. Errors
-/// in any check (e.g. registry corrupt, git missing) are logged to
-/// stderr but never abort `up` — this is a nudge, not a critical step.
+/// in any check (e.g. registry corrupt, git missing) go to the dodot
+/// log at debug level — visible with `--debug` or in the log file,
+/// but silent at default verbosity. This is a nudge, not a critical
+/// step, and a noisy stderr line every `up` would be worse UX than
+/// silently skipping the offer.
 pub fn maybe_prompt_install_filters() {
     if let Err(e) = try_prompt_install_filters() {
-        // Soft failure: log and move on.
         tracing::debug!("plist install-filters prompt skipped: {e}");
     }
 }

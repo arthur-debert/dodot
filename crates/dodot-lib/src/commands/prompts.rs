@@ -46,11 +46,7 @@ pub fn list(ctx: &ExecutionContext) -> Result<PromptsListResult> {
     let mut rows: Vec<PromptRow> = catalog::KNOWN_PROMPTS
         .iter()
         .map(|d| {
-            let dismissed_at = registry
-                .dismissed()
-                .into_iter()
-                .find(|(k, _)| *k == d.key)
-                .map(|(_, r)| r.dismissed_at);
+            let dismissed_at = registry.dismissed_at(d.key);
             PromptRow {
                 key: d.key.to_string(),
                 description: d.description.to_string(),
@@ -66,7 +62,7 @@ pub fn list(ctx: &ExecutionContext) -> Result<PromptsListResult> {
 
     // Surface any unknown keys lurking in the registry so they can be
     // reset. Catalog absence is not an error — older dodot versions
-    // may have written them.
+    // may have written them. One pass over the dismissed map; cheap.
     for (key, record) in registry.dismissed() {
         if catalog::lookup(key).is_none() {
             rows.push(PromptRow {
