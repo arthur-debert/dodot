@@ -467,10 +467,13 @@ fn resolve_library_relative(rel: &Path, is_dir: bool) -> Result<InferredTarget, 
         in_pack_natural: in_pack.clone(),
         in_pack_override: in_pack,
         source_root: SourceRoot::Library,
-        // Don't expand directory contents — `_lib/Preferences/` as a
-        // whole-subtree adoption is fine, and individual children would
-        // each get an independent `_lib/Preferences/<file>` plan from
-        // the caller's per-arg invocation if that's what the user wants.
+        // Expand top-level `~/Library/<subdir>/` directories (e.g.
+        // `~/Library/LaunchAgents/`) so each child becomes its own
+        // `_lib/<subdir>/<child>` plan instead of adopting the
+        // directory itself as one big symlinked subtree. Deeper
+        // nested directories (e.g. `~/Library/Foo/Bar/`) stay as a
+        // single adoption unit — the user opted into the deeper
+        // path, so we don't second-guess them.
         expand_children: is_dir
             && rel
                 .components()
