@@ -43,7 +43,7 @@ Preprocessors
 
         Source of truth: whichever form the tooling modifies. For plists, the app writes the binary continuously, so the binary is authoritative at any given moment; the XML is the git-friendly mirror.
 
-        Divergence: handled automatically. When the deployed file changes, `dodot transform check` reverse-converts it and writes the result back to the source file. No heuristics needed, no user-facing conflicts — the math is on our side.
+        Divergence: handled automatically. The exact mechanism depends on the preprocessor — for plists, it's git's own clean/smudge filter machinery (see [./plists.lex]); for any future Representational preprocessor running through the pipeline, it would be a `dodot transform check` pass that reverse-converts and writes back. Either way, no heuristics are needed and no user-facing conflicts arise — the math is on our side.
 
     3.3. Opaque (write-only)
 
@@ -74,9 +74,10 @@ Preprocessors
 
 6. What's Implemented, What's Planned
 
-    - Template preprocessing is implemented. Write `config.toml.tmpl`, it renders on `dodot up`, downstream handlers deploy the output. See [./../user/templates.lex].
-    - Plist support, secret injection, and whole-file encryption are designed in [./../proposals] but not yet shipped. Each is a concrete preprocessor implementing the shapes described above.
-    - The git-integration layer (pre-commit hook, clean/smudge filters, reverse-merge) is designed in [./../proposals/magic.lex] and will ship alongside the remaining preprocessors.
+    - **Template preprocessing is implemented.** Write `config.toml.tmpl`, it renders on `dodot up` via MiniJinja, downstream handlers deploy the output. See [./../user/templates.lex] for usage. The preprocessing pipeline itself (the phase that turns source files into rendered outputs and feeds them into handlers) is shipped — templates are its first user.
+    - **Plist support is also implemented**, but does NOT go through this preprocessing pipeline. It ships as a pair of git clean/smudge filters that translate macOS `*.plist` files between binary (working tree) and canonical XML (git index) on the fly. The architectural reasoning — why plists ducked out of the pipeline despite being a textbook Representational transform — is in [./../proposals/plists.lex] §2.3, and the user-facing reference is at [./plists.lex]. Shipped: `dodot plist clean/smudge` (the conversion engine), `dodot git-install-filters/show-filters` (the per-clone setup), `dodot prompts list/reset` (a generic dismissed-prompt registry that powers the up-time install offer).
+    - **The git-integration layer for templates is NOT yet shipped.** What's planned: `dodot refresh` to copy deployed-side mtimes onto sources so git re-runs filters; a baseline cache `(rendered_hash, source_hash, context_hash, rendered_content, tracked_render)` for cheap divergence detection without re-rendering; a clean filter that uses the cache as a fast path before falling back to burgertocow's reverse-merge; conflict markers for ambiguous lines that touch template expressions. The design is in [./../proposals/magic.lex] (Phases 1, 3, 4); Phase 2 (plist clean/smudge) has already shipped on its own track.
+    - Secret injection and whole-file encryption preprocessors are designed in [./../proposals] (`secrets.lex`) but not yet shipped.
 
 7. Where Rendered Output Lives
 

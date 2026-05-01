@@ -103,6 +103,24 @@ dodot uses a double-symlink architecture (`~/.config/nvim/init.lua → datastore
 
 All conventions can be overridden via `.dodot.toml` in the pack or the dotfiles root.
 
+## macOS Plists
+
+dodot brings macOS GUI app preferences (binary `*.plist` files at `~/Library/Preferences/...` and `~/Library/Application Support/<App>/...`) under the same review/diff/cherry-pick workflow as plain-text dotfiles, by translating them through git clean/smudge filters:
+
+- The file in your pack is the binary the app reads.
+- What git stores is canonical, alphabetically-sorted XML.
+- `git status` and `git diff` show settings changes the way they show every other dotfile change.
+
+Setup is a one-liner per machine plus a single `.gitattributes` line in the repo:
+
+```sh
+$ dodot git-install-filters
+$ echo '*.plist filter=dodot-plist' >> .gitattributes
+$ git add .gitattributes && git commit -m 'enable plist filters'
+```
+
+Adopt existing settings with `dodot adopt --into <pack> ~/Library/Preferences/com.app.plist`. The full reference is at `docs/reference/plists.lex`. macOS-only at deploy time; the CLI surface (`dodot plist clean/smudge`) is platform-agnostic.
+
 ## Commands
 
 | Command      | Description                                      |
@@ -117,6 +135,10 @@ All conventions can be overridden via `.dodot.toml` in the pack or the dotfiles 
 | `addignore`  | Mark a pack as ignored                           |
 | `init-sh`    | Print shell init script for `eval`               |
 | `config`     | Inspect and modify configuration                 |
+| `plist`      | clean/smudge filters for macOS plists (stdin→stdout) |
+| `git-install-filters` | Wire plist filters into the repo's `.git/config`  |
+| `git-show-filters`    | Print plist filter config snippets without writing |
+| `prompts`    | Inspect/reset dismissed one-time prompts         |
 
 All commands accept pack names as arguments (`dodot up git nvim`) or operate on all packs when run without arguments.
 
