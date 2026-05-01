@@ -1,5 +1,8 @@
 Design Specification: macOS Plist Support
 
+    :: note ::
+        **Status: implemented and shipped.** Phases P1–P4 landed in PRs #95, #96, and #97. The user-facing reference for the resulting feature lives in [./../reference/plists.lex] (filter setup, adopt flow, day-to-day workflow) and [./../reference/pre-processors.lex] §3 (Representational transform shape). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom of this document for the deviations that were accepted during implementation.
+
     This document specifies how dodot manages macOS property list (plist) files. Plist support is implemented as a pair of git clean/smudge filters — the architecture sketched as Phase 2 of the Magical Git Experience [./magic.lex]. It is *not* a preprocessor in the sense of [./preprocessing-pipeline.lex], and intentionally so: the trade-offs that make the pipeline-and-pre-commit-hook approach right for templates make it the wrong shape for plists. The reasoning is in §2.
 
     Plists are where macOS GUI applications store their preferences. Bringing them under dodot's control means a dotfiles repo can carry not just shell and config-file state but also GUI-app state — Finder settings, Terminal profile, Xcode preferences, per-app panes — and still deliver the review/diff/cherry-pick/revert workflow users expect from plain-text dotfiles.
@@ -355,3 +358,27 @@ Design Specification: macOS Plist Support
     11.4. Plist Subset of `_lib/Preferences/`
 
         [./macos-paths.lex] §11.3 notes that `_lib/Preferences/<bundle-id>.plist` is a syntactically valid path and that this proposal covers the format-management half. The two compose: the `_lib/` prefix routes the file to `~/Library/Preferences/`; the clean/smudge filter handles the binary↔XML translation. No further coordination is required.
+
+12. Implementation Notes vs. Spec
+
+    The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth:
+
+    12.1. P2 `.gitattributes` Template via `dodot init`
+
+        Spec §10 P2 calls for *".gitattributes template emitted by `dodot init` (or merged into existing `.gitattributes`)"*. Not implemented. `dodot git-install-filters` prints the line as a hint instead, and the user adds it to `.gitattributes` once. Deferred until init grows other dotfiles-repo-bootstrap concerns; tracked as future polish.
+
+    12.2. P3 `dodot adopt` In-Pack Encoding
+
+        Spec §7.1 (the original) suggested moving the binary to `<pack>/com.app.plist` (top of pack) and relying on per-file `[symlink.targets]` to route back to `~/Library/Preferences/`. The shipped implementation uses `<pack>/_lib/Preferences/com.app.plist` instead, which round-trips automatically via the existing Priority 2d `_lib/` resolver — no per-file config needed. The proposal text in §7 was updated to reflect this; the spec sketch above is preserved as-is for historical context.
+
+    12.3. P3 Source-Root Generality
+
+        The spec frames adopt as plist-specific. The implementation generalises: any `~/Library/<sub>/<file>` source on macOS lands at `<pack>/_lib/<sub>/<file>` — covering `Preferences/`, `LaunchAgents/`, `Fonts/`, `Services/`, etc. This is a strict superset of the plist case and falls out of using the existing `SourceRoot` inference framework. `--into <pack>` is required because the bundle-ID-style filenames (`com.colliderli.iina.plist`) don't infer a useful pack name.
+
+    12.4. P4 `dodot probe app` Integration
+
+        Spec §10 P4 calls for *"`dodot probe app` integration: when probing a pack, surface plist-related cask/preferences associations"*. Already shipped as part of the macOS-paths M6 work (PR #91/#92) — `probe app` reads cask `zap` data and surfaces preferences plists as sibling-adoption suggestions. No additional plist-specific work was needed.
+
+    12.5. P4 Missing-`dodot`-on-PATH Detection
+
+        Spec §10 P4 calls for *"Error messages for missing `dodot` on PATH at filter-invocation time"*. dodot itself can't reliably detect what `$PATH` git will see (especially in GUI git clients with reduced environments), so detection is left to git's own loud failure (the `required = true` setting promotes it to a hard error). The shipped polish is documentation in `dodot git-install-filters --help` covering the failure mode and the absolute-path workaround.
