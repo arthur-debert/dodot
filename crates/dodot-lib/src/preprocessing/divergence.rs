@@ -25,11 +25,10 @@
 use std::path::PathBuf;
 
 use serde::Serialize;
-use sha2::{Digest, Sha256};
 
 use crate::fs::Fs;
 use crate::paths::Pather;
-use crate::preprocessing::baseline::Baseline;
+use crate::preprocessing::baseline::{hex_sha256, Baseline};
 use crate::Result;
 
 /// Where a single processed file sits in the 4-state matrix.
@@ -217,26 +216,6 @@ pub fn collect_divergences(fs: &dyn Fs, paths: &dyn Pather) -> Result<Vec<Diverg
         .map(|(p, h, f, b)| classify_one(fs, paths, p, h, f, b))
         .collect();
     Ok(reports)
-}
-
-fn hex_sha256(bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(bytes);
-    let digest: [u8; 32] = hasher.finalize().into();
-    let mut out = String::with_capacity(64);
-    for b in digest {
-        out.push(hex_nibble(b >> 4));
-        out.push(hex_nibble(b & 0x0f));
-    }
-    out
-}
-
-fn hex_nibble(n: u8) -> char {
-    match n {
-        0..=9 => (b'0' + n) as char,
-        10..=15 => (b'a' + n - 10) as char,
-        _ => unreachable!(),
-    }
 }
 
 #[cfg(test)]

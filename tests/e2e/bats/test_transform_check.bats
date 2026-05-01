@@ -146,6 +146,7 @@ EOF
     # InputChanged is not a finding, so exit 0; but the source did
     # change so the next `up` will re-render. The strict-mode test
     # below is the one that should fail.
+    [ "$status" -eq 0 ]
     assert_output_contains "input changed"
 
     # Strict mode: marker scan trips, exit 1.

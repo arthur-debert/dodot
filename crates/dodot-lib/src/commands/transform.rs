@@ -95,9 +95,11 @@ pub struct TransformCheckResult {
     /// Populated only when `strict = true` and at least one source
     /// carries unresolved dodot-conflict markers.
     pub unresolved_markers: Vec<UnresolvedMarkerEntry>,
-    /// True iff at least one entry has an actionable state (Patched,
-    /// Conflict, MissingDeployed) or `--strict` found unresolved
-    /// markers. CLI uses this to decide the process exit code.
+    /// True iff at least one entry has a non-clean state that should
+    /// make the command exit non-zero (Patched, Conflict,
+    /// NeedsRebaseline, MissingSource, MissingDeployed) or `--strict`
+    /// found unresolved markers. CLI uses this to decide the process
+    /// exit code.
     pub has_findings: bool,
     pub strict: bool,
 }
@@ -141,24 +143,44 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                 TransformAction::MissingDeployed
             }
             DivergenceState::OutputChanged | DivergenceState::BothChanged => {
-                // Run the reverse-merge engine. Unchanged → variable-
-                // only edit, no action. Patched → write back to source.
-                // Conflict → report the block, leave source alone.
-                let template_src = ctx.fs.read_to_string(&report.source_path)?;
-                let deployed = ctx.fs.read_to_string(&report.deployed_path)?;
-                match reverse_merge(&template_src, &baseline.tracked_render, &deployed)? {
-                    ReverseMergeOutcome::Unchanged => TransformAction::Synced,
-                    ReverseMergeOutcome::Patched(patched) => {
-                        if !ctx.dry_run {
-                            ctx.fs.write_file(&report.source_path, patched.as_bytes())?;
+                // Forward-compat short-circuit: a baseline written
+                // before the tracked-render field existed (or by a
+                // future preprocessor that opts into reverse-merge
+                // without producing a marker stream) has nothing for
+                // burgertocow to chew on. Surface as NeedsRebaseline
+                // — a finding in its own right — rather than masking
+                // it as Synced via reverse_merge's Unchanged fallback.
+                // Without this branch, an OutputChanged file with an
+                // empty tracked_render would silently report "no
+                // divergence" and the user would never know.
+                if baseline.tracked_render.is_empty() {
+                    has_findings = true;
+                    TransformAction::NeedsRebaseline
+                } else {
+                    // Run the reverse-merge engine. Unchanged → variable-
+                    // only edit, no action. Patched → write back to source.
+                    // Conflict → report the block, leave source alone.
+                    let template_src = ctx.fs.read_to_string(&report.source_path)?;
+                    let deployed = ctx.fs.read_to_string(&report.deployed_path)?;
+                    match reverse_merge(&template_src, &baseline.tracked_render, &deployed)? {
+                        ReverseMergeOutcome::Unchanged => TransformAction::Synced,
+                        ReverseMergeOutcome::Patched(patched) => {
+                            if !ctx.dry_run {
+                                ctx.fs.write_file(&report.source_path, patched.as_bytes())?;
+                            }
+                            has_findings = true;
+                            TransformAction::Patched
                         }
-                        has_findings = true;
-                        TransformAction::Patched
-                    }
-                    ReverseMergeOutcome::Conflict(block) => {
-                        has_findings = true;
-                        return_conflict_entry(&mut entries, report, block, ctx.paths.home_dir());
-                        continue;
+                        ReverseMergeOutcome::Conflict(block) => {
+                            has_findings = true;
+                            return_conflict_entry(
+                                &mut entries,
+                                report,
+                                block,
+                                ctx.paths.home_dir(),
+                            );
+                            continue;
+                        }
                     }
                 }
             }
@@ -454,6 +476,65 @@ mod tests {
         assert!(matches!(result.entries[0].action, TransformAction::Patched));
         // Source unchanged on disk despite the action label.
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
+    }
+
+    #[test]
+    fn needs_rebaseline_when_tracked_render_is_empty_and_deployed_edited() {
+        // Forward-compat surface: a baseline written before
+        // tracked_render existed (or by a future preprocessor that
+        // opts in without producing a marker stream) is unable to
+        // drive burgertocow. If the deployed file has been edited,
+        // the action MUST be NeedsRebaseline — never silently
+        // reported as Synced. This test pins that contract because
+        // the bug existed in the first cut: empty tracked_render
+        // produced reverse_merge → Unchanged → mapped to Synced,
+        // hiding real divergence from the user.
+        let env = TempEnvironment::builder().build();
+        // Stage a baseline by hand with an empty tracked_render.
+        let src_path = env.dotfiles_root.join("app/config.toml.tmpl");
+        env.fs.mkdir_all(src_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&src_path, b"name = {{ name }}").unwrap();
+        let baseline = crate::preprocessing::baseline::Baseline::build(
+            &src_path,
+            b"name = Alice",
+            b"name = {{ name }}",
+            None, // <-- the load-bearing detail: no tracked render
+            None,
+        );
+        baseline
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+        // Lay down a deployed file that DIVERGES from the baseline.
+        let deployed = deployed_path(&env, "app", "config.toml");
+        env.fs.mkdir_all(deployed.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&deployed, b"name = Edited\nport = 9999")
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, false).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert!(
+            matches!(result.entries[0].action, TransformAction::NeedsRebaseline),
+            "got: {:?}",
+            result.entries[0].action
+        );
+        assert!(
+            result.has_findings,
+            "NeedsRebaseline must count as a finding"
+        );
+        assert_eq!(result.exit_code(), 1);
+
+        // Source must NOT have been mutated (we couldn't compute a
+        // safe diff without the marker stream).
+        let src_after = env.fs.read_to_string(&src_path).unwrap();
+        assert_eq!(src_after, "name = {{ name }}");
     }
 
     #[test]

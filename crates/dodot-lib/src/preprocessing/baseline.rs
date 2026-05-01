@@ -179,7 +179,12 @@ impl Baseline {
     }
 }
 
-fn hex_sha256(bytes: &[u8]) -> String {
+/// SHA-256 → 64-char lowercase hex. Used by the baseline cache for
+/// rendered/source content hashing and by the divergence walker for
+/// the same purpose against current on-disk state. `pub(crate)` so
+/// the divergence module reuses it instead of cloning a parallel
+/// implementation.
+pub(crate) fn hex_sha256(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     hex_encode_32(&hasher.finalize().into())

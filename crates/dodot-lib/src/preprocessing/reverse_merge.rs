@@ -108,19 +108,45 @@ pub fn reverse_merge(
     }
 
     // Unified diff path: parse and apply via diffy.
+    //
+    // Error messages deliberately do NOT include the diff body. The
+    // diff is built from the deployed file, which can carry secret
+    // values that were resolved at render time. Spilling that into
+    // stderr / CI logs would leak credentials. Callers needing to
+    // debug a parse/apply failure can grep the deployed file or the
+    // baseline cache directly — the metadata in the error (the
+    // burgertocow error string and a short fingerprint) is enough to
+    // locate the offending entry without surfacing the bytes.
     let patch = Patch::from_str(&diff).map_err(|e| {
         DodotError::Other(format!(
-            "reverse-merge produced an invalid unified diff: {e}\n\
-             diff text:\n{diff}"
+            "reverse-merge produced an invalid unified diff: {e} \
+             ({} chars, sha-256 prefix {})",
+            diff.len(),
+            short_diff_fingerprint(&diff),
         ))
     })?;
     let patched = diffy::apply(template_src, &patch).map_err(|e| {
         DodotError::Other(format!(
-            "failed to apply reverse-merge diff to template: {e}\n\
-             diff text:\n{diff}"
+            "failed to apply reverse-merge diff to template: {e} \
+             ({} chars, sha-256 prefix {})",
+            diff.len(),
+            short_diff_fingerprint(&diff),
         ))
     })?;
     Ok(ReverseMergeOutcome::Patched(patched))
+}
+
+/// Hash the diff and return the first 16 hex chars — enough to tell
+/// two failure reports apart without leaking the diff body. Used by
+/// the error paths in [`reverse_merge`].
+fn short_diff_fingerprint(diff: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(diff.as_bytes());
+    let mut out = String::with_capacity(16);
+    for b in digest.iter().take(8) {
+        out.push_str(&format!("{:02x}", b));
+    }
+    out
 }
 
 #[cfg(test)]
