@@ -10,8 +10,10 @@
 
 pub mod baseline;
 pub mod conflict;
+pub mod divergence;
 pub mod identity;
 pub mod pipeline;
+pub mod reverse_merge;
 pub mod template;
 pub mod unarchive;
 

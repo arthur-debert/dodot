@@ -15,6 +15,7 @@ pub mod list;
 pub mod probe;
 pub mod prompts;
 pub mod status;
+pub mod transform;
 pub mod tutorial;
 pub mod up;
 

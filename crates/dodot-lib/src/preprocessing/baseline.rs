@@ -46,6 +46,17 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub struct Baseline {
     /// Schema version — see [`SCHEMA_VERSION`].
     pub version: u32,
+    /// Absolute path of the source file at expansion time. Captured so
+    /// `dodot transform check` can re-find the template to patch
+    /// without re-walking the pack tree, and so cache-only diagnostics
+    /// can name the source even after pack reorganisation.
+    ///
+    /// `#[serde(default)]` for forward compatibility with any v1
+    /// baseline written before this field existed (treated as empty;
+    /// transform check will skip such entries until they're rewritten
+    /// by the next `dodot up`).
+    #[serde(default)]
+    pub source_path: PathBuf,
     /// SHA-256 of the rendered (visible, marker-free) output, hex-encoded.
     pub rendered_hash: String,
     /// The full rendered output verbatim. Stored so reverse-merge can
@@ -84,7 +95,12 @@ impl Baseline {
     /// callers don't repeat the SHA setup; the optional `tracked_render`
     /// and `context_hash` come straight off the preprocessor's
     /// `ExpandedFile`.
+    ///
+    /// `source_path` is the absolute path of the source file inside
+    /// the pack — recorded so reverse-merge knows where to write the
+    /// patched template back to.
     pub fn build(
+        source_path: &Path,
         rendered_content: &[u8],
         source_bytes: &[u8],
         tracked_render: Option<&str>,
@@ -92,6 +108,7 @@ impl Baseline {
     ) -> Self {
         Self {
             version: SCHEMA_VERSION,
+            source_path: source_path.to_path_buf(),
             rendered_hash: hex_sha256(rendered_content),
             rendered_content: String::from_utf8_lossy(rendered_content).into_owned(),
             source_hash: hex_sha256(source_bytes),
@@ -220,6 +237,7 @@ mod tests {
     fn build_then_write_then_load_round_trips() {
         let env = TempEnvironment::builder().build();
         let baseline = Baseline::build(
+            Path::new("/tmp/config.toml.tmpl"),
             b"name = Alice\n",
             b"name = {{ name }}\n",
             Some("name = \u{1e}Alice\u{1f}\n"),
@@ -320,15 +338,17 @@ mod tests {
     #[test]
     fn build_records_hashes_and_optional_fields() {
         // Empty optionals → empty strings (serde default), not Null.
-        let b = Baseline::build(b"hello", b"hello", None, None);
+        let p = Path::new("/dummy/source");
+        let b = Baseline::build(p, b"hello", b"hello", None, None);
         assert_eq!(b.version, SCHEMA_VERSION);
+        assert_eq!(b.source_path, p);
         assert_eq!(b.rendered_hash.len(), 64); // SHA-256 hex
         assert_eq!(b.source_hash, b.rendered_hash); // same bytes
         assert!(b.context_hash.is_empty());
         assert!(b.tracked_render.is_empty());
 
         // Provided optionals → encoded.
-        let b2 = Baseline::build(b"x", b"y", Some("tracked"), Some(&[0xff; 32]));
+        let b2 = Baseline::build(p, b"x", b"y", Some("tracked"), Some(&[0xff; 32]));
         assert_eq!(b2.context_hash.len(), 64);
         assert!(b2.context_hash.chars().all(|c| c == 'f'));
         assert_eq!(b2.tracked_render, "tracked");
@@ -339,7 +359,13 @@ mod tests {
         // The cache holds rendered_content as UTF-8 (templates are
         // text); this test pins the loss behaviour for non-UTF-8 bytes
         // so a future change is a deliberate decision.
-        let b = Baseline::build(&[0x66, 0x6f, 0xff, 0x6f], b"src", None, None);
+        let b = Baseline::build(
+            Path::new("/dummy"),
+            &[0x66, 0x6f, 0xff, 0x6f],
+            b"src",
+            None,
+            None,
+        );
         // Replacement character for the invalid 0xff.
         assert_eq!(b.rendered_content, "fo\u{fffd}o");
     }
@@ -349,7 +375,7 @@ mod tests {
         // Pack-and-handler directories may not exist on first write;
         // confirm we mkdir_all rather than expecting them to be there.
         let env = TempEnvironment::builder().build();
-        let baseline = Baseline::build(b"x", b"y", None, None);
+        let baseline = Baseline::build(Path::new("/dummy"), b"x", b"y", None, None);
         let path = baseline
             .write(
                 env.fs.as_ref(),
@@ -367,7 +393,7 @@ mod tests {
     fn write_overwrites_existing_baseline() {
         // A second write at the same logical path replaces the first.
         let env = TempEnvironment::builder().build();
-        let first = Baseline::build(b"first", b"src", None, None);
+        let first = Baseline::build(Path::new("/dummy"), b"first", b"src", None, None);
         first
             .write(
                 env.fs.as_ref(),
@@ -377,7 +403,7 @@ mod tests {
                 "f",
             )
             .unwrap();
-        let second = Baseline::build(b"second", b"src", None, None);
+        let second = Baseline::build(Path::new("/dummy"), b"second", b"src", None, None);
         second
             .write(
                 env.fs.as_ref(),

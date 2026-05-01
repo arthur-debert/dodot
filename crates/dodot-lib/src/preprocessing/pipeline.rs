@@ -314,6 +314,7 @@ pub fn preprocess_pack(
                 let cache_filename = cache_filename_for(&virtual_relative);
                 let source_bytes = fs.read_file(&entry.absolute_path)?;
                 let baseline = Baseline::build(
+                    &entry.absolute_path,
                     &expanded.content,
                     &source_bytes,
                     Some(tracked),
