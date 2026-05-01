@@ -133,6 +133,15 @@ fn main() {
             if subcommand.as_deref() == Some("up") {
                 handlers::maybe_prompt_install_filters();
             }
+            // `dodot transform check` may have set a non-zero exit code
+            // via PENDING_EXIT_CODE: the report still rendered above,
+            // but findings are present and the pre-commit hook (R4) is
+            // counting on the process to exit 1. Read after print so
+            // the user sees the report even when we're about to exit.
+            let pending = handlers::PENDING_EXIT_CODE.load(std::sync::atomic::Ordering::Relaxed);
+            if pending != 0 {
+                std::process::exit(pending);
+            }
         }
         standout::cli::RunResult::Silent => {}
         standout::cli::RunResult::NoMatch(_) => {
@@ -181,6 +190,7 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
     ("probe.jinja", render::TEMPLATE_PROBE),
     ("git-filters.jinja", render::TEMPLATE_GIT_FILTERS),
     ("prompts-list.jinja", render::TEMPLATE_PROMPTS_LIST),
+    ("transform-check.jinja", render::TEMPLATE_TRANSFORM_CHECK),
 ];
 
 fn build_app() -> App {
@@ -247,6 +257,12 @@ fn build_app() -> App {
         .expect("register prompts.list")
         .command("prompts.reset", handlers::prompts_reset_handler, "message")
         .expect("register prompts.reset")
+        .command(
+            "transform.check",
+            handlers::transform_check_handler,
+            "transform-check",
+        )
+        .expect("register transform.check")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -286,6 +302,7 @@ fn build_app() -> App {
                 title: "Misc".into(),
                 help: None,
                 commands: vec![
+                    Some("transform".into()),
                     Some("tutorial".into()),
                     Some("init-sh".into()),
                     Some("prompts".into()),
@@ -514,6 +531,35 @@ fn build_clap_command() -> ClapCommand {
                             Arg::new("all")
                                 .long("all")
                                 .help("Reset every dismissed prompt")
+                                .action(ArgAction::SetTrue),
+                        ),
+                ),
+        )
+        .subcommand(
+            ClapCommand::new("transform")
+                .about("Reverse-merge edits from deployed files back to template sources")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("check")
+                        .about(
+                            "Check every preprocessed file for divergence and apply reverse-merge",
+                        )
+                        .arg(
+                            Arg::new("strict")
+                                .long("strict")
+                                .help(
+                                    "Also fail if any source carries unresolved \
+                                     dodot-conflict markers (used by the pre-commit hook).",
+                                )
+                                .action(ArgAction::SetTrue),
+                        )
+                        .arg(
+                            Arg::new("dry-run")
+                                .long("dry-run")
+                                .help(
+                                    "Report what would be patched without writing to source files.",
+                                )
                                 .action(ArgAction::SetTrue),
                         ),
                 ),

@@ -149,6 +149,10 @@ pub const TEMPLATE_GIT_FILTERS: &str = include_str!("../templates/git-filters.ji
 /// Dismissed-prompt registry listing (`dodot prompts list`).
 pub const TEMPLATE_PROMPTS_LIST: &str = include_str!("../templates/prompts-list.jinja");
 
+/// `dodot transform check` per-file action list + optional unresolved-
+/// marker section. See `commands::transform`.
+pub const TEMPLATE_TRANSFORM_CHECK: &str = include_str!("../templates/transform-check.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders

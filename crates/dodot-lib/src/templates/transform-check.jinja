@@ -1,0 +1,44 @@
+{%- if entries|length == 0 and unresolved_markers|length == 0 -%}
+[muted]No preprocessed files. Run [usage]dodot up[/usage] to deploy templates first.[/muted]
+{%- else -%}
+{%- if has_findings -%}
+[message]dodot transform check{% if strict %} --strict{% endif %}: findings present[/message]
+{%- else -%}
+[message]dodot transform check{% if strict %} --strict{% endif %}: clean[/message]
+{%- endif %}
+
+{% for e in entries -%}
+{%- if e.action == "patched" -%}
+  [success]✓ patched[/success] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — deployed-side edit propagated to source[/muted]
+{% elif e.action == "conflict" -%}
+  [error]! conflict[/error] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — edit overlaps a template expression; resolve manually[/muted]
+{%- if e.conflict_block %}
+{{ e.conflict_block }}
+{%- endif %}
+{% elif e.action == "missing_source" -%}
+  [warn]? missing source[/warn] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — cached source path no longer exists; next [usage]dodot up[/usage] will refresh[/muted]
+{% elif e.action == "missing_deployed" -%}
+  [warn]? missing deployed[/warn] {{ e.deployed_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — rendered file is gone; next [usage]dodot up[/usage] will recreate[/muted]
+{% elif e.action == "needs_rebaseline" -%}
+  [warn]? needs rebaseline[/warn] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — baseline cache predates tracked-render support; run [usage]dodot up[/usage] to refresh[/muted]
+{% elif e.action == "input_changed" -%}
+  [muted]· input changed[/muted] {{ e.source_path }}
+    [muted]{{ e.pack }}/{{ e.handler }}/{{ e.filename }} — source edited; next [usage]dodot up[/usage] will re-render[/muted]
+{% elif e.action == "synced" -%}
+  [muted]· synced[/muted] {{ e.source_path }}
+{% endif -%}
+{%- endfor %}
+{%- if unresolved_markers|length > 0 %}
+
+[error]Unresolved dodot-conflict markers in {{ unresolved_markers|length }} source{% if unresolved_markers|length != 1 %}s{% endif %}:[/error]
+{% for m in unresolved_markers -%}
+  [error]·[/error] {{ m.source_path }} (line{% if m.line_numbers|length != 1 %}s{% endif %} {{ m.line_numbers|join(", ") }})
+{% endfor %}
+  [muted]Resolve each block (pick the template line or the deployed line, remove the markers), commit, retry.[/muted]
+{%- endif -%}
+{%- endif -%}

@@ -5,11 +5,26 @@
 //! for standout to render.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use standout::cli::{CommandContext, HandlerResult, Output};
 
 use dodot_lib::commands::{self, GroupMode, ViewMode};
 use dodot_lib::packs::orchestration::ExecutionContext;
+
+/// Side-channel exit code set by handlers that succeeded in producing
+/// output but want the process to exit non-zero (e.g.
+/// `dodot transform check` when it found divergence). `main.rs` reads
+/// this after the dispatch loop and calls `std::process::exit` if it's
+/// non-zero. Default 0 — handlers that don't set it have no effect.
+///
+/// Why a side-channel: standout's `Output` enum only carries
+/// Render/Silent/Binary; there's no exit-code variant. Returning `Err`
+/// from the handler would let dispatch exit non-zero but would also
+/// suppress the normal report rendering. This atomic threads the
+/// "succeeded with findings" signal past dispatch without losing the
+/// rendered output.
+pub(crate) static PENDING_EXIT_CODE: AtomicI32 = AtomicI32::new(0);
 
 /// Read a boolean flag, returning false if the flag is not defined
 /// for this subcommand.
@@ -266,6 +281,26 @@ pub fn probe_app_handler(
         .ok_or_else(|| anyhow::anyhow!("missing required argument: pack"))?;
     let refresh = flag_or_false(matches, "refresh");
     Ok(Output::Render(commands::probe::app(&pack, refresh, &ctx)?))
+}
+
+/// `dodot transform check [--strict]` — propagate deployed-file edits
+/// back to template sources. See `docs/proposals/preprocessing-pipeline.lex`
+/// §6 and `docs/proposals/magic.lex`. Exit code 0 = clean, 1 = at
+/// least one Patched / Conflict / Missing finding (or, in `--strict`
+/// mode, any unresolved dodot-conflict markers in template sources).
+///
+/// The non-zero exit code is set via [`PENDING_EXIT_CODE`] so the
+/// rendered report still prints normally; `main.rs` consults the
+/// atomic after dispatch and `std::process::exit`s if it's non-zero.
+pub fn transform_check_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::transform::TransformCheckResult> {
+    let ctx = build_ctx(matches)?;
+    let strict = flag_or_false(matches, "strict");
+    let result = commands::transform::check(&ctx, strict)?;
+    PENDING_EXIT_CODE.store(result.exit_code(), Ordering::Relaxed);
+    Ok(Output::Render(result))
 }
 
 /// `dodot probe shell-init` — most recent shell-startup profile.
