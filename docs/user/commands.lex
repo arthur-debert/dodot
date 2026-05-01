@@ -95,9 +95,9 @@ Commands
             dodot adopt --into mac-defaults ~/Library/Preferences/com.app.plist
             dodot adopt --into agents ~/Library/LaunchAgents/com.example.foo.plist
 
-        Source-root recognition (see [./../reference/symlink-paths.lex] §7 for the full table):
+        Source-root recognition (see [./../reference/symlink-paths.lex] §9 for the full table):
             - `$XDG_CONFIG_HOME/<X>/<rest>` → pack `<X>`, in-pack `<rest>`
-            - `$HOME/.<X>` (file/dir) → require `--into`, in-pack `home.<X>` or `_home/<X>/...`
+            - `$HOME/.<X>` (file/dir) → require `--into`. Usually in-pack `home.<X>` or `_home/<X>/...`; for entries on the `[symlink].force_home` list (e.g. `.ssh/`, `.gnupg/`) the in-pack path is bare `<X>` since `force_home` already routes deploys back to `$HOME/.<X>`
             - `~/Library/Application Support/<X>/<rest>` → pack `<X>`, in-pack `_app/<X>/<rest>`
             - `~/Library/<sub>/<file>` (macOS) → require `--into`, in-pack `_lib/<sub>/<file>`
             - `~/Library/Containers/...` → refused (sandboxed-app data)

@@ -4,7 +4,7 @@ macOS Plists
 
     This document is the user-facing reference. The architectural rationale (why clean/smudge filters rather than a preprocessing pipeline; why working-tree binary rather than working-tree XML) is in [./../proposals/plists.lex].
 
-    :: note :: Plist support is macOS-only at deploy time. The CLI surface (`dodot plist clean/smudge`) works on every platform and is exercised in CI on Linux runners; the deploy-side `_lib/` resolver and the up-time prompt are gated on macOS.
+    :: note :: macOS-only behaviour is the deploy-side `_lib/` resolver (which routes `_lib/<rest>` to `~/Library/<rest>`) and the `~/Library/...` adopt inference. The CLI surface (`dodot plist clean/smudge`, `dodot git-install-filters/show-filters`), the canonical-XML transform, the determinism property, and the up-time install prompt all work on every platform — exercised in CI on Linux runners against real git. macOS is not a hard requirement to *use* plist filters in a dotfiles repo; it is the platform where the deployed file is what an OS app reads.
 
 1. The Mechanism
 
@@ -195,18 +195,9 @@ macOS Plists
 
 9. Configuration
 
-    Plist support has minimal configuration. The relevant block lives under `[symlink]` because plists deploy via the symlink handler:
+    Plist support currently has no configuration knobs. Plist detection (for adopt hints and the up-time prompt) is hard-coded to the `.plist` extension; deployment is governed by the symlink handler and the file's location, the same as any other file. There is no `[preprocessor.plist]` section either — plists do not go through the preprocessing pipeline.
 
-    Schema:
-
-        [symlink]
-        plist_extensions = ["plist"]   # filename suffixes treated as plists for adopt hints
-
-    :: toml ::
-
-    The extension list controls *adopt hints and prompts*, not deployment. Deployment is governed by the symlink handler and the file's location, the same as any other file.
-
-    There is no `[preprocessor.plist]` section. Plists do not go through the preprocessing pipeline.
+    A configurable `plist_extensions` list was sketched in [./../proposals/plists.lex] §8.1 to cover non-`.plist` suffixes some apps use (`.savedState`, `.mobileconfig`, …). It has not been implemented; if real-world demand surfaces, it would slot in under `[symlink]`.
 
 10. Commands at a Glance
 
