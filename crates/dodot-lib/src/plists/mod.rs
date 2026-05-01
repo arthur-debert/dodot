@@ -26,14 +26,30 @@ pub fn clean(input: &[u8]) -> Result<Vec<u8>> {
     let mut value = Value::from_reader(Cursor::new(input)).map_err(plist_err)?;
     sort_keys_recursive(&mut value);
 
-    let mut out = Vec::with_capacity(input.len());
+    let mut raw = Vec::with_capacity(input.len());
     value
-        .to_writer_xml_with_options(&mut out, &XmlWriteOptions::default())
+        .to_writer_xml_with_options(&mut raw, &XmlWriteOptions::default())
         .map_err(plist_err)?;
 
-    // The crate emits trailing CRLFs in places; we want LF-only canonical
-    // output. quick-xml's writer already uses LF, but we make the contract
-    // explicit by ending the file with a single newline.
+    // Canonical output uses LF only. The current `plist`/quick-xml stack
+    // emits LF, but we don't want determinism to depend on upstream
+    // behaviour: normalise any CRLF or lone CR to LF, then ensure a
+    // single trailing LF. One pass, no allocation beyond the output.
+    let mut out = Vec::with_capacity(raw.len() + 1);
+    let mut i = 0;
+    while i < raw.len() {
+        let b = raw[i];
+        if b == b'\r' {
+            out.push(b'\n');
+            // Skip the following LF if this was a CRLF pair.
+            if raw.get(i + 1) == Some(&b'\n') {
+                i += 1;
+            }
+        } else {
+            out.push(b);
+        }
+        i += 1;
+    }
     if !out.ends_with(b"\n") {
         out.push(b'\n');
     }
@@ -245,6 +261,21 @@ mod tests {
     fn clean_emits_trailing_newline() {
         let xml = clean(UNSORTED_XML.as_bytes()).expect("clean");
         assert_eq!(xml.last().copied(), Some(b'\n'), "must end with LF");
+    }
+
+    #[test]
+    fn clean_output_contains_no_carriage_returns() {
+        // Whatever the underlying serialiser does, our output must be
+        // LF-only. Feeding CRLF-rich input also exercises the parser.
+        let crlf_xml = UNSORTED_XML.replace('\n', "\r\n");
+        let xml = clean(crlf_xml.as_bytes()).expect("clean");
+        assert!(
+            !xml.contains(&b'\r'),
+            "clean output must contain no CR bytes"
+        );
+        // And the canonical output is identical to the LF-input case.
+        let lf_xml = clean(UNSORTED_XML.as_bytes()).expect("clean lf");
+        assert_eq!(xml, lf_xml, "CRLF and LF inputs must produce same output");
     }
 
     #[test]

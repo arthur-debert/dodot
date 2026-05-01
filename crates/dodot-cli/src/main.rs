@@ -29,6 +29,33 @@ fn main() {
     // parse_with handles help rendering (with command groups) and exits if help requested
     let matches = app.parse_with(build_clap_command());
 
+    // Passthrough: plist clean/smudge (git filter binary stdin/stdout).
+    // Dispatched BEFORE logging::init so git filters — which fire on
+    // every `git status` / `git diff` / `git add` — don't pay for
+    // log-dir creation, rotation, and the file-handle guard on every
+    // invocation. These filters also must bypass standout entirely —
+    // smudge emits binary plist bytes, and any extra logging on stdout
+    // would corrupt the filter output git stages or checks out.
+    if let Some(("plist", sub)) = matches.subcommand() {
+        let result = match sub.subcommand_name() {
+            Some("clean") => handlers::plist_clean_passthrough(),
+            Some("smudge") => handlers::plist_smudge_passthrough(),
+            _ => {
+                let _ = build_clap_command()
+                    .find_subcommand("plist")
+                    .cloned()
+                    .map(|mut c| c.print_help());
+                println!();
+                return;
+            }
+        };
+        if let Err(e) = result {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     // Initialize logging based on CLI flags
     let verbosity = if matches.get_flag("debug") {
         logging::Verbosity::Debug
@@ -68,30 +95,6 @@ fn main() {
     // Passthrough: init-sh (raw stdout for shell eval)
     if matches.subcommand_matches("init-sh").is_some() {
         if let Err(e) = handlers::init_sh_passthrough() {
-            eprintln!("error: {e}");
-            std::process::exit(1);
-        }
-        return;
-    }
-
-    // Passthrough: plist clean/smudge (git filter binary stdin/stdout).
-    // These must bypass standout entirely — smudge emits binary plist
-    // bytes, and any extra logging on stdout would corrupt the filter
-    // output git stages or checks out.
-    if let Some(("plist", sub)) = matches.subcommand() {
-        let result = match sub.subcommand_name() {
-            Some("clean") => handlers::plist_clean_passthrough(),
-            Some("smudge") => handlers::plist_smudge_passthrough(),
-            _ => {
-                let _ = build_clap_command()
-                    .find_subcommand("plist")
-                    .cloned()
-                    .map(|mut c| c.print_help());
-                println!();
-                return;
-            }
-        };
-        if let Err(e) = result {
             eprintln!("error: {e}");
             std::process::exit(1);
         }
