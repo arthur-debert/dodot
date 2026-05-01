@@ -116,6 +116,8 @@ impl Preprocessor for UnarchivePreprocessor {
                     relative_path: entry_path,
                     content: Vec::new(),
                     is_dir: true,
+                    tracked_render: None,
+                    context_hash: None,
                 });
             } else if entry_type.is_file() {
                 let mut content = Vec::new();
@@ -131,6 +133,8 @@ impl Preprocessor for UnarchivePreprocessor {
                     relative_path: entry_path,
                     content,
                     is_dir: false,
+                    tracked_render: None,
+                    context_hash: None,
                 });
             } else {
                 return Err(DodotError::PreprocessorError {

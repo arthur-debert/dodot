@@ -422,6 +422,7 @@ fn plan_pack_inner(
                 pack,
                 ctx.fs.as_ref(),
                 ctx.datastore.as_ref(),
+                Some(ctx.paths.as_ref()),
             )?
         } else {
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)

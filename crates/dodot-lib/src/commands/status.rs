@@ -459,6 +459,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     &pack,
                     ctx.fs.as_ref(),
                     ctx.datastore.as_ref(),
+                    None,
                 ) {
                     Ok(r) => r,
                     Err(err) => {
