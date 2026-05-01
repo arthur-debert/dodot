@@ -10,6 +10,22 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
+- **`dodot adopt` recognises `~/Library/...` sources (macOS).** Adopting
+  a path like `~/Library/Preferences/com.colliderli.iina.plist` now
+  produces `<pack>/_lib/Preferences/com.colliderli.iina.plist` so the
+  existing Priority 2d `_lib/` resolver round-trips the file back on
+  `dodot up`. `--into <pack>` is required because plist filenames
+  (typically reverse-DNS bundle IDs) don't make useful pack names.
+  Same inference applies to `~/Library/LaunchAgents/...`,
+  `~/Library/Fonts/...`, etc. — anything under `~/Library/` not nested
+  in `Application Support` (which still routes through the more
+  specific `_app/` encoding) or `Containers` (still refused as a
+  sandboxed-app data store). Gated on macOS at inference time so
+  non-macOS adopt declines instead of producing warn-and-skip plans.
+- **Adopt prints a filter-install tip when adopting plists.** When at
+  least one adopted source is a `.plist` and `dodot git-install-filters`
+  has not been run, `dodot adopt` surfaces a one-liner pointing at the
+  install command, complementing the up-time interactive prompt.
 - **`dodot git-install-filters` / `dodot git-show-filters`.** P2 of the
   plist clean/smudge track. `git-install-filters` writes the
   `[filter "dodot-plist"]` block to the dotfiles repo's `.git/config`
@@ -52,6 +68,19 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   preprocessing pipeline) lives in `docs/proposals/plists.lex`.
 
 ### Changed
+
+- **Plist filter ergonomics.** Several small polish items:
+    - `dodot plist clean` and `smudge` now produce actionable error
+      messages when input isn't a valid plist, pointing at the most
+      common cause (`.gitattributes` mis-binding) and at
+      `dodot git-show-filters` for diagnosis.
+    - `dodot git-install-filters` success message now appends a macOS
+      `cfprefsd` reminder so users know to `killall cfprefsd` after
+      pulling plist changes from another machine, otherwise running
+      apps keep serving cached values.
+    - `dodot git-install-filters --help` now documents PATH
+      considerations (filters use bare `dodot` and must find it on
+      `$PATH` in whatever environment git is invoked from).
 
 - **Plist proposal revised to ship via clean/smudge filters.**
   `docs/proposals/plists.lex` was rewritten around git clean/smudge
