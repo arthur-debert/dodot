@@ -429,82 +429,58 @@ mod tests {
         assert_eq!(resolve_shell(Some("Zsh")).unwrap(), Shell::Zsh);
     }
 
-    /// Save and restore $SHELL around an env-mutating closure.
-    /// std::env mutation is process-global; cargo runs tests in
-    /// parallel, so any tests that touch $SHELL would race with
-    /// each other. We consolidate ALL env-driven cases into one
-    /// `#[test]` body below — that gives us one serial sequence
-    /// regardless of cargo's parallelism, with no need for a
-    /// shared mutex or the `serial_test` crate.
-    fn with_shell_env<F>(value: Option<&str>, f: F)
-    where
-        F: FnOnce(),
-    {
-        let prev = std::env::var("SHELL").ok();
-        if let Some(v) = value {
-            std::env::set_var("SHELL", v);
-        } else {
-            std::env::remove_var("SHELL");
-        }
-        f();
-        match prev {
-            Some(p) => std::env::set_var("SHELL", p),
-            None => std::env::remove_var("SHELL"),
-        }
+    // Env-driven detect/resolve_shell tests use the shared
+    // `ShellEnvGuard` from `crate::testing`. The guard is RAII
+    // (restores `$SHELL` on drop, including on panic) AND holds a
+    // process-wide mutex, so any test in the binary touching
+    // `$SHELL` is serialised. We can split these into one
+    // `#[test]` per scenario again, since the guard handles both
+    // the panic-safety and cross-test-races concerns Copilot
+    // raised on R8.
+
+    use crate::testing::ShellEnvGuard;
+
+    #[test]
+    fn detect_returns_some_for_bash() {
+        let _g = ShellEnvGuard::set("/bin/bash");
+        assert_eq!(Shell::detect(), Some(Shell::Bash));
     }
 
-    /// All `Shell::detect()` and `resolve_shell` env-driven cases
-    /// live in this single test so cargo's parallel runner can't
-    /// have two of them touching `$SHELL` simultaneously. Each
-    /// scenario is a labelled section so a failure points clearly
-    /// at the offending case.
     #[test]
-    fn shell_detection_env_driven_cases() {
-        // ── detect: known shells ─────────────────────────────────
-        with_shell_env(Some("/bin/bash"), || {
-            assert_eq!(
-                Shell::detect(),
-                Some(Shell::Bash),
-                "/bin/bash should detect as Bash"
-            );
-        });
-        with_shell_env(Some("/usr/local/bin/zsh"), || {
-            assert_eq!(
-                Shell::detect(),
-                Some(Shell::Zsh),
-                "/usr/local/bin/zsh should detect as Zsh"
-            );
-        });
+    fn detect_returns_some_for_zsh() {
+        let _g = ShellEnvGuard::set("/usr/local/bin/zsh");
+        assert_eq!(Shell::detect(), Some(Shell::Zsh));
+    }
 
-        // ── detect: unsupported shell → None ─────────────────────
-        with_shell_env(Some("/usr/bin/fish"), || {
-            assert_eq!(
-                Shell::detect(),
-                None,
-                "fish should not detect — caller must --shell"
-            );
-        });
+    #[test]
+    fn detect_returns_none_for_unknown_shell() {
+        // fish/nu/etc. don't auto-detect — the caller must `--shell`.
+        let _g = ShellEnvGuard::set("/usr/bin/fish");
+        assert_eq!(Shell::detect(), None);
+    }
 
-        // ── resolve_shell: no-explicit + unsupported $SHELL ──────
-        // The PR-review fix: a fish/nu user running
-        // `dodot git-show-alias` (no --shell) must get a clear
-        // error pointing at `--shell bash|zsh`, NOT a silent
-        // fall-through to bash that writes a useless ~/.bashrc.
-        with_shell_env(Some("/usr/bin/fish"), || {
-            let err = resolve_shell(None).unwrap_err();
-            let msg = format!("{err}");
-            assert!(msg.contains("fish"), "msg: {msg}");
-            assert!(msg.contains("--shell"), "msg should suggest --shell: {msg}");
-        });
+    #[test]
+    fn resolve_shell_no_explicit_unsupported_shell_errors() {
+        // The PR-review fix from R7: a fish/nu user running
+        // `dodot git-show-alias` (no --shell) gets a clear error
+        // pointing at `--shell bash|zsh`, NOT a silent fall-
+        // through to bash that writes a useless ~/.bashrc.
+        let _g = ShellEnvGuard::set("/usr/bin/fish");
+        let err = resolve_shell(None).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("fish"), "msg: {msg}");
+        assert!(msg.contains("--shell"), "msg should suggest --shell: {msg}");
+    }
 
-        // ── resolve_shell: no-explicit + unset $SHELL ────────────
-        // Rare but real (minimal containers, weird login shells).
-        with_shell_env(None, || {
-            let err = resolve_shell(None).unwrap_err();
-            let msg = format!("{err}");
-            assert!(msg.contains("$SHELL"), "msg: {msg}");
-            assert!(msg.contains("--shell"), "msg: {msg}");
-        });
+    #[test]
+    fn resolve_shell_no_explicit_unset_shell_errors() {
+        // $SHELL unset entirely. Same disposition: clear pointer
+        // at --shell.
+        let _g = ShellEnvGuard::unset();
+        let err = resolve_shell(None).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("$SHELL"), "msg: {msg}");
+        assert!(msg.contains("--shell"), "msg: {msg}");
     }
 
     // ── managed_block + find_managed_block ──────────────────────

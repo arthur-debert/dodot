@@ -20,12 +20,84 @@
 //! ```
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use tempfile::TempDir;
 
 use crate::fs::{Fs, OsFs};
 use crate::paths::{Pather, XdgPather};
+
+/// Shared lock for tests that mutate `$SHELL`. `std::env::set_var` /
+/// `remove_var` are process-global, and cargo runs tests in
+/// parallel — without this lock, two tests touching `$SHELL` can
+/// interleave and observe each other's writes. Held by
+/// [`ShellEnvGuard`] for the duration of the guard's lifetime.
+static SHELL_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// RAII guard that takes the shared `$SHELL` lock, sets `$SHELL` to
+/// the requested value (or unsets it for `None`), and restores the
+/// previous value when dropped — including on panic, since `Drop`
+/// runs during unwind.
+///
+/// Use this in any test that needs to read `Shell::detect()` /
+/// `resolve_shell()` / anything else reading `$SHELL`. The guard's
+/// `drop` order matters: it restores `$SHELL` *before* releasing
+/// the mutex, so a subsequent guard taken on another thread always
+/// sees a clean baseline.
+///
+/// ```rust,ignore
+/// use dodot_lib::testing::ShellEnvGuard;
+///
+/// #[test]
+/// fn my_test() {
+///     let _g = ShellEnvGuard::set("/bin/zsh");
+///     // assertions that read $SHELL go here; even a panic here
+///     // restores the previous $SHELL when _g drops.
+/// }
+/// ```
+pub struct ShellEnvGuard {
+    // The mutex guard is `'static` because the underlying mutex is
+    // a `static`. Holding it for the lifetime of `Self` keeps the
+    // lock until `drop` runs.
+    _lock: MutexGuard<'static, ()>,
+    prev: Option<String>,
+}
+
+impl ShellEnvGuard {
+    /// Take the lock, set `$SHELL` to `value`. Restores the
+    /// previous value on drop.
+    pub fn set(value: &str) -> Self {
+        let lock = SHELL_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let prev = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", value);
+        Self { _lock: lock, prev }
+    }
+
+    /// Take the lock, unset `$SHELL`. Restores the previous value
+    /// on drop.
+    pub fn unset() -> Self {
+        let lock = SHELL_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let prev = std::env::var("SHELL").ok();
+        std::env::remove_var("SHELL");
+        Self { _lock: lock, prev }
+    }
+}
+
+impl Drop for ShellEnvGuard {
+    fn drop(&mut self) {
+        // Restore BEFORE the mutex guard's own `drop` releases the
+        // lock — Rust drops fields in declaration order, so the
+        // restore here happens first, then `_lock` releases.
+        match self.prev.take() {
+            Some(p) => std::env::set_var("SHELL", p),
+            None => std::env::remove_var("SHELL"),
+        }
+    }
+}
 
 /// An isolated test environment backed by real filesystem operations
 /// inside a temporary directory.
