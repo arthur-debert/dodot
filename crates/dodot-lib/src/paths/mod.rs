@@ -174,6 +174,34 @@ pub trait Pather: Send + Sync {
             .join(format!("{filename}.json"))
     }
 
+    /// Per-file secrets sidecar that lives next to the baseline JSON.
+    ///
+    /// Layout: `<cache_dir>/preprocessor/<pack>/<handler>/<filename>.secret.json`.
+    /// Empty / absent when the file's last render contained no
+    /// `secret(...)` calls; populated otherwise. The sidecar carries
+    /// `secret_line_ranges` (start, end, reference) per the schema in
+    /// `docs/proposals/secrets.lex` §3.3 — burgertocow's mask
+    /// (issue arthur-debert/burgertocow#13) reads the line ranges,
+    /// the dry-run preview reads them to render `[SECRET: <ref>]`
+    /// placeholders.
+    ///
+    /// Same lifecycle as the baseline file: rederivable, lives under
+    /// `cache_dir`. The "no migration" guardrail in §3.3 applies —
+    /// pre-secrets baselines simply have no sidecar (treated as
+    /// empty mask), and adding the file is additive.
+    fn preprocessor_secrets_sidecar_path(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+    ) -> PathBuf {
+        self.cache_dir()
+            .join("preprocessor")
+            .join(pack)
+            .join(handler)
+            .join(format!("{filename}.secret.json"))
+    }
+
     /// Root of the preprocessor baseline cache for a given pack and
     /// handler — mostly useful for cache-cleanup operations like
     /// `dodot down` and tests that want to scan an entire handler's

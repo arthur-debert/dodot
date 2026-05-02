@@ -601,6 +601,31 @@ pub fn preprocess_pack(
                         "baseline written"
                     );
                 }
+
+                // Secrets sidecar (secrets.lex §3.3). Always called;
+                // the writer no-ops when the render had no
+                // `secret(...)` calls AND removes a stale sidecar
+                // from a prior render that DID, so the on-disk
+                // state always matches the latest render.
+                let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(
+                    expanded.secret_line_ranges.clone(),
+                );
+                if let Err(err) =
+                    sidecar.write(fs, paths, &pack.name, PREPROCESSED_HANDLER, &cache_filename)
+                {
+                    // Same non-fatal disposition as baseline writes:
+                    // a missing sidecar means the next reverse-merge
+                    // sees an empty mask and surfaces the secret
+                    // line as a regular (mask-able) divergence,
+                    // which the user can recover from by re-running
+                    // `dodot up`.
+                    debug!(
+                        pack = %pack.name,
+                        file = %cache_filename,
+                        error = %err,
+                        "secrets sidecar write failed (non-fatal)"
+                    );
+                }
             }
 
             claimed_paths.insert(virtual_relative.clone());
