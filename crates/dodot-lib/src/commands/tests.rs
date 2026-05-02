@@ -973,6 +973,43 @@ fn up_dry_run_no_changes() {
     }
 }
 
+#[test]
+fn up_dry_run_does_not_write_preprocessing_baselines() {
+    // PR #118 20th-pass Comment LL: `up --dry-run` must not
+    // rewrite the preprocessing baseline cache during planning.
+    // Baselines represent "state of the last successful `up`,"
+    // so a dry run — which never executes — must not move that
+    // anchor.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+
+    // Sanity: no baseline exists yet.
+    let baseline_path = ctx
+        .paths
+        .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "test precondition: baseline should not exist before any up runs"
+    );
+
+    // Run with dry_run=true. Plan executes but no deploy lands
+    // and no baseline writes.
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    let _ = commands::up::up(None, &dry_ctx).unwrap();
+
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "dry-run must NOT write a baseline; the cache must remain untouched"
+    );
+}
+
 // ── up: conflict handling ──────────────────────────────────
 
 #[test]
