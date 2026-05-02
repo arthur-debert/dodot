@@ -172,7 +172,13 @@ pub fn collect_baselines_and_errors(
             walk_baseline_dir(fs, &handler.path, "", &mut filenames);
             filenames.sort();
             for filename in filenames {
-                match Baseline::load(fs, paths, &pack.name, &handler.name, &filename) {
+                // Read the file at the EXACT cache path the walker
+                // traversed, not via `Baseline::load` (which has a
+                // legacy-fallback codepath that would conflate
+                // canonical and legacy entries here — the walker
+                // already iterates both filenames separately).
+                let path = paths.preprocessor_baseline_path(&pack.name, &handler.name, &filename);
+                match crate::preprocessing::baseline::read_baseline_at(fs, &path) {
                     Ok(Some(baseline)) => {
                         // Legacy-layout reconciliation: a flat
                         // (basename-only) cache entry from before

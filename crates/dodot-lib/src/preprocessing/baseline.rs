@@ -265,12 +265,17 @@ impl Baseline {
         filename: &str,
     ) -> (Result<Option<Self>>, PathBuf) {
         let new_path = paths.preprocessor_baseline_path(pack, handler, filename);
-        match read_baseline_at(fs, &new_path) {
-            Ok(Some(b)) => return (Ok(Some(b)), new_path),
-            Err(e) => return (Err(e), new_path),
-            Ok(None) => {}
+        let new_result = read_baseline_at(fs, &new_path);
+        if let Ok(Some(b)) = &new_result {
+            return (Ok(Some(b.clone())), new_path);
         }
-        // Fallback to the legacy basename-only layout for upgraders.
+        // Try the legacy basename-only layout for upgraders BEFORE
+        // surfacing any error from the canonical path. A corrupt
+        // canonical entry must not block divergence detection when
+        // a still-valid legacy baseline exists on disk — otherwise
+        // the upgraded user is stuck with permanent
+        // "baseline cache unreadable" warnings until they manually
+        // delete the new file.
         if let Some(basename) = legacy_basename_for(filename) {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
             if legacy_path != new_path {
@@ -279,14 +284,27 @@ impl Baseline {
                         if legacy_baseline_belongs_to_filename(&b.source_path, filename) {
                             return (Ok(Some(b)), legacy_path);
                         }
-                        return (Ok(None), legacy_path);
+                        // Legacy entry isn't ours; surface the
+                        // canonical error if there was one, else
+                        // fall through to "no baseline."
+                        return (new_result.map(|_| None), legacy_path);
                     }
                     Err(e) => return (Err(e), legacy_path),
-                    Ok(None) => return (Ok(None), legacy_path),
+                    Ok(None) => {
+                        // Legacy file is missing too; surface the
+                        // canonical result (which may be Err for
+                        // corrupt-canonical-only).
+                        return (new_result.map(|_| None), new_path);
+                    }
                 }
             }
         }
-        (Ok(None), new_path)
+        // No legacy fallback available — surface whatever the
+        // canonical path produced.
+        match new_result {
+            Ok(_) => (Ok(None), new_path),
+            Err(e) => (Err(e), new_path),
+        }
     }
 }
 
@@ -1074,6 +1092,59 @@ mod tests {
             "load(subdir/config.toml) must accept empty-source_path legacy entry as best-effort"
         );
         assert_eq!(result.unwrap().rendered_content, "rendered");
+    }
+
+    #[test]
+    fn load_falls_back_to_legacy_when_canonical_is_corrupt() {
+        // PR #118 17th-pass Comment FF: when the canonical
+        // nested-cache file exists but is corrupt, load_with_origin
+        // must still try the legacy basename fallback rather than
+        // surfacing the canonical's parse error immediately. An
+        // upgraded user with a corrupt new file but a still-valid
+        // legacy baseline must not get stuck on permanent
+        // "baseline cache unreadable" warnings.
+        let env = TempEnvironment::builder().build();
+
+        // Stage a VALID legacy entry for the nested file.
+        let nested_source = Path::new("/dotfiles/app/subdir/config.toml.tmpl");
+        let legacy = Baseline::build(nested_source, b"old", b"src", Some(""), None);
+        legacy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        // Stage a CORRUPT canonical entry alongside.
+        let canonical_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        env.fs.mkdir_all(canonical_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&canonical_path, b"{not json").unwrap();
+
+        // load_with_origin must fall through to the legacy entry,
+        // not return Err on the canonical's parse error.
+        let (result, origin) = Baseline::load_with_origin(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+        );
+        let baseline = result
+            .expect("load must succeed via legacy fallback")
+            .expect("legacy baseline must be returned");
+        assert_eq!(baseline.rendered_content, "old");
+        // origin reports the legacy path (the one that actually
+        // produced the loaded baseline).
+        assert!(
+            origin.ends_with("config.toml.json") && !origin.to_string_lossy().contains("subdir"),
+            "origin should be the legacy basename path, got: {}",
+            origin.display()
+        );
     }
 
     #[test]
