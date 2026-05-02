@@ -219,14 +219,15 @@ Design Specification: Template Expansion
 
         After `dodot transform check` modifies the template:
             [database]
-            # DODOT: deployed value was: host = "production.db.internal"
-            >>>>>> dodot-conflict
+            >>>>>> dodot-conflict (template)
             host = "{{ env.DB_HOST }}"
+            ====== dodot-conflict (deployed)
+            host = "production.db.internal"
             <<<<<< dodot-conflict
             port = 5432
             max_connections = 50
 
-        Line "host": dynamic (contains {{ }}), so conflict markers are inserted.
+        Line "host": dynamic (contains {{ }}), so conflict markers are inserted — five lines bracketing the original template line and the user's deployed-side edit, structurally analogous to git's merge-conflict markers but with the angle direction inverted.
         Line "max_connections": static, changed from 10 to 50, applied directly.
         Line "port": unchanged, left alone.
 
