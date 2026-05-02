@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-05-02
+
+
 ### Changed
 
 - **E2E suite runs ~7× faster on macOS dev hosts** (`tests/e2e/bats/helpers/setup.bash` — `hide_brew_from_path`). Every bats sandbox now installs a per-test `brew` shim (under `$SANDBOX/.brew-muzzle/brew`, exits non-zero with no output) and prepends it to `PATH`. dodot's macOS-side advisory probes (`probe::brew::list_installed_casks` and friends) hit the shim, get a non-zero exit, and fall through to their empty-set branches — same code path Linux CI runs. Previously, every `brew` invocation on a host with Homebrew installed spawned two `curl` processes phoning home to Homebrew's analytics endpoint with `--max-time 3`, turning a sub-30s CI run into a 7-minute local run; the worst single file (`test_macos_paths.bats`) went from 397s to ~2s. The shim is reset per-test (lives under `$SANDBOX`, wiped by `sandbox_teardown`), and `HOMEBREW_NO_ANALYTICS=1` / `HOMEBREW_NO_AUTO_UPDATE=1` / `HOMEBREW_NO_INSTALL_FROM_API=1` are exported as belt-and-suspenders. Tests that need to exercise the *real* brew probe code path call `unhide_brew_for_test` — opt-in by design, so a future PATH refactor can't silently re-introduce the slowdown. New `test_brew_probe.bats` is the canonical opt-in user and a regression guard for `crates/dodot-lib/src/probe/brew.rs` on macOS dev hosts (skips on Linux CI / fresh-brew machines).
@@ -73,7 +76,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `preprocess_pack` takes an extra `paths: Option<&dyn Pather>` argument. Active callers (`dodot up`) pass `Some(...)` so baselines are written; passive callers (`dodot status`) pass `None` so they don't overwrite the last-`up` baseline.
 - `ExpandedFile` gains optional `tracked_render` and `context_hash` fields, populated by generative preprocessors that support cache-backed reverse-merge (templates) and left `None` otherwise (identity, unarchive). Tests use `..Default::default()` for ad-hoc construction.
-
 ## [2.0.0] - 2026-05-01
 
 
