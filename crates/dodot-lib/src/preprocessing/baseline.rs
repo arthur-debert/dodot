@@ -174,15 +174,30 @@ impl Baseline {
         if let Some(basename) = legacy_basename_for(filename) {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
             if legacy_path != path && fs.exists(&legacy_path) {
-                let is_our_legacy = read_baseline_at(fs, &legacy_path)
-                    .ok()
-                    .flatten()
-                    .map(|legacy| {
+                let should_delete = match read_baseline_at(fs, &legacy_path) {
+                    Ok(Some(legacy)) => {
                         legacy.source_path.as_os_str().is_empty()
                             || legacy.source_path == self.source_path
-                    })
-                    .unwrap_or(false);
-                if is_our_legacy {
+                    }
+                    Ok(None) => {
+                        // File vanished between the `exists` check
+                        // and the read (race with another process).
+                        // Nothing to do.
+                        false
+                    }
+                    Err(_) => {
+                        // Legacy file is unreadable — corrupt JSON
+                        // or schema mismatch. We've already written
+                        // a valid replacement at the new nested
+                        // path, so leaving the corrupt file behind
+                        // would only break later
+                        // `collect_baselines` walks (every
+                        // `transform check` / `status` / `refresh`
+                        // would error on parse). Delete it.
+                        true
+                    }
+                };
+                if should_delete {
                     // Best-effort: a remove failure is non-fatal —
                     // the new baseline is already written, so the
                     // only cost is a stale entry until the user
@@ -1068,6 +1083,51 @@ mod tests {
         assert!(
             !env.fs.exists(&legacy_path),
             "legacy entry with empty source_path must be cleaned up to avoid permanent orphan"
+        );
+    }
+
+    #[test]
+    fn write_at_nested_path_removes_corrupt_legacy_basename_file() {
+        // PR #118 10th-pass Comment R: when the legacy basename-only
+        // file is corrupt (truncated JSON, schema mismatch), the
+        // write cleanup must DELETE it. Otherwise the corrupt file
+        // would later poison `collect_baselines`, breaking every
+        // `transform check` / `status` / `refresh` run with a
+        // parse error.
+        let env = TempEnvironment::builder().build();
+
+        // Stage a corrupt legacy entry directly on disk.
+        let legacy_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs.mkdir_all(legacy_path.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&legacy_path, b"{this is not valid json")
+            .unwrap();
+        assert!(env.fs.exists(&legacy_path));
+
+        // Write a valid baseline at the new nested path.
+        let new = Baseline::build(
+            Path::new("/dotfiles/app/subdir/config.toml.tmpl"),
+            b"new",
+            b"new-src",
+            Some(""),
+            None,
+        );
+        let new_path = new
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "subdir/config.toml",
+            )
+            .unwrap();
+
+        assert!(env.fs.exists(&new_path), "new baseline written");
+        assert!(
+            !env.fs.exists(&legacy_path),
+            "corrupt legacy file must be removed during migration to avoid breaking collect_baselines later"
         );
     }
 

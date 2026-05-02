@@ -145,9 +145,13 @@ pub fn collect_baselines(
                             // Already nested; trust the cache layout.
                             filename
                         } else {
-                            derive_filename_from_source_path(&baseline.source_path, &pack.name)
-                                .filter(|derived| derived.contains('/'))
-                                .unwrap_or(filename)
+                            derive_filename_from_source_path(
+                                &baseline.source_path,
+                                &pack.name,
+                                paths.dotfiles_root(),
+                            )
+                            .filter(|derived| derived.contains('/'))
+                            .unwrap_or(filename)
                         };
                         out.push((
                             pack.name.clone(),
@@ -173,45 +177,62 @@ pub fn collect_baselines(
 }
 
 /// Derive a virtual_relative cache key from a baseline's
-/// `source_path` plus the pack name. Used by
+/// `source_path` plus the pack name and dotfiles root. Used by
 /// [`collect_baselines`] to reconcile legacy basename-only cache
 /// entries with their true logical key (the nested virtual path).
 ///
 /// Algorithm:
-/// 1. Take `source_path`'s `Normal` components.
-/// 2. Strip a single trailing extension from the leaf (the
+/// 1. Strip the `dotfiles_root` prefix from `source_path` to get a
+///    pack-rooted relative path.
+/// 2. Verify the first component matches `pack_name` (otherwise the
+///    baseline doesn't belong to this pack — bail out).
+/// 3. Drop the leading pack-name component.
+/// 4. Strip a single trailing extension from the leaf (the
 ///    preprocessor extension: `.tmpl`, `.identity`, etc.).
-/// 3. Find the last component matching `pack_name` (the pack root).
-/// 4. Return everything after it joined with `/`.
+/// 5. Return the remaining components joined with `/`.
 ///
-/// Returns `None` for empty `source_path`, missing pack-name match,
-/// or empty post-pack tail. The walker treats `None` as "keep using
-/// the cache-derived filename."
+/// Stripping by the explicit `dotfiles_root` + `pack_name` pair
+/// (rather than searching for `pack_name` in the components) is
+/// essential when a path component **inside** the pack happens to
+/// share its name with the pack itself — e.g.
+/// `/dotfiles/app/app/config.toml.tmpl` with pack `app` must yield
+/// `app/config.toml`, not `config.toml`. A `rposition` /
+/// first-match search would conflate the two.
+///
+/// Returns `None` for empty `source_path`, source path outside the
+/// dotfiles root, mismatched pack name, or empty post-pack tail.
+/// The walker treats `None` as "keep using the cache-derived
+/// filename."
 fn derive_filename_from_source_path(
     source_path: &std::path::Path,
     pack_name: &str,
+    dotfiles_root: &std::path::Path,
 ) -> Option<String> {
     if source_path.as_os_str().is_empty() {
         return None;
     }
-    let mut components: Vec<String> = source_path
+    let rel = source_path.strip_prefix(dotfiles_root).ok()?;
+    let mut components: Vec<String> = rel
         .components()
         .filter_map(|c| match c {
             std::path::Component::Normal(n) => Some(n.to_string_lossy().into_owned()),
             _ => None,
         })
         .collect();
+    // First component must be the pack root.
+    if components.first().map(String::as_str) != Some(pack_name) {
+        return None;
+    }
+    components.remove(0);
+    if components.is_empty() {
+        return None;
+    }
     if let Some(last) = components.last_mut() {
         if let Some(dot_idx) = last.rfind('.') {
             last.truncate(dot_idx);
         }
     }
-    let pack_idx = components.iter().rposition(|c| c == pack_name)?;
-    let rel_components = &components[pack_idx + 1..];
-    if rel_components.is_empty() {
-        return None;
-    }
-    Some(rel_components.join("/"))
+    Some(components.join("/"))
 }
 
 /// Recursively walk a baseline-cache subtree, collecting the
@@ -704,41 +725,82 @@ mod tests {
         assert_eq!(
             derive_filename_from_source_path(
                 std::path::Path::new("/dotfiles/app/subdir/config.toml.tmpl"),
-                "app"
+                "app",
+                std::path::Path::new("/dotfiles"),
             ),
             Some("subdir/config.toml".to_string())
         );
         assert_eq!(
             derive_filename_from_source_path(
                 std::path::Path::new("/home/user/dotfiles/pkg/a/b/leaf.txt.identity"),
-                "pkg"
+                "pkg",
+                std::path::Path::new("/home/user/dotfiles"),
             ),
             Some("a/b/leaf.txt".to_string())
         );
     }
 
     #[test]
-    fn derive_filename_from_source_path_returns_none_for_top_level() {
+    fn derive_filename_from_source_path_handles_pack_named_subdir_collision() {
+        // Comment Q: when a nested directory has the same name as
+        // the pack, an `rposition` search would pick the WRONG
+        // pack root. The fix relies on `dotfiles_root` to strip
+        // the prefix unambiguously: `/dotfiles/app/app/config.toml`
+        // with pack `app` and dotfiles_root `/dotfiles` gives the
+        // post-strip path `app/app/config.toml.tmpl`, peel the
+        // leading `app` (pack root) → `app/config.toml`. NOT
+        // `config.toml` (which a rposition search would produce).
+        assert_eq!(
+            derive_filename_from_source_path(
+                std::path::Path::new("/dotfiles/app/app/config.toml.tmpl"),
+                "app",
+                std::path::Path::new("/dotfiles"),
+            ),
+            Some("app/config.toml".to_string())
+        );
+    }
+
+    #[test]
+    fn derive_filename_from_source_path_returns_top_level_for_pack_root_file() {
         // Source is the pack's top-level file: post-pack tail is
-        // a single component → not nested, no override needed.
+        // a single component. The helper still returns it; the
+        // walker filter (`derived.contains('/')`) decides whether
+        // an override applies.
         assert_eq!(
             derive_filename_from_source_path(
                 std::path::Path::new("/dotfiles/app/config.toml.tmpl"),
-                "app"
+                "app",
+                std::path::Path::new("/dotfiles"),
             ),
             Some("config.toml".to_string())
         );
     }
 
     #[test]
-    fn derive_filename_from_source_path_returns_none_for_missing_pack() {
-        // Pack name doesn't appear in the path (unusual / moved
-        // pack). Helper returns None — walker keeps cache-derived
+    fn derive_filename_from_source_path_returns_none_for_path_outside_dotfiles_root() {
+        // Source path doesn't live under dotfiles_root (unusual /
+        // moved repo). Returns None — walker keeps cache-derived
         // filename.
         assert_eq!(
             derive_filename_from_source_path(
-                std::path::Path::new("/elsewhere/config.toml.tmpl"),
-                "app"
+                std::path::Path::new("/elsewhere/pkg/config.toml.tmpl"),
+                "pkg",
+                std::path::Path::new("/dotfiles"),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn derive_filename_from_source_path_returns_none_for_missing_pack() {
+        // Pack name doesn't appear at the right position (unusual /
+        // moved pack). Helper returns None — walker keeps cache-
+        // derived filename.
+        assert_eq!(
+            derive_filename_from_source_path(
+                std::path::Path::new("/dotfiles/other-pack/config.toml.tmpl"),
+                "app",
+                std::path::Path::new("/dotfiles"),
             ),
             None
         );
