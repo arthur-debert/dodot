@@ -1,0 +1,15 @@
+{%- if already_installed -%}
+[message]The dodot git alias is already installed in {{ rc_path_display }}.[/message]
+  [muted]Block:[/muted]
+{% for line in alias_block_lines -%}
+    {{ line }}
+{% endfor -%}
+  [muted]To uninstall, remove the block manually.[/muted]
+{%- else -%}
+[message]Add this block to {{ rc_path_display }} (or run [usage]dodot git-install-alias[/usage]):[/message]
+
+{% for line in alias_block_lines -%}
+    {{ line }}
+{% endfor %}
+  [muted]Then run [usage]source {{ rc_path_display }}[/usage] (or open a new shell).[/muted]
+{%- endif -%}
