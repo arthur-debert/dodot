@@ -334,9 +334,13 @@ pub fn collect_pack_intents(
     ctx: &ExecutionContext,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
-    let registry = crate::preprocessing::default_registry(
+    // [secret] is intentionally root-only — see SecretSection docs.
+    let root_config = ctx.config_manager.root_config()?;
+    let (registry, _secret_registry) = crate::preprocessing::default_registry(
         &pack_config.preprocessor.template,
+        &root_config.secret,
         ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
     )?;
     collect_pack_intents_inner(pack, ctx, &pack_config, Some(&registry))
 }
@@ -388,9 +392,13 @@ pub fn plan_pack(
     mode: crate::preprocessing::PreprocessMode,
 ) -> Result<PackPlan> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
-    let registry = crate::preprocessing::default_registry(
+    // [secret] is intentionally root-only — see SecretSection docs.
+    let root_config = ctx.config_manager.root_config()?;
+    let (registry, _secret_registry) = crate::preprocessing::default_registry(
         &pack_config.preprocessor.template,
+        &root_config.secret,
         ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
     )?;
     plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode)
 }

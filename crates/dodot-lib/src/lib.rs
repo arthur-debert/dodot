@@ -16,6 +16,7 @@ pub mod probe;
 pub mod prompts;
 pub mod render;
 pub mod rules;
+pub mod secret;
 pub mod shell;
 
 // The testing module is available:

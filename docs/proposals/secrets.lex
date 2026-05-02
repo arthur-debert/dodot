@@ -401,6 +401,8 @@ Design Specification: Secret Handling
 
 8. Implementation Phases
 
+    Testing strategy for every phase below — unit / tier-1 hermetic / tier-2 stub-or-real / dev-shell helper for AI-agent and human exploration — lives in the sibling document [./secrets-testing.lex]. Each phase's PR is expected to land its corresponding tests; the testing doc is the contract those tests satisfy.
+
     Phase S1: Value injection — minimal set
         - `SecretProvider` trait and `SecretString` type
         - Providers: `pass`, `op`

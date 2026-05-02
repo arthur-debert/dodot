@@ -38,6 +38,36 @@ pub enum TransformType {
     Opaque,
 }
 
+/// One entry in a per-render secrets sidecar — a span of lines whose
+/// content was produced by a `secret(...)` call, paired with the
+/// reference that produced it.
+///
+/// Lines are 0-indexed and `start..end` is half-open. A single-line
+/// secret occupies line `start` and is encoded as `end == start + 1`
+/// (`start == end` would be an empty range and is never produced).
+/// For Phase S1 every entry is single-line: multi-line secrets are
+/// refused at resolution time per `secrets.lex` §3.4. The `end` field
+/// is preserved in the schema for forward-compatibility but the
+/// renderer never produces `end > start + 1`.
+///
+/// Persisted to disk under `<baseline>.secret.json` (see
+/// `secrets.lex` §3.3); consumed by the dry-run preview rendering
+/// (§7.4) to mask resolved values, and by the burgertocow mask
+/// integration (issue arthur-debert/burgertocow#13) to skip those
+/// lines from the reverse diff.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SecretLineRange {
+    /// First line, 0-indexed, inclusive.
+    pub start: usize,
+    /// One past the last line, 0-indexed, exclusive. `start + 1` for
+    /// a single-line value.
+    pub end: usize,
+    /// The original `secret(...)` argument string, e.g.
+    /// `"op://Personal/DB/password"`. Surfaces in the dry-run
+    /// `[SECRET: <reference>]` placeholder.
+    pub reference: String,
+}
+
 /// A single file produced by a preprocessor's expansion.
 ///
 /// Construct ad-hoc via the struct literal; tests commonly use
@@ -70,6 +100,13 @@ pub struct ExpandedFile {
     /// install/homebrew sentinels both use the context hash to decide
     /// when work is stale.
     pub context_hash: Option<[u8; 32]>,
+    /// Per-render secret-line tracking. Empty when no `secret(...)`
+    /// calls fired (the common case today; will be the common case
+    /// forever for templates that don't use secrets). Populated by
+    /// `TemplatePreprocessor` when a [`crate::secret::SecretRegistry`]
+    /// is wired in. The pipeline persists this as a sidecar JSON
+    /// alongside the baseline.
+    pub secret_line_ranges: Vec<SecretLineRange>,
 }
 
 /// The core preprocessor abstraction.
@@ -199,18 +236,97 @@ impl Default for PreprocessorRegistry {
 /// The [`identity`] preprocessor is test-only and is intentionally *not*
 /// registered here (it would match innocuous-looking `.identity` files in
 /// user dotfiles).
+///
+/// `secret_config` controls whether the template preprocessor gets a
+/// [`SecretRegistry`] wired in. When `[secret] enabled = true` and at
+/// least one provider is enabled, this function builds the registry,
+/// wires it onto the template preprocessor, and returns it via
+/// `out_secret_registry` so the caller can run preflight checks
+/// (`crate::secret::preflight`) before any rendering begins. When
+/// secrets are disabled, the template preprocessor is built without a
+/// registry and `secret(...)` calls in templates surface a config-
+/// pointing render error.
 pub fn default_registry(
     template_config: &crate::config::PreprocessorTemplateSection,
+    secret_config: &crate::config::SecretSection,
     pather: &dyn crate::paths::Pather,
-) -> Result<PreprocessorRegistry> {
+    command_runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+) -> Result<(
+    PreprocessorRegistry,
+    Option<std::sync::Arc<crate::secret::SecretRegistry>>,
+)> {
+    use std::sync::Arc;
+
     let mut registry = PreprocessorRegistry::new();
     registry.register(Box::new(unarchive::UnarchivePreprocessor::new()));
-    registry.register(Box::new(template::TemplatePreprocessor::new(
+
+    let mut tpl = template::TemplatePreprocessor::new(
         template_config.extensions.clone(),
         template_config.vars.clone(),
         pather,
-    )?));
-    Ok(registry)
+    )?;
+
+    let secret_registry = if secret_config.enabled {
+        build_secret_registry(secret_config, command_runner)
+    } else {
+        None
+    };
+
+    if let Some(sr) = &secret_registry {
+        tpl = tpl.with_secret_registry(Arc::clone(sr));
+    }
+
+    registry.register(Box::new(tpl));
+    Ok((registry, secret_registry))
+}
+
+/// Construct a [`crate::secret::SecretRegistry`] from the per-provider
+/// `[secret.providers.*]` config blocks. Each enabled provider is
+/// constructed with the shared `CommandRunner` (so tests can inject a
+/// mock runner) and registered. Returns `None` if no provider is
+/// enabled — the secrets layer treats that case as "secrets feature
+/// fully off" and templates with `secret(...)` calls fail loudly.
+///
+/// Public so `commands::up` can build a single registry from the root
+/// config to run [`crate::secret::preflight`] once per run, before any
+/// per-pack template rendering begins (`secrets.lex` §5.4).
+pub fn build_secret_registry(
+    config: &crate::config::SecretSection,
+    runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+) -> Option<std::sync::Arc<crate::secret::SecretRegistry>> {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    let mut reg = crate::secret::SecretRegistry::new();
+    let mut any_enabled = false;
+
+    if config.providers.pass.enabled {
+        let store_dir = if config.providers.pass.store_dir.is_empty() {
+            // Defer to env / default: PassProvider::from_env reads
+            // $PASSWORD_STORE_DIR or falls back to ~/.password-store.
+            None
+        } else {
+            Some(PathBuf::from(&config.providers.pass.store_dir))
+        };
+        let provider = match store_dir {
+            Some(dir) => crate::secret::PassProvider::new(Arc::clone(&runner), dir),
+            None => crate::secret::PassProvider::from_env(Arc::clone(&runner)),
+        };
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.op.enabled {
+        let provider = crate::secret::OpProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if any_enabled {
+        Some(Arc::new(reg))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]

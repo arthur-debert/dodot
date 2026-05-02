@@ -43,6 +43,9 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub profiling: ProfilingSection,
+
+    #[config(nested)]
+    pub secret: SecretSection,
 }
 
 /// Pack-level settings.
@@ -222,6 +225,73 @@ pub struct ProfilingSection {
     /// 400 KB on disk.
     #[config(default = 100)]
     pub keep_last_runs: usize,
+}
+
+/// Secret-handling settings (`docs/proposals/secrets.lex`).
+///
+/// Top-level kill switch + per-provider blocks. Disabling the
+/// section globally (`[secret] enabled = false`) is equivalent to
+/// disabling every provider; templates that call `secret(...)` then
+/// surface a "no providers configured" render error.
+///
+/// **This section is root-only.** Unlike most config sections, the
+/// `[secret]` block is always read from the root `.dodot.toml`;
+/// per-pack overrides are ignored. Secret tooling
+/// (`$PASSWORD_STORE_DIR`, `OP_SERVICE_ACCOUNT_TOKEN`, the binaries
+/// themselves) is a property of the user's environment, not of any
+/// individual pack — a pack-level override would invalidate the
+/// once-per-run preflight contract (`secrets.lex` §5.4) and would
+/// surface as confusing "secret X probed under config A but
+/// resolved under config B" failures. Treat the root section as the
+/// single source of truth.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretSection {
+    /// Master switch. Default true; flip to false to disable all
+    /// secret resolution without removing the per-provider blocks.
+    #[config(default = true)]
+    pub enabled: bool,
+
+    #[config(nested)]
+    pub providers: SecretProvidersSection,
+}
+
+/// Per-provider configuration. Each block has an `enabled` flag plus
+/// any provider-specific knobs (e.g. `pass.store_dir`). Providers
+/// disabled here are not registered in the runtime
+/// `SecretRegistry`; references to their schemes raise
+/// "no provider for scheme" at resolution time.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProvidersSection {
+    #[config(nested)]
+    pub pass: SecretProviderPass,
+
+    #[config(nested)]
+    pub op: SecretProviderOp,
+}
+
+/// `pass` (password-store) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderPass {
+    /// Whether the `pass:` scheme is registered. Default false —
+    /// users opt in explicitly so a freshly-installed dodot doesn't
+    /// shell out to `pass` on every render.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// Override `$PASSWORD_STORE_DIR`. Empty (the default) leaves
+    /// dodot reading the env var, which falls back to
+    /// `$HOME/.password-store`.
+    #[config(default = "")]
+    pub store_dir: String,
+}
+
+/// `op` (1Password CLI) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderOp {
+    /// Whether the `op://` scheme is registered. Default false —
+    /// same opt-in posture as `pass`.
+    #[config(default = false)]
+    pub enabled: bool,
 }
 
 /// File-to-handler mapping patterns.

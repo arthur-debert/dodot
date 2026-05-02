@@ -601,6 +601,31 @@ pub fn preprocess_pack(
                         "baseline written"
                     );
                 }
+
+                // Secrets sidecar (secrets.lex §3.3). Always called;
+                // the writer no-ops when the render had no
+                // `secret(...)` calls AND removes a stale sidecar
+                // from a prior render that DID, so the on-disk
+                // state always matches the latest render.
+                let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(
+                    expanded.secret_line_ranges.clone(),
+                );
+                if let Err(err) =
+                    sidecar.write(fs, paths, &pack.name, PREPROCESSED_HANDLER, &cache_filename)
+                {
+                    // Same non-fatal disposition as baseline writes:
+                    // a missing sidecar means the next reverse-merge
+                    // sees an empty mask and surfaces the secret
+                    // line as a regular (mask-able) divergence,
+                    // which the user can recover from by re-running
+                    // `dodot up`.
+                    debug!(
+                        pack = %pack.name,
+                        file = %cache_filename,
+                        error = %err,
+                        "secrets sidecar write failed (non-fatal)"
+                    );
+                }
             }
 
             claimed_paths.insert(virtual_relative.clone());
@@ -2036,6 +2061,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("name = \u{1e}rendered\u{1f}".into()),
                 context_hash: Some([0xab; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             ..Default::default()
         }));
@@ -2107,6 +2133,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             ..Default::default()
         }));
@@ -2200,6 +2227,7 @@ mod tests {
             is_dir: false,
             tracked_render: Some("FIRST".into()),
             context_hash: Some([1; 32]),
+            secret_line_ranges: Vec::new(),
         }];
         let outputs_second = vec![crate::preprocessing::ExpandedFile {
             relative_path: PathBuf::from("config.toml"),
@@ -2207,6 +2235,7 @@ mod tests {
             is_dir: false,
             tracked_render: Some("SECOND".into()),
             context_hash: Some([2; 32]),
+            secret_line_ranges: Vec::new(),
         }];
 
         let datastore = make_datastore(&env);
@@ -2511,6 +2540,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             supports_reverse_merge: true,
         }));
@@ -2574,6 +2604,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             supports_reverse_merge: true,
         }));
@@ -2637,6 +2668,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             supports_reverse_merge: true,
         }));

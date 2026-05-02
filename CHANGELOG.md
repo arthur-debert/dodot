@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase S1 of the secrets feature** (`docs/proposals/secrets.lex` + `docs/proposals/secrets-testing.lex`). Templates can reference values stored outside the dotfiles repo via a new `secret(...)` MiniJinja function — `{{ secret("pass:test/db_password") }}` — which dispatches to a registered `SecretProvider` impl, resolves the value at render time, and zeroizes the in-memory copy on drop (`SecretString`, no `Debug` / `Display`). Phase S1 ships two providers: `pass` (password-store) and `op` (1Password CLI), both opt-in via `[secret.providers.<scheme>] enabled = true` so a fresh dodot install never shells out to a secret tool unprompted. A run-level preflight runs once per `dodot up`, probes every enabled provider, and aggregates `NotInstalled` / `NotAuthenticated` / `Misconfigured` outcomes into a single user-facing message before any rendering begins — so the user sees every fix-it pointer at once instead of one error per template. Per-render `<baseline>.secret.json` sidecars track the line ranges produced by each `secret(...)` call so downstream consumers (dry-run preview, burgertocow#13 mask integration) can mask resolved values without re-rendering. Multi-line provider returns are refused at render time (security: no whole-file deploys via the value-injection path; use a future whole-file provider instead). `dodot up --dry-run` and `dodot status` honor the `PreprocessMode::Passive` envelope (`secrets.lex` §7.4) — provider `resolve()` is never called from these commands; pinned in tests with a `PanickingProvider` that aborts on call. New `tests/e2e/bats/test_secrets.bats` covers the `pass` happy path, sidecar generation, preflight blocking on missing binaries, missing-reference errors, and the Passive contract end-to-end via a stub `pass` binary; `tests/e2e/bats/helpers/dev-shell.sh secrets-pass` drops developers into an interactive sandbox with the same fixture pre-seeded.
+
 ## [3.0.0] - 2026-05-02
 
 
