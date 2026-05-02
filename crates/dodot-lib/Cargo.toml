@@ -7,7 +7,7 @@ description = "Core library for dodot dotfiles manager"
 repository = "https://github.com/arthur-debert/dodot"
 
 [dependencies]
-burgertocow-lib = "0.3"
+burgertocow-lib = "0.4"
 clapfig = "0.16"
 confique = "0.4"
 diffy = "0.4"
