@@ -21,11 +21,19 @@ pub struct PromptDescriptor {
 
 /// Every prompt key the codebase uses. Keep alphabetised by key so
 /// `dodot prompts list` output is stable across edits.
-pub const KNOWN_PROMPTS: &[PromptDescriptor] = &[PromptDescriptor {
-    key: "plist.install_filters",
-    description:
-        "Offer to install git clean/smudge filters when a pack contains tracked .plist files",
-}];
+pub const KNOWN_PROMPTS: &[PromptDescriptor] = &[
+    PromptDescriptor {
+        key: "plist.install_filters",
+        description:
+            "Offer to install git clean/smudge filters when a pack contains tracked .plist files",
+    },
+    PromptDescriptor {
+        key: "template.install_hook",
+        description:
+            "Offer to install the pre-commit hook running `dodot transform check --strict` after \
+             the first successful template deployment",
+    },
+];
 
 /// Look up a descriptor by key, if registered.
 pub fn lookup(key: &str) -> Option<&'static PromptDescriptor> {

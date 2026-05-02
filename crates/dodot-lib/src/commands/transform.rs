@@ -264,6 +264,152 @@ fn render_path(p: &std::path::Path, home: &std::path::Path) -> String {
     }
 }
 
+// ── install-hook ────────────────────────────────────────────────
+
+/// The guard line that opens our managed block in `.git/hooks/pre-commit`.
+/// Detection of this string is what makes [`install_hook`] idempotent.
+pub(crate) const HOOK_GUARD_START: &str =
+    "# >>> dodot transform check --strict (managed by `dodot transform install-hook`) >>>";
+
+/// The guard line that closes our managed block. Paired with
+/// [`HOOK_GUARD_START`].
+pub(crate) const HOOK_GUARD_END: &str = "# <<< dodot transform check --strict <<<";
+
+/// Outcome of `dodot transform install-hook`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallHookOutcome {
+    /// Hook file did not exist; we created it with shebang + our block.
+    Created,
+    /// Hook file existed; we appended our block to it. Existing content
+    /// is preserved.
+    Appended,
+    /// Hook was already installed (guard line found) — no change.
+    AlreadyInstalled,
+}
+
+/// Result returned by [`install_hook`]. Renders through the
+/// `transform-install-hook.jinja` template; CLI exits 0 in all three
+/// outcomes (every state is a success).
+#[derive(Debug, Clone, Serialize)]
+pub struct InstallHookResult {
+    pub outcome: InstallHookOutcome,
+    /// Absolute path of the hook file that was written or inspected.
+    pub hook_path: String,
+    /// Path of the hook rendered relative to `$HOME` for display.
+    pub hook_display_path: String,
+    /// The exact line the hook will execute on each commit. Surfaced
+    /// so the user can see what `--strict` looks like in their hook.
+    pub command_line: String,
+}
+
+/// Install (or detect-already-installed) the dodot pre-commit hook
+/// that runs `dodot transform check --strict`.
+///
+/// # Behavior
+///
+/// - If `<dotfiles_root>/.git/hooks/pre-commit` does not exist:
+///   create it with `#!/bin/sh` + our guarded block, mode `0o755`.
+/// - If it exists and already contains [`HOOK_GUARD_START`]:
+///   no-op, return [`InstallHookOutcome::AlreadyInstalled`].
+/// - If it exists without our guard: append our block (preserving
+///   existing content), ensure executable bit is set.
+///
+/// # Errors
+///
+/// Returns an error if `<dotfiles_root>/.git` doesn't exist (the
+/// dotfiles repo isn't a git working tree). The hook only makes
+/// sense in a git context.
+pub fn install_hook(ctx: &ExecutionContext) -> Result<InstallHookResult> {
+    let dotfiles_root = ctx.paths.dotfiles_root();
+    let git_dir = dotfiles_root.join(".git");
+    if !ctx.fs.is_dir(&git_dir) {
+        return Err(crate::DodotError::Other(format!(
+            "no .git directory at {}; pre-commit hooks only apply to git working \
+             trees. Run `git init` in {} first.",
+            git_dir.display(),
+            dotfiles_root.display(),
+        )));
+    }
+
+    let hooks_dir = git_dir.join("hooks");
+    let hook_path = hooks_dir.join("pre-commit");
+
+    let block = managed_block();
+
+    let outcome = if ctx.fs.exists(&hook_path) {
+        let existing = ctx.fs.read_to_string(&hook_path)?;
+        if existing.contains(HOOK_GUARD_START) {
+            InstallHookOutcome::AlreadyInstalled
+        } else {
+            // Append the block, preserving the existing hook. Add a
+            // leading blank line if the existing content doesn't end
+            // in one — readability when the hook is opened by hand.
+            let mut new_content = existing.clone();
+            if !new_content.ends_with('\n') {
+                new_content.push('\n');
+            }
+            if !new_content.ends_with("\n\n") {
+                new_content.push('\n');
+            }
+            new_content.push_str(&block);
+            ctx.fs.write_file(&hook_path, new_content.as_bytes())?;
+            ctx.fs.set_permissions(&hook_path, 0o755)?;
+            InstallHookOutcome::Appended
+        }
+    } else {
+        ctx.fs.mkdir_all(&hooks_dir)?;
+        let mut new_content = String::from("#!/bin/sh\n\n");
+        new_content.push_str(&block);
+        ctx.fs.write_file(&hook_path, new_content.as_bytes())?;
+        ctx.fs.set_permissions(&hook_path, 0o755)?;
+        InstallHookOutcome::Created
+    };
+
+    Ok(InstallHookResult {
+        outcome,
+        hook_path: hook_path.display().to_string(),
+        hook_display_path: render_path(&hook_path, ctx.paths.home_dir()),
+        command_line: HOOK_COMMAND.to_string(),
+    })
+}
+
+/// Detect whether the hook is currently installed in the dotfiles
+/// repo. Used by the `dodot up` first-template-deploy prompt to
+/// decide whether to offer installation. Cheap (single read of the
+/// hook file).
+pub fn hook_is_installed(ctx: &ExecutionContext) -> Result<bool> {
+    let hook_path = ctx.paths.dotfiles_root().join(".git/hooks/pre-commit");
+    if !ctx.fs.exists(&hook_path) {
+        return Ok(false);
+    }
+    let existing = ctx.fs.read_to_string(&hook_path)?;
+    Ok(existing.contains(HOOK_GUARD_START))
+}
+
+/// Public for `dodot transform show-hook` (future) and for the
+/// onboarding prompt in `commands::up` to surface what would be
+/// installed. Includes the guard lines so callers can grep-detect
+/// the block in arbitrary contexts.
+pub fn managed_block() -> String {
+    format!(
+        "{guard_start}\n\
+         # Aborts the commit if `dodot transform check --strict` reports findings —\n\
+         # template files whose deployed sides drifted, or unresolved dodot-conflict\n\
+         # markers. Remove this block to opt out.\n\
+         {command}\n\
+         {guard_end}\n",
+        guard_start = HOOK_GUARD_START,
+        guard_end = HOOK_GUARD_END,
+        command = HOOK_COMMAND,
+    )
+}
+
+/// The exact shell line our hook block runs. Pulled out as a
+/// constant so the install path and the renderer surface the same
+/// string verbatim.
+pub(crate) const HOOK_COMMAND: &str = "dodot transform check --strict || exit 1";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -652,5 +798,160 @@ mod tests {
             entry.source_path,
             entry.deployed_path
         );
+    }
+
+    // ── install_hook ────────────────────────────────────────────
+
+    /// Stand up a fake `.git` directory inside the dotfiles_root so
+    /// `install_hook` recognises the dotfiles repo as a git working
+    /// tree. We don't `git init` for real because every test would
+    /// pay the subprocess cost; the installer only checks for
+    /// `.git` as a dir, so a bare `mkdir` suffices.
+    fn fake_git_dir(env: &TempEnvironment) {
+        env.fs
+            .mkdir_all(&env.dotfiles_root.join(".git/hooks"))
+            .unwrap();
+    }
+
+    #[test]
+    fn install_hook_creates_new_pre_commit_when_absent() {
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+        // Make sure the hooks dir exists but the hook file does not.
+        let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
+        assert!(!env.fs.exists(&hook_path));
+
+        let ctx = make_ctx(&env);
+        let result = install_hook(&ctx).unwrap();
+        assert!(matches!(result.outcome, InstallHookOutcome::Created));
+        assert!(env.fs.exists(&hook_path));
+
+        let body = env.fs.read_to_string(&hook_path).unwrap();
+        assert!(body.starts_with("#!/bin/sh\n"), "body: {body:?}");
+        assert!(body.contains(HOOK_GUARD_START), "body: {body:?}");
+        assert!(body.contains(HOOK_COMMAND), "body: {body:?}");
+        assert!(body.contains(HOOK_GUARD_END), "body: {body:?}");
+    }
+
+    #[test]
+    fn install_hook_appends_to_existing_pre_commit() {
+        // The user already has a hook (e.g. installed by another tool
+        // or a personal script). install_hook must preserve that
+        // content and append our block, not clobber it.
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+        let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
+        let existing = "#!/bin/sh\necho 'my pre-commit'\nexit 0\n";
+        env.fs.write_file(&hook_path, existing.as_bytes()).unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = install_hook(&ctx).unwrap();
+        assert!(matches!(result.outcome, InstallHookOutcome::Appended));
+
+        let body = env.fs.read_to_string(&hook_path).unwrap();
+        assert!(body.starts_with(existing), "user content lost: {body:?}");
+        assert!(body.contains(HOOK_GUARD_START));
+        assert!(body.contains(HOOK_COMMAND));
+    }
+
+    #[test]
+    fn install_hook_is_idempotent_on_second_call() {
+        // Running `dodot transform install-hook` twice in a row must
+        // not double-append the block. The guard line is what makes
+        // this safe.
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+        let ctx = make_ctx(&env);
+
+        let r1 = install_hook(&ctx).unwrap();
+        assert!(matches!(r1.outcome, InstallHookOutcome::Created));
+
+        let body_after_first = env
+            .fs
+            .read_to_string(&env.dotfiles_root.join(".git/hooks/pre-commit"))
+            .unwrap();
+
+        let r2 = install_hook(&ctx).unwrap();
+        assert!(matches!(r2.outcome, InstallHookOutcome::AlreadyInstalled));
+
+        let body_after_second = env
+            .fs
+            .read_to_string(&env.dotfiles_root.join(".git/hooks/pre-commit"))
+            .unwrap();
+        assert_eq!(
+            body_after_first, body_after_second,
+            "body changed on second call"
+        );
+        // Exactly one occurrence of the guard line.
+        assert_eq!(body_after_second.matches(HOOK_GUARD_START).count(), 1);
+    }
+
+    #[test]
+    fn install_hook_errors_if_no_git_dir() {
+        // If the dotfiles root isn't a git working tree, refuse
+        // with a clear error rather than silently writing a hook
+        // that nothing will ever invoke.
+        let env = TempEnvironment::builder().build();
+        let ctx = make_ctx(&env);
+        let err = install_hook(&ctx).unwrap_err();
+        let msg = format!("{err}");
+        assert!(msg.contains("no .git directory"), "msg: {msg}");
+        assert!(msg.contains("git init"), "msg: {msg}");
+    }
+
+    #[test]
+    fn hook_is_installed_reports_correctly() {
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+        let ctx = make_ctx(&env);
+
+        // No hook yet → not installed.
+        assert!(!hook_is_installed(&ctx).unwrap());
+
+        // Install it → reported as installed.
+        install_hook(&ctx).unwrap();
+        assert!(hook_is_installed(&ctx).unwrap());
+
+        // A user-written hook without our guard → not installed
+        // (from our perspective).
+        let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
+        env.fs
+            .write_file(&hook_path, b"#!/bin/sh\necho hello\n")
+            .unwrap();
+        assert!(!hook_is_installed(&ctx).unwrap());
+    }
+
+    #[test]
+    fn install_hook_sets_executable_bit() {
+        // The hook needs +x to be invoked by git. Confirm we set
+        // the bit on both the create and the append paths.
+        use std::os::unix::fs::PermissionsExt;
+
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+        let ctx = make_ctx(&env);
+        install_hook(&ctx).unwrap();
+
+        let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
+        let mode = std::fs::metadata(&hook_path).unwrap().permissions().mode();
+        // owner-execute bit must be set; we test for any execute
+        // rather than exact 0o755 because the OS may apply umask.
+        assert!(
+            mode & 0o100 != 0,
+            "hook is not executable, mode = {:o}",
+            mode
+        );
+    }
+
+    #[test]
+    fn managed_block_is_self_contained_and_grep_detectable() {
+        // The block alone should be enough to detect the install:
+        // its first line is exactly HOOK_GUARD_START. This pins the
+        // contract that downstream tools (or future `transform
+        // uninstall-hook`) can grep for the guard line.
+        let block = managed_block();
+        assert!(block.starts_with(HOOK_GUARD_START));
+        assert!(block.trim_end().ends_with(HOOK_GUARD_END));
+        assert!(block.contains(HOOK_COMMAND));
     }
 }

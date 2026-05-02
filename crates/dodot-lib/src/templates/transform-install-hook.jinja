@@ -1,0 +1,14 @@
+{%- if outcome == "created" -%}
+[message]Installed pre-commit hook at {{ hook_display_path }}[/message]
+  [muted]Every `git commit` now runs:[/muted]
+    [usage]{{ command_line }}[/usage]
+  [muted]Refuses commits with divergent templates or unresolved dodot-conflict markers.[/muted]
+{%- elif outcome == "appended" -%}
+[message]Appended dodot block to existing pre-commit hook at {{ hook_display_path }}[/message]
+  [muted]Existing hook content was preserved.[/muted]
+  [muted]Every `git commit` now also runs:[/muted]
+    [usage]{{ command_line }}[/usage]
+{%- elif outcome == "already_installed" -%}
+[message]Pre-commit hook already installed at {{ hook_display_path }}[/message]
+  [muted]The dodot block is already present (no change). Re-running this command is safe.[/muted]
+{%- endif %}

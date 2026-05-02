@@ -127,11 +127,13 @@ fn main() {
     match app.dispatch(matches, output_mode) {
         standout::cli::RunResult::Handled(output) => {
             println!("{output}");
-            // Post-up nudge: if the user just deployed packs containing
-            // .plist files and hasn't installed the dodot-plist filter,
-            // offer to install it. Soft failure — never aborts up.
+            // Post-up nudges. Both fire only after a successful
+            // `up` and both are soft (failures land in the debug log,
+            // never stderr). The two prompts are independent: the
+            // user might hit either, both, or neither in a session.
             if subcommand.as_deref() == Some("up") {
                 handlers::maybe_prompt_install_filters();
+                handlers::maybe_prompt_install_template_hook();
             }
             // `dodot transform check` may have set a non-zero exit code
             // via PENDING_EXIT_CODE: the report still rendered above,
@@ -191,6 +193,10 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
     ("git-filters.jinja", render::TEMPLATE_GIT_FILTERS),
     ("prompts-list.jinja", render::TEMPLATE_PROMPTS_LIST),
     ("transform-check.jinja", render::TEMPLATE_TRANSFORM_CHECK),
+    (
+        "transform-install-hook.jinja",
+        render::TEMPLATE_TRANSFORM_INSTALL_HOOK,
+    ),
 ];
 
 fn build_app() -> App {
@@ -263,6 +269,12 @@ fn build_app() -> App {
             "transform-check",
         )
         .expect("register transform.check")
+        .command(
+            "transform.install-hook",
+            handlers::transform_install_hook_handler,
+            "transform-install-hook",
+        )
+        .expect("register transform.install-hook")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -562,6 +574,12 @@ fn build_clap_command() -> ClapCommand {
                                 )
                                 .action(ArgAction::SetTrue),
                         ),
+                )
+                .subcommand(
+                    ClapCommand::new("install-hook").about(
+                        "Install the pre-commit hook that runs `dodot transform check --strict` \
+                         on every commit. Idempotent and additive — preserves any existing hook.",
+                    ),
                 ),
         )
         .subcommand(
