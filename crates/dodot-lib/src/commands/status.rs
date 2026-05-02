@@ -554,14 +554,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     ctx.datastore.as_ref(),
                     ctx.paths.as_ref(),
                     /* write_baselines */ false,
-                    // `write_outputs = true` preserves pre-existing
-                    // status behaviour (status renders into the
-                    // datastore so handler matchers and conflict
-                    // detection see the same layout `up` would
-                    // produce). The §7.4 passive-command tightening
-                    // for status is tracked separately.
-                    /* write_outputs */
-                    true,
                     /* force */ false,
                 ) {
                     Ok(r) => r,
@@ -591,12 +583,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // the pack's display name rather than its raw on-disk name.
         match orchestration::plan_pack(
             &pack, ctx, /* write_baselines */ false,
-            // See note on the preprocess_pack call above:
-            // `write_outputs = true` preserves pre-existing
-            // status semantics (the §7.4 tightening for status is
-            // out of scope for this PR).
-            /* write_outputs */
-            true, /* force */ false, // status is read-only, never bypass guard
+            /* force */ false, // status is read-only, never bypass guard
         ) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);

@@ -60,21 +60,15 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     let mut planning_warnings: Vec<String> = Vec::new();
 
     for pack in &packs {
-        // Both `write_baselines` and `write_outputs` are gated on
-        // `!dry_run`: baselines represent "the state of the last
-        // successful `dodot up`," and rendered outputs in the
-        // datastore back the deployed symlinks. A dry-run — which
-        // never executes — must not move either anchor.
-        // `secrets.lex` §7.4 requires passive commands to avoid
-        // mutating cache state and the datastore alike. The
-        // pipeline still computes the would-be datastore paths in
-        // memory so handler matchers and the dry-run summary see
-        // what would be deployed.
+        // write_baselines is gated on `!dry_run`: baselines represent
+        // "the state of the last successful `dodot up`," so a dry-run
+        // — which never executes — must not move that anchor.
+        // `secrets.lex` §7.4 also requires passive commands to avoid
+        // mutating cache state.
         match orchestration::plan_pack(
             pack,
             ctx,
             /* write_baselines */ !ctx.dry_run,
-            /* write_outputs */ !ctx.dry_run,
             ctx.force,
         ) {
             Ok(plan) => {

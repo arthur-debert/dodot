@@ -338,16 +338,6 @@ fn check_divergence(
 /// `dodot up --force` in the CLI; needed when the user knows they want
 /// to overwrite a divergent deployed file (e.g. after rotating an env
 /// var that a template references).
-///
-/// `write_outputs` controls whether the rendered file/dir is actually
-/// persisted to the datastore. `dodot up --dry-run` sets this to
-/// `false`: the pipeline still has to compute virtual paths so handler
-/// matchers and dry-run summaries see what *would* be deployed, but
-/// the datastore must remain untouched. `secrets.lex` §7.4 requires
-/// passive commands to avoid filesystem side effects, and dry-runs
-/// rendering files would also rotate live deployments out from under
-/// the user (the old rendered file is replaced before any user
-/// confirmation).
 #[allow(clippy::too_many_arguments)] // pipeline core: every parameter is load-bearing
 pub fn preprocess_pack(
     entries: Vec<PackEntry>,
@@ -357,7 +347,6 @@ pub fn preprocess_pack(
     datastore: &dyn DataStore,
     paths: &dyn Pather,
     write_baselines: bool,
-    write_outputs: bool,
     force: bool,
 ) -> Result<PreprocessResult> {
     let mut regular_entries = Vec::new();
@@ -558,16 +547,6 @@ pub fn preprocess_pack(
 
             let datastore_path = if let Some(p) = skip_path {
                 p
-            } else if !write_outputs {
-                // Read-only path (`up --dry-run`): compute the
-                // datastore_path without touching the filesystem so
-                // handler matchers downstream see what *would* be
-                // deployed without any side effect. The path mirrors
-                // what `datastore.write_rendered_*` would have
-                // returned (`<handler_data_dir>/<virtual_relative>`).
-                paths
-                    .handler_data_dir(&pack.name, PREPROCESSED_HANDLER)
-                    .join(&virtual_relative)
             } else if expanded.is_dir {
                 datastore.write_rendered_dir(
                     &pack.name,
@@ -729,7 +708,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -765,7 +743,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -822,7 +799,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -874,7 +850,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -933,7 +908,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -969,7 +943,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1004,7 +977,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1050,7 +1022,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1096,7 +1067,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1146,7 +1116,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1197,7 +1166,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1209,7 +1177,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1259,7 +1226,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1310,7 +1276,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1348,7 +1313,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1411,7 +1375,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1532,7 +1495,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1582,7 +1544,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1642,7 +1603,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1714,7 +1674,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1763,7 +1722,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1823,7 +1781,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -1875,7 +1832,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -1933,7 +1889,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -2004,7 +1959,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap();
@@ -2016,60 +1970,6 @@ mod tests {
             !env.fs.exists(&path),
             "no baseline should exist after a write_baselines=false run, but found: {}",
             path.display()
-        );
-    }
-
-    #[test]
-    fn rendered_output_is_not_written_when_write_outputs_is_false() {
-        // Dry-run paths (`dodot up --dry-run`) set `write_outputs =
-        // false`. The pipeline must still resolve a virtual entry
-        // pointing at the would-be datastore path so handler matchers
-        // and the dry-run summary see what would be deployed, but the
-        // datastore must remain untouched (`secrets.lex` §7.4).
-        let env = TempEnvironment::builder()
-            .pack("app")
-            .file("config.toml.identity", "name = original")
-            .done()
-            .build();
-
-        let registry = make_registry();
-        let datastore = make_datastore(&env);
-        let pack = make_pack("app", env.dotfiles_root.join("app"));
-        let entries = vec![PackEntry {
-            relative_path: "config.toml.identity".into(),
-            absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
-            is_dir: false,
-        }];
-
-        let result = preprocess_pack(
-            entries,
-            &registry,
-            &pack,
-            env.fs.as_ref(),
-            &datastore,
-            env.paths.as_ref(),
-            /* write_baselines */ false,
-            /* write_outputs */ false,
-            /* force */ false,
-        )
-        .unwrap();
-
-        // Virtual entry exists and points at the would-be datastore path
-        // — handler matchers downstream depend on this.
-        assert_eq!(result.virtual_entries.len(), 1);
-        let virtual_entry = &result.virtual_entries[0];
-        assert_eq!(virtual_entry.relative_path, PathBuf::from("config.toml"));
-        let expected_path = env
-            .paths
-            .handler_data_dir("app", PREPROCESSED_HANDLER)
-            .join("config.toml");
-        assert_eq!(virtual_entry.absolute_path, expected_path);
-
-        // …but no rendered file landed on disk.
-        assert!(
-            !env.fs.exists(&expected_path),
-            "rendered output must not be written with write_outputs=false, but found: {}",
-            expected_path.display()
         );
     }
 
@@ -2101,7 +2001,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -2168,7 +2067,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .unwrap();
@@ -2188,7 +2086,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -2246,7 +2143,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -2321,7 +2217,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -2412,7 +2307,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .expect("non-tracking preprocessor must not be gated by markers in its source");
@@ -2469,7 +2363,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -2535,7 +2428,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .expect("non-UTF-8 source without markers must not crash the gate");
@@ -2597,7 +2489,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             false,
-            true,
             false,
         )
         .unwrap_err();
@@ -2649,7 +2540,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .expect("clean source should expand successfully");
@@ -2672,7 +2562,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .unwrap_err();
@@ -2692,7 +2581,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -2741,7 +2629,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             force,
         )
@@ -2957,7 +2844,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .unwrap();
@@ -2985,7 +2871,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -3095,7 +2980,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .unwrap();
@@ -3128,7 +3012,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -3205,7 +3088,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .unwrap();
@@ -3236,7 +3118,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -3303,7 +3184,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             true,
-            true,
             false,
         )
         .unwrap();
@@ -3354,7 +3234,6 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
             true,
             false,
         )
@@ -3566,7 +3445,6 @@ mod tests {
             &datastore,
             env.paths.as_ref(),
             /* write_baselines */ false,
-            /* write_outputs */ true,
             /* force */ false,
         )
         .unwrap();
