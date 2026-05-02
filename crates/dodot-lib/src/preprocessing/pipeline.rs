@@ -277,9 +277,14 @@ fn check_divergence(
 ///    datastore is not touched. Virtual entries are still produced so
 ///    the rest of the planner can compute intents — their bytes come
 ///    from `baseline.rendered_content` when a baseline exists.
-///    First-time pack templates with no baseline are silently skipped
-///    (status shows nothing for them; the user runs `dodot up` first).
-///    See [`PreprocessMode`] and `docs/proposals/secrets.lex` §7.4.
+///    First-time pack templates with no baseline still surface a
+///    placeholder virtual entry (so `dodot status` can render them as
+///    "pending" under the stripped name) but with empty
+///    `rendered_bytes`. Handlers that need rendered content for
+///    sentinel hashing (`install`, `homebrew`) skip intent generation
+///    for those placeholders rather than erroring out — the next real
+///    `dodot up` plans them normally. See [`PreprocessMode`] and
+///    `docs/proposals/secrets.lex` §7.4.
 /// 7. Return the result for merging into the handler pipeline.
 ///
 /// Set `force = true` to bypass the divergence guard. Surfaces as
@@ -650,20 +655,31 @@ pub fn preprocess_pack(
 ///
 /// Walks the same set of preprocessor entries the Active path would
 /// have, but never invokes a preprocessor. For each entry, computes
-/// the would-be virtual relative path via `Preprocessor::stripped_name`
-/// and looks up the cached baseline. When a baseline exists, builds a
-/// virtual entry pointing at the would-be datastore location with
-/// `rendered_bytes` sourced from `baseline.rendered_content`. When no
-/// baseline exists (first-time pack template), the entry is silently
-/// skipped — passive callers display nothing for un-baselined templates,
-/// the user runs `dodot up` first. Source files are not read (no marker
-/// scan); the datastore is not written; the baseline cache is not
-/// written.
+/// the would-be virtual relative path via `Preprocessor::stripped_name`.
+/// Two outcomes:
 ///
-/// This contract is what `secrets.lex` §7.4 demands: `dodot status` and
-/// `dodot up --dry-run` MUST NOT trigger template evaluation, MUST NOT
-/// surface provider auth prompts, and MUST NOT mutate disk state. See
-/// issue #121.
+/// - **Baseline exists** (the file was rendered on a previous `up`):
+///   builds a virtual entry pointing at the would-be datastore
+///   location with `rendered_bytes` sourced from
+///   `baseline.rendered_content`. Runs the read-only divergence
+///   check so callers (status's `Health::Preserved` row) still see
+///   skipped-render rows for divergent deployed files.
+/// - **No baseline** (first-time pack template, never `up`'d):
+///   surfaces a placeholder virtual entry under the stripped name,
+///   with empty `rendered_bytes`. Status renders this as "pending"
+///   under the logical name (`config.toml` rather than the source
+///   `config.toml.tmpl`); handlers that need rendered content for
+///   sentinel hashing (install, homebrew) skip intent generation
+///   for these placeholders rather than crashing. The next real
+///   `dodot up` populates the baseline and plans intents normally.
+///
+/// Source files are not read (no marker scan); the datastore is
+/// not written; the baseline cache is not written.
+///
+/// This contract is what `secrets.lex` §7.4 demands: `dodot status`
+/// and `dodot up --dry-run` MUST NOT trigger template evaluation,
+/// MUST NOT surface provider auth prompts, and MUST NOT mutate disk
+/// state. See issue #121.
 ///
 /// Limitation: this assumes a 1:1 source→virtual relationship via
 /// `stripped_name`. That holds for templates (the only shipped

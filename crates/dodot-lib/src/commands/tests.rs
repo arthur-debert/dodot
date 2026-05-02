@@ -1025,6 +1025,35 @@ fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file
 }
 
 #[test]
+fn up_dry_run_first_time_pack_with_install_template_does_not_error() {
+    // Regression for Copilot review on PR #126: a first-time pack
+    // containing `install.sh.tmpl` (no baseline yet, no rendered
+    // file on disk) must not crash dry-run intent collection. The
+    // install handler used to read `m.absolute_path` unconditionally
+    // and propagate an Fs error; now it skips intent generation for
+    // the placeholder match instead. Same shape for `Brewfile.tmpl`
+    // / homebrew handler.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .file("Brewfile.tmpl", "brew '{{ pkg }}'")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\npkg = \"jq\"\n")
+        .done()
+        .build();
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+
+    // The fix: this returns Ok and emits zero Run intents (the
+    // placeholders skip intent generation cleanly). Pre-fix, the
+    // install/homebrew handlers tried to read missing rendered
+    // files and propagated an Fs error.
+    let result = commands::up::up(None, &dry_ctx).unwrap();
+    assert!(result.dry_run);
+}
+
+#[test]
 fn passive_first_time_pack_surfaces_pending_placeholder() {
     // §7.4 acceptance: a passive command on a brand-new pack with
     // no baseline cache yet must surface a coherent placeholder
@@ -1052,14 +1081,23 @@ fn passive_first_time_pack_surfaces_pending_placeholder() {
     );
 }
 
-/// Hash a directory tree to a stable byte-identity signature for
-/// the §7.4 no-mutation contract tests above. Returns a sorted
-/// `path → bytes` map; comparing the map equality is equivalent to
-/// "directory is byte-identical."
+/// Snapshot a directory tree (file contents + directory paths) to a
+/// stable signature for the §7.4 no-mutation contract tests. Each
+/// entry is keyed by absolute path; files map to `Some(contents)`,
+/// directories to `None`. Comparing two snapshots for equality is
+/// equivalent to "directory tree is byte-identical, including empty
+/// directories." Including dir paths catches mutations like
+/// `mkdir <data_dir>/<pack>/preprocessed` that would silently slip
+/// past a contents-only check.
+///
+/// Unreadable entries / read errors propagate as panics rather than
+/// silent skips — a passive command that produces an unreadable
+/// entry under `<data_dir>` is itself a §7.4 violation worth
+/// failing the test on.
 fn snapshot_dir_contents(
     env: &crate::testing::TempEnvironment,
     root: &std::path::Path,
-) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+) -> std::collections::BTreeMap<std::path::PathBuf, Option<Vec<u8>>> {
     use std::collections::BTreeMap;
     let mut out = BTreeMap::new();
     if !env.fs.exists(root) {
@@ -1067,15 +1105,19 @@ fn snapshot_dir_contents(
     }
     let mut stack: Vec<std::path::PathBuf> = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = match env.fs.read_dir(&dir) {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
+        let entries = env
+            .fs
+            .read_dir(&dir)
+            .unwrap_or_else(|e| panic!("snapshot_dir_contents: read_dir({dir:?}): {e}"));
         for entry in entries {
             if entry.is_dir {
+                out.insert(entry.path.clone(), None);
                 stack.push(entry.path);
-            } else if let Ok(bytes) = env.fs.read_file(&entry.path) {
-                out.insert(entry.path, bytes);
+            } else {
+                let bytes = env.fs.read_file(&entry.path).unwrap_or_else(|e| {
+                    panic!("snapshot_dir_contents: read_file({:?}): {e}", entry.path)
+                });
+                out.insert(entry.path, Some(bytes));
             }
         }
     }

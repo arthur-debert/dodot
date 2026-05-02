@@ -69,9 +69,29 @@ impl Handler for InstallHandler<'_> {
             // and `up --dry-run` need a correct sentinel for
             // templated install scripts without writing the
             // rendered file to disk. See issue #121.
+            //
+            // First-time-pack passive case: a templated `install.sh`
+            // with no baseline yet lands here as a placeholder match
+            // (no bytes, no file on disk). We can't compute a
+            // sentinel without rendering, and rendering is the §7.4
+            // violation we're refusing to do. Skip intent generation
+            // for this match — status / dry-run will report the file
+            // as pending via the symlink chain instead, and the next
+            // real `dodot up` plans the Run intent normally.
             let checksum = match m.rendered_bytes.as_deref() {
                 Some(bytes) => file_checksum_bytes(bytes),
-                None => file_checksum(self.fs, &m.absolute_path)?,
+                None => match self.fs.exists(&m.absolute_path) {
+                    true => file_checksum(self.fs, &m.absolute_path)?,
+                    false => {
+                        tracing::debug!(
+                            pack = %m.pack,
+                            file = %m.absolute_path.display(),
+                            "skipping install intent — no rendered bytes and no on-disk file \
+                             (first-time-pack passive placeholder)"
+                        );
+                        continue;
+                    }
+                },
             };
             let filename = m
                 .relative_path

@@ -47,10 +47,23 @@ impl Handler for HomebrewHandler<'_> {
             }
 
             // Same in-memory-first sentinel pattern as the install
-            // handler — see install.rs and issue #121 for context.
+            // handler, including the first-time-pack passive
+            // placeholder case (no bytes, no on-disk file → skip
+            // intent generation). See install.rs and issue #121.
             let checksum = match m.rendered_bytes.as_deref() {
                 Some(bytes) => brewfile_checksum_bytes(bytes),
-                None => brewfile_checksum(self.fs, &m.absolute_path)?,
+                None => match self.fs.exists(&m.absolute_path) {
+                    true => brewfile_checksum(self.fs, &m.absolute_path)?,
+                    false => {
+                        tracing::debug!(
+                            pack = %m.pack,
+                            file = %m.absolute_path.display(),
+                            "skipping homebrew intent — no rendered bytes and no on-disk file \
+                             (first-time-pack passive placeholder)"
+                        );
+                        continue;
+                    }
+                },
             };
             let filename = m
                 .relative_path
