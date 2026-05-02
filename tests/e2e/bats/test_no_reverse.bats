@@ -77,10 +77,12 @@ no_reverse = ["*.gen.tmpl"]'
     done
 
     run dodot transform check
-    # `regular.tmpl` falls into reverse-merge (one finding); the two
-    # `*.gen.tmpl` files are skipped. So exit code is 1 (the regular
-    # finding) but the gen sources must be byte-identical.
-    [ "$status" -eq 1 ]
+    # `regular.tmpl` falls into reverse-merge and produces a clean
+    # unified patch (no markers needed) → Patched, exit 0 (per #113:
+    # an unambiguous auto-merge is the happy path). The two
+    # `*.gen.tmpl` files are skipped by the no_reverse opt-out and
+    # remain byte-identical. The regular source IS rewritten.
+    [ "$status" -eq 0 ]
 
     alpha_src=$(cat "$DOTFILES_ROOT/app/alpha.gen.tmpl")
     beta_src=$(cat "$DOTFILES_ROOT/app/beta.gen.tmpl")

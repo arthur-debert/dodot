@@ -34,9 +34,74 @@ pub fn config_block_text() -> String {
     .join("\n")
 }
 
-/// Render the `.gitattributes` line that binds `*.plist` to the filter.
-pub fn gitattributes_line() -> &'static str {
-    "*.plist filter=dodot-plist"
+/// Render the `.gitattributes` lines that bind each configured plist
+/// extension to the `dodot-plist` filter. Default config produces one
+/// line for `*.plist`; users who add e.g. `"binplist"` to the
+/// `[symlink] plist_extensions` config get an additional line.
+///
+/// Callers must pass extensions that have already been normalized by
+/// [`normalize_plist_extensions`]; the rendered patterns are dropped
+/// straight into shell-adjacent contexts (the user's
+/// `.gitattributes`, the install hint), and raw config values can
+/// contain whitespace, quotes, or shell metacharacters that would
+/// produce malformed output.
+pub fn gitattributes_lines(extensions: &[String]) -> Vec<String> {
+    extensions
+        .iter()
+        .map(|ext| format!("*.{ext} filter=dodot-plist"))
+        .collect()
+}
+
+/// Normalize a raw `plist_extensions` config slice into a stable form
+/// suitable for both detection and `.gitattributes` rendering.
+///
+/// For each entry: trim whitespace, strip a single leading `.`,
+/// lowercase. Drop entries that are empty after that or that contain
+/// any character outside `[A-Za-z0-9_+-]` (path separators, glob
+/// metacharacters, quotes, whitespace, anything else that would
+/// either silently fail to match files or turn a `.gitattributes`
+/// line into something unsafe). Dedupe while preserving first-seen
+/// order so user-visible output is stable.
+///
+/// The resulting Vec is what every code path should compare against
+/// or render from. Detection compares case-insensitively; the
+/// rendered glob (`*.<ext>`) is matched by git itself, which on
+/// case-sensitive filesystems would treat `*.Plist` and `*.plist`
+/// as different patterns — lowercasing here makes the contract
+/// uniform regardless of how the user typed the config.
+pub fn normalize_plist_extensions(raw: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(raw.len());
+    for entry in raw {
+        let trimmed = entry.trim();
+        let stripped = trimmed.strip_prefix('.').unwrap_or(trimmed);
+        if stripped.is_empty() {
+            continue;
+        }
+        if !stripped
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '+'))
+        {
+            continue;
+        }
+        let lower = stripped.to_ascii_lowercase();
+        if !out.contains(&lower) {
+            out.push(lower);
+        }
+    }
+    out
+}
+
+/// Resolve the active `plist_extensions` from the root config,
+/// normalized via [`normalize_plist_extensions`]. Used by every code
+/// path that needs to render or scan against the configured
+/// extensions; honors the standard root → pack inheritance the
+/// ConfigManager already manages (callers that want pack-scoped
+/// resolution can call `config_for_pack` directly and run the result
+/// through [`normalize_plist_extensions`]).
+pub(crate) fn root_plist_extensions(ctx: &ExecutionContext) -> Result<Vec<String>> {
+    Ok(normalize_plist_extensions(
+        &ctx.config_manager.root_config()?.symlink.plist_extensions,
+    ))
 }
 
 /// Install the dodot-plist clean/smudge filter into the dotfiles repo's
@@ -89,19 +154,29 @@ pub fn show_filters(ctx: &ExecutionContext) -> Result<ShowFiltersResult> {
     let runner = ctx.command_runner.as_ref();
     let installed = filter_is_installed(runner, &root)?;
 
-    let attributes_present = ctx
+    let extensions = root_plist_extensions(ctx)?;
+    let expected_lines = gitattributes_lines(&extensions);
+    let attrs_content = ctx
         .fs
         .read_to_string(&root.join(".gitattributes"))
-        .ok()
-        .map(|s| s.lines().any(gitattributes_line_present))
-        .unwrap_or(false);
+        .unwrap_or_default();
+    // "Bound" means *every* configured extension has its line. A
+    // partial bind (e.g. legacy file has `*.plist` but config now
+    // also requires `*.binplist`) reports false so the install hint
+    // surfaces the gap.
+    let attributes_present = !expected_lines.is_empty()
+        && expected_lines.iter().all(|expected| {
+            attrs_content
+                .lines()
+                .any(|existing| gitattributes_line_matches(existing, expected))
+        });
 
     let block = config_block_text();
     let block_lines = block.lines().map(str::to_string).collect();
     Ok(ShowFiltersResult {
         config_block: block,
         config_block_lines: block_lines,
-        gitattributes_line: gitattributes_line().to_string(),
+        gitattributes_lines: expected_lines,
         installed_in_git_config: installed,
         bound_in_gitattributes: attributes_present,
         repo_root: root.display().to_string(),
@@ -116,7 +191,9 @@ pub fn show_filters(ctx: &ExecutionContext) -> Result<ShowFiltersResult> {
 pub struct ShowFiltersResult {
     pub config_block: String,
     pub config_block_lines: Vec<String>,
-    pub gitattributes_line: String,
+    /// One line per configured plist extension (default `["plist"]`).
+    /// Templates iterate to render the full block.
+    pub gitattributes_lines: Vec<String>,
     pub installed_in_git_config: bool,
     pub bound_in_gitattributes: bool,
     pub repo_root: String,
@@ -133,9 +210,15 @@ pub fn is_installed(ctx: &ExecutionContext) -> Result<bool> {
 }
 
 /// Scan every active pack under the dotfiles root and return the
-/// absolute paths of any `*.plist` files within. Used by `dodot up`
-/// to decide whether the user should be offered the filter-install
-/// prompt.
+/// absolute paths of files whose suffix matches any extension in the
+/// pack-resolved `[symlink] plist_extensions` config (default
+/// `["plist"]`). Used by `dodot up` to decide whether to offer the
+/// filter-install prompt.
+///
+/// The configured list is normalized per-pack via
+/// [`normalize_plist_extensions`] (trim, strip leading `.`,
+/// lowercase, drop empty/invalid, dedupe), so `["plist"]`,
+/// `[".Plist"]`, and `["  plist  "]` all behave identically.
 ///
 /// Pack selection goes through [`packs::discover_packs`] so it honours
 /// the same conventions every other command does: `pack.ignore`
@@ -144,9 +227,9 @@ pub fn is_installed(ctx: &ExecutionContext) -> Result<bool> {
 /// nested dot-directories (`.git`, etc.) so we don't recurse into
 /// vendored repos that happen to live inside a pack.
 ///
-/// Detection is "any `*.plist` in any active pack", not "tracked by
-/// git". The looser check is intentional: an untracked plist in a pack
-/// is almost certainly headed for a commit, and a false-positive
+/// Detection is "any matching file in any active pack", not "tracked
+/// by git". The looser check is intentional: an untracked plist in a
+/// pack is almost certainly headed for a commit, and a false-positive
 /// prompt is harmless. A stricter check would require shelling out to
 /// `git ls-files` on every `up`.
 pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathBuf>> {
@@ -158,7 +241,10 @@ pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathB
     let root_config = ctx.config_manager.root_config()?;
     let packs = crate::packs::discover_packs(ctx.fs.as_ref(), root, &root_config.pack.ignore)?;
     for pack in packs {
-        scan_for_plists(ctx.fs.as_ref(), &pack.path, &mut found)?;
+        // Honor pack-level overrides of `[symlink] plist_extensions`.
+        let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+        let extensions = normalize_plist_extensions(&pack_config.symlink.plist_extensions);
+        scan_for_plists(ctx.fs.as_ref(), &pack.path, &extensions, &mut found)?;
     }
     Ok(found)
 }
@@ -166,6 +252,7 @@ pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathB
 fn scan_for_plists(
     fs: &dyn crate::fs::Fs,
     dir: &std::path::Path,
+    extensions: &[String],
     found: &mut Vec<std::path::PathBuf>,
 ) -> Result<()> {
     let entries = match fs.read_dir(dir) {
@@ -184,12 +271,16 @@ fn scan_for_plists(
             if name.starts_with('.') {
                 continue;
             }
-            scan_for_plists(fs, &entry.path, found)?;
+            scan_for_plists(fs, &entry.path, extensions, found)?;
         } else if entry
             .path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|s| s.eq_ignore_ascii_case("plist"))
+            .map(|ext| {
+                extensions
+                    .iter()
+                    .any(|configured| configured.eq_ignore_ascii_case(ext))
+            })
             .unwrap_or(false)
         {
             found.push(entry.path);
@@ -219,34 +310,67 @@ fn append_cfprefsd_hint(details: &mut Vec<String>) {
 }
 
 fn append_gitattributes_hint(ctx: &ExecutionContext, details: &mut Vec<String>) {
-    let attrs_path = ctx.paths.dotfiles_root().join(".gitattributes");
-    let already_bound = ctx
+    let extensions = match root_plist_extensions(ctx) {
+        Ok(e) => e,
+        Err(_) => return, // surface elsewhere; don't block the install hint
+    };
+    let lines = gitattributes_lines(&extensions);
+    let attrs_content = ctx
         .fs
-        .read_to_string(&attrs_path)
-        .ok()
-        .map(|s| s.lines().any(gitattributes_line_present))
-        .unwrap_or(false);
-    if !already_bound {
-        details.push(String::new());
-        details.push("Next: ensure your .gitattributes binds *.plist to this filter:".into());
-        details.push(format!(
-            "    echo '{}' >> .gitattributes",
-            gitattributes_line()
-        ));
-        details.push("    git add .gitattributes && git commit -m 'enable plist filters'".into());
+        .read_to_string(&ctx.paths.dotfiles_root().join(".gitattributes"))
+        .unwrap_or_default();
+    let missing: Vec<&str> = lines
+        .iter()
+        .filter(|line| {
+            !attrs_content
+                .lines()
+                .any(|existing| gitattributes_line_matches(existing, line))
+        })
+        .map(String::as_str)
+        .collect();
+    if missing.is_empty() {
+        return;
     }
+    // Print lines directly rather than wrapping them in an `echo
+    // '...' >> .gitattributes` snippet. Even though
+    // `normalize_plist_extensions` already filters out shell
+    // metacharacters, emitting copy-pasteable shell that interpolates
+    // config-derived data is the wrong shape on principle: the user
+    // can paste these lines into their editor or run their own append.
+    let label = if missing.len() == 1 {
+        "Next — add this line to .gitattributes:"
+    } else {
+        "Next — add these lines to .gitattributes:"
+    };
+    details.push(String::new());
+    details.push(label.into());
+    for line in &missing {
+        details.push(format!("    {line}"));
+    }
+    details.push(String::new());
+    details
+        .push("Then commit: git add .gitattributes && git commit -m 'enable plist filters'".into());
 }
 
-/// Match a `.gitattributes` line that binds `*.plist` to the
-/// `dodot-plist` filter. Tolerant of whitespace and comments.
-fn gitattributes_line_present(line: &str) -> bool {
-    let trimmed = line.split('#').next().unwrap_or("").trim();
-    let mut parts = trimmed.split_ascii_whitespace();
-    let pattern = parts.next();
-    if pattern != Some("*.plist") {
-        return false;
+/// True if `existing` (a line from `.gitattributes`) binds the same
+/// `*.<ext> filter=dodot-plist` pattern as `expected`. Tolerant of
+/// whitespace, trailing attributes (e.g. `diff=plist`), and comments.
+fn gitattributes_line_matches(existing: &str, expected: &str) -> bool {
+    let strip = |s: &str| -> Option<String> {
+        let trimmed = s.split('#').next().unwrap_or("").trim();
+        let mut parts = trimmed.split_ascii_whitespace();
+        let pattern = parts.next()?.to_string();
+        let binds_filter = parts.any(|tok| tok == "filter=dodot-plist");
+        if binds_filter {
+            Some(pattern)
+        } else {
+            None
+        }
+    };
+    match (strip(existing), strip(expected)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
     }
-    parts.any(|tok| tok == "filter=dodot-plist")
 }
 
 fn filter_is_installed(
@@ -416,20 +540,141 @@ mod tests {
 
     #[test]
     fn gitattributes_recogniser_handles_whitespace_and_comments() {
-        assert!(gitattributes_line_present("*.plist filter=dodot-plist"));
-        assert!(gitattributes_line_present(
-            "  *.plist   filter=dodot-plist  "
+        let expected = "*.plist filter=dodot-plist";
+        assert!(gitattributes_line_matches(
+            "*.plist filter=dodot-plist",
+            expected
         ));
-        assert!(gitattributes_line_present(
-            "*.plist filter=dodot-plist diff=plist"
+        assert!(gitattributes_line_matches(
+            "  *.plist   filter=dodot-plist  ",
+            expected
         ));
-        assert!(gitattributes_line_present(
-            "*.plist filter=dodot-plist  # plist filter"
+        assert!(gitattributes_line_matches(
+            "*.plist filter=dodot-plist diff=plist",
+            expected
+        ));
+        assert!(gitattributes_line_matches(
+            "*.plist filter=dodot-plist  # plist filter",
+            expected
         ));
 
-        assert!(!gitattributes_line_present(""));
-        assert!(!gitattributes_line_present("# commented out"));
-        assert!(!gitattributes_line_present("*.plist filter=other"));
-        assert!(!gitattributes_line_present("*.txt filter=dodot-plist"));
+        assert!(!gitattributes_line_matches("", expected));
+        assert!(!gitattributes_line_matches("# commented out", expected));
+        assert!(!gitattributes_line_matches(
+            "*.plist filter=other",
+            expected
+        ));
+        assert!(!gitattributes_line_matches(
+            "*.txt filter=dodot-plist",
+            expected
+        ));
+    }
+
+    #[test]
+    fn gitattributes_lines_emits_one_per_extension() {
+        let lines = gitattributes_lines(&["plist".to_string()]);
+        assert_eq!(lines, vec!["*.plist filter=dodot-plist"]);
+
+        let lines = gitattributes_lines(&[
+            "plist".to_string(),
+            "binplist".to_string(),
+            "savedState".to_string(),
+        ]);
+        assert_eq!(
+            lines,
+            vec![
+                "*.plist filter=dodot-plist",
+                "*.binplist filter=dodot-plist",
+                "*.savedState filter=dodot-plist",
+            ]
+        );
+    }
+
+    #[test]
+    fn detect_plist_files_honors_custom_extension() {
+        // With the default config, only `.plist` is detected. With
+        // `binplist` added to the pack's `[symlink] plist_extensions`,
+        // detection picks it up too. Pack-level inheritance is the
+        // shipped path; root-level overrides the same way.
+        use crate::testing::TempEnvironment;
+        let env = TempEnvironment::builder()
+            .pack("apps")
+            .file("com.app.plist", "binary-or-xml")
+            .file("com.other.binplist", "different ext")
+            .file("README.md", "should be ignored")
+            .config("[symlink]\nplist_extensions = [\"plist\", \"binplist\"]\n")
+            .done()
+            .build();
+        let ctx = make_test_ctx(&env);
+        let found = detect_plist_files(&ctx).expect("detect");
+        let names: Vec<String> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            names.contains(&"com.app.plist".to_string()),
+            "default-extension plist should be found: {names:?}"
+        );
+        assert!(
+            names.contains(&"com.other.binplist".to_string()),
+            "custom-extension plist should be found: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n.ends_with(".md")),
+            "non-plist files must not surface: {names:?}"
+        );
+    }
+
+    #[test]
+    fn normalize_plist_extensions_strips_lowercases_dedupes_and_filters() {
+        // Trims, strips a leading `.`, lowercases.
+        assert_eq!(
+            normalize_plist_extensions(&[
+                "plist".into(),
+                ".plist".into(),
+                "  .Plist  ".into(),
+                "BinPlist".into(),
+            ]),
+            vec!["plist".to_string(), "binplist".to_string()],
+            "leading dot, mixed case, and whitespace must collapse \
+             to a single canonical entry"
+        );
+
+        // Filters empty / whitespace-only.
+        assert!(normalize_plist_extensions(&["".into(), "   ".into(), ".".into()]).is_empty());
+
+        // Rejects shell metacharacters, path separators, glob chars,
+        // quotes — anything that could turn the rendered .gitattributes
+        // line into something unsafe or that would silently fail to
+        // match any file at scan time.
+        let dangerous = [
+            "evil; rm -rf".to_string(),
+            "*.txt".to_string(),
+            "weird path".to_string(),
+            "foo/bar".to_string(),
+            "quote'd".to_string(),
+            "back\\slash".to_string(),
+            "with\nnewline".to_string(),
+        ];
+        assert!(
+            normalize_plist_extensions(&dangerous).is_empty(),
+            "metacharacter-bearing entries must be dropped"
+        );
+
+        // Real-world mix passes through cleanly.
+        assert_eq!(
+            normalize_plist_extensions(&[
+                "plist".into(),
+                "binplist".into(),
+                "savedState".into(),
+                "mobileconfig".into(),
+            ]),
+            vec![
+                "plist".to_string(),
+                "binplist".to_string(),
+                "savedstate".to_string(),
+                "mobileconfig".to_string(),
+            ]
+        );
     }
 }

@@ -6,7 +6,8 @@
 {% endfor %}
 [desc]Add to [item].gitattributes[/item] (committed in the repo{% if bound_in_gitattributes %} — [item]already present[/item]{% endif %}):[/desc]
 
-    {{ gitattributes_line }}
+{% for line in gitattributes_lines %}    {{ line }}
+{% endfor %}
 
 [desc]Repo: [item]{{ repo_root }}[/item]
 

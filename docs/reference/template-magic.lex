@@ -127,7 +127,13 @@ Template Magic
 
     4.2. `dodot transform check [--strict] [--dry-run]`
 
-        Active form. Walks the cache, applies reverse-merge diffs back to source on the unambiguous cases, surfaces conflict blocks for the rest, exits non-zero on any finding (so the pre-commit hook can fail the commit). `--dry-run` reports without writing. `--strict` additionally fails on unresolved markers in any source.
+        Active form. Walks the cache and either:
+
+        - Applies a reverse-merge diff back to the source when burgertocow + diffy produce an unambiguous unified patch — `Patched`. Exit 0; nothing for the user to review. The patched source surfaces as modified on the next `git status`; the user runs `git add` and lands a follow-up commit (or amends).
+        - Surfaces a conflict block in the source for the ambiguous cases — `Conflict`. Exit 1; user picks a side and resolves the markers, the same way they would resolve a `git merge` conflict.
+        - Reports `MissingSource` / `MissingDeployed` / `NeedsRebaseline` (cache invariant broken). Exit 1.
+
+        `--dry-run` reports without writing. `--strict` additionally fails on unresolved markers in any source. The pre-commit hook calls `transform check --strict`; the exit-code split above means the hook lets the original commit proceed when reverse-merge succeeds cleanly, and refuses only when human review is genuinely needed.
 
     4.3. `dodot refresh [--quiet] [--list-paths]`
 

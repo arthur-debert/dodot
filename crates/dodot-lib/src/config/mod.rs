@@ -112,6 +112,19 @@ pub struct SymlinkSection {
     /// `$XDG_CONFIG_HOME`.
     #[config(default = {})]
     pub targets: std::collections::HashMap<String, String>,
+
+    /// Filename suffixes (without leading dot) that should be detected
+    /// as plists for `dodot git-install-filters` adopt hints and the
+    /// `.gitattributes` line. Defaults to `["plist"]`. Some apps store
+    /// plists with non-standard suffixes (`.binplist`, `.savedState`,
+    /// etc.); register additional extensions here to flow them through
+    /// the same clean/smudge pipeline.
+    ///
+    /// Comparison is case-insensitive, matching the existing detection
+    /// behavior. Honors the standard root → pack inheritance.
+    /// See `docs/proposals/plists.lex` §8.1.
+    #[config(default = ["plist"])]
+    pub plist_extensions: Vec<String>,
 }
 
 /// PATH handler settings.

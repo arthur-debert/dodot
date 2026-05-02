@@ -97,10 +97,19 @@ pub struct TransformCheckResult {
     /// carries unresolved dodot-conflict markers.
     pub unresolved_markers: Vec<UnresolvedMarkerEntry>,
     /// True iff at least one entry has a non-clean state that should
-    /// make the command exit non-zero (Patched, Conflict,
-    /// NeedsRebaseline, MissingSource, MissingDeployed) or `--strict`
-    /// found unresolved markers. CLI uses this to decide the process
-    /// exit code.
+    /// make the command exit non-zero (Conflict, NeedsRebaseline,
+    /// MissingSource, MissingDeployed) or `--strict` found unresolved
+    /// markers. CLI uses this to decide the process exit code.
+    ///
+    /// `Patched` does *not* set this — an unambiguous reverse-merge is
+    /// the auto-merge happy path: burgertocow + diffy produced a clean
+    /// unified patch with no markers, the source has been rewritten
+    /// to match, and there's nothing for the user to review. The
+    /// pre-commit hook lets the original `git commit` proceed; the
+    /// patched source surfaces as modified on the next `git status`,
+    /// at which point the user `git add`s and commits a follow-up
+    /// (or amends) if they want a clean history. Issue #113 walks
+    /// through the rationale.
     pub has_findings: bool,
     pub strict: bool,
 }
@@ -283,7 +292,15 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                             if !ctx.dry_run {
                                 ctx.fs.write_file(&report.source_path, patched.as_bytes())?;
                             }
-                            has_findings = true;
+                            // `Patched` is the auto-merge happy path:
+                            // burgertocow + diffy produced an
+                            // unambiguous unified patch, the source
+                            // is now in sync with the user's edit.
+                            // Nothing for the user to review →
+                            // `has_findings` stays false. The patched
+                            // source surfaces as modified on the next
+                            // `git status` for a follow-up commit.
+                            // See #113.
                             TransformAction::Patched
                         }
                         ReverseMergeOutcome::Conflict(block) => {
@@ -548,8 +565,11 @@ pub fn hook_is_installed(ctx: &ExecutionContext) -> Result<bool> {
 ///    this, the clean filter (R6) wouldn't fire on the upcoming
 ///    commit, and the commit could include stale template content.
 /// 2. `dodot transform check --strict` — run the 4-state matrix and
-///    refuse the commit on any finding (Patched, Conflict, missing,
-///    unresolved markers).
+///    refuse the commit on any finding (Conflict, missing,
+///    unresolved markers, NeedsRebaseline). `Patched` outcomes don't
+///    refuse — burgertocow's auto-merge already produced a clean
+///    unified patch and rewrote the source; the user `git add`s and
+///    commits the follow-up if they want a clean history.
 ///
 /// Each step short-circuits with `|| exit 1`; a failure in either
 /// aborts the commit (with exit code 1 — the inner command's exit
@@ -761,8 +781,12 @@ mod tests {
             "got: {:?}",
             result.entries[0].action
         );
-        assert!(result.has_findings);
-        assert_eq!(result.exit_code(), 1);
+        // Patched is the auto-merge happy path: clean unified diff,
+        // source rewritten, nothing for the user to review. The
+        // pre-commit hook lets the commit proceed; the user does a
+        // follow-up `git add` + commit on the patched source. See #113.
+        assert!(!result.has_findings);
+        assert_eq!(result.exit_code(), 0);
 
         // Source was rewritten: the static line is updated, the
         // variable-bearing line is preserved verbatim.
