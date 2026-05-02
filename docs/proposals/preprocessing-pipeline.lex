@@ -1,5 +1,8 @@
 Design Specification: Preprocessing Pipeline
 
+    :: note ::
+        **Status: implemented and shipped.** The pipeline foundation, divergence detection, git integration, and reverse-merge framework all landed across the templates and plists tracks (PRs #95–#108). The §6.4 divergence guard for `dodot up` shipped via PR #118 (issue #110); PR #122 walked back a 1500-line cache-layout migration that #118 had bundled in, leaving the slim guard in main. The user-facing reference for the resulting feature lives in [./../reference/pre-processors.lex] (handler-agnostic surface) and [./../reference/template-magic.lex] (workflow). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation. §7.4 (passive-command contract for `status` / `up --dry-run`) is currently violated by the implementation; tracked separately as #121.
+
     This document specifies the generic preprocessing pipeline for dodot. The pipeline provides a unified architecture for files where the version-controlled source must be transformed before deployment. Template expansion and secret decryption are concrete implementations of this design. Plist support, originally drafted as a Representational preprocessor, ships instead as a pair of git clean/smudge filters — see [./plists.lex] §2.3 for the rationale. The pipeline is still illustrated with plists in places below for didactic reasons (they remain a useful canonical example of a Representational transform), but the actual plist implementation does not flow through this pipeline.
 
     The preprocessing pipeline is a new phase in dodot's execution model, not a handler. It runs before handler dispatch, producing expanded files that downstream handlers (symlink, shell, path, install, homebrew) consume transparently.
@@ -225,11 +228,12 @@ Design Specification: Preprocessing Pipeline
 
     6.3. Dodot Conflict Markers
 
-        For ambiguous changes that require user decision, dodot inserts its own conflict markers:
+        For ambiguous changes that require user decision, dodot inserts its own conflict markers. The shipped form is five lines (three marker lines bracketing two content sections), structurally analogous to git's merge-conflict markers but with the angle direction inverted so a file with both kinds of conflict can be pattern-matched independently:
 
-            >>>>>> dodot-conflict
-            deployed: host = "production.db.internal"
-            template: host = "{{ env.DB_HOST }}"
+            >>>>>> dodot-conflict (template)
+            host = "{{ env.DB_HOST }}"
+            ====== dodot-conflict (deployed)
+            host = "production.db.internal"
             <<<<<< dodot-conflict
 
         These markers are:
@@ -237,14 +241,6 @@ Design Specification: Preprocessing Pipeline
             - Machine-detectable (`dodot up` greps for them and refuses to expand)
             - Visible in `git diff` for user review
             - Resolvable with standard editor search/replace
-
-        For files where `#` is a valid comment character, explanatory comments may precede the markers:
-
-            # DODOT: line below was changed in deployed file but uses a template variable
-            # DODOT: deployed value: host = "production.db.internal"
-            >>>>>> dodot-conflict
-            host = "{{ env.DB_HOST }}"
-            <<<<<< dodot-conflict
 
         `dodot up` checks source files for unresolved markers before expanding. If found:
 
@@ -262,7 +258,7 @@ Design Specification: Preprocessing Pipeline
 
         `--force` overrides: always re-expands, discarding divergence.
 
-        Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (`{{ env.X }}`) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not invalidate the cache. Users who change a referenced env var pick up the new value with `dodot up --force`. This boundary is by design — see the §13 banner.
+        Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (`{{ env.X }}`) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not invalidate the cache. Users who change a referenced env var pick up the new value with `dodot up --force`. This boundary is by design — see §11.1 for the implementation note on how rows 3 and 4 collapse in the shipped guard.
 
         Implementation note: rows 3 and 4 collapse to the same outcome — `dodot up` never overwrites a deployed file whose bytes have diverged from the cached baseline. The clever 3-way merge (apply user's deployed-file edits back into the new render) lives in `dodot transform check` and the git clean filter, not in `up`. This keeps `up`'s contract crisp ("I will not destroy your work") at the cost of pushing the merge step into the commit cycle. Users resolve a row-3/row-4 skip via `dodot transform check` (auto-merge through the clean filter) or `dodot up --force` (overwrite).
 
@@ -410,3 +406,33 @@ Design Specification: Preprocessing Pipeline
         - Assertive change application
         - Conflict marker insertion
         - Integration with `dodot transform check`
+
+11. Implementation Notes vs. Spec
+
+    The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth.
+
+    11.1. §6.4 four-state matrix collapsed to a two-outcome guard
+
+        Spec §6.4 describes a 4-cell matrix: rows 3 (`Output changed, Input same`) and 4 (`Output changed, Input changed`) call for distinct treatment. The shipped guard collapses both rows into a single outcome — `dodot up` preserves the deployed file and skips the render with a one-line warning naming `dodot transform check` and `--force` as resolution paths. The sharper 4-cell distinction lives in `dodot transform check` (the pre-commit hook), not in `up`. This keeps `up`'s contract crisp ("I will not destroy your work, period") at the cost of pushing the merge step into the commit cycle.
+
+        Shipped via PR #118 (issue #110); slim base via PR #122 (which walked back a 1500-line cache-layout migration that #118 had bundled in).
+
+    11.2. Datastore handler segment is hard-coded `"preprocessed"`
+
+        Spec §5.1 said expanded files go to `…/{pack}/{handler}/{expanded_filename}`, where `{handler}` is the rule-determined downstream handler (symlink, shell, path, etc.). In practice every preprocessed file lives under `…/{pack}/preprocessed/…` regardless of which handler eventually consumes it. The downstream handler is still determined by rule-matching the stripped filename, but the on-disk layout uses a single shared segment. The constant lives in `crates/dodot-lib/src/preprocessing/pipeline.rs` (`PREPROCESSED_HANDLER`).
+
+    11.3. No `Preprocessor::contract()` method
+
+        Spec §4.1 listed `expanded_filename()` and `contract()`; ship has `stripped_name()` and the reverse path is a standalone `reverse_merge` module rather than a per-preprocessor method. The trait additionally gained `supports_reverse_merge()` and `ExpandedFile.tracked_render` from the `magic.lex` cache work — both required by the clean-filter fast/slow path described in `magic.lex` "The Cache That Makes It Cheap."
+
+    11.4. Plist support is not in the pipeline
+
+        Already documented in [./plists.lex] §2.3 and [./../reference/pre-processors.lex]. Plists ship as git clean/smudge filters because their drift profile (continuous, app-driven) requires reverse visibility on every `git status`, not only at commit time. The pipeline retains plists as a didactic example of the Representational category in §9.2 (and the `Preprocessor::contract()` hook conceptually stays in the trait surface) so future Representational preprocessors with less continuous drift can still go through it.
+
+    11.5. Phase 4 reverse-merge framework factored out to an external crate
+
+        `burgertocow` (https://github.com/arthur-debert/burgertocow) handles the static-vs-dynamic line classification and conflict-marker emission. The spec sketch in §10 Phase 4 ("static vs dynamic line classification, generic, preprocessor-agnostic") describes the conceptual shape; the implementation moved that work out of the dodot crate entirely. dodot's side is the integration: the baseline cache (with the `tracked_render` field), the `reverse_merge` module that calls into `burgertocow`, and the `dodot transform check` and template-clean-filter call sites.
+
+    11.6. `MockPreprocessor` and virtual-match test helpers not shipped
+
+        Spec §8 sketched `MockPreprocessor`, `VirtualMatch::new`, and `TempEnvironment` extensions for testing the pipeline without a real preprocessor. Tests use the real `TemplatePreprocessor` directly; the helpers aren't needed at the current preprocessor cardinality (one shipped: templates). If a second preprocessor ships and end-to-end coverage gets unwieldy, the helpers can land then.
