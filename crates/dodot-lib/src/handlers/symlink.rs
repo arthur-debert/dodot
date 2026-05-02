@@ -1191,6 +1191,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let handler = SymlinkHandler;
         let config = HandlerConfig::default();
@@ -1245,6 +1246,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let err = SymlinkHandler
             .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
@@ -1276,6 +1278,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let err = SymlinkHandler
             .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
@@ -1305,6 +1308,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let intents = SymlinkHandler
             .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
@@ -1398,6 +1402,7 @@ mod tests {
             is_dir: true,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         }
     }
 
@@ -1538,6 +1543,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let handler = SymlinkHandler;
         let config = HandlerConfig::default();

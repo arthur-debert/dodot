@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
 use tracing::{debug, info};
 
@@ -19,6 +20,36 @@ use crate::preprocessing::divergence::DivergenceState;
 use crate::preprocessing::PreprocessorRegistry;
 use crate::rules::PackEntry;
 use crate::{DodotError, Result};
+
+/// Execution envelope for the preprocessing pipeline.
+///
+/// `secrets.lex` §7.4 ("Auth Fatigue and Passive Commands") draws a
+/// hard line between two envelopes:
+///
+/// - **Active** (`dodot up`): evaluates templates, batches `secret()`
+///   calls per provider, prompts for auth once per run, writes
+///   rendered files and baselines to disk.
+/// - **Passive** (`dodot status`, `dodot up --dry-run`): MUST NOT
+///   evaluate templates. Drift detection runs entirely off the
+///   baseline cache. No provider calls. No datastore writes. No
+///   baseline writes.
+///
+/// This enum is the single boolean the pipeline gates on. Active is
+/// the existing behavior; Passive is the §7.4-compliant read-only
+/// path. See issue #121.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreprocessMode {
+    /// Run preprocessors, write rendered outputs to the datastore,
+    /// write baselines to the cache. The original `dodot up` path.
+    Active,
+    /// Read everything from the baseline cache. Skip preprocessor
+    /// expansion (no provider calls), skip datastore writes, skip
+    /// baseline writes. For preprocessor entries with no baseline
+    /// yet, surface a passthrough placeholder so callers can render
+    /// "unknown — run `dodot up` first" without falling through to
+    /// template evaluation.
+    Passive,
+}
 
 /// Validate that a preprocessor-produced path is safe to materialise in
 /// the datastore: relative, no root/prefix/parent-dir components, and
@@ -85,6 +116,16 @@ pub struct PreprocessResult {
     pub virtual_entries: Vec<PackEntry>,
     /// Maps virtual entry absolute_path → original source path in pack.
     pub source_map: HashMap<PathBuf, PathBuf>,
+    /// Maps virtual entry absolute_path → in-memory rendered bytes.
+    /// Populated for every virtual entry the pipeline produces, in
+    /// both Active and Passive modes (Passive sources the bytes from
+    /// `baseline.rendered_content`). Handlers that need the rendered
+    /// content for sentinel hashing (`install`, `homebrew`) consult
+    /// this map first and fall back to disk read for non-template
+    /// files. Without this, Passive callers — where the rendered
+    /// file isn't on disk — couldn't produce correct sentinels for
+    /// templated install scripts or Brewfiles. See issue #121.
+    pub rendered_bytes: HashMap<PathBuf, Arc<[u8]>>,
     /// Files whose deployed bytes diverged from the cached baseline and
     /// were therefore preserved instead of being overwritten. Empty
     /// outside of `dodot up` runs that pass `force = false` and have a
@@ -120,6 +161,7 @@ impl PreprocessResult {
             regular_entries: entries,
             virtual_entries: Vec::new(),
             source_map: HashMap::new(),
+            rendered_bytes: HashMap::new(),
             skipped: Vec::new(),
         }
     }
@@ -217,31 +259,39 @@ fn check_divergence(
 /// Run the preprocessing pipeline for a pack's file entries.
 ///
 /// 1. Partition entries into preprocessor files vs regular files.
-/// 2. For each preprocessor file: expand, write results to datastore
-///    (unless the deployed file has diverged from the cached baseline —
-///    see step 5).
-/// 3. Create virtual PackEntries pointing to the datastore files.
+/// 2. **In `PreprocessMode::Active`** (real `dodot up` runs): for each
+///    preprocessor file, expand, write results to datastore (unless the
+///    deployed file has diverged from the cached baseline — see step 5),
+///    write the baseline cache record.
+/// 3. Create virtual `PackEntry`s pointing to the datastore files.
 /// 4. Check for collisions between virtual and regular entries.
-/// 5. **Divergence guard**: unless `force` is `true`, compare the
-///    prospective deployed file against the cached baseline before
-///    overwriting. When the deployed bytes have changed (the user
-///    edited the deployed file directly), skip the write and record a
-///    [`SkippedRender`] so the caller can warn the user. See
-///    `docs/proposals/preprocessing-pipeline.lex` §6.4. The guard fires
-///    regardless of `write_baselines` — it's a read-only check against
-///    the existing cache.
-/// 6. If `write_baselines` is `true` and the write proceeded, persist a
-///    baseline-cache record (used by `dodot transform check` and the
-///    clean filter to detect drift without re-rendering). Set this from
-///    `dodot up`; clear it from read-only callers (`dodot status`) so
-///    passive runs don't overwrite the cache that captured the state of
-///    the last `dodot up`.
+/// 5. **Divergence guard** (Active only): unless `force` is `true`,
+///    compare the prospective deployed file against the cached baseline
+///    before overwriting. When the deployed bytes have changed (the
+///    user edited the deployed file directly), skip the write and
+///    record a [`SkippedRender`] so the caller can warn the user. See
+///    `docs/proposals/preprocessing-pipeline.lex` §6.4.
+/// 6. **In `PreprocessMode::Passive`** (`dodot status`, `up --dry-run`):
+///    skip every disk-mutating step. Sources are never read for marker
+///    scans; preprocessors are never invoked (no provider calls); the
+///    datastore is not touched. Virtual entries are still produced so
+///    the rest of the planner can compute intents — their bytes come
+///    from `baseline.rendered_content` when a baseline exists.
+///    First-time pack templates with no baseline still surface a
+///    placeholder virtual entry (so `dodot status` can render them as
+///    "pending" under the stripped name) but with empty
+///    `rendered_bytes`. Handlers that need rendered content for
+///    sentinel hashing (`install`, `homebrew`) skip intent generation
+///    for those placeholders rather than erroring out — the next real
+///    `dodot up` plans them normally. See [`PreprocessMode`] and
+///    `docs/proposals/secrets.lex` §7.4.
 /// 7. Return the result for merging into the handler pipeline.
 ///
 /// Set `force = true` to bypass the divergence guard. Surfaces as
 /// `dodot up --force` in the CLI; needed when the user knows they want
 /// to overwrite a divergent deployed file (e.g. after rotating an env
-/// var that a template references).
+/// var that a template references). Ignored in `Passive` mode (no
+/// writes happen there at all).
 #[allow(clippy::too_many_arguments)] // pipeline core: every parameter is load-bearing
 pub fn preprocess_pack(
     entries: Vec<PackEntry>,
@@ -250,7 +300,7 @@ pub fn preprocess_pack(
     fs: &dyn Fs,
     datastore: &dyn DataStore,
     paths: &dyn Pather,
-    write_baselines: bool,
+    mode: PreprocessMode,
     force: bool,
 ) -> Result<PreprocessResult> {
     let mut regular_entries = Vec::new();
@@ -283,13 +333,29 @@ pub fn preprocess_pack(
             regular_entries,
             virtual_entries: Vec::new(),
             source_map: HashMap::new(),
+            rendered_bytes: HashMap::new(),
             skipped: Vec::new(),
         });
+    }
+
+    // Passive mode: read everything from the baseline cache. Skip
+    // template evaluation entirely (no provider calls), skip
+    // datastore writes, skip baseline writes. See `PreprocessMode`.
+    if mode == PreprocessMode::Passive {
+        return preprocess_pack_passive(
+            preprocessor_entries,
+            regular_entries,
+            registry,
+            pack,
+            fs,
+            paths,
+        );
     }
 
     // Phase 2 & 3: Expand and create virtual entries
     let mut virtual_entries = Vec::new();
     let mut source_map = HashMap::new();
+    let mut rendered_bytes: HashMap<PathBuf, Arc<[u8]>> = HashMap::new();
     let mut skipped: Vec<SkippedRender> = Vec::new();
 
     // Tracks claimed paths for collision detection. Seeded with regular
@@ -485,9 +551,6 @@ pub fn preprocess_pack(
             // Persist a baseline record so future `dodot transform
             // check` / clean-filter calls can detect drift without
             // re-rendering. Only write when:
-            //   - the caller asked for baseline writes (read-only
-            //     callers like `dodot status` set `write_baselines =
-            //     false` to keep baselines stable),
             //   - the entry is a file (directory entries from archive
             //     preprocessors carry no rendered content),
             //   - the preprocessor produced a tracked render (i.e. it's
@@ -499,8 +562,12 @@ pub fn preprocess_pack(
             //   - the divergence guard didn't skip the write (otherwise
             //     we'd update the baseline to match a render that never
             //     hit disk, breaking future divergence detection).
-            if let (true, false, Some(tracked), false) = (
-                write_baselines,
+            //
+            // Mode-gating happens at the function boundary: this whole
+            // branch only runs in `PreprocessMode::Active`. Passive
+            // commands take the early-return at the top of the
+            // function and never reach this code.
+            if let (false, Some(tracked), false) = (
                 expanded.is_dir,
                 expanded.tracked_render.as_deref(),
                 was_skipped,
@@ -538,6 +605,28 @@ pub fn preprocess_pack(
 
             claimed_paths.insert(virtual_relative.clone());
             source_map.insert(datastore_path.clone(), entry.absolute_path.clone());
+            // Stash the rendered bytes for downstream handlers
+            // (install/homebrew sentinel hashing) that would
+            // otherwise read them back off disk. Skipped renders
+            // (divergence guard fired) carry the *preserved deployed*
+            // bytes instead — that matches the deployed file the user
+            // is keeping, which is what the next sentinel should
+            // commit to. Directories carry no bytes.
+            if !expanded.is_dir {
+                let bytes: Arc<[u8]> = if was_skipped {
+                    // Read the preserved deployed file. If the read
+                    // fails (race / permissions), fall back to the
+                    // freshly-rendered bytes so the handler still
+                    // gets a value — this only affects the sentinel,
+                    // and the divergence warning has already surfaced.
+                    fs.read_file(&datastore_path)
+                        .map(Arc::from)
+                        .unwrap_or_else(|_| Arc::from(expanded.content.clone()))
+                } else {
+                    Arc::from(expanded.content.clone())
+                };
+                rendered_bytes.insert(datastore_path.clone(), bytes);
+            }
 
             virtual_entries.push(PackEntry {
                 relative_path: virtual_relative,
@@ -557,6 +646,172 @@ pub fn preprocess_pack(
         regular_entries,
         virtual_entries,
         source_map,
+        rendered_bytes,
+        skipped,
+    })
+}
+
+/// `Passive` half of [`preprocess_pack`].
+///
+/// Walks the same set of preprocessor entries the Active path would
+/// have, but never invokes a preprocessor. For each entry, computes
+/// the would-be virtual relative path via `Preprocessor::stripped_name`.
+/// Two outcomes:
+///
+/// - **Baseline exists** (the file was rendered on a previous `up`):
+///   builds a virtual entry pointing at the would-be datastore
+///   location with `rendered_bytes` sourced from
+///   `baseline.rendered_content`. Runs the read-only divergence
+///   check so callers (status's `Health::Preserved` row) still see
+///   skipped-render rows for divergent deployed files.
+/// - **No baseline** (first-time pack template, never `up`'d):
+///   surfaces a placeholder virtual entry under the stripped name,
+///   with empty `rendered_bytes`. Status renders this as "pending"
+///   under the logical name (`config.toml` rather than the source
+///   `config.toml.tmpl`); handlers that need rendered content for
+///   sentinel hashing (install, homebrew) skip intent generation
+///   for these placeholders rather than crashing. The next real
+///   `dodot up` populates the baseline and plans intents normally.
+///
+/// Source files are not read (no marker scan); the datastore is
+/// not written; the baseline cache is not written.
+///
+/// This contract is what `secrets.lex` §7.4 demands: `dodot status`
+/// and `dodot up --dry-run` MUST NOT trigger template evaluation,
+/// MUST NOT surface provider auth prompts, and MUST NOT mutate disk
+/// state. See issue #121.
+///
+/// Limitation: this assumes a 1:1 source→virtual relationship via
+/// `stripped_name`. That holds for templates (the only shipped
+/// generative-with-tracking preprocessor) and identity-style
+/// preprocessors. Multi-output preprocessors like unarchive cannot
+/// faithfully be passively previewed; if one is added later, this
+/// function should fall back to skipping such entries (which it does
+/// today, since they have no baseline).
+fn preprocess_pack_passive(
+    preprocessor_entries: Vec<PackEntry>,
+    regular_entries: Vec<PackEntry>,
+    registry: &PreprocessorRegistry,
+    pack: &Pack,
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+) -> Result<PreprocessResult> {
+    let mut virtual_entries = Vec::new();
+    let mut source_map = HashMap::new();
+    let mut rendered_bytes: HashMap<PathBuf, Arc<[u8]>> = HashMap::new();
+    let mut skipped: Vec<SkippedRender> = Vec::new();
+
+    for entry in preprocessor_entries {
+        let filename = entry
+            .relative_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let preprocessor = registry
+            .find_for_file(&filename)
+            .expect("already checked in partition");
+
+        // Logical (stripped) virtual filename — e.g. `config.toml`
+        // for `config.toml.tmpl`. We don't run `expand()` (that would
+        // be the §7.4 violation), so we derive the would-be virtual
+        // path from `stripped_name` plus the source's parent
+        // directory.
+        let stripped = preprocessor.stripped_name(&filename);
+        let virtual_relative = match entry.relative_path.parent() {
+            Some(parent) if parent != Path::new("") => parent.join(&stripped),
+            _ => PathBuf::from(&stripped),
+        };
+        let virtual_relative = normalize_relative(&virtual_relative);
+
+        let datastore_path = paths
+            .handler_data_dir(&pack.name, PREPROCESSED_HANDLER)
+            .join(&virtual_relative);
+
+        // Try to load the cached baseline. If absent, this is a
+        // first-time template that has never been deployed: surface
+        // a placeholder virtual entry (no rendered_bytes) so callers
+        // like `dodot status` can render it as "pending" under the
+        // stripped name. Critically, we do NOT fall through to
+        // template evaluation — that's the §7.4 violation we're
+        // here to fix. Handlers that need rendered bytes for
+        // sentinel hashing (`install`, `homebrew`) will fall back
+        // to disk-read on the missing datastore path and report
+        // pending; symlink-targeted templates render cleanly as
+        // pending without needing the bytes at all.
+        let cache_filename = cache_filename_for(&virtual_relative);
+        let baseline =
+            match Baseline::load(fs, paths, &pack.name, PREPROCESSED_HANDLER, &cache_filename)? {
+                Some(b) => Some(b),
+                None => {
+                    debug!(
+                        pack = %pack.name,
+                        file = %virtual_relative.display(),
+                        "passive: no baseline yet — surfacing placeholder (run `dodot up` first)"
+                    );
+                    None
+                }
+            };
+
+        // Divergence detection (read-only): even though Passive
+        // never writes, status / dry-run callers want to know which
+        // deployed files have drifted from their baseline so they
+        // can surface the same `Health::Preserved` row that the
+        // active path does. The byte comparison is local and free
+        // of side effects — no provider calls, no template eval —
+        // so it stays inside the §7.4 envelope. Skipped only when a
+        // baseline exists (no baseline → no comparison reference).
+        if baseline.is_some() {
+            if let Ok(DivergenceCheck::Skip {
+                state,
+                deployed_path,
+            }) = check_divergence(
+                fs,
+                paths,
+                &pack.name,
+                &virtual_relative,
+                &entry.absolute_path,
+            ) {
+                skipped.push(SkippedRender {
+                    pack: pack.name.clone(),
+                    virtual_relative: virtual_relative.clone(),
+                    deployed_path,
+                    state,
+                });
+            }
+        }
+
+        // Carry the baseline's rendered content forward as the
+        // in-memory bytes for downstream sentinel hashing when a
+        // baseline exists. Without a baseline (first-time pack), no
+        // bytes are available — handlers that need them will see
+        // `m.rendered_bytes == None` and fall back to disk read,
+        // which correctly fails for the missing datastore file and
+        // shows up as "pending" in status.
+        if let Some(b) = baseline {
+            let bytes: Arc<[u8]> = Arc::from(b.rendered_content.into_bytes());
+            rendered_bytes.insert(datastore_path.clone(), bytes);
+        }
+        source_map.insert(datastore_path.clone(), entry.absolute_path.clone());
+        virtual_entries.push(PackEntry {
+            relative_path: virtual_relative,
+            absolute_path: datastore_path,
+            is_dir: false,
+        });
+    }
+
+    info!(
+        pack = %pack.name,
+        virtual_count = virtual_entries.len(),
+        skipped_count = skipped.len(),
+        "passive preprocessing complete"
+    );
+
+    Ok(PreprocessResult {
+        regular_entries,
+        virtual_entries,
+        source_map,
+        rendered_bytes,
         skipped,
     })
 }
@@ -618,7 +873,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -653,7 +908,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -709,7 +964,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -760,7 +1015,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -784,6 +1039,7 @@ mod tests {
                 is_dir: false,
             }],
             source_map: HashMap::new(),
+            rendered_bytes: HashMap::new(),
             skipped: Vec::new(),
         };
 
@@ -818,7 +1074,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -853,7 +1109,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -887,7 +1143,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -932,7 +1188,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -977,7 +1233,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1026,7 +1282,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1076,7 +1332,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1087,7 +1343,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1136,7 +1392,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1186,7 +1442,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1223,7 +1479,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1285,7 +1541,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1405,7 +1661,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1454,7 +1710,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1513,7 +1769,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1584,7 +1840,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1632,7 +1888,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1691,7 +1947,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -1742,7 +1998,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1800,7 +2056,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1829,11 +2085,12 @@ mod tests {
     }
 
     #[test]
-    fn baseline_is_skipped_when_write_baselines_is_false() {
-        // Read-only callers (`dodot status`) set `write_baselines =
-        // false`. No baseline should be written in that case —
-        // overwriting it would erase the divergence-detection ground
-        // truth captured at the last `dodot up`.
+    fn baseline_is_skipped_in_passive_mode() {
+        // Passive callers (`dodot status`, `dodot up --dry-run`) MUST
+        // NOT touch the baseline cache. No baseline should be written
+        // in that case — overwriting it would erase the
+        // divergence-detection ground truth captured at the last
+        // `dodot up`. Per `secrets.lex` §7.4 / issue #121.
         let env = TempEnvironment::builder()
             .pack("app")
             .file("config.toml.tracked", "src")
@@ -1869,7 +2126,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Passive,
             false,
         )
         .unwrap();
@@ -1879,7 +2136,7 @@ mod tests {
             .preprocessor_baseline_path("app", "preprocessed", "config.toml");
         assert!(
             !env.fs.exists(&path),
-            "no baseline should exist after a write_baselines=false run, but found: {}",
+            "no baseline should exist after a Passive run, but found: {}",
             path.display()
         );
     }
@@ -1912,7 +2169,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1977,7 +2234,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -1997,7 +2254,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -2054,7 +2311,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap();
@@ -2128,7 +2385,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -2217,7 +2474,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .expect("non-tracking preprocessor must not be gated by markers in its source");
@@ -2273,7 +2530,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -2338,7 +2595,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .expect("non-UTF-8 source without markers must not crash the gate");
@@ -2399,7 +2656,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            false,
+            crate::preprocessing::PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -2450,7 +2707,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .expect("clean source should expand successfully");
@@ -2472,7 +2729,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .unwrap_err();
@@ -2492,7 +2749,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             false,
         )
         .expect("resolved source should expand again");
@@ -2540,7 +2797,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            true,
+            PreprocessMode::Active,
             force,
         )
         .unwrap()
@@ -2840,7 +3097,7 @@ mod tests {
             env.fs.as_ref(),
             &datastore,
             env.paths.as_ref(),
-            /* write_baselines */ false,
+            crate::preprocessing::PreprocessMode::Passive,
             /* force */ false,
         )
         .unwrap();

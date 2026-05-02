@@ -871,6 +871,259 @@ fn up_with_pack_filter_does_not_write_cfprefsd_marker_for_unrelated_pack_plists(
     );
 }
 
+// ── §7.4 passive-command contract (#121) ───────────────────
+
+#[test]
+fn status_does_not_write_to_datastore() {
+    // §7.4: passive commands MUST NOT mutate the datastore.
+    // Running `up` once primes the data dir; running `status`
+    // afterwards must leave that state byte-identical.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
+
+    // Two consecutive status runs must leave data_dir unchanged.
+    commands::status::status(None, &ctx).unwrap();
+    commands::status::status(None, &ctx).unwrap();
+
+    let after = snapshot_dir_contents(&env, env.paths.data_dir());
+    assert_eq!(
+        snapshot, after,
+        "status must be byte-identical to the post-up snapshot — \
+         no datastore writes allowed"
+    );
+}
+
+#[test]
+fn up_dry_run_does_not_write_to_datastore() {
+    // Pin the same §7.4 contract for `up --dry-run`.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    commands::up::up(None, &dry_ctx).unwrap();
+
+    let after = snapshot_dir_contents(&env, env.paths.data_dir());
+    assert_eq!(
+        snapshot, after,
+        "dry-run must be byte-identical to the post-up snapshot"
+    );
+}
+
+#[test]
+fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file() {
+    // The §7.4 unblocker: in Passive mode the rendered file isn't
+    // on disk, so the install handler used to fail to compute its
+    // sentinel. With `rendered_bytes` threaded through, dry-run now
+    // emits a Run intent with the same sentinel as the active path
+    // would — without ever writing the rendered file. (#121)
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    // First up establishes the baseline so Passive mode has
+    // something to read. no_provision = false so the install
+    // handler actually plans Run intents (the default test ctx
+    // suppresses code-execution handlers).
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    commands::up::up(None, &ctx).unwrap();
+
+    // Capture the active sentinel (it lives in the executed
+    // RunCommand operation).
+    let active_intents = crate::packs::orchestration::collect_pack_intents(
+        &crate::packs::Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        ),
+        &ctx,
+    )
+    .unwrap();
+    let active_sentinel = active_intents
+        .iter()
+        .find_map(|i| match i {
+            crate::operations::HandlerIntent::Run { sentinel, .. } => Some(sentinel.clone()),
+            _ => None,
+        })
+        .expect("active path must produce a Run intent for install.sh");
+
+    // Snapshot the rendered datastore file's existence — Passive
+    // must not modify it, but it should already exist from the
+    // earlier active up.
+    let rendered_path = env
+        .paths
+        .handler_data_dir("app", "preprocessed")
+        .join("install.sh");
+    assert!(
+        ctx.fs.exists(&rendered_path),
+        "active up must have written the rendered file"
+    );
+    let rendered_before = ctx.fs.read_file(&rendered_path).unwrap();
+
+    // Now plan via dry-run; the install handler must produce the
+    // same sentinel from in-memory bytes. Same no_provision = false
+    // so the handler actually emits intents.
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+    let plan = crate::packs::orchestration::plan_pack(
+        &crate::packs::Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            dry_ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        ),
+        &dry_ctx,
+        crate::preprocessing::PreprocessMode::Passive,
+    )
+    .unwrap();
+    let dry_sentinel = plan
+        .intents
+        .iter()
+        .find_map(|i| match i {
+            crate::operations::HandlerIntent::Run { sentinel, .. } => Some(sentinel.clone()),
+            _ => None,
+        })
+        .expect("passive path must produce a Run intent for install.sh");
+
+    assert_eq!(
+        active_sentinel, dry_sentinel,
+        "passive sentinel must match active — same rendered bytes either way"
+    );
+    let rendered_after = ctx.fs.read_file(&rendered_path).unwrap();
+    assert_eq!(
+        rendered_before, rendered_after,
+        "passive must not rewrite the rendered file"
+    );
+}
+
+#[test]
+fn up_dry_run_first_time_pack_with_install_template_does_not_error() {
+    // Regression for Copilot review on PR #126: a first-time pack
+    // containing `install.sh.tmpl` (no baseline yet, no rendered
+    // file on disk) must not crash dry-run intent collection. The
+    // install handler used to read `m.absolute_path` unconditionally
+    // and propagate an Fs error; now it skips intent generation for
+    // the placeholder match instead. Same shape for `Brewfile.tmpl`
+    // / homebrew handler.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .file("Brewfile.tmpl", "brew '{{ pkg }}'")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\npkg = \"jq\"\n")
+        .done()
+        .build();
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+
+    // The fix: this returns Ok and emits zero Run intents (the
+    // placeholders skip intent generation cleanly). Pre-fix, the
+    // install/homebrew handlers tried to read missing rendered
+    // files and propagated an Fs error.
+    let result = commands::up::up(None, &dry_ctx).unwrap();
+    assert!(result.dry_run);
+}
+
+#[test]
+fn passive_first_time_pack_surfaces_pending_placeholder() {
+    // §7.4 acceptance: a passive command on a brand-new pack with
+    // no baseline cache yet must surface a coherent placeholder
+    // (template stripped name, status pending), never panic, never
+    // fall through to template evaluation. (#121)
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1, "should surface the templated entry");
+    assert_eq!(
+        files[0].name, "greet",
+        "stripped name (not source filename)"
+    );
+    assert_eq!(
+        files[0].status, "pending",
+        "first-time template before any up: pending"
+    );
+}
+
+/// Snapshot a directory tree (file contents + directory paths) to a
+/// stable signature for the §7.4 no-mutation contract tests. Each
+/// entry is keyed by absolute path; files map to `Some(contents)`,
+/// directories to `None`. Comparing two snapshots for equality is
+/// equivalent to "directory tree is byte-identical, including empty
+/// directories." Including dir paths catches mutations like
+/// `mkdir <data_dir>/<pack>/preprocessed` that would silently slip
+/// past a contents-only check.
+///
+/// Unreadable entries / read errors propagate as panics rather than
+/// silent skips — a passive command that produces an unreadable
+/// entry under `<data_dir>` is itself a §7.4 violation worth
+/// failing the test on.
+fn snapshot_dir_contents(
+    env: &crate::testing::TempEnvironment,
+    root: &std::path::Path,
+) -> std::collections::BTreeMap<std::path::PathBuf, Option<Vec<u8>>> {
+    use std::collections::BTreeMap;
+    let mut out = BTreeMap::new();
+    if !env.fs.exists(root) {
+        return out;
+    }
+    let mut stack: Vec<std::path::PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = env
+            .fs
+            .read_dir(&dir)
+            .unwrap_or_else(|e| panic!("snapshot_dir_contents: read_dir({dir:?}): {e}"));
+        for entry in entries {
+            if entry.is_dir {
+                out.insert(entry.path.clone(), None);
+                stack.push(entry.path);
+            } else {
+                let bytes = env.fs.read_file(&entry.path).unwrap_or_else(|e| {
+                    panic!("snapshot_dir_contents: read_file({:?}): {e}", entry.path)
+                });
+                out.insert(entry.path, Some(bytes));
+            }
+        }
+    }
+    out
+}
+
 // ── up: conflict handling ──────────────────────────────────
 
 #[test]
@@ -5462,7 +5715,8 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         config: pack_config.to_handler_config(),
     };
 
-    let plan = orchestration::plan_pack(&pack, &ctx, true).unwrap();
+    let plan = orchestration::plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active)
+        .unwrap();
     let hint = plan.warnings.iter().find(|w| w.contains("Code"));
     assert!(
         hint.is_some(),

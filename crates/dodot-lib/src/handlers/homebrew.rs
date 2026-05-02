@@ -46,7 +46,25 @@ impl Handler for HomebrewHandler<'_> {
                 continue;
             }
 
-            let checksum = brewfile_checksum(self.fs, &m.absolute_path)?;
+            // Same in-memory-first sentinel pattern as the install
+            // handler, including the first-time-pack passive
+            // placeholder case (no bytes, no on-disk file → skip
+            // intent generation). See install.rs and issue #121.
+            let checksum = match m.rendered_bytes.as_deref() {
+                Some(bytes) => brewfile_checksum_bytes(bytes),
+                None => match self.fs.exists(&m.absolute_path) {
+                    true => brewfile_checksum(self.fs, &m.absolute_path)?,
+                    false => {
+                        tracing::debug!(
+                            pack = %m.pack,
+                            file = %m.absolute_path.display(),
+                            "skipping homebrew intent — no rendered bytes and no on-disk file \
+                             (first-time-pack passive placeholder)"
+                        );
+                        continue;
+                    }
+                },
+            };
             let filename = m
                 .relative_path
                 .file_name()
@@ -110,4 +128,14 @@ fn brewfile_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
     }
     let hash = hasher.finalize();
     Ok(hash[..8].iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Same digest format as [`brewfile_checksum`], but over an in-memory
+/// byte slice — used when the rendered Brewfile is available without
+/// a disk read (Passive mode).
+fn brewfile_checksum_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let hash = hasher.finalize();
+    hash[..8].iter().map(|b| format!("{b:02x}")).collect()
 }
