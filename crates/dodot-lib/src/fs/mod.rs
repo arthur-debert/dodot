@@ -96,4 +96,16 @@ pub trait Fs: Send + Sync {
 
     /// Sets file permissions (Unix mode).
     fn set_permissions(&self, path: &Path, mode: u32) -> Result<()>;
+
+    /// Returns the modification time of `path` (follows symlinks).
+    /// Used by `dodot refresh` to compare deployed-side mtimes against
+    /// source-side mtimes when deciding whether to touch the source.
+    fn modified(&self, path: &Path) -> Result<std::time::SystemTime>;
+
+    /// Sets the modification time of `path` to `time`. Used by
+    /// `dodot refresh` to copy the deployed file's mtime onto the
+    /// template source so git's stat-cache invalidates and the next
+    /// `git status` re-reads the file (invoking the clean filter on
+    /// repos that have it installed).
+    fn set_modified(&self, path: &Path, time: std::time::SystemTime) -> Result<()>;
 }

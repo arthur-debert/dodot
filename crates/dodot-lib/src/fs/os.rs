@@ -122,6 +122,23 @@ impl Fs for OsFs {
         let perms = fs::Permissions::from_mode(mode);
         fs::set_permissions(path, perms).map_err(|e| fs_err(path, e))
     }
+
+    fn modified(&self, path: &Path) -> Result<std::time::SystemTime> {
+        fs::metadata(path)
+            .and_then(|m| m.modified())
+            .map_err(|e| fs_err(path, e))
+    }
+
+    fn set_modified(&self, path: &Path, time: std::time::SystemTime) -> Result<()> {
+        // `File::set_modified` (stable since 1.75) opens-or-truncates;
+        // we want existing-file semantics. Use OpenOptions::write(true)
+        // (no truncate) to get a handle to the existing file.
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .map_err(|e| fs_err(path, e))?;
+        file.set_modified(time).map_err(|e| fs_err(path, e))
+    }
 }
 
 fn metadata_from_std(meta: &fs::Metadata, is_symlink: bool) -> FsMetadata {

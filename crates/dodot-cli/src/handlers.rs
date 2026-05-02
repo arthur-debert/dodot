@@ -303,6 +303,25 @@ pub fn transform_check_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot refresh [--quiet] [--list-paths]` — copy deployed mtimes
+/// onto template sources where they've drifted from the baseline.
+/// Used by the Tier 2 shell alias and by the upcoming clean filter
+/// flow so `git status` / `git diff` reflect deployed-side edits.
+pub fn refresh_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::refresh::RefreshResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let mode = if flag_or_false(matches, "list-paths") {
+        commands::refresh::RefreshMode::ListPaths
+    } else if flag_or_false(matches, "quiet") {
+        commands::refresh::RefreshMode::Quiet
+    } else {
+        commands::refresh::RefreshMode::Report
+    };
+    Ok(Output::Render(commands::refresh::refresh(&ctx, mode)?))
+}
+
 /// `dodot transform install-hook` — write `.git/hooks/pre-commit` with
 /// our `dodot transform check --strict` block. Idempotent and additive
 /// (preserves any existing hook content). See `commands::transform::

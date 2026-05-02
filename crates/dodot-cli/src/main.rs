@@ -197,6 +197,7 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
         "transform-install-hook.jinja",
         render::TEMPLATE_TRANSFORM_INSTALL_HOOK,
     ),
+    ("refresh.jinja", render::TEMPLATE_REFRESH),
 ];
 
 fn build_app() -> App {
@@ -275,6 +276,8 @@ fn build_app() -> App {
             "transform-install-hook",
         )
         .expect("register transform.install-hook")
+        .command("refresh", handlers::refresh_handler, "refresh")
+        .expect("register refresh")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -315,6 +318,7 @@ fn build_app() -> App {
                 help: None,
                 commands: vec![
                     Some("transform".into()),
+                    Some("refresh".into()),
                     Some("tutorial".into()),
                     Some("init-sh".into()),
                     Some("prompts".into()),
@@ -545,6 +549,28 @@ fn build_clap_command() -> ClapCommand {
                                 .help("Reset every dismissed prompt")
                                 .action(ArgAction::SetTrue),
                         ),
+                ),
+        )
+        .subcommand(
+            ClapCommand::new("refresh")
+                .about(
+                    "Touch template-source mtimes when deployed files have drifted, so `git \
+                     status` and `git diff` re-read them and surface the changes.",
+                )
+                .arg(
+                    Arg::new("quiet")
+                        .long("quiet")
+                        .help("Suppress all output (use this in shell aliases).")
+                        .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("list-paths")
+                        .long("list-paths")
+                        .help(
+                            "Print the source paths that need a touch and exit, without \
+                             writing any mtimes. Use this in editor / file-watcher integrations.",
+                        )
+                        .action(ArgAction::SetTrue),
                 ),
         )
         .subcommand(
