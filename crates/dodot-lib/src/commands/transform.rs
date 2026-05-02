@@ -284,8 +284,14 @@ pub enum InstallHookOutcome {
     /// Hook file existed; we appended our block to it. Existing content
     /// is preserved.
     Appended,
-    /// Hook was already installed (guard line found) — no change.
+    /// Hook was already installed and matches the current managed
+    /// block exactly — no change.
     AlreadyInstalled,
+    /// Hook was installed but the managed block was an older version
+    /// (e.g. didn't yet call `dodot refresh`). We replaced the
+    /// outdated block in place. Existing non-managed content in the
+    /// hook file is preserved.
+    Updated,
 }
 
 /// Result returned by [`install_hook`]. Renders through the
@@ -339,12 +345,27 @@ pub fn install_hook(ctx: &ExecutionContext) -> Result<InstallHookResult> {
 
     let outcome = if ctx.fs.exists(&hook_path) {
         let existing = ctx.fs.read_to_string(&hook_path)?;
-        if existing.contains(HOOK_GUARD_START) {
-            InstallHookOutcome::AlreadyInstalled
+        if let Some((start_byte, end_byte)) = find_managed_block(&existing) {
+            // A managed block exists. Decide whether it matches the
+            // current `block` exactly (no-op) or is stale and needs
+            // replacing.
+            let current_block = &existing[start_byte..end_byte];
+            if current_block == block {
+                InstallHookOutcome::AlreadyInstalled
+            } else {
+                // Stale block — rewrite it in place. Anything outside
+                // the marker pair is preserved.
+                let mut new_content = String::with_capacity(existing.len() + block.len());
+                new_content.push_str(&existing[..start_byte]);
+                new_content.push_str(&block);
+                new_content.push_str(&existing[end_byte..]);
+                ctx.fs.write_file(&hook_path, new_content.as_bytes())?;
+                ctx.fs.set_permissions(&hook_path, 0o755)?;
+                InstallHookOutcome::Updated
+            }
         } else {
-            // Append the block, preserving the existing hook. Add a
-            // leading blank line if the existing content doesn't end
-            // in one — readability when the hook is opened by hand.
+            // No managed block at all — append. Preserves existing
+            // hook content (user-written or installed by another tool).
             let mut new_content = existing.clone();
             if !new_content.ends_with('\n') {
                 new_content.push('\n');
@@ -391,24 +412,74 @@ pub fn hook_is_installed(ctx: &ExecutionContext) -> Result<bool> {
 /// onboarding prompt in `commands::up` to surface what would be
 /// installed. Includes the guard lines so callers can grep-detect
 /// the block in arbitrary contexts.
+///
+/// The block runs two commands:
+///
+/// 1. `dodot refresh --quiet` — touch source mtimes for any
+///    deployed-side edits so git's stat-cache invalidates. Without
+///    this, the clean filter (R6) wouldn't fire on the upcoming
+///    commit, and the commit could include stale template content.
+/// 2. `dodot transform check --strict` — run the 4-state matrix and
+///    refuse the commit on any finding (Patched, Conflict, missing,
+///    unresolved markers).
+///
+/// Each step short-circuits with `|| exit 1`; a failure in either
+/// aborts the commit with the matching exit code.
 pub fn managed_block() -> String {
     format!(
         "{guard_start}\n\
-         # Aborts the commit if `dodot transform check --strict` reports findings —\n\
-         # template files whose deployed sides drifted, or unresolved dodot-conflict\n\
-         # markers. Remove this block to opt out.\n\
-         {command}\n\
+         # Aborts the commit if any template-source has drift that needs review —\n\
+         # divergent deployed file or unresolved dodot-conflict markers. Remove\n\
+         # this block to opt out.\n\
+         {refresh}\n\
+         {check}\n\
          {guard_end}\n",
         guard_start = HOOK_GUARD_START,
         guard_end = HOOK_GUARD_END,
-        command = HOOK_COMMAND,
+        refresh = HOOK_COMMAND_REFRESH,
+        check = HOOK_COMMAND_CHECK,
     )
 }
 
-/// The exact shell line our hook block runs. Pulled out as a
-/// constant so the install path and the renderer surface the same
-/// string verbatim.
-pub(crate) const HOOK_COMMAND: &str = "dodot transform check --strict || exit 1";
+/// First shell line of the managed block: invalidate git's
+/// stat-cache for any deployed-side edits. `--quiet` so a no-op
+/// refresh doesn't print on every commit.
+pub(crate) const HOOK_COMMAND_REFRESH: &str = "dodot refresh --quiet || exit 1";
+
+/// Second shell line: run the strict check. Splits across two lines
+/// in the hook so each step can be diagnosed independently.
+pub(crate) const HOOK_COMMAND_CHECK: &str = "dodot transform check --strict || exit 1";
+
+/// Combined "what the hook runs" string for display purposes
+/// (shown by the install message + the post-up prompt). The actual
+/// hook file uses the two-line form from [`managed_block`].
+pub(crate) const HOOK_COMMAND: &str = "dodot refresh --quiet && dodot transform check --strict";
+
+/// Locate the byte range of our managed block inside `text` —
+/// from the first character of `HOOK_GUARD_START` through the
+/// trailing newline after `HOOK_GUARD_END`. Returns `None` if either
+/// guard is missing or if the end guard doesn't appear after the
+/// start guard.
+///
+/// Used by the install path to detect stale managed blocks (and
+/// rewrite them to the current shape) without disturbing any
+/// non-managed content the user has in their hook.
+fn find_managed_block(text: &str) -> Option<(usize, usize)> {
+    let start = text.find(HOOK_GUARD_START)?;
+    // Find the end guard after `start`.
+    let after_start = start + HOOK_GUARD_START.len();
+    let end_rel = text[after_start..].find(HOOK_GUARD_END)?;
+    let end_guard_start = after_start + end_rel;
+    let end_byte = end_guard_start + HOOK_GUARD_END.len();
+    // Include the trailing newline (if any) so re-inserting the new
+    // block doesn't double-up the line break.
+    let end_byte = if text.as_bytes().get(end_byte) == Some(&b'\n') {
+        end_byte + 1
+    } else {
+        end_byte
+    };
+    Some((start, end_byte))
+}
 
 #[cfg(test)]
 mod tests {
@@ -829,7 +900,8 @@ mod tests {
         let body = env.fs.read_to_string(&hook_path).unwrap();
         assert!(body.starts_with("#!/bin/sh\n"), "body: {body:?}");
         assert!(body.contains(HOOK_GUARD_START), "body: {body:?}");
-        assert!(body.contains(HOOK_COMMAND), "body: {body:?}");
+        assert!(body.contains(HOOK_COMMAND_REFRESH), "body: {body:?}");
+        assert!(body.contains(HOOK_COMMAND_CHECK), "body: {body:?}");
         assert!(body.contains(HOOK_GUARD_END), "body: {body:?}");
     }
 
@@ -851,7 +923,8 @@ mod tests {
         let body = env.fs.read_to_string(&hook_path).unwrap();
         assert!(body.starts_with(existing), "user content lost: {body:?}");
         assert!(body.contains(HOOK_GUARD_START));
-        assert!(body.contains(HOOK_COMMAND));
+        assert!(body.contains(HOOK_COMMAND_REFRESH));
+        assert!(body.contains(HOOK_COMMAND_CHECK));
     }
 
     #[test]
@@ -952,6 +1025,108 @@ mod tests {
         let block = managed_block();
         assert!(block.starts_with(HOOK_GUARD_START));
         assert!(block.trim_end().ends_with(HOOK_GUARD_END));
-        assert!(block.contains(HOOK_COMMAND));
+        // Both shell lines (refresh + check) must appear in the
+        // block — the hook runs them as two independent steps.
+        assert!(block.contains(HOOK_COMMAND_REFRESH));
+        assert!(block.contains(HOOK_COMMAND_CHECK));
+    }
+
+    // ── hook upgrade (managed-block detection + replacement) ────
+
+    #[test]
+    fn install_hook_replaces_a_stale_managed_block() {
+        // An older R4-shape block (single check command, no refresh
+        // line) must be detected and rewritten to the new two-line
+        // form when `install-hook` runs again. Existing non-managed
+        // content is preserved.
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+
+        // Stage an old-style block manually. This is what an R4-era
+        // install-hook would have produced: the same guards, but the
+        // single old `dodot transform check --strict || exit 1`
+        // command line and the older comment.
+        let stale = format!(
+            "#!/bin/sh\n\
+             echo 'user-installed pre-commit step'\n\
+             \n\
+             {start}\n\
+             # Old-style block from R4. Still works, but doesn't run\n\
+             # `dodot refresh` first, so deployed-side edits between\n\
+             # commits aren't always picked up.\n\
+             dodot transform check --strict || exit 1\n\
+             {end}\n\
+             # User content after the block.\n\
+             echo 'trailing user step'\n",
+            start = HOOK_GUARD_START,
+            end = HOOK_GUARD_END,
+        );
+        let hook_path = env.dotfiles_root.join(".git/hooks/pre-commit");
+        env.fs.write_file(&hook_path, stale.as_bytes()).unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = install_hook(&ctx).unwrap();
+        assert!(matches!(result.outcome, InstallHookOutcome::Updated));
+
+        let body = env.fs.read_to_string(&hook_path).unwrap();
+        // New shape: both refresh + check lines, comment matches the
+        // current block.
+        assert!(body.contains(HOOK_COMMAND_REFRESH), "body: {body:?}");
+        assert!(body.contains(HOOK_COMMAND_CHECK), "body: {body:?}");
+        // User content (before AND after the managed block) survived.
+        assert!(body.contains("user-installed pre-commit step"));
+        assert!(body.contains("trailing user step"));
+        // Exactly one managed block — no duplicates.
+        assert_eq!(body.matches(HOOK_GUARD_START).count(), 1);
+        assert_eq!(body.matches(HOOK_GUARD_END).count(), 1);
+    }
+
+    #[test]
+    fn install_hook_no_op_on_current_block() {
+        // The exact opposite of the upgrade test: if the existing
+        // block is already the current shape, install_hook returns
+        // AlreadyInstalled and leaves the file byte-identical.
+        let env = TempEnvironment::builder().build();
+        fake_git_dir(&env);
+        let ctx = make_ctx(&env);
+
+        // Install fresh.
+        let r1 = install_hook(&ctx).unwrap();
+        assert!(matches!(r1.outcome, InstallHookOutcome::Created));
+        let body_after_first = env
+            .fs
+            .read_to_string(&env.dotfiles_root.join(".git/hooks/pre-commit"))
+            .unwrap();
+
+        // Re-install — current block is up to date, no change.
+        let r2 = install_hook(&ctx).unwrap();
+        assert!(matches!(r2.outcome, InstallHookOutcome::AlreadyInstalled));
+        let body_after_second = env
+            .fs
+            .read_to_string(&env.dotfiles_root.join(".git/hooks/pre-commit"))
+            .unwrap();
+        assert_eq!(body_after_first, body_after_second);
+    }
+
+    #[test]
+    fn find_managed_block_locates_byte_range() {
+        // White-box test for the byte-range finder so we don't have
+        // to reverse-engineer it from the splice tests above.
+        let block = managed_block();
+        let prefix = "before\n";
+        let suffix = "after\n";
+        let text = format!("{prefix}{block}{suffix}");
+        let (start, end) = find_managed_block(&text).expect("must find block");
+        assert_eq!(&text[start..end], block);
+    }
+
+    #[test]
+    fn find_managed_block_returns_none_when_absent() {
+        assert!(find_managed_block("nothing here").is_none());
+        // Half-block (start without end) → also None: we treat
+        // partial blocks as "not installed" so install_hook will
+        // append rather than try to splice.
+        let only_start = format!("{HOOK_GUARD_START}\nrandom content\n");
+        assert!(find_managed_block(&only_start).is_none());
     }
 }

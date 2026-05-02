@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Template clean filter — `dodot template clean --path <path>`** (R6 of the template-magic track). The piece that makes `git status` and `git diff` show the truth between commits. Git invokes this filter when reading any working-tree file matched by `*.tmpl filter=dodot-template`; the filter looks up the cached baseline (R1), and on a deployed-side edit it rehydrates the cached marker stream and runs burgertocow + diffy to emit a patched template — without re-rendering, so secret-provider auth is never re-triggered. Fast path (no edit) echoes stdin in microseconds. Slow path lands the patched form (or a conflict block, surfaced inline) so the next `git diff` sees the template-space change.
+- **`dodot template install-filter`** (R6). Registers the `[filter "dodot-template"]` block in the dotfiles repo's `.git/config` (clean → `dodot template clean --path %f`, smudge → `cat`, required → `true`). Idempotent. Surfaces the matching `.gitattributes` line for the user to commit. First-deploy prompt offers it after the user has accepted the pre-commit hook.
+- **`template.install_filter` prompt-catalog entry**. Documents the new prompt alongside the existing ones in `dodot prompts list`.
+- **Hook upgrade path** (R6). The pre-commit hook now runs `dodot refresh --quiet || exit 1` before `dodot transform check --strict || exit 1`. Re-running `dodot transform install-hook` on a repo with the older R4-shape block detects the stale managed block (via the same guard lines) and rewrites it in place, preserving any non-managed user content. New `Updated` outcome distinguishes this from `Created` / `Appended` / `AlreadyInstalled`.
+
+### Added (R5, prior)
+
 - **`dodot refresh [--quiet] [--list-paths]`** (R5 of the template-magic track). Walks the per-file baseline cache, hashes the deployed file at `<data_dir>/packs/<pack>/<handler>/<filename>`, and copies the deployed file's mtime onto the template source when the hashes differ. Why: git's stat-cache skips re-reading working-tree files when their mtime is unchanged, so a deployed-side edit to a template never surfaces in `git status` until the source mtime is bumped — refresh is the bump. `--quiet` suppresses output (for the Tier 2 shell alias `alias git='dodot refresh --quiet && command git'`); `--list-paths` prints out-of-sync source paths and exits without writing (for editor / file-watcher integrations). Exit 0 in all healthy cases. See `docs/proposals/magic.lex` §"Update Trigger Bit".
 - **`Fs::modified` / `Fs::set_modified`** trait methods for reading/writing file mtimes — used by `refresh` to copy mtimes between deployed and source files.
 

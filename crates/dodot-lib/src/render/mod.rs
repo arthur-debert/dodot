@@ -161,6 +161,10 @@ pub const TEMPLATE_TRANSFORM_INSTALL_HOOK: &str =
 /// `dodot refresh` per-mode output (default report / quiet / list-paths).
 pub const TEMPLATE_REFRESH: &str = include_str!("../templates/refresh.jinja");
 
+/// `dodot template install-filter` outcome message.
+pub const TEMPLATE_TEMPLATE_INSTALL_FILTER: &str =
+    include_str!("../templates/template-install-filter.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders

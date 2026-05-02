@@ -303,6 +303,55 @@ pub fn transform_check_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot template clean --path <path>` — git clean filter
+/// passthrough for template sources. Reads stdin (the working-tree
+/// source bytes), looks up the matching baseline in the cache,
+/// applies the cached reverse-merge if the deployed file has
+/// drifted, and writes the result to stdout. Mirrors the
+/// `plist clean/smudge` passthrough shape — no standout rendering,
+/// just stdin → stdout.
+pub fn template_clean_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
+    use dodot_lib::commands::template_clean;
+    let dotfiles_root = discover_dotfiles_root()?;
+    let ctx = ExecutionContext::production(&dotfiles_root, false)?;
+
+    let path = matches
+        .get_one::<String>("path")
+        .ok_or_else(|| anyhow::anyhow!("missing required argument: --path"))?;
+    let path = std::path::PathBuf::from(path);
+
+    // Path may be relative (git's `%f`) — resolve against the
+    // dotfiles root (the working tree git is operating on).
+    let path = if path.is_absolute() {
+        path
+    } else {
+        ctx.paths.dotfiles_root().join(path)
+    };
+
+    let mut stdin = std::io::stdin().lock();
+    let mut stdout = std::io::stdout().lock();
+    template_clean::template_clean_stdio(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+        &path,
+        &mut stdin,
+        &mut stdout,
+    )?;
+    Ok(())
+}
+
+/// `dodot template install-filter` — register the dodot-template
+/// clean filter in `.git/config`. Idempotent.
+pub fn template_install_filter_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::template_install_filter::InstallFilterResult> {
+    let ctx = build_ctx(matches)?;
+    Ok(Output::Render(
+        commands::template_install_filter::install_filter(&ctx)?,
+    ))
+}
+
 /// `dodot refresh [--quiet] [--list-paths]` — copy deployed mtimes
 /// onto template sources where they've drifted from the baseline.
 /// Used by the Tier 2 shell alias and by the upcoming clean filter
@@ -665,6 +714,111 @@ fn try_prompt_install_template_hook() -> Result<(), anyhow::Error> {
         crate::interactive::YesNoShow::No => {
             // Same convention as the plist prompt: "no" means "not
             // now"; we'll re-prompt on the next up.
+        }
+    }
+    Ok(())
+}
+
+/// Post-`up` hook that offers to install the template clean filter
+/// when:
+///
+/// 1. stdin is a TTY,
+/// 2. dotfiles root is a git working tree,
+/// 3. at least one template baseline exists,
+/// 4. the dodot pre-commit hook IS installed (we only prompt for
+///    the filter after the user already accepted the hook — keeps
+///    the install ladder one rung at a time),
+/// 5. the dodot-template filter is NOT yet registered in
+///    `.git/config`,
+/// 6. the user has NOT previously dismissed the prompt.
+///
+/// All six must hold; otherwise the function returns silently. Same
+/// soft-failure pattern as the other post-`up` prompts.
+pub fn maybe_prompt_install_template_filter() {
+    if let Err(e) = try_prompt_install_template_filter() {
+        tracing::debug!("template install-filter prompt skipped: {e}");
+    }
+}
+
+fn try_prompt_install_template_filter() -> Result<(), anyhow::Error> {
+    use dodot_lib::prompts::PromptRegistry;
+
+    if !crate::interactive::stdin_is_tty() {
+        return Ok(());
+    }
+
+    let dotfiles_root = discover_dotfiles_root()?;
+    let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
+
+    let baselines = dodot_lib::preprocessing::divergence::collect_baselines(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+    )?;
+    if baselines.is_empty() {
+        return Ok(());
+    }
+
+    if !ctx.fs.is_dir(&ctx.paths.dotfiles_root().join(".git")) {
+        return Ok(());
+    }
+
+    if !commands::transform::hook_is_installed(&ctx)? {
+        // Wait for the user to install the hook first. Filter is
+        // strictly more involved (per-clone setup, .gitattributes
+        // edit), so the install ladder asks for the cheaper one
+        // first.
+        return Ok(());
+    }
+
+    if commands::template_install_filter::is_installed(&ctx)? {
+        return Ok(());
+    }
+
+    let registry_path = ctx.paths.prompts_path();
+    let mut registry = PromptRegistry::load(ctx.fs.as_ref(), registry_path)?;
+    let prompt_key = "template.install_filter";
+    if registry.is_dismissed(prompt_key) {
+        return Ok(());
+    }
+
+    let response = crate::interactive::prompt_yes_no_show(&[
+        "Install the dodot-template git clean filter?",
+        "It makes `git status` and `git diff` show deployed-side template edits",
+        "between commits, not just at commit time. Adds one block to .git/config",
+        "and a single line to .gitattributes.",
+    ])?;
+
+    match response {
+        crate::interactive::YesNoShow::Yes => {
+            let r = commands::template_install_filter::install_filter(&ctx)?;
+            eprintln!("{}", r.message);
+            for d in &r.details {
+                eprintln!("  {d}");
+            }
+            registry.dismiss(prompt_key);
+            registry.save(ctx.fs.as_ref())?;
+        }
+        crate::interactive::YesNoShow::Show => {
+            eprintln!();
+            eprintln!("Add to .git/config (per clone, per machine):");
+            eprintln!();
+            for line in commands::template_install_filter::config_block_text().lines() {
+                eprintln!("    {line}");
+            }
+            eprintln!();
+            eprintln!("Add to .gitattributes (committed in the repo):");
+            eprintln!(
+                "    {}",
+                commands::template_install_filter::gitattributes_line()
+            );
+            eprintln!();
+            eprintln!(
+                "Run `dodot template install-filter` to install, \
+                 or `dodot prompts reset {prompt_key}` to skip and ask later."
+            );
+        }
+        crate::interactive::YesNoShow::No => {
+            // Same convention as the other prompts: "no" defers.
         }
     }
     Ok(())

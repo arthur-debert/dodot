@@ -57,6 +57,20 @@ fn main() {
         return;
     }
 
+    // Passthrough: `template clean` (git clean filter — stdin/stdout
+    // bytes, must bypass standout for the same reasons as plist's
+    // filter passthroughs). `template install-filter` is NOT
+    // passthrough — it goes through standout dispatch normally.
+    if let Some(("template", sub)) = matches.subcommand() {
+        if let Some(("clean", clean_matches)) = sub.subcommand() {
+            if let Err(e) = handlers::template_clean_passthrough(clean_matches) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
+
     // Initialize logging based on CLI flags
     let verbosity = if matches.get_flag("debug") {
         logging::Verbosity::Debug
@@ -127,13 +141,19 @@ fn main() {
     match app.dispatch(matches, output_mode) {
         standout::cli::RunResult::Handled(output) => {
             println!("{output}");
-            // Post-up nudges. Both fire only after a successful
-            // `up` and both are soft (failures land in the debug log,
-            // never stderr). The two prompts are independent: the
-            // user might hit either, both, or neither in a session.
+            // Post-up nudges. All fire only after a successful `up`
+            // and all are soft (failures land in the debug log,
+            // never stderr). They form an install ladder:
+            //   1. plist filters (when plist files exist)
+            //   2. template hook (when template baselines exist)
+            //   3. template clean filter (when hook is already
+            //      installed AND filter isn't yet)
+            // The user moves up one rung per `up` until they've
+            // accepted or dismissed each — never spammed all at once.
             if subcommand.as_deref() == Some("up") {
                 handlers::maybe_prompt_install_filters();
                 handlers::maybe_prompt_install_template_hook();
+                handlers::maybe_prompt_install_template_filter();
             }
             // `dodot transform check` may have set a non-zero exit code
             // via PENDING_EXIT_CODE: the report still rendered above,
@@ -198,6 +218,10 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
         render::TEMPLATE_TRANSFORM_INSTALL_HOOK,
     ),
     ("refresh.jinja", render::TEMPLATE_REFRESH),
+    (
+        "template-install-filter.jinja",
+        render::TEMPLATE_TEMPLATE_INSTALL_FILTER,
+    ),
 ];
 
 fn build_app() -> App {
@@ -278,6 +302,12 @@ fn build_app() -> App {
         .expect("register transform.install-hook")
         .command("refresh", handlers::refresh_handler, "refresh")
         .expect("register refresh")
+        .command(
+            "template.install-filter",
+            handlers::template_install_filter_handler,
+            "template-install-filter",
+        )
+        .expect("register template.install-filter")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -305,12 +335,13 @@ fn build_app() -> App {
                 commands: vec![Some("probe".into())],
             },
             CommandGroup {
-                title: "Plist filters".into(),
+                title: "Git filters".into(),
                 help: None,
                 commands: vec![
                     Some("git-install-filters".into()),
                     Some("git-show-filters".into()),
                     Some("plist".into()),
+                    Some("template".into()),
                 ],
             },
             CommandGroup {
@@ -503,6 +534,36 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
+        )
+        .subcommand(
+            ClapCommand::new("template")
+                .about(
+                    "Template-source git integration: the clean filter (passthrough) and \
+                     filter installer.",
+                )
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("clean")
+                        .about(
+                            "git clean filter for templates — reads source on stdin, writes \
+                             patched form on stdout. Invoked by git when reading a template.",
+                        )
+                        .arg(
+                            Arg::new("path")
+                                .long("path")
+                                .help("Working-tree path of the file being filtered (git's `%f`).")
+                                .value_name("PATH")
+                                .required(true)
+                                .num_args(1),
+                        ),
+                )
+                .subcommand(
+                    ClapCommand::new("install-filter").about(
+                        "Register the dodot-template clean filter in the dotfiles repo's \
+                         .git/config (idempotent, per-clone, per-machine).",
+                    ),
+                ),
         )
         .subcommand(
             ClapCommand::new("plist")

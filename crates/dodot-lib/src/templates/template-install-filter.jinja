@@ -1,0 +1,8 @@
+{%- if already_installed -%}
+[message]{{ message }}[/message]
+{%- else -%}
+[message]{{ message }}[/message]
+{%- endif %}
+{% for line in details -%}
+  {{ line }}
+{% endfor -%}
