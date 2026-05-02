@@ -223,7 +223,16 @@ impl TemplatePreprocessor {
                         // co-located with the callback that surfaces
                         // them; only validated values reach the
                         // cache. See `secrets.lex` §7.4 / §3.4.
-                        let owned = if let Some(cached) = registry.cache_get(reference) {
+                        //
+                        // The cache holds `Arc<SecretString>` so the
+                        // resolved bytes get zeroized when the
+                        // registry's last reference drops. We expose
+                        // to `&str` only at this substitution
+                        // boundary (and the resulting String is
+                        // immediately handed to MiniJinja), keeping
+                        // the unsealed plaintext window as narrow as
+                        // the rendering pipeline allows.
+                        let secret = if let Some(cached) = registry.cache_get(reference) {
                             cached
                         } else {
                             let value = registry.resolve(reference).map_err(|e| {
@@ -242,7 +251,11 @@ impl TemplatePreprocessor {
                                     ),
                                 ));
                             }
-                            let s = value.expose().map_err(|_| {
+                            // Validate UTF-8 before caching — a
+                            // non-UTF-8 value never reaches the
+                            // cache (the call propagates the rich
+                            // error instead).
+                            value.expose().map_err(|_| {
                                 MjError::new(
                                     MjErrorKind::InvalidOperation,
                                     format!(
@@ -251,10 +264,14 @@ impl TemplatePreprocessor {
                                     ),
                                 )
                             })?;
-                            let owned = s.to_string();
-                            registry.cache_put(reference, &owned);
-                            owned
+                            let arc = Arc::new(value);
+                            registry.cache_put(reference, Arc::clone(&arc));
+                            arc
                         };
+                        // expose() can only fail on non-UTF-8, which
+                        // we excluded above for cache-miss + the
+                        // cache only holds validated UTF-8.
+                        let owned = secret.expose().unwrap_or("").to_string();
                         let mut entries = sidecar.lock().unwrap();
                         let sentinel = make_secret_sentinel(render_id, entries.len());
                         entries.push(SecretCallEntry {

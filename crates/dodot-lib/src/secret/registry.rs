@@ -39,10 +39,16 @@ use crate::{DodotError, Result};
 /// satisfies `secrets.lex` §7.4's "user authenticates once per run"
 /// for the common case of a single registry threaded through every
 /// pack rendered in one `dodot up` invocation.
+///
+/// Cache values are stored as `Arc<SecretString>` so the cached
+/// bytes are zeroized when the registry (and its last Arc holder)
+/// drops. Callers that need a plain `&str` go through
+/// [`SecretString::expose`] at the substitution boundary; the cache
+/// itself never holds an unsealed `String` copy.
 #[derive(Default, Clone)]
 pub struct SecretRegistry {
     providers: HashMap<String, Arc<dyn SecretProvider>>,
-    cache: Arc<Mutex<HashMap<String, String>>>,
+    cache: Arc<Mutex<HashMap<String, Arc<SecretString>>>>,
 }
 
 impl SecretRegistry {
@@ -86,10 +92,11 @@ impl SecretRegistry {
 
     /// Resolve a full reference (with scheme prefix) by dispatching
     /// to the right provider. **Bypasses the within-run cache** —
-    /// every call shells out to the provider. Most callers want
-    /// [`Self::resolve_cached`] instead; this entry point exists for
-    /// tests that want to count provider invocations and for `dodot
-    /// secret probe` paths that intentionally hit the wire.
+    /// every call shells out to the provider. Most callers want the
+    /// [`Self::cache_get`] / [`Self::cache_put`] surface (used by
+    /// the `secret()` MiniJinja function); this entry point exists
+    /// for tests that want to count provider invocations and for
+    /// `dodot secret probe` paths that intentionally hit the wire.
     ///
     /// Returns `DodotError::Other` with an actionable message when:
     ///
@@ -122,23 +129,34 @@ impl SecretRegistry {
     /// [`Self::resolve`] and then [`Self::cache_put`] to populate
     /// the cache for future calls.
     ///
+    /// Returns `Arc<SecretString>` so the cached bytes stay zeroize-
+    /// on-drop — callers go through `SecretString::expose` at the
+    /// substitution boundary, never an unsealed `String` copy in
+    /// the cache itself. Cloning the Arc is a cheap pointer bump;
+    /// the inner buffer is dropped (and zeroized) when the last
+    /// holder is gone.
+    ///
     /// Splitting cache access from resolution lets the caller
     /// validate values (multi-line refusal, UTF-8) with rich error
     /// messages co-located with the rendering surface, while still
     /// avoiding repeat shell-outs for the cache-hit path.
-    pub fn cache_get(&self, full_reference: &str) -> Option<String> {
+    pub fn cache_get(&self, full_reference: &str) -> Option<Arc<SecretString>> {
         self.cache.lock().unwrap().get(full_reference).cloned()
     }
 
     /// Store a resolved (and validated) value in the within-run
-    /// cache. The caller is responsible for ensuring `value` is the
-    /// genuine resolved string (no markers, no UTF-8 violations,
-    /// not a multi-line value); the cache is dumb storage.
-    pub fn cache_put(&self, full_reference: &str, value: &str) {
+    /// cache. Takes `Arc<SecretString>` directly so the caller
+    /// keeps the same handle for the substitution path —
+    /// constructing a fresh `SecretString` here would lose the
+    /// zeroize lineage on the original. The caller is responsible
+    /// for ensuring the value is genuine (no markers, no UTF-8
+    /// violations, not a multi-line value); the cache is dumb
+    /// storage.
+    pub fn cache_put(&self, full_reference: &str, value: Arc<SecretString>) {
         self.cache
             .lock()
             .unwrap()
-            .insert(full_reference.to_string(), value.to_string());
+            .insert(full_reference.to_string(), value);
     }
 
     /// Number of entries currently held in the within-run cache.
@@ -293,12 +311,17 @@ mod tests {
         assert_eq!(reg.resolve("pass:k").unwrap().expose().unwrap(), "second");
     }
 
+    fn put(reg: &SecretRegistry, reference: &str, value: &str) {
+        reg.cache_put(reference, Arc::new(SecretString::new(value.to_string())));
+    }
+
     #[test]
     fn cache_get_returns_none_until_cache_put_populates_it() {
         let reg = SecretRegistry::new();
         assert!(reg.cache_get("op://V/I/F").is_none());
-        reg.cache_put("op://V/I/F", "secret-value");
-        assert_eq!(reg.cache_get("op://V/I/F").as_deref(), Some("secret-value"));
+        put(&reg, "op://V/I/F", "secret-value");
+        let hit = reg.cache_get("op://V/I/F").unwrap();
+        assert_eq!(hit.expose().unwrap(), "secret-value");
     }
 
     #[test]
@@ -309,8 +332,9 @@ mod tests {
         // pass it to N pack-rendering passes that all share auth.
         let reg = SecretRegistry::new();
         let clone = reg.clone();
-        clone.cache_put("pass:k", "v");
-        assert_eq!(reg.cache_get("pass:k").as_deref(), Some("v"));
+        put(&clone, "pass:k", "v");
+        let hit = reg.cache_get("pass:k").unwrap();
+        assert_eq!(hit.expose().unwrap(), "v");
     }
 
     #[test]
@@ -323,7 +347,7 @@ mod tests {
         // contract every other test in this module relies on.
         let a = SecretRegistry::new();
         let b = SecretRegistry::new();
-        a.cache_put("pass:k", "from-a");
+        put(&a, "pass:k", "from-a");
         assert!(b.cache_get("pass:k").is_none());
     }
 

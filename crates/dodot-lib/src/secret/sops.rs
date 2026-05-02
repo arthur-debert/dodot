@@ -44,15 +44,30 @@ impl SopsProvider {
     }
 
     /// Parse the post-prefix reference into `(absolute_file_path,
-    /// extract_argument)`. The registry has already stripped the
-    /// `sops:` scheme prefix; we expect `<file>#<dot.path>`.
+    /// dot_path, extract_argument)`. The registry has already
+    /// stripped the `sops:` scheme prefix; we expect
+    /// `<file>#<dot.path>`.
     ///
     /// `extract_argument` is the SOPS `--extract` syntax
     /// (`["a"]["b"]["c"]`), built from the dot-separated path.
     /// Empty segments are rejected up-front (an `..` in the path
     /// would otherwise produce an empty bracket pair, which SOPS
     /// rejects with an opaque error).
-    fn parse_reference(&self, suffix: &str) -> Result<(PathBuf, String)> {
+    ///
+    /// Each segment is escaped before being wrapped in quotes:
+    /// `\` → `\\`, `"` → `\"`. SOPS's `--extract` uses a
+    /// JSON-string-like syntax for each bracket key, so segments
+    /// containing literal quotes or backslashes (legal YAML/JSON
+    /// keys) need the same escaping the language requires.
+    /// Without this, a key like `db."backup"` would land as
+    /// `["db.\"backup\""]` invalidly closed and SOPS would reject
+    /// the call with an opaque parse error.
+    ///
+    /// `dot_path` is the original user-facing path returned
+    /// alongside `extract` so error messages can reference what
+    /// the user actually wrote (`a.b.c`) instead of the internal
+    /// bracket form (`["a"]["b"]["c"]`).
+    fn parse_reference(&self, suffix: &str) -> Result<(PathBuf, String, String)> {
         let (file, path) = suffix.split_once('#').ok_or_else(|| {
             DodotError::Other(format!(
                 "sops reference `sops:{suffix}` is missing the `#path.to.key` fragment. \
@@ -82,7 +97,13 @@ impl SopsProvider {
         for seg in &segments {
             extract.push('[');
             extract.push('"');
-            extract.push_str(seg);
+            for ch in seg.chars() {
+                match ch {
+                    '\\' => extract.push_str(r"\\"),
+                    '"' => extract.push_str(r#"\""#),
+                    other => extract.push(other),
+                }
+            }
             extract.push('"');
             extract.push(']');
         }
@@ -91,7 +112,7 @@ impl SopsProvider {
         } else {
             self.root.join(file)
         };
-        Ok((file_path, extract))
+        Ok((file_path, path.to_string(), extract))
     }
 }
 
@@ -125,7 +146,7 @@ impl SecretProvider for SopsProvider {
     }
 
     fn resolve(&self, reference: &str) -> Result<SecretString> {
-        let (file_path, extract) = self.parse_reference(reference)?;
+        let (file_path, dot_path, extract) = self.parse_reference(reference)?;
         let out = self.runner.run(
             "sops",
             &[
@@ -167,8 +188,13 @@ impl SecretProvider for SopsProvider {
                 || stderr.contains("no value at this path")
                 || stderr.contains("invalid path")
             {
+                // Report the user-facing dot path (what they wrote
+                // after `#`), not the bracketed `--extract` argument
+                // we hand to SOPS — the user shouldn't have to map
+                // back from internal syntax to figure out which
+                // reference is broken.
                 format!(
-                    "key path `{extract}` not found in `{}`. \
+                    "key path `{dot_path}` not found in `{}`. \
                      Verify with `sops --decrypt {} | yq` (or `jq` for JSON files).",
                     file_path.display(),
                     file_path.display()
@@ -268,23 +294,39 @@ mod tests {
     #[test]
     fn parse_reference_translates_dot_path_to_bracket_extract() {
         let p = SopsProvider::new(Arc::new(ScriptedRunner::new()), root());
-        let (file, extract) = p.parse_reference("secrets.yaml#a.b.c").unwrap();
+        let (file, dot_path, extract) = p.parse_reference("secrets.yaml#a.b.c").unwrap();
         assert_eq!(file, PathBuf::from("/dotfiles/secrets.yaml"));
+        assert_eq!(dot_path, "a.b.c");
         assert_eq!(extract, r#"["a"]["b"]["c"]"#);
     }
 
     #[test]
     fn parse_reference_keeps_absolute_paths_unchanged() {
         let p = SopsProvider::new(Arc::new(ScriptedRunner::new()), root());
-        let (file, _) = p.parse_reference("/etc/secrets.yaml#k").unwrap();
+        let (file, _, _) = p.parse_reference("/etc/secrets.yaml#k").unwrap();
         assert_eq!(file, PathBuf::from("/etc/secrets.yaml"));
     }
 
     #[test]
     fn parse_reference_anchors_relative_paths_at_dotfiles_root() {
         let p = SopsProvider::new(Arc::new(ScriptedRunner::new()), root());
-        let (file, _) = p.parse_reference("nested/secrets.yaml#k").unwrap();
+        let (file, _, _) = p.parse_reference("nested/secrets.yaml#k").unwrap();
         assert_eq!(file, PathBuf::from("/dotfiles/nested/secrets.yaml"));
+    }
+
+    #[test]
+    fn parse_reference_escapes_quotes_and_backslashes_in_segments() {
+        // SOPS's bracket-key syntax is JSON-string-shaped. A
+        // literal `"` in a segment must escape to `\"`, and a
+        // literal `\` must escape to `\\`. Without this, the
+        // extract argument would be syntactically broken (or worse,
+        // produce a different key than intended) — the user would
+        // get an opaque SOPS error and no way to map it back.
+        let p = SopsProvider::new(Arc::new(ScriptedRunner::new()), root());
+        let (_, _, extract) = p
+            .parse_reference(r#"s.yaml#has"quote.has\backslash"#)
+            .unwrap();
+        assert_eq!(extract, r#"["has\"quote"]["has\\backslash"]"#);
     }
 
     #[test]
@@ -440,15 +482,28 @@ mod tests {
             vec![
                 "--decrypt".into(),
                 "--extract".into(),
-                r#"["nope"]"#.into(),
+                r#"["a"]["b"]"#.into(),
                 "/dotfiles/s.yaml".into(),
             ],
-            err_out(91, "no value at this path: [\"nope\"]"),
+            err_out(91, "no value at this path: [\"a\"][\"b\"]"),
         ));
         let p = SopsProvider::new(runner, root());
-        let e = p.resolve("s.yaml#nope").unwrap_err().to_string();
+        let e = p.resolve("s.yaml#a.b").unwrap_err().to_string();
         assert!(e.contains("not found in"));
         assert!(e.contains("yq"));
+        // The user-facing error reports the dot path they wrote
+        // (`a.b`), not the bracketed `--extract` shape (`["a"]["b"]`).
+        // Otherwise users would have to mentally translate from
+        // internal syntax back to the reference they wrote, which
+        // is what makes a "missing key" message annoying.
+        assert!(
+            e.contains("`a.b`"),
+            "expected user-facing dot path in error, got: {e}"
+        );
+        assert!(
+            !e.contains("[\"a\"]"),
+            "expected bracket form to not leak into user-facing error: {e}"
+        );
     }
 
     #[test]

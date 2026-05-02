@@ -187,7 +187,7 @@ impl SecretProvider for BwProvider {
                 format!(
                     "secret `bw:{reference}` not found in the vault \
                      (or matched multiple items). \
-                     Verify with `bw list items --search '<item>'`; \
+                     Verify with `bw list items --search '{item}'`; \
                      use the item id if the search is ambiguous."
                 )
             } else if stderr.contains("not logged in")
@@ -450,7 +450,13 @@ mod tests {
         let p = BwProvider::new(runner);
         let e = p.resolve("missing").unwrap_err().to_string();
         assert!(e.contains("not found"));
-        assert!(e.contains("bw list items"));
+        // The hint must interpolate the actual item name, not a literal
+        // `<item>` placeholder, so the user can copy/paste it directly.
+        assert!(
+            e.contains("bw list items --search 'missing'"),
+            "expected interpolated search hint, got: {e}"
+        );
+        assert!(!e.contains("<item>"));
     }
 
     #[test]
