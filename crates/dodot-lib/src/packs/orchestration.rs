@@ -418,12 +418,13 @@ pub fn plan_pack(
 /// re-merge config for every pack (the ConfigManager caches by path,
 /// but passing the config explicitly makes the data flow obvious).
 ///
-/// Defaults `write_baselines = true` to preserve the pre-existing
-/// public-API behavior of `collect_pack_intents` and
-/// `run_handler_pipeline` (both of which are intent-collection paths
-/// that should record the baseline cache `transform check` depends on).
-/// The `dodot status` read-only path enters via `plan_pack` instead and
-/// passes its own `write_baselines = false`.
+/// Defaults `write_baselines = false` and `force = false` because
+/// every caller of this helper (`adopt`, `run_handler_pipeline`)
+/// is read-only conflict detection or test scaffolding. The actual
+/// `dodot up` deploy flow uses `plan_pack` directly with its own
+/// flags. Writing baselines from a read-only inspection command
+/// would change later `transform check` / divergence outcomes
+/// without any deploy having happened.
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -435,18 +436,26 @@ fn collect_pack_intents_inner(
         ctx,
         pack_config,
         preprocessors,
-        /* write_baselines */ true,
-        // Always `false`: this helper feeds read-only callers like
-        // `adopt::check_deploy_conflicts`. Propagating `ctx.force`
-        // here would let `dodot adopt --force` bypass the §6.4
+        // Both `false`: this helper feeds read-only callers
+        // (`adopt::check_deploy_conflicts`, `run_handler_pipeline`
+        // in tests). The actual `dodot up` flow uses `plan_pack`
+        // directly (which threads its own `write_baselines = true`
+        // and `ctx.force`), so the deploy path is unaffected.
+        //
+        // `write_baselines = false` matters because baselines
+        // represent "the state of the last successful `dodot up`."
+        // Writing them from an inspection-only command would
+        // change later `transform check` / divergence outcomes
+        // without any deploy having happened.
+        //
+        // `force = false` matters because propagating `ctx.force`
+        // would let `dodot adopt --force` bypass the §6.4
         // divergence guard during inspection-only conflict
-        // scanning — overwriting user-edited deployed files in
-        // *other* packs before adopt has even started. The actual
-        // `dodot up` flow uses `plan_pack` directly (which threads
-        // its own `force`), so the hardcoded `false` here doesn't
-        // affect the intended `--force` semantics.
-        /* force */
+        // scanning, overwriting user-edited deployed files in
+        // *other* packs before adopt has even started.
+        /* write_baselines */
         false,
+        /* force */ false,
     )
     .map(|p| p.intents)
 }

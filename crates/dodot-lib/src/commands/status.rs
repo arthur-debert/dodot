@@ -132,6 +132,47 @@ fn describe_blocking_target(
     format!("{display} (existing {kind}) — `dodot up` will refuse without `--force`")
 }
 
+/// Determine whether a previous successful provisioning run is on
+/// record for the given preserved code-execution file. Used to gate
+/// the `Health::Preserved` override so we don't claim "previous run
+/// still in effect" when no sentinel was ever written (e.g. a
+/// failed `install` left a baseline behind because preprocessing
+/// writes the cache before execution).
+///
+/// Strategy: derive the sentinel name from the baseline's
+/// `rendered_hash` and ask the datastore if it exists. The
+/// install/homebrew handlers both name their sentinel
+/// `<basename>-<short-hex>` where the short hex is the first 16
+/// characters of the SHA-256 of the rendered content. We construct
+/// the same name here; if the convention changes in the handler,
+/// keep this in sync. Returns `false` (conservative) when:
+/// - no `previous_rendered_hash` is available (corrupt baseline);
+/// - the handler isn't `install` or `homebrew` (no sentinel concept);
+/// - the rendered hash is shorter than 16 hex chars (malformed).
+fn previous_provisioning_succeeded(
+    relative_path: &std::path::Path,
+    handler: &str,
+    pack: &str,
+    previous_rendered_hash: Option<&str>,
+    datastore: &dyn crate::datastore::DataStore,
+) -> bool {
+    if handler != "install" && handler != "homebrew" {
+        return false;
+    }
+    let hash = match previous_rendered_hash {
+        Some(h) if h.len() >= 16 => h,
+        _ => return false,
+    };
+    let basename = match relative_path.file_name() {
+        Some(n) => n.to_string_lossy(),
+        None => return false,
+    };
+    let sentinel = format!("{basename}-{}", &hash[..16]);
+    datastore
+        .has_sentinel(pack, handler, &sentinel)
+        .unwrap_or(false)
+}
+
 /// Verify symlink handler chain for a single file.
 ///
 /// Checks: data link exists → points to source → source exists →
@@ -517,26 +558,33 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         // Map of deployed-file paths the §6.4 divergence guard
         // preserved during this status pass → metadata for the
-        // footnote. `baseline_unreadable` determines which recovery
-        // path the footnote suggests (transform check vs. clear
-        // the cache file). `cache_path` (Some only when
-        // `baseline_unreadable`) names the actual broken file —
-        // critical for upgraders whose corrupt entry lives at the
-        // legacy basename layout, since the path reconstructed from
-        // the virtual_relative would point elsewhere.
-        let preserved_lookup: std::collections::HashMap<
-            std::path::PathBuf,
-            (bool, Option<std::path::PathBuf>),
-        > = preprocess_result
-            .skipped
-            .iter()
-            .map(|s| {
-                (
-                    s.deployed_path.clone(),
-                    (s.baseline_unreadable, s.cache_path.clone()),
-                )
-            })
-            .collect();
+        // footnote. Carries the cache_path (`Some` only when
+        // `baseline_unreadable`) so the footnote can name the
+        // actual broken file (legacy or new layout). Carries
+        // `previous_rendered_hash` (`Some` when there's a usable
+        // baseline) so we can verify a previous successful
+        // provisioning run before claiming Preserved on
+        // install/homebrew rows.
+        struct PreservedInfo {
+            baseline_unreadable: bool,
+            cache_path: Option<std::path::PathBuf>,
+            previous_rendered_hash: Option<String>,
+        }
+        let preserved_lookup: std::collections::HashMap<std::path::PathBuf, PreservedInfo> =
+            preprocess_result
+                .skipped
+                .iter()
+                .map(|s| {
+                    (
+                        s.deployed_path.clone(),
+                        PreservedInfo {
+                            baseline_unreadable: s.baseline_unreadable,
+                            cache_path: s.cache_path.clone(),
+                            previous_rendered_hash: s.previous_rendered_hash.clone(),
+                        },
+                    )
+                })
+                .collect();
 
         let mut files = Vec::new();
         for m in &matches {
@@ -581,10 +629,8 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     // misrepresent the semantic state. Treat the
                     // row as Deployed and attach a footnote
                     // pointing at the resolution paths.
-                    if let Some((baseline_unreadable, cache_path)) =
-                        preserved_lookup.get(&m.absolute_path)
-                    {
-                        if *baseline_unreadable {
+                    if let Some(info) = preserved_lookup.get(&m.absolute_path) {
+                        if info.baseline_unreadable {
                             // `transform check` would fail on the
                             // same corrupt entry, so point at the
                             // recovery path that actually works:
@@ -597,7 +643,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                             // from `m.relative_path` would point at
                             // the new nested layout, which doesn't
                             // exist.
-                            let cache_display = match cache_path {
+                            let cache_display = match &info.cache_path {
                                 Some(p) => match p.strip_prefix(ctx.paths.home_dir()) {
                                     Ok(rel) => format!("~/{}", rel.display()),
                                     Err(_) => p.display().to_string(),
@@ -612,13 +658,47 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                                     cache_display,
                                 ),
                             }
-                        } else {
+                        } else if previous_provisioning_succeeded(
+                            &m.relative_path,
+                            &m.handler,
+                            &pack.name,
+                            info.previous_rendered_hash.as_deref(),
+                            ctx.datastore.as_ref(),
+                        ) {
                             Health::Preserved {
                                 label: "preserved (deployed-edit pending)".into(),
                                 reason:
                                     "deployed file edited since last `dodot up`; previous run still in effect. \
                                      Run `dodot transform check` to reconcile, or re-run with --force to overwrite."
                                         .to_string(),
+                            }
+                        } else {
+                            // The baseline exists but no sentinel
+                            // is recorded for the previous
+                            // render's content — i.e. the
+                            // previous provisioning never
+                            // actually succeeded (probably failed
+                            // partway). Don't claim "previous run
+                            // still in effect"; fall through to
+                            // the normal check_status path which
+                            // will report Pending against the
+                            // user's edited file.
+                            let handler = registry.get(m.handler.as_str());
+                            let deployed = handler
+                                .and_then(|h| {
+                                    h.check_status(
+                                        &m.absolute_path,
+                                        &pack.name,
+                                        ctx.datastore.as_ref(),
+                                    )
+                                    .ok()
+                                })
+                                .map(|s| s.deployed)
+                                .unwrap_or(false);
+                            if deployed {
+                                Health::Deployed
+                            } else {
+                                Health::Pending
                             }
                         }
                     } else {

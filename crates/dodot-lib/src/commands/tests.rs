@@ -302,6 +302,72 @@ fn status_reports_preserved_install_template_as_deployed_with_footnote() {
 }
 
 #[test]
+fn status_does_not_claim_preserved_when_no_sentinel_was_recorded() {
+    // PR #118 14th-pass Comment CC: baselines are written during
+    // preprocessing (before execution), so a failed install can
+    // leave a baseline behind without ever recording a sentinel.
+    // After the user edits the rendered file, status must NOT
+    // claim "previous run still in effect" — the previous run
+    // never actually completed. Pin the gate: when no sentinel
+    // exists for the baseline's rendered hash, the preserved
+    // override is bypassed and the row falls through to Pending.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file(
+            "install.sh.tmpl",
+            "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
+        )
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    // First `up` deploys and records the install sentinel.
+    let _ = commands::up::up(None, &ctx).unwrap();
+
+    // Surgically remove the install sentinel — simulating a
+    // previous run that wrote the baseline (preprocessing) but
+    // failed before the install actually completed. Sentinels
+    // live directly under `<data>/packs/<pack>/install/`.
+    let install_dir = ctx.paths.handler_data_dir("setup", "install");
+    if let Ok(entries) = ctx.fs.read_dir(&install_dir) {
+        for entry in entries {
+            if entry.is_file && entry.name.starts_with("install.sh-") {
+                ctx.fs.remove_file(&entry.path).unwrap();
+            }
+        }
+    }
+
+    // User edits the deployed file (the divergence guard would
+    // preserve it on the next up).
+    let deployed = ctx
+        .paths
+        .handler_data_dir("setup", "preprocessed")
+        .join("install.sh");
+    ctx.fs
+        .write_file(&deployed, b"#!/bin/sh\necho EDITED")
+        .unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let install_row = result
+        .packs
+        .iter()
+        .flat_map(|p| &p.files)
+        .find(|f| f.handler == "install")
+        .expect("install row must be present");
+    // Without a sentinel for the previous render, the preserved
+    // override must NOT fire. The row falls through to the normal
+    // check_status path and reports as pending.
+    assert!(
+        !install_row.status_label.contains("preserved"),
+        "install row must NOT claim preserved when no sentinel was recorded, got: {:?}",
+        install_row.status_label
+    );
+    assert_eq!(install_row.status, "pending");
+}
+
+#[test]
 fn status_lists_ignored_packs() {
     let env = TempEnvironment::builder()
         .pack("vim")

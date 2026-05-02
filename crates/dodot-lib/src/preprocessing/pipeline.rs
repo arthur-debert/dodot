@@ -125,6 +125,16 @@ pub struct SkippedRender {
     /// fallback for upgraders). `None` for confirmed divergence
     /// cases — the rendered/deployed file paths suffice there.
     pub cache_path: Option<PathBuf>,
+    /// Hex-encoded SHA-256 of the baseline's `rendered_content` —
+    /// i.e. the hash of what the previous successful render produced.
+    /// `None` when `baseline_unreadable` is `true` (no usable
+    /// baseline to read it from). Status uses this to verify a
+    /// previous successful provisioning run before claiming
+    /// "previous run still in effect" on preserved code-execution
+    /// rows: if no sentinel exists for this hash, the previous
+    /// install/homebrew never actually ran and the row should
+    /// surface as Pending instead.
+    pub previous_rendered_hash: Option<String>,
 }
 
 impl PreprocessResult {
@@ -170,6 +180,11 @@ enum DivergenceCheck {
         /// On-disk path of the baseline cache file inspected.
         /// `Some` only when `baseline_unreadable` is `true`.
         cache_path: Option<PathBuf>,
+        /// Hex-encoded SHA-256 of the baseline's rendered content
+        /// (i.e. the hash that defines the sentinel of the previous
+        /// successful provisioning run). `None` when
+        /// `baseline_unreadable` is `true`.
+        previous_rendered_hash: Option<String>,
     },
 }
 
@@ -241,6 +256,7 @@ fn check_divergence(
                 deployed_path,
                 baseline_unreadable: true,
                 cache_path: Some(attempted_cache_path),
+                previous_rendered_hash: None,
             });
         }
     };
@@ -290,6 +306,7 @@ fn check_divergence(
         deployed_path,
         baseline_unreadable: false,
         cache_path: None,
+        previous_rendered_hash: Some(baseline.rendered_hash.clone()),
     })
 }
 
@@ -504,6 +521,7 @@ pub fn preprocess_pack(
                         deployed_path,
                         baseline_unreadable,
                         cache_path,
+                        previous_rendered_hash,
                     } => {
                         info!(
                             pack = %pack.name,
@@ -519,6 +537,7 @@ pub fn preprocess_pack(
                             state,
                             baseline_unreadable,
                             cache_path,
+                            previous_rendered_hash,
                         });
                         skip_path = Some(deployed_path);
                     }
