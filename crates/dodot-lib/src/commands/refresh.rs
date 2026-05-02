@@ -56,8 +56,10 @@ pub struct RefreshEntry {
     pub pack: String,
     pub handler: String,
     pub filename: String,
-    /// Absolute source path. The CLI renderer trims to `~/...` when
-    /// possible; the JSON output keeps the absolute form.
+    /// Absolute source path. The CLI renderer (and the JSON output)
+    /// both surface this verbatim — refresh entries are typically a
+    /// short list, and the absolute path is unambiguous when the
+    /// user wants to plug `--list-paths` output into a watcher.
     pub source_path: String,
     pub action: RefreshAction,
 }
@@ -127,7 +129,26 @@ pub fn refresh(ctx: &ExecutionContext, mode: RefreshMode) -> Result<RefreshResul
             } else {
                 if mode != RefreshMode::ListPaths {
                     let deployed_mtime = ctx.fs.modified(&deployed_path)?;
-                    ctx.fs.set_modified(&source_path, deployed_mtime)?;
+                    let source_mtime = ctx.fs.modified(&source_path)?;
+                    // The whole point of refresh is to invalidate
+                    // git's stat-cache by changing the source mtime.
+                    // If the deployed mtime happens to equal the
+                    // current source mtime — possible on coarse-
+                    // resolution filesystems (FAT, HFS+ at 1s
+                    // granularity) or when a user edits and refreshes
+                    // within the same second — copying it would be a
+                    // no-op and git would not re-read the file. Bump
+                    // by 1s in that case so the mtime strictly
+                    // changes. We don't care that the source mtime
+                    // ends up "ahead of" the deployed mtime; what
+                    // matters is that it differs from the cached
+                    // value git has.
+                    let target = if deployed_mtime == source_mtime {
+                        deployed_mtime + std::time::Duration::from_secs(1)
+                    } else {
+                        deployed_mtime
+                    };
+                    ctx.fs.set_modified(&source_path, target)?;
                 }
                 touched_any = true;
                 RefreshAction::Touched
@@ -417,6 +438,38 @@ mod tests {
         let r = refresh(&ctx, RefreshMode::Report).unwrap();
         assert!(matches!(r.entries[0].action, RefreshAction::Touched));
         assert!(r.touched_any);
+    }
+
+    #[test]
+    fn divergent_with_equal_mtimes_still_bumps_source() {
+        // Edge case from PR review: if the deployed mtime happens to
+        // equal the source mtime (coarse FS, rapid edits within the
+        // same second), `set_modified(source, deployed_mtime)` would
+        // be a no-op — git's stat-cache wouldn't invalidate, and
+        // refresh would silently fail at its core purpose. We bump
+        // by 1s in that case so the source mtime *strictly* changes.
+        let env = TempEnvironment::builder().build();
+        let (src, deployed) = stage_one(&env, "app", "cfg.toml.tmpl", b"rendered", b"src");
+
+        // Force the deployed mtime to exactly match the current
+        // source mtime, then mutate the deployed bytes so refresh
+        // sees a divergence to act on.
+        let pinned = env.fs.modified(&src).unwrap();
+        env.fs.write_file(&deployed, b"rendered EDITED").unwrap();
+        env.fs.set_modified(&deployed, pinned).unwrap();
+        assert_eq!(env.fs.modified(&deployed).unwrap(), pinned);
+
+        let ctx = make_ctx(&env);
+        let r = refresh(&ctx, RefreshMode::Report).unwrap();
+        assert!(matches!(r.entries[0].action, RefreshAction::Touched));
+
+        // Source mtime must STRICTLY exceed the original (no-op
+        // behaviour would leave it unchanged).
+        let after = env.fs.modified(&src).unwrap();
+        assert!(
+            after > pinned,
+            "source mtime should strictly increase even when deployed mtime equals source mtime"
+        );
     }
 
     #[test]

@@ -130,9 +130,10 @@ impl Fs for OsFs {
     }
 
     fn set_modified(&self, path: &Path, time: std::time::SystemTime) -> Result<()> {
-        // `File::set_modified` (stable since 1.75) opens-or-truncates;
-        // we want existing-file semantics. Use OpenOptions::write(true)
-        // (no truncate) to get a handle to the existing file.
+        // `File::set_modified` (stable since 1.75) needs an existing
+        // file handle. We deliberately open with `.write(true)` (NOT
+        // `.create(true)`, NOT `.truncate(true)`) so we get a handle
+        // to the existing file without touching its content.
         let file = fs::OpenOptions::new()
             .write(true)
             .open(path)

@@ -134,6 +134,16 @@ name = "Alice"'
     [ "$src_mtime_after" -gt "$src_mtime_before" ]
 }
 
+@test "refresh rejects --quiet and --list-paths together" {
+    # The two flags are semantically incompatible (one suppresses
+    # output, the other is output-only). clap should reject the
+    # combination explicitly so users see a clear error rather than
+    # silent prioritisation.
+    run dodot refresh --quiet --list-paths
+    [ "$status" -ne 0 ]
+    assert_output_contains "cannot be used"
+}
+
 @test "refresh on empty cache reports nothing-to-do" {
     # No `dodot up` ever ran in this sandbox, so the baseline cache is
     # empty. Refresh must not error out — just say there's nothing.

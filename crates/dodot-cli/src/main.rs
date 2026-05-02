@@ -561,7 +561,8 @@ fn build_clap_command() -> ClapCommand {
                     Arg::new("quiet")
                         .long("quiet")
                         .help("Suppress all output (use this in shell aliases).")
-                        .action(ArgAction::SetTrue),
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("list-paths"),
                 )
                 .arg(
                     Arg::new("list-paths")
