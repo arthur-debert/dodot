@@ -38,6 +38,7 @@ use crate::preprocessing::conflict::find_unresolved_marker_lines;
 use crate::preprocessing::divergence::{
     classify_one, collect_baselines, DivergenceReport, DivergenceState,
 };
+use crate::preprocessing::no_reverse::is_no_reverse;
 use crate::preprocessing::reverse_merge::{reverse_merge, ReverseMergeOutcome};
 use crate::Result;
 
@@ -220,6 +221,15 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
             &filename,
             &baseline,
         );
+        // Per-pack [preprocessor.template] no_reverse opt-out: when a
+        // file matches, we treat it as Synced regardless of which
+        // divergence state the matrix reports. This keeps the file
+        // out of the reverse-merge engine (which can produce more
+        // conflict markers than usable diffs on mostly-dynamic
+        // templates) while leaving `dodot transform status` alone —
+        // status still surfaces the underlying state for visibility.
+        let no_reverse_patterns = pack_no_reverse_patterns(ctx, &pack);
+        let no_reverse = is_no_reverse(&report.source_path, &no_reverse_patterns);
         let action = match report.state {
             DivergenceState::Synced => TransformAction::Synced,
             DivergenceState::InputChanged => TransformAction::InputChanged,
@@ -230,6 +240,13 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
             DivergenceState::MissingDeployed => {
                 has_findings = true;
                 TransformAction::MissingDeployed
+            }
+            DivergenceState::OutputChanged | DivergenceState::BothChanged if no_reverse => {
+                // Opted out — leave source untouched, surface as
+                // Synced. The user has explicitly chosen "detect
+                // divergence but don't auto-merge"; `transform
+                // status` still shows the real state.
+                TransformAction::Synced
             }
             DivergenceState::OutputChanged | DivergenceState::BothChanged => {
                 // Forward-compat short-circuit: a baseline written
@@ -350,6 +367,19 @@ fn render_path(p: &std::path::Path, home: &std::path::Path) -> String {
         format!("~/{}", rel.display())
     } else {
         p.display().to_string()
+    }
+}
+
+/// Resolve `[preprocessor.template] no_reverse` for the given pack.
+/// Honours the root → pack config inheritance. Returns an empty list
+/// on any config-loading hiccup (the user shouldn't lose `transform
+/// check` over a malformed pack `.dodot.toml` — the next `dodot up`
+/// will surface the actual config error).
+fn pack_no_reverse_patterns(ctx: &ExecutionContext, pack: &str) -> Vec<String> {
+    let pack_path = ctx.paths.dotfiles_root().join(pack);
+    match ctx.config_manager.config_for_pack(&pack_path) {
+        Ok(cfg) => cfg.preprocessor.template.no_reverse.clone(),
+        Err(_) => Vec::new(),
     }
 }
 
@@ -755,6 +785,76 @@ mod tests {
         assert_eq!(result.entries.len(), 1);
         assert!(matches!(result.entries[0].action, TransformAction::Synced));
         // Source must be byte-identical to the original.
+        assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
+    }
+
+    #[test]
+    fn no_reverse_pattern_skips_reverse_merge() {
+        // Same scenario as output_changed_static_edit_patches_source,
+        // but with `no_reverse = ["config.toml.tmpl"]` in the root
+        // config. The user opted out of reverse-merge for this file
+        // — `transform check` must report Synced, leave the source
+        // untouched, and have no findings (so the pre-commit hook
+        // would let the commit through).
+        let env = TempEnvironment::builder().build();
+        let src_path = deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\nport = 5432\n",
+            "[preprocessor.template.vars]\n\
+             name = \"Alice\"\n\
+             [preprocessor.template]\n\
+             no_reverse = [\"config.toml.tmpl\"]\n",
+        );
+        let original_src = env.fs.read_to_string(&src_path).unwrap();
+
+        // Edit the deployed file the same way the patching test does.
+        let deployed = deployed_path(&env, "app", "config.toml");
+        env.fs
+            .write_file(&deployed, b"name = Alice\nport = 9999\n")
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, false).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert!(
+            matches!(result.entries[0].action, TransformAction::Synced),
+            "no_reverse must short-circuit to Synced; got: {:?}",
+            result.entries[0].action
+        );
+        assert!(!result.has_findings);
+        assert_eq!(result.exit_code(), 0);
+        // Source untouched on disk.
+        assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
+    }
+
+    #[test]
+    fn no_reverse_glob_pattern_skips_reverse_merge() {
+        // Glob form of the opt-out — `*.gen.tmpl` matches the
+        // generated template's filename and skips reverse-merge.
+        let env = TempEnvironment::builder().build();
+        let src_path = deploy_template(
+            &env,
+            "app",
+            "foo.gen.tmpl",
+            "name = {{ name }}\nport = 5432\n",
+            "[preprocessor.template.vars]\n\
+             name = \"Alice\"\n\
+             [preprocessor.template]\n\
+             no_reverse = [\"*.gen.tmpl\"]\n",
+        );
+        let original_src = env.fs.read_to_string(&src_path).unwrap();
+        let deployed = deployed_path(&env, "app", "foo.gen");
+        env.fs
+            .write_file(&deployed, b"name = Alice\nport = 9999\n")
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, false).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert!(matches!(result.entries[0].action, TransformAction::Synced));
+        assert!(!result.has_findings);
         assert_eq!(env.fs.read_to_string(&src_path).unwrap(), original_src);
     }
 

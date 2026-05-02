@@ -173,6 +173,19 @@ pub struct PreprocessorTemplateSection {
     /// as var names raises an error at load time.
     #[config(default = {})]
     pub vars: std::collections::HashMap<String, String>,
+
+    /// Glob patterns for source files whose reverse-merge should be
+    /// skipped. Templates matching are still rendered on `dodot up` and
+    /// tracked in the divergence cache, but `dodot transform check` and
+    /// the clean filter both bypass the burgertocow reverse-merge step
+    /// (echo stdin / report-only). Useful for templates that are mostly
+    /// dynamic — the heuristic degrades there and produces more conflict
+    /// markers than usable diffs.
+    ///
+    /// Patterns are matched against the source path's filename component
+    /// (e.g. `"complex-config.toml.tmpl"`, `"*.gen.tmpl"`).
+    #[config(default = [])]
+    pub no_reverse: Vec<String>,
 }
 
 /// Shell-init profiling settings. Root-only — per-pack overrides are

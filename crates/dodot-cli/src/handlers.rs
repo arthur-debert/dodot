@@ -366,12 +366,31 @@ pub fn template_clean_passthrough(matches: &clap::ArgMatches) -> Result<(), anyh
         ctx.paths.dotfiles_root().join(path)
     };
 
+    // Resolve [preprocessor.template] no_reverse for the source's
+    // pack so the inner clean function can opt out of the slow path
+    // for matching files. The first path component below
+    // dotfiles_root is the pack name; on any config-loading hiccup
+    // we fall back to the empty list (better degraded reverse-merge
+    // than a filter that fails the working-tree read).
+    let no_reverse_patterns = path
+        .strip_prefix(ctx.paths.dotfiles_root())
+        .ok()
+        .and_then(|rel| rel.components().next())
+        .and_then(|c| c.as_os_str().to_str())
+        .and_then(|pack| {
+            let pack_path = ctx.paths.dotfiles_root().join(pack);
+            ctx.config_manager.config_for_pack(&pack_path).ok()
+        })
+        .map(|cfg| cfg.preprocessor.template.no_reverse)
+        .unwrap_or_default();
+
     let mut stdin = std::io::stdin().lock();
     let mut stdout = std::io::stdout().lock();
     template_clean::template_clean_stdio(
         ctx.fs.as_ref(),
         ctx.paths.as_ref(),
         &path,
+        &no_reverse_patterns,
         &mut stdin,
         &mut stdout,
     )?;
