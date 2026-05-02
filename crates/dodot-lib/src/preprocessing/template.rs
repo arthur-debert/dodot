@@ -213,35 +213,48 @@ impl TemplatePreprocessor {
                 env.add_function(
                     "secret",
                     move |reference: &str| -> std::result::Result<String, MjError> {
-                        let value = registry.resolve(reference).map_err(|e| {
-                            MjError::new(MjErrorKind::InvalidOperation, e.to_string())
-                        })?;
-                        if value.contains_newline() {
-                            // §3.4 multi-line refusal. The error text
-                            // names the reference and points the user at
-                            // the whole-file deploy path.
-                            return Err(MjError::new(
-                                MjErrorKind::InvalidOperation,
-                                format!(
-                                    "secret `{reference}` resolved to a multi-line value. \
-                                 Value-injection (`{{{{ secret(...) }}}}`) is single-line only. \
-                                 For multi-line secret material (TLS / SSH keys, GPG armored \
-                                 keys, service-account JSON files), use the whole-file deploy \
-                                 path: encrypt the file, drop it in a pack, reference the \
-                                 deployed path from your config. See secrets.lex §4."
-                                ),
-                            ));
-                        }
-                        let s = value.expose().map_err(|_| {
-                            MjError::new(
-                                MjErrorKind::InvalidOperation,
-                                format!(
-                                    "secret `{reference}` resolved to non-UTF-8 bytes; \
-                                 value-injection requires UTF-8 strings"
-                                ),
-                            )
-                        })?;
-                        let owned = s.to_string();
+                        // Within-run cache: first call for a given
+                        // reference goes to the provider; subsequent
+                        // calls (in this template or any other
+                        // rendered through the same registry
+                        // instance) hit the cache and never shell
+                        // out. Multi-line / non-UTF-8 are detected
+                        // up here so the rich error messages stay
+                        // co-located with the callback that surfaces
+                        // them; only validated values reach the
+                        // cache. See `secrets.lex` §7.4 / §3.4.
+                        let owned = if let Some(cached) = registry.cache_get(reference) {
+                            cached
+                        } else {
+                            let value = registry.resolve(reference).map_err(|e| {
+                                MjError::new(MjErrorKind::InvalidOperation, e.to_string())
+                            })?;
+                            if value.contains_newline() {
+                                return Err(MjError::new(
+                                    MjErrorKind::InvalidOperation,
+                                    format!(
+                                        "secret `{reference}` resolved to a multi-line value. \
+                                     Value-injection (`{{{{ secret(...) }}}}`) is single-line only. \
+                                     For multi-line secret material (TLS / SSH keys, GPG armored \
+                                     keys, service-account JSON files), use the whole-file deploy \
+                                     path: encrypt the file, drop it in a pack, reference the \
+                                     deployed path from your config. See secrets.lex §4."
+                                    ),
+                                ));
+                            }
+                            let s = value.expose().map_err(|_| {
+                                MjError::new(
+                                    MjErrorKind::InvalidOperation,
+                                    format!(
+                                        "secret `{reference}` resolved to non-UTF-8 bytes; \
+                                     value-injection requires UTF-8 strings"
+                                    ),
+                                )
+                            })?;
+                            let owned = s.to_string();
+                            registry.cache_put(reference, &owned);
+                            owned
+                        };
                         let mut entries = sidecar.lock().unwrap();
                         let sentinel = make_secret_sentinel(render_id, entries.len());
                         entries.push(SecretCallEntry {
@@ -252,7 +265,7 @@ impl TemplatePreprocessor {
                         // The sentinel is what flows through MiniJinja
                         // and into the rendered output; `expand()`
                         // computes line ranges by locating sentinels
-                        // and then substitutes them back to `owned`.
+                        // and then substitutes them back to the value.
                         Ok(sentinel)
                     },
                 );
@@ -1326,6 +1339,81 @@ mod tests {
         let result = pp.expand(&source, env.fs.as_ref()).unwrap();
         let rendered = String::from_utf8_lossy(&result[0].content);
         assert_eq!(rendered, "password = \"hunter2\"\n");
+    }
+
+    #[test]
+    fn secret_function_caches_repeated_references_within_a_render() {
+        // Same `{{ secret('pass:k') }}` used three times — the
+        // provider should only be invoked once. Pin the within-run
+        // cache contract from `secrets.lex` §7.4 / Phase S2.
+        use crate::secret::test_support::MockSecretProvider;
+        use crate::secret::SecretRegistry;
+
+        let mock = Arc::new(MockSecretProvider::new("pass").with("k", "v"));
+        let mut registry = SecretRegistry::new();
+        registry.register(mock.clone());
+        let pp = new_pp(HashMap::new()).with_secret_registry(Arc::new(registry));
+
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "c.tmpl",
+                "a = {{ secret('pass:k') }}\nb = {{ secret('pass:k') }}\nc = {{ secret('pass:k') }}\n",
+            )
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let rendered = String::from_utf8_lossy(&result[0].content);
+        assert_eq!(rendered, "a = v\nb = v\nc = v\n");
+        // Cache hit on calls 2 and 3.
+        assert_eq!(
+            mock.resolve_call_count(),
+            1,
+            "within-run cache must collapse repeats"
+        );
+        // Each call still gets its own sidecar entry — sentinels
+        // are per-call, line ranges cover all three lines.
+        assert_eq!(result[0].secret_line_ranges.len(), 3);
+    }
+
+    #[test]
+    fn secret_function_caches_across_multiple_expands_on_one_registry() {
+        // Building the registry once and rendering N templates
+        // through it = one provider call per unique reference,
+        // not per template. This pins the `commands::up` flow
+        // where one preflighted registry threads through every
+        // pack rendered in the run.
+        use crate::secret::test_support::MockSecretProvider;
+        use crate::secret::SecretRegistry;
+
+        let mock = Arc::new(MockSecretProvider::new("pass").with("k", "v"));
+        let mut registry = SecretRegistry::new();
+        registry.register(mock.clone());
+        let registry = Arc::new(registry);
+
+        // Two independent TemplatePreprocessor instances both wired
+        // to the same Arc<SecretRegistry>.
+        let pp_a = new_pp(HashMap::new()).with_secret_registry(registry.clone());
+        let pp_b = new_pp(HashMap::new()).with_secret_registry(registry.clone());
+
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("a.tmpl", "{{ secret('pass:k') }}\n")
+            .file("b.tmpl", "{{ secret('pass:k') }}\n")
+            .done()
+            .build();
+        let _ = pp_a
+            .expand(&env.dotfiles_root.join("app/a.tmpl"), env.fs.as_ref())
+            .unwrap();
+        let _ = pp_b
+            .expand(&env.dotfiles_root.join("app/b.tmpl"), env.fs.as_ref())
+            .unwrap();
+        assert_eq!(
+            mock.resolve_call_count(),
+            1,
+            "shared registry should serve the second expand from cache"
+        );
     }
 
     #[test]

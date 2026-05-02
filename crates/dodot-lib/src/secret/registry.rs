@@ -17,7 +17,7 @@
 //! plumbing change required).
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
@@ -30,9 +30,19 @@ use crate::{DodotError, Result};
 /// and threaded into the `secret()` MiniJinja function. `Arc<dyn>`
 /// because providers are held behind a trait object and the registry
 /// is shared with the template engine across rendering passes.
+///
+/// Resolved values are cached in `cache` so a reference that appears
+/// in N templates only fires the underlying provider once. The cache
+/// is shared between [`Clone`]s of the registry (it lives behind an
+/// `Arc<Mutex>`); two registries built from the same config but via
+/// independent constructor calls have independent caches. This
+/// satisfies `secrets.lex` §7.4's "user authenticates once per run"
+/// for the common case of a single registry threaded through every
+/// pack rendered in one `dodot up` invocation.
 #[derive(Default, Clone)]
 pub struct SecretRegistry {
     providers: HashMap<String, Arc<dyn SecretProvider>>,
+    cache: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl SecretRegistry {
@@ -75,7 +85,11 @@ impl SecretRegistry {
     }
 
     /// Resolve a full reference (with scheme prefix) by dispatching
-    /// to the right provider.
+    /// to the right provider. **Bypasses the within-run cache** —
+    /// every call shells out to the provider. Most callers want
+    /// [`Self::resolve_cached`] instead; this entry point exists for
+    /// tests that want to count provider invocations and for `dodot
+    /// secret probe` paths that intentionally hit the wire.
     ///
     /// Returns `DodotError::Other` with an actionable message when:
     ///
@@ -100,6 +114,49 @@ impl SecretRegistry {
             ))
         })?;
         provider.resolve(suffix)
+    }
+
+    /// Look up a previously-resolved reference in the within-run
+    /// cache. Returns `None` on cache miss; the caller (the
+    /// `secret()` MiniJinja function) is expected to call
+    /// [`Self::resolve`] and then [`Self::cache_put`] to populate
+    /// the cache for future calls.
+    ///
+    /// Splitting cache access from resolution lets the caller
+    /// validate values (multi-line refusal, UTF-8) with rich error
+    /// messages co-located with the rendering surface, while still
+    /// avoiding repeat shell-outs for the cache-hit path.
+    pub fn cache_get(&self, full_reference: &str) -> Option<String> {
+        self.cache.lock().unwrap().get(full_reference).cloned()
+    }
+
+    /// Store a resolved (and validated) value in the within-run
+    /// cache. The caller is responsible for ensuring `value` is the
+    /// genuine resolved string (no markers, no UTF-8 violations,
+    /// not a multi-line value); the cache is dumb storage.
+    pub fn cache_put(&self, full_reference: &str, value: &str) {
+        self.cache
+            .lock()
+            .unwrap()
+            .insert(full_reference.to_string(), value.to_string());
+    }
+
+    /// Number of entries currently held in the within-run cache.
+    /// Useful for batching assertions in tests; not a public surface
+    /// for production code, which has no reason to inspect cache
+    /// size at runtime.
+    #[cfg(test)]
+    pub fn cache_len(&self) -> usize {
+        self.cache.lock().unwrap().len()
+    }
+
+    /// Drop every entry from the within-run cache. Tests use this to
+    /// re-exercise the provider path; production code should never
+    /// need to call it (the cache is per-registry-instance and the
+    /// instance is per-run).
+    #[cfg(test)]
+    pub fn clear_cache(&self) {
+        self.cache.lock().unwrap().clear();
     }
 
     /// Probe every registered provider. Used by `dodot secret probe`
@@ -234,6 +291,56 @@ mod tests {
             MockSecretProvider::new("pass").with("k", "second"),
         ));
         assert_eq!(reg.resolve("pass:k").unwrap().expose().unwrap(), "second");
+    }
+
+    #[test]
+    fn cache_get_returns_none_until_cache_put_populates_it() {
+        let reg = SecretRegistry::new();
+        assert!(reg.cache_get("op://V/I/F").is_none());
+        reg.cache_put("op://V/I/F", "secret-value");
+        assert_eq!(reg.cache_get("op://V/I/F").as_deref(), Some("secret-value"));
+    }
+
+    #[test]
+    fn cache_is_shared_between_clones_of_the_same_registry() {
+        // Clone semantics: the cache lives behind an Arc<Mutex>, so
+        // two clones of one registry observe the same cache. This
+        // is what lets `commands::up` build the registry once and
+        // pass it to N pack-rendering passes that all share auth.
+        let reg = SecretRegistry::new();
+        let clone = reg.clone();
+        clone.cache_put("pass:k", "v");
+        assert_eq!(reg.cache_get("pass:k").as_deref(), Some("v"));
+    }
+
+    #[test]
+    fn cache_is_independent_between_separate_registry_constructions() {
+        // Two `SecretRegistry::new()` calls produce independent
+        // caches even when the same providers are registered. This
+        // pins the "per-instance, not process-global" contract — a
+        // later refactor that changes the cache to a static
+        // singleton would silently break the test isolation
+        // contract every other test in this module relies on.
+        let a = SecretRegistry::new();
+        let b = SecretRegistry::new();
+        a.cache_put("pass:k", "from-a");
+        assert!(b.cache_get("pass:k").is_none());
+    }
+
+    #[test]
+    fn registry_resolve_does_not_consult_or_populate_cache() {
+        // resolve() bypasses the cache by design — it's the
+        // wire-hitting entry point that callers use to count
+        // provider invocations. cache_get and cache_put are the
+        // cache-aware surface. Pin the contract.
+        let mut reg = SecretRegistry::new();
+        reg.register(Arc::new(MockSecretProvider::new("pass").with("k", "v")));
+        let _ = reg.resolve("pass:k").unwrap();
+        assert_eq!(reg.cache_len(), 0, "resolve() must not populate the cache");
+        assert!(
+            reg.cache_get("pass:k").is_none(),
+            "cache_get must miss when only resolve() ran"
+        );
     }
 
     #[test]
