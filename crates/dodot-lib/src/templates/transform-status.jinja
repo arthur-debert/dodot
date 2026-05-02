@@ -1,7 +1,7 @@
-{%- if entries|length == 0 -%}
+{%- if entries|length == 0 and cache_errors|default([])|length == 0 -%}
 [muted]No template baselines. Run [usage]dodot up[/usage] to deploy templates first.[/muted]
 {%- else -%}
-[message]{{ synced_count }} synced, {{ diverged_count }} diverged, {{ missing_count }} missing[/message]
+[message]{{ synced_count }} synced, {{ diverged_count }} diverged, {{ missing_count }} missing{% if cache_errors|default([])|length > 0 %}, {{ cache_errors|length }} cache error{% if cache_errors|length != 1 %}s{% endif %}{% endif %}[/message]
 
 {% for e in entries -%}
 {%- if e.state == "synced" -%}
@@ -18,4 +18,9 @@
   [warn]?[/warn] [warn]{{ e.state }}[/warn] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.deployed_path }} [muted](rendered file gone)[/muted]
 {% endif -%}
 {%- endfor -%}
+{%- if cache_errors|default([])|length > 0 %}
+{% for c in cache_errors -%}
+  [error]![/error] [error]cache_error[/error] [muted]{{ c.pack }}/{{ c.filename }}[/muted] {{ c.cache_path }} [muted]({{ c.error }}; delete the file or run [usage]dodot up --force[/usage] to re-baseline)[/muted]
+{% endfor -%}
+{%- endif -%}
 {%- endif -%}

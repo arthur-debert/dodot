@@ -1238,6 +1238,73 @@ mod tests {
     }
 
     #[test]
+    fn status_text_render_includes_cache_error_row() {
+        // PR #118 15th-pass Comment DD: cache_errors must be rendered
+        // by the text template, not just exposed in JSON. Without
+        // this, terminal users would see a clean status report even
+        // when the cache has corrupt entries hiding real divergence.
+        let env = TempEnvironment::builder().build();
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "broken.toml");
+        env.fs.mkdir_all(bad_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&bad_path, b"{not valid json").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        // Use the template constant + standout_render directly since
+        // the lib's `render::render` doesn't register the transform
+        // templates (CLI does that). What we're verifying is that
+        // the *template* renders the cache_errors field.
+        let theme = standout_render::Theme::from_yaml("message:\n  fg: cyan\nmuted:\n  dim: true\nsuccess:\n  fg: green\nwarn:\n  fg: yellow\nerror:\n  fg: red\nusage:\n  fg: blue\n").unwrap();
+        let output = standout_render::render_with_output(
+            crate::render::TEMPLATE_TRANSFORM_STATUS,
+            &result,
+            &theme,
+            standout_render::OutputMode::Text,
+        )
+        .unwrap();
+        assert!(
+            output.contains("cache_error") || output.contains("cache error"),
+            "text output must mention the cache error row, got:\n{output}"
+        );
+        assert!(
+            output.contains("broken.toml"),
+            "text output must name the corrupt file, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn check_text_render_includes_cache_error_section() {
+        // Sister test to status's text-render check.
+        let env = TempEnvironment::builder().build();
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "broken.toml");
+        env.fs.mkdir_all(bad_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&bad_path, b"{not valid json").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, /* strict */ false).unwrap();
+        let theme = standout_render::Theme::from_yaml("message:\n  fg: cyan\nmuted:\n  dim: true\nsuccess:\n  fg: green\nwarn:\n  fg: yellow\nerror:\n  fg: red\nusage:\n  fg: blue\n").unwrap();
+        let output = standout_render::render_with_output(
+            crate::render::TEMPLATE_TRANSFORM_CHECK,
+            &result,
+            &theme,
+            standout_render::OutputMode::Text,
+        )
+        .unwrap();
+        assert!(
+            output.contains("Unreadable baseline cache"),
+            "text output must surface the cache-error section, got:\n{output}"
+        );
+        assert!(
+            output.contains("broken.toml"),
+            "text output must name the corrupt file, got:\n{output}"
+        );
+    }
+
+    #[test]
     fn status_classifies_output_change() {
         let env = TempEnvironment::builder().build();
         deploy_template(
