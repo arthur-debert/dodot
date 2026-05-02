@@ -2763,6 +2763,146 @@ mod tests {
     }
 
     #[test]
+    fn divergence_guard_does_not_collide_on_same_basename_in_different_subdirs() {
+        // Review feedback (PR #118 third pass): the cache layout
+        // previously flattened virtual paths to basename, so
+        // `a/config.toml` and `b/config.toml` shared one cache slot.
+        // The new divergence guard reads this cache during `up`, so
+        // the collision could spuriously treat one file as divergent
+        // (or non-divergent) based on the other file's baseline. Pin
+        // the fix: two files with the same basename in different
+        // subdirectories must each get their own baseline, and the
+        // guard must report each independently.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("a/config.toml.tmpl", "name = {{ name }}")
+            .file("b/config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), "Alice".to_string());
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![
+            PackEntry {
+                relative_path: "a/config.toml.tmpl".into(),
+                absolute_path: env.dotfiles_root.join("app/a/config.toml.tmpl"),
+                is_dir: false,
+            },
+            PackEntry {
+                relative_path: "b/config.toml.tmpl".into(),
+                absolute_path: env.dotfiles_root.join("app/b/config.toml.tmpl"),
+                is_dir: false,
+            },
+        ];
+
+        // First run: both files render, two distinct baselines on disk.
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(first.virtual_entries.len(), 2);
+        assert!(first.skipped.is_empty());
+
+        // Both baselines must exist with their full relative paths
+        // — i.e. no collision.
+        let baseline_a = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "a/config.toml",
+        )
+        .unwrap();
+        let baseline_b = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "b/config.toml",
+        )
+        .unwrap();
+        assert!(
+            baseline_a.is_some(),
+            "a/config.toml must have its own baseline"
+        );
+        assert!(
+            baseline_b.is_some(),
+            "b/config.toml must have its own baseline"
+        );
+
+        // Edit ONLY `a/config.toml`. The guard must report it as
+        // divergent and leave `b/config.toml` alone.
+        let deployed_a = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("a/config.toml");
+        env.fs
+            .write_file(&deployed_a, b"name = USER EDITED IN A")
+            .unwrap();
+
+        let second = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            second.skipped.len(),
+            1,
+            "exactly one file must be reported divergent (the edited one), got: {:?}",
+            second
+                .skipped
+                .iter()
+                .map(|s| &s.virtual_relative)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            second.skipped[0].virtual_relative,
+            std::path::Path::new("a/config.toml")
+        );
+        // The user's edit on a/ stays.
+        assert_eq!(
+            env.fs.read_to_string(&deployed_a).unwrap(),
+            "name = USER EDITED IN A"
+        );
+        // b/ was re-rendered (not skipped) — its content reflects
+        // the rendered output, not anything from a/.
+        let deployed_b = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("b/config.toml");
+        assert_eq!(
+            env.fs.read_to_string(&deployed_b).unwrap(),
+            "name = Alice",
+            "b/ must render normally — its baseline must not be affected by a/'s edit"
+        );
+    }
+
+    #[test]
     fn divergence_guard_overridden_by_force() {
         // `dodot up --force` bypasses the guard: the deployed user edit
         // gets clobbered by the re-rendered output. This is the

@@ -488,7 +488,10 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // element is the user-facing label that surfaces in any
         // resulting `DisplayConflict.claimants` entry, so it tracks
         // the pack's display name rather than its raw on-disk name.
-        match orchestration::plan_pack(&pack, ctx, /* write_baselines */ false) {
+        match orchestration::plan_pack(
+            &pack, ctx, /* write_baselines */ false,
+            /* force */ false, // status is read-only, never bypass guard
+        ) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
                 pack_intents.push((pack.display_name.clone(), plan.intents));

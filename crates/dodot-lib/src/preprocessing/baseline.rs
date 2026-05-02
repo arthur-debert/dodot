@@ -214,23 +214,34 @@ fn now_secs_unix() -> u64 {
         .unwrap_or(0)
 }
 
-/// Canonical filename for a baseline given a logical (stripped) pack
-/// path. Strips parent directories and uses the bare basename, which
-/// matches the cache-path convention specified in the pipeline doc.
+/// Canonical cache key for a baseline given a logical (stripped)
+/// pack-relative path. Preserves the full relative path so two
+/// tracked files with the same basename in different subdirectories
+/// (`a/config.toml` vs `b/config.toml`) get distinct cache slots.
 ///
-/// Subdirectory-bearing virtual entries (e.g. `subdir/config.toml`) get
-/// flattened to `config.toml` here. The pipeline disambiguates on its
-/// side via the per-pack-and-handler directory tree, but the cache
-/// layout intentionally mirrors a single per-file slot. Two files with
-/// the same basename in different subdirectories of the same pack would
-/// share a cache slot — uncommon for the dotfile-sized payloads
-/// preprocessors produce, but if it surfaces we can extend the
-/// filename encoding without touching callers.
+/// Returns a slash-separated string. `Baseline::write` joins it onto
+/// the cache root via `preprocessor_baseline_path`, which produces
+/// `<cache>/preprocessor/<pack>/<handler>/<relative>.json` — and
+/// `mkdir_all`s any required parent directories. The cache layout
+/// thus mirrors the datastore layout under
+/// `<data>/packs/<pack>/<handler>/<relative>`.
+///
+/// `.` segments are dropped (the same normalisation the pipeline
+/// applies to virtual entries). An empty / pure-`.` input falls back
+/// to the lossy string form to avoid panicking, but the pipeline's
+/// `validate_safe_relative_path` rejects such inputs upstream.
 pub fn cache_filename_for(virtual_relative: &Path) -> String {
-    virtual_relative
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| virtual_relative.to_string_lossy().into_owned())
+    use std::path::Component;
+    let mut parts: Vec<String> = Vec::new();
+    for component in virtual_relative.components() {
+        if let Component::Normal(n) = component {
+            parts.push(n.to_string_lossy().into_owned());
+        }
+    }
+    if parts.is_empty() {
+        return virtual_relative.to_string_lossy().into_owned();
+    }
+    parts.join("/")
 }
 
 #[cfg(test)]
@@ -432,13 +443,26 @@ mod tests {
     }
 
     #[test]
-    fn cache_filename_for_drops_parent_directories() {
+    fn cache_filename_for_preserves_relative_path() {
+        // Top-level files: bare name, no separators introduced.
         assert_eq!(cache_filename_for(Path::new("config.toml")), "config.toml");
+        // Nested files: full relative path preserved so two files
+        // with the same basename in different subdirectories get
+        // distinct cache slots.
         assert_eq!(
             cache_filename_for(Path::new("subdir/config.toml")),
+            "subdir/config.toml"
+        );
+        assert_eq!(
+            cache_filename_for(Path::new("a/b/c/leaf.txt")),
+            "a/b/c/leaf.txt"
+        );
+        // `.` segments are dropped (matches the pipeline's
+        // virtual-path normalisation).
+        assert_eq!(
+            cache_filename_for(Path::new("./config.toml")),
             "config.toml"
         );
-        assert_eq!(cache_filename_for(Path::new("a/b/c/leaf.txt")), "leaf.txt");
     }
 
     #[test]

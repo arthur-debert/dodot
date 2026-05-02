@@ -77,11 +77,17 @@ pub struct DivergenceReport {
 
 /// Walk the per-pack baseline cache directory and load every record.
 ///
-/// Returns `(pack, handler, filename, baseline)` tuples. The cache
-/// layout is `<cache_dir>/preprocessor/<pack>/<handler>/<filename>.json`,
-/// so this function is a 3-level read_dir walk. Missing or unreadable
-/// subdirectories are skipped silently — the cache is rederivable, and
-/// we never want a transient permission glitch to crash a check run.
+/// Returns `(pack, handler, filename, baseline)` tuples where
+/// `filename` is the slash-separated relative path under the
+/// pack-and-handler directory (matching what
+/// [`cache_filename_for`](crate::preprocessing::baseline::cache_filename_for)
+/// produces). The cache layout is
+/// `<cache_dir>/preprocessor/<pack>/<handler>/<relative>.json`, with
+/// `<relative>` mirroring the datastore layout — so we descend
+/// recursively below the handler level. Missing or unreadable
+/// subdirectories are skipped silently — the cache is rederivable,
+/// and we never want a transient permission glitch to crash a check
+/// run.
 pub fn collect_baselines(
     fs: &dyn Fs,
     paths: &dyn Pather,
@@ -112,29 +118,19 @@ pub fn collect_baselines(
             if !handler.is_dir {
                 continue;
             }
-            let mut files = match fs.read_dir(&handler.path) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            files.sort_by(|a, b| a.name.cmp(&b.name));
-
-            for file in files {
-                if !file.is_file {
-                    continue;
-                }
-                // Filenames in the cache are `<logical>.json`; strip
-                // the suffix to recover the logical name.
-                let Some(filename) = file.name.strip_suffix(".json").map(str::to_string) else {
-                    continue;
-                };
+            // Recursively collect every `*.json` file under this
+            // handler dir, recording its relative path (slash-joined)
+            // so the cache key matches what `cache_filename_for`
+            // produces.
+            let mut filenames: Vec<String> = Vec::new();
+            walk_baseline_dir(fs, &handler.path, "", &mut filenames);
+            filenames.sort();
+            for filename in filenames {
                 match Baseline::load(fs, paths, &pack.name, &handler.name, &filename) {
                     Ok(Some(baseline)) => {
                         out.push((pack.name.clone(), handler.name.clone(), filename, baseline));
                     }
-                    // A corrupt baseline gets surfaced as an error
-                    // here so the user knows to clear it; better than
-                    // silently dropping it from the report.
-                    Ok(None) => {} // unreachable when fs.is_file is true, but tolerate
+                    Ok(None) => {} // race with cache eviction; tolerate
                     Err(e) => return Err(e),
                 }
             }
@@ -142,6 +138,48 @@ pub fn collect_baselines(
     }
 
     Ok(out)
+}
+
+/// Recursively walk a baseline-cache subtree, collecting the
+/// slash-separated relative path of every `<name>.json` file (with
+/// the `.json` suffix stripped). `relative_prefix` accumulates the
+/// directory components leading to the current node; the empty
+/// string represents the handler-dir root.
+///
+/// Matches the cache layout produced by
+/// [`cache_filename_for`](crate::preprocessing::baseline::cache_filename_for):
+/// the cache mirrors the datastore tree, so the walker recurses
+/// rather than scanning a single flat layer.
+fn walk_baseline_dir(
+    fs: &dyn Fs,
+    dir: &std::path::Path,
+    relative_prefix: &str,
+    out: &mut Vec<String>,
+) {
+    let entries = match fs.read_dir(dir) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    for entry in entries {
+        if entry.is_dir {
+            let new_prefix = if relative_prefix.is_empty() {
+                entry.name.clone()
+            } else {
+                format!("{}/{}", relative_prefix, entry.name)
+            };
+            walk_baseline_dir(fs, &entry.path, &new_prefix, out);
+        } else if entry.is_file {
+            let Some(stem) = entry.name.strip_suffix(".json") else {
+                continue;
+            };
+            let full = if relative_prefix.is_empty() {
+                stem.to_string()
+            } else {
+                format!("{}/{}", relative_prefix, stem)
+            };
+            out.push(full);
+        }
+    }
 }
 
 /// Classify a single baseline against the current state on disk.

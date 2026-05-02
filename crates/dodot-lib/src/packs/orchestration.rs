@@ -384,13 +384,33 @@ pub struct PackPlan {
 /// captured the state of the last `up`. The §6.4 divergence guard
 /// fires regardless — the `write_baselines` flag only controls the
 /// optional baseline-write side effect, not the read path.
-pub fn plan_pack(pack: &Pack, ctx: &ExecutionContext, write_baselines: bool) -> Result<PackPlan> {
+///
+/// `force` controls whether the §6.4 divergence guard is bypassed
+/// (overwriting deployed files that have diverged from the baseline).
+/// `dodot up` propagates `ctx.force` here. **Read-only callers like
+/// `status` must pass `false` regardless of `ctx.force`** — otherwise
+/// a `dodot up --force` run that falls back to `status::status()` via
+/// `up_or_status_for_conflict` would clobber preserved files during
+/// what is nominally a display pass.
+pub fn plan_pack(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    write_baselines: bool,
+    force: bool,
+) -> Result<PackPlan> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let registry = crate::preprocessing::default_registry(
         &pack_config.preprocessor.template,
         ctx.paths.as_ref(),
     )?;
-    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), write_baselines)
+    plan_pack_inner(
+        pack,
+        ctx,
+        &pack_config,
+        Some(&registry),
+        write_baselines,
+        force,
+    )
 }
 
 /// Shared implementation that takes a pre-loaded pack config. Both
@@ -416,6 +436,7 @@ fn collect_pack_intents_inner(
         pack_config,
         preprocessors,
         /* write_baselines */ true,
+        /* force */ ctx.force,
     )
     .map(|p| p.intents)
 }
@@ -423,12 +444,14 @@ fn collect_pack_intents_inner(
 /// Same scan/preprocess/match/group/intents pipeline as
 /// [`collect_pack_intents_inner`], but additionally collects
 /// per-handler `warnings_for_matches` output.
+#[allow(clippy::too_many_arguments)] // pipeline core: every parameter is load-bearing
 fn plan_pack_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
     write_baselines: bool,
+    force: bool,
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
 
@@ -448,7 +471,7 @@ fn plan_pack_inner(
                 ctx.datastore.as_ref(),
                 ctx.paths.as_ref(),
                 write_baselines,
-                ctx.force,
+                force,
             )?
         } else {
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
@@ -1916,7 +1939,10 @@ mod tests {
         );
 
         // First run: render baseline + emit install Run intent.
-        let first = plan_pack(&pack, &ctx, /* write_baselines */ true).unwrap();
+        let first = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+        )
+        .unwrap();
         let first_run_count = first
             .intents
             .iter()
@@ -1939,7 +1965,10 @@ mod tests {
         // Re-run: guard preserves the file, and the install Run intent
         // for it must NOT be emitted (otherwise the user's edit would
         // execute as a script on the next `up`).
-        let second = plan_pack(&pack, &ctx, /* write_baselines */ true).unwrap();
+        let second = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+        )
+        .unwrap();
         for intent in &second.intents {
             if let crate::operations::HandlerIntent::Run {
                 arguments, handler, ..
@@ -1985,7 +2014,7 @@ mod tests {
         );
 
         // First run: clean deploy, no warnings about preserved files.
-        let first = plan_pack(&pack, &ctx, true).unwrap();
+        let first = plan_pack(&pack, &ctx, true, false).unwrap();
         assert!(
             first.warnings.iter().all(|w| !w.contains("preserved")),
             "first deploy must not produce a preservation warning: {:?}",
@@ -2001,7 +2030,7 @@ mod tests {
 
         // Second run: warning surfaces, with the documented resolution
         // hints — `transform check` and `--force`.
-        let second = plan_pack(&pack, &ctx, true).unwrap();
+        let second = plan_pack(&pack, &ctx, true, false).unwrap();
         let preserved: Vec<&String> = second
             .warnings
             .iter()
@@ -2066,7 +2095,7 @@ mod tests {
         );
 
         // Prime baseline.
-        let _ = plan_pack(&pack, &ctx, true).unwrap();
+        let _ = plan_pack(&pack, &ctx, true, false).unwrap();
         let deployed = env
             .paths
             .handler_data_dir("app", "preprocessed")
@@ -2074,7 +2103,10 @@ mod tests {
         env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
 
         ctx.force = true;
-        let plan = plan_pack(&pack, &ctx, true).unwrap();
+        let plan = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ ctx.force,
+        )
+        .unwrap();
         assert!(
             plan.warnings.iter().all(|w| !w.contains("preserved")),
             "force=true must not emit preservation warnings: {:?}",
@@ -2084,6 +2116,60 @@ mod tests {
             env.fs.read_to_string(&deployed).unwrap(),
             "name = original",
             "force must overwrite the user's edit with the rendered content"
+        );
+    }
+
+    #[test]
+    fn plan_pack_force_false_preserves_edit_even_when_ctx_force_is_true() {
+        // Review feedback (PR #118 third pass): when `dodot up --force`
+        // hits a cross-pack conflict, `up_or_status_for_conflict`
+        // falls back to `status::status()` which calls plan_pack.
+        // ctx.force is still true at that point, but status's
+        // plan_pack call must explicitly pass force=false so the
+        // divergence guard remains active during what is nominally
+        // a read-only display pass — otherwise preserved files get
+        // clobbered while merely rendering status.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // Prime baseline.
+        let _ = plan_pack(&pack, &ctx, true, false).unwrap();
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Even with ctx.force=true (mimicking `dodot up --force` that
+        // got bounced to status), passing force=false to plan_pack
+        // must keep the guard active.
+        ctx.force = true;
+        let plan = plan_pack(
+            &pack, &ctx, /* write_baselines */ false, /* force */ false,
+        )
+        .unwrap();
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED",
+            "force=false in plan_pack must preserve user edits regardless of ctx.force"
+        );
+        assert!(
+            plan.warnings.iter().any(|w| w.contains("preserved")),
+            "preservation warning should still surface, got: {:?}",
+            plan.warnings
         );
     }
 
@@ -2112,7 +2198,10 @@ mod tests {
         );
 
         // Prime the baseline with a write-enabled run (mirrors `up`).
-        let _ = plan_pack(&pack, &ctx, /* write_baselines */ true).unwrap();
+        let _ = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+        )
+        .unwrap();
         let before = crate::preprocessing::baseline::Baseline::load(
             ctx.fs.as_ref(),
             ctx.paths.as_ref(),
@@ -2133,7 +2222,10 @@ mod tests {
             .unwrap();
 
         // Run with write_baselines=false (the `dodot status` path).
-        let _ = plan_pack(&pack, &ctx, /* write_baselines */ false).unwrap();
+        let _ = plan_pack(
+            &pack, &ctx, /* write_baselines */ false, /* force */ false,
+        )
+        .unwrap();
 
         let after = crate::preprocessing::baseline::Baseline::load(
             ctx.fs.as_ref(),
