@@ -53,6 +53,18 @@ pub enum DodotError {
         conflicts: Vec<crate::conflicts::Conflict>,
     },
 
+    #[error(
+        "routing override conflict in pack `{pack}` for `{rel_path}`:\n  \
+         filename routes via its prefix, and `[symlink.targets]` declares `{config_target}`.\n  \
+         pick one — either rename the file (drop the `home.`/`app.`/`xdg.`/`lib.` or `_home/`/`_xdg/`/`_app/`/`_lib/` prefix) \
+         or remove the `[symlink.targets]` entry."
+    )]
+    RoutingOverrideConflict {
+        pack: String,
+        rel_path: String,
+        config_target: String,
+    },
+
     #[error("preprocessing failed for {source_file} ({preprocessor}): {message}")]
     PreprocessorError {
         preprocessor: String,
