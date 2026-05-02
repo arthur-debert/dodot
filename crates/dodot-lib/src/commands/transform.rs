@@ -424,7 +424,9 @@ pub fn hook_is_installed(ctx: &ExecutionContext) -> Result<bool> {
 ///    unresolved markers).
 ///
 /// Each step short-circuits with `|| exit 1`; a failure in either
-/// aborts the commit with the matching exit code.
+/// aborts the commit (with exit code 1 — the inner command's exit
+/// status is intentionally not preserved, since for git's purposes
+/// "any non-zero" is what blocks the commit).
 pub fn managed_block() -> String {
     format!(
         "{guard_start}\n\

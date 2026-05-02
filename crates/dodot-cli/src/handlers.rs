@@ -758,9 +758,12 @@ fn try_prompt_install_template_filter() -> Result<(), anyhow::Error> {
         return Ok(());
     }
 
-    if !ctx.fs.is_dir(&ctx.paths.dotfiles_root().join(".git")) {
-        return Ok(());
-    }
+    // is_installed/install_filter both shell out to `git -C <root>
+    // config ...` which handles "not a git repo" semantically (we
+    // detect the resulting failure), so we don't need a manual
+    // .git-exists probe here. Bonus: this skips the gating problem
+    // for worktrees (where .git is a file, not a dir, but `git -C`
+    // still works correctly) and submodules.
 
     if !commands::transform::hook_is_installed(&ctx)? {
         // Wait for the user to install the hook first. Filter is

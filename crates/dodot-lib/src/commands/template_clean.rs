@@ -124,15 +124,15 @@ pub fn template_clean(
 
     if diff.starts_with(MARKER_START) {
         // Conflict block: burgertocow couldn't safely auto-merge.
-        // The block IS the patched template content (it carries the
-        // marker text as plain bytes that git will surface via
-        // `git diff`). Splice it onto the original source so the
-        // user sees both the original and the marker block.
-        //
-        // Simplest approach: prepend a comment-style banner +
-        // append the conflict block. The exact placement doesn't
-        // matter for git's purposes (any change shows up as a
-        // diff); the user's editor handles the marker resolution.
+        // The block carries the marker text as plain bytes that git
+        // will surface via `git diff`. We splice it AFTER the
+        // original source — exact placement doesn't matter for
+        // git's purposes (any change shows up as a diff), and
+        // appending leaves the user's editor view of the source
+        // mostly intact, with the conflict block to resolve at the
+        // bottom. We add a leading newline if needed so the block
+        // sits on its own lines rather than concatenating with the
+        // last line of the source.
         let mut out = template_src.to_string();
         if !out.ends_with('\n') {
             out.push('\n');
@@ -155,8 +155,15 @@ pub fn template_clean(
 /// Drive the clean filter as a stdin/stdout passthrough — what git
 /// invokes when running the registered filter. Reads `stdin` to
 /// `template_src`, calls [`template_clean`], writes the result to
-/// `stdout`. Any I/O error here propagates up; the inner
-/// reverse-merge soft-fails (echoes stdin on hiccups).
+/// `stdout`.
+///
+/// Per the module's failure model: any error from the inner
+/// reverse-merge (cache read failure, hash mismatch, malformed
+/// baseline) is caught here and we fall back to writing the
+/// original stdin bytes to stdout, with a stderr warning so the
+/// user sees the issue without git aborting. `Err` is reserved
+/// strictly for stdin/stdout I/O failures, which are real
+/// "filter genuinely cannot run" cases.
 pub fn template_clean_stdio(
     fs: &dyn Fs,
     paths: &dyn Pather,
@@ -169,7 +176,19 @@ pub fn template_clean_stdio(
         .read_to_end(&mut buf)
         .map_err(|e| crate::DodotError::Other(format!("template clean: stdin read: {e}")))?;
     let src = String::from_utf8_lossy(&buf).into_owned();
-    let out = template_clean(fs, paths, &src, source_path)?;
+    let out = match template_clean(fs, paths, &src, source_path) {
+        Ok(o) => o,
+        Err(e) => {
+            // Soft-fail: log to stderr (visible when the user runs
+            // `git status` interactively, captured by CI logs) and
+            // echo stdin so git doesn't abort the working-tree read.
+            eprintln!(
+                "dodot template clean: degraded to echo for {}: {e}",
+                source_path.display()
+            );
+            src
+        }
+    };
     stdout
         .write_all(out.as_bytes())
         .map_err(|e| crate::DodotError::Other(format!("template clean: stdout write: {e}")))?;
@@ -443,6 +462,48 @@ mod tests {
             &mut stdout,
         )
         .unwrap();
+        assert_eq!(stdout, template.as_bytes());
+    }
+
+    #[test]
+    fn stdio_soft_fails_when_inner_clean_errors() {
+        // Pin the documented failure model: if the inner
+        // template_clean returns an Err, the stdio wrapper must
+        // catch it and echo stdin rather than propagate. Git
+        // treats filter exit != 0 as fatal — a template-source
+        // anywhere in the repo with a transient cache I/O error
+        // would otherwise brick `git status`.
+        //
+        // We force the error path by pointing at a baseline whose
+        // backing JSON is corrupt — Baseline::load returns Err on
+        // parse failure, which collect_baselines surfaces, which
+        // find_baseline_for_source propagates. With the soft-fail
+        // wrapper, the user gets stdin echoed instead.
+        let env = TempEnvironment::builder().build();
+        let src = env.dotfiles_root.join("app/cfg.tmpl");
+        env.fs.mkdir_all(src.parent().unwrap()).unwrap();
+        let template = "name = {{ name }}\n";
+        env.fs.write_file(&src, template.as_bytes()).unwrap();
+
+        // Lay down a corrupt baseline JSON (parse failure on load).
+        let cache_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "cfg");
+        env.fs.mkdir_all(cache_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&cache_path, b"{not json").unwrap();
+
+        let mut stdin = std::io::Cursor::new(template.as_bytes().to_vec());
+        let mut stdout: Vec<u8> = Vec::new();
+        // Must succeed — the inner Err is swallowed.
+        template_clean_stdio(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            &src,
+            &mut stdin,
+            &mut stdout,
+        )
+        .expect("stdio must soft-fail to echo, not propagate Err");
+        // And the echoed bytes must equal the input verbatim.
         assert_eq!(stdout, template.as_bytes());
     }
 
