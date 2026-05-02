@@ -286,7 +286,27 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
                     // Conflict → report the block, leave source alone.
                     let template_src = ctx.fs.read_to_string(&report.source_path)?;
                     let deployed = ctx.fs.read_to_string(&report.deployed_path)?;
-                    match reverse_merge(&template_src, &baseline.tracked_render, &deployed)? {
+                    // Load the per-render secrets sidecar so the
+                    // reverse-merge masks lines whose source-of-truth
+                    // is a vault, not the deployed bytes. Absence of
+                    // the sidecar = empty mask = byte-identical to
+                    // pre-Phase-S2 behavior. See secrets.lex §3.3 and
+                    // burgertocow#13.
+                    let secret_ranges = crate::preprocessing::baseline::SecretsSidecar::load(
+                        ctx.fs.as_ref(),
+                        ctx.paths.as_ref(),
+                        &pack,
+                        &handler,
+                        &filename,
+                    )?
+                    .map(|s| s.secret_line_ranges)
+                    .unwrap_or_default();
+                    match reverse_merge(
+                        &template_src,
+                        &baseline.tracked_render,
+                        &deployed,
+                        &secret_ranges,
+                    )? {
                         ReverseMergeOutcome::Unchanged => TransformAction::Synced,
                         ReverseMergeOutcome::Patched(patched) => {
                             if !ctx.dry_run {
