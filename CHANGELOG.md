@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`dodot refresh [--quiet] [--list-paths]`** (R5 of the template-magic track). Walks the per-file baseline cache, hashes the deployed file at `<data_dir>/packs/<pack>/<handler>/<filename>`, and copies the deployed file's mtime onto the template source when the hashes differ. Why: git's stat-cache skips re-reading working-tree files when their mtime is unchanged, so a deployed-side edit to a template never surfaces in `git status` until the source mtime is bumped — refresh is the bump. `--quiet` suppresses output (for the Tier 2 shell alias `alias git='dodot refresh --quiet && command git'`); `--list-paths` prints out-of-sync source paths and exits without writing (for editor / file-watcher integrations). Exit 0 in all healthy cases. See `docs/proposals/magic.lex` §"Update Trigger Bit".
+- **`Fs::modified` / `Fs::set_modified`** trait methods for reading/writing file mtimes — used by `refresh` to copy mtimes between deployed and source files.
+
+### Added (R4, prior)
+
 - **`dodot transform install-hook`** (R4 of the template-magic track). Writes `<dotfiles_root>/.git/hooks/pre-commit` with a guarded block that runs `dodot transform check --strict || exit 1` on every `git commit`. Idempotent (re-running detects the guard line and no-ops) and additive (preserves any existing hook content). The installed hook refuses to commit when reverse-merge has work to do or unresolved `dodot-conflict` markers remain — matching the contract R3 set up. See `docs/proposals/magic.lex` §"The Commit Tier".
 - **First-template-deploy prompt.** After a successful `dodot up` that leaves at least one template baseline in the cache, dodot offers (interactively, only when stdin is a TTY) to install the pre-commit hook. Y/n/show via the existing `PromptRegistry`; new catalog entry `template.install_hook`; soft failure pattern matching the plist filter prompt — never aborts `up`, and any background failures (registry parse error, etc.) go to the debug log rather than stderr. The interactive prompt body itself prints to stderr by design (Y/n/show + the resulting confirmation/show output).
 

@@ -14,6 +14,7 @@ pub mod init;
 pub mod list;
 pub mod probe;
 pub mod prompts;
+pub mod refresh;
 pub mod status;
 pub mod transform;
 pub mod tutorial;

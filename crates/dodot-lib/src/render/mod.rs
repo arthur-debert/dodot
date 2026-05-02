@@ -158,6 +158,9 @@ pub const TEMPLATE_TRANSFORM_CHECK: &str = include_str!("../templates/transform-
 pub const TEMPLATE_TRANSFORM_INSTALL_HOOK: &str =
     include_str!("../templates/transform-install-hook.jinja");
 
+/// `dodot refresh` per-mode output (default report / quiet / list-paths).
+pub const TEMPLATE_REFRESH: &str = include_str!("../templates/refresh.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders
