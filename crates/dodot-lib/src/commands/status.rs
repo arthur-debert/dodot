@@ -173,6 +173,47 @@ fn previous_provisioning_succeeded(
         .unwrap_or(false)
 }
 
+/// Same gate as [`previous_provisioning_succeeded`] but for the
+/// case where we can't read the baseline (corrupt JSON / schema
+/// mismatch). Without the rendered hash we can't derive the
+/// canonical sentinel name, so we fall back to "did *any* sentinel
+/// matching the basename ever land?" — true if a previous run
+/// recorded a sentinel for ANY content of this file. False if no
+/// sentinel exists at all.
+///
+/// Reaches into the handler-state directory layout (sentinels live
+/// directly under `<data>/packs/<pack>/<handler>/`). The risk is
+/// false-positives: if the previous run for a *different* hash
+/// succeeded but this file's specific hash never did, we'd still
+/// report Preserved. That's acceptable for this fallback —
+/// "something previously deployed for this file" is a closer
+/// approximation than "nothing did," and the user is already
+/// being told the cache is corrupt.
+fn any_previous_provisioning_for(
+    relative_path: &std::path::Path,
+    handler: &str,
+    pack: &str,
+    fs: &dyn crate::fs::Fs,
+    paths: &dyn crate::paths::Pather,
+) -> bool {
+    if handler != "install" && handler != "homebrew" {
+        return false;
+    }
+    let basename = match relative_path.file_name() {
+        Some(n) => n.to_string_lossy().into_owned(),
+        None => return false,
+    };
+    let dir = paths.handler_data_dir(pack, handler);
+    let entries = match fs.read_dir(&dir) {
+        Ok(v) => v,
+        Err(_) => return false,
+    };
+    let prefix = format!("{basename}-");
+    entries
+        .iter()
+        .any(|e| e.is_file && e.name.starts_with(&prefix))
+}
+
 /// Verify symlink handler chain for a single file.
 ///
 /// Checks: data link exists → points to source → source exists →
@@ -630,33 +671,79 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     // row as Deployed and attach a footnote
                     // pointing at the resolution paths.
                     if let Some(info) = preserved_lookup.get(&m.absolute_path) {
+                        // Closure for falling through to the
+                        // normal check_status path when no
+                        // previous successful provisioning is on
+                        // record. Used by both the
+                        // baseline_unreadable and the
+                        // confirmed-divergence branches.
+                        let fall_through_to_check_status = || {
+                            let handler = registry.get(m.handler.as_str());
+                            let deployed = handler
+                                .and_then(|h| {
+                                    h.check_status(
+                                        &m.absolute_path,
+                                        &pack.name,
+                                        ctx.datastore.as_ref(),
+                                    )
+                                    .ok()
+                                })
+                                .map(|s| s.deployed)
+                                .unwrap_or(false);
+                            if deployed {
+                                Health::Deployed
+                            } else {
+                                Health::Pending
+                            }
+                        };
+
                         if info.baseline_unreadable {
-                            // `transform check` would fail on the
-                            // same corrupt entry, so point at the
-                            // recovery path that actually works:
-                            // delete the specific cache file or
-                            // use --force. Use the **actual** path
-                            // the guard tried to load (carried in
-                            // `cache_path`) — for upgraded users
-                            // with a corrupt legacy entry at the
-                            // basename path, a path reconstructed
-                            // from `m.relative_path` would point at
-                            // the new nested layout, which doesn't
-                            // exist.
-                            let cache_display = match &info.cache_path {
-                                Some(p) => match p.strip_prefix(ctx.paths.home_dir()) {
-                                    Ok(rel) => format!("~/{}", rel.display()),
-                                    Err(_) => p.display().to_string(),
-                                },
-                                None => "<unknown — see warning above>".to_string(),
-                            };
-                            Health::Preserved {
-                                label: "preserved (baseline cache unreadable)".into(),
-                                reason: format!(
-                                    "baseline cache entry is unreadable; previous run still in effect. \
-                                     Delete the corrupt cache file ({}) or re-run with --force to overwrite.",
-                                    cache_display,
-                                ),
+                            // Without a readable baseline we have
+                            // no rendered_hash to derive the
+                            // canonical sentinel, so fall back to
+                            // a "did *any* sentinel ever land?"
+                            // check. This still rules out the
+                            // failed-then-corrupt case where the
+                            // cache predates the field but no
+                            // install ever ran.
+                            if !any_previous_provisioning_for(
+                                &m.relative_path,
+                                &m.handler,
+                                &pack.name,
+                                ctx.fs.as_ref(),
+                                ctx.paths.as_ref(),
+                            ) {
+                                fall_through_to_check_status()
+                            } else {
+                                // `transform check` would fail on
+                                // the same corrupt entry, so point
+                                // at the recovery path that
+                                // actually works: delete the
+                                // specific cache file or use
+                                // --force. Use the **actual**
+                                // path the guard tried to load
+                                // (carried in `cache_path`) — for
+                                // upgraded users with a corrupt
+                                // legacy entry at the basename
+                                // path, a path reconstructed from
+                                // `m.relative_path` would point
+                                // at the new nested layout, which
+                                // doesn't exist.
+                                let cache_display = match &info.cache_path {
+                                    Some(p) => match p.strip_prefix(ctx.paths.home_dir()) {
+                                        Ok(rel) => format!("~/{}", rel.display()),
+                                        Err(_) => p.display().to_string(),
+                                    },
+                                    None => "<unknown — see warning above>".to_string(),
+                                };
+                                Health::Preserved {
+                                    label: "preserved (baseline cache unreadable)".into(),
+                                    reason: format!(
+                                        "baseline cache entry is unreadable; previous run still in effect. \
+                                         Delete the corrupt cache file ({}) or re-run with --force to overwrite.",
+                                        cache_display,
+                                    ),
+                                }
                             }
                         } else if previous_provisioning_succeeded(
                             &m.relative_path,
@@ -683,23 +770,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                             // the normal check_status path which
                             // will report Pending against the
                             // user's edited file.
-                            let handler = registry.get(m.handler.as_str());
-                            let deployed = handler
-                                .and_then(|h| {
-                                    h.check_status(
-                                        &m.absolute_path,
-                                        &pack.name,
-                                        ctx.datastore.as_ref(),
-                                    )
-                                    .ok()
-                                })
-                                .map(|s| s.deployed)
-                                .unwrap_or(false);
-                            if deployed {
-                                Health::Deployed
-                            } else {
-                                Health::Pending
-                            }
+                            fall_through_to_check_status()
                         }
                     } else {
                         let handler = registry.get(m.handler.as_str());

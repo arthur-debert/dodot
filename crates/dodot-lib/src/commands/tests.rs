@@ -368,6 +368,73 @@ fn status_does_not_claim_preserved_when_no_sentinel_was_recorded() {
 }
 
 #[test]
+fn status_does_not_claim_preserved_when_baseline_unreadable_and_no_sentinel() {
+    // PR #118 16th-pass Comment EE: symmetric to fix #28 — when
+    // the baseline is unreadable AND no sentinel of any hash
+    // exists for this file, the row must NOT claim "previous run
+    // still in effect." The unreadable cache might be left over
+    // from a failed-then-corrupted run that never recorded a
+    // sentinel.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file(
+            "install.sh.tmpl",
+            "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
+        )
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    // First `up` deploys + records the install sentinel.
+    let _ = commands::up::up(None, &ctx).unwrap();
+
+    // Surgically remove the install sentinel (simulate a previous
+    // run that wrote the baseline but failed to install) AND
+    // corrupt the baseline.
+    let install_dir = ctx.paths.handler_data_dir("setup", "install");
+    if let Ok(entries) = ctx.fs.read_dir(&install_dir) {
+        for entry in entries {
+            if entry.is_file && entry.name.starts_with("install.sh-") {
+                ctx.fs.remove_file(&entry.path).unwrap();
+            }
+        }
+    }
+    let baseline_path = ctx
+        .paths
+        .preprocessor_baseline_path("setup", "preprocessed", "install.sh");
+    ctx.fs
+        .write_file(&baseline_path, b"{this is not valid json")
+        .unwrap();
+
+    // Edit the deployed file (so the divergence guard preserves it,
+    // baseline_unreadable=true).
+    let deployed = ctx
+        .paths
+        .handler_data_dir("setup", "preprocessed")
+        .join("install.sh");
+    ctx.fs
+        .write_file(&deployed, b"#!/bin/sh\necho EDITED")
+        .unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let install_row = result
+        .packs
+        .iter()
+        .flat_map(|p| &p.files)
+        .find(|f| f.handler == "install")
+        .expect("install row must be present");
+    // No sentinel anywhere → must NOT claim preserved.
+    assert!(
+        !install_row.status_label.contains("preserved"),
+        "install row must NOT claim preserved when no sentinel was ever recorded \
+         (even with unreadable baseline), got: {:?}",
+        install_row.status_label
+    );
+}
+
+#[test]
 fn status_lists_ignored_packs() {
     let env = TempEnvironment::builder()
         .pack("vim")
