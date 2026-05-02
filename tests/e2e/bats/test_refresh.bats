@@ -16,6 +16,21 @@ setup() {
     git -C "$DOTFILES_ROOT" config user.name "Test"
 }
 
+# Portable mtime reader. Different stat invocations on macOS (BSD)
+# vs Linux (GNU coreutils): `-c %Y` is GNU-only, `-f %m` is BSD-only,
+# and `stat -f` on GNU coreutils silently switches to filesystem-info
+# mode (returning the mount point) rather than failing — so a naive
+# `stat -f %m || stat -c %Y` chain works on macOS but produces a
+# non-numeric result on Linux that breaks `[ -gt ]` later. Detect
+# the platform once and pick the right format.
+mtime() {
+    if [[ "$(uname)" == "Darwin" ]]; then
+        stat -f %m "$1"
+    else
+        stat -c %Y "$1"
+    fi
+}
+
 teardown() {
     sandbox_teardown
 }
@@ -47,7 +62,7 @@ name = "Alice"'
     [ "$status" -eq 0 ]
 
     src="$DOTFILES_ROOT/app/cfg.toml.tmpl"
-    src_mtime_before=$(stat -f %m "$src" 2>/dev/null || stat -c %Y "$src")
+    src_mtime_before=$(mtime "$src")
 
     # Make sure the deployed mtime will be strictly later than the
     # current source mtime, even on fast filesystems.
@@ -62,7 +77,7 @@ EOF
     [ "$status" -eq 0 ]
     assert_output_contains "Touched"
 
-    src_mtime_after=$(stat -f %m "$src" 2>/dev/null || stat -c %Y "$src")
+    src_mtime_after=$(mtime "$src")
     [ "$src_mtime_after" -gt "$src_mtime_before" ]
 }
 
@@ -76,7 +91,7 @@ name = "Alice"'
     [ "$status" -eq 0 ]
 
     src="$DOTFILES_ROOT/app/cfg.toml.tmpl"
-    src_mtime_before=$(stat -f %m "$src" 2>/dev/null || stat -c %Y "$src")
+    src_mtime_before=$(mtime "$src")
 
     sleep 1
     rendered="$XDG_DATA_HOME/dodot/packs/app/preprocessed/cfg.toml"
@@ -89,7 +104,7 @@ name = "Alice"'
     assert_output_contains "$src"
 
     # CRITICAL: --list-paths must NOT have written the mtime.
-    src_mtime_after=$(stat -f %m "$src" 2>/dev/null || stat -c %Y "$src")
+    src_mtime_after=$(mtime "$src")
     [ "$src_mtime_after" = "$src_mtime_before" ]
 }
 
@@ -109,13 +124,13 @@ name = "Alice"'
     sleep 1
     rendered="$XDG_DATA_HOME/dodot/packs/app/preprocessed/cfg.toml"
     echo "name = Edited" > "$rendered"
-    src_mtime_before=$(stat -f %m "$src" 2>/dev/null || stat -c %Y "$src")
+    src_mtime_before=$(mtime "$src")
 
     run dodot refresh --quiet
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 
-    src_mtime_after=$(stat -f %m "$src" 2>/dev/null || stat -c %Y "$src")
+    src_mtime_after=$(mtime "$src")
     [ "$src_mtime_after" -gt "$src_mtime_before" ]
 }
 
