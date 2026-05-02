@@ -73,6 +73,7 @@ impl Preprocessor for IdentityPreprocessor {
             is_dir: false,
             tracked_render: None,
             context_hash: None,
+            secret_line_ranges: Vec::new(),
         }])
     }
 }

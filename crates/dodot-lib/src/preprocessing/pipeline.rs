@@ -2036,6 +2036,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("name = \u{1e}rendered\u{1f}".into()),
                 context_hash: Some([0xab; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             ..Default::default()
         }));
@@ -2107,6 +2108,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             ..Default::default()
         }));
@@ -2200,6 +2202,7 @@ mod tests {
             is_dir: false,
             tracked_render: Some("FIRST".into()),
             context_hash: Some([1; 32]),
+            secret_line_ranges: Vec::new(),
         }];
         let outputs_second = vec![crate::preprocessing::ExpandedFile {
             relative_path: PathBuf::from("config.toml"),
@@ -2207,6 +2210,7 @@ mod tests {
             is_dir: false,
             tracked_render: Some("SECOND".into()),
             context_hash: Some([2; 32]),
+            secret_line_ranges: Vec::new(),
         }];
 
         let datastore = make_datastore(&env);
@@ -2511,6 +2515,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             supports_reverse_merge: true,
         }));
@@ -2574,6 +2579,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             supports_reverse_merge: true,
         }));
@@ -2637,6 +2643,7 @@ mod tests {
                 is_dir: false,
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
+                secret_line_ranges: Vec::new(),
             }],
             supports_reverse_merge: true,
         }));

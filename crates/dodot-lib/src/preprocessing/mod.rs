@@ -38,6 +38,36 @@ pub enum TransformType {
     Opaque,
 }
 
+/// One entry in a per-render secrets sidecar — a span of lines whose
+/// content was produced by a `secret(...)` call, paired with the
+/// reference that produced it.
+///
+/// Lines are 0-indexed and `start..end` is half-open (i.e. `start ==
+/// end` for a single-line secret means an empty range; the secret
+/// occupies line `start`). For Phase S1 this is always a single line:
+/// multi-line secrets are refused at resolution time per
+/// `secrets.lex` §3.4. The `end` field is preserved in the schema for
+/// forward-compatibility but the renderer never produces `end >
+/// start + 1`.
+///
+/// Persisted to disk under `<baseline>.secret.json` (see
+/// `secrets.lex` §3.3); consumed by the dry-run preview rendering
+/// (§7.4) to mask resolved values, and by the burgertocow mask
+/// integration (issue arthur-debert/burgertocow#13) to skip those
+/// lines from the reverse diff.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SecretLineRange {
+    /// First line, 0-indexed, inclusive.
+    pub start: usize,
+    /// One past the last line, 0-indexed, exclusive. `start + 1` for
+    /// a single-line value.
+    pub end: usize,
+    /// The original `secret(...)` argument string, e.g.
+    /// `"op://Personal/DB/password"`. Surfaces in the dry-run
+    /// `[SECRET: <reference>]` placeholder.
+    pub reference: String,
+}
+
 /// A single file produced by a preprocessor's expansion.
 ///
 /// Construct ad-hoc via the struct literal; tests commonly use
@@ -70,6 +100,13 @@ pub struct ExpandedFile {
     /// install/homebrew sentinels both use the context hash to decide
     /// when work is stale.
     pub context_hash: Option<[u8; 32]>,
+    /// Per-render secret-line tracking. Empty when no `secret(...)`
+    /// calls fired (the common case today; will be the common case
+    /// forever for templates that don't use secrets). Populated by
+    /// `TemplatePreprocessor` when a [`crate::secret::SecretRegistry`]
+    /// is wired in. The pipeline persists this as a sidecar JSON
+    /// alongside the baseline.
+    pub secret_line_ranges: Vec<SecretLineRange>,
 }
 
 /// The core preprocessor abstraction.
