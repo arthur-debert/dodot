@@ -16,9 +16,10 @@ Symlink Deployment Paths
     In a nutshell:
         dodot uses XDG by default, except for Unix canons. Where you need to break convention, the mechanism is explicit:
         - config: resolve to `$HOME` (Unix canons)
-        - file/dir names:
-            - prefix files with `home.` (e.g. `home.some-config` → `~/.some-config`)
-            - place links under a `_home/` or `_xdg/` directory for whole-subtree routing.
+        - file/dir names: parallel per-file prefixes and per-subtree directory prefixes:
+            - per-file: `home.X`, `app.X`, `xdg.X`, `lib.X` (e.g. `home.bashrc` → `~/.bashrc`, `app.settings.json` → `<app_support>/settings.json`)
+            - per-subtree: `_home/`, `_xdg/`, `_app/`, `_lib/` directories (e.g. `_home/vim/vimrc` → `~/.vim/vimrc`)
+        Mixing both — a `[symlink.targets]` config entry *and* a routing prefix on the same file — raises a hard error so the source of truth is unambiguous.
 
 
 
@@ -40,23 +41,30 @@ Symlink Deployment Paths
 
     Symlinks are flat: dodot creates one symlink per top-level entry of the pack. For a top-level directory, the directory itself is linked, not each nested file. Per-file mode can be re-enabled for a specific directory by adding an `[symlink.targets]` entry that reaches inside it or by listing a file inside it in `[symlink] protected_paths` — either triggers per-file mode for that directory (and only that directory).
 
-2. The `home.<file>` Convention
+2. Per-File Routing Prefixes
 
-    Most legacy dotfiles are, predictably, prefixed with a dot. The default rule routes pack-root files under the pack's XDG dir, but some files genuinely belong at `$HOME/.<name>` — either because the consuming tool hardcodes that path or because the user prefers the legacy location.
+    For single files that belong outside the default `$XDG_CONFIG_HOME/<pack>/` location, dodot recognizes four top-level filename prefixes. Each is the per-file counterpart to a directory prefix from §5/§6 — same skip-pack-namespace semantics, scoped to one file:
 
-    For per-file opt-in to `$HOME/.<name>` placement, prefix the pack file with `home.`:
+    File prefixes:
+        | Prefix   | Pack file              | Deploys to                                   |
+        | `home.X` | `<pack>/home.bashrc`   | `$HOME/.bashrc`                              |
+        | `app.X`  | `<pack>/app.x.json`    | `<app_support_dir>/x.json`                   |
+        | `xdg.X`  | `<pack>/xdg.x.list`    | `$XDG_CONFIG_HOME/x.list`                    |
+        | `lib.X`  | `<pack>/lib.x.plist`   | `$HOME/Library/x.plist` (macOS only)         |
+    :: table align=lll ::
 
-        <pack>/home.bashrc  →  $HOME/.bashrc
-        <pack>/home.vimrc   →  $HOME/.vimrc
+    `home.X` re-adds the conventional dot (`home.bashrc` → `.bashrc`); the other three pass the remainder through verbatim, since `~/Library/Application Support`, `$XDG_CONFIG_HOME`, and `~/Library` files don't follow the dotfile convention.
 
-    Two reasons the prefix uses `home.` rather than literally `.`:
+    Two reasons prefixes are spelled `home.` / `app.` / `xdg.` / `lib.` rather than literally `.` or any other syntactic shortcut:
 
     1. Files starting with `.` are hidden by default in editors and `ls`, which makes pack contents harder to scan visually.
-    2. The `home.` prefix reads as "deploy to home as .X" — explicit intent rather than a syntactic accident.
+    2. A word-shaped prefix reads as "deploy to <root> as X" — explicit intent rather than a syntactic accident.
 
-    The convention applies to top-level files only. Nested `home.X` filenames are treated literally (and end up at `$XDG_CONFIG_HOME/<pack>/<subdir>/home.X`).
+    The conventions apply to top-level files only. Nested `home.X` / `app.X` / `xdg.X` / `lib.X` filenames are treated literally (and end up at `$XDG_CONFIG_HOME/<pack>/<subdir>/home.X`, etc.). Empty remainders (`home.`, `app.`, `xdg.`, `lib.` with nothing after the dot) fall through to the default rule rather than targeting a bare directory root.
 
-    For per-subtree opt-in to $HOME (a whole directory of files routed there), see §5 (`_home/` directory prefix).
+    On non-macOS hosts, `lib.X` produces a soft warning and skips with no symlink — same behavior as `_lib/`.
+
+    For per-subtree routing (a whole directory of files), see §5 (`_home/` / `_xdg/`) and §6 (`_app/` / `_lib/`).
 
 3. Forced Home for Unix Canons
 
@@ -231,7 +239,11 @@ Symlink Deployment Paths
         Priorities (highest first):
 
             0. `[symlink.targets]` custom target
-            1. `home.X` prefix (top-level files only) → `$HOME/.X`
+            1. File-level prefixes (top-level files only, skip pack namespace):
+                a. `home.X` → `$HOME/.X`
+                b. `app.X`  → `<app_support_dir>/X`
+                c. `xdg.X`  → `$XDG_CONFIG_HOME/X`
+                d. `lib.X`  → `$HOME/Library/X` (macOS only; warn elsewhere)
             2. Directory prefixes (per-subtree, skip pack namespace):
                 a. `_home/<rest>` → `$HOME/.<rest>`
                 b. `_xdg/<rest>`  → `$XDG_CONFIG_HOME/<rest>`
@@ -243,6 +255,22 @@ Symlink Deployment Paths
             6. Default → `$XDG_CONFIG_HOME/<pack-display-name>/<rel_path>`
 
         :: text ::
+
+    6.6. Routing-Override Conflict
+
+        `[symlink.targets]` (Priority 0) wins over every filesystem-naming prefix in the ladder above. That makes the override rule clear, but it also means a user could write *both* a `[symlink.targets]` entry and a routing prefix on the same file — and silently get the config-side destination, contradicting what the filename appears to say.
+
+        Rather than introduce a precedence rule users have to remember, dodot refuses. When a file's pack-relative path appears as a key in `[symlink.targets]` *and* carries a Priority-1 or Priority-2 routing prefix (any of `home.X`, `app.X`, `xdg.X`, `lib.X`, `_home/`, `_xdg/`, `_app/`, `_lib/`), `dodot up` and `dodot status` surface a `RoutingOverrideConflict`:
+
+            routing override conflict in pack `shell` for `home.bashrc`:
+              filename routes via its prefix, and `[symlink.targets]` declares `/etc/bashrc`.
+              pick one — either rename the file (drop the `home.`/`app.`/`xdg.`/`lib.` or `_home/`/`_xdg/`/`_app/`/`_lib/` prefix) or remove the `[symlink.targets]` entry.
+
+        :: text ::
+
+        The conflicted file does not deploy. Other files in the pack — and other packs — proceed normally.
+
+        Conflict detection is intentionally narrow: only `[symlink.targets]` triggers it, because that is the one config mechanism that names a single file. `force_home`, `force_app`, and `app_aliases` are pack- or list-scoped policies; a routing prefix on a specific file is the documented way to opt that file out of those policies (see the priority ladder), and is not treated as a conflict.
 
 7. Security Restricted Symlink File Names
 
