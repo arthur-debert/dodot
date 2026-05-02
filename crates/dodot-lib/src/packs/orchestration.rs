@@ -4,6 +4,7 @@
 //! `execute()` owns the outer loop: discover packs → load per-pack
 //! config → execute command → aggregate results.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -397,9 +398,12 @@ pub fn plan_pack(pack: &Pack, ctx: &ExecutionContext, write_baselines: bool) -> 
 /// re-merge config for every pack (the ConfigManager caches by path,
 /// but passing the config explicitly makes the data flow obvious).
 ///
-/// Defaults `write_baselines = false`: `collect_pack_intents` callers
-/// (`dodot adopt`, tests) are pure-read; `dodot up` reaches this code
-/// only through `plan_pack_inner`, which threads its own flag.
+/// Defaults `write_baselines = true` to preserve the pre-existing
+/// public-API behavior of `collect_pack_intents` and
+/// `run_handler_pipeline` (both of which are intent-collection paths
+/// that should record the baseline cache `transform check` depends on).
+/// The `dodot status` read-only path enters via `plan_pack` instead and
+/// passes its own `write_baselines = false`.
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -411,7 +415,7 @@ fn collect_pack_intents_inner(
         ctx,
         pack_config,
         preprocessors,
-        /* write_baselines */ false,
+        /* write_baselines */ true,
     )
     .map(|p| p.intents)
 }
@@ -477,6 +481,25 @@ fn plan_pack_inner(
     let mut all_intents = Vec::new();
     let mut all_warnings = Vec::new();
 
+    // Set of deployed paths the §6.4 divergence guard preserved
+    // (see `preprocess_pack`). When a tracked render is skipped, the
+    // virtual entry's `absolute_path` still points at the deployed
+    // file — but that file now contains the user's edit, not what
+    // dodot would render. For `Symlink` / `Path` / `Shell` handlers
+    // that's fine: the user-side link continues to resolve the same
+    // bytes the user expects. For `CodeExecution` handlers
+    // (`install`, `homebrew`) it is *not* fine: their sentinel and
+    // execution input are derived from the file content, so a fresh
+    // `up` would derive a sentinel from the user's edit and execute
+    // the user's edit as a script. Drop those matches so provisioning
+    // stays pinned to the previous successful render's outcome.
+    use std::collections::HashSet;
+    let skipped_deployed_paths: HashSet<PathBuf> = preprocess_result
+        .skipped
+        .iter()
+        .map(|s| s.deployed_path.clone())
+        .collect();
+
     for handler_name in &order {
         let handler = match registry.get(handler_name.as_str()) {
             Some(h) => h,
@@ -493,8 +516,35 @@ fn plan_pack_inner(
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
+            // Filter out preserved-divergent-file matches when the
+            // handler is a CodeExecution handler. Owned Vec because
+            // `to_intents` and `warnings_for_matches` both want a
+            // `&[RuleMatch]` slice.
+            let filtered_for_code_exec: Vec<crate::rules::RuleMatch>;
+            let matches_for_handler: &[crate::rules::RuleMatch] = if !skipped_deployed_paths
+                .is_empty()
+                && handler.category() == handlers::HandlerCategory::CodeExecution
+            {
+                filtered_for_code_exec = handler_matches
+                    .iter()
+                    .filter(|m| !skipped_deployed_paths.contains(&m.absolute_path))
+                    .cloned()
+                    .collect();
+                if filtered_for_code_exec.len() < handler_matches.len() {
+                    debug!(
+                        pack = %pack.name,
+                        handler = %handler_name,
+                        dropped = handler_matches.len() - filtered_for_code_exec.len(),
+                        "dropping preserved-divergent matches from code-execution handler"
+                    );
+                }
+                &filtered_for_code_exec
+            } else {
+                handler_matches.as_slice()
+            };
+
             let intents = handler.to_intents(
-                handler_matches,
+                matches_for_handler,
                 &pack.config,
                 ctx.paths.as_ref(),
                 ctx.fs.as_ref(),
@@ -508,7 +558,7 @@ fn plan_pack_inner(
             all_intents.extend(intents);
 
             let warnings =
-                handler.warnings_for_matches(handler_matches, &pack.config, ctx.paths.as_ref());
+                handler.warnings_for_matches(matches_for_handler, &pack.config, ctx.paths.as_ref());
             for w in &warnings {
                 tracing::warn!(pack = %pack.name, handler = %handler_name, "{w}");
             }
@@ -1832,6 +1882,83 @@ mod tests {
         assert!(
             content.contains(std::env::consts::OS),
             "rendered content should have OS substituted: {content}"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_drops_install_intent_for_preserved_template() {
+        // Review feedback (PR #118): when the §6.4 guard preserves a
+        // user-edited deployed file, the install/homebrew handlers
+        // must NOT emit a Run intent against it. Otherwise the
+        // sentinel would be derived from the user's edit and the
+        // script would execute the user's edit on the next `up`.
+        // The symlink intent stays — the user-side link continues to
+        // resolve the preserved bytes — but provisioning is held at
+        // the previous successful state.
+        let env = TempEnvironment::builder()
+            .pack("setup")
+            .file(
+                "install.sh.tmpl",
+                "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
+            )
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        ctx.no_provision = false; // we want the install handler to consider matching
+        let pack = Pack::new(
+            "setup".into(),
+            env.dotfiles_root.join("setup"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("setup"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // First run: render baseline + emit install Run intent.
+        let first = plan_pack(&pack, &ctx, /* write_baselines */ true).unwrap();
+        let first_run_count = first
+            .intents
+            .iter()
+            .filter(|i| matches!(i, crate::operations::HandlerIntent::Run { .. }))
+            .count();
+        assert!(
+            first_run_count >= 1,
+            "first deploy should emit at least one Run intent for install.sh"
+        );
+
+        // User edits the deployed install script directly.
+        let deployed = env
+            .paths
+            .handler_data_dir("setup", "preprocessed")
+            .join("install.sh");
+        env.fs
+            .write_file(&deployed, b"#!/bin/sh\necho INJECTED_BY_USER")
+            .unwrap();
+
+        // Re-run: guard preserves the file, and the install Run intent
+        // for it must NOT be emitted (otherwise the user's edit would
+        // execute as a script on the next `up`).
+        let second = plan_pack(&pack, &ctx, /* write_baselines */ true).unwrap();
+        for intent in &second.intents {
+            if let crate::operations::HandlerIntent::Run {
+                arguments, handler, ..
+            } = intent
+            {
+                assert!(
+                    !arguments.iter().any(|a| a.contains("install.sh")),
+                    "preserved install.sh.tmpl must not emit a Run intent (handler={handler}, arguments={arguments:?})"
+                );
+            }
+        }
+        // The preservation warning still fires.
+        assert!(
+            second
+                .warnings
+                .iter()
+                .any(|w| w.contains("preserved") && w.contains("install.sh")),
+            "expected preservation warning for install.sh, got: {:?}",
+            second.warnings
         );
     }
 
