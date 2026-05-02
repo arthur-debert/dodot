@@ -1,5 +1,8 @@
 Design Specification: MacOs Paths and the `_app/` Convention
 
+    :: note ::
+        **Status: implemented and shipped.** Phases M1–M6 landed in PRs #90, #91, and #92. The follow-up cask-aware rename suggestion (PR #92) refined the M5 ergonomic on top of M6's brew probe. The user-facing reference for the resulting feature lives in [./../reference/symlink-paths.lex] §6 (the `_app/` / `_lib/` / `force_app` / `app_aliases` family) and §10 (the macOS advisory probe layer). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom of this document for the deviations that were accepted during implementation.
+
     This document specifies how dodot routes pack files on MacOs, where a third filesystem coordinate — `~/Library/Application Support/<App>/` — sits alongside the two roots the resolver already understands (`$HOME` and `$XDG_CONFIG_HOME`). It extends the symlink-deployment ladder defined in [./../reference/symlink-paths.lex] with two new directory prefixes (`_app/` and `_lib/`), a curated `force_app` list, and a pack-level `app_aliases` map. It also describes an advisory layer — homebrew-cask and MacOs-native introspection — that powers `dodot adopt` suggestions and `dodot up` warnings without ever overriding the resolver's deterministic priority order.
 
     The spec is split into two parts. The first half (sessions 1–7) is the deterministic core: where files end up, why, and how to express user intent. The second half (session 8) is the advisory "automagical" layer that sits on top, isolated so it does not perturb the resolver and can evolve independently.
@@ -589,3 +592,31 @@ Design Specification: MacOs Paths and the `_app/` Convention
     11.5. Adopt-Time Plist Conversion
 
         When a user adopts `~/Library/Preferences/com.foo.plist` (a binary plist), should adopt automatically invoke the plist preprocessor's reverse path to produce the XML form? The `plists.lex` proposal answers yes. This proposal defers to that one and stays orthogonal.
+
+12. Implementation Notes vs. Spec
+
+    The implementation deviates from the spec above in a few places. They're listed here so future readers don't mistake the spec for the source of truth:
+
+    12.1. `force_app` Initial Seed
+
+        Spec §3.4.2: "The initial list is empty." Implementation ships with `["Code", "Cursor", "Zed", "Emacs"]`, decided during implementation review as a pragmatic starter set covering the most common GUI editors developers manage with dodot. The hundred-entry cap (§3.4.1) and inclusion criteria still apply. Seed-vs-cap is enforced by the unit test `default_force_app_under_hundred_entry_cap`.
+
+    12.2. `force_home` / `force_app` Overlap Warning
+
+        Spec §5.1 calls for a startup warning when an entry appears in both lists. Not implemented. The default lists don't overlap (the curated criteria practically guarantee that — Library folder names are uppercase or contain spaces; Unix canons are lowercase), and a user-introduced overlap would surface as a routing surprise rather than silent failure (force_home wins by ladder priority). Tracked as future polish if real-world overlap reports come in.
+
+    12.3. `app_uses_library` Default
+
+        Spec §6.3 says the default is `true` on macOS, `false` on Linux (and ignored). Implementation uses a single platform-agnostic default of `true`. The Linux behavior the spec describes is achieved instead by the Pather: on non-macOS, `app_support_dir` always equals `xdg_config_home`, so the flag is functionally a no-op even when its value is `true`. Same observable behaviour, simpler config schema.
+
+    12.4. `dodot probe app` Sample Output Format
+
+        Spec §8.4 shows a sample with an `alias: vscode → Code (~/Library/Application Support/Code/) [exists]` line and `[installed]` indicators on cask rows. The shipped renderer uses `(alias)` / `(force_app)` / `(_app/)` as the source-rule annotation, omits the explicit `[installed]` marker (the matching layer is installed-only by construction, so the indicator was always-true and dropped during PR #91 review), and renders `[exists]` / `[missing]` in the existing-on-disk column. Functionally equivalent; cosmetically diverged.
+
+    12.5. Tutorial Integration
+
+        Spec §9 calls for *"a new tutorial section (`dodot tutorial`) walks through adopting `~/Library/Application Support/Code/User/settings.json` end-to-end on macOS, demonstrating both the `_app/` prefix and the `app_aliases` mechanism."* Not implemented. The reference docs ([./../reference/symlink-paths.lex] §6 and §10) and the bats e2e tests cover the same ground; a guided tutorial step is independently shippable later.
+
+    12.6. Cask-Aware Rename Suggestion (Beyond Spec)
+
+        PR #92 added a refinement not described in the original spec: when M5's capitalization-heuristic tip fires *and* the M6 brew probe finds an installed cask matching the pack's app-support folder, the suggested rename uses the cask token instead of a whitespace-strip-lowercase mangling. For reverse-DNS bundle-ID folders (`com.colliderli.iina`) this is the difference between a useful suggestion (`iina`) and a useless one (`comcolliderliiina`). Documented in [./../reference/symlink-paths.lex] §10.2.

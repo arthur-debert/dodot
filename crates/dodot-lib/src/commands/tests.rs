@@ -24,12 +24,53 @@ impl CommandRunner for MockCommandRunner {
     }
 }
 
+/// CommandRunner test double that returns canned outputs per `(exe,
+/// args...)` key. Used by probe::app integration tests so the brew /
+/// mdls / mdfind subprocesses don't actually run.
+struct CannedRunner {
+    responses: std::sync::Mutex<std::collections::HashMap<Vec<String>, CommandOutput>>,
+}
+
+impl CannedRunner {
+    fn new() -> Self {
+        Self {
+            responses: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+    fn respond(&self, args: &[&str], stdout: &str, exit_code: i32) {
+        let key: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        self.responses.lock().unwrap().insert(
+            key,
+            CommandOutput {
+                exit_code,
+                stdout: stdout.into(),
+                stderr: String::new(),
+            },
+        );
+    }
+}
+
+impl CommandRunner for CannedRunner {
+    fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        let mut full = vec![exe.to_string()];
+        full.extend(args.iter().cloned());
+        self.responses
+            .lock()
+            .unwrap()
+            .get(&full)
+            .cloned()
+            .ok_or_else(|| {
+                crate::DodotError::Other(format!("CannedRunner: no canned response for {full:?}"))
+            })
+    }
+}
+
 fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
-    let runner = Arc::new(MockCommandRunner);
+    let runner: Arc<dyn CommandRunner> = Arc::new(MockCommandRunner);
     let datastore = Arc::new(FilesystemDataStore::new(
         env.fs.clone(),
         env.paths.clone(),
-        runner,
+        runner.clone(),
     ));
     let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -39,6 +80,34 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         paths: env.paths.clone() as Arc<dyn Pather>,
         config_manager,
         syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+        command_runner: runner,
+        dry_run: false,
+        no_provision: true,
+        provision_rerun: false,
+        force: false,
+        view_mode: crate::commands::ViewMode::Full,
+        group_mode: crate::commands::GroupMode::Name,
+        verbose: false,
+    }
+}
+
+/// Variant of make_ctx that swaps in a [`CannedRunner`] so probe
+/// tests can exercise the brew/mdls/mdfind enrichment paths without
+/// spawning processes.
+fn make_ctx_with_runner(env: &TempEnvironment, runner: Arc<dyn CommandRunner>) -> ExecutionContext {
+    let datastore = Arc::new(FilesystemDataStore::new(
+        env.fs.clone(),
+        env.paths.clone(),
+        runner.clone(),
+    ));
+    let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
+    ExecutionContext {
+        fs: env.fs.clone() as Arc<dyn Fs>,
+        datastore,
+        paths: env.paths.clone() as Arc<dyn Pather>,
+        config_manager,
+        syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+        command_runner: runner,
         dry_run: false,
         no_provision: true,
         provision_rerun: false,
@@ -72,6 +141,72 @@ fn status_shows_pending_before_up() {
             file.status, "pending",
             "file {} should be pending",
             file.name
+        );
+    }
+}
+
+/// On non-macOS, `_lib/<rest>` entries resolve to `Resolution::Skip`
+/// in the planner. Status must suppress the corresponding row and
+/// only surface the warning — otherwise the user sees a confusing
+/// "pending symlink" row alongside a "skipping on this platform"
+/// warning. Regression for review feedback on PR #90.
+#[test]
+fn status_suppresses_lib_prefix_rows_when_skipped() {
+    let env = TempEnvironment::builder()
+        .pack("macapps")
+        .file("_lib/LaunchAgents/com.example.foo.plist", "x")
+        .file("regular.toml", "y")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    // The pack is present either way; what we're pinning is the
+    // *file rows*: on non-macOS the `_lib/...` row is suppressed,
+    // on macOS it appears like any other pending symlink.
+    let pack = result
+        .packs
+        .iter()
+        .find(|p| p.name == "macapps")
+        .expect("macapps pack must appear");
+
+    let lib_row = pack
+        .files
+        .iter()
+        .find(|f| f.name.starts_with("_lib/") || f.name == "_lib");
+    let regular_row = pack.files.iter().find(|f| f.name == "regular.toml");
+
+    assert!(
+        regular_row.is_some(),
+        "non-_lib entry must always render; got files {:?}",
+        pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
+
+    if cfg!(target_os = "macos") {
+        assert!(
+            lib_row.is_some(),
+            "on macOS `_lib/` entries should render normally; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+    } else {
+        assert!(
+            lib_row.is_none(),
+            "on non-macOS `_lib/` rows must be suppressed; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        // The warning channel still carries the explanation. The
+        // exact form depends on whether the catchall scanner matched
+        // the top-level `_lib` directory or a nested `_lib/<rest>`
+        // file — either way, the warning mentions `_lib` and the
+        // macOS-only constraint.
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("_lib") && w.contains("macOS-only")),
+            "expected a `_lib` macOS-only warning; got {:?}",
+            result.warnings
         );
     }
 }
@@ -635,6 +770,358 @@ fn up_dry_run_no_changes() {
     for file in &status.packs[0].files {
         assert_eq!(file.status, "pending", "dry run should not deploy");
     }
+}
+
+#[test]
+fn up_dry_run_does_not_write_preprocessing_baselines() {
+    // Baselines anchor "the state of the last successful `up`," so
+    // a dry run — which never executes — must not move that anchor.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let baseline_path = ctx
+        .paths
+        .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "test precondition: baseline should not exist before any up runs"
+    );
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    let _ = commands::up::up(None, &dry_ctx).unwrap();
+
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "dry-run must NOT write a baseline; the cache must remain untouched"
+    );
+}
+
+// ── cfprefsd drift marker (#109) ────────────────────────────
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_writes_cfprefsd_marker_on_first_run_with_plists() {
+    // First-ever `up`: no previous last-up marker, so any plist
+    // file in an active pack counts as "drifted." The marker
+    // must land for the post-up prompt to fire.
+    let env = TempEnvironment::builder()
+        .pack("mac-defaults")
+        .file("com.example.app.plist", "<?xml?><plist></plist>")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        ctx.fs.exists(&marker),
+        "marker should land on the first up that deploys a plist"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_does_not_write_cfprefsd_marker_when_pack_has_no_plists() {
+    // Pack contains no plist files → the cfprefsd prompt has
+    // nothing to invalidate; the marker must stay absent.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        !ctx.fs.exists(&marker),
+        "marker must not appear when no plists are present"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_with_pack_filter_does_not_write_cfprefsd_marker_for_unrelated_pack_plists() {
+    // Pack A contains a plist; pack B has only non-plist files.
+    // Running `dodot up` filtered to pack B must NOT drop the
+    // cfprefsd marker — the user's command didn't touch any plist.
+    let env = TempEnvironment::builder()
+        .pack("mac-defaults")
+        .file("com.example.app.plist", "<?xml?><plist></plist>")
+        .done()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    let filter = vec!["vim".to_string()];
+    commands::up::up(Some(&filter), &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        !ctx.fs.exists(&marker),
+        "drift detection must respect the pack filter — \
+         a plist in an unrelated pack should not trigger the marker"
+    );
+}
+
+// ── §7.4 passive-command contract (#121) ───────────────────
+
+#[test]
+fn status_does_not_write_to_datastore() {
+    // §7.4: passive commands MUST NOT mutate the datastore.
+    // Running `up` once primes the data dir; running `status`
+    // afterwards must leave that state byte-identical.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
+
+    // Two consecutive status runs must leave data_dir unchanged.
+    commands::status::status(None, &ctx).unwrap();
+    commands::status::status(None, &ctx).unwrap();
+
+    let after = snapshot_dir_contents(&env, env.paths.data_dir());
+    assert_eq!(
+        snapshot, after,
+        "status must be byte-identical to the post-up snapshot — \
+         no datastore writes allowed"
+    );
+}
+
+#[test]
+fn up_dry_run_does_not_write_to_datastore() {
+    // Pin the same §7.4 contract for `up --dry-run`.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    commands::up::up(None, &dry_ctx).unwrap();
+
+    let after = snapshot_dir_contents(&env, env.paths.data_dir());
+    assert_eq!(
+        snapshot, after,
+        "dry-run must be byte-identical to the post-up snapshot"
+    );
+}
+
+#[test]
+fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file() {
+    // The §7.4 unblocker: in Passive mode the rendered file isn't
+    // on disk, so the install handler used to fail to compute its
+    // sentinel. With `rendered_bytes` threaded through, dry-run now
+    // emits a Run intent with the same sentinel as the active path
+    // would — without ever writing the rendered file. (#121)
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    // First up establishes the baseline so Passive mode has
+    // something to read. no_provision = false so the install
+    // handler actually plans Run intents (the default test ctx
+    // suppresses code-execution handlers).
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    commands::up::up(None, &ctx).unwrap();
+
+    // Capture the active sentinel (it lives in the executed
+    // RunCommand operation).
+    let active_intents = crate::packs::orchestration::collect_pack_intents(
+        &crate::packs::Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        ),
+        &ctx,
+    )
+    .unwrap();
+    let active_sentinel = active_intents
+        .iter()
+        .find_map(|i| match i {
+            crate::operations::HandlerIntent::Run { sentinel, .. } => Some(sentinel.clone()),
+            _ => None,
+        })
+        .expect("active path must produce a Run intent for install.sh");
+
+    // Snapshot the rendered datastore file's existence — Passive
+    // must not modify it, but it should already exist from the
+    // earlier active up.
+    let rendered_path = env
+        .paths
+        .handler_data_dir("app", "preprocessed")
+        .join("install.sh");
+    assert!(
+        ctx.fs.exists(&rendered_path),
+        "active up must have written the rendered file"
+    );
+    let rendered_before = ctx.fs.read_file(&rendered_path).unwrap();
+
+    // Now plan via dry-run; the install handler must produce the
+    // same sentinel from in-memory bytes. Same no_provision = false
+    // so the handler actually emits intents.
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+    let plan = crate::packs::orchestration::plan_pack(
+        &crate::packs::Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            dry_ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        ),
+        &dry_ctx,
+        crate::preprocessing::PreprocessMode::Passive,
+    )
+    .unwrap();
+    let dry_sentinel = plan
+        .intents
+        .iter()
+        .find_map(|i| match i {
+            crate::operations::HandlerIntent::Run { sentinel, .. } => Some(sentinel.clone()),
+            _ => None,
+        })
+        .expect("passive path must produce a Run intent for install.sh");
+
+    assert_eq!(
+        active_sentinel, dry_sentinel,
+        "passive sentinel must match active — same rendered bytes either way"
+    );
+    let rendered_after = ctx.fs.read_file(&rendered_path).unwrap();
+    assert_eq!(
+        rendered_before, rendered_after,
+        "passive must not rewrite the rendered file"
+    );
+}
+
+#[test]
+fn up_dry_run_first_time_pack_with_install_template_does_not_error() {
+    // Regression for Copilot review on PR #126: a first-time pack
+    // containing `install.sh.tmpl` (no baseline yet, no rendered
+    // file on disk) must not crash dry-run intent collection. The
+    // install handler used to read `m.absolute_path` unconditionally
+    // and propagate an Fs error; now it skips intent generation for
+    // the placeholder match instead. Same shape for `Brewfile.tmpl`
+    // / homebrew handler.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .file("Brewfile.tmpl", "brew '{{ pkg }}'")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\npkg = \"jq\"\n")
+        .done()
+        .build();
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+
+    // The fix: this returns Ok and emits zero Run intents (the
+    // placeholders skip intent generation cleanly). Pre-fix, the
+    // install/homebrew handlers tried to read missing rendered
+    // files and propagated an Fs error.
+    let result = commands::up::up(None, &dry_ctx).unwrap();
+    assert!(result.dry_run);
+}
+
+#[test]
+fn passive_first_time_pack_surfaces_pending_placeholder() {
+    // §7.4 acceptance: a passive command on a brand-new pack with
+    // no baseline cache yet must surface a coherent placeholder
+    // (template stripped name, status pending), never panic, never
+    // fall through to template evaluation. (#121)
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1, "should surface the templated entry");
+    assert_eq!(
+        files[0].name, "greet",
+        "stripped name (not source filename)"
+    );
+    assert_eq!(
+        files[0].status, "pending",
+        "first-time template before any up: pending"
+    );
+}
+
+/// Snapshot a directory tree (file contents + directory paths) to a
+/// stable signature for the §7.4 no-mutation contract tests. Each
+/// entry is keyed by absolute path; files map to `Some(contents)`,
+/// directories to `None`. Comparing two snapshots for equality is
+/// equivalent to "directory tree is byte-identical, including empty
+/// directories." Including dir paths catches mutations like
+/// `mkdir <data_dir>/<pack>/preprocessed` that would silently slip
+/// past a contents-only check.
+///
+/// Unreadable entries / read errors propagate as panics rather than
+/// silent skips — a passive command that produces an unreadable
+/// entry under `<data_dir>` is itself a §7.4 violation worth
+/// failing the test on.
+fn snapshot_dir_contents(
+    env: &crate::testing::TempEnvironment,
+    root: &std::path::Path,
+) -> std::collections::BTreeMap<std::path::PathBuf, Option<Vec<u8>>> {
+    use std::collections::BTreeMap;
+    let mut out = BTreeMap::new();
+    if !env.fs.exists(root) {
+        return out;
+    }
+    let mut stack: Vec<std::path::PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = env
+            .fs
+            .read_dir(&dir)
+            .unwrap_or_else(|e| panic!("snapshot_dir_contents: read_dir({dir:?}): {e}"));
+        for entry in entries {
+            if entry.is_dir {
+                out.insert(entry.path.clone(), None);
+                stack.push(entry.path);
+            } else {
+                let bytes = env.fs.read_file(&entry.path).unwrap_or_else(|e| {
+                    panic!("snapshot_dir_contents: read_file({:?}): {e}", entry.path)
+                });
+                out.insert(entry.path, Some(bytes));
+            }
+        }
+    }
+    out
 }
 
 // ── up: conflict handling ──────────────────────────────────
@@ -1679,6 +2166,315 @@ fn adopt_xdg_with_into_override_uses_xdg_prefix() {
     let pack_file = env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml");
     env.assert_regular_file(&pack_file, "gui:\n  theme: dark");
     assert!(env.fs.is_symlink(&source));
+}
+
+/// Adopting a file under `~/Library/Application Support/<X>/` infers
+/// pack `<X>`, places the file at `_app/<X>/<rest>` in the pack tree,
+/// and round-trips via the resolver's Priority 2c `_app/` prefix back
+/// to the original AppSupport location. The `TempEnvironment` pins
+/// `app_support_dir` under the temp HOME on every platform so this
+/// test runs identically on Linux and macOS.
+#[test]
+fn adopt_app_support_source_round_trips_through_app_prefix() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/Code/User/settings.json",
+            "{\"editor.fontSize\": 14}",
+        )
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Pack auto-created at `<dotfiles>/Code/`. The file lives at
+    // `_app/Code/User/settings.json` — the prefix is mandatory at
+    // natural pack name because the default rule routes through XDG,
+    // not app_support_dir.
+    let pack_file = env.dotfiles_root.join("Code/_app/Code/User/settings.json");
+    env.assert_regular_file(&pack_file, "{\"editor.fontSize\": 14}");
+
+    // Original deploy location is now a symlink — and the symlink
+    // chain points (eventually) back at the pack copy. Resolve via
+    // resolve_target_full to confirm round-trip.
+    assert!(env.fs.is_symlink(&source));
+
+    use crate::handlers::symlink::{resolve_target_full, Resolution};
+    let resolution = resolve_target_full(
+        "Code",
+        "_app/Code/User/settings.json",
+        &Default::default(),
+        env.paths.as_ref(),
+    );
+    match resolution {
+        Resolution::Path(p) => assert_eq!(p, source),
+        Resolution::Skip { reason } => panic!("expected Path, got Skip({reason})"),
+    }
+}
+
+/// Adopting `~/Library/Application Support/<X>/` (the directory
+/// itself) expands into per-child plans, mirroring the XDG pack-root
+/// expansion. Each top-level entry under the AppSupport folder
+/// becomes a top-level pack entry, prefixed with `_app/<X>/`.
+#[test]
+fn adopt_app_support_pack_root_directory_expands_to_children() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/Cursor/User/settings.json",
+            "{}",
+        )
+        .home_file(
+            "Library/Application Support/Cursor/User/keybindings.json",
+            "[]",
+        )
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Cursor");
+
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // The pack-root directory expanded: the single child of `Cursor/`
+    // is `User/`, so the pack contains `_app/Cursor/User/` (a
+    // directory whose contents come along).
+    let pack_dir = env.dotfiles_root.join("Cursor");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("_app/Cursor/User/settings.json"), "{}");
+    env.assert_regular_file(&pack_dir.join("_app/Cursor/User/keybindings.json"), "[]");
+    // The expanded child (`User/`) at the original AppSupport
+    // location is now a symlink, but the parent `Cursor/` itself
+    // stays a real directory.
+    assert!(env.fs.is_symlink(&env.app_support.join("Cursor/User")));
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// M5 capitalization-heuristic advisory: when a user adopts an
+/// AppSupport source whose folder name passes the GUI-app heuristic
+/// (`Code`, uppercase), adopt emits a tip pointing at the
+/// `app_aliases` ergonomic. The pack tree itself is unaffected — the
+/// hint is purely advisory.
+#[test]
+fn adopt_app_support_emits_capitalization_hint() {
+    let env = TempEnvironment::builder()
+        .home_file("Library/Application Support/Code/User/settings.json", "{}")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    let result = commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("app_aliases") && w.contains("Code")),
+        "expected an `app_aliases` tip in warnings, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Reverse-DNS bundle-ID folders (`com.colliderli.iina`,
+/// `dev.warp.Warp-Stable`) get a much better rename suggestion when
+/// the M6 brew probe identifies a matching cask: prefer the cask
+/// token (`iina`) over the awful whitespace-strip-lowercase fallback
+/// (`comcolliderliiina`). Real IINA case from user testing on PR #91.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn adopt_app_support_reverse_dns_uses_cask_token_in_tip() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/com.colliderli.iina/input_conf/mine.conf",
+            "x",
+        )
+        .build();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(&["brew", "list", "--cask", "--versions"], "iina 1.4.0\n", 0);
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "iina"],
+        r#"{"casks": [{
+            "token": "iina",
+            "artifacts": [
+                {"app": ["IINA.app"]},
+                {"zap": [{"trash": ["~/Library/Application Support/com.colliderli.iina"]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+    let source = env
+        .app_support
+        .join("com.colliderli.iina/input_conf/mine.conf");
+
+    let result = commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let tip = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("app_aliases"))
+        .unwrap_or_else(|| panic!("expected an app_aliases tip, got: {:?}", result.warnings));
+
+    // The good outcome: tip suggests `iina` as the rename target.
+    assert!(
+        tip.contains("renaming the pack to `iina`"),
+        "expected cask-token-based rename suggestion (`iina`), got: {tip}"
+    );
+    // And explicitly NOT the whitespace-strip-lowercase fallback,
+    // which would be `comcolliderliiina` for this folder.
+    assert!(
+        !tip.contains("comcolliderliiina"),
+        "rename suggestion fell back to lowercase mangling instead of cask token: {tip}"
+    );
+    // The tip credits the cask so the user knows where the
+    // recommendation came from.
+    assert!(
+        tip.contains("matches homebrew cask"),
+        "tip should credit the cask source, got: {tip}"
+    );
+}
+
+/// When no installed cask matches the folder, the tip falls back to
+/// the original whitespace-strip-lowercase suggestion. Pins the
+/// fallback so a refactor doesn't accidentally regress the no-cask
+/// path (the heuristic still triggers on uppercase folders even when
+/// brew has nothing to say).
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn adopt_app_support_falls_back_to_lowercase_when_no_cask_match() {
+    // `Tinkerbell` — uppercase enough to trigger the heuristic, but
+    // no real cask owns it, so the brew probe returns empty and the
+    // tip falls back to the lowercase suggestion.
+    let env = TempEnvironment::builder()
+        .home_file("Library/Application Support/Tinkerbell/settings.json", "{}")
+        .build();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(&["brew", "list", "--cask", "--versions"], "", 0);
+    let ctx = make_ctx_with_runner(&env, runner);
+    let source = env.app_support.join("Tinkerbell/settings.json");
+
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let tip = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("app_aliases"))
+        .unwrap_or_else(|| panic!("expected an app_aliases tip, got: {:?}", result.warnings));
+
+    // Fallback suggestion: lowercased pack name (no spaces here, but
+    // the casing transformation still applies).
+    assert!(
+        tip.contains("renaming the pack to `tinkerbell`"),
+        "expected fallback rename suggestion, got: {tip}"
+    );
+    assert!(
+        !tip.contains("matches homebrew cask"),
+        "tip should not claim a cask match when none exists: {tip}"
+    );
+}
+
+/// The advisory is suppressed when the user passed `--into <pack>`:
+/// they already chose their pack name, so suggesting another one
+/// would be noise. The pack used here (`Code`) only exists to satisfy
+/// `--into`'s typo-guard requirement.
+#[test]
+fn adopt_app_support_into_override_suppresses_hint() {
+    let env = TempEnvironment::builder()
+        .pack("Code")
+        .file("placeholder", "")
+        .done()
+        .home_file("Library/Application Support/Code/User/settings.json", "{}")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    let result = commands::adopt::adopt(
+        Some("Code"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("app_aliases")),
+        "expected no app_aliases tip with --into, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Lowercase CLI-tool-style folder names (`nvim`, `helix`, …) don't
+/// trigger the heuristic. An XDG adopt of a typical CLI tool stays
+/// hint-free.
+#[test]
+fn adopt_xdg_lowercase_pack_emits_no_hint() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- nvim")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/init.lua");
+
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("app_aliases")),
+        "expected no app_aliases tip for plain XDG adopt, got: {:?}",
+        result.warnings
+    );
 }
 
 /// Multiple sources whose inference picks different packs is refused
@@ -4702,4 +5498,240 @@ fn by_status_folds_ignored_packs_into_ignored_group() {
     assert!(output.contains("Ignored Packs"), "output: {output}");
     assert!(output.contains("disabled"), "output: {output}");
     assert!(output.contains("Pending Packs"), "output: {output}");
+}
+
+// ── M6: probe::app + advisory probes ─────────────────────────
+
+/// `dodot probe app <pack>` collects every folder this pack would
+/// route to (alias, force_app, _app/), checks each against the
+/// app-support root, and (with mocked brew + mdls) enriches the
+/// matching cask token, .app bundle, and bundle ID. The probe is
+/// advisory — resolver state is unchanged.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn probe_app_collects_alias_force_and_underscore_entries() {
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("settings.json", "{}")
+        .file("_app/Cursor/User/keys.json", "[]")
+        .file("Code/User/extra.json", "{}")
+        .config("[symlink.app_aliases]\nvscode = \"VSCodeAliased\"\n")
+        .done()
+        .build();
+    // Pre-create one of the target folders so `target_exists` differs
+    // across rows and the test pins the existence column.
+    env.fs.mkdir_all(&env.app_support.join("Cursor")).unwrap();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(
+        &["brew", "list", "--cask", "--versions"],
+        "cursor 0.42.0\n",
+        0,
+    );
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "cursor"],
+        r#"{"casks": [{
+            "token": "cursor",
+            "installed": "0.42.0",
+            "artifacts": [
+                {"app": ["Cursor.app"]},
+                {"zap": [{"trash": [
+                    "~/Library/Application Support/Cursor",
+                    "~/Library/Preferences/com.todesktop.Cursor.plist"
+                ]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    runner.respond(
+        &[
+            "mdls",
+            "-name",
+            "kMDItemCFBundleIdentifier",
+            "/Applications/Cursor.app",
+        ],
+        "kMDItemCFBundleIdentifier = \"com.todesktop.Cursor\"\n",
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    let result = commands::probe::app("vscode", false, &ctx).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::App(v) => v,
+        other => panic!("expected App variant, got {other:?}"),
+    };
+    assert_eq!(view.pack, "vscode");
+    assert!(view.macos);
+
+    // Three folders: VSCodeAliased (alias), Code (force_app default
+    // includes Code), Cursor (_app/ subtree).
+    let folders: Vec<&str> = view.entries.iter().map(|e| e.folder.as_str()).collect();
+    assert!(folders.contains(&"VSCodeAliased"), "folders: {folders:?}");
+    assert!(folders.contains(&"Code"), "folders: {folders:?}");
+    assert!(folders.contains(&"Cursor"), "folders: {folders:?}");
+
+    // Cursor is the only pre-created folder → exists; others missing.
+    let cursor_row = view.entries.iter().find(|e| e.folder == "Cursor").unwrap();
+    assert!(cursor_row.target_exists);
+    // `cask` is always an *installed* token (matching iterates only
+    // `brew list --cask --versions`), so a `Some` value implies
+    // installed — there's no separate field for it any more.
+    assert_eq!(cursor_row.cask.as_deref(), Some("cursor"));
+    assert_eq!(cursor_row.app_bundle.as_deref(), Some("Cursor.app"));
+    assert_eq!(
+        cursor_row.bundle_id.as_deref(),
+        Some("com.todesktop.Cursor")
+    );
+
+    // Sibling-adoption suggestions surfaced from cask zap.
+    assert!(
+        view.suggested_adoptions
+            .iter()
+            .any(|s| s.contains("Cursor.plist")),
+        "suggested adoptions: {:?}",
+        view.suggested_adoptions
+    );
+}
+
+/// `dodot probe app ..` (or any other path-traversing input) must
+/// not let `pack_path` traversal escape the dotfiles root. Probe
+/// validates that `pack_name` is a single-component path before
+/// passing it to `Pather::pack_path`. Regression for review feedback
+/// on PR #91.
+#[test]
+fn probe_app_rejects_path_traversal_input() {
+    let env = TempEnvironment::builder().build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    for evil in ["..", "foo/../bar", "../sibling", "/abs/path"] {
+        let result = commands::probe::app(evil, false, &ctx).unwrap();
+        let view = match result {
+            commands::probe::ProbeResult::App(v) => v,
+            other => panic!("expected App variant, got {other:?}"),
+        };
+        // Empty-but-named view: the pack name echoes back, but no
+        // entries are surfaced (filesystem traversal was skipped).
+        assert_eq!(view.pack, evil, "input echoed back unchanged");
+        assert!(
+            view.entries.is_empty(),
+            "path-traversing input must not produce entries: got {:?}",
+            view.entries
+        );
+    }
+}
+
+/// On non-macOS, probe::app still produces a useful view (folder
+/// existence under the collapsed app-support root) but skips brew /
+/// Spotlight enrichment entirely. `macos` is `false`.
+#[test]
+fn probe_app_non_macos_returns_minimal_view() {
+    if cfg!(target_os = "macos") {
+        // The cfg! gate inside probe::app keys off the host. On macOS
+        // hosts we can't simulate the Linux path; skip rather than
+        // contort the test fixture.
+        return;
+    }
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("Code/User/foo", "{}")
+        .done()
+        .build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    let result = commands::probe::app("vscode", false, &ctx).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::App(v) => v,
+        other => panic!("expected App variant, got {other:?}"),
+    };
+    assert!(!view.macos);
+    // No brew enrichment.
+    for entry in &view.entries {
+        assert!(entry.cask.is_none(), "row: {entry:?}");
+        assert!(entry.app_bundle.is_none(), "row: {entry:?}");
+        assert!(entry.bundle_id.is_none(), "row: {entry:?}");
+    }
+}
+
+/// `up` / `status` emit a missing-target hint when an app-support
+/// folder doesn't exist on disk and a brew cask matches. macOS-only
+/// — the orchestration gate is the same `cfg!(target_os = "macos")`.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only behavior")]
+fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
+    use crate::packs::orchestration;
+    use crate::packs::Pack;
+
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("settings.json", "{}")
+        .config("[symlink.app_aliases]\nvscode = \"Code\"\n")
+        .done()
+        .build();
+    // `Code` folder is intentionally absent — the hint should fire.
+    assert!(!env.app_support.join("Code").exists());
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(
+        &["brew", "list", "--cask", "--versions"],
+        "visual-studio-code 1.95.0\n",
+        0,
+    );
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "visual-studio-code"],
+        r#"{"casks": [{
+            "token": "visual-studio-code",
+            "artifacts": [
+                {"app": ["Visual Studio Code.app"]},
+                {"zap": [{"trash": ["~/Library/Application Support/Code"]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    // The planner uses cache_only=true to keep `up`/`status` fast —
+    // an empty cache produces the unenriched message. Pre-warm the
+    // cache by calling info_cask once (the on-demand path that may
+    // spawn brew). Production users get the same warm cache via
+    // `dodot probe app` or `dodot adopt`.
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let _ = crate::probe::brew::info_cask(
+        "visual-studio-code",
+        &cache_dir,
+        crate::probe::brew::now_secs_unix(),
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+    );
+
+    // Synthesize a Pack matching the on-disk pack we built.
+    let pack_path = env.dotfiles_root.join("vscode");
+    let pack_config = ctx.config_manager.config_for_pack(&pack_path).unwrap();
+    let pack = Pack {
+        name: "vscode".into(),
+        display_name: "vscode".into(),
+        path: pack_path,
+        config: pack_config.to_handler_config(),
+    };
+
+    let plan = orchestration::plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active)
+        .unwrap();
+    let hint = plan.warnings.iter().find(|w| w.contains("Code"));
+    assert!(
+        hint.is_some(),
+        "expected missing-target hint mentioning `Code`; got {:?}",
+        plan.warnings
+    );
+    let hint_text = hint.unwrap();
+    assert!(
+        hint_text.contains("visual-studio-code"),
+        "expected cask-enriched hint, got: {hint_text}"
+    );
+    // Per review feedback: the cask is installed (we read it from
+    // `brew list`), so the message must NOT claim it isn't installed.
+    assert!(
+        !hint_text.contains("isn't installed"),
+        "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
+    );
 }

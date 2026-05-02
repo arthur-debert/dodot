@@ -103,6 +103,58 @@ pub enum ProbeResult {
     /// least one non-zero exit across the examined window, grouped by
     /// target and sorted by failure count (most-broken first).
     ShellInitErrors(ShellInitErrorsView),
+    /// `dodot probe app <pack>` — advisory introspection of macOS
+    /// app-support paths for a single pack: which folder names this
+    /// pack will route to, whether they exist, matching homebrew cask
+    /// metadata, and `.app` bundle / bundle-id pairs from Spotlight.
+    /// See `docs/proposals/macos-paths.lex` §8.4.
+    App(AppProbeView),
+}
+
+/// Display payload for `dodot probe app <pack>`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AppProbeView {
+    pub pack: String,
+    /// Whether the host platform supports the macOS-only probes
+    /// (homebrew cask + Spotlight). On Linux this is `false` and the
+    /// `entries` list reflects only the deterministic info available
+    /// from the resolver — no cask/bundle data.
+    pub macos: bool,
+    /// One row per app-folder name this pack would route to. May be
+    /// empty for a pack with no `_app/`/`force_app`/`app_aliases`
+    /// entries.
+    pub entries: Vec<AppProbeEntry>,
+    /// Sibling-adoption suggestions surfaced from the matching cask's
+    /// zap stanza (e.g. `~/Library/Preferences/<bundle>.plist`).
+    pub suggested_adoptions: Vec<String>,
+}
+
+/// One row per app-support folder a pack will deploy to.
+#[derive(Debug, Clone, Serialize)]
+pub struct AppProbeEntry {
+    /// The destination folder name, e.g. `"Code"`.
+    pub folder: String,
+    /// `<app_support_dir>/<folder>/` path. Always populated, even when
+    /// the folder doesn't exist on disk — the renderer shortens to
+    /// `~/...` for display.
+    pub target_path: String,
+    /// Whether `target_path` exists on the local filesystem.
+    pub target_exists: bool,
+    /// Source rule that produced this folder: `"alias"`, `"force_app"`,
+    /// or `"_app/"`. Drives display.
+    pub source_rule: String,
+    /// Matching homebrew cask token, when found. Always an
+    /// *installed* cask (matching only iterates `brew list --cask
+    /// --versions`); a `Some` value implies "installed". A `None`
+    /// value means either no installed cask declared this folder in
+    /// its zap stanza, or we're not on macOS.
+    pub cask: Option<String>,
+    /// `.app` bundle name derived from cask metadata, e.g.
+    /// `"Visual Studio Code.app"`.
+    pub app_bundle: Option<String>,
+    /// `kMDItemCFBundleIdentifier` for the `.app` bundle, when
+    /// resolvable via `mdls`.
+    pub bundle_id: Option<String>,
 }
 
 /// Display payload for `--runs N`.
@@ -874,6 +926,201 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m as u32, d as u32)
+}
+
+/// `dodot probe app <pack>` — advisory introspection of macOS
+/// app-support paths for a pack.
+///
+/// Walks the pack's `_app/<X>/...` matches, configured `force_app`
+/// hits, and `[symlink.app_aliases]` entries; checks each candidate
+/// folder against the on-disk app-support root, and (on macOS)
+/// enriches with brew cask metadata and Spotlight bundle IDs.
+///
+/// `refresh = true` invalidates the brew cache for every cask token
+/// matched against this pack, forcing a fresh `brew info` fetch.
+///
+/// Resolver state is not consulted — this is purely advisory display.
+pub fn app(pack_name: &str, refresh: bool, ctx: &ExecutionContext) -> Result<ProbeResult> {
+    use std::collections::BTreeSet;
+
+    // Resolve pack: try display name, fall back to a *validated* raw
+    // on-disk dir name. Untrusted CLI input (e.g. `dodot probe app
+    // ..` or `dodot probe app foo/bar`) must never reach
+    // `paths.pack_path`, which would let `read_dir` below traverse
+    // outside the dotfiles root.
+    let pack_dir = crate::packs::orchestration::resolve_pack_dir_name(pack_name, ctx)
+        .unwrap_or_else(|_| {
+            if is_single_normal_path_component(pack_name) {
+                pack_name.to_string()
+            } else {
+                // Invalid path-like input — produce an empty-but-named
+                // view rather than an error. `pack_dir == ""` is the
+                // sentinel the rest of the function checks to skip
+                // any filesystem traversal.
+                String::new()
+            }
+        });
+    let display_name = if pack_dir.is_empty() {
+        pack_name.to_string()
+    } else {
+        crate::packs::display_name_for(&pack_dir).to_string()
+    };
+    let pack_config = if pack_dir.is_empty() {
+        ctx.config_manager.root_config()?
+    } else {
+        match ctx
+            .config_manager
+            .config_for_pack(&ctx.paths.pack_path(&pack_dir))
+        {
+            Ok(c) => c,
+            // Pack-level config is optional; fall back to root config so
+            // alias/force_app entries declared at root still surface for
+            // a pack that hasn't been created yet.
+            Err(_) => ctx.config_manager.root_config()?,
+        }
+    };
+
+    // Collect distinct folder names this pack would route to.
+    //
+    // Three sources:
+    //   - `app_aliases[<pack>]` value
+    //   - `force_app` entries that appear at the top of the pack's tree
+    //   - `_app/<X>/` subdirectory names found by walking the pack
+    let mut folders: Vec<(String, &'static str)> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+
+    if let Some(alias) = pack_config.symlink.app_aliases.get(&display_name) {
+        if seen.insert(alias.clone()) {
+            folders.push((alias.clone(), "alias"));
+        }
+    }
+
+    let pack_path = ctx.paths.pack_path(&pack_dir);
+    if !pack_dir.is_empty() && ctx.fs.exists(&pack_path) {
+        if let Ok(entries) = ctx.fs.read_dir(&pack_path) {
+            for e in entries {
+                if e.is_dir
+                    && pack_config.symlink.force_app.iter().any(|f| f == &e.name)
+                    && seen.insert(e.name.clone())
+                {
+                    folders.push((e.name.clone(), "force_app"));
+                }
+            }
+            // _app/<X>/ subtree
+            let app_dir = pack_path.join("_app");
+            if ctx.fs.exists(&app_dir) {
+                if let Ok(children) = ctx.fs.read_dir(&app_dir) {
+                    for e in children {
+                        if e.is_dir && seen.insert(e.name.clone()) {
+                            folders.push((e.name.clone(), "_app/"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // On non-macOS we still produce a useful (if minimal) view: just
+    // the list of folders and their existence under the *collapsed*
+    // app-support root (= xdg). Skip the brew/mdls work entirely.
+    let macos = cfg!(target_os = "macos");
+    let app_support = ctx.paths.app_support_dir();
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+
+    // `--refresh` clears the entire brew probe cache before any
+    // matching runs, so the next `brew info` call rehydrates fresh
+    // data. Per-folder invalidation can't work here because the cache
+    // is keyed by cask token (not folder name) — we don't know the
+    // tokens until matching has already populated the cache.
+    if refresh && macos {
+        crate::probe::brew::invalidate_all_cache(&cache_dir, ctx.fs.as_ref());
+    }
+
+    let now = crate::probe::brew::now_secs_unix();
+    let folder_names: Vec<String> = folders.iter().map(|(f, _)| f.clone()).collect();
+    // The on-demand `dodot probe app` subcommand is allowed to
+    // populate the cache, so cache_only=false. The matcher returns
+    // the installed-token set so we don't re-run `brew list` below.
+    let matches = if macos {
+        crate::probe::brew::match_folders_to_installed_casks(
+            &folder_names,
+            ctx.command_runner.as_ref(),
+            &cache_dir,
+            now,
+            ctx.fs.as_ref(),
+            /*cache_only=*/ false,
+        )
+    } else {
+        crate::probe::brew::InstalledCaskMatches::default()
+    };
+
+    let mut entries: Vec<AppProbeEntry> = Vec::new();
+    let mut suggested: BTreeSet<String> = BTreeSet::new();
+
+    for (folder, source_rule) in &folders {
+        let target = app_support.join(folder);
+        let target_exists = ctx.fs.exists(&target);
+        let cask = matches.folder_to_token.get(folder).cloned();
+
+        let mut app_bundle = None;
+        let mut bundle_id = None;
+        if macos {
+            if let Some(token) = &cask {
+                if let Ok(Some(info)) = crate::probe::brew::info_cask(
+                    token,
+                    &cache_dir,
+                    now,
+                    ctx.fs.as_ref(),
+                    ctx.command_runner.as_ref(),
+                ) {
+                    app_bundle = info.app_bundle_name();
+                    if let Some(bundle_name) = &app_bundle {
+                        let app_path = std::path::PathBuf::from("/Applications").join(bundle_name);
+                        bundle_id = crate::probe::macos_native::bundle_id(
+                            &app_path,
+                            ctx.command_runner.as_ref(),
+                        );
+                    }
+                    for plist in info.preferences_plists() {
+                        suggested.insert(plist);
+                    }
+                }
+            }
+        }
+
+        entries.push(AppProbeEntry {
+            folder: folder.clone(),
+            target_path: display_path(&target, ctx.paths.home_dir()),
+            target_exists,
+            source_rule: (*source_rule).into(),
+            cask,
+            app_bundle,
+            bundle_id,
+        });
+    }
+
+    Ok(ProbeResult::App(AppProbeView {
+        pack: display_name,
+        macos,
+        entries,
+        suggested_adoptions: suggested.into_iter().collect(),
+    }))
+}
+
+/// True iff `value` is a single, normal path component — no path
+/// separators, no `.`/`..` components, not empty. Used as a
+/// security guard before passing untrusted CLI input to
+/// `Pather::pack_path` (which would otherwise let traversal escape
+/// the dotfiles root via the resulting `read_dir` calls).
+fn is_single_normal_path_component(value: &str) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+    let mut comps = std::path::Path::new(value).components();
+    matches!(
+        (comps.next(), comps.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    )
 }
 
 /// Render the data-dir tree.

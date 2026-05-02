@@ -143,6 +143,37 @@ pub const TEMPLATE_MESSAGE: &str = include_str!("../templates/message.jinja");
 /// `kind` field of the serialized result.
 pub const TEMPLATE_PROBE: &str = include_str!("../templates/probe.jinja");
 
+/// Git filter installation snippets (`dodot git-show-filters`).
+pub const TEMPLATE_GIT_FILTERS: &str = include_str!("../templates/git-filters.jinja");
+
+/// Dismissed-prompt registry listing (`dodot prompts list`).
+pub const TEMPLATE_PROMPTS_LIST: &str = include_str!("../templates/prompts-list.jinja");
+
+/// `dodot transform check` per-file action list + optional unresolved-
+/// marker section. See `commands::transform`.
+pub const TEMPLATE_TRANSFORM_CHECK: &str = include_str!("../templates/transform-check.jinja");
+
+/// `dodot transform install-hook` outcome message (created /
+/// appended / already_installed).
+pub const TEMPLATE_TRANSFORM_INSTALL_HOOK: &str =
+    include_str!("../templates/transform-install-hook.jinja");
+
+/// `dodot refresh` per-mode output (default report / quiet / list-paths).
+pub const TEMPLATE_REFRESH: &str = include_str!("../templates/refresh.jinja");
+
+/// `dodot template install-filter` outcome message.
+pub const TEMPLATE_TEMPLATE_INSTALL_FILTER: &str =
+    include_str!("../templates/template-install-filter.jinja");
+
+/// `dodot transform status` per-file state list.
+pub const TEMPLATE_TRANSFORM_STATUS: &str = include_str!("../templates/transform-status.jinja");
+
+/// `dodot git-show-alias` print-for-paste output.
+pub const TEMPLATE_GIT_SHOW_ALIAS: &str = include_str!("../templates/git-show-alias.jinja");
+
+/// `dodot git-install-alias` outcome message.
+pub const TEMPLATE_GIT_INSTALL_ALIAS: &str = include_str!("../templates/git-install-alias.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders
@@ -228,6 +259,12 @@ pub fn create_renderer() -> Renderer {
     renderer.add_template("message", TEMPLATE_MESSAGE).unwrap();
     renderer.add_template("probe", TEMPLATE_PROBE).unwrap();
     renderer
+        .add_template("git-filters", TEMPLATE_GIT_FILTERS)
+        .unwrap();
+    renderer
+        .add_template("prompts-list", TEMPLATE_PROMPTS_LIST)
+        .unwrap();
+    renderer
 }
 
 /// Render a template with the given data and output mode.
@@ -250,6 +287,8 @@ pub fn render<T: serde::Serialize>(
         "list" => TEMPLATE_LIST,
         "message" => TEMPLATE_MESSAGE,
         "probe" => TEMPLATE_PROBE,
+        "git-filters" => TEMPLATE_GIT_FILTERS,
+        "prompts-list" => TEMPLATE_PROMPTS_LIST,
         other => {
             return Err(crate::DodotError::Other(format!(
                 "unknown template: {other}"

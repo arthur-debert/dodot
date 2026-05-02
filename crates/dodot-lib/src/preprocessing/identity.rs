@@ -71,6 +71,8 @@ impl Preprocessor for IdentityPreprocessor {
             relative_path: PathBuf::from(stripped),
             content,
             is_dir: false,
+            tracked_render: None,
+            context_hash: None,
         }])
     }
 }

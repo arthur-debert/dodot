@@ -8,10 +8,17 @@
 //!
 //! See `docs/proposals/preprocessing-pipeline.lex` for the full design.
 
+pub mod baseline;
+pub mod conflict;
+pub mod divergence;
 pub mod identity;
+pub mod no_reverse;
 pub mod pipeline;
+pub mod reverse_merge;
 pub mod template;
 pub mod unarchive;
+
+pub use pipeline::PreprocessMode;
 
 use std::path::{Path, PathBuf};
 
@@ -32,7 +39,11 @@ pub enum TransformType {
 }
 
 /// A single file produced by a preprocessor's expansion.
-#[derive(Debug, Clone)]
+///
+/// Construct ad-hoc via the struct literal; tests commonly use
+/// `ExpandedFile { relative_path, content, ..Default::default() }` to
+/// fill in the optional cache-related fields.
+#[derive(Debug, Clone, Default)]
 pub struct ExpandedFile {
     /// Path relative to the expansion output (usually just the filename).
     pub relative_path: PathBuf,
@@ -40,6 +51,25 @@ pub struct ExpandedFile {
     pub content: Vec<u8>,
     /// Whether this entry is a directory marker.
     pub is_dir: bool,
+    /// Marker-annotated rendered output, populated by Generative
+    /// preprocessors that support cache-backed reverse-diff (templates).
+    /// `None` for Representational, Opaque, or generative preprocessors
+    /// that don't track variable boundaries (e.g. unarchive).
+    ///
+    /// When present, the pipeline persists this string in the baseline
+    /// cache so the clean filter and `dodot transform check` can compute
+    /// reverse-diffs without re-rendering — the latter being important
+    /// because re-rendering can re-trigger secret-provider auth prompts.
+    pub tracked_render: Option<String>,
+    /// SHA-256 of the rendering context (variables, env values resolved
+    /// at render time). `None` for preprocessors that don't have a
+    /// meaningful context concept.
+    ///
+    /// The pipeline pairs this with the source-file hash and rendered
+    /// content hash in the baseline cache. `dodot up` re-rendering and
+    /// install/homebrew sentinels both use the context hash to decide
+    /// when work is stale.
+    pub context_hash: Option<[u8; 32]>,
 }
 
 /// The core preprocessor abstraction.
@@ -81,6 +111,32 @@ pub trait Preprocessor: Send + Sync {
     /// consider adding a streaming path rather than materialising the
     /// entire decoded stream at once.
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>>;
+
+    /// Whether this preprocessor participates in the reverse-merge
+    /// pipeline. Reverse-merge is the cache-backed flow that lets
+    /// `dodot transform check` propagate edits from the deployed file
+    /// back into the source by writing a unified diff (and, for
+    /// ambiguous edits, dodot-conflict marker blocks).
+    ///
+    /// Default `false`. Generative preprocessors that emit a
+    /// [`tracked_render`](ExpandedFile::tracked_render) and want their
+    /// sources scanned for unresolved markers before expansion override
+    /// this to `true`. The pipeline uses the flag to:
+    ///
+    /// - Decide whether to run [`crate::preprocessing::conflict::
+    ///   ensure_no_unresolved_markers`] on the source bytes before
+    ///   calling `expand` — refusing to render a template that already
+    ///   carries an unresolved conflict block (otherwise the markers
+    ///   would deploy as garbage).
+    /// - Filter the set of files visited by `dodot transform check` to
+    ///   those whose preprocessor knows how to write reverse-diffs.
+    ///
+    /// A preprocessor that returns `true` here MUST also populate
+    /// `tracked_render` on its `ExpandedFile`s; otherwise the cache
+    /// layer has no marker stream to feed into burgertocow.
+    fn supports_reverse_merge(&self) -> bool {
+        false
+    }
 }
 
 /// Registry of available preprocessors.

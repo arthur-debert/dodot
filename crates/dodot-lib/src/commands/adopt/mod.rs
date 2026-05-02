@@ -198,6 +198,146 @@ pub fn adopt(
     for msg in skipped_already_adopted {
         result.warnings.push(msg);
     }
+
+    // M5 capitalization-heuristic advisory + M6 brew enrichment.
+    //
+    // Both gate on the same precondition (at least one AppSupport
+    // source) and consume the same brew probe data (the matching
+    // installed-cask token for the pack name). They were separate
+    // blocks pre-cask-aware-rename — the consolidation here lets the
+    // M5 rename suggestion *prefer the cask token* over a
+    // whitespace-stripped-lowercase folder name, which matters for
+    // reverse-DNS bundle IDs (`com.colliderli.iina` → `iina`, not
+    // `comcolliderliiina`). See `docs/proposals/macos-paths.lex`
+    // §8.1–§8.2.
+    //
+    // Resolver/pack-tree state is unaffected throughout — these are
+    // purely user-facing strings on `PackStatusResult.warnings`.
+    let force_home = ctx.config_manager.root_config()?.symlink.force_home.clone();
+    let any_app_support = sources.iter().any(|s| {
+        absolutize(s)
+            .ok()
+            .and_then(|abs| {
+                let is_dir = ctx.fs.stat(&abs).map(|m| m.is_dir).unwrap_or(false);
+                infer::infer_target(&abs, is_dir, ctx.paths.as_ref(), &force_home).ok()
+            })
+            .map(|t| t.source_root == infer::SourceRoot::AppSupport)
+            .unwrap_or(false)
+    });
+
+    // Compute the cask match once — both the M5 rename tip and the
+    // M6 confirmation/sibling-plist block read from `matches`. adopt
+    // is an interactive, on-demand command so populating the cache
+    // here is fine (cache_only=false).
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let now = crate::probe::brew::now_secs_unix();
+    let cask_matches = if any_app_support {
+        crate::probe::brew::match_folders_to_installed_casks(
+            std::slice::from_ref(&pack_display),
+            ctx.command_runner.as_ref(),
+            &cache_dir,
+            now,
+            ctx.fs.as_ref(),
+            /*cache_only=*/ false,
+        )
+    } else {
+        crate::probe::brew::InstalledCaskMatches::default()
+    };
+    let cask_token: Option<&str> = cask_matches
+        .folder_to_token
+        .get(&pack_display)
+        .map(String::as_str);
+
+    if pack_override.is_none() && infer::is_gui_app_folder(&pack_display) && any_app_support {
+        // Prefer the cask token as the rename suggestion when we have
+        // one — for reverse-DNS bundle IDs that's a *much* better
+        // suggestion than whitespace-strip-lowercase
+        // (`com.colliderli.iina` → `iina` instead of
+        // `comcolliderliiina`). Falls back to the lowercase fallback
+        // for the spaces/uppercase cases the heuristic also catches.
+        let lowercase_fallback: String = pack_display
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .flat_map(char::to_lowercase)
+            .collect();
+        let suggested_alias = cask_token.unwrap_or(lowercase_fallback.as_str());
+        if !suggested_alias.is_empty() && suggested_alias != pack_display {
+            let cask_credit = match cask_token {
+                Some(token) => format!(" (matches homebrew cask `{token}`)"),
+                None => String::new(),
+            };
+            result.warnings.push(format!(
+                "tip: pack `{pack_display}` looks like a macOS GUI-app folder{cask_credit}. \
+                 Consider renaming the pack to `{suggested_alias}` and adding\n  \
+                 [symlink.app_aliases]\n  {suggested_alias} = \"{pack_display}\"\n\
+                 to your .dodot.toml so future files can use bare paths instead \
+                 of `_app/{pack_display}/...`."
+            ));
+        }
+    }
+
+    // Brew-cask enrichment (M6): when the pack name matched an
+    // installed cask, append confirmation + sibling-adoption
+    // suggestions. macOS-only via `match_folders_to_installed_casks`;
+    // on Linux `cask_token` stays `None` and this block is skipped.
+    if let Some(token) = cask_token {
+        result.warnings.push(format!(
+            "homebrew cask `{token}` confirms this is the app-support directory \
+             for pack `{pack_display}`."
+        ));
+        // Pull cask info from cache (now warm) for sibling-plist
+        // suggestions. Failures are silent — the confirmation above
+        // is already enough signal.
+        if let Ok(Some(info)) = crate::probe::brew::info_cask(
+            token,
+            &cache_dir,
+            now,
+            ctx.fs.as_ref(),
+            ctx.command_runner.as_ref(),
+        ) {
+            let plists = info.preferences_plists();
+            let candidates: Vec<&str> = plists
+                .iter()
+                .filter_map(|p| {
+                    let leaf = p.split('/').next_back()?;
+                    if leaf.is_empty() {
+                        None
+                    } else {
+                        Some(leaf)
+                    }
+                })
+                .collect();
+            if !candidates.is_empty() {
+                let list = candidates.join(", ");
+                result.warnings.push(format!(
+                    "homebrew also reports preferences for cask `{token}`: {list}. \
+                     Adopt them too with `dodot adopt ~/Library/Preferences/<file> --into {pack_display}`."
+                ));
+            }
+        }
+    }
+
+    // Plist-aware tip: if any of the adopted plans is a `.plist` file
+    // and the user has not yet registered the dodot-plist clean/smudge
+    // filters, point them at `dodot git-install-filters`. The up-time
+    // prompt also covers this, but adopt is the most likely first
+    // moment a user has a plist in a pack — surfacing the install
+    // command immediately saves them one round-trip.
+    let adopted_any_plist = plans.iter().any(|p| {
+        p.source
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.eq_ignore_ascii_case("plist"))
+            .unwrap_or(false)
+    });
+    if adopted_any_plist && !crate::commands::git_filters::is_installed(ctx).unwrap_or(true) {
+        result.warnings.push(
+            "tip: pack now contains a .plist file. Run `dodot git-install-filters` to enable \
+             canonical XML diffs (binary plists become diffable in `git status`/`git diff`)."
+                .into(),
+        );
+    }
+
     // Adopt failures are real errors — surface them in the same
     // command-wide notes list that drives `[N]` markers for status/up.
     // To keep the model consistent ("every note is referenced by a row"),
@@ -564,6 +704,14 @@ fn expand_child_in_pack(
             // Not currently produced by inference (HOME never expands);
             // fall back to bare child name to keep the helper total.
             PathBuf::from(child_name)
+        }
+        SourceRoot::Library => {
+            // `parent.in_pack_override` is `_lib/<sub>` (e.g.
+            // `_lib/Preferences`) when expansion is enabled; append the
+            // child filename to land each entry under
+            // `_lib/<sub>/<child>` so deploy routes back through the
+            // Priority 2d prefix.
+            parent.in_pack_override.join(child_name)
         }
     }
 }

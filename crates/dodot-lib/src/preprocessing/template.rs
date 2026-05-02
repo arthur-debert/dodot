@@ -1,4 +1,5 @@
-//! Template preprocessor — renders Jinja2-style templates via MiniJinja.
+//! Template preprocessor — renders Jinja2-style templates via MiniJinja
+//! through burgertocow's [`Tracker`].
 //!
 //! Matches files with configurable extensions (default: `.tmpl`,
 //! `.template`), renders them against a variable context with three
@@ -12,13 +13,29 @@
 //!
 //! Uses MiniJinja strict undefined-behaviour: references to missing vars
 //! raise a render error rather than silently producing empty strings.
+//!
+//! # Tracked render
+//!
+//! Rendering goes through [`burgertocow::Tracker`] rather than a raw
+//! `minijinja::Environment`. The tracker installs a custom formatter that
+//! wraps every variable emission in marker bytes, producing a
+//! [`TrackedRender`] alongside the visible output. The visible output is
+//! identical to the plain-MiniJinja path (modulo the
+//! `keep_trailing_newline` setting that Tracker also applies). The
+//! marker-annotated string is persisted in the baseline cache so the
+//! reverse-merge pipeline (`dodot transform check`, the clean filter)
+//! can compute template-space diffs without re-rendering — re-rendering
+//! at clean-filter time would re-trigger any secret-provider auth
+//! prompts on every `git status`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
+use burgertocow::Tracker;
 use minijinja::value::{Enumerator, Object, ObjectRepr, Value};
-use minijinja::{Environment, UndefinedBehavior};
+use minijinja::UndefinedBehavior;
+use sha2::{Digest, Sha256};
 
 use crate::fs::Fs;
 use crate::paths::Pather;
@@ -54,9 +71,33 @@ impl Object for EnvLookup {
 }
 
 /// Template rendering preprocessor. Generative (one-way) transform.
+///
+/// Holds the resolved `dodot.*` map, the user-defined variables, and a
+/// pre-computed context hash. Each `expand` call constructs a fresh
+/// [`Tracker`], installs the namespaces, registers the source file as a
+/// named template, and renders. We don't share the `Tracker` across
+/// renders because `add_template` requires `&mut` while `Preprocessor::
+/// expand` runs through a `&self` trait method — a per-call tracker is
+/// the simplest way to keep the pipeline's existing concurrency shape.
 pub struct TemplatePreprocessor {
     extensions: Vec<String>,
-    env: Environment<'static>,
+    dodot_ns: BTreeMap<String, String>,
+    user_vars: BTreeMap<String, String>,
+    /// SHA-256 of the deterministic projection of `dodot_ns` and
+    /// `user_vars` (sorted keys, length-prefixed). Reused as the
+    /// `context_hash` for every render this preprocessor performs.
+    ///
+    /// `env.*` references are intentionally **not** part of the
+    /// context hash and tracking them is out of scope by design — see
+    /// `preprocessing-pipeline.lex` §6.4. The cache contract is
+    /// "same source bytes + same `dodot.*` namespace + same
+    /// `user_vars` → same output." The `env.*` namespace is the
+    /// explicitly live-read zone; rotating a referenced env var does
+    /// not invalidate the cache, and users pick up the new value via
+    /// `dodot up --force`. Stable values that should participate in
+    /// invalidation belong in `[preprocessor.template.vars]`
+    /// (`user_vars`), not `env.*`.
+    context_hash: [u8; 32],
 }
 
 impl std::fmt::Debug for TemplatePreprocessor {
@@ -71,9 +112,9 @@ impl TemplatePreprocessor {
     /// Construct a new template preprocessor.
     ///
     /// Validates that no user-defined variable uses a reserved name
-    /// (`dodot` or `env`). Populates the MiniJinja environment with
-    /// the `dodot.*` builtins from `pather` + system info, an `env.*`
-    /// dynamic lookup, and each user variable as a bare global.
+    /// (`dodot` or `env`). Resolves the `dodot.*` builtins from
+    /// `pather` + system info and computes the context hash now so
+    /// every subsequent `expand` reuses the same value.
     ///
     /// Extensions are normalized at construction: a leading dot (e.g.
     /// `".tmpl"`) is stripped so both `"tmpl"` and `".tmpl"` work.
@@ -93,17 +134,31 @@ impl TemplatePreprocessor {
             .map(|e| e.trim_start_matches('.').to_string())
             .collect();
 
-        let mut env = Environment::new();
+        let dodot_ns = build_dodot_context(pather);
+        let user_vars: BTreeMap<String, String> = user_vars.into_iter().collect();
+        let context_hash = compute_context_hash(&dodot_ns, &user_vars);
+
+        Ok(Self {
+            extensions,
+            dodot_ns,
+            user_vars,
+            context_hash,
+        })
+    }
+
+    /// Build a fresh tracker with this preprocessor's namespaces
+    /// installed and `UndefinedBehavior::Strict` set. Called per render
+    /// because `Tracker::add_template` requires `&mut self`.
+    fn make_tracker(&self) -> Tracker {
+        let mut tracker = Tracker::new();
+        let env = tracker.env_mut();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
-
-        env.add_global("dodot", Value::from(build_dodot_context(pather)));
+        env.add_global("dodot", Value::from(self.dodot_ns.clone()));
         env.add_global("env", Value::from_object(EnvLookup));
-
-        for (name, val) in user_vars {
-            env.add_global(name, Value::from(val));
+        for (name, val) in &self.user_vars {
+            env.add_global(name.clone(), Value::from(val.clone()));
         }
-
-        Ok(Self { extensions, env })
+        tracker
     }
 }
 
@@ -114,6 +169,13 @@ impl Preprocessor for TemplatePreprocessor {
 
     fn transform_type(&self) -> TransformType {
         TransformType::Generative
+    }
+
+    fn supports_reverse_merge(&self) -> bool {
+        // Templates emit a tracked_render and produce baselines; the
+        // reverse-merge pipeline (transform check, clean filter) reads
+        // those baselines to write template-space diffs back to source.
+        true
     }
 
     fn matches_extension(&self, filename: &str) -> bool {
@@ -148,9 +210,22 @@ impl Preprocessor for TemplatePreprocessor {
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>> {
         let template_str = fs.read_to_string(source)?;
 
-        let rendered =
-            self.env
-                .render_str(&template_str, ())
+        // Use the source file's path as the template name. Tracker
+        // requires named templates; the path is unique per file and
+        // surfaces sensibly in any error MiniJinja produces.
+        let template_name = source.to_string_lossy().into_owned();
+
+        let mut tracker = self.make_tracker();
+        tracker
+            .add_template(&template_name, &template_str)
+            .map_err(|e| DodotError::TemplateRender {
+                source_file: source.to_path_buf(),
+                message: format_minijinja_error(&e),
+            })?;
+
+        let tracked =
+            tracker
+                .render(&template_name, ())
                 .map_err(|e| DodotError::TemplateRender {
                     source_file: source.to_path_buf(),
                     message: format_minijinja_error(&e),
@@ -163,12 +238,49 @@ impl Preprocessor for TemplatePreprocessor {
             .into_owned();
         let stripped = self.stripped_name(&filename);
 
+        let (rendered, tracked_str) = tracked.into_parts();
+
         Ok(vec![ExpandedFile {
             relative_path: PathBuf::from(stripped),
             content: rendered.into_bytes(),
             is_dir: false,
+            tracked_render: Some(tracked_str),
+            context_hash: Some(self.context_hash),
         }])
     }
+}
+
+/// Produce a deterministic SHA-256 over the rendering context.
+///
+/// The hash is order-independent (BTreeMap iteration is sorted) and
+/// includes both the `dodot.*` namespace and the user-defined variables.
+/// Layout: each entry is encoded as `<ns>\x1F<key>\x1F<value>\x1E` so
+/// rearranging the boundaries between any two adjacent fields cannot
+/// produce a collision (`\x1E` and `\x1F` are the same control bytes
+/// burgertocow uses internally; they don't appear in normal
+/// configuration content).
+fn compute_context_hash(
+    dodot_ns: &BTreeMap<String, String>,
+    user_vars: &BTreeMap<String, String>,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for (k, v) in dodot_ns {
+        hasher.update(b"dodot");
+        hasher.update([0x1f]);
+        hasher.update(k.as_bytes());
+        hasher.update([0x1f]);
+        hasher.update(v.as_bytes());
+        hasher.update([0x1e]);
+    }
+    for (k, v) in user_vars {
+        hasher.update(b"vars");
+        hasher.update([0x1f]);
+        hasher.update(k.as_bytes());
+        hasher.update([0x1f]);
+        hasher.update(v.as_bytes());
+        hasher.update([0x1e]);
+    }
+    hasher.finalize().into()
 }
 
 /// Build the `dodot.*` namespace map.
@@ -782,5 +894,165 @@ mod tests {
         // Optional keys: present iff the detection helper returned Some.
         assert_eq!(ctx.contains_key("username"), detect_username().is_some());
         assert_eq!(ctx.contains_key("hostname"), detect_hostname().is_some());
+    }
+
+    // ── Tracked render + context hash ────────────────────────────
+
+    #[test]
+    fn expand_emits_tracked_render_with_markers_around_each_variable() {
+        // The cache layer needs the marker-annotated render to drive
+        // burgertocow's reverse-diff. Confirm that each `{{ var }}`
+        // emission produces exactly one VAR_START / VAR_END pair in
+        // the tracked string.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("cfg.tmpl", "name={{ name }} count={{ count }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        vars.insert("count".into(), "3".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/cfg.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let tracked = result[0]
+            .tracked_render
+            .as_ref()
+            .expect("tracked render must be present for a generative preprocessor");
+        assert_eq!(
+            tracked.matches(burgertocow::VAR_START).count(),
+            2,
+            "two variable emissions should produce two start markers, got: {tracked:?}"
+        );
+        assert_eq!(
+            tracked.matches(burgertocow::VAR_END).count(),
+            2,
+            "two variable emissions should produce two end markers, got: {tracked:?}"
+        );
+    }
+
+    #[test]
+    fn expand_visible_output_matches_tracked_with_markers_stripped() {
+        // The visible content (what the symlink target sees) must equal
+        // the tracked string with marker bytes removed. Otherwise the
+        // baseline cache's `rendered_content` and the deployed file
+        // would diverge by exactly the marker characters.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("cfg.tmpl", "user={{ name }} home={{ dodot.home }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/cfg.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let visible = String::from_utf8(result[0].content.clone()).unwrap();
+        let tracked = result[0].tracked_render.as_ref().unwrap();
+
+        let stripped: String = tracked
+            .chars()
+            .filter(|c| *c != burgertocow::VAR_START && *c != burgertocow::VAR_END)
+            .collect();
+        assert_eq!(visible, stripped);
+    }
+
+    #[test]
+    fn context_hash_is_populated_and_stable() {
+        // Same constructor inputs should produce the same context hash
+        // across runs and across `expand` calls. This is what lets the
+        // baseline cache decide "input didn't change" without re-rendering.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("a.tmpl", "x={{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        let pp1 = TemplatePreprocessor::new(vec!["tmpl".into()], vars.clone(), env.paths.as_ref())
+            .unwrap();
+        let pp2 = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        assert_eq!(
+            pp1.context_hash, pp2.context_hash,
+            "identical inputs must yield identical context hashes"
+        );
+
+        let source = env.dotfiles_root.join("app/a.tmpl");
+        let r1 = pp1.expand(&source, env.fs.as_ref()).unwrap();
+        let r2 = pp1.expand(&source, env.fs.as_ref()).unwrap();
+        assert_eq!(r1[0].context_hash, r2[0].context_hash);
+        assert_eq!(r1[0].context_hash, Some(pp1.context_hash));
+    }
+
+    #[test]
+    fn context_hash_changes_when_user_var_changes() {
+        // A different user-var value MUST produce a different context
+        // hash. Without this, secret rotation through user vars wouldn't
+        // re-run install/homebrew sentinels (whose freshness is keyed off
+        // the context hash via §3.5 of the secrets spec).
+        let mut vars1 = HashMap::new();
+        vars1.insert("name".into(), "Alice".into());
+
+        let mut vars2 = HashMap::new();
+        vars2.insert("name".into(), "Bob".into());
+
+        let pather = make_pather();
+        let pp1 = TemplatePreprocessor::new(vec!["tmpl".into()], vars1, &pather).unwrap();
+        let pp2 = TemplatePreprocessor::new(vec!["tmpl".into()], vars2, &pather).unwrap();
+        assert_ne!(pp1.context_hash, pp2.context_hash);
+    }
+
+    #[test]
+    fn context_hash_is_order_independent_for_user_vars() {
+        // Hash inputs are gathered from a HashMap, so iteration order
+        // is non-deterministic. Sorting via BTreeMap before hashing must
+        // produce a stable hash regardless of insertion order.
+        let pather = make_pather();
+
+        let mut a = HashMap::new();
+        a.insert("alpha".into(), "1".into());
+        a.insert("zeta".into(), "26".into());
+
+        let mut b = HashMap::new();
+        b.insert("zeta".into(), "26".into());
+        b.insert("alpha".into(), "1".into());
+
+        let pp_a = TemplatePreprocessor::new(vec!["tmpl".into()], a, &pather).unwrap();
+        let pp_b = TemplatePreprocessor::new(vec!["tmpl".into()], b, &pather).unwrap();
+        assert_eq!(pp_a.context_hash, pp_b.context_hash);
+    }
+
+    #[test]
+    fn empty_template_still_emits_tracked_render() {
+        // Edge case: a template with no `{{ ... }}` emissions. The
+        // tracked string should be the same as the visible content
+        // (no markers added) and still be present, not None.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("plain.tmpl", "no vars at all")
+            .done()
+            .build();
+
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], HashMap::new(), env.paths.as_ref())
+            .unwrap();
+
+        let source = env.dotfiles_root.join("app/plain.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let tracked = result[0].tracked_render.as_ref().unwrap();
+        assert!(
+            !tracked.contains(burgertocow::VAR_START) && !tracked.contains(burgertocow::VAR_END),
+            "no variables → no markers, got: {tracked:?}"
+        );
+        // And still equal to the visible content.
+        assert_eq!(
+            String::from_utf8(result[0].content.clone()).unwrap(),
+            *tracked
+        );
     }
 }

@@ -43,7 +43,7 @@ Preprocessors
 
         Source of truth: whichever form the tooling modifies. For plists, the app writes the binary continuously, so the binary is authoritative at any given moment; the XML is the git-friendly mirror.
 
-        Divergence: handled automatically. When the deployed file changes, `dodot transform check` reverse-converts it and writes the result back to the source file. No heuristics needed, no user-facing conflicts — the math is on our side.
+        Divergence: handled automatically. The exact mechanism depends on the preprocessor — for plists, it's git's own clean/smudge filter machinery (see [./plists.lex]); for any future Representational preprocessor running through the pipeline, it would be a `dodot transform check` pass that reverse-converts and writes back. Either way, no heuristics are needed and no user-facing conflicts arise — the math is on our side.
 
     3.3. Opaque (write-only)
 
@@ -74,9 +74,10 @@ Preprocessors
 
 6. What's Implemented, What's Planned
 
-    - Template preprocessing is implemented. Write `config.toml.tmpl`, it renders on `dodot up`, downstream handlers deploy the output. See [./../user/templates.lex].
-    - Plist support, secret injection, and whole-file encryption are designed in [./../proposals] but not yet shipped. Each is a concrete preprocessor implementing the shapes described above.
-    - The git-integration layer (pre-commit hook, clean/smudge filters, reverse-merge) is designed in [./../proposals/magic.lex] and will ship alongside the remaining preprocessors.
+    - **Template preprocessing is implemented.** Write `config.toml.tmpl`, it renders on `dodot up` via MiniJinja, downstream handlers deploy the output. See [./../user/templates.lex] for usage. The preprocessing pipeline itself (the phase that turns source files into rendered outputs and feeds them into handlers) is shipped — templates are its first user.
+    - **Plist support is also implemented**, but does NOT go through this preprocessing pipeline. It ships as a pair of git clean/smudge filters that translate macOS `*.plist` files between binary (working tree) and canonical XML (git index) on the fly. The architectural reasoning — why plists ducked out of the pipeline despite being a textbook Representational transform — is in [./../proposals/plists.lex] §2.3, and the user-facing reference is at [./plists.lex]. Shipped: `dodot plist clean/smudge` (the conversion engine), `dodot git-install-filters/show-filters` (the per-clone setup), `dodot prompts list/reset` (a generic dismissed-prompt registry that powers the up-time install offer).
+    - **The git-integration layer for templates is shipped.** A per-file baseline cache (`rendered_hash`, `source_hash`, `context_hash`, `rendered_content`, `tracked_render`) sits under `<cache_dir>/preprocessor/`; `dodot transform check [--strict] [--dry-run]` runs the 4-state divergence matrix and applies reverse-merge diffs back to source via [burgertocow](https://crates.io/crates/burgertocow-lib) + [diffy](https://crates.io/crates/diffy); `dodot transform install-hook` registers a pre-commit hook that runs `dodot refresh && dodot transform check --strict` to refuse commits with unresolved drift; `dodot template install-filter` registers a git clean filter (`dodot template clean --path %f`) that makes `git status` and `git diff` see deployed-side template edits between commits, with a fast path that avoids re-rendering (and thus re-triggering any secret-provider auth); `dodot refresh` copies deployed-side mtimes onto sources so git's stat-cache invalidates; `dodot git-install-alias` lays down a Tier 3 shell alias (`alias git='dodot refresh --quiet && command git'`) for users who want `git status` to always reflect the latest template state; `dodot transform status` is a passive read-only view of the divergence cache. End-to-end design lives in [./../proposals/magic.lex]; user-facing walkthrough is at [./template-magic.lex].
+    - Secret injection and whole-file encryption preprocessors are designed in [./../proposals] (`secrets.lex`) but not yet shipped.
 
 7. Where Rendered Output Lives
 
@@ -90,12 +91,15 @@ Preprocessors
 
     The downstream handler creates its links or runs its commands against this path, not against the original source. This has two consequences worth knowing: the rendered file is what you inspect if you want to see exactly what a preprocessor produced; and for code-execution handlers (install, homebrew), the sentinel hash is derived from the rendered content, so changing a template variable re-triggers the install step on the next deploy.
 
+    `dodot up` will not overwrite a rendered file whose bytes have diverged from the cached baseline (i.e. you've edited the deployed file in place since the last `up`). The render is skipped, the user's edits stay on disk, and a one-line warning surfaces. Resolve via `dodot transform check` (auto-merge the deployed-side edit back into the source) or re-run with `--force` (overwrite). Staleness is defined from file content only — env vars referenced via `{{ env.X }}` are read live at render time and are intentionally not part of the cache-invalidation signal; users who rotate a referenced env var pick up the new value with `dodot up --force`. See [./../proposals/preprocessing-pipeline.lex] §6.4.
+
 8. Disabling and Overriding
 
-    Preprocessing is on by default for any file matching a registered preprocessor's pattern. Three levels of opt-out:
+    Preprocessing is on by default for any file matching a registered preprocessor's pattern. Four levels of opt-out:
 
     - Global: `[preprocessor] enabled = false` in the root `.dodot.toml`. All preprocessing is skipped; `.tmpl` files deploy verbatim.
     - Per preprocessor: `[preprocessor.template] enabled = false` disables template rendering but leaves other preprocessors active.
-    - Per file: add the filename to `[mappings] skip` and the file is ignored entirely.
+    - Per file (skip rendering entirely): add the filename to `[mappings] skip` and the file is ignored entirely.
+    - Per file (skip reverse-merge only): add a glob pattern to `[preprocessor.template] no_reverse = ["..."]`. The template still renders on `dodot up`, but `dodot transform check` and the clean filter both skip reverse-merge for matching files. Useful for templates whose content is mostly dynamic (more `{{ }}` than static text) — burgertocow's heuristic degrades on those, so the user often gets more conflict markers than usable diffs. With `no_reverse` set, divergence is still detected and surfaced; only the auto-merge step is skipped.
 
     Pack-level `.dodot.toml` overrides the root for any of these keys, so you can flip a setting on or off for a single pack.

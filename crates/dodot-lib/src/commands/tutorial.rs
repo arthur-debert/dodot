@@ -395,7 +395,11 @@ mod tests {
     fn detect_shell_with_no_rc_file_reports_absent() {
         let dir = tempfile::tempdir().unwrap();
         // Force a known shell — .zshrc doesn't exist in this temp HOME.
-        std::env::set_var("SHELL", "/bin/zsh");
+        // ShellEnvGuard takes the shared $SHELL mutex and restores
+        // the previous value on drop (panic-safe), so this test is
+        // serialised with the env-driven cases in `git_alias::tests`
+        // and any other test in the binary that touches $SHELL.
+        let _g = crate::testing::ShellEnvGuard::set("/bin/zsh");
         let integ = detect_shell_integration(dir.path());
         assert_eq!(integ.shell_kind, "zsh");
         assert!(!integ.line_present);

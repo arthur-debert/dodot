@@ -1,5 +1,8 @@
 Design Specification: Template Expansion
 
+    :: note ::
+        **Status: implemented and shipped.** The template preprocessor (Phase T1), reverse-merge framework (Phase T2 via burgertocow + diffy), and configuration / status surface (Phase T3) all landed across PRs #100–#107. The user-facing reference is at [./../reference/pre-processors.lex] §6 and [./../reference/template-magic.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree, the reference docs are authoritative.
+
     This document specifies the template expansion preprocessor for dodot. It is a concrete implementation of a Generative (One-Way) transformation as defined in the Preprocessing Pipeline design [./preprocessing-pipeline.lex].
 
     Template expansion is the first preprocessor to be implemented. It renders Jinja2-style template files into final configuration files during deployment, enabling environment-specific settings while keeping the template source under version control.
@@ -94,6 +97,8 @@ Design Specification: Template Expansion
             error: undefined variable `env.DB_HOST` in app/config.toml.tmpl
                    set the DB_HOST environment variable or use a default:
                    {{ env.DB_HOST | default("localhost") }}
+
+        Cache invalidation: env-var references are read live at render time and are intentionally not part of the cache-invalidation signal — see `preprocessing-pipeline.lex` §6.4. Rotating an env var that a template references will not by itself trigger a re-deploy; users pick up the new value with `dodot up --force`. Stable values that should participate in invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace, §3.3), not `env.*`.
 
     3.3. User-Defined Variables: bare names
 
@@ -214,14 +219,15 @@ Design Specification: Template Expansion
 
         After `dodot transform check` modifies the template:
             [database]
-            # DODOT: deployed value was: host = "production.db.internal"
-            >>>>>> dodot-conflict
+            >>>>>> dodot-conflict (template)
             host = "{{ env.DB_HOST }}"
+            ====== dodot-conflict (deployed)
+            host = "production.db.internal"
             <<<<<< dodot-conflict
             port = 5432
             max_connections = 50
 
-        Line "host": dynamic (contains {{ }}), so conflict markers are inserted.
+        Line "host": dynamic (contains {{ }}), so conflict markers are inserted — five lines bracketing the original template line and the user's deployed-side edit, structurally analogous to git's merge-conflict markers but with the angle direction inverted.
         Line "max_connections": static, changed from 10 to 50, applied directly.
         Line "port": unchanged, left alone.
 

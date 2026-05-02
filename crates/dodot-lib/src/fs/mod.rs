@@ -96,4 +96,28 @@ pub trait Fs: Send + Sync {
 
     /// Sets file permissions (Unix mode).
     fn set_permissions(&self, path: &Path, mode: u32) -> Result<()>;
+
+    /// Returns the modification time of `path` (follows symlinks).
+    /// Used by `dodot refresh` to compare deployed-side mtimes against
+    /// source-side mtimes when deciding whether to touch the source.
+    ///
+    /// **Default implementation panics.** Override in `Fs` impls that
+    /// need mtime support (currently `OsFs`). Provided as a default
+    /// so adding mtime operations doesn't break any existing in-tree
+    /// or downstream `Fs` impl.
+    fn modified(&self, _path: &Path) -> Result<std::time::SystemTime> {
+        unimplemented!("Fs::modified is only implemented by OsFs")
+    }
+
+    /// Sets the modification time of `path` to `time`. Used by
+    /// `dodot refresh` to copy the deployed file's mtime onto the
+    /// template source so git's stat-cache invalidates and the next
+    /// `git status` re-reads the file (invoking the clean filter on
+    /// repos that have it installed).
+    ///
+    /// **Default implementation panics.** Override in `Fs` impls that
+    /// need mtime support (currently `OsFs`).
+    fn set_modified(&self, _path: &Path, _time: std::time::SystemTime) -> Result<()> {
+        unimplemented!("Fs::set_modified is only implemented by OsFs")
+    }
 }

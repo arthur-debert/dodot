@@ -37,6 +37,16 @@ const HELP_TEXTS: &[(&str, &str)] = &[
     ("addignore", include_str!("help/addignore.txt")),
     ("tutorial", include_str!("help/tutorial.txt")),
     ("init-sh", include_str!("help/init-sh.txt")),
+    ("plist", include_str!("help/plist.txt")),
+    (
+        "git-install-filters",
+        include_str!("help/git-install-filters.txt"),
+    ),
+    (
+        "git-show-filters",
+        include_str!("help/git-show-filters.txt"),
+    ),
+    ("prompts", include_str!("help/prompts.txt")),
     ("config", include_str!("help/config.txt")),
     (
         "probe.deployment-map",
@@ -50,6 +60,7 @@ const HELP_TEXTS: &[(&str, &str)] = &[
         "probe.shell-init",
         include_str!("help/probe-shell-init.txt"),
     ),
+    ("probe.app", include_str!("help/probe-app.txt")),
     ("probe", include_str!("help/probe.txt")),
 ];
 

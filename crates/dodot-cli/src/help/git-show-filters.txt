@@ -1,0 +1,24 @@
+[header]dodot git-show-filters[/header] — Print plist filter config without writing.
+
+[desc]Emits two snippets so you can inspect or install by hand:
+
+  [item]1.[/item] The [item][filter "dodot-plist"][/item] block for [item].git/config[/item] (per clone, per machine).
+  [item]2.[/item] The [item]*.plist filter=dodot-plist[/item] line for [item].gitattributes[/item] (committed).
+
+Each snippet is annotated with whether it is currently in place, so
+you can tell at a glance what (if anything) you still need to add.
+
+If you just want to install the [item].git/config[/item] block automatically, use
+[item]dodot git-install-filters[/item] — this command writes nothing.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot git-show-filters[/usage]
+
+[header]EXAMPLES[/header]
+  [example]dodot git-show-filters         [dim]# inspect[/dim]
+  dodot git-show-filters | tee /tmp/dodot-filters.txt[/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot git-install-filters[/item]   [desc]Install the .git/config block automatically[/desc]
+  [item]dodot plist[/item]                  [desc]The filter binary that git invokes[/desc]
+  [item]docs/proposals/plists.lex[/item]    [desc]Architecture and rationale[/desc]

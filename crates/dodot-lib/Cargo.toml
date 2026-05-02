@@ -1,17 +1,20 @@
 [package]
 name = "dodot-lib"
-version = "1.1.0"
+version = "2.0.0"
 edition = "2021"
 license = "MIT"
 description = "Core library for dodot dotfiles manager"
 repository = "https://github.com/arthur-debert/dodot"
 
 [dependencies]
+burgertocow-lib = "0.3"
 clapfig = "0.16"
 confique = "0.4"
+diffy = "0.4"
 flate2 = "1"
 glob = "0.3"
 minijinja = "2"
+plist = "1.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

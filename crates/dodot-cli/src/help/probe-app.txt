@@ -1,0 +1,30 @@
+[header]dodot probe app[/header] — Introspect macOS app-support routing for a pack.
+
+[desc]Shows the app-support folders a pack will deploy to, whether
+they exist on disk, the matching homebrew cask (if any), the
+.app bundle, and its bundle identifier. On macOS the data is
+enriched via `brew info` and Spotlight (`mdls` / `mdfind`); on
+other platforms only folder existence is reported.
+
+Probes are advisory: `dodot up` and `dodot status` may consult
+cached probe data for warnings or hints, but stale or missing
+probe data never affects deployment routing or resolver
+decisions.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot probe app <pack> [--refresh][/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<pack>[/item]                     [desc]Pack name (display or on-disk).[/desc]
+
+[header]OPTIONS[/header]
+  [item]--refresh[/item]                  [desc]Invalidate the brew cache for this pack's tokens before probing.
+                              The cache is otherwise refreshed automatically every 24 hours.[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot probe app vscode               [dim]# typical pack with `[symlink.app_aliases]`[/dim]
+  dodot probe app cursor --refresh     [dim]# force a fresh `brew info` lookup[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot adopt[/item]                [desc]Move existing files into a pack (also surfaces cask metadata when available)[/desc]
+  [item]dodot status[/item]               [desc]Per-pack deployment status[/desc]

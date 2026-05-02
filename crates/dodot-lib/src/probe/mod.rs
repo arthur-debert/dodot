@@ -14,11 +14,17 @@
 //! `<data_dir>/probes/shell-init/`; that state lives in a sibling
 //! submodule when it lands.
 
+pub mod brew;
+pub mod cfprefsd_marker;
 pub mod data_dir_tree;
 pub mod deployment_map;
 pub mod last_up;
+pub mod macos_native;
 pub mod shell_init;
 
+pub use cfprefsd_marker::{
+    cfprefsd_marker_exists, cfprefsd_marker_path, clear_cfprefsd_marker, write_cfprefsd_marker,
+};
 pub use data_dir_tree::{collect_data_dir_tree, TreeNode};
 pub use deployment_map::{
     collect_deployment_map, read_deployment_map, write_deployment_map, DeploymentKind,

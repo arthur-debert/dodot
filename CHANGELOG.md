@@ -5,6 +5,309 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **E2E suite runs ~7× faster on macOS dev hosts** (`tests/e2e/bats/helpers/setup.bash` — `hide_brew_from_path`). Every bats sandbox now installs a per-test `brew` shim (under `$SANDBOX/.brew-muzzle/brew`, exits non-zero with no output) and prepends it to `PATH`. dodot's macOS-side advisory probes (`probe::brew::list_installed_casks` and friends) hit the shim, get a non-zero exit, and fall through to their empty-set branches — same code path Linux CI runs. Previously, every `brew` invocation on a host with Homebrew installed spawned two `curl` processes phoning home to Homebrew's analytics endpoint with `--max-time 3`, turning a sub-30s CI run into a 7-minute local run; the worst single file (`test_macos_paths.bats`) went from 397s to ~2s. The shim is reset per-test (lives under `$SANDBOX`, wiped by `sandbox_teardown`), and `HOMEBREW_NO_ANALYTICS=1` / `HOMEBREW_NO_AUTO_UPDATE=1` / `HOMEBREW_NO_INSTALL_FROM_API=1` are exported as belt-and-suspenders. Tests that need to exercise the *real* brew probe code path call `unhide_brew_for_test` — opt-in by design, so a future PATH refactor can't silently re-introduce the slowdown. New `test_brew_probe.bats` is the canonical opt-in user and a regression guard for `crates/dodot-lib/src/probe/brew.rs` on macOS dev hosts (skips on Linux CI / fresh-brew machines).
+
+### Added
+
+- **Per-file routing prefixes `app.X`, `xdg.X`, `lib.X`** (parallel to the existing `home.X`). Each is the single-file counterpart to its `_app/` / `_xdg/` / `_lib/` directory cousin, with the same skip-pack-namespace semantics: `app.settings.json` → `<app_support_dir>/settings.json`, `xdg.mimeapps.list` → `$XDG_CONFIG_HOME/mimeapps.list`, `lib.foo.plist` → `$HOME/Library/foo.plist` (macOS only; warn-and-skip on other platforms). Prefixes apply to top-level files only; nested `subdir/app.X` keeps the literal name. Empty remainders (`app.`, `xdg.`, `lib.`) fall through to the default rule rather than targeting a bare directory root, mirroring the existing `home.` regression. Fills the symmetry gap between the `home.X` per-file form and the `_home/`-family directory forms.
+- **`RoutingOverrideConflict` error.** When a pack file has both a `[symlink.targets]` config entry and a filesystem-naming routing prefix (`home.X`/`app.X`/`xdg.X`/`lib.X` or `_home/`/`_xdg/`/`_app/`/`_lib/`), `dodot up` and `dodot status` refuse to deploy that one file and surface a message naming the pack, the pack-relative path, and the `targets` value — forcing the user to pick a single source of truth instead of inheriting a silent precedence rule. Other files in the pack and other packs are unaffected. Conflict detection is intentionally narrow: only `[symlink.targets]` (which names a single file) participates; `force_home` / `force_app` / `app_aliases` are pack- or list-scoped policies that prefixes are explicitly the way to opt out of. `docs/reference/symlink-paths.lex` §6.6 documents the rule.
+- **`[preprocessor.template] no_reverse` per-file opt-out** (R9 of the template-magic track). New config field accepts a list of glob patterns (matched against each template source's filename) that flag files as opted out of burgertocow's reverse-merge. Matching files: still render normally on `dodot up`, still tracked in the baseline cache, still surfaced by `dodot transform status` — but `dodot transform check` short-circuits to Synced for them (no source mutation, no findings, exit 0), and the template clean filter falls through its slow path to "echo stdin." Useful for templates whose content is mostly dynamic — the heuristic degrades there and tends to produce more conflict markers than usable diffs. Honors the standard root → pack config inheritance, so per-pack overrides work.
+- **Status banners on shipped proposals.** `docs/proposals/magic.lex` and `docs/proposals/template-expansion.lex` carry "implemented and shipped" headers (mirroring `plists.lex`'s pattern), with magic.lex gaining a §6 "Implementation Notes vs. Spec" section that documents the deviations between the original design and what shipped: the R0–R8 phased rollout, the two-line hook command, bash/zsh-only alias coverage, `git-install-alias` shipping in R7 (vs deferred), and the `no_reverse` opt-out itself.
+- **`docs/reference/template-magic.lex`** — user-facing walkthrough of the install ladder (Tier 1 hook / Tier 2 filter / Tier 3 alias), the day-to-day workflow (vanilla `git status` / `git diff` / `git commit`), conflict resolution, opting out (including `no_reverse`), and the cost ladder. The reference complement to the proposal docs.
+- **`pre-processors.lex` §6 flipped from "git-integration layer NOT yet shipped" to a comprehensive list of shipped commands** (`transform check/status/install-hook`, `template install-filter/clean`, `refresh`, `git-install-alias`, the per-file baseline cache).
+
+### Fixed
+
+- **`dodot up` no longer silently overwrites deployed-file edits** (issue #110, preprocessing-pipeline.lex §6.4). When a deployed template output has diverged from its cached baseline (the user edited the deployed file in place since the last `up`), `dodot up` now preserves the edit instead of clobbering it. The render is skipped, the user's bytes stay on disk, and a one-line warning surfaces telling them to run `dodot transform check` to reconcile or re-run with `--force` to overwrite. Both row-3 (`OutputChanged`) and row-4 (`BothChanged`) of the §6.4 matrix collapse to the same outcome — `dodot up`'s contract is now "I will not destroy your work, period." The clever 3-way reverse-merge still lives in `dodot transform check` (the pre-commit hook) where it belongs. Staleness is defined from file content only: env vars referenced via `{{ env.X }}` are read live at render time and intentionally do not participate in the divergence guard's cache-invalidation signal. Plain `dodot up` re-renders templates every run, so an env-var change is picked up automatically as long as the deployed file still matches its baseline; the only case where `--force` is needed is when the divergence guard is preserving an in-place edit on the deployed file. Stable values that should participate in the guard's invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace), not `env.*` — docs (`pre-processors.lex`, `template-magic.lex`, `template-expansion.lex` §3.2, `preprocessing-pipeline.lex` §6.4) reflect this contract.
+
+### Added (R8, prior)
+
+- **Full magic-stack e2e showcase** (R8 of the template-magic track). New `tests/e2e/bats/test_full_magic_stack.bats` walks the complete user workflow end-to-end: install ladder (hook + filter + alias in order, with idempotent re-installs), the headline "edit deployed → `git status` sees template-space diff" scenario, the commit-refused-on-markers-then-resolved cycle, `transform status` across the editing lifecycle, the R4→R6 hook-block upgrade path, and the alias install + actual shell sourcing. Per-PR bats files cover their phases in isolation; this file pins the integration story so a future change to one phase can't silently break the whole flow.
+
+### Fixed
+
+- **Test flake in `git_alias::tests`** caused by parallel cargo tests racing on `$SHELL`. The four env-driven detect/resolve cases are now consolidated into a single `shell_detection_env_driven_cases` test with labelled sections, so cargo's parallel runner can't interleave them. No coverage lost — same scenarios, serial.
+
+### Added (R7, prior)
+
+- **`dodot transform status`** (R7 of the template-magic track). Read-only view of every cached preprocessed file with its current state (`synced` / `input_changed` / `output_changed` / `both_changed` / `missing_source` / `missing_deployed`). Always exits 0 — informational, not actionable. Useful as a "what's currently out of sync?" check before deciding whether to run `dodot transform check`.
+- **`dodot git-show-alias [--shell <bash|zsh>]`** (R7). Prints the Tier 2 shell alias `alias git='dodot refresh --quiet && command git'` in a copy-paste-ready block. No filesystem mutation. Auto-detects shell from `$SHELL`; `--shell` overrides. Reports "already installed" when the rc file already carries the managed block.
+- **`dodot git-install-alias [--shell <bash|zsh>]`** (R7). Writes the Tier 2 alias to the user's shell rc file (`~/.bashrc` or `~/.zshrc`) with an idempotent guard block, mirroring the pre-commit hook installer. Outcomes: Created / Appended / AlreadyInstalled / Updated. Surfaces the `source <rc>` command the user needs to pick it up immediately.
+
+### Added (R6, prior)
+
+- **Template clean filter — `dodot template clean --path <path>`** (R6 of the template-magic track). The piece that makes `git status` and `git diff` show the truth between commits. Git invokes this filter when reading any working-tree file matched by `*.tmpl filter=dodot-template`; the filter looks up the cached baseline (R1), and on a deployed-side edit it rehydrates the cached marker stream and runs burgertocow + diffy to emit a patched template — without re-rendering, so secret-provider auth is never re-triggered. Fast path (no edit) echoes stdin in microseconds. Slow path lands the patched form (or a conflict block, surfaced inline) so the next `git diff` sees the template-space change.
+- **`dodot template install-filter`** (R6). Registers the `[filter "dodot-template"]` block in the dotfiles repo's `.git/config` (clean → `dodot template clean --path %f`, smudge → `cat`, required → `true`). Idempotent. Surfaces the matching `.gitattributes` line for the user to commit. First-deploy prompt offers it after the user has accepted the pre-commit hook.
+- **`template.install_filter` prompt-catalog entry**. Documents the new prompt alongside the existing ones in `dodot prompts list`.
+- **Hook upgrade path** (R6). The pre-commit hook now runs `dodot refresh --quiet || exit 1` before `dodot transform check --strict || exit 1`. Re-running `dodot transform install-hook` on a repo with the older R4-shape block detects the stale managed block (via the same guard lines) and rewrites it in place, preserving any non-managed user content. New `Updated` outcome distinguishes this from `Created` / `Appended` / `AlreadyInstalled`.
+
+### Added (R5, prior)
+
+- **`dodot refresh [--quiet] [--list-paths]`** (R5 of the template-magic track). Walks the per-file baseline cache, hashes the deployed file at `<data_dir>/packs/<pack>/<handler>/<filename>`, and copies the deployed file's mtime onto the template source when the hashes differ. Why: git's stat-cache skips re-reading working-tree files when their mtime is unchanged, so a deployed-side edit to a template never surfaces in `git status` until the source mtime is bumped — refresh is the bump. `--quiet` suppresses output (for the Tier 2 shell alias `alias git='dodot refresh --quiet && command git'`); `--list-paths` prints out-of-sync source paths and exits without writing (for editor / file-watcher integrations). Exit 0 in all healthy cases. See `docs/proposals/magic.lex` §"Update Trigger Bit".
+- **`Fs::modified` / `Fs::set_modified`** trait methods for reading/writing file mtimes — used by `refresh` to copy mtimes between deployed and source files.
+
+### Added (R4, prior)
+
+- **`dodot transform install-hook`** (R4 of the template-magic track). Writes `<dotfiles_root>/.git/hooks/pre-commit` with a guarded block that runs `dodot transform check --strict || exit 1` on every `git commit`. Idempotent (re-running detects the guard line and no-ops) and additive (preserves any existing hook content). The installed hook refuses to commit when reverse-merge has work to do or unresolved `dodot-conflict` markers remain — matching the contract R3 set up. See `docs/proposals/magic.lex` §"The Commit Tier".
+- **First-template-deploy prompt.** After a successful `dodot up` that leaves at least one template baseline in the cache, dodot offers (interactively, only when stdin is a TTY) to install the pre-commit hook. Y/n/show via the existing `PromptRegistry`; new catalog entry `template.install_hook`; soft failure pattern matching the plist filter prompt — never aborts `up`, and any background failures (registry parse error, etc.) go to the debug log rather than stderr. The interactive prompt body itself prints to stderr by design (Y/n/show + the resulting confirmation/show output).
+
+### Added (R3, prior)
+
+- **`dodot transform check [--strict] [--dry-run]`** (R3 of the template-magic track). Reads every per-file baseline under `<cache_dir>/preprocessor/`, classifies each entry against the 4-state matrix (`source unchanged × deployed unchanged`), and acts: `Synced` / `InputChanged` → no-op; `OutputChanged` / `BothChanged` → run reverse-merge via burgertocow + diffy, write the patched template back to source on a clean unified diff, or surface a conflict block (no source mutation) on an ambiguous edit. `MissingSource` / `MissingDeployed` are reported. Exit 0 = clean, 1 = at least one finding. `--strict` additionally scans every cached source for unresolved `dodot-conflict` markers — exit 1 if any. `--dry-run` reports what would be patched without writing. The pre-commit hook in R4 runs `dodot transform check --strict`. See `docs/proposals/preprocessing-pipeline.lex` §6.1 and `docs/proposals/magic.lex`.
+- **`preprocessing::divergence`** module with `DivergenceState` (the 4-state matrix + missing-source / missing-deployed) and walker `collect_divergences`.
+- **`preprocessing::reverse_merge`** module wrapping `burgertocow::generate_diff_with_markers` + `diffy::Patch::apply` into a single `reverse_merge(template, cached_tracked, deployed) -> ReverseMergeOutcome { Unchanged | Patched | Conflict }`.
+- **`Baseline::source_path`** field — captured at expansion so `transform check` can re-find the template to patch without re-walking the pack tree. Backward-compatible (`#[serde(default)]`).
+- **`PENDING_EXIT_CODE` atomic** in the CLI handlers module, set by `transform_check_handler` so `main.rs` can `std::process::exit(1)` after rendering the report when there are findings. Standout's `Output` enum has only Render/Silent/Binary; this side-channel keeps the rendered output visible while still flipping the exit code for the pre-commit hook.
+- **`transform-check.jinja` template** — per-file action list (synced/patched/conflict/missing) with a separate section for `--strict` unresolved-marker hits.
+
+- **Template preprocessor produces a marker-tracked render and per-file baseline cache** (R1 of the template-magic track). Templates now flow through [burgertocow](https://crates.io/crates/burgertocow-lib)'s `Tracker`, which wraps every `{{ var }}` emission in invisible marker bytes alongside the visible render. Each successful expansion writes a JSON baseline to `<cache_dir>/preprocessor/<pack>/preprocessed/<filename>.json` carrying the rendered content, the marker-annotated tracked render, source/context hashes, and timestamp. This is the foundation the upcoming `dodot transform check` and template clean filter will read to compute reverse-merge diffs *without* re-rendering — re-rendering at clean-filter time would re-trigger any secret-provider auth prompts on every `git status`. See `docs/proposals/preprocessing-pipeline.lex` §5.2 and `docs/proposals/magic.lex` §"Cache That Makes It Cheap".
+- **`Pather::preprocessor_baseline_path` / `preprocessor_baseline_dir`** for routing baseline-cache reads/writes under XDG `cache_dir`.
+- **`dodot-conflict` markers and pipeline safety gate** (R2 of the template-magic track). New `preprocessing::conflict` module defines the `>>>>>> dodot-conflict (template)` / `====== dodot-conflict (deployed)` / `<<<<<< dodot-conflict` line shape and detection helpers. `dodot up` refuses to expand a template source that carries unresolved markers, returning a `DodotError::UnresolvedConflictMarker` that names the source path and line numbers and points the user at `git diff` for resolution. Without this gate, marker lines would render verbatim through MiniJinja and deploy as broken config. See `docs/proposals/preprocessing-pipeline.lex` §6.3.
+- **`Preprocessor::supports_reverse_merge()`** trait method (default `false`). Generative preprocessors that emit a `tracked_render` and want their sources scanned for marker resolution before expansion override this to `true`. Templates do; identity / unarchive don't.
+
+### Changed
+
+- `preprocess_pack` takes an extra `paths: Option<&dyn Pather>` argument. Active callers (`dodot up`) pass `Some(...)` so baselines are written; passive callers (`dodot status`) pass `None` so they don't overwrite the last-`up` baseline.
+- `ExpandedFile` gains optional `tracked_render` and `context_hash` fields, populated by generative preprocessors that support cache-backed reverse-merge (templates) and left `None` otherwise (identity, unarchive). Tests use `..Default::default()` for ad-hoc construction.
+
+## [2.0.0] - 2026-05-01
+
+
+### Added
+
+- **`dodot adopt` recognises `~/Library/...` sources (macOS).** Adopting
+  a path like `~/Library/Preferences/com.colliderli.iina.plist` now
+  produces `<pack>/_lib/Preferences/com.colliderli.iina.plist` so the
+  existing Priority 2d `_lib/` resolver round-trips the file back on
+  `dodot up`. `--into <pack>` is required because plist filenames
+  (typically reverse-DNS bundle IDs) don't make useful pack names.
+  Same inference applies to `~/Library/LaunchAgents/...`,
+  `~/Library/Fonts/...`, etc. — anything under `~/Library/` not nested
+  in `Application Support` (which still routes through the more
+  specific `_app/` encoding) or `Containers` (still refused as a
+  sandboxed-app data store). Gated on macOS at inference time so
+  non-macOS adopt declines instead of producing warn-and-skip plans.
+- **Adopt prints a filter-install tip when adopting plists.** When at
+  least one adopted source is a `.plist` and `dodot git-install-filters`
+  has not been run, `dodot adopt` surfaces a one-liner pointing at the
+  install command, complementing the up-time interactive prompt.
+- **`dodot git-install-filters` / `dodot git-show-filters`.** P2 of the
+  plist clean/smudge track. `git-install-filters` writes the
+  `[filter "dodot-plist"]` block to the dotfiles repo's `.git/config`
+  so `git status` / `git diff` / `git add` invoke `dodot plist clean`
+  and `smudge` automatically on tracked `*.plist` files. Idempotent;
+  per-clone, per-machine. `git-show-filters` prints the same snippet
+  (plus the `.gitattributes` line) without writing, for inspection or
+  manual install.
+- **Up-time filter-install prompt.** On the first `dodot up` of a pack
+  containing `*.plist` files, dodot now offers to install the filters
+  if they are not already registered. Three responses: `Y` installs
+  and dismisses the prompt; `n` skips (asks again next time); `show`
+  prints the config snippets without committing. The prompt fires
+  only on a TTY — CI runs and scripted invocations are unaffected.
+- **Generic prompt registry — `dodot prompts list/reset`.** A new
+  content-agnostic registry tracks "have I shown the user X yet?"
+  state (currently powering the plist filter-install prompt; future
+  callers slot in by picking a key). Persisted at
+  `<XDG_DATA_HOME>/dodot/prompts.json`. New CLI verbs:
+    - `dodot prompts list` — show every known prompt with its
+      dismissed/active state and a one-line description.
+    - `dodot prompts reset <key>` — clear one dismissal so the
+      prompt fires again next time.
+    - `dodot prompts reset --all` — clear every dismissal.
+  Unknown keys lurking from older dodot versions appear in `list` so
+  they can be reset.
+
+- **`dodot plist clean` / `dodot plist smudge` subcommands.** A pair
+  of stdin→stdout filters that translate macOS plists between binary
+  (what apps read at `~/Library/Preferences/...`) and canonical XML
+  (what git stores in the index). They are the conversion engine for
+  the upcoming git clean/smudge integration that brings GUI-app
+  preferences under the same review/diff/cherry-pick workflow as
+  plain-text dotfiles. Canonicalisation sorts dictionary keys
+  recursively (Unicode codepoint order) while preserving array order,
+  so the same logical plist always produces byte-identical XML
+  regardless of the encoder's internal layout. Powered by the `plist`
+  Rust crate; no `plutil` dependency at runtime. The full design
+  rationale (and why plists ship as filters rather than through the
+  preprocessing pipeline) lives in `docs/proposals/plists.lex`.
+
+### Changed
+
+- **Release pipeline migrated to canonical reusable workflow at
+  `arthur-debert/release/.github/workflows/rust-cli.yml@v1`.** dodot's
+  `.github/workflows/release.yml` is now a thin caller (~25 lines
+  instead of 615). Bug fixes and improvements to the release pipeline
+  now propagate via a single bump of the action's pin instead of
+  hand-edits across 6 rust-CLIs. Behaviour-equivalent to the prior
+  in-tree workflow except that the `## [Unreleased]` section in
+  CHANGELOG.md replaces the separate `CHANGELOG_UNRELEASED.md` file
+  (Keep-a-Changelog canonical form).
+- **Plist filter ergonomics.** Several small polish items:
+    - `dodot plist clean` and `smudge` now produce actionable error
+      messages when input isn't a valid plist, pointing at the most
+      common cause (`.gitattributes` mis-binding) and at
+      `dodot git-show-filters` for diagnosis.
+    - `dodot git-install-filters` success message now appends a macOS
+      `cfprefsd` reminder so users know to `killall cfprefsd` after
+      pulling plist changes from another machine, otherwise running
+      apps keep serving cached values.
+    - `dodot git-install-filters --help` now documents PATH
+      considerations (filters use bare `dodot` and must find it on
+      `$PATH` in whatever environment git is invoked from).
+
+- **Plist proposal revised to ship via clean/smudge filters.**
+  `docs/proposals/plists.lex` was rewritten around git clean/smudge
+  filters. The earlier draft modelled plist support as a
+  Representational preprocessor under `docs/proposals/preprocessing-pipeline.lex`,
+  with reverse conversion driven by `dodot transform check` from a
+  pre-commit hook. The revision keeps the lossless binary↔XML core
+  but moves the plumbing to git's own filter machinery, because
+  plists drift continuously (apps rewrite preferences on settings
+  changes) and the pre-commit-hook approach leaves drift invisible
+  to `git status` between commits. Clean/smudge attaches the reverse
+  to every git read, making `git status` reflect drift for free.
+  `preprocessing-pipeline.lex` and `magic.lex` were updated to point
+  at the new plists.lex and to drop stale references.
+
+### Fixed
+
+- **Release notarization wait loop: 30 min → 60 min.** Apple's notary
+  service usually returns in under 5 min, but on slow-queue days it
+  can stretch past 30 min (observed during the v1.1.1 release re-run,
+  where the submission stayed `In Progress` for the full 30-min
+  window). The release workflow now polls for up to 60 min before
+  giving up, and the timeout warning includes the submission ID so the
+  result can be checked manually with `xcrun notarytool info`. Note:
+  stapling the ticket into the binary is not done — Apple's stapler
+  only supports `.app` / `.dmg` / `.pkg` containers, not standalone
+  Mach-O binaries. Direct downloads still pass Gatekeeper via online
+  verification (requires internet); Homebrew installs are unaffected
+  either way (no quarantine bit on `brew install`).
+## [1.2.0] - 2026-04-30
+
+### Added
+
+- **macOS paths: `_app/`, `_lib/`, `force_app`, `app_aliases`.** Dodot
+  now models `~/Library/Application Support/<App>/` as a third
+  filesystem coordinate alongside `$HOME` and `$XDG_CONFIG_HOME`, so
+  cross-platform packs can deploy GUI-app config correctly on both
+  macOS and Linux without `if os == "darwin"` branching inside packs.
+  The full design lives in `docs/proposals/macos-paths.lex`; user-facing
+  pieces (Phase M1–M5) shipping in this release:
+    - **`_app/<name>/<rest>` directory prefix** — deploys raw under
+      `<app_support_dir>/<name>/<rest>`. On macOS that's
+      `~/Library/Application Support`; on Linux it collapses to
+      `$XDG_CONFIG_HOME` so the same pack tree works on both. New
+      Priority 2c in the symlink resolver.
+    - **`_lib/<rest>` directory prefix (macOS only)** — deploys to
+      `$HOME/Library/<rest>` for non-Application-Support Library
+      subtrees (`LaunchAgents/`, `Fonts/`, `Services/`). On
+      non-macOS platforms emits a soft warning and skips with no
+      symlink. New Priority 2d.
+    - **`[symlink] force_app`** — curated list of GUI-app folder
+      names (case-sensitive, capped at 100) whose first path segment
+      routes to `<app_support_dir>/<name>/<rest>` without a `_app/`
+      prefix. Ships seeded with `Code`, `Cursor`, `Zed`, `Emacs`.
+      New Priority 4.
+    - **`[symlink.app_aliases]` table** — pack-name → app-folder-name
+      rewrites. A pack named `vscode` aliased to `Code` deploys to
+      `<app_support_dir>/Code/...` so the pack name stays
+      lowercase-ergonomic. New Priority 5; modifies the default rule
+      only — explicit prefixes still win.
+    - **`[symlink] app_uses_library`** (default `true` on macOS,
+      ignored elsewhere) — set to `false` on macOS to opt the entire
+      pack tree into Linux-style `~/.config` placement.
+    - **`dodot adopt ~/Library/Application Support/<X>/...`** —
+      AppSupport sources now infer pack `<X>` and produce
+      `_app/<X>/<rest>` in-pack paths that round-trip back to the
+      same deployed location. Pack-root directory expansion works
+      the same as for XDG.
+    - **Capitalization heuristic for adopt suggestions** — when an
+      AppSupport adopt's inferred pack name passes the GUI-app
+      heuristic (uppercase / space / reverse-DNS shape), adopt
+      surfaces an advisory tip pointing at the `app_aliases`
+      ergonomic. Purely advisory; the resolver and pack tree are
+      unaffected. See `docs/proposals/macos-paths.lex` §8.1.
+
+- **macOS paths advisory probes (Phase M6).** Adds an opt-in,
+  read-only enrichment layer on top of the deterministic resolver.
+  The cardinal rule from the proposal still holds: probes are
+  *advisory*, never authoritative — the resolver in §5 never consults
+  this code, and a probe failure (no `brew` on PATH, malformed JSON,
+  empty Spotlight result) never alters routing.
+    - **homebrew-cask probe** (`probe::brew`) — wraps
+      `brew list --cask --versions` and `brew info --json=v2 --cask
+      <token>` with on-disk caching at `<cache_dir>/probes/brew/`,
+      24-hour TTL, and `--refresh` invalidation. Parses each cask's
+      zap stanza to extract Application Support folder candidates and
+      Preferences plist paths.
+    - **macOS-native probes** (`probe::macos_native`) — thin wrappers
+      around `mdls` (bundle-id lookup) and `mdfind` (display-name →
+      `.app` bundle path). Both gate on `cfg!(target_os = "macos")`
+      and return `None` on every other host.
+    - **`dodot adopt` enrichment** — when an AppSupport source's pack
+      name matches an installed cask's app-support folder, adopt's
+      success result includes a confirmation line ("homebrew cask
+      `visual-studio-code` confirms this is …") and, when the cask's
+      zap stanza lists Preferences plists, a sibling-adoption hint
+      pointing at `dodot adopt ~/Library/Preferences/<file>`.
+    - **`dodot up` / `dodot status` missing-target hints** — when a
+      pack's planned deploy targets an `<app_support_dir>/<X>/`
+      folder that doesn't exist on disk, the planner emits a soft
+      warning. Cask-enriched when the brew probe finds a matching
+      installed cask: "cask `<token>` is installed but `<folder>/`
+      is missing — entries will deploy, but the app may not have
+      created its config directory yet (try launching it once)".
+      Falls back to a generic "no matching installed app appears to
+      provide it" message when no cask matches. macOS-only;
+      suppressed on Linux where `app_support_dir` collapses onto
+      `xdg_config_home`.
+    - **`dodot probe app <pack> [--refresh]` subcommand** —
+      diagnostic surface listing every app-support folder a pack
+      will route to (alias / force_app / `_app/`), folder existence,
+      matching cask + install state, `.app` bundle, bundle ID, and
+      sibling-adoption candidates. Run on demand; not part of any
+      hot path.
+    - **`ExecutionContext.command_runner`** — the production runner
+      is now exposed on the orchestration context so probes (and any
+      future advisory subprocess wrapper) reuse the same
+      `CommandRunner` the datastore already drives. Tests inject a
+      `CannedRunner` mock for deterministic probe coverage.
+    - **Cask-aware rename suggestion** — when M5's
+      capitalization-heuristic tip fires *and* the M6 brew probe
+      finds an installed cask matching the pack's app-support
+      folder, the suggested rename uses the cask token instead of a
+      whitespace-strip-lowercase fallback. For reverse-DNS bundle-ID
+      folders (`com.colliderli.iina` → cask `iina`) this is the
+      difference between `iina` (sane) and `comcolliderliiina`
+      (useless). The tip credits the cask so users know where the
+      recommendation came from.
+
+## [1.1.1] - 2026-04-30
+
+### Fixed
+
+- **CLI exits non-zero on handler errors.** Every standout-dispatched
+  subcommand (`status`, `up`, `down`, `list`, `init`, `fill`, `adopt`,
+  `addignore`, `probe …`) was printing `Error: …` to stdout and
+  exiting **0** when the handler returned `Err`. Scripts piping with
+  `&&` or CI invocations checking `$?` saw success on every failure
+  path. The root cause was upstream in standout-dispatch: handler errors
+  got stuffed into the success variant `RunResult::Handled(...)` and
+  the binary couldn't tell them apart from real output. Fixed in
+  standout 7.6.2 (arthur-debert/standout#141), which adds
+  `RunResult::Error(String)`. dodot now matches that variant in
+  `main.rs`, prints the message to stderr, and exits 1 — fixes every
+  affected subcommand at once. A new `tests/e2e/bats/test_exit_codes.bats`
+  pins the contract for `status`, `up`, `down`, and `adopt` (both
+  pack-not-found and source-not-found shapes) so a future regression
+  shows up immediately. Closes #86.
+
 ## [1.1.0] - 2026-04-29
 
 ### Added
