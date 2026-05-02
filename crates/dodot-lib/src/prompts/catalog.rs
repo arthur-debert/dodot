@@ -28,6 +28,12 @@ pub const KNOWN_PROMPTS: &[PromptDescriptor] = &[
             "Offer to install git clean/smudge filters when a pack contains tracked .plist files",
     },
     PromptDescriptor {
+        key: "template.install_filter",
+        description:
+            "Offer to install the dodot-template git clean filter after the first successful \
+             template deployment with the pre-commit hook already in place",
+    },
+    PromptDescriptor {
         key: "template.install_hook",
         description:
             "Offer to install the pre-commit hook running `dodot transform check --strict` after \

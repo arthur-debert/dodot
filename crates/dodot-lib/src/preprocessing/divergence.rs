@@ -218,6 +218,33 @@ pub fn collect_divergences(fs: &dyn Fs, paths: &dyn Pather) -> Result<Vec<Diverg
     Ok(reports)
 }
 
+/// Look up the baseline whose `source_path` matches `target`, plus
+/// the `(pack, handler, filename)` triple that identifies it in the
+/// cache layout.
+///
+/// Used by the clean filter (R6): git invokes the filter with the
+/// source path of the file being processed, and the filter needs the
+/// matching baseline to find the deployed bytes and the cached
+/// tracked render. The lookup is a linear scan of the cache — fast
+/// enough for the realistic per-repo template count (tens to low
+/// hundreds), and avoids the on-disk index file the cache layout
+/// would otherwise need.
+///
+/// Returns `Ok(None)` when no baseline matches; the clean filter
+/// treats that as "echo stdin unchanged" rather than an error.
+pub fn find_baseline_for_source(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+    target: &std::path::Path,
+) -> Result<Option<(String, String, String, Baseline)>> {
+    for (pack, handler, filename, baseline) in collect_baselines(fs, paths)? {
+        if baseline.source_path == target {
+            return Ok(Some((pack, handler, filename, baseline)));
+        }
+    }
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,5 +480,69 @@ mod tests {
 
         let reports = collect_divergences(env.fs.as_ref(), env.paths.as_ref()).unwrap();
         assert_eq!(reports[0].state, DivergenceState::MissingSource);
+    }
+
+    // ── find_baseline_for_source ────────────────────────────────
+
+    #[test]
+    fn find_baseline_for_source_returns_match() {
+        // Stage two baselines with distinct source paths; the lookup
+        // must return only the one whose `source_path` matches.
+        let env = TempEnvironment::builder().build();
+        let src_a = env.dotfiles_root.join("app/a.toml.tmpl");
+        write_pack_template(&env, "app", "a.toml.tmpl", "src-a");
+        write_deployed(&env, "app", "preprocessed", "a.toml", "rendered-a");
+        baseline_for(&src_a, b"rendered-a", b"src-a")
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "a.toml",
+            )
+            .unwrap();
+
+        let src_b = env.dotfiles_root.join("app/b.toml.tmpl");
+        write_pack_template(&env, "app", "b.toml.tmpl", "src-b");
+        write_deployed(&env, "app", "preprocessed", "b.toml", "rendered-b");
+        baseline_for(&src_b, b"rendered-b", b"src-b")
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "b.toml",
+            )
+            .unwrap();
+
+        let hit = find_baseline_for_source(env.fs.as_ref(), env.paths.as_ref(), &src_a).unwrap();
+        let (pack, handler, filename, baseline) = hit.expect("baseline must be found");
+        assert_eq!(pack, "app");
+        assert_eq!(handler, "preprocessed");
+        assert_eq!(filename, "a.toml");
+        assert_eq!(baseline.source_path, src_a);
+        assert_eq!(baseline.rendered_content, "rendered-a");
+    }
+
+    #[test]
+    fn find_baseline_for_source_returns_none_when_unknown() {
+        // Path the cache has never seen → Ok(None). The clean
+        // filter treats this as "echo stdin unchanged", so the
+        // None case is part of the normal contract, not an error.
+        let env = TempEnvironment::builder().build();
+        let unknown = env.dotfiles_root.join("never-cached.tmpl");
+        let result =
+            find_baseline_for_source(env.fs.as_ref(), env.paths.as_ref(), &unknown).unwrap();
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn find_baseline_for_source_on_empty_cache_returns_none() {
+        // No baselines on disk at all (e.g. user has never run
+        // `dodot up`) → Ok(None), not an error.
+        let env = TempEnvironment::builder().build();
+        let any = env.dotfiles_root.join("anything.tmpl");
+        let result = find_baseline_for_source(env.fs.as_ref(), env.paths.as_ref(), &any).unwrap();
+        assert!(result.is_none());
     }
 }
