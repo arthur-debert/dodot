@@ -662,7 +662,8 @@ fn try_prompt_install_filters() -> Result<(), anyhow::Error> {
             }
             eprintln!();
             eprintln!("Add to .gitattributes (committed in the repo):");
-            let extensions = ctx.config_manager.root_config()?.symlink.plist_extensions;
+            let raw = ctx.config_manager.root_config()?.symlink.plist_extensions;
+            let extensions = commands::git_filters::normalize_plist_extensions(&raw);
             for line in commands::git_filters::gitattributes_lines(&extensions) {
                 eprintln!("    {line}");
             }
