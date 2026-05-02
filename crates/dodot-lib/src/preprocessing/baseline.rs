@@ -124,11 +124,12 @@ impl Baseline {
     ///
     /// Lazy migration: when `filename` is a nested path (contains a
     /// `/`), the legacy cache file written under the basename-only
-    /// layout (pre-PR-#118-cache-fix) may also exist. Delete it so
-    /// `dodot transform check` / `status` don't carry a stale
-    /// orphan entry alongside the new nested baseline. Migration is
-    /// triggered the first time `up` re-baselines a nested template
-    /// after the upgrade.
+    /// layout (pre-PR-#118-cache-fix) may also exist. Delete it
+    /// **only if its `source_path` matches `self.source_path`** —
+    /// otherwise it could be a legitimate top-level (or
+    /// different-nested) baseline that shares the same basename and
+    /// must NOT be touched. Migration is triggered the first time
+    /// `up` re-baselines a nested template after the upgrade.
     pub fn write(
         &self,
         fs: &dyn Fs,
@@ -149,15 +150,30 @@ impl Baseline {
         fs.write_file(&path, body.as_bytes())?;
 
         // Migration cleanup: drop the legacy basename-only cache
-        // file if one exists at a different path. See `load`'s
-        // fallback for the matching read-side migration.
+        // file if one exists AND it represents the same source as
+        // what we're writing now. The source_path comparison is the
+        // disambiguation: a legitimate same-basename entry for a
+        // *different* file (e.g. the pack's top-level `config.toml`
+        // when we're writing `subdir/config.toml`) carries a
+        // different source_path and must be left alone.
         if let Some(basename) = legacy_basename_for(filename) {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
             if legacy_path != path && fs.exists(&legacy_path) {
-                // Best-effort: a remove failure is non-fatal — the
-                // new baseline is already written, so the only cost
-                // is a stale entry until the user clears it.
-                let _ = fs.remove_file(&legacy_path);
+                let is_our_legacy = read_baseline_at(fs, &legacy_path)
+                    .ok()
+                    .flatten()
+                    .map(|legacy| {
+                        !legacy.source_path.as_os_str().is_empty()
+                            && legacy.source_path == self.source_path
+                    })
+                    .unwrap_or(false);
+                if is_our_legacy {
+                    // Best-effort: a remove failure is non-fatal —
+                    // the new baseline is already written, so the
+                    // only cost is a stale entry until the user
+                    // clears it manually.
+                    let _ = fs.remove_file(&legacy_path);
+                }
             }
         }
 
@@ -174,12 +190,14 @@ impl Baseline {
     /// (`subdir/config.toml`) and no baseline lives at the new
     /// nested cache path, retry with the basename-only path
     /// (`config.toml`) — that's where the PR-#118 cache-fix moved
-    /// the layout away from. Without this fallback, an upgraded
-    /// user with a previously-deployed nested template would see
-    /// the guard treat the next `up` as a fresh deploy and could
-    /// overwrite an edited deployed file once. The follow-up
-    /// `Baseline::write` migrates the file to the new path and
-    /// removes the legacy entry.
+    /// the layout away from. The fallback **only returns the legacy
+    /// baseline if its `source_path` matches the file we're loading**
+    /// (path-tail check on the source_path's components, accounting
+    /// for the trailing preprocessor extension). This disambiguates
+    /// the case where a pack legitimately has both a top-level and a
+    /// nested file with the same basename — the basename-only path
+    /// could host either, and returning the wrong one would compare
+    /// the divergence guard against the wrong cached render.
     pub fn load(
         fs: &dyn Fs,
         paths: &dyn Pather,
@@ -196,12 +214,59 @@ impl Baseline {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
             if legacy_path != path {
                 if let Some(b) = read_baseline_at(fs, &legacy_path)? {
-                    return Ok(Some(b));
+                    if legacy_baseline_belongs_to_filename(&b.source_path, filename) {
+                        return Ok(Some(b));
+                    }
                 }
             }
         }
         Ok(None)
     }
+}
+
+/// Return `true` when the legacy baseline at the basename-only cache
+/// path actually belongs to the nested `filename` we're loading
+/// (rather than to a different file that happens to share the same
+/// basename).
+///
+/// Strategy: take `legacy_source_path`'s components, strip a single
+/// trailing preprocessor extension from the leaf (e.g. `.tmpl`,
+/// `.identity`), and check that the resulting path **ends** with
+/// `filename` at a `/` boundary. The boundary check rules out the
+/// false positive where a path component happens to contain
+/// `filename` as a substring.
+///
+/// Empty `source_path` (legacy v1 baselines written before the
+/// `source_path` field existed; serde-default fills with empty)
+/// can't be confirmed, so we conservatively treat them as "not
+/// ours" — the guard then falls back to the safe fail-closed path
+/// for the unreadable / unknown case.
+fn legacy_baseline_belongs_to_filename(legacy_source_path: &Path, filename: &str) -> bool {
+    if legacy_source_path.as_os_str().is_empty() {
+        return false;
+    }
+    let mut components: Vec<String> = legacy_source_path
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(n) => Some(n.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+    let last = match components.last_mut() {
+        Some(l) => l,
+        None => return false,
+    };
+    if let Some(dot_idx) = last.rfind('.') {
+        last.truncate(dot_idx);
+    }
+    let rebuilt = components.join("/");
+    if !rebuilt.ends_with(filename) {
+        return false;
+    }
+    // Boundary check: the character immediately before `filename` in
+    // `rebuilt` must be `/`, or `filename` must be the entire string.
+    let prefix_len = rebuilt.len() - filename.len();
+    prefix_len == 0 || rebuilt.as_bytes().get(prefix_len - 1).copied() == Some(b'/')
 }
 
 /// Read and validate a baseline JSON at the given on-disk path. Returns
@@ -671,6 +736,210 @@ mod tests {
         assert_eq!(
             legacy_basename_for("a/b/c/leaf.txt"),
             Some("leaf.txt".to_string())
+        );
+    }
+
+    // ── Migration disambiguation (PR #118 7th-pass) ─────────────────
+
+    #[test]
+    fn legacy_baseline_belongs_to_filename_matches_nested_source() {
+        // Source `/dotfiles/app/subdir/config.toml.tmpl` belongs to
+        // virtual filename `subdir/config.toml`.
+        assert!(legacy_baseline_belongs_to_filename(
+            Path::new("/dotfiles/app/subdir/config.toml.tmpl"),
+            "subdir/config.toml"
+        ));
+        // Deeper nesting also matches.
+        assert!(legacy_baseline_belongs_to_filename(
+            Path::new("/home/user/dotfiles/pkg/a/b/leaf.txt.identity"),
+            "a/b/leaf.txt"
+        ));
+    }
+
+    #[test]
+    fn legacy_baseline_belongs_to_filename_rejects_top_level_for_nested() {
+        // Source `/dotfiles/app/config.toml.tmpl` is the top-level
+        // file. When loading `subdir/config.toml`, the legacy path
+        // `<cache>/.../config.toml.json` could host either the
+        // top-level baseline (which we DON'T want) or the nested
+        // baseline (which we do). The disambiguation must reject
+        // the top-level case.
+        assert!(!legacy_baseline_belongs_to_filename(
+            Path::new("/dotfiles/app/config.toml.tmpl"),
+            "subdir/config.toml"
+        ));
+    }
+
+    #[test]
+    fn legacy_baseline_belongs_to_filename_rejects_substring_match() {
+        // Source path contains `subdir/config.toml` as a substring
+        // but not at a `/` boundary — e.g. a file under
+        // `xsubdir/config.toml.tmpl`. Must NOT match.
+        assert!(!legacy_baseline_belongs_to_filename(
+            Path::new("/dotfiles/app/xsubdir/config.toml.tmpl"),
+            "subdir/config.toml"
+        ));
+    }
+
+    #[test]
+    fn legacy_baseline_belongs_to_filename_rejects_empty_source() {
+        // v1 baselines written before source_path existed serde-default
+        // to empty PathBuf. Must conservatively report not-ours.
+        assert!(!legacy_baseline_belongs_to_filename(
+            Path::new(""),
+            "subdir/config.toml"
+        ));
+    }
+
+    #[test]
+    fn load_does_not_return_top_level_baseline_for_nested_lookup() {
+        // Pack has a top-level `config.toml` baseline at the legacy
+        // basename-only path. A separate nested `subdir/config.toml`
+        // does NOT have a baseline yet. Loading "subdir/config.toml"
+        // must return None — NOT the top-level file's baseline.
+        let env = TempEnvironment::builder().build();
+        let top = Baseline::build(
+            Path::new("/dotfiles/app/config.toml.tmpl"),
+            b"top-rendered",
+            b"top-src",
+            Some(""),
+            None,
+        );
+        top.write(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap();
+
+        // Load by the nested key: must NOT inherit top-level's baseline.
+        let result = Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+        )
+        .unwrap();
+        assert!(
+            result.is_none(),
+            "load(subdir/config.toml) must NOT return the top-level baseline"
+        );
+        // And the top-level lookup still works.
+        let top_again = Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap();
+        assert!(top_again.is_some());
+    }
+
+    #[test]
+    fn write_does_not_delete_top_level_baseline_when_writing_nested() {
+        // Pack has a legitimate top-level `config.toml` baseline at
+        // `<cache>/.../config.toml.json`. We write a NEW baseline
+        // for the nested `subdir/config.toml`. The top-level entry
+        // must NOT be deleted by the migration cleanup, because its
+        // source_path doesn't match what we're writing.
+        let env = TempEnvironment::builder().build();
+        let top_source = Path::new("/dotfiles/app/config.toml.tmpl");
+        let top = Baseline::build(top_source, b"top-rendered", b"top-src", Some(""), None);
+        let top_path = top
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+        assert!(env.fs.exists(&top_path));
+
+        // Write the NESTED baseline — different source.
+        let nested_source = Path::new("/dotfiles/app/subdir/config.toml.tmpl");
+        let nested = Baseline::build(
+            nested_source,
+            b"nested-rendered",
+            b"nested-src",
+            Some(""),
+            None,
+        );
+        let nested_path = nested
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "subdir/config.toml",
+            )
+            .unwrap();
+        assert!(env.fs.exists(&nested_path));
+
+        // Top-level baseline must STILL be there — the migration
+        // cleanup must have noticed the source_path mismatch and
+        // left it alone.
+        assert!(
+            env.fs.exists(&top_path),
+            "top-level baseline must be preserved when writing a nested baseline with the same basename"
+        );
+        // Sanity: top-level baseline is still loadable by its key.
+        let top_check = Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(top_check.rendered_content, "top-rendered");
+    }
+
+    #[test]
+    fn write_still_migrates_when_legacy_belongs_to_us() {
+        // Counterpart to the previous test: write cleanup MUST
+        // delete the legacy file when its source_path matches
+        // (i.e., it was the same nested file's pre-migration
+        // baseline). This pins that the disambiguation didn't
+        // accidentally disable the legitimate migration path.
+        let env = TempEnvironment::builder().build();
+        let nested_source = Path::new("/dotfiles/app/subdir/config.toml.tmpl");
+
+        // Pre-migration legacy entry for the nested file (cached
+        // under basename-only).
+        let legacy = Baseline::build(nested_source, b"old-rendered", b"old-src", Some(""), None);
+        let legacy_path = legacy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+        assert!(env.fs.exists(&legacy_path));
+
+        // Now re-baseline at the new nested path with the same source.
+        let new = Baseline::build(nested_source, b"new-rendered", b"new-src", Some(""), None);
+        let new_path = new
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "subdir/config.toml",
+            )
+            .unwrap();
+
+        assert!(env.fs.exists(&new_path));
+        assert!(
+            !env.fs.exists(&legacy_path),
+            "legacy entry whose source_path matches must be removed during migration"
         );
     }
 
