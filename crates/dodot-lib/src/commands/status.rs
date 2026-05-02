@@ -516,24 +516,27 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         }
 
         // Map of deployed-file paths the §6.4 divergence guard
-        // preserved during this status pass → whether the skip was
-        // due to an unreadable baseline (vs. a confirmed divergence).
-        // For `install`/`homebrew` rows, the planner correctly drops
-        // the `Run` intent (so provisioning stays pinned to the
-        // previous successful render), but `check_status` would
-        // otherwise hash the user's edit, miss the previously-
-        // recorded sentinel, and report the row as pending —
-        // contradicting the planning behavior. Override those rows
-        // to `Preserved` with a footnote so the display matches the
-        // actual semantic state. The `baseline_unreadable` flag
-        // determines which recovery path the footnote should
-        // suggest (transform check vs. clear the cache file).
-        let preserved_lookup: std::collections::HashMap<std::path::PathBuf, bool> =
-            preprocess_result
-                .skipped
-                .iter()
-                .map(|s| (s.deployed_path.clone(), s.baseline_unreadable))
-                .collect();
+        // preserved during this status pass → metadata for the
+        // footnote. `baseline_unreadable` determines which recovery
+        // path the footnote suggests (transform check vs. clear
+        // the cache file). `cache_path` (Some only when
+        // `baseline_unreadable`) names the actual broken file —
+        // critical for upgraders whose corrupt entry lives at the
+        // legacy basename layout, since the path reconstructed from
+        // the virtual_relative would point elsewhere.
+        let preserved_lookup: std::collections::HashMap<
+            std::path::PathBuf,
+            (bool, Option<std::path::PathBuf>),
+        > = preprocess_result
+            .skipped
+            .iter()
+            .map(|s| {
+                (
+                    s.deployed_path.clone(),
+                    (s.baseline_unreadable, s.cache_path.clone()),
+                )
+            })
+            .collect();
 
         let mut files = Vec::new();
         for m in &matches {
@@ -578,28 +581,28 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     // misrepresent the semantic state. Treat the
                     // row as Deployed and attach a footnote
                     // pointing at the resolution paths.
-                    if let Some(&baseline_unreadable) = preserved_lookup.get(&m.absolute_path) {
-                        if baseline_unreadable {
+                    if let Some((baseline_unreadable, cache_path)) =
+                        preserved_lookup.get(&m.absolute_path)
+                    {
+                        if *baseline_unreadable {
                             // `transform check` would fail on the
                             // same corrupt entry, so point at the
                             // recovery path that actually works:
                             // delete the specific cache file or
-                            // use --force. Resolve the cache path
-                            // from the matched file's relative path
-                            // so the user knows exactly which JSON
-                            // to remove.
-                            let cache_filename = crate::preprocessing::baseline::cache_filename_for(
-                                &m.relative_path,
-                            );
-                            let cache_path = ctx.paths.preprocessor_baseline_path(
-                                &pack.name,
-                                crate::preprocessing::pipeline::PREPROCESSED_HANDLER,
-                                &cache_filename,
-                            );
-                            let cache_display = match cache_path.strip_prefix(ctx.paths.home_dir())
-                            {
-                                Ok(rel) => format!("~/{}", rel.display()),
-                                Err(_) => cache_path.display().to_string(),
+                            // use --force. Use the **actual** path
+                            // the guard tried to load (carried in
+                            // `cache_path`) — for upgraded users
+                            // with a corrupt legacy entry at the
+                            // basename path, a path reconstructed
+                            // from `m.relative_path` would point at
+                            // the new nested layout, which doesn't
+                            // exist.
+                            let cache_display = match cache_path {
+                                Some(p) => match p.strip_prefix(ctx.paths.home_dir()) {
+                                    Ok(rel) => format!("~/{}", rel.display()),
+                                    Err(_) => p.display().to_string(),
+                                },
+                                None => "<unknown — see warning above>".to_string(),
                             };
                             Health::Preserved {
                                 label: "preserved (baseline cache unreadable)".into(),

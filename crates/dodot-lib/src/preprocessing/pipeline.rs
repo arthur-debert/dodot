@@ -118,6 +118,13 @@ pub struct SkippedRender {
     /// warning text reflects the different cause and points the user
     /// at clearing the corrupt cache file or running `--force`.
     pub baseline_unreadable: bool,
+    /// On-disk path of the baseline cache file that was inspected.
+    /// `Some` when `baseline_unreadable` is `true` so the user-facing
+    /// recovery guidance can name the actual broken file (which may
+    /// be either the new nested layout or the legacy basename
+    /// fallback for upgraders). `None` for confirmed divergence
+    /// cases — the rendered/deployed file paths suffice there.
+    pub cache_path: Option<PathBuf>,
 }
 
 impl PreprocessResult {
@@ -160,6 +167,9 @@ enum DivergenceCheck {
         /// rather than a confirmed divergence — see
         /// [`SkippedRender::baseline_unreadable`].
         baseline_unreadable: bool,
+        /// On-disk path of the baseline cache file inspected.
+        /// `Some` only when `baseline_unreadable` is `true`.
+        cache_path: Option<PathBuf>,
     },
 }
 
@@ -197,8 +207,9 @@ fn check_divergence(
     let deployed_path = paths
         .handler_data_dir(pack_name, PREPROCESSED_HANDLER)
         .join(virtual_relative);
-    let baseline = match Baseline::load(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename)
-    {
+    let (load_result, attempted_cache_path) =
+        Baseline::load_with_origin(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename);
+    let baseline = match load_result {
         Ok(Some(b)) => b,
         // First-time deploy: no baseline to compare against. Writing
         // is correct here — there's nothing to overwrite.
@@ -210,12 +221,15 @@ fn check_divergence(
         // schema-bump can't clobber a user edit on the next `up`.
         // Only when there's no deployed file (genuine fresh deploy /
         // cache-and-render-out-of-sync) do we Proceed. The user
-        // clears the corrupt entry by deleting the cache file or by
-        // running `dodot up --force`.
+        // clears the corrupt entry by deleting the *actual* cache
+        // file we attempted to load — this may be the new nested
+        // path or the legacy basename fallback. We propagate the
+        // attempted path so the warning can name it accurately.
         Err(err) => {
             tracing::warn!(
                 pack = %pack_name,
                 file = %virtual_relative.display(),
+                cache_path = %attempted_cache_path.display(),
                 error = %err,
                 "baseline cache entry unreadable; preserving deployed file out of caution"
             );
@@ -226,6 +240,7 @@ fn check_divergence(
                 state: DivergenceState::OutputChanged,
                 deployed_path,
                 baseline_unreadable: true,
+                cache_path: Some(attempted_cache_path),
             });
         }
     };
@@ -274,6 +289,7 @@ fn check_divergence(
         state,
         deployed_path,
         baseline_unreadable: false,
+        cache_path: None,
     })
 }
 
@@ -487,6 +503,7 @@ pub fn preprocess_pack(
                         state,
                         deployed_path,
                         baseline_unreadable,
+                        cache_path,
                     } => {
                         info!(
                             pack = %pack.name,
@@ -501,6 +518,7 @@ pub fn preprocess_pack(
                             deployed_path: deployed_path.clone(),
                             state,
                             baseline_unreadable,
+                            cache_path,
                         });
                         skip_path = Some(deployed_path);
                     }
@@ -2758,6 +2776,93 @@ mod tests {
             env.fs.read_to_string(&deployed).unwrap(),
             "name = USER EDITED",
             "user's edit must NOT be overwritten when the cache is corrupt"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_records_actual_legacy_cache_path_on_unreadable() {
+        // PR #118 13th-pass Comments Y+Z: when an upgraded user has
+        // a corrupt LEGACY-LAYOUT baseline (basename only) for a
+        // nested template, the SkippedRender's `cache_path` must
+        // point at the legacy path the loader actually tried — not
+        // at the new nested path reconstructed from
+        // `virtual_relative`. The orchestration warning + status
+        // footnote use this field to tell the user exactly which
+        // file to delete.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("subdir/config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), "Alice".to_string());
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "subdir/config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/subdir/config.toml.tmpl"),
+            is_dir: false,
+        }];
+
+        // Prime the new-layout baseline. Then move it to the legacy
+        // basename path and CORRUPT it, simulating an upgraded
+        // cache where the legacy file is broken.
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+        let new_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        let legacy_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs.remove_file(&new_path).unwrap();
+        env.fs.write_file(&legacy_path, b"{not valid json").unwrap();
+
+        // User edits the deployed file.
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        // Re-run: guard fails closed (baseline_unreadable=true) and
+        // records the LEGACY cache path it actually tried.
+        let second = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(second.skipped.len(), 1);
+        assert!(second.skipped[0].baseline_unreadable);
+        assert_eq!(
+            second.skipped[0].cache_path.as_deref(),
+            Some(legacy_path.as_path()),
+            "cache_path must point at the legacy file the loader actually tried, \
+             not at the reconstructed new-layout path"
         );
     }
 

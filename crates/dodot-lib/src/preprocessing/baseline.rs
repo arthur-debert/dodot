@@ -243,22 +243,50 @@ impl Baseline {
         handler: &str,
         filename: &str,
     ) -> Result<Option<Self>> {
-        let path = paths.preprocessor_baseline_path(pack, handler, filename);
-        if let Some(b) = read_baseline_at(fs, &path)? {
-            return Ok(Some(b));
+        Self::load_with_origin(fs, paths, pack, handler, filename).0
+    }
+
+    /// Like [`Self::load`] but also returns the **actual on-disk
+    /// path** that was inspected (the new nested layout, or the
+    /// legacy basename fallback). Used by the divergence guard so
+    /// it can name the right file in user-facing recovery
+    /// guidance — without this, an upgraded user with a corrupt
+    /// legacy baseline would be told to delete the new nested
+    /// path, which doesn't exist.
+    ///
+    /// Returns the path the load attempted last (and either
+    /// succeeded at or failed at). When both paths are absent, the
+    /// returned path is the new (canonical) one.
+    pub fn load_with_origin(
+        fs: &dyn Fs,
+        paths: &dyn Pather,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+    ) -> (Result<Option<Self>>, PathBuf) {
+        let new_path = paths.preprocessor_baseline_path(pack, handler, filename);
+        match read_baseline_at(fs, &new_path) {
+            Ok(Some(b)) => return (Ok(Some(b)), new_path),
+            Err(e) => return (Err(e), new_path),
+            Ok(None) => {}
         }
         // Fallback to the legacy basename-only layout for upgraders.
         if let Some(basename) = legacy_basename_for(filename) {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
-            if legacy_path != path {
-                if let Some(b) = read_baseline_at(fs, &legacy_path)? {
-                    if legacy_baseline_belongs_to_filename(&b.source_path, filename) {
-                        return Ok(Some(b));
+            if legacy_path != new_path {
+                match read_baseline_at(fs, &legacy_path) {
+                    Ok(Some(b)) => {
+                        if legacy_baseline_belongs_to_filename(&b.source_path, filename) {
+                            return (Ok(Some(b)), legacy_path);
+                        }
+                        return (Ok(None), legacy_path);
                     }
+                    Err(e) => return (Err(e), legacy_path),
+                    Ok(None) => return (Ok(None), legacy_path),
                 }
             }
         }
-        Ok(None)
+        (Ok(None), new_path)
     }
 }
 
@@ -323,7 +351,7 @@ fn legacy_baseline_belongs_to_filename(legacy_source_path: &Path, filename: &str
 /// `Ok(None)` for a missing file; `Ok(Some)` on success;
 /// `Err` on parse failure or schema-version mismatch (the caller
 /// surfaces the recovery hint).
-fn read_baseline_at(fs: &dyn Fs, path: &Path) -> Result<Option<Baseline>> {
+pub(crate) fn read_baseline_at(fs: &dyn Fs, path: &Path) -> Result<Option<Baseline>> {
     if !fs.exists(path) {
         return Ok(None);
     }

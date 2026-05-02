@@ -218,12 +218,28 @@ pub fn collect_baselines_and_errors(
                                         &handler.name,
                                         &derived,
                                     );
-                                    if fs.exists(&canonical_path) {
-                                        // The canonical (new-layout)
-                                        // entry already exists and
-                                        // will be emitted on its own
-                                        // turn. Drop this legacy
-                                        // duplicate.
+                                    // Drop the legacy duplicate
+                                    // ONLY when the canonical
+                                    // entry is actually loadable.
+                                    // If the canonical exists but
+                                    // its JSON is corrupt, keeping
+                                    // the legacy gives downstream
+                                    // tooling a usable fallback —
+                                    // the canonical's parse error
+                                    // is already surfaced to the
+                                    // user as a `CacheErrorEntry`
+                                    // by `collect_baselines_and_errors`,
+                                    // so dropping the legacy here
+                                    // would leave them with no
+                                    // working baseline at all.
+                                    let canonical_loadable = matches!(
+                                        crate::preprocessing::baseline::read_baseline_at(
+                                            fs,
+                                            &canonical_path,
+                                        ),
+                                        Ok(Some(_)),
+                                    );
+                                    if canonical_loadable {
                                         skip_emission = true;
                                         filename
                                     } else {
@@ -886,6 +902,64 @@ mod tests {
             baselines.iter().map(|b| &b.2).collect::<Vec<_>>()
         );
         assert_eq!(baselines[0].2, "subdir/config.toml");
+    }
+
+    #[test]
+    fn collect_baselines_keeps_legacy_when_canonical_is_corrupt() {
+        // PR #118 13th-pass Comment AA: dedup must verify the
+        // canonical entry can actually be LOADED, not just that
+        // it exists on disk. If the canonical is present but
+        // corrupt while the legacy basename file is valid, the
+        // legacy entry must surface so downstream tooling has a
+        // usable fallback during the migration window.
+        let env = TempEnvironment::builder().build();
+        write_pack_template(&env, "app", "subdir/config.toml.tmpl", "src");
+        write_deployed(
+            &env,
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+            "rendered",
+        );
+        let src_path = env.dotfiles_root.join("app/subdir/config.toml.tmpl");
+
+        // Stage the legacy basename entry as a VALID baseline.
+        let legacy = baseline_for(&src_path, b"rendered", b"src");
+        legacy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        // Stage the canonical (new-layout) entry as CORRUPT JSON.
+        let canonical_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        env.fs.mkdir_all(canonical_path.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&canonical_path, b"{not valid json")
+            .unwrap();
+
+        // The walker must surface the legacy entry under its
+        // resolved nested key, NOT skip it just because a corrupt
+        // canonical file exists. The corrupt canonical is recorded
+        // as a cache error.
+        let (baselines, errors) =
+            collect_baselines_and_errors(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(
+            baselines.len(),
+            1,
+            "legacy entry must be preserved when canonical is corrupt"
+        );
+        assert_eq!(baselines[0].2, "subdir/config.toml");
+        assert_eq!(baselines[0].3.rendered_content, "rendered");
+        // Corrupt canonical surfaces as a cache error.
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].filename, "subdir/config.toml");
     }
 
     #[test]
