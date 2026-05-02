@@ -802,6 +802,49 @@ fn up_dry_run_does_not_write_preprocessing_baselines() {
     );
 }
 
+// ── cfprefsd drift marker (#109) ────────────────────────────
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_writes_cfprefsd_marker_on_first_run_with_plists() {
+    // First-ever `up`: no previous last-up marker, so any plist
+    // file in an active pack counts as "drifted." The marker
+    // must land for the post-up prompt to fire.
+    let env = TempEnvironment::builder()
+        .pack("mac-defaults")
+        .file("com.example.app.plist", "<?xml?><plist></plist>")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        ctx.fs.exists(&marker),
+        "marker should land on the first up that deploys a plist"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_does_not_write_cfprefsd_marker_when_pack_has_no_plists() {
+    // Pack contains no plist files → the cfprefsd prompt has
+    // nothing to invalidate; the marker must stay absent.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        !ctx.fs.exists(&marker),
+        "marker must not appear when no plists are present"
+    );
+}
+
 // ── up: conflict handling ──────────────────────────────────
 
 #[test]

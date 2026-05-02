@@ -198,3 +198,11 @@ The User Experience
     6.5. Per-file `no_reverse` opt-out
 
         Not in the original spec. R9 added `[preprocessor.template] no_reverse = ["pattern", ...]` for templates whose content is mostly dynamic — burgertocow's heuristic produces more conflict markers than usable diffs on those, so the user opts the file out of reverse-merge while keeping divergence detection. Per-file glob patterns; pack-level `.dodot.toml` overrides root.
+
+    6.6. Consolidated post-`up` install ladder
+
+        The original R4 / R6 install paths shipped as three sequential post-`up` prompts (plist filter, hook, template filter), each with its own Y/n. That violated the §4 promise of "one Y/n to install the clean/smudge filters and the pre-commit hook." Issue #112 tracked the reconciliation; the shipped form is a single Y/n covering whichever rungs apply, with `show` walking each component's preview block individually and `no` dismissing every applicable component at once. Each rung still has its own catalog dismissal key (`template.install_hook`, `plist.install_filters`, `template.install_filter`) so users can resurface a single rung via `dodot prompts reset <key>` after a global "no". The umbrella prompt is `magic.install_ladder`.
+
+    6.7. cfprefsd cache-invalidation prompt
+
+        Not in the original spec. Issue #109 added a separate post-`up` prompt that fires (macOS only) when `dodot up` detects a plist file in any active pack with mtime newer than the previous successful `up`. Offers `killall cfprefsd` so running GUI apps re-read fresh plist values. The detection is mtime-based via a marker file (`<data_dir>/cfprefsd-needs-invalidation`) written by `up` and consumed by the prompt. Catalog key: `plist.cfprefsd_invalidate`. cfprefsd respawns immediately so there's no data-loss window.
