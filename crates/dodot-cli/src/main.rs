@@ -222,6 +222,12 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
         "template-install-filter.jinja",
         render::TEMPLATE_TEMPLATE_INSTALL_FILTER,
     ),
+    ("transform-status.jinja", render::TEMPLATE_TRANSFORM_STATUS),
+    ("git-show-alias.jinja", render::TEMPLATE_GIT_SHOW_ALIAS),
+    (
+        "git-install-alias.jinja",
+        render::TEMPLATE_GIT_INSTALL_ALIAS,
+    ),
 ];
 
 fn build_app() -> App {
@@ -308,6 +314,24 @@ fn build_app() -> App {
             "template-install-filter",
         )
         .expect("register template.install-filter")
+        .command(
+            "transform.status",
+            handlers::transform_status_handler,
+            "transform-status",
+        )
+        .expect("register transform.status")
+        .command(
+            "git-show-alias",
+            handlers::git_show_alias_handler,
+            "git-show-alias",
+        )
+        .expect("register git-show-alias")
+        .command(
+            "git-install-alias",
+            handlers::git_install_alias_handler,
+            "git-install-alias",
+        )
+        .expect("register git-install-alias")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -340,6 +364,8 @@ fn build_app() -> App {
                 commands: vec![
                     Some("git-install-filters".into()),
                     Some("git-show-filters".into()),
+                    Some("git-show-alias".into()),
+                    Some("git-install-alias".into()),
                     Some("plist".into()),
                     Some("template".into()),
                 ],
@@ -536,6 +562,34 @@ fn build_clap_command() -> ClapCommand {
             ClapCommand::new("init-sh").about("Print shell init script for eval in .zshrc/.bashrc"),
         )
         .subcommand(
+            ClapCommand::new("git-show-alias")
+                .about(
+                    "Print the Tier 2 shell alias that wraps git in `dodot refresh --quiet`, \
+                     so `git status` and `git diff` see deployed-side template edits.",
+                )
+                .arg(
+                    Arg::new("shell")
+                        .long("shell")
+                        .help("Target shell (bash, zsh). Auto-detected from $SHELL by default.")
+                        .value_name("SHELL")
+                        .num_args(1),
+                ),
+        )
+        .subcommand(
+            ClapCommand::new("git-install-alias")
+                .about(
+                    "Write the Tier 2 shell alias to your shell's rc file (~/.bashrc or \
+                     ~/.zshrc). Idempotent and additive.",
+                )
+                .arg(
+                    Arg::new("shell")
+                        .long("shell")
+                        .help("Target shell (bash, zsh). Auto-detected from $SHELL by default.")
+                        .value_name("SHELL")
+                        .num_args(1),
+                ),
+        )
+        .subcommand(
             ClapCommand::new("template")
                 .about(
                     "Template-source git integration: the clean filter (passthrough) and \
@@ -667,6 +721,12 @@ fn build_clap_command() -> ClapCommand {
                     ClapCommand::new("install-hook").about(
                         "Install the pre-commit hook that runs `dodot transform check --strict` \
                          on every commit. Idempotent and additive — preserves any existing hook.",
+                    ),
+                )
+                .subcommand(
+                    ClapCommand::new("status").about(
+                        "Show the current state of every cached preprocessed file (synced / \
+                         output-changed / input-changed / both / missing). Read-only.",
                     ),
                 ),
         )

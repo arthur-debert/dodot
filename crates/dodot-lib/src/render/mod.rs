@@ -165,6 +165,15 @@ pub const TEMPLATE_REFRESH: &str = include_str!("../templates/refresh.jinja");
 pub const TEMPLATE_TEMPLATE_INSTALL_FILTER: &str =
     include_str!("../templates/template-install-filter.jinja");
 
+/// `dodot transform status` per-file state list.
+pub const TEMPLATE_TRANSFORM_STATUS: &str = include_str!("../templates/transform-status.jinja");
+
+/// `dodot git-show-alias` print-for-paste output.
+pub const TEMPLATE_GIT_SHOW_ALIAS: &str = include_str!("../templates/git-show-alias.jinja");
+
+/// `dodot git-install-alias` outcome message.
+pub const TEMPLATE_GIT_INSTALL_ALIAS: &str = include_str!("../templates/git-install-alias.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders

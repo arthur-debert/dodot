@@ -116,6 +116,95 @@ impl TransformCheckResult {
     }
 }
 
+/// One row in `dodot transform status`'s passive report.
+///
+/// Mirrors `TransformCheckEntry` but without any of the action /
+/// conflict-block fields — `status` is a read-only inspection;
+/// `check` is the action layer.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransformStatusEntry {
+    pub pack: String,
+    pub handler: String,
+    pub filename: String,
+    pub source_path: String,
+    pub deployed_path: String,
+    /// Mirror of `DivergenceState`, serialised as snake_case so the
+    /// template branches and JSON consumers see the same shape they
+    /// see in `transform check`.
+    #[serde(rename = "state")]
+    pub state: String,
+}
+
+/// Aggregate result of `dodot transform status` — one row per
+/// cached baseline, plus a few rollup counters for the renderer.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransformStatusResult {
+    pub entries: Vec<TransformStatusEntry>,
+    pub synced_count: usize,
+    pub diverged_count: usize,
+    pub missing_count: usize,
+}
+
+/// Run `dodot transform status` — read-only view of the baseline
+/// cache. Walks every cached entry and reports its state without
+/// running the reverse-merge engine, writing source files, or doing
+/// anything else that mutates state. Useful as a "what's currently
+/// out of sync?" check before deciding whether to run `dodot transform
+/// check`. Always exits 0 — even a fully-diverged repo isn't a
+/// failure here, just information.
+pub fn status(ctx: &ExecutionContext) -> Result<TransformStatusResult> {
+    use crate::preprocessing::divergence::{collect_divergences, DivergenceState};
+    let reports = collect_divergences(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let mut synced_count = 0usize;
+    let mut diverged_count = 0usize;
+    let mut missing_count = 0usize;
+    let entries: Vec<TransformStatusEntry> = reports
+        .into_iter()
+        .map(|r| {
+            let state_str = match r.state {
+                DivergenceState::Synced => {
+                    synced_count += 1;
+                    "synced"
+                }
+                DivergenceState::InputChanged => {
+                    diverged_count += 1;
+                    "input_changed"
+                }
+                DivergenceState::OutputChanged => {
+                    diverged_count += 1;
+                    "output_changed"
+                }
+                DivergenceState::BothChanged => {
+                    diverged_count += 1;
+                    "both_changed"
+                }
+                DivergenceState::MissingSource => {
+                    missing_count += 1;
+                    "missing_source"
+                }
+                DivergenceState::MissingDeployed => {
+                    missing_count += 1;
+                    "missing_deployed"
+                }
+            };
+            TransformStatusEntry {
+                pack: r.pack,
+                handler: r.handler,
+                filename: r.filename,
+                source_path: render_path(&r.source_path, ctx.paths.home_dir()),
+                deployed_path: render_path(&r.deployed_path, ctx.paths.home_dir()),
+                state: state_str.to_string(),
+            }
+        })
+        .collect();
+    Ok(TransformStatusResult {
+        entries,
+        synced_count,
+        diverged_count,
+        missing_count,
+    })
+}
+
 /// Run `dodot transform check`. See module docs for the matrix.
 pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResult> {
     let baselines = collect_baselines(ctx.fs.as_ref(), ctx.paths.as_ref())?;
@@ -871,6 +960,84 @@ mod tests {
             entry.source_path,
             entry.deployed_path
         );
+    }
+
+    // ── status ──────────────────────────────────────────────────
+
+    #[test]
+    fn status_on_clean_repo_reports_one_synced_row() {
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(result.entries[0].state, "synced");
+        assert_eq!(result.synced_count, 1);
+        assert_eq!(result.diverged_count, 0);
+        assert_eq!(result.missing_count, 0);
+    }
+
+    #[test]
+    fn status_classifies_output_change() {
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\nport = 5432\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        let deployed = deployed_path(&env, "app", "config.toml");
+        env.fs
+            .write_file(&deployed, b"name = Alice\nport = 9999\n")
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        assert_eq!(result.entries[0].state, "output_changed");
+        assert_eq!(result.diverged_count, 1);
+        assert_eq!(result.synced_count, 0);
+    }
+
+    #[test]
+    fn status_does_not_mutate_anything() {
+        // The entire point of `status` (vs `check`) is that it's
+        // read-only. Run it on a divergent repo and confirm the
+        // source file is byte-identical afterwards.
+        let env = TempEnvironment::builder().build();
+        let src = deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\nport = 5432\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        let original_src = env.fs.read_to_string(&src).unwrap();
+        let deployed = deployed_path(&env, "app", "config.toml");
+        env.fs
+            .write_file(&deployed, b"name = Alice\nport = 9999\n")
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let _ = status(&ctx).unwrap();
+        assert_eq!(env.fs.read_to_string(&src).unwrap(), original_src);
+    }
+
+    #[test]
+    fn status_empty_cache_yields_zero_counts() {
+        let env = TempEnvironment::builder().build();
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        assert!(result.entries.is_empty());
+        assert_eq!(result.synced_count, 0);
+        assert_eq!(result.diverged_count, 0);
+        assert_eq!(result.missing_count, 0);
     }
 
     // ── install_hook ────────────────────────────────────────────

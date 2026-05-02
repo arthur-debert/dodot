@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`dodot transform status`** (R7 of the template-magic track). Read-only view of every cached preprocessed file with its current state (synced / input-changed / output-changed / both-changed / missing-source / missing-deployed). Always exits 0 — informational, not actionable. Useful as a "what's currently out of sync?" check before deciding whether to run `dodot transform check`.
+- **`dodot git-show-alias [--shell <bash|zsh>]`** (R7). Prints the Tier 2 shell alias `alias git='dodot refresh --quiet && command git'` in a copy-paste-ready block. No filesystem mutation. Auto-detects shell from `$SHELL`; `--shell` overrides. Reports "already installed" when the rc file already carries the managed block.
+- **`dodot git-install-alias [--shell <bash|zsh>]`** (R7). Writes the Tier 2 alias to the user's shell rc file (`~/.bashrc` or `~/.zshrc`) with an idempotent guard block, mirroring the pre-commit hook installer. Outcomes: Created / Appended / AlreadyInstalled / Updated. Surfaces the `source <rc>` command the user needs to pick it up immediately.
+
+### Added (R6, prior)
+
 - **Template clean filter — `dodot template clean --path <path>`** (R6 of the template-magic track). The piece that makes `git status` and `git diff` show the truth between commits. Git invokes this filter when reading any working-tree file matched by `*.tmpl filter=dodot-template`; the filter looks up the cached baseline (R1), and on a deployed-side edit it rehydrates the cached marker stream and runs burgertocow + diffy to emit a patched template — without re-rendering, so secret-provider auth is never re-triggered. Fast path (no edit) echoes stdin in microseconds. Slow path lands the patched form (or a conflict block, surfaced inline) so the next `git diff` sees the template-space change.
 - **`dodot template install-filter`** (R6). Registers the `[filter "dodot-template"]` block in the dotfiles repo's `.git/config` (clean → `dodot template clean --path %f`, smudge → `cat`, required → `true`). Idempotent. Surfaces the matching `.gitattributes` line for the user to commit. First-deploy prompt offers it after the user has accepted the pre-commit hook.
 - **`template.install_filter` prompt-catalog entry**. Documents the new prompt alongside the existing ones in `dodot prompts list`.

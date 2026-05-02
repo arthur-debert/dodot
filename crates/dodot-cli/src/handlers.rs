@@ -303,6 +303,44 @@ pub fn transform_check_handler(
     Ok(Output::Render(result))
 }
 
+/// `dodot transform status` — read-only view of every cached
+/// preprocessed file with its current state. Always exits 0.
+pub fn transform_status_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::transform::TransformStatusResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    Ok(Output::Render(commands::transform::status(&ctx)?))
+}
+
+/// `dodot git-show-alias [--shell <shell>]` — print the Tier 2
+/// shell alias for copy-paste. No filesystem mutation.
+pub fn git_show_alias_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::git_alias::ShowAliasResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    let shell_arg = matches.get_one::<String>("shell").map(String::as_str);
+    let shell = commands::git_alias::resolve_shell(shell_arg)?;
+    Ok(Output::Render(commands::git_alias::show_alias(
+        &ctx, shell,
+    )?))
+}
+
+/// `dodot git-install-alias [--shell <shell>]` — write the Tier 2
+/// alias to the user's shell rc file. Idempotent and additive.
+pub fn git_install_alias_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::git_alias::InstallAliasResult> {
+    let ctx = build_ctx(matches)?;
+    let shell_arg = matches.get_one::<String>("shell").map(String::as_str);
+    let shell = commands::git_alias::resolve_shell(shell_arg)?;
+    Ok(Output::Render(commands::git_alias::install_alias(
+        &ctx, shell,
+    )?))
+}
+
 /// `dodot template clean --path <path>` — git clean filter
 /// passthrough for template sources. Reads stdin (the working-tree
 /// source bytes), looks up the matching baseline in the cache,

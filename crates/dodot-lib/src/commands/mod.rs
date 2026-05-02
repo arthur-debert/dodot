@@ -9,6 +9,7 @@ pub mod addignore;
 pub mod adopt;
 pub mod down;
 pub mod fill;
+pub mod git_alias;
 pub mod git_filters;
 pub mod init;
 pub mod list;
