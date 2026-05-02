@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`[preprocessor.template] no_reverse` per-file opt-out** (R9 of the template-magic track). New config field accepts a list of glob patterns (matched against each template source's filename) that flag files as opted out of burgertocow's reverse-merge. Matching files: still render normally on `dodot up`, still tracked in the baseline cache, still surfaced by `dodot transform status` — but `dodot transform check` short-circuits to Synced for them (no source mutation, no findings, exit 0), and the template clean filter falls through its slow path to "echo stdin." Useful for templates whose content is mostly dynamic — the heuristic degrades there and tends to produce more conflict markers than usable diffs. Honors the standard root → pack config inheritance, so per-pack overrides work.
+- **Status banners on shipped proposals.** `docs/proposals/magic.lex` and `docs/proposals/template-expansion.lex` carry "implemented and shipped" headers (mirroring `plists.lex`'s pattern), with magic.lex gaining a §6 "Implementation Notes vs. Spec" section that documents the deviations between the original design and what shipped: the R0–R8 phased rollout, the two-line hook command, bash/zsh-only alias coverage, `git-install-alias` shipping in R7 (vs deferred), and the `no_reverse` opt-out itself.
+- **`docs/reference/template-magic.lex`** — user-facing walkthrough of the install ladder (Tier 1 hook / Tier 2 filter / Tier 3 alias), the day-to-day workflow (vanilla `git status` / `git diff` / `git commit`), conflict resolution, opting out (including `no_reverse`), and the cost ladder. The reference complement to the proposal docs.
+- **`pre-processors.lex` §6 flipped from "git-integration layer NOT yet shipped" to a comprehensive list of shipped commands** (`transform check/status/install-hook`, `template install-filter/clean`, `refresh`, `git-install-alias`, the per-file baseline cache).
+
+### Added (R8, prior)
+
 - **Full magic-stack e2e showcase** (R8 of the template-magic track). New `tests/e2e/bats/test_full_magic_stack.bats` walks the complete user workflow end-to-end: install ladder (hook + filter + alias in order, with idempotent re-installs), the headline "edit deployed → `git status` sees template-space diff" scenario, the commit-refused-on-markers-then-resolved cycle, `transform status` across the editing lifecycle, the R4→R6 hook-block upgrade path, and the alias install + actual shell sourcing. Per-PR bats files cover their phases in isolation; this file pins the integration story so a future change to one phase can't silently break the whole flow.
 
 ### Fixed

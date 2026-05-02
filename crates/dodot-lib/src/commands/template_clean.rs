@@ -47,6 +47,7 @@ use crate::paths::Pather;
 use crate::preprocessing::baseline::hex_sha256;
 use crate::preprocessing::conflict::{MARKER_END, MARKER_MID, MARKER_START};
 use crate::preprocessing::divergence::find_baseline_for_source;
+use crate::preprocessing::no_reverse::is_no_reverse;
 use crate::Result;
 
 /// Produce the patched template content for one filter invocation.
@@ -54,7 +55,12 @@ use crate::Result;
 /// `template_src` is the working-tree source bytes (what git passed
 /// us on stdin). `source_path` is the absolute path of that file
 /// (what git passed via `%f` and the CLI surfaced via `--path`).
-/// Returns the bytes the filter should write to stdout.
+/// `no_reverse_patterns` are the glob patterns from
+/// `[preprocessor.template] no_reverse` for the source's pack;
+/// matching files skip the slow path and echo stdin (still go through
+/// the fast-path hash check, since equality is cheap and never produces
+/// a misleading diff). Returns the bytes the filter should write to
+/// stdout.
 ///
 /// On any non-fatal hiccup (no baseline, hash mismatch, malformed
 /// tracked render, diff parse failure, diff apply failure) returns
@@ -66,6 +72,7 @@ pub fn template_clean(
     paths: &dyn Pather,
     template_src: &str,
     source_path: &Path,
+    no_reverse_patterns: &[String],
 ) -> Result<String> {
     let Some((_pack, _handler, _filename, baseline)) =
         find_baseline_for_source(fs, paths, source_path)?
@@ -96,6 +103,15 @@ pub fn template_clean(
 
     // ── Fast path ───────────────────────────────────────────────
     if hex_sha256(&deployed_bytes) == baseline.rendered_hash {
+        return Ok(template_src.to_string());
+    }
+
+    // ── no_reverse opt-out ──────────────────────────────────────
+    // The user has flagged this file as one where reverse-merge
+    // produces more conflict markers than usable diffs. Skip the
+    // slow path and echo stdin; `dodot transform status` still
+    // surfaces the divergence so the user can decide what to do.
+    if is_no_reverse(source_path, no_reverse_patterns) {
         return Ok(template_src.to_string());
     }
 
@@ -168,6 +184,7 @@ pub fn template_clean_stdio(
     fs: &dyn Fs,
     paths: &dyn Pather,
     source_path: &Path,
+    no_reverse_patterns: &[String],
     stdin: &mut dyn Read,
     stdout: &mut dyn Write,
 ) -> Result<()> {
@@ -176,7 +193,7 @@ pub fn template_clean_stdio(
         .read_to_end(&mut buf)
         .map_err(|e| crate::DodotError::Other(format!("template clean: stdin read: {e}")))?;
     let src = String::from_utf8_lossy(&buf).into_owned();
-    let out = match template_clean(fs, paths, &src, source_path) {
+    let out = match template_clean(fs, paths, &src, source_path, no_reverse_patterns) {
         Ok(o) => o,
         Err(e) => {
             // Soft-fail: log to stderr (visible when the user runs
@@ -279,7 +296,7 @@ mod tests {
             serde_json::json!({"name": "Alice"}),
         );
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
         assert_eq!(out, template, "fast path must echo stdin verbatim");
     }
 
@@ -302,7 +319,7 @@ mod tests {
             .write_file(&deployed, b"name = Alice\nport = 9999\n")
             .unwrap();
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
         assert!(
             out.contains("port = 9999"),
             "expected patched static line, got: {out:?}"
@@ -311,6 +328,97 @@ mod tests {
             out.contains("name = {{ name }}"),
             "var must survive, got: {out:?}"
         );
+    }
+
+    #[test]
+    fn no_reverse_pattern_match_skips_slow_path() {
+        // Same scenario as slow_path_patches_static_line_edit, but
+        // with a no_reverse pattern matching the source filename.
+        // The fast path's hash check fails (deployed differs), and
+        // without the opt-out we'd fall into burgertocow + diffy and
+        // emit the patched template. With the opt-out, we echo stdin.
+        let env = TempEnvironment::builder().build();
+        let template = "name = {{ name }}\nport = 5432\n";
+        let (src, deployed, _) = stage(
+            &env,
+            "app",
+            "cfg.tmpl",
+            template,
+            serde_json::json!({"name": "Alice"}),
+        );
+
+        env.fs
+            .write_file(&deployed, b"name = Alice\nport = 9999\n")
+            .unwrap();
+
+        let out = template_clean(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            template,
+            &src,
+            &["cfg.tmpl".to_string()],
+        )
+        .unwrap();
+        assert_eq!(
+            out, template,
+            "no_reverse match must echo stdin (no patched output)"
+        );
+    }
+
+    #[test]
+    fn no_reverse_glob_match_skips_slow_path() {
+        // Glob form: `*.gen.tmpl` matches a deployed-edit on a
+        // generated template, again echoing stdin instead of going
+        // through reverse-merge.
+        let env = TempEnvironment::builder().build();
+        let template = "name = {{ name }}\nport = 5432\n";
+        let (src, deployed, _) = stage(
+            &env,
+            "app",
+            "foo.gen.tmpl",
+            template,
+            serde_json::json!({"name": "Alice"}),
+        );
+        env.fs
+            .write_file(&deployed, b"name = Alice\nport = 9999\n")
+            .unwrap();
+
+        let out = template_clean(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            template,
+            &src,
+            &["*.gen.tmpl".to_string()],
+        )
+        .unwrap();
+        assert_eq!(out, template);
+    }
+
+    #[test]
+    fn no_reverse_does_not_block_fast_path() {
+        // Even with a no_reverse match, the fast-path hash check
+        // still runs first. A clean state echoes stdin (same as
+        // without the opt-out) — the opt-out only affects the slow
+        // path's reverse-merge step.
+        let env = TempEnvironment::builder().build();
+        let template = "name = {{ name }}\n";
+        let (src, _deployed, _) = stage(
+            &env,
+            "app",
+            "cfg.tmpl",
+            template,
+            serde_json::json!({"name": "Alice"}),
+        );
+
+        let out = template_clean(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            template,
+            &src,
+            &["cfg.tmpl".to_string()],
+        )
+        .unwrap();
+        assert_eq!(out, template);
     }
 
     #[test]
@@ -330,7 +438,7 @@ mod tests {
 
         env.fs.write_file(&deployed, b"name = Bob\n").unwrap();
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
         assert_eq!(out, template);
     }
 
@@ -351,7 +459,7 @@ mod tests {
         );
         env.fs.write_file(&deployed, b"* a\n+ b\n- c\n").unwrap();
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
         // Original template still present.
         assert!(
             out.contains("{% for i in items %}"),
@@ -379,7 +487,8 @@ mod tests {
         let body = "hello {{ x }}\n";
         env.fs.write_file(&stranger, body.as_bytes()).unwrap();
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), body, &stranger).unwrap();
+        let out =
+            template_clean(env.fs.as_ref(), env.paths.as_ref(), body, &stranger, &[]).unwrap();
         assert_eq!(out, body);
     }
 
@@ -399,7 +508,7 @@ mod tests {
         );
         env.fs.remove_file(&deployed).unwrap();
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
         assert_eq!(out, template);
     }
 
@@ -432,7 +541,7 @@ mod tests {
             )
             .unwrap();
 
-        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let out = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
         assert_eq!(out, template);
     }
 
@@ -458,6 +567,7 @@ mod tests {
             env.fs.as_ref(),
             env.paths.as_ref(),
             &src,
+            &[],
             &mut stdin,
             &mut stdout,
         )
@@ -499,6 +609,7 @@ mod tests {
             env.fs.as_ref(),
             env.paths.as_ref(),
             &src,
+            &[],
             &mut stdin,
             &mut stdout,
         )
@@ -553,6 +664,6 @@ mod tests {
 
         // Must succeed (output may be anything; just not a panic or
         // an Err).
-        let _ = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src).unwrap();
+        let _ = template_clean(env.fs.as_ref(), env.paths.as_ref(), template, &src, &[]).unwrap();
     }
 }
