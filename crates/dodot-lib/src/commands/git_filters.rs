@@ -34,9 +34,24 @@ pub fn config_block_text() -> String {
     .join("\n")
 }
 
-/// Render the `.gitattributes` line that binds `*.plist` to the filter.
-pub fn gitattributes_line() -> &'static str {
-    "*.plist filter=dodot-plist"
+/// Render the `.gitattributes` lines that bind each configured plist
+/// extension to the `dodot-plist` filter. Default config produces one
+/// line for `*.plist`; users who add e.g. `"binplist"` to the
+/// `[symlink] plist_extensions` config get an additional line.
+pub fn gitattributes_lines(extensions: &[String]) -> Vec<String> {
+    extensions
+        .iter()
+        .map(|ext| format!("*.{ext} filter=dodot-plist"))
+        .collect()
+}
+
+/// Resolve the active `plist_extensions` from the root config. Used by
+/// every code path that needs to render or scan against the configured
+/// extensions; honors the standard root → pack inheritance the
+/// ConfigManager already manages (callers that want pack-scoped
+/// resolution can call `config_for_pack` directly).
+pub(crate) fn root_plist_extensions(ctx: &ExecutionContext) -> Result<Vec<String>> {
+    Ok(ctx.config_manager.root_config()?.symlink.plist_extensions)
 }
 
 /// Install the dodot-plist clean/smudge filter into the dotfiles repo's
@@ -89,19 +104,29 @@ pub fn show_filters(ctx: &ExecutionContext) -> Result<ShowFiltersResult> {
     let runner = ctx.command_runner.as_ref();
     let installed = filter_is_installed(runner, &root)?;
 
-    let attributes_present = ctx
+    let extensions = root_plist_extensions(ctx)?;
+    let expected_lines = gitattributes_lines(&extensions);
+    let attrs_content = ctx
         .fs
         .read_to_string(&root.join(".gitattributes"))
-        .ok()
-        .map(|s| s.lines().any(gitattributes_line_present))
-        .unwrap_or(false);
+        .unwrap_or_default();
+    // "Bound" means *every* configured extension has its line. A
+    // partial bind (e.g. legacy file has `*.plist` but config now
+    // also requires `*.binplist`) reports false so the install hint
+    // surfaces the gap.
+    let attributes_present = !expected_lines.is_empty()
+        && expected_lines.iter().all(|expected| {
+            attrs_content
+                .lines()
+                .any(|existing| gitattributes_line_matches(existing, expected))
+        });
 
     let block = config_block_text();
     let block_lines = block.lines().map(str::to_string).collect();
     Ok(ShowFiltersResult {
         config_block: block,
         config_block_lines: block_lines,
-        gitattributes_line: gitattributes_line().to_string(),
+        gitattributes_lines: expected_lines,
         installed_in_git_config: installed,
         bound_in_gitattributes: attributes_present,
         repo_root: root.display().to_string(),
@@ -116,7 +141,9 @@ pub fn show_filters(ctx: &ExecutionContext) -> Result<ShowFiltersResult> {
 pub struct ShowFiltersResult {
     pub config_block: String,
     pub config_block_lines: Vec<String>,
-    pub gitattributes_line: String,
+    /// One line per configured plist extension (default `["plist"]`).
+    /// Templates iterate to render the full block.
+    pub gitattributes_lines: Vec<String>,
     pub installed_in_git_config: bool,
     pub bound_in_gitattributes: bool,
     pub repo_root: String,
@@ -158,7 +185,10 @@ pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathB
     let root_config = ctx.config_manager.root_config()?;
     let packs = crate::packs::discover_packs(ctx.fs.as_ref(), root, &root_config.pack.ignore)?;
     for pack in packs {
-        scan_for_plists(ctx.fs.as_ref(), &pack.path, &mut found)?;
+        // Honor pack-level overrides of `[symlink] plist_extensions`.
+        let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+        let extensions = pack_config.symlink.plist_extensions.clone();
+        scan_for_plists(ctx.fs.as_ref(), &pack.path, &extensions, &mut found)?;
     }
     Ok(found)
 }
@@ -166,6 +196,7 @@ pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathB
 fn scan_for_plists(
     fs: &dyn crate::fs::Fs,
     dir: &std::path::Path,
+    extensions: &[String],
     found: &mut Vec<std::path::PathBuf>,
 ) -> Result<()> {
     let entries = match fs.read_dir(dir) {
@@ -184,12 +215,16 @@ fn scan_for_plists(
             if name.starts_with('.') {
                 continue;
             }
-            scan_for_plists(fs, &entry.path, found)?;
+            scan_for_plists(fs, &entry.path, extensions, found)?;
         } else if entry
             .path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|s| s.eq_ignore_ascii_case("plist"))
+            .map(|ext| {
+                extensions
+                    .iter()
+                    .any(|configured| configured.eq_ignore_ascii_case(ext))
+            })
             .unwrap_or(false)
         {
             found.push(entry.path);
@@ -219,34 +254,61 @@ fn append_cfprefsd_hint(details: &mut Vec<String>) {
 }
 
 fn append_gitattributes_hint(ctx: &ExecutionContext, details: &mut Vec<String>) {
-    let attrs_path = ctx.paths.dotfiles_root().join(".gitattributes");
-    let already_bound = ctx
+    let extensions = match root_plist_extensions(ctx) {
+        Ok(e) => e,
+        Err(_) => return, // surface elsewhere; don't block the install hint
+    };
+    let lines = gitattributes_lines(&extensions);
+    let attrs_content = ctx
         .fs
-        .read_to_string(&attrs_path)
-        .ok()
-        .map(|s| s.lines().any(gitattributes_line_present))
-        .unwrap_or(false);
-    if !already_bound {
-        details.push(String::new());
-        details.push("Next: ensure your .gitattributes binds *.plist to this filter:".into());
-        details.push(format!(
-            "    echo '{}' >> .gitattributes",
-            gitattributes_line()
-        ));
-        details.push("    git add .gitattributes && git commit -m 'enable plist filters'".into());
+        .read_to_string(&ctx.paths.dotfiles_root().join(".gitattributes"))
+        .unwrap_or_default();
+    let missing: Vec<&str> = lines
+        .iter()
+        .filter(|line| {
+            !attrs_content
+                .lines()
+                .any(|existing| gitattributes_line_matches(existing, line))
+        })
+        .map(String::as_str)
+        .collect();
+    if missing.is_empty() {
+        return;
     }
+    details.push(String::new());
+    let pattern_summary = if missing.len() == 1 {
+        format!("*.{} to this filter", extensions[0])
+    } else {
+        format!("{} extensions to this filter", missing.len())
+    };
+    details.push(format!(
+        "Next: ensure your .gitattributes binds {pattern_summary}:"
+    ));
+    for line in &missing {
+        details.push(format!("    echo '{line}' >> .gitattributes"));
+    }
+    details.push("    git add .gitattributes && git commit -m 'enable plist filters'".into());
 }
 
-/// Match a `.gitattributes` line that binds `*.plist` to the
-/// `dodot-plist` filter. Tolerant of whitespace and comments.
-fn gitattributes_line_present(line: &str) -> bool {
-    let trimmed = line.split('#').next().unwrap_or("").trim();
-    let mut parts = trimmed.split_ascii_whitespace();
-    let pattern = parts.next();
-    if pattern != Some("*.plist") {
-        return false;
+/// True if `existing` (a line from `.gitattributes`) binds the same
+/// `*.<ext> filter=dodot-plist` pattern as `expected`. Tolerant of
+/// whitespace, trailing attributes (e.g. `diff=plist`), and comments.
+fn gitattributes_line_matches(existing: &str, expected: &str) -> bool {
+    let strip = |s: &str| -> Option<String> {
+        let trimmed = s.split('#').next().unwrap_or("").trim();
+        let mut parts = trimmed.split_ascii_whitespace();
+        let pattern = parts.next()?.to_string();
+        let binds_filter = parts.any(|tok| tok == "filter=dodot-plist");
+        if binds_filter {
+            Some(pattern)
+        } else {
+            None
+        }
+    };
+    match (strip(existing), strip(expected)) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
     }
-    parts.any(|tok| tok == "filter=dodot-plist")
 }
 
 fn filter_is_installed(
@@ -416,20 +478,88 @@ mod tests {
 
     #[test]
     fn gitattributes_recogniser_handles_whitespace_and_comments() {
-        assert!(gitattributes_line_present("*.plist filter=dodot-plist"));
-        assert!(gitattributes_line_present(
-            "  *.plist   filter=dodot-plist  "
+        let expected = "*.plist filter=dodot-plist";
+        assert!(gitattributes_line_matches(
+            "*.plist filter=dodot-plist",
+            expected
         ));
-        assert!(gitattributes_line_present(
-            "*.plist filter=dodot-plist diff=plist"
+        assert!(gitattributes_line_matches(
+            "  *.plist   filter=dodot-plist  ",
+            expected
         ));
-        assert!(gitattributes_line_present(
-            "*.plist filter=dodot-plist  # plist filter"
+        assert!(gitattributes_line_matches(
+            "*.plist filter=dodot-plist diff=plist",
+            expected
+        ));
+        assert!(gitattributes_line_matches(
+            "*.plist filter=dodot-plist  # plist filter",
+            expected
         ));
 
-        assert!(!gitattributes_line_present(""));
-        assert!(!gitattributes_line_present("# commented out"));
-        assert!(!gitattributes_line_present("*.plist filter=other"));
-        assert!(!gitattributes_line_present("*.txt filter=dodot-plist"));
+        assert!(!gitattributes_line_matches("", expected));
+        assert!(!gitattributes_line_matches("# commented out", expected));
+        assert!(!gitattributes_line_matches(
+            "*.plist filter=other",
+            expected
+        ));
+        assert!(!gitattributes_line_matches(
+            "*.txt filter=dodot-plist",
+            expected
+        ));
+    }
+
+    #[test]
+    fn gitattributes_lines_emits_one_per_extension() {
+        let lines = gitattributes_lines(&["plist".to_string()]);
+        assert_eq!(lines, vec!["*.plist filter=dodot-plist"]);
+
+        let lines = gitattributes_lines(&[
+            "plist".to_string(),
+            "binplist".to_string(),
+            "savedState".to_string(),
+        ]);
+        assert_eq!(
+            lines,
+            vec![
+                "*.plist filter=dodot-plist",
+                "*.binplist filter=dodot-plist",
+                "*.savedState filter=dodot-plist",
+            ]
+        );
+    }
+
+    #[test]
+    fn detect_plist_files_honors_custom_extension() {
+        // With the default config, only `.plist` is detected. With
+        // `binplist` added to the pack's `[symlink] plist_extensions`,
+        // detection picks it up too. Pack-level inheritance is the
+        // shipped path; root-level overrides the same way.
+        use crate::testing::TempEnvironment;
+        let env = TempEnvironment::builder()
+            .pack("apps")
+            .file("com.app.plist", "binary-or-xml")
+            .file("com.other.binplist", "different ext")
+            .file("README.md", "should be ignored")
+            .config("[symlink]\nplist_extensions = [\"plist\", \"binplist\"]\n")
+            .done()
+            .build();
+        let ctx = make_test_ctx(&env);
+        let found = detect_plist_files(&ctx).expect("detect");
+        let names: Vec<String> = found
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            names.contains(&"com.app.plist".to_string()),
+            "default-extension plist should be found: {names:?}"
+        );
+        assert!(
+            names.contains(&"com.other.binplist".to_string()),
+            "custom-extension plist should be found: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n.ends_with(".md")),
+            "non-plist files must not surface: {names:?}"
+        );
     }
 }

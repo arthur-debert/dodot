@@ -195,9 +195,14 @@ macOS Plists
 
 9. Configuration
 
-    Plist support currently has no configuration knobs. Plist detection (for adopt hints and the up-time prompt) is hard-coded to the `.plist` extension; deployment is governed by the symlink handler and the file's location, the same as any other file. There is no `[preprocessor.plist]` section either — plists do not go through the preprocessing pipeline.
+    Plist support has one config knob: `[symlink] plist_extensions`. It controls which filename suffixes detection treats as plists (for adopt hints, the up-time prompt, and the `.gitattributes` lines emitted by `git-install-filters`). Deployment is still governed by the symlink handler and the file's location, the same as any other file. There is no `[preprocessor.plist]` section — plists do not go through the preprocessing pipeline.
 
-    A configurable `plist_extensions` list was sketched in [./../proposals/plists.lex] §8.1 to cover non-`.plist` suffixes some apps use (`.savedState`, `.mobileconfig`, …). It has not been implemented; if real-world demand surfaces, it would slot in under `[symlink]`.
+        [symlink]
+        plist_extensions = ["plist"]   # default; add "binplist", "savedState", etc. as needed
+
+    :: toml ::
+
+    Honors the standard root → pack inheritance: a pack-level `.dodot.toml` can override the list for that pack only. Comparison is case-insensitive. When more than one extension is configured, `dodot git-install-filters` emits one `.gitattributes` line per extension (`*.plist filter=dodot-plist`, `*.binplist filter=dodot-plist`, …).
 
 10. Commands at a Glance
 

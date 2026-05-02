@@ -662,7 +662,10 @@ fn try_prompt_install_filters() -> Result<(), anyhow::Error> {
             }
             eprintln!();
             eprintln!("Add to .gitattributes (committed in the repo):");
-            eprintln!("    {}", commands::git_filters::gitattributes_line());
+            let extensions = ctx.config_manager.root_config()?.symlink.plist_extensions;
+            for line in commands::git_filters::gitattributes_lines(&extensions) {
+                eprintln!("    {line}");
+            }
             eprintln!();
             eprintln!(
                 "Run `dodot git-install-filters` to install, or `dodot prompts reset {prompt_key}` to skip and ask later."
