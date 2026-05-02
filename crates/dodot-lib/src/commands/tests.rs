@@ -234,207 +234,6 @@ fn status_renders_with_standout() {
 }
 
 #[test]
-fn status_reports_preserved_install_template_as_deployed_with_footnote() {
-    // Review feedback (PR #118 fourth pass): when the §6.4 divergence
-    // guard preserves a deployed `install.sh.tmpl` output, the planner
-    // drops the Run intent so provisioning stays pinned to the previous
-    // successful render. Without the status-side override, check_status
-    // would hash the user's edit and report "pending", contradicting
-    // the planning behavior. Pin the new behavior: status shows the
-    // row with the warning style + "preserved (deployed-edit pending)"
-    // label and a footnote pointing at the resolution paths.
-    let env = TempEnvironment::builder()
-        .pack("setup")
-        .file(
-            "install.sh.tmpl",
-            "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
-        )
-        .done()
-        .build();
-
-    let mut ctx = make_ctx(&env);
-    ctx.no_provision = false;
-
-    // First `up` deploys + records the install sentinel.
-    let _ = commands::up::up(None, &ctx).unwrap();
-
-    // User edits the deployed install script directly.
-    let deployed = ctx
-        .paths
-        .handler_data_dir("setup", "preprocessed")
-        .join("install.sh");
-    ctx.fs
-        .write_file(&deployed, b"#!/bin/sh\necho INJECTED_BY_USER")
-        .unwrap();
-
-    // Status pass should report the install row as preserved, not
-    // pending. The user already gets a separate preservation warning
-    // at the warnings level — the row label here is the post-up UI
-    // signal that the previous run is still effective.
-    let result = commands::status::status(None, &ctx).unwrap();
-    let install_row = result
-        .packs
-        .iter()
-        .flat_map(|p| &p.files)
-        .find(|f| f.handler == "install")
-        .expect("install row must be present");
-    assert!(
-        install_row.status_label.contains("preserved"),
-        "install row should report preserved, got: {:?}",
-        install_row.status_label
-    );
-    assert_eq!(
-        install_row.status, "warning",
-        "preserved style should be warning, got: {}",
-        install_row.status
-    );
-    assert!(
-        install_row.note_ref.is_some(),
-        "preserved row must carry a footnote"
-    );
-    let note_idx = (install_row.note_ref.unwrap() - 1) as usize;
-    let note = &result.notes[note_idx];
-    assert!(
-        note.body.contains("transform check") && note.body.contains("--force"),
-        "footnote should point at resolution paths, got: {:?}",
-        note.body
-    );
-}
-
-#[test]
-fn status_does_not_claim_preserved_when_no_sentinel_was_recorded() {
-    // PR #118 14th-pass Comment CC: baselines are written during
-    // preprocessing (before execution), so a failed install can
-    // leave a baseline behind without ever recording a sentinel.
-    // After the user edits the rendered file, status must NOT
-    // claim "previous run still in effect" — the previous run
-    // never actually completed. Pin the gate: when no sentinel
-    // exists for the baseline's rendered hash, the preserved
-    // override is bypassed and the row falls through to Pending.
-    let env = TempEnvironment::builder()
-        .pack("setup")
-        .file(
-            "install.sh.tmpl",
-            "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
-        )
-        .done()
-        .build();
-
-    let mut ctx = make_ctx(&env);
-    ctx.no_provision = false;
-
-    // First `up` deploys and records the install sentinel.
-    let _ = commands::up::up(None, &ctx).unwrap();
-
-    // Surgically remove the install sentinel — simulating a
-    // previous run that wrote the baseline (preprocessing) but
-    // failed before the install actually completed. Sentinels
-    // live directly under `<data>/packs/<pack>/install/`.
-    let install_dir = ctx.paths.handler_data_dir("setup", "install");
-    if let Ok(entries) = ctx.fs.read_dir(&install_dir) {
-        for entry in entries {
-            if entry.is_file && entry.name.starts_with("install.sh-") {
-                ctx.fs.remove_file(&entry.path).unwrap();
-            }
-        }
-    }
-
-    // User edits the deployed file (the divergence guard would
-    // preserve it on the next up).
-    let deployed = ctx
-        .paths
-        .handler_data_dir("setup", "preprocessed")
-        .join("install.sh");
-    ctx.fs
-        .write_file(&deployed, b"#!/bin/sh\necho EDITED")
-        .unwrap();
-
-    let result = commands::status::status(None, &ctx).unwrap();
-    let install_row = result
-        .packs
-        .iter()
-        .flat_map(|p| &p.files)
-        .find(|f| f.handler == "install")
-        .expect("install row must be present");
-    // Without a sentinel for the previous render, the preserved
-    // override must NOT fire. The row falls through to the normal
-    // check_status path and reports as pending.
-    assert!(
-        !install_row.status_label.contains("preserved"),
-        "install row must NOT claim preserved when no sentinel was recorded, got: {:?}",
-        install_row.status_label
-    );
-    assert_eq!(install_row.status, "pending");
-}
-
-#[test]
-fn status_does_not_claim_preserved_when_baseline_unreadable_and_no_sentinel() {
-    // PR #118 16th-pass Comment EE: symmetric to fix #28 — when
-    // the baseline is unreadable AND no sentinel of any hash
-    // exists for this file, the row must NOT claim "previous run
-    // still in effect." The unreadable cache might be left over
-    // from a failed-then-corrupted run that never recorded a
-    // sentinel.
-    let env = TempEnvironment::builder()
-        .pack("setup")
-        .file(
-            "install.sh.tmpl",
-            "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
-        )
-        .done()
-        .build();
-
-    let mut ctx = make_ctx(&env);
-    ctx.no_provision = false;
-
-    // First `up` deploys + records the install sentinel.
-    let _ = commands::up::up(None, &ctx).unwrap();
-
-    // Surgically remove the install sentinel (simulate a previous
-    // run that wrote the baseline but failed to install) AND
-    // corrupt the baseline.
-    let install_dir = ctx.paths.handler_data_dir("setup", "install");
-    if let Ok(entries) = ctx.fs.read_dir(&install_dir) {
-        for entry in entries {
-            if entry.is_file && entry.name.starts_with("install.sh-") {
-                ctx.fs.remove_file(&entry.path).unwrap();
-            }
-        }
-    }
-    let baseline_path = ctx
-        .paths
-        .preprocessor_baseline_path("setup", "preprocessed", "install.sh");
-    ctx.fs
-        .write_file(&baseline_path, b"{this is not valid json")
-        .unwrap();
-
-    // Edit the deployed file (so the divergence guard preserves it,
-    // baseline_unreadable=true).
-    let deployed = ctx
-        .paths
-        .handler_data_dir("setup", "preprocessed")
-        .join("install.sh");
-    ctx.fs
-        .write_file(&deployed, b"#!/bin/sh\necho EDITED")
-        .unwrap();
-
-    let result = commands::status::status(None, &ctx).unwrap();
-    let install_row = result
-        .packs
-        .iter()
-        .flat_map(|p| &p.files)
-        .find(|f| f.handler == "install")
-        .expect("install row must be present");
-    // No sentinel anywhere → must NOT claim preserved.
-    assert!(
-        !install_row.status_label.contains("preserved"),
-        "install row must NOT claim preserved when no sentinel was ever recorded \
-         (even with unreadable baseline), got: {:?}",
-        install_row.status_label
-    );
-}
-
-#[test]
 fn status_lists_ignored_packs() {
     let env = TempEnvironment::builder()
         .pack("vim")
@@ -975,11 +774,8 @@ fn up_dry_run_no_changes() {
 
 #[test]
 fn up_dry_run_does_not_write_preprocessing_baselines() {
-    // PR #118 20th-pass Comment LL: `up --dry-run` must not
-    // rewrite the preprocessing baseline cache during planning.
-    // Baselines represent "state of the last successful `up`,"
-    // so a dry run — which never executes — must not move that
-    // anchor.
+    // Baselines anchor "the state of the last successful `up`," so
+    // a dry run — which never executes — must not move that anchor.
     let env = TempEnvironment::builder()
         .pack("app")
         .file("config.toml.tmpl", "name = {{ name }}")
@@ -988,8 +784,6 @@ fn up_dry_run_does_not_write_preprocessing_baselines() {
         .build();
 
     let ctx = make_ctx(&env);
-
-    // Sanity: no baseline exists yet.
     let baseline_path = ctx
         .paths
         .preprocessor_baseline_path("app", "preprocessed", "config.toml");
@@ -998,8 +792,6 @@ fn up_dry_run_does_not_write_preprocessing_baselines() {
         "test precondition: baseline should not exist before any up runs"
     );
 
-    // Run with dry_run=true. Plan executes but no deploy lands
-    // and no baseline writes.
     let mut dry_ctx = make_ctx(&env);
     dry_ctx.dry_run = true;
     let _ = commands::up::up(None, &dry_ctx).unwrap();
@@ -5601,7 +5393,7 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         config: pack_config.to_handler_config(),
     };
 
-    let plan = orchestration::plan_pack(&pack, &ctx, true, false).unwrap();
+    let plan = orchestration::plan_pack(&pack, &ctx, true).unwrap();
     let hint = plan.warnings.iter().find(|w| w.contains("Code"));
     assert!(
         hint.is_some(),

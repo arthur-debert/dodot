@@ -89,16 +89,14 @@ pub struct TemplatePreprocessor {
     ///
     /// `env.*` references are intentionally **not** part of the
     /// context hash and tracking them is out of scope by design — see
-    /// `preprocessing-pipeline.lex` §6.4. The cache contract for the
-    /// divergence guard is "same source bytes + same `dodot.*`
-    /// namespace + same `user_vars` → same `rendered_hash`." Plain
-    /// `dodot up` re-renders templates every run, so a flipped
-    /// `env.*` value is picked up automatically — `--force` is only
-    /// needed when the divergence guard is preserving a user-edited
-    /// deployed file (the env-var change can't land without
-    /// overwriting that edit). Stable values that should participate
-    /// in the guard's invalidation belong in
-    /// `[preprocessor.template.vars]` (`user_vars`), not `env.*`.
+    /// `preprocessing-pipeline.lex` §6.4. The cache contract is
+    /// "same source bytes + same `dodot.*` namespace + same
+    /// `user_vars` → same output." The `env.*` namespace is the
+    /// explicitly live-read zone; rotating a referenced env var does
+    /// not invalidate the cache, and users pick up the new value via
+    /// `dodot up --force`. Stable values that should participate in
+    /// invalidation belong in `[preprocessor.template.vars]`
+    /// (`user_vars`), not `env.*`.
     context_hash: [u8; 32],
 }
 
