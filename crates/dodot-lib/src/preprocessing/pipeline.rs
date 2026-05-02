@@ -14,7 +14,7 @@ use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::packs::Pack;
 use crate::paths::Pather;
-use crate::preprocessing::baseline::{cache_filename_for, hex_sha256, Baseline};
+use crate::preprocessing::baseline::{cache_filename_for, hex_encode_32, hex_sha256, Baseline};
 use crate::preprocessing::divergence::DivergenceState;
 use crate::preprocessing::PreprocessorRegistry;
 use crate::rules::PackEntry;
@@ -111,6 +111,30 @@ pub struct SkippedRender {
     /// Which divergence state we observed. Always `OutputChanged` or
     /// `BothChanged` — the other states never trigger a skip.
     pub state: DivergenceState,
+    /// True when the skip was triggered by an unreadable baseline
+    /// cache entry (truncated JSON, schema mismatch, etc.) rather
+    /// than a real divergence. The guard fails closed in that case
+    /// to avoid clobbering a possibly-edited deployed file; the
+    /// warning text reflects the different cause and points the user
+    /// at clearing the corrupt cache file or running `--force`.
+    pub baseline_unreadable: bool,
+    /// On-disk path of the baseline cache file that was inspected.
+    /// `Some` when `baseline_unreadable` is `true` so the user-facing
+    /// recovery guidance can name the actual broken file (which may
+    /// be either the new nested layout or the legacy basename
+    /// fallback for upgraders). `None` for confirmed divergence
+    /// cases — the rendered/deployed file paths suffice there.
+    pub cache_path: Option<PathBuf>,
+    /// Hex-encoded SHA-256 of the baseline's `rendered_content` —
+    /// i.e. the hash of what the previous successful render produced.
+    /// `None` when `baseline_unreadable` is `true` (no usable
+    /// baseline to read it from). Status uses this to verify a
+    /// previous successful provisioning run before claiming
+    /// "previous run still in effect" on preserved code-execution
+    /// rows: if no sentinel exists for this hash, the previous
+    /// install/homebrew never actually ran and the row should
+    /// surface as Pending instead.
+    pub previous_rendered_hash: Option<String>,
 }
 
 impl PreprocessResult {
@@ -135,7 +159,7 @@ impl PreprocessResult {
 }
 
 /// The handler name used for preprocessor-expanded files in the datastore.
-const PREPROCESSED_HANDLER: &str = "preprocessed";
+pub(crate) const PREPROCESSED_HANDLER: &str = "preprocessed";
 
 /// Result of checking whether the deployed file diverges from the
 /// cached baseline. Used by [`preprocess_pack`] to decide whether to
@@ -149,6 +173,18 @@ enum DivergenceCheck {
     Skip {
         state: DivergenceState,
         deployed_path: PathBuf,
+        /// True when the skip was forced by an unreadable baseline
+        /// rather than a confirmed divergence — see
+        /// [`SkippedRender::baseline_unreadable`].
+        baseline_unreadable: bool,
+        /// On-disk path of the baseline cache file inspected.
+        /// `Some` only when `baseline_unreadable` is `true`.
+        cache_path: Option<PathBuf>,
+        /// Hex-encoded SHA-256 of the baseline's rendered content
+        /// (i.e. the hash that defines the sentinel of the previous
+        /// successful provisioning run). `None` when
+        /// `baseline_unreadable` is `true`.
+        previous_rendered_hash: Option<String>,
     },
 }
 
@@ -159,30 +195,72 @@ enum DivergenceCheck {
 /// re-rendering would silently destroy a user edit (see
 /// `docs/proposals/preprocessing-pipeline.lex` §6.4).
 ///
+/// `new_context_hash` is the freshly-computed render context for this
+/// invocation (e.g. the deterministic projection of `[preprocessor.
+/// template.vars]` and `dodot.*`). The classifier compares it against
+/// `baseline.context_hash` so that a `user_vars` change paired with a
+/// deployed-file edit reports `BothChanged` rather than the weaker
+/// `OutputChanged`. Pass `None` for preprocessors with no meaningful
+/// context concept; the comparison is then skipped.
+///
 /// "Define stale-vs-new from file content, not the runtime
-/// environment": this check operates purely on bytes (source + deployed
-/// hash comparisons against the baseline). Env-var rotations are
-/// intentionally invisible here — users who change a referenced env var
-/// pick up the new value via `dodot up --force`.
+/// environment": this check operates purely on bytes (source +
+/// deployed hash comparisons against the baseline) and on the
+/// preprocessor-supplied `context_hash` (which deliberately excludes
+/// `env.*` references — see template.rs). Env-var rotations are
+/// intentionally invisible here; users who change a referenced env
+/// var pick up the new value via `dodot up --force`.
 fn check_divergence(
     fs: &dyn Fs,
     paths: &dyn Pather,
     pack_name: &str,
     virtual_relative: &Path,
     source_path: &Path,
+    new_context_hash: Option<&[u8; 32]>,
 ) -> Result<DivergenceCheck> {
     let cache_filename = cache_filename_for(virtual_relative);
-    let baseline =
-        match Baseline::load(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename)? {
-            Some(b) => b,
-            // First-time deploy: no baseline to compare against. Writing
-            // is correct here — there's nothing to overwrite.
-            None => return Ok(DivergenceCheck::Proceed),
-        };
-
     let deployed_path = paths
         .handler_data_dir(pack_name, PREPROCESSED_HANDLER)
         .join(virtual_relative);
+    let (load_result, attempted_cache_path) =
+        Baseline::load_with_origin(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename);
+    let baseline = match load_result {
+        Ok(Some(b)) => b,
+        // First-time deploy: no baseline to compare against. Writing
+        // is correct here — there's nothing to overwrite.
+        Ok(None) => return Ok(DivergenceCheck::Proceed),
+        // The cache is rederivable, but a corrupt baseline still
+        // can't be allowed to silently overwrite a possibly-edited
+        // deployed file. **Fail closed**: if the deployed file
+        // exists, preserve it (skip + warn) so a partial-write or
+        // schema-bump can't clobber a user edit on the next `up`.
+        // Only when there's no deployed file (genuine fresh deploy /
+        // cache-and-render-out-of-sync) do we Proceed. The user
+        // clears the corrupt entry by deleting the *actual* cache
+        // file we attempted to load — this may be the new nested
+        // path or the legacy basename fallback. We propagate the
+        // attempted path so the warning can name it accurately.
+        Err(err) => {
+            tracing::warn!(
+                pack = %pack_name,
+                file = %virtual_relative.display(),
+                cache_path = %attempted_cache_path.display(),
+                error = %err,
+                "baseline cache entry unreadable; preserving deployed file out of caution"
+            );
+            if !fs.exists(&deployed_path) {
+                return Ok(DivergenceCheck::Proceed);
+            }
+            return Ok(DivergenceCheck::Skip {
+                state: DivergenceState::OutputChanged,
+                deployed_path,
+                baseline_unreadable: true,
+                cache_path: Some(attempted_cache_path),
+                previous_rendered_hash: None,
+            });
+        }
+    };
+
     if !fs.exists(&deployed_path) {
         // Baseline says we deployed once, but the user (or some other
         // tool) removed the deployed file. Treat as a fresh deploy —
@@ -196,13 +274,28 @@ fn check_divergence(
     }
 
     // Deployed file diverges. Distinguish OutputChanged from BothChanged
-    // for a sharper warning. A read failure on the source is treated as
-    // "source unchanged" — the safer assumption when we can't tell.
+    // for a sharper warning. "Input changed" means either the source
+    // bytes shifted *or* the render context (user_vars / dodot.*) is
+    // different from what produced the cached baseline; a config-only
+    // change to `[preprocessor.template.vars]` counts. A read failure
+    // on the source is treated as "source unchanged" — the safer
+    // assumption when we can't tell.
     let source_changed = match fs.read_file(source_path) {
         Ok(bytes) => hex_sha256(&bytes) != baseline.source_hash,
         Err(_) => false,
     };
-    let state = if source_changed {
+    let context_changed = match new_context_hash {
+        Some(h) => {
+            // baseline.context_hash is hex; encode the raw [u8; 32]
+            // the same way for an apples-to-apples comparison.
+            // An empty baseline.context_hash means the cached
+            // baseline predates context tracking — treat as
+            // unchanged so we don't false-positive on legacy data.
+            !baseline.context_hash.is_empty() && hex_encode_32(h) != baseline.context_hash
+        }
+        None => false,
+    };
+    let state = if source_changed || context_changed {
         DivergenceState::BothChanged
     } else {
         DivergenceState::OutputChanged
@@ -211,6 +304,9 @@ fn check_divergence(
     Ok(DivergenceCheck::Skip {
         state,
         deployed_path,
+        baseline_unreadable: false,
+        cache_path: None,
+        previous_rendered_hash: Some(baseline.rendered_hash.clone()),
     })
 }
 
@@ -400,24 +496,9 @@ pub fn preprocess_pack(
             // Divergence guard (§6.4): for tracked-render preprocessors,
             // check whether the deployed file has diverged from the
             // cached baseline before overwriting. If it has, skip the
-            // *write* and record a SkippedRender so the caller can warn
+            // write and record a SkippedRender so the caller can warn
             // the user. `force = true` bypasses the guard. See
             // `check_divergence` for the byte-level rule.
-            //
-            // The render itself (`preprocessor.expand` above) has
-            // already run by this point — moving the divergence check
-            // ahead of expansion would require knowing every output
-            // path before producing any of them, which the preprocessor
-            // contract doesn't expose. The cost of the spurious render
-            // is the cycles burned plus any one-shot side effects in
-            // expand (e.g. secret-provider prompts for templates that
-            // resolve `{{ secrets.X }}`). For divergent files this
-            // means the prompt fires even though the rendered bytes
-            // are immediately discarded; users who want to avoid that
-            // should resolve the divergence (`dodot transform check`)
-            // before the next `dodot up`. Tracked here for §6.4
-            // follow-up; not blocking the divergence-preservation
-            // contract this guard exists to keep.
             //
             // The guard fires regardless of `write_baselines` — it's a
             // read-only check against the existing cache, and read-only
@@ -432,23 +513,31 @@ pub fn preprocess_pack(
                     &pack.name,
                     &virtual_relative,
                     &entry.absolute_path,
+                    expanded.context_hash.as_ref(),
                 )? {
                     DivergenceCheck::Proceed => {}
                     DivergenceCheck::Skip {
                         state,
                         deployed_path,
+                        baseline_unreadable,
+                        cache_path,
+                        previous_rendered_hash,
                     } => {
                         info!(
                             pack = %pack.name,
                             file = %virtual_relative.display(),
                             ?state,
-                            "preserving divergent deployed file (skipping write)"
+                            baseline_unreadable,
+                            "preserving deployed file (skipping render)"
                         );
                         skipped.push(SkippedRender {
                             pack: pack.name.clone(),
                             virtual_relative: virtual_relative.clone(),
                             deployed_path: deployed_path.clone(),
                             state,
+                            baseline_unreadable,
+                            cache_path,
+                            previous_rendered_hash,
                         });
                         skip_path = Some(deployed_path);
                     }
@@ -2652,6 +2741,297 @@ mod tests {
     }
 
     #[test]
+    fn divergence_guard_fails_closed_when_corrupt_baseline_and_deployed_exists() {
+        // Review feedback (PR #118 fifth pass): the cache lives under
+        // cache_dir and is rederivable, but a corrupt entry still
+        // can't be allowed to silently overwrite a possibly-edited
+        // deployed file. Pin the **fail-closed** behavior: when
+        // `Baseline::load` fails AND the deployed file exists, the
+        // guard preserves the deployed bytes and surfaces a skip
+        // with `baseline_unreadable = true`. The user clears via
+        // `--force` or by deleting the corrupt cache file.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        // Prime the baseline normally.
+        let _ = run_template_preprocess(&env, "app", false);
+
+        // User edits the deployed file. (This is the worst case
+        // we're protecting against.)
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Corrupt the cached baseline JSON in place — independently
+        // of (and on top of) the user's edit. Both signals are now
+        // pointing at "the deployed file might be different from
+        // what dodot would render."
+        let baseline_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs
+            .write_file(&baseline_path, b"{this is not valid json")
+            .unwrap();
+
+        // Re-run: must NOT clobber the user's edit. Must surface
+        // a skip with the baseline_unreadable flag set so the
+        // warning text reflects the real cause.
+        let result = run_template_preprocess(&env, "app", false);
+        assert_eq!(
+            result.skipped.len(),
+            1,
+            "corrupt baseline + existing deployed must preserve, not re-render"
+        );
+        assert!(
+            result.skipped[0].baseline_unreadable,
+            "skip must carry baseline_unreadable flag"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED",
+            "user's edit must NOT be overwritten when the cache is corrupt"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_records_actual_legacy_cache_path_on_unreadable() {
+        // PR #118 13th-pass Comments Y+Z: when an upgraded user has
+        // a corrupt LEGACY-LAYOUT baseline (basename only) for a
+        // nested template, the SkippedRender's `cache_path` must
+        // point at the legacy path the loader actually tried — not
+        // at the new nested path reconstructed from
+        // `virtual_relative`. The orchestration warning + status
+        // footnote use this field to tell the user exactly which
+        // file to delete.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("subdir/config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), "Alice".to_string());
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "subdir/config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/subdir/config.toml.tmpl"),
+            is_dir: false,
+        }];
+
+        // Prime the new-layout baseline. Then move it to the legacy
+        // basename path and CORRUPT it, simulating an upgraded
+        // cache where the legacy file is broken.
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+        let new_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        let legacy_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs.remove_file(&new_path).unwrap();
+        env.fs.write_file(&legacy_path, b"{not valid json").unwrap();
+
+        // User edits the deployed file.
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        // Re-run: guard fails closed (baseline_unreadable=true) and
+        // records the LEGACY cache path it actually tried.
+        let second = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(second.skipped.len(), 1);
+        assert!(second.skipped[0].baseline_unreadable);
+        assert_eq!(
+            second.skipped[0].cache_path.as_deref(),
+            Some(legacy_path.as_path()),
+            "cache_path must point at the legacy file the loader actually tried, \
+             not at the reconstructed new-layout path"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_proceeds_when_corrupt_baseline_but_no_deployed_file() {
+        // Counterpart to the fail-closed case: when the baseline is
+        // corrupt AND there's no deployed file, there's nothing to
+        // preserve — re-render normally and let the next baseline
+        // write rewrite the entry.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        // Prime + remove the deployed file (simulating, e.g., a
+        // user-side cleanup) but leave a corrupt baseline behind.
+        let _ = run_template_preprocess(&env, "app", false);
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.remove_file(&deployed).unwrap();
+        let baseline_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs
+            .write_file(&baseline_path, b"{this is not valid json")
+            .unwrap();
+
+        // Re-run: no deployed file → safe to proceed. Render lands
+        // and the baseline gets rewritten.
+        let result = run_template_preprocess(&env, "app", false);
+        assert!(
+            result.skipped.is_empty(),
+            "corrupt baseline + missing deployed must proceed, not preserve"
+        );
+        assert_eq!(env.fs.read_to_string(&deployed).unwrap(), "name = original");
+        let baseline = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .expect("baseline should be rewritten on the rerender");
+        assert_eq!(baseline.rendered_content, "name = original");
+    }
+
+    #[test]
+    fn divergence_guard_finds_legacy_basename_baseline_for_nested_template() {
+        // PR #118 6th-pass migration: an upgraded user has a deployed
+        // nested template (`subdir/config.toml.tmpl`) whose baseline
+        // sits at the legacy basename-only cache path
+        // (`<cache>/.../preprocessed/config.toml.json`). They edit
+        // the deployed file, then run `dodot up`. Without the
+        // legacy-layout fallback, the guard would treat this as a
+        // fresh deploy and overwrite the user's edit. With the
+        // fallback, the legacy baseline is found, the divergence is
+        // detected, and the user's edit is preserved.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("subdir/config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), "Alice".to_string());
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "subdir/config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/subdir/config.toml.tmpl"),
+            is_dir: false,
+        }];
+
+        // Simulate the pre-upgrade state: deploy + write the
+        // baseline at the LEGACY basename-only path. We do this by
+        // hand to mimic what older dodot would have produced.
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        let deployed = first.virtual_entries[0].absolute_path.clone();
+        // Move the just-written baseline from `subdir/config.toml.json`
+        // to the legacy `config.toml.json` path. The migration code
+        // path under test then has to find it.
+        let new_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        let legacy_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        let body = env.fs.read_to_string(&new_path).unwrap();
+        env.fs.remove_file(&new_path).unwrap();
+        env.fs.write_file(&legacy_path, body.as_bytes()).unwrap();
+        assert!(env.fs.exists(&legacy_path));
+        assert!(!env.fs.exists(&new_path));
+
+        // User edits the deployed file.
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Re-run: the guard MUST find the legacy baseline via the
+        // load-side fallback and preserve the user's edit. Without
+        // the fallback, this would be an overwrite (data loss).
+        let second = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            second.skipped.len(),
+            1,
+            "guard must find legacy baseline and preserve the edit"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED",
+            "user's edit must NOT be overwritten by the upgrade"
+        );
+        // baseline_unreadable is FALSE here — the legacy file is
+        // valid JSON, just at the old layout.
+        assert!(!second.skipped[0].baseline_unreadable);
+    }
+
+    #[test]
     fn divergence_guard_no_op_when_nothing_changed() {
         // Row 1: nothing changed. Re-running deploys the same content;
         // no skip event.
@@ -2664,6 +3044,230 @@ mod tests {
         let _ = run_template_preprocess(&env, "app", false);
         let second = run_template_preprocess(&env, "app", false);
         assert!(second.skipped.is_empty());
+    }
+
+    #[test]
+    fn divergence_guard_reports_both_changed_when_only_context_changed() {
+        // Review feedback: a config-only change to `[preprocessor.
+        // template.vars]` shifts the context hash without touching
+        // source bytes. Combined with a deployed-file edit, the guard
+        // must report `BothChanged` (input + output diverged), not
+        // `OutputChanged`. The warning text and any downstream tooling
+        // that reads `state` need an accurate signal that the input
+        // side moved.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        // First render with name="Alice".
+        let mut vars1 = HashMap::new();
+        vars1.insert("name".to_string(), "Alice".to_string());
+        let pp1 = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars1,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry1 = PreprocessorRegistry::new();
+        registry1.register(Box::new(pp1));
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/config.toml.tmpl"),
+            is_dir: false,
+        }];
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry1,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        // Edit the deployed file; source bytes still match the baseline.
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        // Re-run with a different `name` user_var (context has changed,
+        // source has not).
+        let mut vars2 = HashMap::new();
+        vars2.insert("name".to_string(), "Bob".to_string());
+        let pp2 = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars2,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry2 = PreprocessorRegistry::new();
+        registry2.register(Box::new(pp2));
+
+        let second = preprocess_pack(
+            entries,
+            &registry2,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(second.skipped.len(), 1);
+        assert_eq!(
+            second.skipped[0].state,
+            DivergenceState::BothChanged,
+            "context-only input change must report BothChanged when paired with a deployed-file edit"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_does_not_collide_on_same_basename_in_different_subdirs() {
+        // Review feedback (PR #118 third pass): the cache layout
+        // previously flattened virtual paths to basename, so
+        // `a/config.toml` and `b/config.toml` shared one cache slot.
+        // The new divergence guard reads this cache during `up`, so
+        // the collision could spuriously treat one file as divergent
+        // (or non-divergent) based on the other file's baseline. Pin
+        // the fix: two files with the same basename in different
+        // subdirectories must each get their own baseline, and the
+        // guard must report each independently.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("a/config.toml.tmpl", "name = {{ name }}")
+            .file("b/config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), "Alice".to_string());
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![
+            PackEntry {
+                relative_path: "a/config.toml.tmpl".into(),
+                absolute_path: env.dotfiles_root.join("app/a/config.toml.tmpl"),
+                is_dir: false,
+            },
+            PackEntry {
+                relative_path: "b/config.toml.tmpl".into(),
+                absolute_path: env.dotfiles_root.join("app/b/config.toml.tmpl"),
+                is_dir: false,
+            },
+        ];
+
+        // First run: both files render, two distinct baselines on disk.
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(first.virtual_entries.len(), 2);
+        assert!(first.skipped.is_empty());
+
+        // Both baselines must exist with their full relative paths
+        // — i.e. no collision.
+        let baseline_a = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "a/config.toml",
+        )
+        .unwrap();
+        let baseline_b = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "b/config.toml",
+        )
+        .unwrap();
+        assert!(
+            baseline_a.is_some(),
+            "a/config.toml must have its own baseline"
+        );
+        assert!(
+            baseline_b.is_some(),
+            "b/config.toml must have its own baseline"
+        );
+
+        // Edit ONLY `a/config.toml`. The guard must report it as
+        // divergent and leave `b/config.toml` alone.
+        let deployed_a = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("a/config.toml");
+        env.fs
+            .write_file(&deployed_a, b"name = USER EDITED IN A")
+            .unwrap();
+
+        let second = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            second.skipped.len(),
+            1,
+            "exactly one file must be reported divergent (the edited one), got: {:?}",
+            second
+                .skipped
+                .iter()
+                .map(|s| &s.virtual_relative)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            second.skipped[0].virtual_relative,
+            std::path::Path::new("a/config.toml")
+        );
+        // The user's edit on a/ stays.
+        assert_eq!(
+            env.fs.read_to_string(&deployed_a).unwrap(),
+            "name = USER EDITED IN A"
+        );
+        // b/ was re-rendered (not skipped) — its content reflects
+        // the rendered output, not anything from a/.
+        let deployed_b = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("b/config.toml");
+        assert_eq!(
+            env.fs.read_to_string(&deployed_b).unwrap(),
+            "name = Alice",
+            "b/ must render normally — its baseline must not be affected by a/'s edit"
+        );
     }
 
     #[test]

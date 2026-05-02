@@ -89,6 +89,20 @@ pub struct UnresolvedMarkerEntry {
     pub line_numbers: Vec<usize>,
 }
 
+/// One unreadable cache entry (corrupt JSON, schema mismatch).
+/// Surfaced by `transform check` and `transform status` so users
+/// see broken cache files instead of having them silently dropped.
+#[derive(Debug, Clone, Serialize)]
+pub struct CacheErrorEntry {
+    pub pack: String,
+    pub handler: String,
+    pub filename: String,
+    /// Absolute path of the corrupt cache file, rendered relative
+    /// to `$HOME` for display.
+    pub cache_path: String,
+    pub error: String,
+}
+
 /// Aggregate outcome of a `transform check` invocation.
 #[derive(Debug, Clone, Serialize)]
 pub struct TransformCheckResult {
@@ -96,10 +110,18 @@ pub struct TransformCheckResult {
     /// Populated only when `strict = true` and at least one source
     /// carries unresolved dodot-conflict markers.
     pub unresolved_markers: Vec<UnresolvedMarkerEntry>,
+    /// Cache entries the walker couldn't parse (corrupt JSON,
+    /// schema mismatch). These count as findings — `check`
+    /// can't safely report "clean" while there are unreadable
+    /// entries hiding potential divergence. Empty in the normal
+    /// case.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_errors: Vec<CacheErrorEntry>,
     /// True iff at least one entry has a non-clean state that should
     /// make the command exit non-zero (Patched, Conflict,
-    /// NeedsRebaseline, MissingSource, MissingDeployed) or `--strict`
-    /// found unresolved markers. CLI uses this to decide the process
+    /// NeedsRebaseline, MissingSource, MissingDeployed), `--strict`
+    /// found unresolved markers, or the walker encountered an
+    /// unreadable cache entry. CLI uses this to decide the process
     /// exit code.
     pub has_findings: bool,
     pub strict: bool,
@@ -144,6 +166,12 @@ pub struct TransformStatusResult {
     pub synced_count: usize,
     pub diverged_count: usize,
     pub missing_count: usize,
+    /// Cache entries the walker couldn't parse (corrupt JSON,
+    /// schema mismatch). Surfaced here so users see broken
+    /// entries in the read-only status view. Empty in the normal
+    /// case.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_errors: Vec<CacheErrorEntry>,
 }
 
 /// Run `dodot transform status` — read-only view of the baseline
@@ -154,8 +182,37 @@ pub struct TransformStatusResult {
 /// check`. Always exits 0 — even a fully-diverged repo isn't a
 /// failure here, just information.
 pub fn status(ctx: &ExecutionContext) -> Result<TransformStatusResult> {
-    use crate::preprocessing::divergence::{collect_divergences, DivergenceState};
-    let reports = collect_divergences(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    use crate::preprocessing::divergence::{
+        classify_one, collect_baselines_and_errors, DivergenceState,
+    };
+    let (baselines, unreadable) =
+        collect_baselines_and_errors(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let reports: Vec<DivergenceReport> = baselines
+        .into_iter()
+        .map(|(pack, handler, filename, baseline)| {
+            classify_one(
+                ctx.fs.as_ref(),
+                ctx.paths.as_ref(),
+                &pack,
+                &handler,
+                &filename,
+                &baseline,
+            )
+        })
+        .collect();
+    let cache_errors: Vec<CacheErrorEntry> = unreadable
+        .into_iter()
+        .map(|u| {
+            let cache_path = render_path(&u.cache_path, ctx.paths.home_dir());
+            CacheErrorEntry {
+                pack: u.pack,
+                handler: u.handler,
+                filename: u.filename,
+                cache_path,
+                error: u.error,
+            }
+        })
+        .collect();
     let mut synced_count = 0usize;
     let mut diverged_count = 0usize;
     let mut missing_count = 0usize;
@@ -203,14 +260,35 @@ pub fn status(ctx: &ExecutionContext) -> Result<TransformStatusResult> {
         synced_count,
         diverged_count,
         missing_count,
+        cache_errors,
     })
 }
 
 /// Run `dodot transform check`. See module docs for the matrix.
 pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResult> {
-    let baselines = collect_baselines(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    let (baselines, unreadable) = crate::preprocessing::divergence::collect_baselines_and_errors(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+    )?;
     let mut entries: Vec<TransformCheckEntry> = Vec::with_capacity(baselines.len());
-    let mut has_findings = false;
+    // Surface unreadable entries as findings — they could be hiding
+    // real divergence; "clean exit" while a corrupt entry is in the
+    // cache would let the pre-commit hook miss the file. Render the
+    // cache path relative to $HOME for display.
+    let cache_errors: Vec<CacheErrorEntry> = unreadable
+        .into_iter()
+        .map(|u| {
+            let cache_path = render_path(&u.cache_path, ctx.paths.home_dir());
+            CacheErrorEntry {
+                pack: u.pack,
+                handler: u.handler,
+                filename: u.filename,
+                cache_path,
+                error: u.error,
+            }
+        })
+        .collect();
+    let mut has_findings = !cache_errors.is_empty();
     // Memoise no_reverse patterns by pack within this check
     // invocation. ConfigManager already caches resolved configs by
     // absolute path, but each lookup still allocates and clones the
@@ -333,6 +411,7 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
     Ok(TransformCheckResult {
         entries,
         unresolved_markers,
+        cache_errors,
         has_findings,
         strict,
     })
@@ -1090,6 +1169,139 @@ mod tests {
         assert_eq!(result.synced_count, 1);
         assert_eq!(result.diverged_count, 0);
         assert_eq!(result.missing_count, 0);
+        assert!(result.cache_errors.is_empty());
+    }
+
+    #[test]
+    fn check_surfaces_corrupt_cache_entry_as_finding() {
+        // PR #118 12th-pass Comment W: a corrupt cache entry must
+        // surface as a finding so the pre-commit hook fails the
+        // commit instead of "succeeding" with an incomplete scan.
+        // This pins the new behavior end-to-end.
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        // Stage a corrupt cache file alongside the healthy one.
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "broken.toml");
+        env.fs.write_file(&bad_path, b"{not valid json").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, /* strict */ false).unwrap();
+
+        // Healthy entry surfaces as Synced; broken entry surfaces
+        // in cache_errors and flips has_findings.
+        assert!(result
+            .entries
+            .iter()
+            .any(|e| matches!(e.action, TransformAction::Synced)));
+        assert_eq!(
+            result.cache_errors.len(),
+            1,
+            "corrupt cache entry must be surfaced as a finding"
+        );
+        assert_eq!(result.cache_errors[0].filename, "broken.toml");
+        assert!(result.has_findings, "must exit non-zero on cache errors");
+        assert_eq!(result.exit_code(), 1);
+    }
+
+    #[test]
+    fn status_surfaces_corrupt_cache_entry() {
+        // Mirror of the check test: status surfaces the corrupt
+        // entry without flipping has_findings (status is always
+        // exit 0).
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "broken.toml");
+        env.fs.write_file(&bad_path, b"{not valid json").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        assert_eq!(result.cache_errors.len(), 1);
+        assert_eq!(result.cache_errors[0].filename, "broken.toml");
+        // Healthy entry still classified.
+        assert_eq!(result.entries[0].state, "synced");
+    }
+
+    #[test]
+    fn status_text_render_includes_cache_error_row() {
+        // PR #118 15th-pass Comment DD: cache_errors must be rendered
+        // by the text template, not just exposed in JSON. Without
+        // this, terminal users would see a clean status report even
+        // when the cache has corrupt entries hiding real divergence.
+        let env = TempEnvironment::builder().build();
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "broken.toml");
+        env.fs.mkdir_all(bad_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&bad_path, b"{not valid json").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        // Use the template constant + standout_render directly since
+        // the lib's `render::render` doesn't register the transform
+        // templates (CLI does that). What we're verifying is that
+        // the *template* renders the cache_errors field.
+        let theme = standout_render::Theme::from_yaml("message:\n  fg: cyan\nmuted:\n  dim: true\nsuccess:\n  fg: green\nwarn:\n  fg: yellow\nerror:\n  fg: red\nusage:\n  fg: blue\n").unwrap();
+        let output = standout_render::render_with_output(
+            crate::render::TEMPLATE_TRANSFORM_STATUS,
+            &result,
+            &theme,
+            standout_render::OutputMode::Text,
+        )
+        .unwrap();
+        assert!(
+            output.contains("cache_error") || output.contains("cache error"),
+            "text output must mention the cache error row, got:\n{output}"
+        );
+        assert!(
+            output.contains("broken.toml"),
+            "text output must name the corrupt file, got:\n{output}"
+        );
+    }
+
+    #[test]
+    fn check_text_render_includes_cache_error_section() {
+        // Sister test to status's text-render check.
+        let env = TempEnvironment::builder().build();
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "broken.toml");
+        env.fs.mkdir_all(bad_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&bad_path, b"{not valid json").unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = check(&ctx, /* strict */ false).unwrap();
+        let theme = standout_render::Theme::from_yaml("message:\n  fg: cyan\nmuted:\n  dim: true\nsuccess:\n  fg: green\nwarn:\n  fg: yellow\nerror:\n  fg: red\nusage:\n  fg: blue\n").unwrap();
+        let output = standout_render::render_with_output(
+            crate::render::TEMPLATE_TRANSFORM_CHECK,
+            &result,
+            &theme,
+            standout_render::OutputMode::Text,
+        )
+        .unwrap();
+        assert!(
+            output.contains("Unreadable baseline cache"),
+            "text output must surface the cache-error section, got:\n{output}"
+        );
+        assert!(
+            output.contains("broken.toml"),
+            "text output must name the corrupt file, got:\n{output}"
+        );
     }
 
     #[test]

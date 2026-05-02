@@ -4,6 +4,7 @@
 //! `execute()` owns the outer loop: discover packs → load per-pack
 //! config → execute command → aggregate results.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -375,36 +376,101 @@ pub struct PackPlan {
 /// Use this when surfacing per-pack warnings in user-facing output
 /// (e.g. `commands::up` populating `PackStatusResult.warnings`). Pure
 /// execution callers should keep using [`collect_pack_intents`].
-pub fn plan_pack(pack: &Pack, ctx: &ExecutionContext) -> Result<PackPlan> {
+///
+/// `write_baselines` controls whether the preprocessing pipeline
+/// persists baseline-cache records. Pass `true` from `dodot up` (the
+/// only mutating caller); pass `false` from read-only callers like
+/// `dodot status` so passive runs don't update the cache that
+/// captured the state of the last `up`. The §6.4 divergence guard
+/// fires regardless — the `write_baselines` flag only controls the
+/// optional baseline-write side effect, not the read path.
+///
+/// `force` controls whether the §6.4 divergence guard is bypassed
+/// (overwriting deployed files that have diverged from the baseline).
+/// `dodot up` propagates `ctx.force` here. **Read-only callers like
+/// `status` must pass `false` regardless of `ctx.force`** — otherwise
+/// a `dodot up --force` run that falls back to `status::status()` via
+/// `up_or_status_for_conflict` would clobber preserved files during
+/// what is nominally a display pass.
+pub fn plan_pack(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    write_baselines: bool,
+    force: bool,
+) -> Result<PackPlan> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let registry = crate::preprocessing::default_registry(
         &pack_config.preprocessor.template,
         ctx.paths.as_ref(),
     )?;
-    plan_pack_inner(pack, ctx, &pack_config, Some(&registry))
+    plan_pack_inner(
+        pack,
+        ctx,
+        &pack_config,
+        Some(&registry),
+        write_baselines,
+        force,
+    )
 }
 
 /// Shared implementation that takes a pre-loaded pack config. Both
 /// entrypoints load the config once and pass it through so we don't
 /// re-merge config for every pack (the ConfigManager caches by path,
 /// but passing the config explicitly makes the data flow obvious).
+///
+/// Defaults `write_baselines = false` and `force = false` because
+/// every caller of this helper (`adopt`, `run_handler_pipeline`)
+/// is read-only conflict detection or test scaffolding. The actual
+/// `dodot up` deploy flow uses `plan_pack` directly with its own
+/// flags. Writing baselines from a read-only inspection command
+/// would change later `transform check` / divergence outcomes
+/// without any deploy having happened.
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
-    plan_pack_inner(pack, ctx, pack_config, preprocessors).map(|p| p.intents)
+    plan_pack_inner(
+        pack,
+        ctx,
+        pack_config,
+        preprocessors,
+        // Both `false`: this helper feeds read-only callers
+        // (`adopt::check_deploy_conflicts`, `run_handler_pipeline`
+        // in tests). The actual `dodot up` flow uses `plan_pack`
+        // directly (which threads its own `write_baselines = true`
+        // and `ctx.force`), so the deploy path is unaffected.
+        //
+        // `write_baselines = false` matters because baselines
+        // represent "the state of the last successful `dodot up`."
+        // Writing them from an inspection-only command would
+        // change later `transform check` / divergence outcomes
+        // without any deploy having happened.
+        //
+        // `force = false` matters because propagating `ctx.force`
+        // would let `dodot adopt --force` bypass the §6.4
+        // divergence guard during inspection-only conflict
+        // scanning, overwriting user-edited deployed files in
+        // *other* packs before adopt has even started.
+        /* write_baselines */
+        false,
+        /* force */ false,
+    )
+    .map(|p| p.intents)
 }
 
 /// Same scan/preprocess/match/group/intents pipeline as
 /// [`collect_pack_intents_inner`], but additionally collects
 /// per-handler `warnings_for_matches` output.
+#[allow(clippy::too_many_arguments)] // pipeline core: every parameter is load-bearing
 fn plan_pack_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
+    write_baselines: bool,
+    force: bool,
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
 
@@ -423,8 +489,8 @@ fn plan_pack_inner(
                 ctx.fs.as_ref(),
                 ctx.datastore.as_ref(),
                 ctx.paths.as_ref(),
-                /* write_baselines */ true,
-                ctx.force,
+                write_baselines,
+                force,
             )?
         } else {
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
@@ -457,30 +523,25 @@ fn plan_pack_inner(
     let mut all_intents = Vec::new();
     let mut all_warnings = Vec::new();
 
-    // Surface preserved-divergent-file warnings from the preprocessing
-    // pipeline. These are the §6.4 "deployed file edited" cases: dodot
-    // refused to overwrite the user's edit and held the previous render
-    // in place. The user resolves them via `dodot transform check`
-    // (auto-merge through the clean filter) or `dodot up --force`
-    // (overwrite).
-    for skipped in &preprocess_result.skipped {
-        let display_path = display_path_relative_to_home(&skipped.deployed_path, ctx);
-        let detail = match skipped.state {
-            crate::preprocessing::divergence::DivergenceState::OutputChanged => {
-                "deployed file was edited since the last `dodot up`"
-            }
-            crate::preprocessing::divergence::DivergenceState::BothChanged => {
-                "both the source template and the deployed file were edited since the last `dodot up`"
-            }
-            _ => "deployed file diverges from the cached baseline",
-        };
-        let warning = format!(
-            "preserved {} ({}). Run `dodot transform check` to reconcile, or re-run with --force to overwrite.",
-            display_path, detail,
-        );
-        tracing::warn!(pack = %pack.name, file = %skipped.virtual_relative.display(), "{warning}");
-        all_warnings.push(warning);
-    }
+    // Set of deployed paths the §6.4 divergence guard preserved
+    // (see `preprocess_pack`). When a tracked render is skipped, the
+    // virtual entry's `absolute_path` still points at the deployed
+    // file — but that file now contains the user's edit, not what
+    // dodot would render. For `Symlink` / `Path` / `Shell` handlers
+    // that's fine: the user-side link continues to resolve the same
+    // bytes the user expects. For `CodeExecution` handlers
+    // (`install`, `homebrew`) it is *not* fine: their sentinel and
+    // execution input are derived from the file content, so a fresh
+    // `up` would derive a sentinel from the user's edit and execute
+    // the user's edit as a script. Drop those matches so provisioning
+    // stays pinned to the previous successful render's outcome.
+    use std::collections::HashSet;
+    let skipped_deployed_paths: HashSet<PathBuf> = preprocess_result
+        .skipped
+        .iter()
+        .map(|s| s.deployed_path.clone())
+        .collect();
+
     for handler_name in &order {
         let handler = match registry.get(handler_name.as_str()) {
             Some(h) => h,
@@ -497,8 +558,35 @@ fn plan_pack_inner(
         }
 
         if let Some(handler_matches) = groups.get(handler_name) {
+            // Filter out preserved-divergent-file matches when the
+            // handler is a CodeExecution handler. Owned Vec because
+            // `to_intents` and `warnings_for_matches` both want a
+            // `&[RuleMatch]` slice.
+            let filtered_for_code_exec: Vec<crate::rules::RuleMatch>;
+            let matches_for_handler: &[crate::rules::RuleMatch] = if !skipped_deployed_paths
+                .is_empty()
+                && handler.category() == handlers::HandlerCategory::CodeExecution
+            {
+                filtered_for_code_exec = handler_matches
+                    .iter()
+                    .filter(|m| !skipped_deployed_paths.contains(&m.absolute_path))
+                    .cloned()
+                    .collect();
+                if filtered_for_code_exec.len() < handler_matches.len() {
+                    debug!(
+                        pack = %pack.name,
+                        handler = %handler_name,
+                        dropped = handler_matches.len() - filtered_for_code_exec.len(),
+                        "dropping preserved-divergent matches from code-execution handler"
+                    );
+                }
+                &filtered_for_code_exec
+            } else {
+                handler_matches.as_slice()
+            };
+
             let intents = handler.to_intents(
-                handler_matches,
+                matches_for_handler,
                 &pack.config,
                 ctx.paths.as_ref(),
                 ctx.fs.as_ref(),
@@ -512,12 +600,76 @@ fn plan_pack_inner(
             all_intents.extend(intents);
 
             let warnings =
-                handler.warnings_for_matches(handler_matches, &pack.config, ctx.paths.as_ref());
+                handler.warnings_for_matches(matches_for_handler, &pack.config, ctx.paths.as_ref());
             for w in &warnings {
                 tracing::warn!(pack = %pack.name, handler = %handler_name, "{w}");
             }
             all_warnings.extend(warnings);
         }
+    }
+
+    // Surface preserved-divergent-file warnings from the preprocessing
+    // pipeline. These are the §6.4 "deployed file edited" cases: dodot
+    // refused to overwrite the user's edit and held the previous render
+    // in place. The user resolves them via `dodot transform check`
+    // (auto-merge through the clean filter) or `dodot up --force`
+    // (overwrite).
+    //
+    // We run this after intent collection so the warning can name the
+    // user-visible path (`~/.config/...`) rather than the hidden
+    // datastore path (`~/.local/share/dodot/.../preprocessed/...`).
+    // Match by source: a `Link` intent for a preprocessed file carries
+    // the datastore path as its `source`, which equals the
+    // `SkippedRender.deployed_path`. Fall back to the datastore path
+    // if no `Link` intent matched (e.g. preprocessed file consumed by
+    // a non-link handler like `install`).
+    for skipped in &preprocess_result.skipped {
+        let user_visible_path = all_intents.iter().find_map(|intent| match intent {
+            crate::operations::HandlerIntent::Link {
+                source, user_path, ..
+            } if source == &skipped.deployed_path => Some(user_path.as_path()),
+            _ => None,
+        });
+        let display_path = match user_visible_path {
+            Some(p) => display_path_relative_to_home(p, ctx),
+            None => display_path_relative_to_home(&skipped.deployed_path, ctx),
+        };
+        let warning = if skipped.baseline_unreadable {
+            // For unreadable baselines, `transform check` will fail
+            // on the same corrupt entry — point the user at the
+            // recovery paths that actually work: delete the
+            // specific corrupt cache file or use `--force`. Use the
+            // **actual** path the guard tried to load (which may
+            // be the legacy basename layout for upgraders), not a
+            // path reconstructed from `virtual_relative` — the
+            // latter could point at a file that doesn't exist for
+            // legacy nested entries.
+            let cache_display = match &skipped.cache_path {
+                Some(p) => display_path_relative_to_home(p, ctx),
+                None => display_path_relative_to_home(&skipped.deployed_path, ctx),
+            };
+            format!(
+                "preserved {} (baseline cache entry is unreadable). \
+                 Delete the corrupt cache file ({}) or re-run with --force to overwrite.",
+                display_path, cache_display,
+            )
+        } else {
+            let detail = match skipped.state {
+                crate::preprocessing::divergence::DivergenceState::OutputChanged => {
+                    "deployed file was edited since the last `dodot up`"
+                }
+                crate::preprocessing::divergence::DivergenceState::BothChanged => {
+                    "both the source template and the deployed file were edited since the last `dodot up`"
+                }
+                _ => "deployed file diverges from the cached baseline",
+            };
+            format!(
+                "preserved {} ({}). Run `dodot transform check` to reconcile, or re-run with --force to overwrite.",
+                display_path, detail,
+            )
+        };
+        tracing::warn!(pack = %pack.name, file = %skipped.virtual_relative.display(), "{warning}");
+        all_warnings.push(warning);
     }
 
     // Missing-target hints (M6 §8.2) — macOS only.
@@ -548,6 +700,10 @@ fn plan_pack_inner(
     })
 }
 
+/// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
+/// emit a soft hint when the `<X>/` folder is missing on disk.
+///
+/// macOS-only — caller checks `cfg!(target_os = "macos")` first to
 /// Render an absolute path with `$HOME` collapsed to `~` for human
 /// display. Falls back to the absolute form when the path is outside
 /// the home tree.
@@ -559,10 +715,6 @@ fn display_path_relative_to_home(path: &std::path::Path, ctx: &ExecutionContext)
     }
 }
 
-/// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
-/// emit a soft hint when the `<X>/` folder is missing on disk.
-///
-/// macOS-only — caller checks `cfg!(target_os = "macos")` first to
 /// avoid firing on Linux where every XDG-routed entry would otherwise
 /// hit this branch.
 fn missing_target_hints(
@@ -1797,6 +1949,89 @@ mod tests {
     }
 
     #[test]
+    fn divergence_guard_drops_install_intent_for_preserved_template() {
+        // Review feedback (PR #118): when the §6.4 guard preserves a
+        // user-edited deployed file, the install/homebrew handlers
+        // must NOT emit a Run intent against it. Otherwise the
+        // sentinel would be derived from the user's edit and the
+        // script would execute the user's edit on the next `up`.
+        // The symlink intent stays — the user-side link continues to
+        // resolve the preserved bytes — but provisioning is held at
+        // the previous successful state.
+        let env = TempEnvironment::builder()
+            .pack("setup")
+            .file(
+                "install.sh.tmpl",
+                "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
+            )
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        ctx.no_provision = false; // we want the install handler to consider matching
+        let pack = Pack::new(
+            "setup".into(),
+            env.dotfiles_root.join("setup"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("setup"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // First run: render baseline + emit install Run intent.
+        let first = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+        )
+        .unwrap();
+        let first_run_count = first
+            .intents
+            .iter()
+            .filter(|i| matches!(i, crate::operations::HandlerIntent::Run { .. }))
+            .count();
+        assert!(
+            first_run_count >= 1,
+            "first deploy should emit at least one Run intent for install.sh"
+        );
+
+        // User edits the deployed install script directly.
+        let deployed = env
+            .paths
+            .handler_data_dir("setup", "preprocessed")
+            .join("install.sh");
+        env.fs
+            .write_file(&deployed, b"#!/bin/sh\necho INJECTED_BY_USER")
+            .unwrap();
+
+        // Re-run: guard preserves the file, and the install Run intent
+        // for it must NOT be emitted (otherwise the user's edit would
+        // execute as a script on the next `up`).
+        let second = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+        )
+        .unwrap();
+        for intent in &second.intents {
+            if let crate::operations::HandlerIntent::Run {
+                arguments, handler, ..
+            } = intent
+            {
+                assert!(
+                    !arguments.iter().any(|a| a.contains("install.sh")),
+                    "preserved install.sh.tmpl must not emit a Run intent (handler={handler}, arguments={arguments:?})"
+                );
+            }
+        }
+        // The preservation warning still fires.
+        assert!(
+            second
+                .warnings
+                .iter()
+                .any(|w| w.contains("preserved") && w.contains("install.sh")),
+            "expected preservation warning for install.sh, got: {:?}",
+            second.warnings
+        );
+    }
+
+    #[test]
     fn plan_pack_surfaces_divergence_warnings() {
         // End-to-end: a template-deployed file gets edited by the user,
         // then `plan_pack` runs again. The pipeline preserves the edit
@@ -1819,7 +2054,7 @@ mod tests {
         );
 
         // First run: clean deploy, no warnings about preserved files.
-        let first = plan_pack(&pack, &ctx).unwrap();
+        let first = plan_pack(&pack, &ctx, true, false).unwrap();
         assert!(
             first.warnings.iter().all(|w| !w.contains("preserved")),
             "first deploy must not produce a preservation warning: {:?}",
@@ -1835,7 +2070,7 @@ mod tests {
 
         // Second run: warning surfaces, with the documented resolution
         // hints — `transform check` and `--force`.
-        let second = plan_pack(&pack, &ctx).unwrap();
+        let second = plan_pack(&pack, &ctx, true, false).unwrap();
         let preserved: Vec<&String> = second
             .warnings
             .iter()
@@ -1851,6 +2086,19 @@ mod tests {
         assert!(
             w.contains("config.toml"),
             "warning should name the file: {w}"
+        );
+        // The warning must report the user-visible deployed path
+        // (`~/.config/app/config.toml`), not the hidden datastore path
+        // (`~/.local/share/dodot/.../preprocessed/config.toml`). Users
+        // edit through the symlink target, so that's the path they
+        // recognise.
+        assert!(
+            w.contains("~/.config/app/config.toml"),
+            "warning should show user-visible path, got: {w}"
+        );
+        assert!(
+            !w.contains("preprocessed"),
+            "warning should not leak the datastore path, got: {w}"
         );
         assert!(
             w.contains("transform check"),
@@ -1887,7 +2135,7 @@ mod tests {
         );
 
         // Prime baseline.
-        let _ = plan_pack(&pack, &ctx).unwrap();
+        let _ = plan_pack(&pack, &ctx, true, false).unwrap();
         let deployed = env
             .paths
             .handler_data_dir("app", "preprocessed")
@@ -1895,7 +2143,10 @@ mod tests {
         env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
 
         ctx.force = true;
-        let plan = plan_pack(&pack, &ctx).unwrap();
+        let plan = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ ctx.force,
+        )
+        .unwrap();
         assert!(
             plan.warnings.iter().all(|w| !w.contains("preserved")),
             "force=true must not emit preservation warnings: {:?}",
@@ -1905,6 +2156,129 @@ mod tests {
             env.fs.read_to_string(&deployed).unwrap(),
             "name = original",
             "force must overwrite the user's edit with the rendered content"
+        );
+    }
+
+    #[test]
+    fn plan_pack_force_false_preserves_edit_even_when_ctx_force_is_true() {
+        // Review feedback (PR #118 third pass): when `dodot up --force`
+        // hits a cross-pack conflict, `up_or_status_for_conflict`
+        // falls back to `status::status()` which calls plan_pack.
+        // ctx.force is still true at that point, but status's
+        // plan_pack call must explicitly pass force=false so the
+        // divergence guard remains active during what is nominally
+        // a read-only display pass — otherwise preserved files get
+        // clobbered while merely rendering status.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // Prime baseline.
+        let _ = plan_pack(&pack, &ctx, true, false).unwrap();
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Even with ctx.force=true (mimicking `dodot up --force` that
+        // got bounced to status), passing force=false to plan_pack
+        // must keep the guard active.
+        ctx.force = true;
+        let plan = plan_pack(
+            &pack, &ctx, /* write_baselines */ false, /* force */ false,
+        )
+        .unwrap();
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED",
+            "force=false in plan_pack must preserve user edits regardless of ctx.force"
+        );
+        assert!(
+            plan.warnings.iter().any(|w| w.contains("preserved")),
+            "preservation warning should still surface, got: {:?}",
+            plan.warnings
+        );
+    }
+
+    #[test]
+    fn plan_pack_with_write_baselines_false_does_not_touch_baseline_cache() {
+        // Regression for issue #110 review: `dodot status` calls
+        // `plan_pack` for cross-pack conflict detection. With
+        // `write_baselines = false`, the planning pass must not update
+        // the baseline cache — even on the "InputChanged" path where
+        // the source has changed since last `up`. Otherwise a passive
+        // `dodot status` run would silently rebaseline templates.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // Prime the baseline with a write-enabled run (mirrors `up`).
+        let _ = plan_pack(
+            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+        )
+        .unwrap();
+        let before = crate::preprocessing::baseline::Baseline::load(
+            ctx.fs.as_ref(),
+            ctx.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+
+        // Edit the source so the next preprocess would re-render and
+        // (under the bug) overwrite the baseline.
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join("app/config.toml.tmpl"),
+                b"name = changed",
+            )
+            .unwrap();
+
+        // Run with write_baselines=false (the `dodot status` path).
+        let _ = plan_pack(
+            &pack, &ctx, /* write_baselines */ false, /* force */ false,
+        )
+        .unwrap();
+
+        let after = crate::preprocessing::baseline::Baseline::load(
+            ctx.fs.as_ref(),
+            ctx.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            before, after,
+            "write_baselines=false must leave the baseline cache untouched"
         );
     }
 }

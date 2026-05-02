@@ -98,7 +98,7 @@ Design Specification: Template Expansion
                    set the DB_HOST environment variable or use a default:
                    {{ env.DB_HOST | default("localhost") }}
 
-        Cache invalidation: env-var references are read live at render time and are intentionally not part of the cache-invalidation signal — see `preprocessing-pipeline.lex` §6.4. Rotating an env var that a template references will not by itself trigger a re-deploy; users pick up the new value with `dodot up --force`. Stable values that should participate in invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace, §3.3), not `env.*`.
+        Cache invalidation: env-var references are read live at render time and are intentionally not part of the divergence guard's cache-invalidation signal — see `preprocessing-pipeline.lex` §6.4. The next plain `dodot up` re-renders templates every run, so an env-var change is picked up automatically as long as the deployed file still matches its baseline; users only need `dodot up --force` when the guard is preserving an in-place edit on the deployed file. Stable values that should participate in the divergence guard's invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace, §3.3), not `env.*`.
 
     3.3. User-Defined Variables: bare names
 
@@ -143,9 +143,15 @@ Design Specification: Template Expansion
 
     4.2. Sentinel Hashing for Executable Templates
 
-        For templates that route to the install or homebrew handler (e.g., `install.sh.tmpl`), the sentinel must track both the template content hash AND the variable context hash. If either changes, the script re-runs. This extends the existing sentinel format:
+        For templates that route to the install or homebrew handler (e.g., `install.sh.tmpl`), the sentinel tracks the rendered output's content hash. If anything that influences the rendered bytes changes — the template source, the `dodot.*` namespace, the `[preprocessor.template.vars]` (`user_vars`) entries, or `env.*` references baked into the render — the sentinel changes and the script re-runs:
 
-            sentinel = "{filename}-{hash(template_content + context_hash)}"
+            sentinel = "{filename}-{first-16-of-sha256(rendered_content)}"
+
+        The post-rendering hash is what ships, and it has the right invariance properties: the rendered bytes already encode template structure + variable values + env values, so hashing them captures every input that affected the output. Two consequences worth noting:
+
+        - **Env-var rotation does re-run executable templates** (the rendered bytes differ → different sentinel → re-run). This is consistent with the broader "env vars are not part of the cache-invalidation signal" rule in `preprocessing-pipeline.lex` §6.4: that rule governs the **divergence guard's `rendered_hash` comparison** (which compares deployed bytes to a *previously-rendered* hash, so env-var changes don't make the deployed file look "edited"). Here, the sentinel is computed at *render time* against the *fresh* rendered bytes, so env-var changes naturally flow through.
+
+        - The legacy sentinel format described in earlier drafts of this section (`hash(template_content + context_hash)` as separate inputs) was equivalent in effect — both the rendered hash and the explicit decomposition produce the same invalidation properties — but post-render hashing is simpler to implement and matches what `install.rs` / `homebrew.rs` actually do.
 
     4.3. Error Handling
 
