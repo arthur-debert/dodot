@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`dodot transform status`** (R7 of the template-magic track). Read-only view of every cached preprocessed file with its current state (synced / input-changed / output-changed / both-changed / missing-source / missing-deployed). Always exits 0 — informational, not actionable. Useful as a "what's currently out of sync?" check before deciding whether to run `dodot transform check`.
+- **`dodot transform status`** (R7 of the template-magic track). Read-only view of every cached preprocessed file with its current state (`synced` / `input_changed` / `output_changed` / `both_changed` / `missing_source` / `missing_deployed`). Always exits 0 — informational, not actionable. Useful as a "what's currently out of sync?" check before deciding whether to run `dodot transform check`.
 - **`dodot git-show-alias [--shell <bash|zsh>]`** (R7). Prints the Tier 2 shell alias `alias git='dodot refresh --quiet && command git'` in a copy-paste-ready block. No filesystem mutation. Auto-detects shell from `$SHELL`; `--shell` overrides. Reports "already installed" when the rc file already carries the managed block.
 - **`dodot git-install-alias [--shell <bash|zsh>]`** (R7). Writes the Tier 2 alias to the user's shell rc file (`~/.bashrc` or `~/.zshrc`) with an idempotent guard block, mirroring the pre-commit hook installer. Outcomes: Created / Appended / AlreadyInstalled / Updated. Surfaces the `source <rc>` command the user needs to pick it up immediately.
 

@@ -49,23 +49,25 @@ pub enum Shell {
 }
 
 impl Shell {
-    /// Detect from `$SHELL`. Defaults to `Bash` if `$SHELL` is
-    /// unset or not one we know how to write — `bash` syntax is the
-    /// most portable starting point and the user can `--shell` to
-    /// override.
-    pub fn detect() -> Self {
-        std::env::var("SHELL")
-            .ok()
-            .and_then(|s| {
-                if s.ends_with("/zsh") || s == "zsh" {
-                    Some(Shell::Zsh)
-                } else if s.ends_with("/bash") || s == "bash" {
-                    Some(Shell::Bash)
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(Shell::Bash)
+    /// Detect from `$SHELL`. Returns `None` when `$SHELL` is unset
+    /// or names a shell we don't support — the caller (typically
+    /// [`resolve_shell`]) surfaces a clear error rather than
+    /// silently writing a bashrc snippet for a fish/nu user.
+    ///
+    /// Why fail explicitly: silently falling back to `Bash` means
+    /// `dodot git-install-alias` happily writes `~/.bashrc` for a
+    /// fish user, who then never sees the alias take effect.
+    /// Better to refuse with a message that points at `--shell`.
+    pub fn detect() -> Option<Self> {
+        std::env::var("SHELL").ok().and_then(|s| {
+            if s.ends_with("/zsh") || s == "zsh" {
+                Some(Shell::Zsh)
+            } else if s.ends_with("/bash") || s == "bash" {
+                Some(Shell::Bash)
+            } else {
+                None
+            }
+        })
     }
 
     /// Parse a CLI `--shell` value. Returns `None` for unknown
@@ -280,6 +282,12 @@ fn find_managed_block(text: &str) -> Option<(usize, usize)> {
 /// Diagnostic helper for the CLI: detect or validate a shell from
 /// the `--shell` CLI value, surfacing a clear error for unknown
 /// shells. Returns the resolved [`Shell`] or a `DodotError::Other`.
+///
+/// When `explicit` is `None` and `Shell::detect()` returns `None`
+/// (unsupported `$SHELL`), errors out asking the user to pass
+/// `--shell bash` or `--shell zsh`. Better than silently falling
+/// back to bash on a fish/nu setup, which would produce an alias
+/// that never fires.
 pub fn resolve_shell(explicit: Option<&str>) -> Result<Shell> {
     if let Some(name) = explicit {
         return Shell::from_str_opt(name).ok_or_else(|| {
@@ -289,7 +297,22 @@ pub fn resolve_shell(explicit: Option<&str>) -> Result<Shell> {
             ))
         });
     }
-    Ok(Shell::detect())
+    Shell::detect().ok_or_else(|| {
+        let detected = std::env::var("SHELL").unwrap_or_default();
+        if detected.is_empty() {
+            DodotError::Other(
+                "$SHELL is unset; pass `--shell bash` or `--shell zsh` so dodot knows which \
+                 rc file to write."
+                    .into(),
+            )
+        } else {
+            DodotError::Other(format!(
+                "could not detect shell from $SHELL ({detected:?}): dodot can install the git \
+                 alias for `bash` or `zsh`. Pass `--shell bash` or `--shell zsh` explicitly, or \
+                 run `dodot git-show-alias --shell bash` and adapt the snippet for your shell."
+            ))
+        }
+    })
 }
 
 /// Cheap "is this rc file already wrapping git via our alias?"
@@ -404,6 +427,72 @@ mod tests {
     fn resolve_shell_explicit_known_returns_match() {
         assert_eq!(resolve_shell(Some("bash")).unwrap(), Shell::Bash);
         assert_eq!(resolve_shell(Some("Zsh")).unwrap(), Shell::Zsh);
+    }
+
+    /// Save and restore $SHELL around an env-mutating closure.
+    /// std::env mutation is process-global; the tests that rely on
+    /// it are explicitly serialised below (each test's body sees
+    /// a known $SHELL and restores the previous value before
+    /// returning).
+    fn with_shell_env<F>(value: Option<&str>, f: F)
+    where
+        F: FnOnce(),
+    {
+        let prev = std::env::var("SHELL").ok();
+        if let Some(v) = value {
+            std::env::set_var("SHELL", v);
+        } else {
+            std::env::remove_var("SHELL");
+        }
+        f();
+        match prev {
+            Some(p) => std::env::set_var("SHELL", p),
+            None => std::env::remove_var("SHELL"),
+        }
+    }
+
+    #[test]
+    fn resolve_shell_no_explicit_unsupported_shell_errors() {
+        // The PR-review fix: a fish/nu user running
+        // `dodot git-show-alias` with no --shell must get a clear
+        // error pointing at `--shell bash|zsh`, NOT a silent
+        // fall-through to bash that writes a useless ~/.bashrc.
+        with_shell_env(Some("/usr/bin/fish"), || {
+            let err = resolve_shell(None).unwrap_err();
+            let msg = format!("{err}");
+            assert!(msg.contains("fish"), "msg: {msg}");
+            assert!(msg.contains("--shell"), "msg should suggest --shell: {msg}");
+        });
+    }
+
+    #[test]
+    fn resolve_shell_no_explicit_unset_shell_errors() {
+        // $SHELL is unset entirely (rare — minimal containers,
+        // weird login shells). Same disposition: error out with a
+        // clear pointer at --shell.
+        with_shell_env(None, || {
+            let err = resolve_shell(None).unwrap_err();
+            let msg = format!("{err}");
+            assert!(msg.contains("$SHELL"), "msg: {msg}");
+            assert!(msg.contains("--shell"), "msg: {msg}");
+        });
+    }
+
+    #[test]
+    fn detect_returns_some_for_known_shells() {
+        with_shell_env(Some("/bin/bash"), || {
+            assert_eq!(Shell::detect(), Some(Shell::Bash));
+        });
+        with_shell_env(Some("/usr/local/bin/zsh"), || {
+            assert_eq!(Shell::detect(), Some(Shell::Zsh));
+        });
+    }
+
+    #[test]
+    fn detect_returns_none_for_unknown() {
+        with_shell_env(Some("/usr/bin/fish"), || {
+            assert_eq!(Shell::detect(), None);
+        });
     }
 
     // ── managed_block + find_managed_block ──────────────────────
