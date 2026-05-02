@@ -2809,6 +2809,105 @@ mod tests {
     }
 
     #[test]
+    fn divergence_guard_finds_legacy_basename_baseline_for_nested_template() {
+        // PR #118 6th-pass migration: an upgraded user has a deployed
+        // nested template (`subdir/config.toml.tmpl`) whose baseline
+        // sits at the legacy basename-only cache path
+        // (`<cache>/.../preprocessed/config.toml.json`). They edit
+        // the deployed file, then run `dodot up`. Without the
+        // legacy-layout fallback, the guard would treat this as a
+        // fresh deploy and overwrite the user's edit. With the
+        // fallback, the legacy baseline is found, the divergence is
+        // detected, and the user's edit is preserved.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("subdir/config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), "Alice".to_string());
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "subdir/config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/subdir/config.toml.tmpl"),
+            is_dir: false,
+        }];
+
+        // Simulate the pre-upgrade state: deploy + write the
+        // baseline at the LEGACY basename-only path. We do this by
+        // hand to mimic what older dodot would have produced.
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        let deployed = first.virtual_entries[0].absolute_path.clone();
+        // Move the just-written baseline from `subdir/config.toml.json`
+        // to the legacy `config.toml.json` path. The migration code
+        // path under test then has to find it.
+        let new_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        let legacy_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        let body = env.fs.read_to_string(&new_path).unwrap();
+        env.fs.remove_file(&new_path).unwrap();
+        env.fs.write_file(&legacy_path, body.as_bytes()).unwrap();
+        assert!(env.fs.exists(&legacy_path));
+        assert!(!env.fs.exists(&new_path));
+
+        // User edits the deployed file.
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Re-run: the guard MUST find the legacy baseline via the
+        // load-side fallback and preserve the user's edit. Without
+        // the fallback, this would be an overwrite (data loss).
+        let second = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            second.skipped.len(),
+            1,
+            "guard must find legacy baseline and preserve the edit"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED",
+            "user's edit must NOT be overwritten by the upgrade"
+        );
+        // baseline_unreadable is FALSE here — the legacy file is
+        // valid JSON, just at the old layout.
+        assert!(!second.skipped[0].baseline_unreadable);
+    }
+
+    #[test]
     fn divergence_guard_no_op_when_nothing_changed() {
         // Row 1: nothing changed. Re-running deploys the same content;
         // no skip event.
