@@ -60,17 +60,10 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     let mut planning_warnings: Vec<String> = Vec::new();
 
     for pack in &packs {
-        // write_baselines is gated on `!dry_run`: baselines represent
-        // "the state of the last successful `dodot up`," so a dry-run
+        // `write_baselines` is gated on `!dry_run`: baselines anchor
+        // "the state of the last successful `dodot up`," so a dry run
         // — which never executes — must not move that anchor.
-        // `secrets.lex` §7.4 also requires passive commands to avoid
-        // mutating cache state.
-        match orchestration::plan_pack(
-            pack,
-            ctx,
-            /* write_baselines */ !ctx.dry_run,
-            ctx.force,
-        ) {
+        match orchestration::plan_pack(pack, ctx, /* write_baselines */ !ctx.dry_run) {
             Ok(plan) => {
                 planning_warnings.extend(plan.warnings);
                 pack_intents.push((pack.display_name.clone(), plan.intents));

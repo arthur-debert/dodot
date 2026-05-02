@@ -1,4 +1,4 @@
-{%- if entries|length == 0 and unresolved_markers|length == 0 and cache_errors|default([])|length == 0 -%}
+{%- if entries|length == 0 and unresolved_markers|length == 0 -%}
 [muted]No preprocessed files. Run [usage]dodot up[/usage] to deploy templates first.[/muted]
 {%- else -%}
 {%- if has_findings -%}
@@ -40,13 +40,5 @@
   [error]·[/error] {{ m.source_path }} (line{% if m.line_numbers|length != 1 %}s{% endif %} {{ m.line_numbers|join(", ") }})
 {% endfor %}
   [muted]Resolve each block (pick the template line or the deployed line, remove the markers), commit, retry.[/muted]
-{%- endif -%}
-{%- if cache_errors|default([])|length > 0 %}
-
-[error]Unreadable baseline cache entries ({{ cache_errors|length }}):[/error]
-{% for c in cache_errors -%}
-  [error]·[/error] {{ c.cache_path }} [muted]({{ c.pack }}/{{ c.filename }}: {{ c.error }})[/muted]
-{% endfor %}
-  [muted]Delete the corrupt files (or run [usage]dodot up --force[/usage] to re-baseline) and retry.[/muted]
 {%- endif -%}
 {%- endif -%}
