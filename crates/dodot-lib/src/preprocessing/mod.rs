@@ -236,18 +236,97 @@ impl Default for PreprocessorRegistry {
 /// The [`identity`] preprocessor is test-only and is intentionally *not*
 /// registered here (it would match innocuous-looking `.identity` files in
 /// user dotfiles).
+///
+/// `secret_config` controls whether the template preprocessor gets a
+/// [`SecretRegistry`] wired in. When `[secret] enabled = true` and at
+/// least one provider is enabled, this function builds the registry,
+/// wires it onto the template preprocessor, and returns it via
+/// `out_secret_registry` so the caller can run preflight checks
+/// (`crate::secret::preflight`) before any rendering begins. When
+/// secrets are disabled, the template preprocessor is built without a
+/// registry and `secret(...)` calls in templates surface a config-
+/// pointing render error.
 pub fn default_registry(
     template_config: &crate::config::PreprocessorTemplateSection,
+    secret_config: &crate::config::SecretSection,
     pather: &dyn crate::paths::Pather,
-) -> Result<PreprocessorRegistry> {
+    command_runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+) -> Result<(
+    PreprocessorRegistry,
+    Option<std::sync::Arc<crate::secret::SecretRegistry>>,
+)> {
+    use std::sync::Arc;
+
     let mut registry = PreprocessorRegistry::new();
     registry.register(Box::new(unarchive::UnarchivePreprocessor::new()));
-    registry.register(Box::new(template::TemplatePreprocessor::new(
+
+    let mut tpl = template::TemplatePreprocessor::new(
         template_config.extensions.clone(),
         template_config.vars.clone(),
         pather,
-    )?));
-    Ok(registry)
+    )?;
+
+    let secret_registry = if secret_config.enabled {
+        build_secret_registry(secret_config, command_runner)
+    } else {
+        None
+    };
+
+    if let Some(sr) = &secret_registry {
+        tpl = tpl.with_secret_registry(Arc::clone(sr));
+    }
+
+    registry.register(Box::new(tpl));
+    Ok((registry, secret_registry))
+}
+
+/// Construct a [`crate::secret::SecretRegistry`] from the per-provider
+/// `[secret.providers.*]` config blocks. Each enabled provider is
+/// constructed with the shared `CommandRunner` (so tests can inject a
+/// mock runner) and registered. Returns `None` if no provider is
+/// enabled — the secrets layer treats that case as "secrets feature
+/// fully off" and templates with `secret(...)` calls fail loudly.
+///
+/// Public so `commands::up` can build a single registry from the root
+/// config to run [`crate::secret::preflight`] once per run, before any
+/// per-pack template rendering begins (`secrets.lex` §5.4).
+pub fn build_secret_registry(
+    config: &crate::config::SecretSection,
+    runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+) -> Option<std::sync::Arc<crate::secret::SecretRegistry>> {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    let mut reg = crate::secret::SecretRegistry::new();
+    let mut any_enabled = false;
+
+    if config.providers.pass.enabled {
+        let store_dir = if config.providers.pass.store_dir.is_empty() {
+            // Defer to env / default: PassProvider::from_env reads
+            // $PASSWORD_STORE_DIR or falls back to ~/.password-store.
+            None
+        } else {
+            Some(PathBuf::from(&config.providers.pass.store_dir))
+        };
+        let provider = match store_dir {
+            Some(dir) => crate::secret::PassProvider::new(Arc::clone(&runner), dir),
+            None => crate::secret::PassProvider::from_env(Arc::clone(&runner)),
+        };
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.op.enabled {
+        let provider = crate::secret::OpProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if any_enabled {
+        Some(Arc::new(reg))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
