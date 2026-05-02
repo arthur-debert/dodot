@@ -128,7 +128,33 @@ pub fn collect_baselines(
             for filename in filenames {
                 match Baseline::load(fs, paths, &pack.name, &handler.name, &filename) {
                     Ok(Some(baseline)) => {
-                        out.push((pack.name.clone(), handler.name.clone(), filename, baseline));
+                        // Legacy-layout reconciliation: a flat
+                        // (basename-only) cache entry from before
+                        // PR-#118 can hold the baseline for a nested
+                        // template (e.g. `subdir/config.toml.tmpl`)
+                        // under just `config.toml.json`. If we
+                        // surface that under its cache-key basename,
+                        // every downstream consumer (`transform
+                        // check`, `transform status`, `refresh`, the
+                        // clean filter) derives the wrong deployed
+                        // path and can't reconcile the file. Use the
+                        // baseline's `source_path` to recover the
+                        // correct virtual_relative — the source path
+                        // is authoritative.
+                        let resolved_filename = if filename.contains('/') {
+                            // Already nested; trust the cache layout.
+                            filename
+                        } else {
+                            derive_filename_from_source_path(&baseline.source_path, &pack.name)
+                                .filter(|derived| derived.contains('/'))
+                                .unwrap_or(filename)
+                        };
+                        out.push((
+                            pack.name.clone(),
+                            handler.name.clone(),
+                            resolved_filename,
+                            baseline,
+                        ));
                     }
                     Ok(None) => {} // race with cache eviction; tolerate
                     Err(e) => return Err(e),
@@ -136,8 +162,56 @@ pub fn collect_baselines(
             }
         }
     }
+    // The walker's per-handler sort produces a per-pack-and-handler
+    // ordering, but resolved_filename overrides may have changed the
+    // logical key of some entries (legacy basename → nested path).
+    // Re-sort the full output so the final list is stable across
+    // legacy / migrated state.
+    out.sort_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
 
     Ok(out)
+}
+
+/// Derive a virtual_relative cache key from a baseline's
+/// `source_path` plus the pack name. Used by
+/// [`collect_baselines`] to reconcile legacy basename-only cache
+/// entries with their true logical key (the nested virtual path).
+///
+/// Algorithm:
+/// 1. Take `source_path`'s `Normal` components.
+/// 2. Strip a single trailing extension from the leaf (the
+///    preprocessor extension: `.tmpl`, `.identity`, etc.).
+/// 3. Find the last component matching `pack_name` (the pack root).
+/// 4. Return everything after it joined with `/`.
+///
+/// Returns `None` for empty `source_path`, missing pack-name match,
+/// or empty post-pack tail. The walker treats `None` as "keep using
+/// the cache-derived filename."
+fn derive_filename_from_source_path(
+    source_path: &std::path::Path,
+    pack_name: &str,
+) -> Option<String> {
+    if source_path.as_os_str().is_empty() {
+        return None;
+    }
+    let mut components: Vec<String> = source_path
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(n) => Some(n.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+    if let Some(last) = components.last_mut() {
+        if let Some(dot_idx) = last.rfind('.') {
+            last.truncate(dot_idx);
+        }
+    }
+    let pack_idx = components.iter().rposition(|c| c == pack_name)?;
+    let rel_components = &components[pack_idx + 1..];
+    if rel_components.is_empty() {
+        return None;
+    }
+    Some(rel_components.join("/"))
 }
 
 /// Recursively walk a baseline-cache subtree, collecting the
@@ -518,6 +592,156 @@ mod tests {
 
         let reports = collect_divergences(env.fs.as_ref(), env.paths.as_ref()).unwrap();
         assert_eq!(reports[0].state, DivergenceState::MissingSource);
+    }
+
+    // ── Walker legacy-layout reconciliation (PR #118 8th-pass) ──────
+
+    #[test]
+    fn collect_baselines_recovers_nested_key_for_legacy_basename_entry() {
+        // PR #118 8th-pass: an upgraded user has a legacy
+        // basename-only cache entry whose source_path indicates a
+        // nested template. The walker must surface it under the
+        // *nested* key, not under its flat cache-file basename, so
+        // `transform check` / `status` / `refresh` derive the right
+        // deployed path.
+        let env = TempEnvironment::builder().build();
+
+        // Stage the deployed file at the NESTED path (mirroring
+        // the datastore layout).
+        write_deployed(
+            &env,
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+            "rendered",
+        );
+        // Create the source template at the NESTED location too.
+        write_pack_template(&env, "app", "subdir/config.toml.tmpl", "src");
+
+        // Write the baseline at the LEGACY basename-only cache path.
+        let src_path = env.dotfiles_root.join("app/subdir/config.toml.tmpl");
+        let baseline = baseline_for(&src_path, b"rendered", b"src");
+        baseline
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml", // legacy: basename only
+            )
+            .unwrap();
+
+        let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(baselines.len(), 1);
+        let (pack, handler, filename, _) = &baselines[0];
+        assert_eq!(pack, "app");
+        assert_eq!(handler, "preprocessed");
+        assert_eq!(
+            filename, "subdir/config.toml",
+            "walker must recover the nested virtual_relative key from baseline.source_path"
+        );
+
+        // And the resulting divergence report points at the
+        // correct deployed path (which exists in the datastore).
+        let reports = collect_divergences(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].state, DivergenceState::Synced);
+    }
+
+    #[test]
+    fn collect_baselines_keeps_basename_key_for_genuine_top_level_entry() {
+        // Symmetric to the legacy-recovery case: a top-level cache
+        // entry whose source_path is also top-level must NOT be
+        // re-keyed. Only basename-only entries pointing at a *nested*
+        // source get the override.
+        let env = TempEnvironment::builder().build();
+        write_pack_template(&env, "app", "config.toml.tmpl", "src");
+        write_deployed(&env, "app", "preprocessed", "config.toml", "rendered");
+        let src_path = env.dotfiles_root.join("app/config.toml.tmpl");
+        let baseline = baseline_for(&src_path, b"rendered", b"src");
+        baseline
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(baselines.len(), 1);
+        assert_eq!(baselines[0].2, "config.toml");
+    }
+
+    #[test]
+    fn collect_baselines_does_not_override_when_source_path_is_empty() {
+        // v1 baselines written before `source_path` existed
+        // serde-default to empty PathBuf. The walker can't recover
+        // anything from an empty path, so it should keep the
+        // cache-derived filename (basename) and let the existing
+        // MissingSource handling kick in downstream.
+        let env = TempEnvironment::builder().build();
+        write_deployed(&env, "app", "preprocessed", "config.toml", "rendered");
+        let baseline = baseline_for(std::path::Path::new(""), b"rendered", b"src");
+        baseline
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(baselines.len(), 1);
+        assert_eq!(baselines[0].2, "config.toml");
+    }
+
+    #[test]
+    fn derive_filename_from_source_path_extracts_nested_path() {
+        assert_eq!(
+            derive_filename_from_source_path(
+                std::path::Path::new("/dotfiles/app/subdir/config.toml.tmpl"),
+                "app"
+            ),
+            Some("subdir/config.toml".to_string())
+        );
+        assert_eq!(
+            derive_filename_from_source_path(
+                std::path::Path::new("/home/user/dotfiles/pkg/a/b/leaf.txt.identity"),
+                "pkg"
+            ),
+            Some("a/b/leaf.txt".to_string())
+        );
+    }
+
+    #[test]
+    fn derive_filename_from_source_path_returns_none_for_top_level() {
+        // Source is the pack's top-level file: post-pack tail is
+        // a single component → not nested, no override needed.
+        assert_eq!(
+            derive_filename_from_source_path(
+                std::path::Path::new("/dotfiles/app/config.toml.tmpl"),
+                "app"
+            ),
+            Some("config.toml".to_string())
+        );
+    }
+
+    #[test]
+    fn derive_filename_from_source_path_returns_none_for_missing_pack() {
+        // Pack name doesn't appear in the path (unusual / moved
+        // pack). Helper returns None — walker keeps cache-derived
+        // filename.
+        assert_eq!(
+            derive_filename_from_source_path(
+                std::path::Path::new("/elsewhere/config.toml.tmpl"),
+                "app"
+            ),
+            None
+        );
     }
 
     // ── find_baseline_for_source ────────────────────────────────

@@ -515,20 +515,25 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             }
         }
 
-        // Set of deployed-file paths the §6.4 divergence guard
-        // preserved during this status pass. For `install`/`homebrew`
-        // rows, the planner correctly drops the `Run` intent (so
-        // provisioning stays pinned to the previous successful
-        // render), but `check_status` would otherwise hash the user's
-        // edit, miss the previously-recorded sentinel, and report the
-        // row as pending — contradicting the planning behavior.
-        // Override those rows to `Deployed` with a footnote so the
-        // display matches the actual semantic state.
-        let preserved_paths: std::collections::HashSet<std::path::PathBuf> = preprocess_result
-            .skipped
-            .iter()
-            .map(|s| s.deployed_path.clone())
-            .collect();
+        // Map of deployed-file paths the §6.4 divergence guard
+        // preserved during this status pass → whether the skip was
+        // due to an unreadable baseline (vs. a confirmed divergence).
+        // For `install`/`homebrew` rows, the planner correctly drops
+        // the `Run` intent (so provisioning stays pinned to the
+        // previous successful render), but `check_status` would
+        // otherwise hash the user's edit, miss the previously-
+        // recorded sentinel, and report the row as pending —
+        // contradicting the planning behavior. Override those rows
+        // to `Preserved` with a footnote so the display matches the
+        // actual semantic state. The `baseline_unreadable` flag
+        // determines which recovery path the footnote should
+        // suggest (transform check vs. clear the cache file).
+        let preserved_lookup: std::collections::HashMap<std::path::PathBuf, bool> =
+            preprocess_result
+                .skipped
+                .iter()
+                .map(|s| (s.deployed_path.clone(), s.baseline_unreadable))
+                .collect();
 
         let mut files = Vec::new();
         for m in &matches {
@@ -573,13 +578,28 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     // misrepresent the semantic state. Treat the
                     // row as Deployed and attach a footnote
                     // pointing at the resolution paths.
-                    if preserved_paths.contains(&m.absolute_path) {
-                        Health::Preserved {
-                            label: "preserved (deployed-edit pending)".into(),
-                            reason:
-                                "deployed file edited since last `dodot up`; previous run still in effect. \
-                                 Run `dodot transform check` to reconcile, or re-run with --force to overwrite."
-                                    .to_string(),
+                    if let Some(&baseline_unreadable) = preserved_lookup.get(&m.absolute_path) {
+                        if baseline_unreadable {
+                            // `transform check` would fail on the
+                            // same corrupt entry, so point at the
+                            // recovery path that actually works:
+                            // delete the cache entry or use --force.
+                            Health::Preserved {
+                                label: "preserved (baseline cache unreadable)".into(),
+                                reason:
+                                    "baseline cache entry is unreadable; previous run still in effect. \
+                                     Delete the corrupt cache file under <cache_dir>/preprocessor/, \
+                                     or re-run with --force to overwrite."
+                                        .to_string(),
+                            }
+                        } else {
+                            Health::Preserved {
+                                label: "preserved (deployed-edit pending)".into(),
+                                reason:
+                                    "deployed file edited since last `dodot up`; previous run still in effect. \
+                                     Run `dodot transform check` to reconcile, or re-run with --force to overwrite."
+                                        .to_string(),
+                            }
                         }
                     } else {
                         let handler = registry.get(m.handler.as_str());

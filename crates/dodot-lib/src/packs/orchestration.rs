@@ -615,10 +615,22 @@ fn plan_pack_inner(
             Some(p) => display_path_relative_to_home(p, ctx),
             None => display_path_relative_to_home(&skipped.deployed_path, ctx),
         };
-        let detail = if skipped.baseline_unreadable {
-            "baseline cache entry is unreadable; cannot tell if the deployed file has been edited"
+        let warning = if skipped.baseline_unreadable {
+            // For unreadable baselines, `transform check` will fail
+            // on the same corrupt entry — point the user at the
+            // recovery paths that actually work: clear the cache
+            // entry or use `--force`. The deleted cache file is
+            // rederivable, so removal is safe.
+            let cache_display = display_path_relative_to_home(&skipped.deployed_path, ctx);
+            format!(
+                "preserved {} (baseline cache entry is unreadable). \
+                 Delete the corrupt cache file or re-run with --force to overwrite.\n  \
+                 (the cache lives under <cache_dir>/preprocessor/<pack>/preprocessed/; \
+                 deployed file: {})",
+                display_path, cache_display,
+            )
         } else {
-            match skipped.state {
+            let detail = match skipped.state {
                 crate::preprocessing::divergence::DivergenceState::OutputChanged => {
                     "deployed file was edited since the last `dodot up`"
                 }
@@ -626,12 +638,12 @@ fn plan_pack_inner(
                     "both the source template and the deployed file were edited since the last `dodot up`"
                 }
                 _ => "deployed file diverges from the cached baseline",
-            }
+            };
+            format!(
+                "preserved {} ({}). Run `dodot transform check` to reconcile, or re-run with --force to overwrite.",
+                display_path, detail,
+            )
         };
-        let warning = format!(
-            "preserved {} ({}). Run `dodot transform check` to reconcile, or re-run with --force to overwrite.",
-            display_path, detail,
-        );
         tracing::warn!(pack = %pack.name, file = %skipped.virtual_relative.display(), "{warning}");
         all_warnings.push(warning);
     }
