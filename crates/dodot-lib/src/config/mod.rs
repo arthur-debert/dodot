@@ -267,6 +267,9 @@ pub struct SecretProvidersSection {
 
     #[config(nested)]
     pub op: SecretProviderOp,
+
+    #[config(nested)]
+    pub bw: SecretProviderBw,
 }
 
 /// `pass` (password-store) provider config.
@@ -290,6 +293,15 @@ pub struct SecretProviderPass {
 pub struct SecretProviderOp {
     /// Whether the `op://` scheme is registered. Default false —
     /// same opt-in posture as `pass`.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `bw` (Bitwarden CLI) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderBw {
+    /// Whether the `bw:` scheme is registered. Default false —
+    /// same opt-in posture as `pass` and `op`.
     #[config(default = false)]
     pub enabled: bool,
 }

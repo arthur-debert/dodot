@@ -322,6 +322,12 @@ pub fn build_secret_registry(
         any_enabled = true;
     }
 
+    if config.providers.bw.enabled {
+        let provider = crate::secret::BwProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
     if any_enabled {
         Some(Arc::new(reg))
     } else {
