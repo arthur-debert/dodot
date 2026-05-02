@@ -294,7 +294,17 @@ impl Baseline {
                         // baseline would be wrong.
                         return (new_result.map(|_| None), new_path);
                     }
-                    Err(e) => return (Err(e), legacy_path),
+                    Err(legacy_err) => {
+                        // Both paths unreadable — prefer surfacing
+                        // canonical's err with canonical path since
+                        // the user's live file lives at the canonical
+                        // layout. Fall back to legacy's err with
+                        // legacy_path only when canonical was Ok(None).
+                        return match new_result {
+                            Err(canonical_err) => (Err(canonical_err), new_path),
+                            _ => (Err(legacy_err), legacy_path),
+                        };
+                    }
                     Ok(None) => {
                         // Legacy file is missing too; surface the
                         // canonical result with the canonical path
@@ -1205,6 +1215,52 @@ mod tests {
         assert_eq!(
             origin, canonical_path,
             "origin must be the canonical path, not the unrelated legacy file"
+        );
+    }
+
+    #[test]
+    fn load_returns_canonical_path_when_both_canonical_and_legacy_corrupt() {
+        // PR #118 21st-pass Comment NN: when both the canonical and
+        // legacy baseline files are unreadable, surface the
+        // canonical's error with the canonical path. The legacy file
+        // is just a migration leftover; the user's live baseline
+        // location is the canonical layout, so that's where the
+        // recovery hint should point.
+        let env = TempEnvironment::builder().build();
+
+        // Stage a CORRUPT canonical entry.
+        let canonical_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        env.fs.mkdir_all(canonical_path.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&canonical_path, b"{canonical-not-json")
+            .unwrap();
+
+        // Stage a CORRUPT legacy basename entry.
+        let legacy_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs.mkdir_all(legacy_path.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&legacy_path, b"{legacy-not-json")
+            .unwrap();
+
+        let (result, origin) = Baseline::load_with_origin(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+        );
+        assert!(
+            result.is_err(),
+            "both files corrupt → must surface an error, got: {:?}",
+            result
+        );
+        assert_eq!(
+            origin, canonical_path,
+            "origin must point at the canonical path even when legacy is also corrupt"
         );
     }
 

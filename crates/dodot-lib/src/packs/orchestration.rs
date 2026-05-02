@@ -385,6 +385,12 @@ pub struct PackPlan {
 /// fires regardless — the `write_baselines` flag only controls the
 /// optional baseline-write side effect, not the read path.
 ///
+/// `write_outputs` controls whether the preprocessing pipeline
+/// persists rendered file/dir bytes to the datastore. Pass `true`
+/// from real deploy paths (`dodot up`, `status`'s sync render);
+/// `dodot up --dry-run` passes `false` so a passive preview leaves
+/// the datastore untouched (`secrets.lex` §7.4).
+///
 /// `force` controls whether the §6.4 divergence guard is bypassed
 /// (overwriting deployed files that have diverged from the baseline).
 /// `dodot up` propagates `ctx.force` here. **Read-only callers like
@@ -392,10 +398,12 @@ pub struct PackPlan {
 /// a `dodot up --force` run that falls back to `status::status()` via
 /// `up_or_status_for_conflict` would clobber preserved files during
 /// what is nominally a display pass.
+#[allow(clippy::too_many_arguments)] // pipeline core: every parameter is load-bearing
 pub fn plan_pack(
     pack: &Pack,
     ctx: &ExecutionContext,
     write_baselines: bool,
+    write_outputs: bool,
     force: bool,
 ) -> Result<PackPlan> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
@@ -409,6 +417,7 @@ pub fn plan_pack(
         &pack_config,
         Some(&registry),
         write_baselines,
+        write_outputs,
         force,
     )
 }
@@ -436,11 +445,12 @@ fn collect_pack_intents_inner(
         ctx,
         pack_config,
         preprocessors,
-        // Both `false`: this helper feeds read-only callers
-        // (`adopt::check_deploy_conflicts`, `run_handler_pipeline`
-        // in tests). The actual `dodot up` flow uses `plan_pack`
-        // directly (which threads its own `write_baselines = true`
-        // and `ctx.force`), so the deploy path is unaffected.
+        // `write_baselines = false`, `force = false`: this helper
+        // feeds read-only callers (`adopt::check_deploy_conflicts`,
+        // `run_handler_pipeline` in tests). The actual `dodot up`
+        // flow uses `plan_pack` directly (which threads its own
+        // `write_baselines = true` and `ctx.force`), so the deploy
+        // path is unaffected.
         //
         // `write_baselines = false` matters because baselines
         // represent "the state of the last successful `dodot up`."
@@ -453,8 +463,15 @@ fn collect_pack_intents_inner(
         // divergence guard during inspection-only conflict
         // scanning, overwriting user-edited deployed files in
         // *other* packs before adopt has even started.
+        //
+        // `write_outputs = true` mirrors current behaviour: adopt
+        // and the test scaffolding still need a real rendered file
+        // on disk so handler matchers and intents resolve against
+        // the actual datastore layout. Passive preview commands
+        // (`up --dry-run`) override this through `plan_pack`.
         /* write_baselines */
         false,
+        /* write_outputs */ true,
         /* force */ false,
     )
     .map(|p| p.intents)
@@ -470,6 +487,7 @@ fn plan_pack_inner(
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
     write_baselines: bool,
+    write_outputs: bool,
     force: bool,
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
@@ -490,6 +508,7 @@ fn plan_pack_inner(
                 ctx.datastore.as_ref(),
                 ctx.paths.as_ref(),
                 write_baselines,
+                write_outputs,
                 force,
             )?
         } else {
@@ -1980,7 +1999,8 @@ mod tests {
 
         // First run: render baseline + emit install Run intent.
         let first = plan_pack(
-            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+            &pack, &ctx, /* write_baselines */ true, /* write_outputs */ true,
+            /* force */ false,
         )
         .unwrap();
         let first_run_count = first
@@ -2006,7 +2026,8 @@ mod tests {
         // for it must NOT be emitted (otherwise the user's edit would
         // execute as a script on the next `up`).
         let second = plan_pack(
-            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+            &pack, &ctx, /* write_baselines */ true, /* write_outputs */ true,
+            /* force */ false,
         )
         .unwrap();
         for intent in &second.intents {
@@ -2054,7 +2075,7 @@ mod tests {
         );
 
         // First run: clean deploy, no warnings about preserved files.
-        let first = plan_pack(&pack, &ctx, true, false).unwrap();
+        let first = plan_pack(&pack, &ctx, true, true, false).unwrap();
         assert!(
             first.warnings.iter().all(|w| !w.contains("preserved")),
             "first deploy must not produce a preservation warning: {:?}",
@@ -2070,7 +2091,7 @@ mod tests {
 
         // Second run: warning surfaces, with the documented resolution
         // hints — `transform check` and `--force`.
-        let second = plan_pack(&pack, &ctx, true, false).unwrap();
+        let second = plan_pack(&pack, &ctx, true, true, false).unwrap();
         let preserved: Vec<&String> = second
             .warnings
             .iter()
@@ -2135,7 +2156,7 @@ mod tests {
         );
 
         // Prime baseline.
-        let _ = plan_pack(&pack, &ctx, true, false).unwrap();
+        let _ = plan_pack(&pack, &ctx, true, true, false).unwrap();
         let deployed = env
             .paths
             .handler_data_dir("app", "preprocessed")
@@ -2144,7 +2165,8 @@ mod tests {
 
         ctx.force = true;
         let plan = plan_pack(
-            &pack, &ctx, /* write_baselines */ true, /* force */ ctx.force,
+            &pack, &ctx, /* write_baselines */ true, /* write_outputs */ true,
+            /* force */ ctx.force,
         )
         .unwrap();
         assert!(
@@ -2186,7 +2208,7 @@ mod tests {
         );
 
         // Prime baseline.
-        let _ = plan_pack(&pack, &ctx, true, false).unwrap();
+        let _ = plan_pack(&pack, &ctx, true, true, false).unwrap();
         let deployed = env
             .paths
             .handler_data_dir("app", "preprocessed")
@@ -2198,7 +2220,8 @@ mod tests {
         // must keep the guard active.
         ctx.force = true;
         let plan = plan_pack(
-            &pack, &ctx, /* write_baselines */ false, /* force */ false,
+            &pack, &ctx, /* write_baselines */ false, /* write_outputs */ true,
+            /* force */ false,
         )
         .unwrap();
         assert_eq!(
@@ -2239,7 +2262,8 @@ mod tests {
 
         // Prime the baseline with a write-enabled run (mirrors `up`).
         let _ = plan_pack(
-            &pack, &ctx, /* write_baselines */ true, /* force */ false,
+            &pack, &ctx, /* write_baselines */ true, /* write_outputs */ true,
+            /* force */ false,
         )
         .unwrap();
         let before = crate::preprocessing::baseline::Baseline::load(
@@ -2263,7 +2287,8 @@ mod tests {
 
         // Run with write_baselines=false (the `dodot status` path).
         let _ = plan_pack(
-            &pack, &ctx, /* write_baselines */ false, /* force */ false,
+            &pack, &ctx, /* write_baselines */ false, /* write_outputs */ true,
+            /* force */ false,
         )
         .unwrap();
 
