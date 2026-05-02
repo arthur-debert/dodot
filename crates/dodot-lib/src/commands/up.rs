@@ -171,6 +171,20 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         )?;
         info!("writing deployment map");
         probe::write_deployment_map(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+        // cfprefsd cache-invalidation hint (macOS): if any plist file
+        // in any active pack has drifted since the previous successful
+        // `up`, drop a marker so the CLI's post-`up` prompt can offer
+        // `killall cfprefsd`. The previous-up timestamp must be
+        // captured BEFORE the new last-up marker is written below;
+        // afterwards every plist's mtime would be older than the new
+        // marker and the detector would always report "no drift".
+        // No-op on non-macOS hosts (cfprefsd doesn't exist there).
+        if cfg!(target_os = "macos") {
+            let prev_last_up = probe::read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+            if let Err(e) = maybe_record_cfprefsd_drift(ctx, &packs, prev_last_up) {
+                debug!(error = %e, "cfprefsd drift check skipped");
+            }
+        }
         // Record the unix timestamp of this up so `dodot probe shell-init`
         // can flag profiles captured before it as stale. Best effort —
         // a clock skip would only affect the staleness banner, never the
@@ -304,6 +318,56 @@ pub fn up_or_status_for_conflict(
         }
         Err(e) => Err(e),
     }
+}
+
+/// macOS cfprefsd drift detection.
+///
+/// Walks the packs that this `up` actually targeted (so a
+/// `dodot up <one-pack>` run never fires cfprefsd because of a plist
+/// in some unrelated pack) for files whose suffix matches the
+/// pack-resolved `[symlink] plist_extensions` list. If any plist's
+/// mtime is newer than `prev_last_up_ts` (or the marker is missing —
+/// first `up` on this machine), drop the cfprefsd-needs-invalidation
+/// marker so the CLI's post-`up` prompt fires.
+///
+/// "Drift" here is intentionally loose: it captures both
+/// deploy-time changes (a new plist landed) and between-`up` app
+/// drift (the GUI app rewrote the plist between yesterday's `up` and
+/// today's). cfprefsd's cache may be stale either way; the prompt is
+/// what gives the user a single chance to clear it.
+fn maybe_record_cfprefsd_drift(
+    ctx: &ExecutionContext,
+    packs: &[Pack],
+    prev_last_up_ts: Option<u64>,
+) -> Result<()> {
+    use std::time::UNIX_EPOCH;
+
+    let plist_files = crate::commands::git_filters::detect_plist_files_in(ctx, packs)?;
+    if plist_files.is_empty() {
+        return Ok(());
+    }
+    let drifted = plist_files.iter().any(|p| {
+        let mtime_secs = ctx
+            .fs
+            .modified(p)
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs());
+        match (mtime_secs, prev_last_up_ts) {
+            // No previous up marker (first run on this machine):
+            // every plist counts as fresh.
+            (Some(_), None) => true,
+            // Strict newer-than: equal timestamps (same-second `up`
+            // run) don't fire the prompt — the file was just written
+            // by us, no app-side drift to invalidate.
+            (Some(m), Some(prev)) => m > prev,
+            (None, _) => false,
+        }
+    });
+    if drifted {
+        probe::write_cfprefsd_marker(ctx.fs.as_ref(), ctx.paths.as_ref())?;
+    }
+    Ok(())
 }
 
 /// Remove datastore state for a pack across the given configuration

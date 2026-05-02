@@ -23,21 +23,37 @@ pub struct PromptDescriptor {
 /// `dodot prompts list` output is stable across edits.
 pub const KNOWN_PROMPTS: &[PromptDescriptor] = &[
     PromptDescriptor {
+        key: "magic.install_ladder",
+        description:
+            "Single Y/n covering the post-`up` install ladder (pre-commit hook + plist filter \
+             + template filter, whichever apply). Replaces the three sequential prompts that \
+             were dismissed independently.",
+    },
+    PromptDescriptor {
+        key: "plist.cfprefsd_invalidate",
+        description:
+            "macOS only: offer to run `killall cfprefsd` after a `dodot up` that touched plist \
+             files, so running GUI apps re-read the new values from disk.",
+    },
+    PromptDescriptor {
         key: "plist.install_filters",
         description:
-            "Offer to install git clean/smudge filters when a pack contains tracked .plist files",
+            "Per-component dismissal target for the plist clean/smudge filter rung of the \
+             install ladder. The user-facing prompt is `magic.install_ladder`; this key tracks \
+             whether that ladder rung has been dismissed.",
     },
     PromptDescriptor {
         key: "template.install_filter",
         description:
-            "Offer to install the dodot-template git clean filter after the first successful \
-             template deployment with the pre-commit hook already in place",
+            "Per-component dismissal target for the template clean filter rung of the install \
+             ladder. The user-facing prompt is `magic.install_ladder`; this key tracks whether \
+             that ladder rung has been dismissed.",
     },
     PromptDescriptor {
         key: "template.install_hook",
-        description:
-            "Offer to install the pre-commit hook running `dodot transform check --strict` after \
-             the first successful template deployment",
+        description: "Per-component dismissal target for the pre-commit hook rung of the install \
+             ladder. The user-facing prompt is `magic.install_ladder`; this key tracks whether \
+             that ladder rung has been dismissed.",
     },
 ];
 

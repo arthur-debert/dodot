@@ -141,19 +141,24 @@ fn main() {
     match app.dispatch(matches, output_mode) {
         standout::cli::RunResult::Handled(output) => {
             println!("{output}");
-            // Post-up nudges. All fire only after a successful `up`
-            // and all are soft (failures land in the debug log,
-            // never stderr). They form an install ladder:
-            //   1. plist filters (when plist files exist)
-            //   2. template hook (when template baselines exist)
-            //   3. template clean filter (when hook is already
-            //      installed AND filter isn't yet)
-            // The user moves up one rung per `up` until they've
-            // accepted or dismissed each — never spammed all at once.
+            // Post-up nudges. Both fire only after a successful `up`
+            // and are soft (failures land in the debug log, never
+            // stderr).
+            //
+            // - `maybe_prompt_install_ladder`: single Y/n covering
+            //   the pre-commit hook + plist filter + template filter
+            //   (whichever apply). Replaces the earlier three
+            //   sequential prompts. See magic.lex §"What This Costs
+            //   the User" and #112.
+            //
+            // - `maybe_prompt_invalidate_cfprefsd` (macOS only):
+            //   fires when `up` detected a plist change relative to
+            //   the previous run. Offers `killall cfprefsd` so
+            //   running apps re-read the new values. See plists.lex
+            //   §6.4 and #109.
             if subcommand.as_deref() == Some("up") {
-                handlers::maybe_prompt_install_filters();
-                handlers::maybe_prompt_install_template_hook();
-                handlers::maybe_prompt_install_template_filter();
+                handlers::maybe_prompt_install_ladder();
+                handlers::maybe_prompt_invalidate_cfprefsd();
             }
             // `dodot transform check` may have set a non-zero exit code
             // via PENDING_EXIT_CODE: the report still rendered above,

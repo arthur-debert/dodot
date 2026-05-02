@@ -582,26 +582,73 @@ pub fn git_show_filters_handler(
     Ok(Output::Render(result))
 }
 
-/// Post-`up` hook that offers to install plist filters when:
+/// Post-`up` consolidated installer ladder.
 ///
-/// 1. stdin is a TTY (we're interactive, not in CI/script),
-/// 2. at least one pack contains a `*.plist` file,
-/// 3. the dodot-plist filter is NOT yet registered in `.git/config`,
-/// 4. the user has NOT previously dismissed the prompt.
+/// Replaces three sequential prompts (plist filter, hook, template
+/// filter) with a single Y/n covering whichever rungs apply. Spec:
+/// `docs/proposals/magic.lex` §"What This Costs the User" promises
+/// "one Y/n to install the clean/smudge filters and the pre-commit
+/// hook"; this function is the implementation.
 ///
-/// All four must hold; otherwise the function returns silently. Errors
-/// in any check (e.g. registry corrupt, git missing) go to the dodot
-/// log at debug level — visible with `--debug` or in the log file,
-/// but silent at default verbosity. This is a nudge, not a critical
-/// step, and a noisy stderr line every `up` would be worse UX than
-/// silently skipping the offer.
-pub fn maybe_prompt_install_filters() {
-    if let Err(e) = try_prompt_install_filters() {
-        tracing::debug!("plist install-filters prompt skipped: {e}");
+/// Behavior:
+/// - **Yes** installs every applicable rung whose component dismissal
+///   is not set, in dependency order (hook first; template filter
+///   only after hook installs cleanly). Each successful install
+///   dismisses its component key.
+/// - **Show** walks each rung individually, printing the previewable
+///   block (config, hook script, .gitattributes lines) without
+///   touching the registry. The user can read, then re-run `up` to
+///   answer the prompt for real.
+/// - **No** dismisses every applicable component key so the ladder
+///   never re-prompts on subsequent `up` runs. The user can resurface
+///   any rung individually with `dodot prompts reset <key>`.
+///
+/// Tier-3 alias (`dodot git-install-alias`) is intentionally not in
+/// the ladder per the magic.lex spec — it ships separately.
+///
+/// Soft-fail like every other post-`up` prompt: errors and skips go
+/// to the debug log so a noisy stderr line never appears on routine
+/// runs.
+pub fn maybe_prompt_install_ladder() {
+    if let Err(e) = try_prompt_install_ladder() {
+        tracing::debug!("install-ladder prompt skipped: {e}");
     }
 }
 
-fn try_prompt_install_filters() -> Result<(), anyhow::Error> {
+/// Per-rung gating decision. Each rung answers two questions: is the
+/// rung *applicable* (does the user's repo state make it relevant?),
+/// and is its component dismissal *outstanding* (the user hasn't
+/// previously chosen `no`). A rung shows up in the ladder only when
+/// both are yes; "yes" installs it, "no" dismisses it.
+struct LadderRung {
+    /// Display label for the prompt body and the show output.
+    name: &'static str,
+    /// Catalog key for this rung's component-level dismissal.
+    component_key: &'static str,
+    /// One-liner the prompt body uses to enumerate what would be
+    /// installed.
+    summary: &'static str,
+}
+
+const RUNG_HOOK: LadderRung = LadderRung {
+    name: "pre-commit hook",
+    component_key: "template.install_hook",
+    summary: "pre-commit hook (refreshes templates + safety check on `git commit`)",
+};
+
+const RUNG_PLIST_FILTER: LadderRung = LadderRung {
+    name: "plist clean/smudge filters",
+    component_key: "plist.install_filters",
+    summary: "dodot-plist clean/smudge filters (binary↔XML for plists)",
+};
+
+const RUNG_TEMPLATE_FILTER: LadderRung = LadderRung {
+    name: "template clean filter",
+    component_key: "template.install_filter",
+    summary: "dodot-template clean filter (live diffs in `git status` / `git diff`)",
+};
+
+fn try_prompt_install_ladder() -> Result<(), anyhow::Error> {
     use dodot_lib::prompts::PromptRegistry;
 
     if !crate::interactive::stdin_is_tty() {
@@ -611,199 +658,256 @@ fn try_prompt_install_filters() -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
     let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
 
-    let plist_files = commands::git_filters::detect_plist_files(&ctx)?;
-    if plist_files.is_empty() {
-        return Ok(());
-    }
-    if commands::git_filters::is_installed(&ctx)? {
-        return Ok(());
-    }
+    // Determine applicability per rung. Each rung is considered iff
+    // the user has state that justifies it AND that state isn't
+    // already wired up.
+    let templates_present = !dodot_lib::preprocessing::divergence::collect_baselines(
+        ctx.fs.as_ref(),
+        ctx.paths.as_ref(),
+    )?
+    .is_empty();
+    let plist_present = !commands::git_filters::detect_plist_files(&ctx)?.is_empty();
+    let in_git_worktree = ctx.fs.is_dir(&ctx.paths.dotfiles_root().join(".git"));
+
+    let hook_applicable =
+        templates_present && in_git_worktree && !commands::transform::hook_is_installed(&ctx)?;
+    let plist_filter_applicable = plist_present && !commands::git_filters::is_installed(&ctx)?;
+    let template_filter_applicable =
+        templates_present && !commands::template_install_filter::is_installed(&ctx)?;
 
     let registry_path = ctx.paths.prompts_path();
     let mut registry = PromptRegistry::load(ctx.fs.as_ref(), registry_path)?;
-    let prompt_key = "plist.install_filters";
-    if registry.is_dismissed(prompt_key) {
+    let ladder_key = "magic.install_ladder";
+    if registry.is_dismissed(ladder_key) {
         return Ok(());
     }
 
-    // Pick a representative pack name for the prompt body — first
-    // file's parent (under dotfiles_root) gives us "<pack>".
-    let example_pack = plist_files
-        .first()
-        .and_then(|p| p.strip_prefix(ctx.paths.dotfiles_root()).ok())
-        .and_then(|rel| rel.components().next())
-        .map(|c| c.as_os_str().to_string_lossy().into_owned())
-        .unwrap_or_else(|| "(unknown)".into());
+    // A rung enters the ladder only when applicable AND its
+    // component dismissal isn't set. The component check lets the
+    // user opt out of a single rung (via `dodot prompts <key>`) while
+    // still hearing about the others.
+    let mut active_rungs: Vec<&LadderRung> = Vec::new();
+    if hook_applicable && !registry.is_dismissed(RUNG_HOOK.component_key) {
+        active_rungs.push(&RUNG_HOOK);
+    }
+    if plist_filter_applicable && !registry.is_dismissed(RUNG_PLIST_FILTER.component_key) {
+        active_rungs.push(&RUNG_PLIST_FILTER);
+    }
+    if template_filter_applicable && !registry.is_dismissed(RUNG_TEMPLATE_FILTER.component_key) {
+        active_rungs.push(&RUNG_TEMPLATE_FILTER);
+    }
+    if active_rungs.is_empty() {
+        return Ok(());
+    }
 
-    let count = plist_files.len();
-    let header = format!("dodot detected {count} .plist file(s) in pack `{example_pack}`.");
-    let response = crate::interactive::prompt_yes_no_show(&[
-        &header,
-        "Plist support uses git clean/smudge filters to keep the source diffable.",
-        "Install filters now? Run `dodot git-show-filters` to inspect first.",
-    ])?;
+    // Build the prompt body. Header summarises detection; bullet list
+    // enumerates what would be installed; closing line frames the
+    // ask.
+    let mut body: Vec<String> = Vec::new();
+    body.push("dodot can wire git up to handle the files in this repo:".into());
+    for rung in &active_rungs {
+        body.push(format!("  - {}", rung.summary));
+    }
+    body.push(String::new());
+    if active_rungs.len() == 1 {
+        body.push("Install it now? `show` previews first; `no` skips and won't ask again.".into());
+    } else {
+        body.push(format!(
+            "Install all {}? `show` previews each; `no` skips and won't ask again.",
+            active_rungs.len()
+        ));
+    }
+    let body_refs: Vec<&str> = body.iter().map(String::as_str).collect();
+    let response = crate::interactive::prompt_yes_no_show(&body_refs)?;
 
     match response {
         crate::interactive::YesNoShow::Yes => {
-            let r = commands::git_filters::install_filters(&ctx)?;
-            eprintln!("{}", r.message);
-            for d in &r.details {
-                eprintln!("  {d}");
-            }
-            registry.dismiss(prompt_key);
+            install_ladder_yes(&ctx, &active_rungs, &mut registry)?;
             registry.save(ctx.fs.as_ref())?;
         }
         crate::interactive::YesNoShow::Show => {
-            eprintln!();
-            eprintln!("Add to .git/config (per clone, per machine):");
-            eprintln!();
-            for line in commands::git_filters::config_block_text().lines() {
-                eprintln!("    {line}");
-            }
-            eprintln!();
-            eprintln!("Add to .gitattributes (committed in the repo):");
-            let raw = ctx.config_manager.root_config()?.symlink.plist_extensions;
-            let extensions = commands::git_filters::normalize_plist_extensions(&raw);
-            for line in commands::git_filters::gitattributes_lines(&extensions) {
-                eprintln!("    {line}");
-            }
-            eprintln!();
-            eprintln!(
-                "Run `dodot git-install-filters` to install, or `dodot prompts reset {prompt_key}` to skip and ask later."
-            );
-            // Don't dismiss — show is informational, the user hasn't
-            // committed to either install or skip.
+            install_ladder_show(&ctx, &active_rungs)?;
+            // Show is informational — no dismissal. Re-running `up`
+            // will offer the same prompt.
         }
         crate::interactive::YesNoShow::No => {
-            // Don't dismiss — re-prompt next up. If the user wants to
-            // permanently silence it, they can run
-            // `dodot prompts reset <key>` later (well, the inverse —
-            // to dismiss it themselves we'd need a `dismiss` CLI verb).
-            //
-            // For now, "no" means "not now"; a future ergonomics pass
-            // can offer "no, and never ask again".
+            // Per #112: "no" dismisses every component key so
+            // subsequent `up` runs don't re-prompt. The umbrella
+            // `magic.install_ladder` key is also dismissed so a
+            // future rung becoming applicable doesn't unilaterally
+            // re-open the ladder against the user's wishes.
+            for rung in &active_rungs {
+                registry.dismiss(rung.component_key);
+            }
+            registry.dismiss(ladder_key);
+            registry.save(ctx.fs.as_ref())?;
+            eprintln!(
+                "Skipped install ladder. Re-run `dodot prompts reset <key>` to surface a \
+                 specific rung again, or `dodot prompts reset {ladder_key}` for the lot."
+            );
         }
     }
     Ok(())
 }
 
-/// Post-`up` hook that offers to install the pre-commit hook when:
-///
-/// 1. stdin is a TTY (interactive — never prompt under CI / pipes),
-/// 2. the dotfiles root is a git working tree,
-/// 3. at least one template baseline exists (i.e. the user just
-///    deployed one or more templates),
-/// 4. the dodot pre-commit block is NOT yet installed,
-/// 5. the user has NOT previously dismissed the prompt.
-///
-/// All five must hold; otherwise the function returns silently.
-/// Symmetric in structure with [`maybe_prompt_install_filters`] — same
-/// "soft nudge" disposition: failures and skips go to the debug log,
-/// not stderr, so a noisy line never appears on routine `up` runs.
-pub fn maybe_prompt_install_template_hook() {
-    if let Err(e) = try_prompt_install_template_hook() {
-        tracing::debug!("template install-hook prompt skipped: {e}");
-    }
-}
+fn install_ladder_yes(
+    ctx: &dodot_lib::packs::orchestration::ExecutionContext,
+    rungs: &[&LadderRung],
+    registry: &mut dodot_lib::prompts::PromptRegistry,
+) -> Result<(), anyhow::Error> {
+    // Hook installs first — the template filter rung is only useful
+    // when the hook is also installed (the safety gate against
+    // committing unresolved markers lives in the hook). If the user
+    // accepted both, the hook lands first so the filter's value is
+    // realized immediately.
+    let install_hook = rungs
+        .iter()
+        .any(|r| r.component_key == RUNG_HOOK.component_key);
+    let install_plist = rungs
+        .iter()
+        .any(|r| r.component_key == RUNG_PLIST_FILTER.component_key);
+    let install_template_filter = rungs
+        .iter()
+        .any(|r| r.component_key == RUNG_TEMPLATE_FILTER.component_key);
 
-fn try_prompt_install_template_hook() -> Result<(), anyhow::Error> {
-    use dodot_lib::prompts::PromptRegistry;
-
-    if !crate::interactive::stdin_is_tty() {
-        return Ok(());
-    }
-
-    let dotfiles_root = discover_dotfiles_root()?;
-    let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
-
-    // No templates deployed → nothing to gate on.
-    let baselines = dodot_lib::preprocessing::divergence::collect_baselines(
-        ctx.fs.as_ref(),
-        ctx.paths.as_ref(),
-    )?;
-    if baselines.is_empty() {
-        return Ok(());
-    }
-
-    // Already installed → silent.
-    if commands::transform::hook_is_installed(&ctx)? {
-        return Ok(());
-    }
-
-    // Not a git working tree → installer would error; skip the prompt.
-    if !ctx.fs.is_dir(&ctx.paths.dotfiles_root().join(".git")) {
-        return Ok(());
-    }
-
-    let registry_path = ctx.paths.prompts_path();
-    let mut registry = PromptRegistry::load(ctx.fs.as_ref(), registry_path)?;
-    let prompt_key = "template.install_hook";
-    if registry.is_dismissed(prompt_key) {
-        return Ok(());
-    }
-
-    let header = format!("dodot deployed {} template file(s).", baselines.len());
-    let response = crate::interactive::prompt_yes_no_show(&[
-        &header,
-        "A pre-commit hook can keep template sources in sync with deployed-side edits",
-        "by running `dodot transform check --strict` automatically on every `git commit`.",
-        "Install the hook now? Pick `show` to see the block first, or run `dodot transform install-hook` later.",
-    ])?;
-
-    match response {
-        crate::interactive::YesNoShow::Yes => {
-            let r = commands::transform::install_hook(&ctx)?;
-            eprintln!("Installed pre-commit hook at {}", r.hook_display_path);
-            registry.dismiss(prompt_key);
-            registry.save(ctx.fs.as_ref())?;
-        }
-        crate::interactive::YesNoShow::Show => {
-            eprintln!();
-            eprintln!("The hook block that would be added to .git/hooks/pre-commit:");
-            eprintln!();
-            for line in commands::transform::managed_block().lines() {
-                eprintln!("    {line}");
+    // Each rung is soft-fail: an error in one installer must not
+    // skip the others. The pre-three-prompts UX let the user
+    // accept/reject each rung independently; the consolidated
+    // ladder needs to preserve that "approved means tried" contract,
+    // because the rungs are operationally unrelated (the plist
+    // filter doesn't care whether the hook installed). Surface each
+    // failure to stderr so the user knows what didn't land, and
+    // only dismiss the catalog key on the success path so a failed
+    // rung re-prompts on the next `up`.
+    if install_hook {
+        match commands::transform::install_hook(ctx) {
+            Ok(r) => {
+                eprintln!("Installed pre-commit hook at {}", r.hook_display_path);
+                registry.dismiss(RUNG_HOOK.component_key);
             }
-            eprintln!();
-            eprintln!(
-                "Run `dodot transform install-hook` to install, \
-                 or `dodot prompts reset {prompt_key}` to skip and ask later."
-            );
-            // Don't dismiss — show is informational. The user has
-            // not committed to install or skip.
+            Err(e) => {
+                eprintln!("Failed to install pre-commit hook: {e}");
+                eprintln!(
+                    "  Try `dodot transform install-hook` directly for the full error, \
+                     or skip with `dodot prompts reset {}`.",
+                    RUNG_HOOK.component_key
+                );
+            }
         }
-        crate::interactive::YesNoShow::No => {
-            // Same convention as the plist prompt: "no" means "not
-            // now"; we'll re-prompt on the next up.
+    }
+    if install_plist {
+        match commands::git_filters::install_filters(ctx) {
+            Ok(r) => {
+                eprintln!("{}", r.message);
+                for d in &r.details {
+                    eprintln!("  {d}");
+                }
+                registry.dismiss(RUNG_PLIST_FILTER.component_key);
+            }
+            Err(e) => {
+                eprintln!("Failed to install plist filters: {e}");
+                eprintln!("  Try `dodot git-install-filters` directly for the full error.");
+            }
+        }
+    }
+    if install_template_filter {
+        match commands::template_install_filter::install_filter(ctx) {
+            Ok(r) => {
+                eprintln!("{}", r.message);
+                for d in &r.details {
+                    eprintln!("  {d}");
+                }
+                registry.dismiss(RUNG_TEMPLATE_FILTER.component_key);
+            }
+            Err(e) => {
+                eprintln!("Failed to install template clean filter: {e}");
+                eprintln!("  Try `dodot template install-filter` directly for the full error.");
+            }
         }
     }
     Ok(())
 }
 
-/// Post-`up` hook that offers to install the template clean filter
-/// when:
+fn install_ladder_show(
+    ctx: &dodot_lib::packs::orchestration::ExecutionContext,
+    rungs: &[&LadderRung],
+) -> Result<(), anyhow::Error> {
+    for rung in rungs {
+        eprintln!();
+        eprintln!("── {} ──", rung.name);
+        match rung.component_key {
+            "template.install_hook" => {
+                eprintln!("Block to be added to .git/hooks/pre-commit:");
+                eprintln!();
+                for line in commands::transform::managed_block().lines() {
+                    eprintln!("    {line}");
+                }
+            }
+            "plist.install_filters" => {
+                eprintln!("Add to .git/config (per clone, per machine):");
+                eprintln!();
+                for line in commands::git_filters::config_block_text().lines() {
+                    eprintln!("    {line}");
+                }
+                eprintln!();
+                eprintln!("Add to .gitattributes (committed in the repo):");
+                let raw = ctx.config_manager.root_config()?.symlink.plist_extensions;
+                let extensions = commands::git_filters::normalize_plist_extensions(&raw);
+                for line in commands::git_filters::gitattributes_lines(&extensions) {
+                    eprintln!("    {line}");
+                }
+            }
+            "template.install_filter" => {
+                eprintln!("Add to .git/config (per clone, per machine):");
+                eprintln!();
+                for line in commands::template_install_filter::config_block_text().lines() {
+                    eprintln!("    {line}");
+                }
+                eprintln!();
+                eprintln!("Add to .gitattributes (committed in the repo):");
+                eprintln!(
+                    "    {}",
+                    commands::template_install_filter::gitattributes_line()
+                );
+            }
+            _ => unreachable!("unknown rung key"),
+        }
+    }
+    eprintln!();
+    eprintln!("Re-run `dodot up` to answer the prompt, or run the install commands directly.");
+    Ok(())
+}
+
+/// Post-`up` cfprefsd cache-invalidation prompt (macOS only).
 ///
-/// 1. stdin is a TTY,
-/// 2. dotfiles root is a git working tree,
-/// 3. at least one template baseline exists,
-/// 4. the dodot pre-commit hook IS installed (we only prompt for
-///    the filter after the user already accepted the hook — keeps
-///    the install ladder one rung at a time),
-/// 5. the dodot-template filter is NOT yet registered in
-///    `.git/config`,
-/// 6. the user has NOT previously dismissed the prompt.
+/// Fires when the previous `dodot up` (or this one's deploy phase)
+/// dropped the `cfprefsd-needs-invalidation` marker — i.e. some
+/// plist file in an active pack has changed since the prior
+/// successful `up`. macOS's `cfprefsd` aggressively caches plist
+/// values; running apps may continue reading the stale value until
+/// `cfprefsd` is restarted. `killall cfprefsd` clears the cache and
+/// cfprefsd respawns immediately. See `docs/proposals/plists.lex`
+/// §6.4 and issue #109.
 ///
-/// All six must hold; otherwise the function returns silently. Same
-/// soft-failure pattern as the other post-`up` prompts.
-pub fn maybe_prompt_install_template_filter() {
-    if let Err(e) = try_prompt_install_template_filter() {
-        tracing::debug!("template install-filter prompt skipped: {e}");
+/// On `Yes` (ran killall) and `No` (declined), the marker is cleared
+/// so the prompt doesn't re-fire on the next `up` unless drift recurs.
+/// `No` additionally dismisses the catalog entry so the prompt never
+/// returns until the user runs `dodot prompts reset`. `Show` is
+/// informational — it leaves both the marker and the dismissal alone,
+/// so the user can re-run `up` to answer for real.
+pub fn maybe_prompt_invalidate_cfprefsd() {
+    if let Err(e) = try_prompt_invalidate_cfprefsd() {
+        tracing::debug!("cfprefsd-invalidate prompt skipped: {e}");
     }
 }
 
-fn try_prompt_install_template_filter() -> Result<(), anyhow::Error> {
+fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
     use dodot_lib::prompts::PromptRegistry;
 
+    // cfprefsd is macOS-only.
+    if !cfg!(target_os = "macos") {
+        return Ok(());
+    }
     if !crate::interactive::stdin_is_tty() {
         return Ok(());
     }
@@ -811,80 +915,72 @@ fn try_prompt_install_template_filter() -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
     let ctx = dodot_lib::packs::orchestration::ExecutionContext::production(&dotfiles_root, false)?;
 
-    let baselines = dodot_lib::preprocessing::divergence::collect_baselines(
-        ctx.fs.as_ref(),
-        ctx.paths.as_ref(),
-    )?;
-    if baselines.is_empty() {
-        return Ok(());
-    }
-
-    // is_installed/install_filter both shell out to `git -C <root>
-    // config ...` which handles "not a git repo" semantically (we
-    // detect the resulting failure), so we don't need a manual
-    // .git-exists probe here. Bonus: this skips the gating problem
-    // for worktrees (where .git is a file, not a dir, but `git -C`
-    // still works correctly) and submodules.
-
-    if !commands::transform::hook_is_installed(&ctx)? {
-        // Wait for the user to install the hook first. Filter is
-        // strictly more involved (per-clone setup, .gitattributes
-        // edit), so the install ladder asks for the cheaper one
-        // first.
-        return Ok(());
-    }
-
-    if commands::template_install_filter::is_installed(&ctx)? {
+    if !dodot_lib::probe::cfprefsd_marker_exists(ctx.fs.as_ref(), ctx.paths.as_ref()) {
         return Ok(());
     }
 
     let registry_path = ctx.paths.prompts_path();
     let mut registry = PromptRegistry::load(ctx.fs.as_ref(), registry_path)?;
-    let prompt_key = "template.install_filter";
+    let prompt_key = "plist.cfprefsd_invalidate";
     if registry.is_dismissed(prompt_key) {
+        // User previously chose "no". Clear the marker so it doesn't
+        // accumulate on subsequent ups; respect the dismissal.
+        dodot_lib::probe::clear_cfprefsd_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
         return Ok(());
     }
 
     let response = crate::interactive::prompt_yes_no_show(&[
-        "Install the dodot-template git clean filter?",
-        "It makes `git status` and `git diff` show deployed-side template edits",
-        "between commits, not just at commit time. Adds one block to .git/config",
-        "and a single line to .gitattributes.",
+        "A plist file in your dotfiles has changed since the previous `dodot up`.",
+        "(That covers two cases: a plist this run just deployed, *or* one a GUI app rewrote",
+        "in between runs — both leave cfprefsd holding a stale value.)",
+        "macOS caches plist values via cfprefsd; running apps may show stale values until",
+        "cfprefsd is restarted. Run `killall cfprefsd` now? (cfprefsd respawns immediately;",
+        "no data loss.) `no` skips and won't ask again.",
     ])?;
 
     match response {
         crate::interactive::YesNoShow::Yes => {
-            let r = commands::template_install_filter::install_filter(&ctx)?;
-            eprintln!("{}", r.message);
-            for d in &r.details {
-                eprintln!("  {d}");
+            // Use the same CommandRunner the rest of dodot uses so
+            // tests can stub it. `killall` returns 1 if no matching
+            // process — that's fine, treat any exit as success for
+            // prompt purposes (the cache is cleared either way: an
+            // empty cache is the desired end state).
+            let runner = ctx.command_runner.as_ref();
+            let result = runner.run("killall", &["cfprefsd".into()]);
+            match result {
+                Ok(_) => eprintln!("Ran `killall cfprefsd`."),
+                Err(e) => eprintln!(
+                    "Tried to run `killall cfprefsd` but failed: {e}. \
+                     You can run it yourself if running apps still show stale plist values."
+                ),
             }
             registry.dismiss(prompt_key);
             registry.save(ctx.fs.as_ref())?;
         }
+        crate::interactive::YesNoShow::No => {
+            registry.dismiss(prompt_key);
+            registry.save(ctx.fs.as_ref())?;
+            eprintln!(
+                "Skipped. Re-run `dodot prompts reset {prompt_key}` to surface this prompt again."
+            );
+        }
         crate::interactive::YesNoShow::Show => {
             eprintln!();
-            eprintln!("Add to .git/config (per clone, per machine):");
+            eprintln!("Would run:");
+            eprintln!("    killall cfprefsd");
             eprintln!();
-            for line in commands::template_install_filter::config_block_text().lines() {
-                eprintln!("    {line}");
-            }
-            eprintln!();
-            eprintln!("Add to .gitattributes (committed in the repo):");
+            eprintln!("That tells macOS to drop its cached plist values; the daemon respawns");
             eprintln!(
-                "    {}",
-                commands::template_install_filter::gitattributes_line()
+                "automatically. No data loss; running apps re-read the plist on next access."
             );
-            eprintln!();
-            eprintln!(
-                "Run `dodot template install-filter` to install, \
-                 or `dodot prompts reset {prompt_key}` to skip and ask later."
-            );
-        }
-        crate::interactive::YesNoShow::No => {
-            // Same convention as the other prompts: "no" defers.
+            // Show doesn't clear or dismiss — re-running `up`
+            // re-prompts.
+            return Ok(());
         }
     }
+
+    // Yes/No: marker handled, clear it.
+    dodot_lib::probe::clear_cfprefsd_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
     Ok(())
 }
 
