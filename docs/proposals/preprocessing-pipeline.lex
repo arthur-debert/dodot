@@ -255,12 +255,14 @@ Design Specification: Preprocessing Pipeline
 
         When `dodot up` encounters a previously-expanded file:
 
-            Output same, Input same:       Skip (already correct)
-            Output same, Input changed:    Re-expand (safe)
+            Output same, Input same:       Re-expand (no-op in practice — same bytes land)
+            Output same, Input changed:    Re-expand (the new render lands)
             Output changed, Input same:    Warn and skip (user edits preserved)
             Output changed, Input changed: Warn and skip (conflict — user edits preserved)
 
-        `--force` overrides: always re-expands, discarding divergence.
+        `--force` overrides the skip rows: always re-expands, discarding divergence.
+
+        The matrix is decided per file by the divergence guard, which compares the deployed file's bytes to the cached baseline's `rendered_hash`. The guard short-circuits on the two "Output changed" rows; the two "Output same" rows fall through to the normal render-and-write path. Note that "Output same, Input same" is described as "re-expand" rather than "skip" because the implementation does not byte-compare the source up front — it re-runs the preprocessor every time and re-writes the rendered file even when the bytes haven't changed. The end-state is identical (same bytes on disk, same baseline timestamp updated), so callers can treat the row as a no-op semantically; the distinction matters only when reasoning about cache writes (always happen) vs. user-visible changes (none in this row).
 
         Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (`{{ env.X }}`) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not by itself flip a `Synced` row to `Output{Changed}`. The next plain `dodot up` re-renders templates every run, so an env-var change automatically propagates as long as the deployed file still matches its baseline. The user only needs `dodot up --force` when the divergence guard is preserving an in-place edit on the deployed file — `--force` is the escape hatch that says "discard my edit and re-render with the current env." The reasons for keeping env vars out of the invalidation signal are spelled out below.
 
