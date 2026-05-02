@@ -38,6 +38,14 @@ enum Health {
     /// failures observed by the profiling instrumentation. `label` is
     /// the short status-column text, `reason` is the footnote body.
     DeployedWithError { label: String, reason: String },
+    /// The previous successful provisioning is still in effect, but
+    /// the user has edited the deployed file so the next `up` will
+    /// preserve the edit (issue #110 §6.4). For code-execution
+    /// handlers (`install`, `homebrew`) we still report Deployed
+    /// semantically — the install ran, its sentinel is recorded —
+    /// but the row carries a warning style and a footnote so the
+    /// user knows the deployed-side edit is pending reconciliation.
+    Preserved { label: String, reason: String },
     /// Deployed but the chain is broken.
     Broken(String),
     /// Data link exists and is healthy, but the user link is not at the
@@ -53,6 +61,7 @@ impl Health {
             Health::PendingConflict { .. } => "warning",
             Health::Deployed => "deployed",
             Health::DeployedWithError { .. } => "broken",
+            Health::Preserved { .. } => "warning",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
         }
@@ -78,6 +87,7 @@ impl Health {
                 _ => "deployed".into(),
             },
             Health::DeployedWithError { label, .. } => label.clone(),
+            Health::Preserved { label, .. } => label.clone(),
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
         }
@@ -89,6 +99,7 @@ impl Health {
         match self {
             Health::PendingConflict { reason } => Some(reason.as_str()),
             Health::DeployedWithError { reason, .. } => Some(reason.as_str()),
+            Health::Preserved { reason, .. } => Some(reason.as_str()),
             _ => None,
         }
     }
@@ -504,6 +515,21 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             }
         }
 
+        // Set of deployed-file paths the §6.4 divergence guard
+        // preserved during this status pass. For `install`/`homebrew`
+        // rows, the planner correctly drops the `Run` intent (so
+        // provisioning stays pinned to the previous successful
+        // render), but `check_status` would otherwise hash the user's
+        // edit, miss the previously-recorded sentinel, and report the
+        // row as pending — contradicting the planning behavior.
+        // Override those rows to `Deployed` with a footnote so the
+        // display matches the actual semantic state.
+        let preserved_paths: std::collections::HashSet<std::path::PathBuf> = preprocess_result
+            .skipped
+            .iter()
+            .map(|s| s.deployed_path.clone())
+            .collect();
+
         let mut files = Vec::new();
         for m in &matches {
             let rel_str = m.relative_path.to_string_lossy().into_owned();
@@ -535,19 +561,40 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 }
                 "shell" | "path" => verify_staged(&m.absolute_path, &pack.name, &m.handler, ctx),
                 _ => {
-                    // install, homebrew — use existing handler check_status
-                    let handler = registry.get(m.handler.as_str());
-                    let deployed = handler
-                        .and_then(|h| {
-                            h.check_status(&m.absolute_path, &pack.name, ctx.datastore.as_ref())
-                                .ok()
-                        })
-                        .map(|s| s.deployed)
-                        .unwrap_or(false);
-                    if deployed {
-                        Health::Deployed
+                    // install, homebrew — use existing handler check_status.
+                    //
+                    // Special case: a preserved-divergent template
+                    // (issue #110 §6.4) makes `check_status` see
+                    // the user's edit, which won't match the
+                    // sentinel of the *previous* successful render.
+                    // The planner already kept that render's
+                    // provisioning state effective by dropping the
+                    // Run intent, so reporting "pending" here would
+                    // misrepresent the semantic state. Treat the
+                    // row as Deployed and attach a footnote
+                    // pointing at the resolution paths.
+                    if preserved_paths.contains(&m.absolute_path) {
+                        Health::Preserved {
+                            label: "preserved (deployed-edit pending)".into(),
+                            reason:
+                                "deployed file edited since last `dodot up`; previous run still in effect. \
+                                 Run `dodot transform check` to reconcile, or re-run with --force to overwrite."
+                                    .to_string(),
+                        }
                     } else {
-                        Health::Pending
+                        let handler = registry.get(m.handler.as_str());
+                        let deployed = handler
+                            .and_then(|h| {
+                                h.check_status(&m.absolute_path, &pack.name, ctx.datastore.as_ref())
+                                    .ok()
+                            })
+                            .map(|s| s.deployed)
+                            .unwrap_or(false);
+                        if deployed {
+                            Health::Deployed
+                        } else {
+                            Health::Pending
+                        }
                     }
                 }
             };

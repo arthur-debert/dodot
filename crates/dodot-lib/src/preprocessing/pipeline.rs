@@ -183,13 +183,29 @@ fn check_divergence(
     new_context_hash: Option<&[u8; 32]>,
 ) -> Result<DivergenceCheck> {
     let cache_filename = cache_filename_for(virtual_relative);
-    let baseline =
-        match Baseline::load(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename)? {
-            Some(b) => b,
-            // First-time deploy: no baseline to compare against. Writing
-            // is correct here — there's nothing to overwrite.
-            None => return Ok(DivergenceCheck::Proceed),
-        };
+    let baseline = match Baseline::load(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename)
+    {
+        Ok(Some(b)) => b,
+        // First-time deploy: no baseline to compare against. Writing
+        // is correct here — there's nothing to overwrite.
+        Ok(None) => return Ok(DivergenceCheck::Proceed),
+        // The cache is rederivable: a corrupt or version-mismatched
+        // baseline (truncated JSON after a crash, partial write,
+        // schema bump) must not block deployment. Log it, treat as
+        // no-baseline, and let the next successful render rewrite
+        // the entry. Without this fallback, a single damaged cache
+        // file would force the user to manually clear the cache
+        // before any `up` / `status` could proceed.
+        Err(err) => {
+            tracing::warn!(
+                pack = %pack_name,
+                file = %virtual_relative.display(),
+                error = %err,
+                "ignoring unreadable baseline cache entry; will re-baseline on next successful render"
+            );
+            return Ok(DivergenceCheck::Proceed);
+        }
+    };
 
     let deployed_path = paths
         .handler_data_dir(pack_name, PREPROCESSED_HANDLER)
@@ -2661,6 +2677,67 @@ mod tests {
         );
         let on_disk = env.fs.read_to_string(&deployed_path).unwrap();
         assert_eq!(on_disk, "name = NEW VALUE");
+    }
+
+    #[test]
+    fn divergence_guard_soft_fails_on_corrupt_baseline_cache_entry() {
+        // Review feedback (PR #118 fourth pass): the cache lives under
+        // cache_dir and is documented as rederivable — losing it must
+        // never block deployment. Pin the soft-fail behavior: a
+        // truncated/corrupt baseline JSON makes the guard treat the
+        // file as if no baseline exists (Proceed), letting the next
+        // successful render rewrite the entry rather than aborting
+        // every `up` / `status` until the user manually clears the
+        // cache.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        // Prime the baseline normally.
+        let _ = run_template_preprocess(&env, "app", false);
+
+        // Corrupt the cached baseline JSON in place.
+        let baseline_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs
+            .write_file(&baseline_path, b"{this is not valid json")
+            .unwrap();
+
+        // Re-running must succeed — neither block on the corrupt JSON
+        // nor preserve a divergent file (since we have no baseline to
+        // compare against, we re-render).
+        let result = run_template_preprocess(&env, "app", false);
+        assert!(
+            result.skipped.is_empty(),
+            "corrupt baseline must not block; should re-render normally"
+        );
+
+        // The render must produce the expected content (proving we
+        // didn't somehow propagate the cache error).
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = original",
+            "successful re-render must overwrite with the rendered output"
+        );
+
+        // The new render must have rewritten the corrupt baseline.
+        let baseline = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .expect("baseline should be rewritten on the rerender");
+        assert_eq!(baseline.rendered_content, "name = original");
     }
 
     #[test]

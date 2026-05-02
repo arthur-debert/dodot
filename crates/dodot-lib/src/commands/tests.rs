@@ -234,6 +234,74 @@ fn status_renders_with_standout() {
 }
 
 #[test]
+fn status_reports_preserved_install_template_as_deployed_with_footnote() {
+    // Review feedback (PR #118 fourth pass): when the §6.4 divergence
+    // guard preserves a deployed `install.sh.tmpl` output, the planner
+    // drops the Run intent so provisioning stays pinned to the previous
+    // successful render. Without the status-side override, check_status
+    // would hash the user's edit and report "pending", contradicting
+    // the planning behavior. Pin the new behavior: status shows the
+    // row with the warning style + "preserved (deployed-edit pending)"
+    // label and a footnote pointing at the resolution paths.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file(
+            "install.sh.tmpl",
+            "#!/bin/sh\necho \"installing on {{ dodot.os }}\"",
+        )
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    // First `up` deploys + records the install sentinel.
+    let _ = commands::up::up(None, &ctx).unwrap();
+
+    // User edits the deployed install script directly.
+    let deployed = ctx
+        .paths
+        .handler_data_dir("setup", "preprocessed")
+        .join("install.sh");
+    ctx.fs
+        .write_file(&deployed, b"#!/bin/sh\necho INJECTED_BY_USER")
+        .unwrap();
+
+    // Status pass should report the install row as preserved, not
+    // pending. The user already gets a separate preservation warning
+    // at the warnings level — the row label here is the post-up UI
+    // signal that the previous run is still effective.
+    let result = commands::status::status(None, &ctx).unwrap();
+    let install_row = result
+        .packs
+        .iter()
+        .flat_map(|p| &p.files)
+        .find(|f| f.handler == "install")
+        .expect("install row must be present");
+    assert!(
+        install_row.status_label.contains("preserved"),
+        "install row should report preserved, got: {:?}",
+        install_row.status_label
+    );
+    assert_eq!(
+        install_row.status, "warning",
+        "preserved style should be warning, got: {}",
+        install_row.status
+    );
+    assert!(
+        install_row.note_ref.is_some(),
+        "preserved row must carry a footnote"
+    );
+    let note_idx = (install_row.note_ref.unwrap() - 1) as usize;
+    let note = &result.notes[note_idx];
+    assert!(
+        note.body.contains("transform check") && note.body.contains("--force"),
+        "footnote should point at resolution paths, got: {:?}",
+        note.body
+    );
+}
+
+#[test]
 fn status_lists_ignored_packs() {
     let env = TempEnvironment::builder()
         .pack("vim")
