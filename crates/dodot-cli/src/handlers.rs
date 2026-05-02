@@ -770,26 +770,60 @@ fn install_ladder_yes(
         .iter()
         .any(|r| r.component_key == RUNG_TEMPLATE_FILTER.component_key);
 
+    // Each rung is soft-fail: an error in one installer must not
+    // skip the others. The pre-three-prompts UX let the user
+    // accept/reject each rung independently; the consolidated
+    // ladder needs to preserve that "approved means tried" contract,
+    // because the rungs are operationally unrelated (the plist
+    // filter doesn't care whether the hook installed). Surface each
+    // failure to stderr so the user knows what didn't land, and
+    // only dismiss the catalog key on the success path so a failed
+    // rung re-prompts on the next `up`.
     if install_hook {
-        let r = commands::transform::install_hook(ctx)?;
-        eprintln!("Installed pre-commit hook at {}", r.hook_display_path);
-        registry.dismiss(RUNG_HOOK.component_key);
+        match commands::transform::install_hook(ctx) {
+            Ok(r) => {
+                eprintln!("Installed pre-commit hook at {}", r.hook_display_path);
+                registry.dismiss(RUNG_HOOK.component_key);
+            }
+            Err(e) => {
+                eprintln!("Failed to install pre-commit hook: {e}");
+                eprintln!(
+                    "  Try `dodot transform install-hook` directly for the full error, \
+                     or skip with `dodot prompts reset {}`.",
+                    RUNG_HOOK.component_key
+                );
+            }
+        }
     }
     if install_plist {
-        let r = commands::git_filters::install_filters(ctx)?;
-        eprintln!("{}", r.message);
-        for d in &r.details {
-            eprintln!("  {d}");
+        match commands::git_filters::install_filters(ctx) {
+            Ok(r) => {
+                eprintln!("{}", r.message);
+                for d in &r.details {
+                    eprintln!("  {d}");
+                }
+                registry.dismiss(RUNG_PLIST_FILTER.component_key);
+            }
+            Err(e) => {
+                eprintln!("Failed to install plist filters: {e}");
+                eprintln!("  Try `dodot git-install-filters` directly for the full error.");
+            }
         }
-        registry.dismiss(RUNG_PLIST_FILTER.component_key);
     }
     if install_template_filter {
-        let r = commands::template_install_filter::install_filter(ctx)?;
-        eprintln!("{}", r.message);
-        for d in &r.details {
-            eprintln!("  {d}");
+        match commands::template_install_filter::install_filter(ctx) {
+            Ok(r) => {
+                eprintln!("{}", r.message);
+                for d in &r.details {
+                    eprintln!("  {d}");
+                }
+                registry.dismiss(RUNG_TEMPLATE_FILTER.component_key);
+            }
+            Err(e) => {
+                eprintln!("Failed to install template clean filter: {e}");
+                eprintln!("  Try `dodot template install-filter` directly for the full error.");
+            }
         }
-        registry.dismiss(RUNG_TEMPLATE_FILTER.component_key);
     }
     Ok(())
 }
@@ -855,10 +889,12 @@ fn install_ladder_show(
 /// cfprefsd respawns immediately. See `docs/proposals/plists.lex`
 /// §6.4 and issue #109.
 ///
-/// On every outcome (yes / no / show), the marker is cleared so the
-/// prompt doesn't re-fire on the next `up` unless drift recurs. "No"
-/// additionally dismisses the catalog entry so the prompt never
-/// returns until the user runs `dodot prompts reset`.
+/// On `Yes` (ran killall) and `No` (declined), the marker is cleared
+/// so the prompt doesn't re-fire on the next `up` unless drift recurs.
+/// `No` additionally dismisses the catalog entry so the prompt never
+/// returns until the user runs `dodot prompts reset`. `Show` is
+/// informational — it leaves both the marker and the dismissal alone,
+/// so the user can re-run `up` to answer for real.
 pub fn maybe_prompt_invalidate_cfprefsd() {
     if let Err(e) = try_prompt_invalidate_cfprefsd() {
         tracing::debug!("cfprefsd-invalidate prompt skipped: {e}");
@@ -894,7 +930,9 @@ fn try_prompt_invalidate_cfprefsd() -> Result<(), anyhow::Error> {
     }
 
     let response = crate::interactive::prompt_yes_no_show(&[
-        "dodot detected a plist change on this `up`.",
+        "A plist file in your dotfiles has changed since the previous `dodot up`.",
+        "(That covers two cases: a plist this run just deployed, *or* one a GUI app rewrote",
+        "in between runs — both leave cfprefsd holding a stale value.)",
         "macOS caches plist values via cfprefsd; running apps may show stale values until",
         "cfprefsd is restarted. Run `killall cfprefsd` now? (cfprefsd respawns immediately;",
         "no data loss.) `no` skips and won't ask again.",

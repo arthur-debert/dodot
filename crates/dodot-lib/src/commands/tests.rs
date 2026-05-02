@@ -845,6 +845,32 @@ fn up_does_not_write_cfprefsd_marker_when_pack_has_no_plists() {
     );
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn up_with_pack_filter_does_not_write_cfprefsd_marker_for_unrelated_pack_plists() {
+    // Pack A contains a plist; pack B has only non-plist files.
+    // Running `dodot up` filtered to pack B must NOT drop the
+    // cfprefsd marker — the user's command didn't touch any plist.
+    let env = TempEnvironment::builder()
+        .pack("mac-defaults")
+        .file("com.example.app.plist", "<?xml?><plist></plist>")
+        .done()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    let filter = vec!["vim".to_string()];
+    commands::up::up(Some(&filter), &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        !ctx.fs.exists(&marker),
+        "drift detection must respect the pack filter — \
+         a plist in an unrelated pack should not trigger the marker"
+    );
+}
+
 // ── up: conflict handling ──────────────────────────────────
 
 #[test]

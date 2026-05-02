@@ -233,13 +233,25 @@ pub fn is_installed(ctx: &ExecutionContext) -> Result<bool> {
 /// prompt is harmless. A stricter check would require shelling out to
 /// `git ls-files` on every `up`.
 pub fn detect_plist_files(ctx: &ExecutionContext) -> Result<Vec<std::path::PathBuf>> {
-    let mut found = Vec::new();
     let root = ctx.paths.dotfiles_root();
     if !ctx.fs.is_dir(root) {
-        return Ok(found);
+        return Ok(Vec::new());
     }
     let root_config = ctx.config_manager.root_config()?;
     let packs = crate::packs::discover_packs(ctx.fs.as_ref(), root, &root_config.pack.ignore)?;
+    detect_plist_files_in(ctx, &packs)
+}
+
+/// Like [`detect_plist_files`], but scoped to a caller-supplied pack
+/// list. Used by callers that already discovered packs (e.g.
+/// `commands::up`, which scopes drift detection to only the packs
+/// the current run actually deployed) to avoid re-walking the
+/// dotfiles tree and to honor `--pack` filters.
+pub fn detect_plist_files_in(
+    ctx: &ExecutionContext,
+    packs: &[crate::packs::Pack],
+) -> Result<Vec<std::path::PathBuf>> {
+    let mut found = Vec::new();
     for pack in packs {
         // Honor pack-level overrides of `[symlink] plist_extensions`.
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;

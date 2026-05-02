@@ -181,7 +181,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
         // No-op on non-macOS hosts (cfprefsd doesn't exist there).
         if cfg!(target_os = "macos") {
             let prev_last_up = probe::read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
-            if let Err(e) = maybe_record_cfprefsd_drift(ctx, prev_last_up) {
+            if let Err(e) = maybe_record_cfprefsd_drift(ctx, &packs, prev_last_up) {
                 debug!(error = %e, "cfprefsd drift check skipped");
             }
         }
@@ -322,7 +322,9 @@ pub fn up_or_status_for_conflict(
 
 /// macOS cfprefsd drift detection.
 ///
-/// Walks every active pack for files whose suffix matches the
+/// Walks the packs that this `up` actually targeted (so a
+/// `dodot up <one-pack>` run never fires cfprefsd because of a plist
+/// in some unrelated pack) for files whose suffix matches the
 /// pack-resolved `[symlink] plist_extensions` list. If any plist's
 /// mtime is newer than `prev_last_up_ts` (or the marker is missing —
 /// first `up` on this machine), drop the cfprefsd-needs-invalidation
@@ -333,10 +335,14 @@ pub fn up_or_status_for_conflict(
 /// drift (the GUI app rewrote the plist between yesterday's `up` and
 /// today's). cfprefsd's cache may be stale either way; the prompt is
 /// what gives the user a single chance to clear it.
-fn maybe_record_cfprefsd_drift(ctx: &ExecutionContext, prev_last_up_ts: Option<u64>) -> Result<()> {
+fn maybe_record_cfprefsd_drift(
+    ctx: &ExecutionContext,
+    packs: &[Pack],
+    prev_last_up_ts: Option<u64>,
+) -> Result<()> {
     use std::time::UNIX_EPOCH;
 
-    let plist_files = crate::commands::git_filters::detect_plist_files(ctx)?;
+    let plist_files = crate::commands::git_filters::detect_plist_files_in(ctx, packs)?;
     if plist_files.is_empty() {
         return Ok(());
     }
