@@ -131,12 +131,12 @@ expected_app_root() {
     # express a routing intent. A plain filename routed via
     # [symlink.targets] is the canonical use case for the override —
     # it must keep working.
-    create_pack_file "etc" "misterious.conf" "# m"
-    create_pack_config "etc" '[symlink]\ntargets = { "misterious.conf" = "/tmp/dodot-misterious.conf" }'
+    create_pack_file "etc" "mysterious.conf" "# m"
+    create_pack_config "etc" '[symlink]\ntargets = { "mysterious.conf" = "/tmp/dodot-mysterious.conf" }'
 
     dodot up
 
-    assert_exists "/tmp/dodot-misterious.conf"
-    assert_file_contains "/tmp/dodot-misterious.conf" "# m"
-    rm -f "/tmp/dodot-misterious.conf"
+    assert_exists "/tmp/dodot-mysterious.conf"
+    assert_file_contains "/tmp/dodot-mysterious.conf" "# m"
+    rm -f "/tmp/dodot-mysterious.conf"
 }

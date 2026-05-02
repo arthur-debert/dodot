@@ -548,10 +548,6 @@ fn plan_pack_inner(
     })
 }
 
-/// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
-/// emit a soft hint when the `<X>/` folder is missing on disk.
-///
-/// macOS-only — caller checks `cfg!(target_os = "macos")` first to
 /// Render an absolute path with `$HOME` collapsed to `~` for human
 /// display. Falls back to the absolute form when the path is outside
 /// the home tree.
@@ -563,6 +559,10 @@ fn display_path_relative_to_home(path: &std::path::Path, ctx: &ExecutionContext)
     }
 }
 
+/// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
+/// emit a soft hint when the `<X>/` folder is missing on disk.
+///
+/// macOS-only — caller checks `cfg!(target_os = "macos")` first to
 /// avoid firing on Linux where every XDG-routed entry would otherwise
 /// hit this branch.
 fn missing_target_hints(

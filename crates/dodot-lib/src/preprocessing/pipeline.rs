@@ -400,9 +400,24 @@ pub fn preprocess_pack(
             // Divergence guard (§6.4): for tracked-render preprocessors,
             // check whether the deployed file has diverged from the
             // cached baseline before overwriting. If it has, skip the
-            // write and record a SkippedRender so the caller can warn
+            // *write* and record a SkippedRender so the caller can warn
             // the user. `force = true` bypasses the guard. See
             // `check_divergence` for the byte-level rule.
+            //
+            // The render itself (`preprocessor.expand` above) has
+            // already run by this point — moving the divergence check
+            // ahead of expansion would require knowing every output
+            // path before producing any of them, which the preprocessor
+            // contract doesn't expose. The cost of the spurious render
+            // is the cycles burned plus any one-shot side effects in
+            // expand (e.g. secret-provider prompts for templates that
+            // resolve `{{ secrets.X }}`). For divergent files this
+            // means the prompt fires even though the rendered bytes
+            // are immediately discarded; users who want to avoid that
+            // should resolve the divergence (`dodot transform check`)
+            // before the next `dodot up`. Tracked here for §6.4
+            // follow-up; not blocking the divergence-preservation
+            // contract this guard exists to keep.
             //
             // The guard fires regardless of `write_baselines` — it's a
             // read-only check against the existing cache, and read-only
@@ -427,7 +442,7 @@ pub fn preprocess_pack(
                             pack = %pack.name,
                             file = %virtual_relative.display(),
                             ?state,
-                            "preserving divergent deployed file (skipping render)"
+                            "preserving divergent deployed file (skipping write)"
                         );
                         skipped.push(SkippedRender {
                             pack: pack.name.clone(),
