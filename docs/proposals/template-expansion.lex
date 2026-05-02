@@ -98,6 +98,8 @@ Design Specification: Template Expansion
                    set the DB_HOST environment variable or use a default:
                    {{ env.DB_HOST | default("localhost") }}
 
+        Cache invalidation: env-var references are read live at render time and are intentionally not part of the cache-invalidation signal — see `preprocessing-pipeline.lex` §6.4. Rotating an env var that a template references will not by itself trigger a re-deploy; users pick up the new value with `dodot up --force`. Stable values that should participate in invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace, §3.3), not `env.*`.
+
     3.3. User-Defined Variables: bare names
 
         Defined in `.dodot.toml` under `[preprocessor.template.vars]`:

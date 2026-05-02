@@ -200,8 +200,18 @@ name = "Alice"'
     assert_output_contains "diverged"
     assert_output_contains "output_changed"
 
-    # 3. Re-run `dodot up` — re-renders, returns to clean.
+    # 3. Plain `dodot up` preserves the user's edit (issue #110): the
+    #    divergence guard refuses to overwrite divergent deployed
+    #    files, so `transform status` continues to report diverged.
     run dodot up
+    [ "$status" -eq 0 ]
+    assert_output_contains "preserved"
+    run dodot transform status
+    assert_output_contains "diverged"
+
+    # 4. `dodot up --force` is the documented escape hatch — re-renders,
+    #    returns to clean.
+    run dodot up --force
     [ "$status" -eq 0 ]
     run dodot transform status
     assert_output_contains "1 synced"

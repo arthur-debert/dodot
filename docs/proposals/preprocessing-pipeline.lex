@@ -255,12 +255,26 @@ Design Specification: Preprocessing Pipeline
 
         When `dodot up` encounters a previously-expanded file:
 
-            Output same, Input same:      Skip (already correct)
-            Output same, Input changed:   Re-expand (safe)
-            Output changed, Input same:   Warn and skip (user edits preserved)
-            Output changed, Input changed: Warn and skip (conflict)
+            Output same, Input same:       Skip (already correct)
+            Output same, Input changed:    Re-expand (safe)
+            Output changed, Input same:    Warn and skip (user edits preserved)
+            Output changed, Input changed: Warn and skip (conflict — user edits preserved)
 
         `--force` overrides: always re-expands, discarding divergence.
+
+        Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (`{{ env.X }}`) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not invalidate the cache. Users who change a referenced env var pick up the new value with `dodot up --force`. This boundary is by design — see the §13 banner.
+
+        Implementation note: rows 3 and 4 collapse to the same outcome — `dodot up` never overwrites a deployed file whose bytes have diverged from the cached baseline. The clever 3-way merge (apply user's deployed-file edits back into the new render) lives in `dodot transform check` and the git clean filter, not in `up`. This keeps `up`'s contract crisp ("I will not destroy your work") at the cost of pushing the merge step into the commit cycle. Users resolve a row-3/row-4 skip via `dodot transform check` (auto-merge through the clean filter) or `dodot up --force` (overwrite).
+
+        Why env vars are out of scope:
+
+        - Layer boundary. Env vars are ambient runtime state, not configuration. Tracking them couples the template engine to the cache-invalidation contract — a leaky abstraction.
+
+        - User expectations. No standard Unix tool (git, make, shells) treats env-var changes as cache-invalidating inputs. A `dodot up` that re-rendered because `$EDITOR` flipped would feel like a bug.
+
+        - Ergonomics. AST-walking templates to enumerate env references is fragile across template-engine versions; hashing a projection of the entire process env into the sentinel is noisy (PWD, SHELL_PID, terminal env all change between invocations).
+
+        Users who want a value to be stable and tracked should put it in `[preprocessor.template.vars]` (the `user_vars` namespace) rather than reach for `env.*`. The `env.*` namespace is the explicitly-marked "live read, you're on your own for invalidation" zone, with `dodot up --force` as the discoverable escape hatch.
 
 7. Configuration
 

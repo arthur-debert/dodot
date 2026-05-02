@@ -87,12 +87,16 @@ pub struct TemplatePreprocessor {
     /// `user_vars` (sorted keys, length-prefixed). Reused as the
     /// `context_hash` for every render this preprocessor performs.
     ///
-    /// Limitation: `env.*` references are *not* part of the context
-    /// hash because doing so would require parsing the template AST to
-    /// know which env vars are read. Rotating an env var that a
-    /// template references will not invalidate the cache; users hit
-    /// that case with `dodot up --force`. Refining this is tracked for
-    /// the secrets/sentinel work (see `secrets.lex` §3.5).
+    /// `env.*` references are intentionally **not** part of the
+    /// context hash and tracking them is out of scope by design — see
+    /// `preprocessing-pipeline.lex` §6.4. The cache contract is
+    /// "same source bytes + same `dodot.*` namespace + same
+    /// `user_vars` → same output." The `env.*` namespace is the
+    /// explicitly live-read zone; rotating a referenced env var does
+    /// not invalidate the cache, and users pick up the new value via
+    /// `dodot up --force`. Stable values that should participate in
+    /// invalidation belong in `[preprocessor.template.vars]`
+    /// (`user_vars`), not `env.*`.
     context_hash: [u8; 32],
 }
 

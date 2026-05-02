@@ -107,6 +107,57 @@ name = "Pack"'
     assert_file_contains "$HOME/.config/app/settings" "editor=nano"
 }
 
+@test "dodot up preserves user edits to deployed template output (issue #110)" {
+    # The §6.4 row-3 case: source unchanged, deployed file edited by
+    # the user. `dodot up` must NOT silently overwrite the edit. The
+    # render is skipped, the user's bytes stay on disk, and a warning
+    # surfaces telling them how to reconcile.
+    create_pack "app"
+    create_pack_file "app" "cfg.tmpl" 'name = {{ name }}'
+    create_pack_config "app" '[preprocessor.template.vars]
+name = "Alice"'
+
+    run dodot up
+    [ "$status" -eq 0 ]
+    rendered="$XDG_DATA_HOME/dodot/packs/app/preprocessed/cfg"
+    assert_file_contains "$rendered" "name = Alice"
+
+    # User edits the deployed file directly.
+    echo "name = USER EDITED" > "$rendered"
+
+    # Re-running up must not clobber the edit. Exit 0 (the run
+    # succeeded; some files were just preserved).
+    run dodot up
+    [ "$status" -eq 0 ]
+    assert_file_contains "$rendered" "name = USER EDITED"
+    # And the warning should mention the resolution paths.
+    assert_output_contains "preserved"
+    assert_output_contains "transform check"
+    assert_output_contains "force"
+}
+
+@test "dodot up --force overwrites divergent deployed file (issue #110 escape hatch)" {
+    # The documented escape hatch: --force bypasses the divergence
+    # guard so users who know they want the freshly-rendered output
+    # (e.g. after rotating an env var the template references) can
+    # still pick it up.
+    create_pack "app"
+    create_pack_file "app" "cfg.tmpl" 'name = {{ name }}'
+    create_pack_config "app" '[preprocessor.template.vars]
+name = "Alice"'
+
+    run dodot up
+    [ "$status" -eq 0 ]
+    rendered="$XDG_DATA_HOME/dodot/packs/app/preprocessed/cfg"
+
+    # User edit, then --force.
+    echo "name = USER EDITED" > "$rendered"
+    run dodot up --force
+    [ "$status" -eq 0 ]
+    # The render landed; the user's edit is gone.
+    assert_file_contains "$rendered" "name = Alice"
+}
+
 @test "template with unresolved dodot-conflict markers is refused at deploy time" {
     # Once `dodot transform check` has rewritten a template to flag
     # ambiguous edits, the source carries dodot-conflict marker lines.
