@@ -211,6 +211,13 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
     let baselines = collect_baselines(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     let mut entries: Vec<TransformCheckEntry> = Vec::with_capacity(baselines.len());
     let mut has_findings = false;
+    // Memoise no_reverse patterns by pack within this check
+    // invocation. ConfigManager already caches resolved configs by
+    // absolute path, but each lookup still allocates and clones the
+    // Vec — for repos with many baselines per pack, that's wasted
+    // work. The map keeps the inner work to a single lookup per pack.
+    let mut no_reverse_cache: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
 
     for (pack, handler, filename, baseline) in baselines {
         let report = classify_one(
@@ -228,8 +235,10 @@ pub fn check(ctx: &ExecutionContext, strict: bool) -> Result<TransformCheckResul
         // conflict markers than usable diffs on mostly-dynamic
         // templates) while leaving `dodot transform status` alone —
         // status still surfaces the underlying state for visibility.
-        let no_reverse_patterns = pack_no_reverse_patterns(ctx, &pack);
-        let no_reverse = is_no_reverse(&report.source_path, &no_reverse_patterns);
+        let no_reverse_patterns = no_reverse_cache
+            .entry(pack.clone())
+            .or_insert_with(|| pack_no_reverse_patterns(ctx, &pack));
+        let no_reverse = is_no_reverse(&report.source_path, no_reverse_patterns);
         let action = match report.state {
             DivergenceState::Synced => TransformAction::Synced,
             DivergenceState::InputChanged => TransformAction::InputChanged,

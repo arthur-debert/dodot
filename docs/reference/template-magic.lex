@@ -196,7 +196,7 @@ Template Magic
 
         `<XDG_CACHE_HOME>/dodot/preprocessor/<pack>/preprocessed/<filename>.json`
 
-        One JSON per processed file. Fields: `version`, `source_path`, `rendered_hash`, `rendered_content`, `source_hash`, `context_hash`, `tracked_render`, `timestamp`. Re-rederivable — losing the cache forces the next `dodot up` to re-baseline. The cache is what makes the clean filter cheap (fast-path is a hash compare; slow-path is `TrackedRender::from_tracked_string` + diffy, never a re-render).
+        One JSON per processed file. Fields: `version`, `source_path`, `rendered_hash`, `rendered_content`, `source_hash`, `context_hash`, `tracked_render`, `timestamp`. Re-derivable — losing the cache forces the next `dodot up` to re-baseline. The cache is what makes the clean filter cheap (fast-path is a hash compare; slow-path is `TrackedRender::from_tracked_string` + diffy, never a re-render).
 
     7.2. Hook block
 
