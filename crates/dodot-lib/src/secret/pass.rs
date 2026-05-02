@@ -62,19 +62,25 @@ impl PassProvider {
     }
 
     /// Validate the reference shape before shelling out. Empty
-    /// references and references containing `..` (path traversal)
-    /// are rejected up-front. We don't try to be clever about
-    /// shell-quoting because `CommandRunner::run` takes argv as
-    /// a slice — there's no shell interpolation in play.
+    /// references and references whose path segments include `..`
+    /// (path traversal) are rejected up-front. We don't try to be
+    /// clever about shell-quoting because `CommandRunner::run` takes
+    /// argv as a slice — there's no shell interpolation in play.
+    ///
+    /// We check segment-equality instead of a substring match on
+    /// `..` so that legitimate entry names containing two
+    /// consecutive dots (e.g. `service-foo..staging`) pass through.
+    /// Pass entries are stored as files on disk; only `..` as its
+    /// own segment escapes the store root.
     fn validate_reference(reference: &str) -> Result<()> {
         if reference.is_empty() {
             return Err(DodotError::Other(
                 "pass reference is empty. Expected `pass:path/to/entry`.".into(),
             ));
         }
-        if reference.contains("..") {
+        if reference.split('/').any(|seg| seg == "..") {
             return Err(DodotError::Other(format!(
-                "pass reference `{reference}` contains `..` — \
+                "pass reference `{reference}` contains a `..` path segment — \
                  path-traversal references are refused for safety. \
                  Use the literal entry path under the store root."
             )));
@@ -339,6 +345,31 @@ mod tests {
         let p = PassProvider::new(Arc::new(ScriptedRunner::new()), dir.path().into());
         let e = p.resolve("../escape").unwrap_err().to_string();
         assert!(e.contains("path-traversal"));
+    }
+
+    #[test]
+    fn resolve_rejects_dotdot_in_middle_segment() {
+        let dir = make_store_dir(true);
+        let p = PassProvider::new(Arc::new(ScriptedRunner::new()), dir.path().into());
+        let e = p.resolve("foo/../escape").unwrap_err().to_string();
+        assert!(e.contains("path-traversal"));
+    }
+
+    #[test]
+    fn resolve_accepts_double_dot_inside_a_segment() {
+        // `foo..bar` is a legitimate pass entry name (two consecutive
+        // dots within one segment, not a `..` path segment). The
+        // validator must let it through; the runner answers with the
+        // entry's value.
+        let dir = make_store_dir(true);
+        let runner = Arc::new(ScriptedRunner::new().expect(
+            "pass",
+            vec!["show".into(), "service-foo..staging".into()],
+            ok("hunter2\n"),
+        ));
+        let p = PassProvider::new(runner, dir.path().into());
+        let v = p.resolve("service-foo..staging").unwrap();
+        assert_eq!(v.expose().unwrap(), "hunter2");
     }
 
     #[test]

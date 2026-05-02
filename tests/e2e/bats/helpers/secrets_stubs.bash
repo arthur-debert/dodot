@@ -74,14 +74,37 @@ seed_pass_secret() {
     printf '%s\t%s\n' "$ref" "$value" >> "$SANDBOX/.secrets-stubs/pass-catalog"
 }
 
-# Drop the pass stub from PATH for tests that need to exercise the
-# "binary not installed" probe path. The store directory and env var
-# stay set; the stub disappears, so `pass version` fails with
-# "command not found" and the provider's NotInstalled probe fires.
+# Drop the pass stub AND make `pass` genuinely unspawnable from this
+# point on — used by tests that exercise the "binary not installed"
+# probe path. The provider distinguishes spawn-failure (Err →
+# NotInstalled) from spawn-then-exit-non-zero (Ok → ProbeFailed), so
+# we need `Command::new("pass").spawn()` to fail outright.
+#
+# Approach: remove our stub dir AND walk PATH stripping any entry
+# that contains a `pass` binary. Without the strip, on a developer
+# machine with pass installed via brew / apt / pacman / nix, the
+# host's binary resolves through and the probe returns Ok — making
+# the test pass-or-fail dependent on host config. After the strip,
+# spawn fails everywhere with a real "command not found" → the
+# probe walks the documented NotInstalled path.
 secrets_drop_pass_stub() {
     if [[ -d "$SANDBOX/.secrets-stubs" ]]; then
         rm -rf "$SANDBOX/.secrets-stubs"
     fi
+    local clean=""
+    local IFS=':'
+    local entry
+    for entry in $PATH; do
+        if [[ -n "$entry" && -x "$entry/pass" ]]; then
+            continue
+        fi
+        if [[ -z "$clean" ]]; then
+            clean="$entry"
+        else
+            clean="$clean:$entry"
+        fi
+    done
+    export PATH="$clean"
 }
 
 # Helper for the common case: enable the pass provider + point at the

@@ -42,13 +42,13 @@ pub enum TransformType {
 /// content was produced by a `secret(...)` call, paired with the
 /// reference that produced it.
 ///
-/// Lines are 0-indexed and `start..end` is half-open (i.e. `start ==
-/// end` for a single-line secret means an empty range; the secret
-/// occupies line `start`). For Phase S1 this is always a single line:
-/// multi-line secrets are refused at resolution time per
-/// `secrets.lex` §3.4. The `end` field is preserved in the schema for
-/// forward-compatibility but the renderer never produces `end >
-/// start + 1`.
+/// Lines are 0-indexed and `start..end` is half-open. A single-line
+/// secret occupies line `start` and is encoded as `end == start + 1`
+/// (`start == end` would be an empty range and is never produced).
+/// For Phase S1 every entry is single-line: multi-line secrets are
+/// refused at resolution time per `secrets.lex` §3.4. The `end` field
+/// is preserved in the schema for forward-compatibility but the
+/// renderer never produces `end > start + 1`.
 ///
 /// Persisted to disk under `<baseline>.secret.json` (see
 /// `secrets.lex` §3.3); consumed by the dry-run preview rendering

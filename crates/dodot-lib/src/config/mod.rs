@@ -233,6 +233,17 @@ pub struct ProfilingSection {
 /// section globally (`[secret] enabled = false`) is equivalent to
 /// disabling every provider; templates that call `secret(...)` then
 /// surface a "no providers configured" render error.
+///
+/// **This section is root-only.** Unlike most config sections, the
+/// `[secret]` block is always read from the root `.dodot.toml`;
+/// per-pack overrides are ignored. Secret tooling
+/// (`$PASSWORD_STORE_DIR`, `OP_SERVICE_ACCOUNT_TOKEN`, the binaries
+/// themselves) is a property of the user's environment, not of any
+/// individual pack — a pack-level override would invalidate the
+/// once-per-run preflight contract (`secrets.lex` §5.4) and would
+/// surface as confusing "secret X probed under config A but
+/// resolved under config B" failures. Treat the root section as the
+/// single source of truth.
 #[derive(Config, Debug, Clone, Serialize, Deserialize)]
 pub struct SecretSection {
     /// Master switch. Default true; flip to false to disable all

@@ -30,6 +30,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use burgertocow::Tracker;
@@ -171,11 +172,19 @@ impl TemplatePreprocessor {
     /// because `Tracker::add_template` requires `&mut self`.
     ///
     /// `sidecar` is the per-render secret-tracking accumulator. The
-    /// `secret(...)` MiniJinja function pushes `(reference, value)`
-    /// pairs into it on every successful resolution; the caller (the
-    /// `expand` body) walks the rendered output to convert those
-    /// pairs into [`SecretLineRange`] entries.
-    fn make_tracker(&self, sidecar: Arc<Mutex<Vec<(String, String)>>>) -> Tracker {
+    /// `secret(...)` MiniJinja function returns a unique private-use
+    /// sentinel (rather than the raw secret value) and pushes a
+    /// [`SecretCallEntry`] into the accumulator. The caller (the
+    /// `expand` body) walks the rendered output to find each sentinel,
+    /// records its line position, then substitutes the sentinel back
+    /// to the real value. This avoids the substring-collision failure
+    /// mode where a secret value happens to also appear elsewhere in
+    /// the rendered text.
+    ///
+    /// `render_id` is a per-render monotonic counter used in the
+    /// sentinel format so two concurrent renders can't observe each
+    /// other's sentinels.
+    fn make_tracker(&self, sidecar: Arc<Mutex<Vec<SecretCallEntry>>>, render_id: u64) -> Tracker {
         let mut tracker = Tracker::new();
         let env = tracker.env_mut();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
@@ -233,11 +242,18 @@ impl TemplatePreprocessor {
                             )
                         })?;
                         let owned = s.to_string();
-                        sidecar
-                            .lock()
-                            .unwrap()
-                            .push((reference.to_string(), owned.clone()));
-                        Ok(owned)
+                        let mut entries = sidecar.lock().unwrap();
+                        let sentinel = make_secret_sentinel(render_id, entries.len());
+                        entries.push(SecretCallEntry {
+                            sentinel: sentinel.clone(),
+                            reference: reference.to_string(),
+                            value: owned,
+                        });
+                        // The sentinel is what flows through MiniJinja
+                        // and into the rendered output; `expand()`
+                        // computes line ranges by locating sentinels
+                        // and then substitutes them back to `owned`.
+                        Ok(sentinel)
                     },
                 );
             }
@@ -249,10 +265,10 @@ impl TemplatePreprocessor {
                             MjErrorKind::InvalidOperation,
                             format!(
                                 "secret(`{reference}`) was called but no secret providers \
-                             are configured. Enable a provider via \
-                             `[secret.providers.<scheme>] enabled = true` in your \
-                             .dodot.toml, or remove the `secret(...)` reference from \
-                             the template."
+                             are configured. Either set `[secret] enabled = true` and \
+                             enable a provider via `[secret.providers.<scheme>] enabled = \
+                             true` in your .dodot.toml, or remove the `secret(...)` \
+                             reference from the template."
                             ),
                         ))
                     },
@@ -316,13 +332,15 @@ impl Preprocessor for TemplatePreprocessor {
         // surfaces sensibly in any error MiniJinja produces.
         let template_name = source.to_string_lossy().into_owned();
 
-        // Per-render sidecar accumulator. The `secret(...)` MiniJinja
-        // function pushes `(reference, value)` pairs as they resolve;
-        // we walk the rendered output below to convert into line
-        // ranges.
-        let sidecar_pairs: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        // Per-render sidecar accumulator. Each `secret(...)` call
+        // pushes a `SecretCallEntry { sentinel, reference, value }`;
+        // the rendered output carries the sentinel (not the value),
+        // and `finalize_secrets` below turns sentinels into line
+        // ranges and then substitutes them back to the real value.
+        let sidecar: Arc<Mutex<Vec<SecretCallEntry>>> = Arc::new(Mutex::new(Vec::new()));
+        let render_id = next_render_id();
 
-        let mut tracker = self.make_tracker(sidecar_pairs.clone());
+        let mut tracker = self.make_tracker(sidecar.clone(), render_id);
         tracker
             .add_template(&template_name, &template_str)
             .map_err(|e| DodotError::TemplateRender {
@@ -346,9 +364,9 @@ impl Preprocessor for TemplatePreprocessor {
         let stripped = self.stripped_name(&filename);
 
         let (rendered, tracked_str) = tracked.into_parts();
-
-        let pairs = std::mem::take(&mut *sidecar_pairs.lock().unwrap());
-        let secret_line_ranges = compute_secret_line_ranges(&rendered, &pairs);
+        let entries = std::mem::take(&mut *sidecar.lock().unwrap());
+        let (rendered, tracked_str, secret_line_ranges) =
+            finalize_secrets(rendered, tracked_str, &entries);
 
         Ok(vec![ExpandedFile {
             relative_path: PathBuf::from(stripped),
@@ -361,45 +379,107 @@ impl Preprocessor for TemplatePreprocessor {
     }
 }
 
-/// Convert a sequence of `(reference, resolved_value)` pairs (in
-/// resolution order) into [`SecretLineRange`] entries by locating
-/// each value's first occurrence in `rendered`.
+/// Per-call accumulator entry for `secret(...)` resolutions. Carries
+/// both the unique private-use sentinel that the MiniJinja function
+/// emitted and the real resolved value, so `finalize_secrets` can
+/// compute line ranges from the sentinel positions and then swap
+/// sentinels for values in the rendered + tracked outputs.
+struct SecretCallEntry {
+    sentinel: String,
+    reference: String,
+    value: String,
+}
+
+/// Process-wide monotonic counter used to make sentinels unique
+/// across concurrent renders. Each `expand()` call gets a fresh id
+/// before installing the `secret()` function.
+static RENDER_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn next_render_id() -> u64 {
+    RENDER_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Sentinel format: `\u{E000}DSEC.<render_id>.<call_idx>\u{E001}`.
 ///
-/// Phase S1 simplification: each value is single-line (multi-line is
-/// refused at resolution time per §3.4), so each entry occupies one
-/// line — `end == start + 1`. Two `secret(...)` calls that resolve
-/// to the same literal value collapse to one range; that's a
-/// degenerate case we accept rather than introduce a marker scheme
-/// that would interact with burgertocow's tracker. The user-visible
-/// failure mode in that case is mild — the sidecar masks one
-/// position but not the duplicate — and rare.
+/// Both bracket characters live in the Unicode Private Use Area
+/// (U+E000–U+F8FF), which by definition has no assigned meaning and
+/// does not appear in normal dotfile content. Combined with the
+/// per-render id, the resulting string is unique within and across
+/// renders, eliminating the substring-collision failure mode of the
+/// previous "search for the resolved value" approach.
+fn make_secret_sentinel(render_id: u64, call_idx: usize) -> String {
+    let mut s = String::with_capacity(20);
+    s.push('\u{E000}');
+    s.push_str("DSEC.");
+    s.push_str(&render_id.to_string());
+    s.push('.');
+    s.push_str(&call_idx.to_string());
+    s.push('\u{E001}');
+    s
+}
+
+/// Walk `rendered` to convert each sentinel into a [`SecretLineRange`]
+/// (single-line per Phase S1 / §3.4), then substitute every sentinel
+/// back to its real value in both `rendered` and `tracked` and return
+/// all three.
 ///
-/// Walks `rendered` line-by-line; for each `(_, value)` pair, finds
-/// the first line containing `value` (left-to-right substring
-/// search) and emits a single-line range. Values that don't appear
-/// at all in `rendered` are dropped (template logic might have
-/// suppressed them, e.g. inside a false `{% if %}` branch — the
-/// `secret()` was called for resolution side effects but the value
-/// didn't make it into the output).
-fn compute_secret_line_ranges(rendered: &str, pairs: &[(String, String)]) -> Vec<SecretLineRange> {
-    let lines: Vec<&str> = rendered.split_inclusive('\n').collect();
-    let mut out = Vec::with_capacity(pairs.len());
-    for (reference, value) in pairs {
-        if value.is_empty() {
-            continue; // empty secret — nothing to mask
-        }
-        for (idx, line) in lines.iter().enumerate() {
-            if line.contains(value.as_str()) {
-                out.push(SecretLineRange {
-                    start: idx,
-                    end: idx + 1,
-                    reference: reference.clone(),
+/// Sentinels that don't appear in the output are dropped from the
+/// range list — the `secret()` was evaluated (for resolution side
+/// effects) but the value never reached the visible output, e.g. a
+/// call inside a false `{% if %}` branch. We still substitute (a
+/// no-op in that case) so callers can rely on the post-call output
+/// containing zero sentinel characters.
+fn finalize_secrets(
+    rendered: String,
+    tracked: String,
+    entries: &[SecretCallEntry],
+) -> (String, String, Vec<SecretLineRange>) {
+    let mut ranges = Vec::with_capacity(entries.len());
+    if !entries.is_empty() {
+        let line_starts = build_line_starts(&rendered);
+        for entry in entries {
+            if let Some(byte_off) = rendered.find(entry.sentinel.as_str()) {
+                let line = byte_offset_to_line(&line_starts, byte_off);
+                ranges.push(SecretLineRange {
+                    start: line,
+                    end: line + 1,
+                    reference: entry.reference.clone(),
                 });
-                break;
             }
         }
     }
-    out
+
+    let mut final_rendered = rendered;
+    let mut final_tracked = tracked;
+    for entry in entries {
+        final_rendered = final_rendered.replace(entry.sentinel.as_str(), &entry.value);
+        final_tracked = final_tracked.replace(entry.sentinel.as_str(), &entry.value);
+    }
+
+    (final_rendered, final_tracked, ranges)
+}
+
+/// Byte offsets where each line begins in `s`. `line_starts[0] == 0`;
+/// `line_starts[i]` for i > 0 is the byte index just past the i-1th
+/// `\n`. Used by [`byte_offset_to_line`] for the sentinel→line lookup.
+fn build_line_starts(s: &str) -> Vec<usize> {
+    let mut v = Vec::with_capacity(s.len() / 32 + 1);
+    v.push(0);
+    for (i, b) in s.bytes().enumerate() {
+        if b == b'\n' {
+            v.push(i + 1);
+        }
+    }
+    v
+}
+
+/// Map a byte offset within the source string to its 0-indexed line
+/// number. Binary search over `line_starts`.
+fn byte_offset_to_line(line_starts: &[usize], offset: usize) -> usize {
+    match line_starts.binary_search(&offset) {
+        Ok(line) => line,
+        Err(insert_pos) => insert_pos.saturating_sub(1),
+    }
 }
 
 /// Produce a deterministic SHA-256 over the rendering context.
@@ -1398,51 +1478,87 @@ mod tests {
         );
     }
 
+    /// Build a `SecretCallEntry` and the rendered text it would
+    /// produce when MiniJinja substitutes the sentinel for the value.
+    /// Tests construct the rendered text with the sentinel in place
+    /// (mimicking `secret()`'s return value) so `finalize_secrets`
+    /// has something to find.
+    fn entry(idx: usize, reference: &str, value: &str) -> (SecretCallEntry, String) {
+        let sentinel = make_secret_sentinel(0, idx);
+        let entry = SecretCallEntry {
+            sentinel: sentinel.clone(),
+            reference: reference.to_string(),
+            value: value.to_string(),
+        };
+        (entry, sentinel)
+    }
+
     #[test]
-    fn compute_secret_line_ranges_finds_value_on_first_matching_line() {
-        let rendered = "header\nuser = alice\npassword = hunter2\nfooter\n";
-        let pairs = vec![("pass:k".to_string(), "hunter2".to_string())];
-        let ranges = compute_secret_line_ranges(rendered, &pairs);
+    fn finalize_secrets_substitutes_sentinels_and_records_line_ranges() {
+        let (e, sentinel) = entry(0, "pass:k", "hunter2");
+        let rendered = format!("header\nuser = alice\npassword = {sentinel}\nfooter\n");
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e]);
         assert_eq!(ranges.len(), 1);
-        assert_eq!(ranges[0].start, 2);
-        assert_eq!(ranges[0].end, 3);
+        assert_eq!((ranges[0].start, ranges[0].end), (2, 3));
         assert_eq!(ranges[0].reference, "pass:k");
+        assert_eq!(
+            final_rendered,
+            "header\nuser = alice\npassword = hunter2\nfooter\n"
+        );
+        assert!(!final_rendered.contains('\u{E000}'));
     }
 
     #[test]
-    fn compute_secret_line_ranges_drops_empty_values() {
-        // A `secret()` that resolves to empty string can't be
-        // located in the rendered output; drop it rather than emit
-        // a degenerate range. (The empty value is a degenerate
-        // case; sidecar masking has nothing to mask.)
-        let pairs = vec![("pass:empty".to_string(), String::new())];
-        let ranges = compute_secret_line_ranges("any\noutput\n", &pairs);
-        assert!(ranges.is_empty());
+    fn finalize_secrets_does_not_match_value_substring_outside_sentinel() {
+        // The substring-based predecessor would mark line 0 (the
+        // greeting also contains "hunter2"); the sentinel approach
+        // only matches the exact secret slot.
+        let (e, sentinel) = entry(0, "pass:k", "hunter2");
+        let rendered = format!("greeting = hunter2 hi\npassword = {sentinel}\n");
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e]);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!((ranges[0].start, ranges[0].end), (1, 2));
+        assert_eq!(
+            final_rendered,
+            "greeting = hunter2 hi\npassword = hunter2\n"
+        );
     }
 
     #[test]
-    fn compute_secret_line_ranges_drops_values_not_in_output() {
-        // A `secret()` called inside a false `{% if %}` branch
-        // resolves (we have a (ref, value) pair) but its value
-        // never appears in `rendered`. We don't synthesise a fake
-        // line range — the sidecar would mask nothing useful.
-        let pairs = vec![("pass:hidden".to_string(), "never-emitted".to_string())];
-        let ranges = compute_secret_line_ranges("clean output\n", &pairs);
-        assert!(ranges.is_empty());
-    }
-
-    #[test]
-    fn compute_secret_line_ranges_handles_multiple_secrets_in_order() {
-        let rendered = "a = one\nb = two\nc = three\n";
-        let pairs = vec![
-            ("pass:k1".to_string(), "one".to_string()),
-            ("pass:k2".to_string(), "two".to_string()),
-            ("pass:k3".to_string(), "three".to_string()),
-        ];
-        let ranges = compute_secret_line_ranges(rendered, &pairs);
-        assert_eq!(ranges.len(), 3);
+    fn finalize_secrets_handles_two_calls_resolving_to_same_value() {
+        // Two distinct sentinels even when the values are identical;
+        // both lines are masked.
+        let (e1, s1) = entry(0, "pass:a", "shared");
+        let (e2, s2) = entry(1, "pass:b", "shared");
+        let rendered = format!("a = {s1}\nb = {s2}\n");
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e1, e2]);
+        assert_eq!(ranges.len(), 2);
         assert_eq!((ranges[0].start, ranges[0].end), (0, 1));
         assert_eq!((ranges[1].start, ranges[1].end), (1, 2));
-        assert_eq!((ranges[2].start, ranges[2].end), (2, 3));
+        assert_eq!(final_rendered, "a = shared\nb = shared\n");
+    }
+
+    #[test]
+    fn finalize_secrets_drops_entries_whose_sentinel_was_not_emitted() {
+        // `secret()` was evaluated (e.g. inside a false `{% if %}`)
+        // but the sentinel never reached the visible output. We
+        // don't synthesise a fake range; we still substitute (a
+        // no-op here) so callers can rely on the post-call output
+        // being sentinel-free.
+        let (e, _sentinel) = entry(0, "pass:hidden", "never-emitted");
+        let rendered = "clean output\n".to_string();
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e]);
+        assert!(ranges.is_empty());
+        assert_eq!(final_rendered, "clean output\n");
+    }
+
+    #[test]
+    fn finalize_secrets_substitutes_sentinels_in_tracked_render_too() {
+        // Sentinels must not leak into the baseline cache via the
+        // tracked stream.
+        let (e, sentinel) = entry(0, "pass:k", "hunter2");
+        let tracked = format!("preamble {sentinel} epilogue");
+        let (_, final_tracked, _) = finalize_secrets(String::new(), tracked, &[e]);
+        assert_eq!(final_tracked, "preamble hunter2 epilogue");
     }
 }

@@ -448,9 +448,11 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // path (`~/.config.toml.tmpl`) doesn't exist.
         let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
         let preprocess_result = if pack_config.preprocessor.enabled {
+            // [secret] is intentionally root-only — see SecretSection docs.
+            let root_config = ctx.config_manager.root_config()?;
             let (registry, _secret_registry) = crate::preprocessing::default_registry(
                 &pack_config.preprocessor.template,
-                &pack_config.secret,
+                &root_config.secret,
                 ctx.paths.as_ref(),
                 ctx.command_runner.clone(),
             )?;
