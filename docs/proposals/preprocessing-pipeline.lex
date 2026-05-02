@@ -262,7 +262,7 @@ Design Specification: Preprocessing Pipeline
 
         `--force` overrides: always re-expands, discarding divergence.
 
-        Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (`{{ env.X }}`) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not invalidate the cache. Users who change a referenced env var pick up the new value with `dodot up --force`. The reasons for keeping env vars out of the invalidation signal are spelled out below.
+        Staleness is defined from file content, not the runtime environment. The four-state matrix compares hashes of the source file and the deployed file against the cached baseline. Env vars referenced in templates (`{{ env.X }}`) are read live at render time and intentionally are not part of the staleness signal; rotating an env var does not by itself flip a `Synced` row to `Output{Changed}`. The next plain `dodot up` re-renders templates every run, so an env-var change automatically propagates as long as the deployed file still matches its baseline. The user only needs `dodot up --force` when the divergence guard is preserving an in-place edit on the deployed file — `--force` is the escape hatch that says "discard my edit and re-render with the current env." The reasons for keeping env vars out of the invalidation signal are spelled out below.
 
         Implementation note: rows 3 and 4 collapse to the same outcome — `dodot up` never overwrites a deployed file whose bytes have diverged from the cached baseline. The clever 3-way merge (apply user's deployed-file edits back into the new render) lives in `dodot transform check` and the git clean filter, not in `up`. This keeps `up`'s contract crisp ("I will not destroy your work") at the cost of pushing the merge step into the commit cycle. Users resolve a row-3/row-4 skip via `dodot transform check` (auto-merge through the clean filter) or `dodot up --force` (overwrite).
 
@@ -274,7 +274,7 @@ Design Specification: Preprocessing Pipeline
 
         - Ergonomics. AST-walking templates to enumerate env references is fragile across template-engine versions; hashing a projection of the entire process env into the sentinel is noisy (PWD, SHELL_PID, terminal env all change between invocations).
 
-        Users who want a value to be stable and tracked should put it in `[preprocessor.template.vars]` (the `user_vars` namespace) rather than reach for `env.*`. The `env.*` namespace is the explicitly-marked "live read, you're on your own for invalidation" zone, with `dodot up --force` as the discoverable escape hatch.
+        Users who want a value to be stable and tracked should put it in `[preprocessor.template.vars]` (the `user_vars` namespace) rather than reach for `env.*`. The `env.*` namespace is the explicitly-marked "live read, picked up on every plain `dodot up`" zone — the only catch is the divergence guard's interaction: when a user has edited the deployed file in place, the guard preserves the edit and the env-var change won't land until the user runs `dodot up --force` to overwrite their edit.
 
 7. Configuration
 

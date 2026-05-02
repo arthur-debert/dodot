@@ -284,16 +284,21 @@ impl Baseline {
                         if legacy_baseline_belongs_to_filename(&b.source_path, filename) {
                             return (Ok(Some(b)), legacy_path);
                         }
-                        // Legacy entry isn't ours; surface the
-                        // canonical error if there was one, else
-                        // fall through to "no baseline."
-                        return (new_result.map(|_| None), legacy_path);
+                        // Legacy entry exists but isn't ours
+                        // (belongs to a different file with the
+                        // same basename). Surface the canonical's
+                        // status with the canonical path so the
+                        // user-facing recovery hint names the file
+                        // that actually has the problem — telling
+                        // the user to delete an unrelated legacy
+                        // baseline would be wrong.
+                        return (new_result.map(|_| None), new_path);
                     }
                     Err(e) => return (Err(e), legacy_path),
                     Ok(None) => {
                         // Legacy file is missing too; surface the
-                        // canonical result (which may be Err for
-                        // corrupt-canonical-only).
+                        // canonical result with the canonical path
+                        // (may be Err for corrupt-canonical-only).
                         return (new_result.map(|_| None), new_path);
                     }
                 }
@@ -1144,6 +1149,62 @@ mod tests {
             origin.ends_with("config.toml.json") && !origin.to_string_lossy().contains("subdir"),
             "origin should be the legacy basename path, got: {}",
             origin.display()
+        );
+    }
+
+    #[test]
+    fn load_returns_canonical_path_when_canonical_corrupt_and_legacy_unrelated() {
+        // PR #118 18th-pass Comment JJ: when the canonical nested
+        // baseline is corrupt AND the legacy basename file exists
+        // but belongs to a *different* same-basename file (so
+        // legacy_baseline_belongs_to_filename returns false),
+        // load_with_origin must return the canonical's error WITH
+        // the canonical path — not the legacy path. Otherwise the
+        // user-facing recovery hint would tell the user to delete
+        // an unrelated baseline, leaving the real problem in place.
+        let env = TempEnvironment::builder().build();
+
+        // Stage a TOP-LEVEL valid baseline at the legacy basename
+        // path. (This represents a legitimate config.toml's
+        // baseline that happens to share the basename with the
+        // nested config.toml we're trying to load.)
+        let top_source = Path::new("/dotfiles/app/config.toml.tmpl");
+        let top = Baseline::build(top_source, b"top-rendered", b"top-src", Some(""), None);
+        top.write(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap();
+
+        // Stage a CORRUPT canonical entry for the nested file.
+        let canonical_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "subdir/config.toml");
+        env.fs.mkdir_all(canonical_path.parent().unwrap()).unwrap();
+        env.fs.write_file(&canonical_path, b"{not json").unwrap();
+
+        // Load by the nested key. The legacy entry isn't ours
+        // (top-level source_path doesn't match nested filename),
+        // so we should surface the canonical's error with the
+        // CANONICAL path.
+        let (result, origin) = Baseline::load_with_origin(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+        );
+        assert!(
+            result.is_err(),
+            "expected canonical's parse error to surface, got: {:?}",
+            result
+        );
+        assert_eq!(
+            origin, canonical_path,
+            "origin must be the canonical path, not the unrelated legacy file"
         );
     }
 
