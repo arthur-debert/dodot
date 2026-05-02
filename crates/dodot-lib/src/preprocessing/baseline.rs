@@ -187,14 +187,20 @@ impl Baseline {
                     }
                     Err(_) => {
                         // Legacy file is unreadable — corrupt JSON
-                        // or schema mismatch. We've already written
-                        // a valid replacement at the new nested
-                        // path, so leaving the corrupt file behind
-                        // would only break later
-                        // `collect_baselines` walks (every
-                        // `transform check` / `status` / `refresh`
-                        // would error on parse). Delete it.
-                        true
+                        // or schema mismatch. We CAN'T delete it
+                        // safely: the corrupt entry might belong
+                        // to a *different* same-basename file
+                        // (e.g. a real top-level `config.toml`
+                        // when we're writing `subdir/config.toml`).
+                        // Deleting it would clobber that file's
+                        // baseline and let the next `up` overwrite
+                        // user edits. The walker
+                        // (`collect_baselines`) tolerates the
+                        // corrupt entry — see its skip-on-error
+                        // path — so leaving it in place is safe;
+                        // the user can clear it manually if it
+                        // becomes a nuisance.
+                        false
                     }
                 };
                 if should_delete {
@@ -1087,13 +1093,20 @@ mod tests {
     }
 
     #[test]
-    fn write_at_nested_path_removes_corrupt_legacy_basename_file() {
-        // PR #118 10th-pass Comment R: when the legacy basename-only
-        // file is corrupt (truncated JSON, schema mismatch), the
-        // write cleanup must DELETE it. Otherwise the corrupt file
-        // would later poison `collect_baselines`, breaking every
-        // `transform check` / `status` / `refresh` run with a
-        // parse error.
+    fn write_at_nested_path_keeps_corrupt_legacy_basename_file() {
+        // PR #118 11th-pass Comment U: when the legacy basename-only
+        // file is corrupt, we CAN'T delete it safely — it might
+        // belong to a real top-level same-basename file whose JSON
+        // just happens to be corrupt. Deleting would clobber that
+        // file's baseline and let the next `up` overwrite user
+        // edits.
+        //
+        // Tolerance for the corrupt entry comes from the walker
+        // (`collect_baselines`), which now soft-fails on parse
+        // errors and skips the entry rather than aborting the
+        // whole run. So leaving the corrupt file in place is safe;
+        // the user can clear it manually if it becomes a nuisance,
+        // but it won't break any operation in the meantime.
         let env = TempEnvironment::builder().build();
 
         // Stage a corrupt legacy entry directly on disk.
@@ -1126,8 +1139,9 @@ mod tests {
 
         assert!(env.fs.exists(&new_path), "new baseline written");
         assert!(
-            !env.fs.exists(&legacy_path),
-            "corrupt legacy file must be removed during migration to avoid breaking collect_baselines later"
+            env.fs.exists(&legacy_path),
+            "corrupt legacy file must NOT be deleted on write — it could belong to a different file, \
+             so we tolerate it via the walker's soft-fail instead"
         );
     }
 

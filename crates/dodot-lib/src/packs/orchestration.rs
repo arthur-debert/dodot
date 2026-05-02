@@ -618,15 +618,20 @@ fn plan_pack_inner(
         let warning = if skipped.baseline_unreadable {
             // For unreadable baselines, `transform check` will fail
             // on the same corrupt entry — point the user at the
-            // recovery paths that actually work: clear the cache
-            // entry or use `--force`. The deleted cache file is
-            // rederivable, so removal is safe.
-            let cache_display = display_path_relative_to_home(&skipped.deployed_path, ctx);
+            // recovery paths that actually work: delete the
+            // specific corrupt cache file or use `--force`. The
+            // cache is rederivable, so removal is safe.
+            let cache_filename =
+                crate::preprocessing::baseline::cache_filename_for(&skipped.virtual_relative);
+            let cache_path = ctx.paths.preprocessor_baseline_path(
+                &skipped.pack,
+                crate::preprocessing::pipeline::PREPROCESSED_HANDLER,
+                &cache_filename,
+            );
+            let cache_display = display_path_relative_to_home(&cache_path, ctx);
             format!(
                 "preserved {} (baseline cache entry is unreadable). \
-                 Delete the corrupt cache file or re-run with --force to overwrite.\n  \
-                 (the cache lives under <cache_dir>/preprocessor/<pack>/preprocessed/; \
-                 deployed file: {})",
+                 Delete the corrupt cache file ({}) or re-run with --force to overwrite.",
                 display_path, cache_display,
             )
         } else {

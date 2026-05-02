@@ -583,14 +583,31 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                             // `transform check` would fail on the
                             // same corrupt entry, so point at the
                             // recovery path that actually works:
-                            // delete the cache entry or use --force.
+                            // delete the specific cache file or
+                            // use --force. Resolve the cache path
+                            // from the matched file's relative path
+                            // so the user knows exactly which JSON
+                            // to remove.
+                            let cache_filename = crate::preprocessing::baseline::cache_filename_for(
+                                &m.relative_path,
+                            );
+                            let cache_path = ctx.paths.preprocessor_baseline_path(
+                                &pack.name,
+                                crate::preprocessing::pipeline::PREPROCESSED_HANDLER,
+                                &cache_filename,
+                            );
+                            let cache_display = match cache_path.strip_prefix(ctx.paths.home_dir())
+                            {
+                                Ok(rel) => format!("~/{}", rel.display()),
+                                Err(_) => cache_path.display().to_string(),
+                            };
                             Health::Preserved {
                                 label: "preserved (baseline cache unreadable)".into(),
-                                reason:
+                                reason: format!(
                                     "baseline cache entry is unreadable; previous run still in effect. \
-                                     Delete the corrupt cache file under <cache_dir>/preprocessor/, \
-                                     or re-run with --force to overwrite."
-                                        .to_string(),
+                                     Delete the corrupt cache file ({}) or re-run with --force to overwrite.",
+                                    cache_display,
+                                ),
                             }
                         } else {
                             Health::Preserved {

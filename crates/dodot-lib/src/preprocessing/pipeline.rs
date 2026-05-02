@@ -142,7 +142,7 @@ impl PreprocessResult {
 }
 
 /// The handler name used for preprocessor-expanded files in the datastore.
-const PREPROCESSED_HANDLER: &str = "preprocessed";
+pub(crate) const PREPROCESSED_HANDLER: &str = "preprocessed";
 
 /// Result of checking whether the deployed file diverges from the
 /// cached baseline. Used by [`preprocess_pack`] to decide whether to

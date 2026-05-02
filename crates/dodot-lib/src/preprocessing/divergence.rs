@@ -141,27 +141,83 @@ pub fn collect_baselines(
                         // baseline's `source_path` to recover the
                         // correct virtual_relative — the source path
                         // is authoritative.
+                        // Compute the resolved filename. For a flat
+                        // cache entry whose source_path indicates a
+                        // nested file, we'd normally override the
+                        // key to the nested virtual_relative. But
+                        // during the transient migration window
+                        // BOTH the new nested file and the legacy
+                        // basename file exist on disk — emitting
+                        // both under the same logical key would
+                        // produce duplicate rows in
+                        // `transform status` / `transform check`.
+                        // Detect that case and skip the legacy
+                        // entry entirely; the canonical (new)
+                        // entry will be emitted on its own pass.
+                        let mut skip_emission = false;
                         let resolved_filename = if filename.contains('/') {
                             // Already nested; trust the cache layout.
                             filename
                         } else {
-                            derive_filename_from_source_path(
+                            match derive_filename_from_source_path(
                                 &baseline.source_path,
                                 &pack.name,
                                 paths.dotfiles_root(),
                             )
                             .filter(|derived| derived.contains('/'))
-                            .unwrap_or(filename)
+                            {
+                                Some(derived) => {
+                                    let canonical_path = paths.preprocessor_baseline_path(
+                                        &pack.name,
+                                        &handler.name,
+                                        &derived,
+                                    );
+                                    if fs.exists(&canonical_path) {
+                                        // The canonical (new-layout)
+                                        // entry already exists and
+                                        // will be emitted on its own
+                                        // turn. Drop this legacy
+                                        // duplicate.
+                                        skip_emission = true;
+                                        filename
+                                    } else {
+                                        derived
+                                    }
+                                }
+                                None => filename,
+                            }
                         };
-                        out.push((
-                            pack.name.clone(),
-                            handler.name.clone(),
-                            resolved_filename,
-                            baseline,
-                        ));
+                        if !skip_emission {
+                            out.push((
+                                pack.name.clone(),
+                                handler.name.clone(),
+                                resolved_filename,
+                                baseline,
+                            ));
+                        }
                     }
                     Ok(None) => {} // race with cache eviction; tolerate
-                    Err(e) => return Err(e),
+                    Err(err) => {
+                        // Soft-fail on parse / schema-version
+                        // errors. The cache is rederivable; a
+                        // single damaged entry must NOT break the
+                        // entire walk. `transform check` /
+                        // `status` / `refresh` continue past the
+                        // skipped entry, and `Baseline::write`
+                        // (during the next `up`) cannot delete the
+                        // corrupt file blindly because doing so
+                        // could clobber a same-basename file's
+                        // baseline. Surface a warning so the user
+                        // knows where to look if the orphan
+                        // persists.
+                        tracing::warn!(
+                            pack = %pack.name,
+                            handler = %handler.name,
+                            file = %filename,
+                            error = %err,
+                            "skipping unreadable baseline cache entry"
+                        );
+                    }
                 }
             }
         }
@@ -718,6 +774,101 @@ mod tests {
         let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
         assert_eq!(baselines.len(), 1);
         assert_eq!(baselines[0].2, "config.toml");
+    }
+
+    #[test]
+    fn collect_baselines_skips_canonical_when_legacy_duplicate_exists() {
+        // PR #118 11th-pass Comment S: during the transient
+        // migration window where BOTH the new nested baseline and
+        // the legacy basename file exist on disk, the walker must
+        // not emit both as separate entries with the same logical
+        // filename — that produces duplicate rows in
+        // `transform status`. The legacy entry gets dropped; only
+        // the canonical (new) entry surfaces.
+        let env = TempEnvironment::builder().build();
+        write_pack_template(&env, "app", "subdir/config.toml.tmpl", "src");
+        write_deployed(
+            &env,
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+            "rendered",
+        );
+        let src_path = env.dotfiles_root.join("app/subdir/config.toml.tmpl");
+
+        // Stage BOTH cache files: new nested layout + legacy basename.
+        let canonical = baseline_for(&src_path, b"rendered", b"src");
+        canonical
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "subdir/config.toml",
+            )
+            .unwrap();
+        // The above write would normally migrate; force the legacy
+        // file back into existence to simulate the transient window
+        // where both coexist (e.g. interrupted migration).
+        let legacy = baseline_for(&src_path, b"rendered", b"src");
+        legacy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        // Only the canonical entry surfaces; the legacy duplicate
+        // is suppressed.
+        assert_eq!(
+            baselines.len(),
+            1,
+            "transient duplicate must be deduped — got: {:?}",
+            baselines.iter().map(|b| &b.2).collect::<Vec<_>>()
+        );
+        assert_eq!(baselines[0].2, "subdir/config.toml");
+    }
+
+    #[test]
+    fn collect_baselines_soft_fails_on_corrupt_entry() {
+        // PR #118 11th-pass: a corrupt cache entry must NOT abort
+        // the entire walk. Earlier behavior propagated the parse
+        // error from `Baseline::load`, breaking every
+        // `transform check` / `status` / `refresh` until the user
+        // manually cleared the cache. The walker now skips and
+        // logs.
+        let env = TempEnvironment::builder().build();
+        // One healthy entry.
+        write_pack_template(&env, "app", "good.toml.tmpl", "src");
+        write_deployed(&env, "app", "preprocessed", "good.toml", "rendered");
+        let src_path = env.dotfiles_root.join("app/good.toml.tmpl");
+        let healthy = baseline_for(&src_path, b"rendered", b"src");
+        healthy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "good.toml",
+            )
+            .unwrap();
+
+        // One corrupt entry alongside.
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "bad.toml");
+        env.fs.write_file(&bad_path, b"{not json").unwrap();
+
+        // Walker must succeed with the healthy entry; corrupt entry
+        // is skipped silently (a tracing warning is emitted but not
+        // visible in this test).
+        let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(baselines.len(), 1);
+        assert_eq!(baselines[0].2, "good.toml");
     }
 
     #[test]
