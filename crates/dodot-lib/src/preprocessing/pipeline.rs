@@ -111,6 +111,13 @@ pub struct SkippedRender {
     /// Which divergence state we observed. Always `OutputChanged` or
     /// `BothChanged` — the other states never trigger a skip.
     pub state: DivergenceState,
+    /// True when the skip was triggered by an unreadable baseline
+    /// cache entry (truncated JSON, schema mismatch, etc.) rather
+    /// than a real divergence. The guard fails closed in that case
+    /// to avoid clobbering a possibly-edited deployed file; the
+    /// warning text reflects the different cause and points the user
+    /// at clearing the corrupt cache file or running `--force`.
+    pub baseline_unreadable: bool,
 }
 
 impl PreprocessResult {
@@ -149,6 +156,10 @@ enum DivergenceCheck {
     Skip {
         state: DivergenceState,
         deployed_path: PathBuf,
+        /// True when the skip was forced by an unreadable baseline
+        /// rather than a confirmed divergence — see
+        /// [`SkippedRender::baseline_unreadable`].
+        baseline_unreadable: bool,
     },
 }
 
@@ -183,33 +194,42 @@ fn check_divergence(
     new_context_hash: Option<&[u8; 32]>,
 ) -> Result<DivergenceCheck> {
     let cache_filename = cache_filename_for(virtual_relative);
+    let deployed_path = paths
+        .handler_data_dir(pack_name, PREPROCESSED_HANDLER)
+        .join(virtual_relative);
     let baseline = match Baseline::load(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename)
     {
         Ok(Some(b)) => b,
         // First-time deploy: no baseline to compare against. Writing
         // is correct here — there's nothing to overwrite.
         Ok(None) => return Ok(DivergenceCheck::Proceed),
-        // The cache is rederivable: a corrupt or version-mismatched
-        // baseline (truncated JSON after a crash, partial write,
-        // schema bump) must not block deployment. Log it, treat as
-        // no-baseline, and let the next successful render rewrite
-        // the entry. Without this fallback, a single damaged cache
-        // file would force the user to manually clear the cache
-        // before any `up` / `status` could proceed.
+        // The cache is rederivable, but a corrupt baseline still
+        // can't be allowed to silently overwrite a possibly-edited
+        // deployed file. **Fail closed**: if the deployed file
+        // exists, preserve it (skip + warn) so a partial-write or
+        // schema-bump can't clobber a user edit on the next `up`.
+        // Only when there's no deployed file (genuine fresh deploy /
+        // cache-and-render-out-of-sync) do we Proceed. The user
+        // clears the corrupt entry by deleting the cache file or by
+        // running `dodot up --force`.
         Err(err) => {
             tracing::warn!(
                 pack = %pack_name,
                 file = %virtual_relative.display(),
                 error = %err,
-                "ignoring unreadable baseline cache entry; will re-baseline on next successful render"
+                "baseline cache entry unreadable; preserving deployed file out of caution"
             );
-            return Ok(DivergenceCheck::Proceed);
+            if !fs.exists(&deployed_path) {
+                return Ok(DivergenceCheck::Proceed);
+            }
+            return Ok(DivergenceCheck::Skip {
+                state: DivergenceState::OutputChanged,
+                deployed_path,
+                baseline_unreadable: true,
+            });
         }
     };
 
-    let deployed_path = paths
-        .handler_data_dir(pack_name, PREPROCESSED_HANDLER)
-        .join(virtual_relative);
     if !fs.exists(&deployed_path) {
         // Baseline says we deployed once, but the user (or some other
         // tool) removed the deployed file. Treat as a fresh deploy —
@@ -253,6 +273,7 @@ fn check_divergence(
     Ok(DivergenceCheck::Skip {
         state,
         deployed_path,
+        baseline_unreadable: false,
     })
 }
 
@@ -465,18 +486,21 @@ pub fn preprocess_pack(
                     DivergenceCheck::Skip {
                         state,
                         deployed_path,
+                        baseline_unreadable,
                     } => {
                         info!(
                             pack = %pack.name,
                             file = %virtual_relative.display(),
                             ?state,
-                            "preserving divergent deployed file (skipping render)"
+                            baseline_unreadable,
+                            "preserving deployed file (skipping render)"
                         );
                         skipped.push(SkippedRender {
                             pack: pack.name.clone(),
                             virtual_relative: virtual_relative.clone(),
                             deployed_path: deployed_path.clone(),
                             state,
+                            baseline_unreadable,
                         });
                         skip_path = Some(deployed_path);
                     }
@@ -2680,15 +2704,15 @@ mod tests {
     }
 
     #[test]
-    fn divergence_guard_soft_fails_on_corrupt_baseline_cache_entry() {
-        // Review feedback (PR #118 fourth pass): the cache lives under
-        // cache_dir and is documented as rederivable — losing it must
-        // never block deployment. Pin the soft-fail behavior: a
-        // truncated/corrupt baseline JSON makes the guard treat the
-        // file as if no baseline exists (Proceed), letting the next
-        // successful render rewrite the entry rather than aborting
-        // every `up` / `status` until the user manually clears the
-        // cache.
+    fn divergence_guard_fails_closed_when_corrupt_baseline_and_deployed_exists() {
+        // Review feedback (PR #118 fifth pass): the cache lives under
+        // cache_dir and is rederivable, but a corrupt entry still
+        // can't be allowed to silently overwrite a possibly-edited
+        // deployed file. Pin the **fail-closed** behavior: when
+        // `Baseline::load` fails AND the deployed file exists, the
+        // guard preserves the deployed bytes and surfaces a skip
+        // with `baseline_unreadable = true`. The user clears via
+        // `--force` or by deleting the corrupt cache file.
         let env = TempEnvironment::builder()
             .pack("app")
             .file("config.toml.tmpl", "name = original")
@@ -2698,7 +2722,18 @@ mod tests {
         // Prime the baseline normally.
         let _ = run_template_preprocess(&env, "app", false);
 
-        // Corrupt the cached baseline JSON in place.
+        // User edits the deployed file. (This is the worst case
+        // we're protecting against.)
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Corrupt the cached baseline JSON in place — independently
+        // of (and on top of) the user's edit. Both signals are now
+        // pointing at "the deployed file might be different from
+        // what dodot would render."
         let baseline_path =
             env.paths
                 .preprocessor_baseline_path("app", "preprocessed", "config.toml");
@@ -2706,28 +2741,61 @@ mod tests {
             .write_file(&baseline_path, b"{this is not valid json")
             .unwrap();
 
-        // Re-running must succeed — neither block on the corrupt JSON
-        // nor preserve a divergent file (since we have no baseline to
-        // compare against, we re-render).
+        // Re-run: must NOT clobber the user's edit. Must surface
+        // a skip with the baseline_unreadable flag set so the
+        // warning text reflects the real cause.
         let result = run_template_preprocess(&env, "app", false);
-        assert!(
-            result.skipped.is_empty(),
-            "corrupt baseline must not block; should re-render normally"
+        assert_eq!(
+            result.skipped.len(),
+            1,
+            "corrupt baseline + existing deployed must preserve, not re-render"
         );
+        assert!(
+            result.skipped[0].baseline_unreadable,
+            "skip must carry baseline_unreadable flag"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED",
+            "user's edit must NOT be overwritten when the cache is corrupt"
+        );
+    }
 
-        // The render must produce the expected content (proving we
-        // didn't somehow propagate the cache error).
+    #[test]
+    fn divergence_guard_proceeds_when_corrupt_baseline_but_no_deployed_file() {
+        // Counterpart to the fail-closed case: when the baseline is
+        // corrupt AND there's no deployed file, there's nothing to
+        // preserve — re-render normally and let the next baseline
+        // write rewrite the entry.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        // Prime + remove the deployed file (simulating, e.g., a
+        // user-side cleanup) but leave a corrupt baseline behind.
+        let _ = run_template_preprocess(&env, "app", false);
         let deployed = env
             .paths
             .handler_data_dir("app", "preprocessed")
             .join("config.toml");
-        assert_eq!(
-            env.fs.read_to_string(&deployed).unwrap(),
-            "name = original",
-            "successful re-render must overwrite with the rendered output"
-        );
+        env.fs.remove_file(&deployed).unwrap();
+        let baseline_path =
+            env.paths
+                .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+        env.fs
+            .write_file(&baseline_path, b"{this is not valid json")
+            .unwrap();
 
-        // The new render must have rewritten the corrupt baseline.
+        // Re-run: no deployed file → safe to proceed. Render lands
+        // and the baseline gets rewritten.
+        let result = run_template_preprocess(&env, "app", false);
+        assert!(
+            result.skipped.is_empty(),
+            "corrupt baseline + missing deployed must proceed, not preserve"
+        );
+        assert_eq!(env.fs.read_to_string(&deployed).unwrap(), "name = original");
         let baseline = crate::preprocessing::baseline::Baseline::load(
             env.fs.as_ref(),
             env.paths.as_ref(),
