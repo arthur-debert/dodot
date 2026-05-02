@@ -422,7 +422,9 @@ fn plan_pack_inner(
                 pack,
                 ctx.fs.as_ref(),
                 ctx.datastore.as_ref(),
-                Some(ctx.paths.as_ref()),
+                ctx.paths.as_ref(),
+                /* write_baselines */ true,
+                ctx.force,
             )?
         } else {
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
@@ -454,6 +456,31 @@ fn plan_pack_inner(
     // Generate intents from each handler
     let mut all_intents = Vec::new();
     let mut all_warnings = Vec::new();
+
+    // Surface preserved-divergent-file warnings from the preprocessing
+    // pipeline. These are the §6.4 "deployed file edited" cases: dodot
+    // refused to overwrite the user's edit and held the previous render
+    // in place. The user resolves them via `dodot transform check`
+    // (auto-merge through the clean filter) or `dodot up --force`
+    // (overwrite).
+    for skipped in &preprocess_result.skipped {
+        let display_path = display_path_relative_to_home(&skipped.deployed_path, ctx);
+        let detail = match skipped.state {
+            crate::preprocessing::divergence::DivergenceState::OutputChanged => {
+                "deployed file was edited since the last `dodot up`"
+            }
+            crate::preprocessing::divergence::DivergenceState::BothChanged => {
+                "both the source template and the deployed file were edited since the last `dodot up`"
+            }
+            _ => "deployed file diverges from the cached baseline",
+        };
+        let warning = format!(
+            "preserved {} ({}). Run `dodot transform check` to reconcile, or re-run with --force to overwrite.",
+            display_path, detail,
+        );
+        tracing::warn!(pack = %pack.name, file = %skipped.virtual_relative.display(), "{warning}");
+        all_warnings.push(warning);
+    }
     for handler_name in &order {
         let handler = match registry.get(handler_name.as_str()) {
             Some(h) => h,
@@ -519,6 +546,17 @@ fn plan_pack_inner(
         intents: all_intents,
         warnings: all_warnings,
     })
+}
+
+/// Render an absolute path with `$HOME` collapsed to `~` for human
+/// display. Falls back to the absolute form when the path is outside
+/// the home tree.
+fn display_path_relative_to_home(path: &std::path::Path, ctx: &ExecutionContext) -> String {
+    let home = ctx.paths.home_dir();
+    match path.strip_prefix(home) {
+        Ok(rel) => format!("~/{}", rel.display()),
+        Err(_) => path.display().to_string(),
+    }
 }
 
 /// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
@@ -1755,6 +1793,118 @@ mod tests {
         assert!(
             content.contains(std::env::consts::OS),
             "rendered content should have OS substituted: {content}"
+        );
+    }
+
+    #[test]
+    fn plan_pack_surfaces_divergence_warnings() {
+        // End-to-end: a template-deployed file gets edited by the user,
+        // then `plan_pack` runs again. The pipeline preserves the edit
+        // and `PackPlan.warnings` carries a human-readable warning that
+        // mentions the deployed path, the resolution paths, and `--force`.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // First run: clean deploy, no warnings about preserved files.
+        let first = plan_pack(&pack, &ctx).unwrap();
+        assert!(
+            first.warnings.iter().all(|w| !w.contains("preserved")),
+            "first deploy must not produce a preservation warning: {:?}",
+            first.warnings
+        );
+
+        // User edits the deployed file.
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Second run: warning surfaces, with the documented resolution
+        // hints — `transform check` and `--force`.
+        let second = plan_pack(&pack, &ctx).unwrap();
+        let preserved: Vec<&String> = second
+            .warnings
+            .iter()
+            .filter(|w| w.contains("preserved"))
+            .collect();
+        assert_eq!(
+            preserved.len(),
+            1,
+            "expected one preservation warning, got: {:?}",
+            second.warnings
+        );
+        let w = preserved[0];
+        assert!(
+            w.contains("config.toml"),
+            "warning should name the file: {w}"
+        );
+        assert!(
+            w.contains("transform check"),
+            "warning should mention transform check: {w}"
+        );
+        assert!(w.contains("--force"), "warning should mention --force: {w}");
+        // The user's edit must still be on disk.
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED"
+        );
+    }
+
+    #[test]
+    fn plan_pack_force_overwrites_and_skips_warning() {
+        // With ctx.force=true (the `--force` CLI flag), the guard is
+        // bypassed: the deployed file gets re-rendered, no warning is
+        // emitted. Documented escape hatch for env-var rotations and
+        // similar out-of-band changes.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // Prime baseline.
+        let _ = plan_pack(&pack, &ctx).unwrap();
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        ctx.force = true;
+        let plan = plan_pack(&pack, &ctx).unwrap();
+        assert!(
+            plan.warnings.iter().all(|w| !w.contains("preserved")),
+            "force=true must not emit preservation warnings: {:?}",
+            plan.warnings
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = original",
+            "force must overwrite the user's edit with the rendered content"
         );
     }
 }

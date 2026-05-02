@@ -4,7 +4,11 @@
 //! Target resolution priority (highest first):
 //!
 //! 0. **Custom target** from `[symlink.targets]` config
-//! 1. **`home.X` prefix** (top-level files only) — routes to `$HOME/.X`
+//! 1. **File-level prefixes** (top-level files only, skip pack namespace):
+//!    a. `home.X` → `$HOME/.X`
+//!    b. `app.X`  → `<app_support_dir>/X`
+//!    c. `xdg.X`  → `$XDG_CONFIG_HOME/X`
+//!    d. `lib.X`  → `$HOME/Library/X` (macOS only; warn elsewhere)
 //! 2. **Directory prefixes** (per-subtree, skip pack namespace):
 //!    a. `_home/<rest>` → `$HOME/.<rest>`
 //!    b. `_xdg/<rest>`  → `$XDG_CONFIG_HOME/<rest>`
@@ -27,6 +31,12 @@
 //!    pack name namespaces config under XDG, matching modern tool
 //!    conventions (nvim, helix, ghostty, …) without requiring users
 //!    to write `pack/program/` doubled paths.
+//!
+//! When `[symlink.targets]` declares a destination for a file that
+//! *also* carries a filesystem-naming prefix from priorities 1 or 2,
+//! resolution refuses with `DodotError::RoutingOverrideConflict` rather
+//! than silently letting `targets` win. Two ways to say where one file
+//! goes is bug-bait — the user must pick one.
 //!
 //! See `docs/proposals/macos-paths.lex` for the full rationale behind
 //! the third coordinate (`app_support_dir`) and the `_app/` / `_lib/`
@@ -83,6 +93,7 @@ impl Handler for SymlinkHandler {
             if m.is_dir {
                 intents.extend(dir_intents(m, config, paths, fs)?);
             } else {
+                check_routing_conflict(&m.pack, &rel_str, config)?;
                 match resolve_target_full(&m.pack, &rel_str, config, paths) {
                     Resolution::Path(user_path) => intents.push(HandlerIntent::Link {
                         pack: m.pack.clone(),
@@ -117,13 +128,15 @@ impl Handler for SymlinkHandler {
             if is_protected(&rel_str, &config.protected_paths) {
                 continue;
             }
-            // Surface a single warning per `_lib/` entry, regardless of
-            // whether the match is the top-level `_lib` directory (the
-            // common case via the catchall scanner) or a nested
-            // `_lib/<rest>` file. The resolver's `_lib/` branch returns
-            // `Resolution::Skip` on every non-macOS host; the warning
-            // explains why no symlink got created.
-            if rel_str == "_lib" || rel_str.starts_with("_lib/") {
+            // Surface a single warning per macOS-only entry, covering
+            // both the per-subtree `_lib/` directory prefix and the
+            // top-level `lib.X` file prefix. The resolver returns
+            // `Resolution::Skip` for both on every non-macOS host; the
+            // warning explains why no symlink got created.
+            let is_lib_dir = rel_str == "_lib" || rel_str.starts_with("_lib/");
+            let is_lib_file =
+                !m.is_dir && matches!(strip_file_prefix(&rel_str), Some((FilePrefix::Lib, _)));
+            if is_lib_dir || is_lib_file {
                 out.push(format!(
                     "warning: pack `{}` contains `{rel_str}` — \
                      macOS-only path, skipping on this platform",
@@ -244,6 +257,7 @@ fn collect_per_file_intents(
         if is_protected(&rel_str, &config.protected_paths) {
             continue;
         }
+        check_routing_conflict(&m.pack, &rel_str, config)?;
         // Use the full Resolution channel so `_lib/` on non-macOS is
         // skipped (no Link intent produced); `warnings_for_matches`
         // surfaces the user-visible warning out-of-band.
@@ -260,26 +274,101 @@ fn collect_per_file_intents(
     Ok(())
 }
 
-/// Strip the `home.` prefix from a filename, returning the `$HOME`-bound
-/// dotted version. `home.bashrc` → `.bashrc`, `home.vimrc` → `.vimrc`.
-/// Only applies to top-level files (no `/` in path).
+/// File-level routing prefixes for top-level files, parallel to the
+/// per-subtree directory prefixes (`_home/`, `_xdg/`, `_app/`, `_lib/`).
 ///
-/// Returns `None` for the literal filename `"home."` (empty rest) — that
-/// would resolve to `$HOME/.` (the home directory itself), which is
-/// never a meaningful symlink target and would fail at deploy time.
+/// Each prefix opts a single file out of the default-rule pack
+/// namespacing. The file's name minus the prefix is the deploy-side
+/// filename — `home.X` adds the conventional `.` so `home.bashrc`
+/// becomes `.bashrc`; the others use the literal remainder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FilePrefix {
+    /// `home.X` → `$HOME/.X`
+    Home,
+    /// `app.X` → `<app_support_dir>/X`
+    App,
+    /// `xdg.X` → `$XDG_CONFIG_HOME/X`
+    Xdg,
+    /// `lib.X` → `$HOME/Library/X` (macOS only; Skip elsewhere)
+    Lib,
+}
+
+/// Recognized file-level prefixes, matched in this order. Mutually
+/// exclusive — a filename has at most one such prefix.
+const FILE_PREFIXES: &[(&str, FilePrefix)] = &[
+    ("home.", FilePrefix::Home),
+    ("app.", FilePrefix::App),
+    ("xdg.", FilePrefix::Xdg),
+    ("lib.", FilePrefix::Lib),
+];
+
+/// Recognized subtree directory prefixes (used by both the resolver and
+/// the routing-conflict detector). Each entry is `<dir>/` so the same
+/// strings catch a top-level directory match (`_app`) and any nested
+/// path under it (`_app/Code/...`).
+const DIR_PREFIXES: &[&str] = &["_home/", "_xdg/", "_app/", "_lib/"];
+
+/// Top-level dir names that are exactly the routing prefix (no trailing
+/// rest). Used for protected-paths-style normalization in
+/// [`dir_intents`] and for routing-conflict detection.
+const DIR_PREFIX_BARE: &[&str] = &["_home", "_xdg", "_app", "_lib"];
+
+/// Strip a recognized file-level prefix from a top-level filename.
 ///
-/// This is the per-file opt-in for "deploy to `$HOME/.<rest>` instead of
-/// the default `$XDG_CONFIG_HOME/<pack>/<rest>`". For per-subtree
-/// opt-out, use the `_home/` directory prefix.
-fn strip_home_prefix(rel_path: &str) -> Option<String> {
-    if !rel_path.contains('/') {
-        if let Some(rest) = rel_path.strip_prefix("home.") {
+/// Returns the matched prefix and the remainder (everything after the
+/// dot). Only applies to top-level files (no `/` in path); nested files
+/// keep the prefix as a literal name component.
+///
+/// Empty remainders (e.g. the literal filename `"home."`) return `None`
+/// so the file falls through to the default rule rather than targeting
+/// a bare directory root (`$HOME/.`).
+fn strip_file_prefix(rel_path: &str) -> Option<(FilePrefix, &str)> {
+    if rel_path.contains('/') {
+        return None;
+    }
+    for (lit, kind) in FILE_PREFIXES {
+        if let Some(rest) = rel_path.strip_prefix(lit) {
             if !rest.is_empty() {
-                return Some(format!(".{rest}"));
+                return Some((*kind, rest));
             }
         }
     }
     None
+}
+
+/// True when `rel_path` carries any filesystem-naming routing prefix —
+/// either a file-level prefix at the top level, or a subtree directory
+/// prefix anywhere from the pack root.
+///
+/// Used by [`check_routing_conflict`] to detect when a `[symlink.targets]`
+/// entry duplicates a routing intent already expressed by the file's
+/// name on disk.
+fn has_routing_prefix(rel_path: &str) -> bool {
+    if strip_file_prefix(rel_path).is_some() {
+        return true;
+    }
+    DIR_PREFIXES.iter().any(|p| rel_path.starts_with(p)) || DIR_PREFIX_BARE.contains(&rel_path)
+}
+
+/// Refuse to resolve a file that has both a `[symlink.targets]` entry
+/// and a filesystem-naming routing prefix.
+///
+/// Two ways to say where one file goes is bug-bait — silent precedence
+/// would mean the user reads the filename, expects one destination, and
+/// gets the config-side one (or vice versa). The right move is to
+/// surface both sources and ask the user to pick one.
+fn check_routing_conflict(pack: &str, rel_path: &str, config: &HandlerConfig) -> Result<()> {
+    let Some(target) = config.targets.get(rel_path) else {
+        return Ok(());
+    };
+    if !has_routing_prefix(rel_path) {
+        return Ok(());
+    }
+    Err(crate::DodotError::RoutingOverrideConflict {
+        pack: pack.into(),
+        rel_path: rel_path.into(),
+        config_target: target.clone(),
+    })
 }
 
 /// Outcome of resolving a single symlink target.
@@ -361,10 +450,25 @@ pub(crate) fn resolve_target_full(
         return Resolution::Path(xdg_config.join(target));
     }
 
-    // Priority 1: home. prefix convention (per-file opt-in for $HOME placement)
-    // home.bashrc → ~/.bashrc, home.vimrc → ~/.vimrc (top-level files only).
-    if let Some(dotted) = strip_home_prefix(rel_path) {
-        return Resolution::Path(home.join(&dotted));
+    // Priority 1: file-level prefixes (per-file opt-in, top-level only).
+    // Each strips the prefix and routes the remainder under a fixed
+    // root, skipping pack namespacing — parallel to the directory
+    // prefixes at Priority 2.
+    if let Some((kind, rest)) = strip_file_prefix(rel_path) {
+        return match kind {
+            FilePrefix::Home => Resolution::Path(home.join(format!(".{rest}"))),
+            FilePrefix::App => Resolution::Path(app_support.join(rest)),
+            FilePrefix::Xdg => Resolution::Path(xdg_config.join(rest)),
+            FilePrefix::Lib => {
+                if cfg!(target_os = "macos") {
+                    Resolution::Path(home.join("Library").join(rest))
+                } else {
+                    Resolution::Skip {
+                        reason: format!("lib.{rest} — macOS-only path, skipping on this platform"),
+                    }
+                }
+            }
+        };
     }
 
     // Priority 2: Explicit directory-prefix escape hatches.
@@ -938,14 +1042,39 @@ mod tests {
     }
 
     #[test]
-    fn strip_home_prefix_unit() {
-        assert_eq!(strip_home_prefix("home.bashrc"), Some(".bashrc".into()));
-        assert_eq!(strip_home_prefix("home.vimrc"), Some(".vimrc".into()));
-        assert_eq!(strip_home_prefix("vimrc"), None);
-        assert_eq!(strip_home_prefix(".bashrc"), None);
-        assert_eq!(strip_home_prefix("sub/home.conf"), None);
-        // Empty rest must not produce ".": that would target $HOME itself.
-        assert_eq!(strip_home_prefix("home."), None);
+    fn strip_file_prefix_unit() {
+        assert_eq!(
+            strip_file_prefix("home.bashrc"),
+            Some((FilePrefix::Home, "bashrc"))
+        );
+        assert_eq!(
+            strip_file_prefix("home.vimrc"),
+            Some((FilePrefix::Home, "vimrc"))
+        );
+        assert_eq!(
+            strip_file_prefix("app.config"),
+            Some((FilePrefix::App, "config"))
+        );
+        assert_eq!(
+            strip_file_prefix("xdg.mimeapps.list"),
+            Some((FilePrefix::Xdg, "mimeapps.list"))
+        );
+        assert_eq!(
+            strip_file_prefix("lib.com.example.plist"),
+            Some((FilePrefix::Lib, "com.example.plist"))
+        );
+
+        assert_eq!(strip_file_prefix("vimrc"), None);
+        assert_eq!(strip_file_prefix(".bashrc"), None);
+        // Nested files keep prefixes literal — only top-level files opt in.
+        assert_eq!(strip_file_prefix("sub/home.conf"), None);
+        assert_eq!(strip_file_prefix("sub/app.json"), None);
+        // Empty remainders fall through to the default rule rather than
+        // targeting a bare directory root (`$HOME/.`, `<app>/`, …).
+        assert_eq!(strip_file_prefix("home."), None);
+        assert_eq!(strip_file_prefix("app."), None);
+        assert_eq!(strip_file_prefix("xdg."), None);
+        assert_eq!(strip_file_prefix("lib."), None);
     }
 
     /// A file literally named `home.` falls through the priority list to
@@ -956,6 +1085,259 @@ mod tests {
         let config = HandlerConfig::default();
         let target = resolve_target("misc", "home.", &config, &test_pather());
         assert_eq!(target, PathBuf::from("/home/alice/.config/misc/home."));
+    }
+
+    /// Same regression for the new file prefixes — bare `app.`, `xdg.`,
+    /// `lib.` filenames must not target the routing root.
+    #[test]
+    fn literal_bare_file_prefix_filenames_do_not_target_root() {
+        let config = HandlerConfig::default();
+        for name in ["app.", "xdg.", "lib."] {
+            let target = resolve_target("misc", name, &config, &test_pather());
+            assert_eq!(
+                target,
+                PathBuf::from(format!("/home/alice/.config/misc/{name}")),
+                "bare `{name}` should fall through to default rule"
+            );
+        }
+    }
+
+    // ── Priority 1: app./xdg./lib. file prefixes ────────────────
+
+    #[test]
+    fn app_prefix_routes_top_level_file_to_app_support_root() {
+        // app.X is the per-file counterpart to the `_app/` directory
+        // prefix. The rest of the filename deploys raw under
+        // app_support_dir, with no pack namespacing.
+        let config = HandlerConfig::default();
+        let target = resolve_target("vscode", "app.settings.json", &config, &test_pather());
+        assert_eq!(
+            target,
+            PathBuf::from("/home/alice/Library/Application Support/settings.json")
+        );
+    }
+
+    #[test]
+    fn xdg_prefix_routes_top_level_file_to_xdg_root() {
+        // xdg.X is the per-file counterpart to the `_xdg/` directory
+        // prefix — same skip-pack-namespace semantics.
+        let config = HandlerConfig::default();
+        let target = resolve_target("desktop", "xdg.mimeapps.list", &config, &test_pather());
+        assert_eq!(target, PathBuf::from("/home/alice/.config/mimeapps.list"));
+    }
+
+    #[test]
+    fn lib_prefix_routes_top_level_file_to_library_on_macos() {
+        // lib.X is the per-file counterpart to the `_lib/` directory
+        // prefix. macOS-only; non-macOS hosts surface a Skip and a
+        // soft warning, parallel to `_lib/`.
+        let config = HandlerConfig::default();
+        let resolution = resolve_target_full(
+            "macapps",
+            "lib.com.example.foo.plist",
+            &config,
+            &test_pather(),
+        );
+        if cfg!(target_os = "macos") {
+            match resolution {
+                Resolution::Path(p) => assert_eq!(
+                    p,
+                    PathBuf::from("/home/alice/Library/com.example.foo.plist")
+                ),
+                Resolution::Skip { reason } => {
+                    panic!("expected Path on macOS, got Skip({reason})")
+                }
+            }
+        } else {
+            assert!(
+                matches!(resolution, Resolution::Skip { .. }),
+                "lib.X on non-macOS must skip; got {resolution:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn file_prefixes_only_apply_at_top_level() {
+        // Nested `app.X` / `xdg.X` / `lib.X` paths keep the prefix
+        // literal — only top-level files opt in (parallel to home.X).
+        let config = HandlerConfig::default();
+        for name in ["app.settings.json", "xdg.mimeapps.list", "lib.foo.plist"] {
+            let nested = format!("subdir/{name}");
+            let target = resolve_target("misc", &nested, &config, &test_pather());
+            assert_eq!(
+                target,
+                PathBuf::from(format!("/home/alice/.config/misc/{nested}")),
+                "nested `{name}` must keep prefix literal"
+            );
+        }
+    }
+
+    #[test]
+    fn lib_file_prefix_emits_warning_on_non_macos() {
+        // The handler's `warnings_for_matches` surfaces the same
+        // macOS-only soft notice for `lib.X` files as it does for the
+        // `_lib/` directory prefix on every non-macOS host.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("macapps")
+            .file("lib.com.example.foo.plist", "# stub plist")
+            .done()
+            .build();
+
+        let m = RuleMatch {
+            relative_path: PathBuf::from("lib.com.example.foo.plist"),
+            absolute_path: env.dotfiles_root.join("macapps/lib.com.example.foo.plist"),
+            pack: "macapps".into(),
+            handler: HANDLER_SYMLINK.into(),
+            is_dir: false,
+            options: std::collections::HashMap::new(),
+            preprocessor_source: None,
+        };
+        let handler = SymlinkHandler;
+        let config = HandlerConfig::default();
+        let warnings =
+            handler.warnings_for_matches(std::slice::from_ref(&m), &config, env.paths.as_ref());
+
+        if cfg!(target_os = "macos") {
+            assert!(
+                warnings.is_empty(),
+                "lib.X should not warn on macOS; got {warnings:?}"
+            );
+            let intents = handler
+                .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+                .unwrap();
+            assert_eq!(intents.len(), 1);
+        } else {
+            assert_eq!(warnings.len(), 1, "expected one warning, got {warnings:?}");
+            assert!(
+                warnings[0].contains("macOS-only path"),
+                "warning text should mention macOS-only: {warnings:?}"
+            );
+            let intents = handler
+                .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+                .unwrap();
+            assert!(
+                intents.is_empty(),
+                "lib.X on non-macOS must not emit Link intents: {intents:?}"
+            );
+        }
+    }
+
+    // ── Routing-override conflicts ──────────────────────────────
+
+    #[test]
+    fn targets_plus_home_prefix_is_a_conflict() {
+        // `[symlink.targets]` and the `home.` filename prefix both
+        // declare where one file goes — refuse to silently let one win.
+        let mut config = HandlerConfig::default();
+        config
+            .targets
+            .insert("home.bashrc".into(), "/etc/bashrc".into());
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("shell")
+            .file("home.bashrc", "# bash")
+            .done()
+            .build();
+        let m = RuleMatch {
+            relative_path: PathBuf::from("home.bashrc"),
+            absolute_path: env.dotfiles_root.join("shell/home.bashrc"),
+            pack: "shell".into(),
+            handler: HANDLER_SYMLINK.into(),
+            is_dir: false,
+            options: std::collections::HashMap::new(),
+            preprocessor_source: None,
+        };
+        let err = SymlinkHandler
+            .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("home.bashrc"), "msg: {msg}");
+        assert!(msg.contains("/etc/bashrc"), "msg: {msg}");
+        assert!(msg.contains("shell"), "msg: {msg}");
+    }
+
+    #[test]
+    fn targets_plus_directory_prefix_is_a_conflict() {
+        // Same conflict for subtree prefixes: `_xdg/foo` + a
+        // `[symlink.targets]` entry for the same path errors out.
+        let mut config = HandlerConfig::default();
+        config
+            .targets
+            .insert("_xdg/ghostty/config".into(), "/etc/ghostty.conf".into());
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("term")
+            .file("_xdg/ghostty/config", "")
+            .done()
+            .build();
+        let m = RuleMatch {
+            relative_path: PathBuf::from("_xdg/ghostty/config"),
+            absolute_path: env.dotfiles_root.join("term/_xdg/ghostty/config"),
+            pack: "term".into(),
+            handler: HANDLER_SYMLINK.into(),
+            is_dir: false,
+            options: std::collections::HashMap::new(),
+            preprocessor_source: None,
+        };
+        let err = SymlinkHandler
+            .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("_xdg/ghostty/config"), "msg: {msg}");
+    }
+
+    #[test]
+    fn targets_without_prefix_is_not_a_conflict() {
+        // `[symlink.targets]` for a plain (non-prefixed) filename keeps
+        // working — that's the canonical use case for the override.
+        let mut config = HandlerConfig::default();
+        config
+            .targets
+            .insert("misterious.conf".into(), "/var/etc/misterious.conf".into());
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("etc")
+            .file("misterious.conf", "")
+            .done()
+            .build();
+        let m = RuleMatch {
+            relative_path: PathBuf::from("misterious.conf"),
+            absolute_path: env.dotfiles_root.join("etc/misterious.conf"),
+            pack: "etc".into(),
+            handler: HANDLER_SYMLINK.into(),
+            is_dir: false,
+            options: std::collections::HashMap::new(),
+            preprocessor_source: None,
+        };
+        let intents = SymlinkHandler
+            .to_intents(&[m], &config, env.paths.as_ref(), env.fs.as_ref())
+            .expect("plain target overrides without prefix should resolve");
+        assert_eq!(intents.len(), 1);
+        if let HandlerIntent::Link { user_path, .. } = &intents[0] {
+            assert_eq!(user_path, &PathBuf::from("/var/etc/misterious.conf"));
+        }
+    }
+
+    #[test]
+    fn has_routing_prefix_unit() {
+        // File-level prefixes
+        assert!(has_routing_prefix("home.bashrc"));
+        assert!(has_routing_prefix("app.settings.json"));
+        assert!(has_routing_prefix("xdg.mimeapps.list"));
+        assert!(has_routing_prefix("lib.com.example.plist"));
+        // Subtree prefixes
+        assert!(has_routing_prefix("_home/vimrc"));
+        assert!(has_routing_prefix("_xdg/ghostty/config"));
+        assert!(has_routing_prefix("_app/Code/User/settings.json"));
+        assert!(has_routing_prefix("_lib/LaunchAgents/foo.plist"));
+        // Bare prefix dir names too — the catchall scanner can match
+        // those at the top level when nothing else inside them does.
+        assert!(has_routing_prefix("_home"));
+        assert!(has_routing_prefix("_app"));
+        // Plain names — no prefix.
+        assert!(!has_routing_prefix("vimrc"));
+        assert!(!has_routing_prefix("subdir/home.conf"));
+        // Empty-rest forms fall through, so they don't carry routing
+        // intent for conflict purposes.
+        assert!(!has_routing_prefix("home."));
+        assert!(!has_routing_prefix("app."));
     }
 
     // ── Custom target overrides ─────────────────────────────────

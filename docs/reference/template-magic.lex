@@ -133,6 +133,23 @@ Template Magic
 
         Touches source mtimes for any deployed-side divergence so git's stat-cache invalidates. The Tier 3 alias calls this with `--quiet`. The `--list-paths` mode prints divergent source paths and exits without writing — for editor / file-watcher integrations that want to drive the touch themselves.
 
+    4.4. `dodot up` and divergent deployed files
+
+        `dodot up` will not overwrite a deployed file whose bytes have diverged from the cached baseline — that is, a deployed file you've edited in place since the last successful `up`. The render is skipped and a one-line warning surfaces:
+
+            preserved ~/.config/app/cfg.toml (deployed file was edited since the last `dodot up`).
+            Run `dodot transform check` to reconcile, or re-run with --force to overwrite.
+
+        :: text ::
+
+        Two resolution paths:
+
+        - `dodot transform check` — runs the 4-state matrix (§4.2) and applies a reverse-merge diff back to the source on the unambiguous case. Then `dodot up` proceeds normally on the next run.
+
+        - `dodot up --force` — overwrites the deployed file with the rendered output, discarding the in-place edit. The escape hatch when a user knows they want the freshly-rendered output (most commonly: an env var that a template references has rotated, and the user wants the new value to land).
+
+        Staleness is defined from file content, not from the runtime environment. Env vars referenced via `{{ env.X }}` are read live at render time and are intentionally **not** part of the cache-invalidation signal — see [./../proposals/preprocessing-pipeline.lex] §6.4. Stable values that should participate in invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace), not `env.*`.
+
 5. Opting Out
 
     Three opt-out levels (in addition to the standard `[mappings] skip = [...]`):

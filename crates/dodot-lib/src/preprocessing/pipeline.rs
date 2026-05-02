@@ -14,7 +14,8 @@ use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::packs::Pack;
 use crate::paths::Pather;
-use crate::preprocessing::baseline::{cache_filename_for, Baseline};
+use crate::preprocessing::baseline::{cache_filename_for, hex_sha256, Baseline};
+use crate::preprocessing::divergence::DivergenceState;
 use crate::preprocessing::PreprocessorRegistry;
 use crate::rules::PackEntry;
 use crate::{DodotError, Result};
@@ -84,6 +85,32 @@ pub struct PreprocessResult {
     pub virtual_entries: Vec<PackEntry>,
     /// Maps virtual entry absolute_path → original source path in pack.
     pub source_map: HashMap<PathBuf, PathBuf>,
+    /// Files whose deployed bytes diverged from the cached baseline and
+    /// were therefore preserved instead of being overwritten. Empty
+    /// outside of `dodot up` runs that pass `force = false` and have a
+    /// baseline available. Surfaced to the user as warnings — see
+    /// `docs/proposals/preprocessing-pipeline.lex` §6.4.
+    pub skipped: Vec<SkippedRender>,
+}
+
+/// One file the pipeline refused to overwrite because its deployed
+/// bytes diverged from the cached render.
+///
+/// `dodot up` records these so the caller can warn the user that their
+/// edits were preserved. Resolution paths are `dodot transform check`
+/// (auto-merge via the clean filter) or `dodot up --force` (overwrite).
+#[derive(Debug, Clone)]
+pub struct SkippedRender {
+    /// Pack name (matches `Pack::name`, the on-disk directory name).
+    pub pack: String,
+    /// Virtual relative path inside the pack (post-strip), e.g.
+    /// `config.toml` for a source `config.toml.tmpl`.
+    pub virtual_relative: PathBuf,
+    /// Absolute path of the deployed file we preserved.
+    pub deployed_path: PathBuf,
+    /// Which divergence state we observed. Always `OutputChanged` or
+    /// `BothChanged` — the other states never trigger a skip.
+    pub state: DivergenceState,
 }
 
 impl PreprocessResult {
@@ -93,6 +120,7 @@ impl PreprocessResult {
             regular_entries: entries,
             virtual_entries: Vec::new(),
             source_map: HashMap::new(),
+            skipped: Vec::new(),
         }
     }
 
@@ -109,27 +137,121 @@ impl PreprocessResult {
 /// The handler name used for preprocessor-expanded files in the datastore.
 const PREPROCESSED_HANDLER: &str = "preprocessed";
 
+/// Result of checking whether the deployed file diverges from the
+/// cached baseline. Used by [`preprocess_pack`] to decide whether to
+/// overwrite or preserve the user's edits.
+enum DivergenceCheck {
+    /// No baseline, no deployed file, or content matches — proceed
+    /// with the normal write.
+    Proceed,
+    /// Deployed bytes diverge from the baseline. Skip the write to
+    /// preserve user edits; surface a warning to the caller.
+    Skip {
+        state: DivergenceState,
+        deployed_path: PathBuf,
+    },
+}
+
+/// Compare the prospective deployed file against the cached baseline.
+///
+/// Returns [`DivergenceCheck::Skip`] when the deployed bytes have
+/// changed since the last successful render — that is the case where
+/// re-rendering would silently destroy a user edit (see
+/// `docs/proposals/preprocessing-pipeline.lex` §6.4).
+///
+/// "Define stale-vs-new from file content, not the runtime
+/// environment": this check operates purely on bytes (source + deployed
+/// hash comparisons against the baseline). Env-var rotations are
+/// intentionally invisible here — users who change a referenced env var
+/// pick up the new value via `dodot up --force`.
+fn check_divergence(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+    pack_name: &str,
+    virtual_relative: &Path,
+    source_path: &Path,
+) -> Result<DivergenceCheck> {
+    let cache_filename = cache_filename_for(virtual_relative);
+    let baseline =
+        match Baseline::load(fs, paths, pack_name, PREPROCESSED_HANDLER, &cache_filename)? {
+            Some(b) => b,
+            // First-time deploy: no baseline to compare against. Writing
+            // is correct here — there's nothing to overwrite.
+            None => return Ok(DivergenceCheck::Proceed),
+        };
+
+    let deployed_path = paths
+        .handler_data_dir(pack_name, PREPROCESSED_HANDLER)
+        .join(virtual_relative);
+    if !fs.exists(&deployed_path) {
+        // Baseline says we deployed once, but the user (or some other
+        // tool) removed the deployed file. Treat as a fresh deploy —
+        // there's nothing to preserve.
+        return Ok(DivergenceCheck::Proceed);
+    }
+
+    let deployed_bytes = fs.read_file(&deployed_path)?;
+    if hex_sha256(&deployed_bytes) == baseline.rendered_hash {
+        return Ok(DivergenceCheck::Proceed);
+    }
+
+    // Deployed file diverges. Distinguish OutputChanged from BothChanged
+    // for a sharper warning. A read failure on the source is treated as
+    // "source unchanged" — the safer assumption when we can't tell.
+    let source_changed = match fs.read_file(source_path) {
+        Ok(bytes) => hex_sha256(&bytes) != baseline.source_hash,
+        Err(_) => false,
+    };
+    let state = if source_changed {
+        DivergenceState::BothChanged
+    } else {
+        DivergenceState::OutputChanged
+    };
+
+    Ok(DivergenceCheck::Skip {
+        state,
+        deployed_path,
+    })
+}
+
 /// Run the preprocessing pipeline for a pack's file entries.
 ///
 /// 1. Partition entries into preprocessor files vs regular files.
-/// 2. For each preprocessor file: expand, write results to datastore.
+/// 2. For each preprocessor file: expand, write results to datastore
+///    (unless the deployed file has diverged from the cached baseline —
+///    see step 5).
 /// 3. Create virtual PackEntries pointing to the datastore files.
 /// 4. Check for collisions between virtual and regular entries.
-/// 5. If `paths` is `Some`, write a baseline-cache record for each
-///    expanded file (used by `dodot transform check` and the clean
-///    filter to detect drift without re-rendering).
-/// 6. Return the result for merging into the handler pipeline.
+/// 5. **Divergence guard**: unless `force` is `true`, compare the
+///    prospective deployed file against the cached baseline before
+///    overwriting. When the deployed bytes have changed (the user
+///    edited the deployed file directly), skip the write and record a
+///    [`SkippedRender`] so the caller can warn the user. See
+///    `docs/proposals/preprocessing-pipeline.lex` §6.4. The guard fires
+///    regardless of `write_baselines` — it's a read-only check against
+///    the existing cache.
+/// 6. If `write_baselines` is `true` and the write proceeded, persist a
+///    baseline-cache record (used by `dodot transform check` and the
+///    clean filter to detect drift without re-rendering). Set this from
+///    `dodot up`; clear it from read-only callers (`dodot status`) so
+///    passive runs don't overwrite the cache that captured the state of
+///    the last `dodot up`.
+/// 7. Return the result for merging into the handler pipeline.
 ///
-/// Pass `paths = None` from read-only call sites (e.g. `dodot status`)
-/// so passive runs don't overwrite a baseline that captured the state
-/// of the last `dodot up`.
+/// Set `force = true` to bypass the divergence guard. Surfaces as
+/// `dodot up --force` in the CLI; needed when the user knows they want
+/// to overwrite a divergent deployed file (e.g. after rotating an env
+/// var that a template references).
+#[allow(clippy::too_many_arguments)] // pipeline core: every parameter is load-bearing
 pub fn preprocess_pack(
     entries: Vec<PackEntry>,
     registry: &PreprocessorRegistry,
     pack: &Pack,
     fs: &dyn Fs,
     datastore: &dyn DataStore,
-    paths: Option<&dyn Pather>,
+    paths: &dyn Pather,
+    write_baselines: bool,
+    force: bool,
 ) -> Result<PreprocessResult> {
     let mut regular_entries = Vec::new();
     let mut preprocessor_entries = Vec::new();
@@ -161,12 +283,14 @@ pub fn preprocess_pack(
             regular_entries,
             virtual_entries: Vec::new(),
             source_map: HashMap::new(),
+            skipped: Vec::new(),
         });
     }
 
     // Phase 2 & 3: Expand and create virtual entries
     let mut virtual_entries = Vec::new();
     let mut source_map = HashMap::new();
+    let mut skipped: Vec<SkippedRender> = Vec::new();
 
     // Tracks claimed paths for collision detection. Seeded with regular
     // entries; virtual entries are added as they're created so two
@@ -272,7 +396,69 @@ pub fn preprocess_pack(
             // structure. Directories get mkdir'd; files get their content
             // written. `write_rendered_file` creates any needed parent
             // directories.
-            let datastore_path = if expanded.is_dir {
+            //
+            // Divergence guard (§6.4): for tracked-render preprocessors,
+            // check whether the deployed file has diverged from the
+            // cached baseline before overwriting. If it has, skip the
+            // *write* and record a SkippedRender so the caller can warn
+            // the user. `force = true` bypasses the guard. See
+            // `check_divergence` for the byte-level rule.
+            //
+            // The render itself (`preprocessor.expand` above) has
+            // already run by this point — moving the divergence check
+            // ahead of expansion would require knowing every output
+            // path before producing any of them, which the preprocessor
+            // contract doesn't expose. The cost of the spurious render
+            // is the cycles burned plus any one-shot side effects in
+            // expand (e.g. secret-provider prompts for templates that
+            // resolve `{{ secrets.X }}`). For divergent files this
+            // means the prompt fires even though the rendered bytes
+            // are immediately discarded; users who want to avoid that
+            // should resolve the divergence (`dodot transform check`)
+            // before the next `dodot up`. Tracked here for §6.4
+            // follow-up; not blocking the divergence-preservation
+            // contract this guard exists to keep.
+            //
+            // The guard fires regardless of `write_baselines` — it's a
+            // read-only check against the existing cache, and read-only
+            // callers (`dodot status`) need it just as much as `dodot
+            // up` does. Without this, status would re-render and
+            // overwrite the user's edited deployed file silently.
+            let mut skip_path: Option<PathBuf> = None;
+            if !force && !expanded.is_dir && expanded.tracked_render.is_some() {
+                match check_divergence(
+                    fs,
+                    paths,
+                    &pack.name,
+                    &virtual_relative,
+                    &entry.absolute_path,
+                )? {
+                    DivergenceCheck::Proceed => {}
+                    DivergenceCheck::Skip {
+                        state,
+                        deployed_path,
+                    } => {
+                        info!(
+                            pack = %pack.name,
+                            file = %virtual_relative.display(),
+                            ?state,
+                            "preserving divergent deployed file (skipping write)"
+                        );
+                        skipped.push(SkippedRender {
+                            pack: pack.name.clone(),
+                            virtual_relative: virtual_relative.clone(),
+                            deployed_path: deployed_path.clone(),
+                            state,
+                        });
+                        skip_path = Some(deployed_path);
+                    }
+                }
+            }
+            let was_skipped = skip_path.is_some();
+
+            let datastore_path = if let Some(p) = skip_path {
+                p
+            } else if expanded.is_dir {
                 datastore.write_rendered_dir(
                     &pack.name,
                     PREPROCESSED_HANDLER,
@@ -292,25 +478,33 @@ pub fn preprocess_pack(
                 virtual_path = %virtual_relative.display(),
                 datastore_path = %datastore_path.display(),
                 is_dir = expanded.is_dir,
+                skipped = was_skipped,
                 "wrote expanded entry"
             );
 
             // Persist a baseline record so future `dodot transform
             // check` / clean-filter calls can detect drift without
             // re-rendering. Only write when:
-            //   - a Pather was provided (read-only callers like
-            //     `dodot status` pass None to keep baselines stable),
+            //   - the caller asked for baseline writes (read-only
+            //     callers like `dodot status` set `write_baselines =
+            //     false` to keep baselines stable),
             //   - the entry is a file (directory entries from archive
-            //     preprocessors carry no rendered content), AND
+            //     preprocessors carry no rendered content),
             //   - the preprocessor produced a tracked render (i.e. it's
             //     a generative-with-tracking preprocessor, currently
             //     just templates). Plain Generative preprocessors that
             //     don't support reverse-merge (unarchive) skip the
             //     baseline because the cache is only meaningful when
-            //     paired with burgertocow tracking.
-            if let (Some(paths), false, Some(tracked)) =
-                (paths, expanded.is_dir, expanded.tracked_render.as_deref())
-            {
+            //     paired with burgertocow tracking, AND
+            //   - the divergence guard didn't skip the write (otherwise
+            //     we'd update the baseline to match a render that never
+            //     hit disk, breaking future divergence detection).
+            if let (true, false, Some(tracked), false) = (
+                write_baselines,
+                expanded.is_dir,
+                expanded.tracked_render.as_deref(),
+                was_skipped,
+            ) {
                 let cache_filename = cache_filename_for(&virtual_relative);
                 let source_bytes = fs.read_file(&entry.absolute_path)?;
                 let baseline = Baseline::build(
@@ -363,6 +557,7 @@ pub fn preprocess_pack(
         regular_entries,
         virtual_entries,
         source_map,
+        skipped,
     })
 }
 
@@ -416,8 +611,17 @@ mod tests {
             },
         ];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.regular_entries.len(), 2);
         assert!(result.virtual_entries.is_empty());
@@ -442,8 +646,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert!(result.regular_entries.is_empty());
         assert_eq!(result.virtual_entries.len(), 1);
@@ -489,8 +702,17 @@ mod tests {
             },
         ];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.regular_entries.len(), 1);
         assert_eq!(
@@ -531,8 +753,17 @@ mod tests {
             },
         ];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorCollision { .. }),
             "expected PreprocessorCollision, got: {err}"
@@ -553,6 +784,7 @@ mod tests {
                 is_dir: false,
             }],
             source_map: HashMap::new(),
+            skipped: Vec::new(),
         };
 
         let merged = result.merged_entries();
@@ -579,8 +811,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         // With no preprocessors registered, the file is treated as regular
         assert_eq!(result.regular_entries.len(), 1);
@@ -605,8 +846,17 @@ mod tests {
             is_dir: true, // directory — should NOT be preprocessed
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.regular_entries.len(), 1);
         assert!(result.virtual_entries.is_empty());
@@ -630,8 +880,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.virtual_entries.len(), 1);
         assert_eq!(
@@ -666,8 +925,17 @@ mod tests {
             },
         ];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert!(result.regular_entries.is_empty());
         assert_eq!(result.virtual_entries.len(), 2);
@@ -702,8 +970,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert!(result.regular_entries.is_empty());
         assert_eq!(result.virtual_entries.len(), 1);
@@ -742,8 +1019,17 @@ mod tests {
             },
         ];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         // Every virtual entry must have a source_map entry
         for ve in &result.virtual_entries {
@@ -789,7 +1075,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            None,
+            env.paths.as_ref(),
+            false,
+            false,
         )
         .unwrap();
         let result2 = preprocess_pack(
@@ -798,7 +1086,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            None,
+            env.paths.as_ref(),
+            false,
+            false,
         )
         .unwrap();
 
@@ -839,8 +1129,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::Fs { .. }),
             "expected Fs error for missing file, got: {err}"
@@ -880,8 +1179,17 @@ mod tests {
             },
         ];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorCollision { .. }),
             "expected PreprocessorCollision for inter-preprocessor clash, got: {err}"
@@ -908,8 +1216,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.virtual_entries.len(), 1);
         let datastore_path = &result.virtual_entries[0].absolute_path;
@@ -961,8 +1278,17 @@ mod tests {
             },
         ];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.virtual_entries.len(), 2);
 
@@ -1072,8 +1398,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe path")),
             "expected unsafe-path error, got: {err}"
@@ -1112,8 +1447,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("unsafe path")),
             "expected unsafe-path error, got: {err}"
@@ -1162,8 +1506,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.virtual_entries.len(), 2);
 
@@ -1224,8 +1577,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("empty output path")),
             "expected empty-path error, got: {err}"
@@ -1263,8 +1625,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorError { ref message, .. } if message.contains("empty output path")),
             "expected empty-path error, got: {err}"
@@ -1313,8 +1684,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::PreprocessorCollision { .. }),
             "expected PreprocessorCollision for ./foo vs foo, got: {err}"
@@ -1355,8 +1735,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result =
-            preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         assert_eq!(result.virtual_entries.len(), 1);
         assert_eq!(
@@ -1410,7 +1799,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap();
 
@@ -1438,10 +1829,11 @@ mod tests {
     }
 
     #[test]
-    fn baseline_is_skipped_when_paths_is_none() {
-        // Read-only callers (`dodot status`) pass `None`. No baseline
-        // should be written in that case — overwriting it would erase
-        // the divergence-detection ground truth.
+    fn baseline_is_skipped_when_write_baselines_is_false() {
+        // Read-only callers (`dodot status`) set `write_baselines =
+        // false`. No baseline should be written in that case —
+        // overwriting it would erase the divergence-detection ground
+        // truth captured at the last `dodot up`.
         let env = TempEnvironment::builder()
             .pack("app")
             .file("config.toml.tracked", "src")
@@ -1470,14 +1862,24 @@ mod tests {
             is_dir: false,
         }];
 
-        preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None).unwrap();
+        preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap();
 
         let path = env
             .paths
             .preprocessor_baseline_path("app", "preprocessed", "config.toml");
         assert!(
             !env.fs.exists(&path),
-            "no baseline should exist after a paths=None run, but found: {}",
+            "no baseline should exist after a write_baselines=false run, but found: {}",
             path.display()
         );
     }
@@ -1509,7 +1911,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap();
 
@@ -1572,7 +1976,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap();
 
@@ -1590,7 +1996,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap();
 
@@ -1645,7 +2053,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap();
 
@@ -1717,7 +2127,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap_err();
 
@@ -1798,8 +2210,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let result = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .expect("non-tracking preprocessor must not be gated by markers in its source");
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .expect("non-tracking preprocessor must not be gated by markers in its source");
         assert_eq!(result.virtual_entries.len(), 1);
     }
 
@@ -1845,8 +2266,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::UnresolvedConflictMarker { .. }),
             "expected UnresolvedConflictMarker, got: {err}"
@@ -1901,8 +2331,17 @@ mod tests {
 
         // Should NOT error: the gate's lossy decode handles non-UTF-8
         // gracefully, and there are no marker lines in the bytes.
-        let result = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .expect("non-UTF-8 source without markers must not crash the gate");
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .expect("non-UTF-8 source without markers must not crash the gate");
         assert_eq!(result.virtual_entries.len(), 1);
     }
 
@@ -1953,8 +2392,17 @@ mod tests {
             is_dir: false,
         }];
 
-        let err = preprocess_pack(entries, &registry, &pack, env.fs.as_ref(), &datastore, None)
-            .unwrap_err();
+        let err = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            false,
+            false,
+        )
+        .unwrap_err();
         assert!(
             matches!(err, DodotError::UnresolvedConflictMarker { .. }),
             "expected UnresolvedConflictMarker even on non-UTF-8 source, got: {err}"
@@ -2001,7 +2449,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .expect("clean source should expand successfully");
         assert_eq!(result.virtual_entries.len(), 1);
@@ -2021,7 +2471,9 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .unwrap_err();
         assert!(matches!(err, DodotError::UnresolvedConflictMarker { .. }));
@@ -2039,9 +2491,382 @@ mod tests {
             &pack,
             env.fs.as_ref(),
             &datastore,
-            Some(env.paths.as_ref()),
+            env.paths.as_ref(),
+            true,
+            false,
         )
         .expect("resolved source should expand again");
         assert_eq!(result.virtual_entries.len(), 1);
+    }
+
+    // ── Divergence guard (issue #110, §6.4) ─────────────────────────
+    //
+    // Tests that `preprocess_pack` refuses to overwrite a deployed file
+    // whose bytes have diverged from the cached baseline. The guard
+    // reads the file content; env vars are intentionally not part of
+    // the staleness signal — see the §6.4 banner and template.rs.
+    //
+    // Helper that runs the template preprocessor end-to-end. We use the
+    // real TemplatePreprocessor here (not ScriptedPreprocessor) so the
+    // tests pin the integration contract: a `.tmpl` source produces a
+    // baseline that subsequent runs read back.
+    fn run_template_preprocess(
+        env: &TempEnvironment,
+        pack_name: &str,
+        force: bool,
+    ) -> PreprocessResult {
+        use std::collections::HashMap;
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            HashMap::new(),
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+
+        let datastore = make_datastore(env);
+        let pack = make_pack(pack_name, env.dotfiles_root.join(pack_name));
+        let entries = vec![PackEntry {
+            relative_path: "config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join(pack_name).join("config.toml.tmpl"),
+            is_dir: false,
+        }];
+
+        preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            force,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn divergence_guard_skips_when_deployed_was_edited() {
+        // Row 3 of the §6.4 matrix: source same, deployed edited.
+        // The pipeline must preserve the user's edit (skip the write)
+        // and report it via PreprocessResult::skipped.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        // First run: clean deploy, baseline written.
+        let first = run_template_preprocess(&env, "app", false);
+        assert!(first.skipped.is_empty(), "first deploy must not skip");
+        let deployed_path = &first.virtual_entries[0].absolute_path.clone();
+
+        // User edits the deployed file directly.
+        env.fs
+            .write_file(deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        // Second run with the same source → guard fires.
+        let second = run_template_preprocess(&env, "app", false);
+        assert_eq!(second.skipped.len(), 1, "deployed-edit must skip");
+        let skip = &second.skipped[0];
+        assert_eq!(skip.state, DivergenceState::OutputChanged);
+        assert_eq!(skip.pack, "app");
+        assert_eq!(skip.virtual_relative, std::path::Path::new("config.toml"));
+
+        // The user's edit must still be on disk; the rendered content
+        // must NOT have replaced it.
+        let on_disk = env.fs.read_to_string(deployed_path).unwrap();
+        assert_eq!(on_disk, "name = USER EDITED");
+
+        // The virtual entry must still point at the deployed file so
+        // downstream rule matching has something to work with.
+        assert_eq!(second.virtual_entries.len(), 1);
+        assert_eq!(&second.virtual_entries[0].absolute_path, deployed_path);
+    }
+
+    #[test]
+    fn divergence_guard_skips_when_both_changed() {
+        // Row 4: source AND deployed both edited. Same skip behaviour
+        // (preserve deployed bytes), reported as BothChanged so the
+        // user gets a sharper warning.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let first = run_template_preprocess(&env, "app", false);
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        // Edit both the source template and the deployed file.
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join("app/config.toml.tmpl"),
+                b"name = SOURCE EDITED",
+            )
+            .unwrap();
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        let second = run_template_preprocess(&env, "app", false);
+        assert_eq!(second.skipped.len(), 1);
+        assert_eq!(second.skipped[0].state, DivergenceState::BothChanged);
+
+        // Deployed bytes preserved despite the source edit.
+        let on_disk = env.fs.read_to_string(&deployed_path).unwrap();
+        assert_eq!(on_disk, "name = USER EDITED");
+    }
+
+    #[test]
+    fn divergence_guard_proceeds_when_source_changed_only() {
+        // Row 2: source edited, deployed still matches the cached
+        // render. This is the normal "I edited the template, re-deploy"
+        // path — the guard must NOT fire here.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let first = run_template_preprocess(&env, "app", false);
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        // Source edited; deployed left untouched.
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join("app/config.toml.tmpl"),
+                b"name = NEW VALUE",
+            )
+            .unwrap();
+
+        let second = run_template_preprocess(&env, "app", false);
+        assert!(
+            second.skipped.is_empty(),
+            "source-only change must not trigger the guard"
+        );
+        let on_disk = env.fs.read_to_string(&deployed_path).unwrap();
+        assert_eq!(on_disk, "name = NEW VALUE");
+    }
+
+    #[test]
+    fn divergence_guard_no_op_when_nothing_changed() {
+        // Row 1: nothing changed. Re-running deploys the same content;
+        // no skip event.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let _ = run_template_preprocess(&env, "app", false);
+        let second = run_template_preprocess(&env, "app", false);
+        assert!(second.skipped.is_empty());
+    }
+
+    #[test]
+    fn divergence_guard_overridden_by_force() {
+        // `dodot up --force` bypasses the guard: the deployed user edit
+        // gets clobbered by the re-rendered output. This is the
+        // documented escape hatch (e.g. when an env-var the template
+        // references has rotated and the user wants the new value).
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let first = run_template_preprocess(&env, "app", false);
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        let second = run_template_preprocess(&env, "app", /* force */ true);
+        assert!(
+            second.skipped.is_empty(),
+            "force=true must bypass the guard"
+        );
+        let on_disk = env.fs.read_to_string(&deployed_path).unwrap();
+        assert_eq!(
+            on_disk, "name = original",
+            "force must rewrite to the rendered content"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_baseline_stays_pinned_to_last_successful_render() {
+        // Critical invariant: when the guard skips a write, the
+        // baseline must NOT be updated. Otherwise the next
+        // `transform check` would compare the user's edit against
+        // itself and report Synced — losing the divergence signal.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let first = run_template_preprocess(&env, "app", false);
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        // Pin the original baseline timestamp/content for comparison.
+        let baseline_before = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        let _ = run_template_preprocess(&env, "app", false);
+
+        let baseline_after = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            baseline_before.rendered_hash, baseline_after.rendered_hash,
+            "baseline must not be rewritten when the guard skips"
+        );
+        assert_eq!(
+            baseline_before.rendered_content, baseline_after.rendered_content,
+            "baseline content must not change after a skipped write"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_reproceeds_when_user_undoes_their_edit() {
+        // After the guard fires, if the user reverts their edit (or
+        // resolves through `dodot transform check`), the next `up`
+        // must succeed normally — the guard is not sticky.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let first = run_template_preprocess(&env, "app", false);
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        // Edit, then revert.
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+        let blocked = run_template_preprocess(&env, "app", false);
+        assert_eq!(blocked.skipped.len(), 1);
+
+        env.fs
+            .write_file(&deployed_path, b"name = original")
+            .unwrap();
+        let cleared = run_template_preprocess(&env, "app", false);
+        assert!(
+            cleared.skipped.is_empty(),
+            "guard must clear once divergence is gone"
+        );
+    }
+
+    #[test]
+    fn divergence_guard_active_for_read_only_callers() {
+        // Read-only callers (`dodot status`) set `write_baselines =
+        // false` but still need the divergence guard active —
+        // otherwise status would silently re-render and overwrite a
+        // user's deployed-file edit. This test pins the new behavior:
+        // the guard fires regardless of `write_baselines`, and the
+        // baseline cache stays pinned to the last `up` (no
+        // baseline-write side effects from the read-only call).
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        // Prime the baseline with a normal `up`.
+        let _ = run_template_preprocess(&env, "app", false);
+        let baseline_before = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+
+        // User edits the deployed file directly.
+        let deployed_path = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        // Simulate `status`: write_baselines=false, force=false.
+        use std::collections::HashMap;
+        let template_pp = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            HashMap::new(),
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(template_pp));
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/config.toml.tmpl"),
+            is_dir: false,
+        }];
+        let result = preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            /* write_baselines */ false,
+            /* force */ false,
+        )
+        .unwrap();
+        assert_eq!(
+            result.skipped.len(),
+            1,
+            "guard must fire for read-only callers too"
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed_path).unwrap(),
+            "name = USER EDITED",
+            "user's deployed-file edit must be preserved"
+        );
+
+        // The baseline cache must NOT have been touched: the read-only
+        // call leaves the divergence-detection ground truth pinned to
+        // the last `up`.
+        let baseline_after = crate::preprocessing::baseline::Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(baseline_before, baseline_after);
     }
 }
