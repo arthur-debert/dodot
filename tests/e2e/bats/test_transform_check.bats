@@ -54,8 +54,13 @@ name = Alice
 port = 9999
 EOF
 
+    # Patched is the auto-merge happy path: clean unified diff, source
+    # rewritten, nothing for the user to review → exit 0. The
+    # pre-commit hook lets the original commit proceed; the patched
+    # source surfaces as modified on the next `git status` for a
+    # follow-up commit. See #113.
     run dodot transform check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
     assert_output_contains "patched"
     assert_output_contains "config.toml.tmpl"
 
@@ -111,8 +116,11 @@ name = Alice
 port = 9999
 EOF
 
+    # Patched is the auto-merge happy path — exits 0 even with
+    # --dry-run. The would-be patch shows in the report; the source
+    # is untouched on disk because of --dry-run. See #113.
     run dodot transform check --dry-run
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
     assert_output_contains "patched"
 
     # Source unchanged on disk.
