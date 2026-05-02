@@ -14,7 +14,7 @@ use crate::datastore::DataStore;
 use crate::fs::Fs;
 use crate::packs::Pack;
 use crate::paths::Pather;
-use crate::preprocessing::baseline::{cache_filename_for, hex_sha256, Baseline};
+use crate::preprocessing::baseline::{cache_filename_for, hex_encode_32, hex_sha256, Baseline};
 use crate::preprocessing::divergence::DivergenceState;
 use crate::preprocessing::PreprocessorRegistry;
 use crate::rules::PackEntry;
@@ -159,17 +159,28 @@ enum DivergenceCheck {
 /// re-rendering would silently destroy a user edit (see
 /// `docs/proposals/preprocessing-pipeline.lex` §6.4).
 ///
+/// `new_context_hash` is the freshly-computed render context for this
+/// invocation (e.g. the deterministic projection of `[preprocessor.
+/// template.vars]` and `dodot.*`). The classifier compares it against
+/// `baseline.context_hash` so that a `user_vars` change paired with a
+/// deployed-file edit reports `BothChanged` rather than the weaker
+/// `OutputChanged`. Pass `None` for preprocessors with no meaningful
+/// context concept; the comparison is then skipped.
+///
 /// "Define stale-vs-new from file content, not the runtime
-/// environment": this check operates purely on bytes (source + deployed
-/// hash comparisons against the baseline). Env-var rotations are
-/// intentionally invisible here — users who change a referenced env var
-/// pick up the new value via `dodot up --force`.
+/// environment": this check operates purely on bytes (source +
+/// deployed hash comparisons against the baseline) and on the
+/// preprocessor-supplied `context_hash` (which deliberately excludes
+/// `env.*` references — see template.rs). Env-var rotations are
+/// intentionally invisible here; users who change a referenced env
+/// var pick up the new value via `dodot up --force`.
 fn check_divergence(
     fs: &dyn Fs,
     paths: &dyn Pather,
     pack_name: &str,
     virtual_relative: &Path,
     source_path: &Path,
+    new_context_hash: Option<&[u8; 32]>,
 ) -> Result<DivergenceCheck> {
     let cache_filename = cache_filename_for(virtual_relative);
     let baseline =
@@ -196,13 +207,28 @@ fn check_divergence(
     }
 
     // Deployed file diverges. Distinguish OutputChanged from BothChanged
-    // for a sharper warning. A read failure on the source is treated as
-    // "source unchanged" — the safer assumption when we can't tell.
+    // for a sharper warning. "Input changed" means either the source
+    // bytes shifted *or* the render context (user_vars / dodot.*) is
+    // different from what produced the cached baseline; a config-only
+    // change to `[preprocessor.template.vars]` counts. A read failure
+    // on the source is treated as "source unchanged" — the safer
+    // assumption when we can't tell.
     let source_changed = match fs.read_file(source_path) {
         Ok(bytes) => hex_sha256(&bytes) != baseline.source_hash,
         Err(_) => false,
     };
-    let state = if source_changed {
+    let context_changed = match new_context_hash {
+        Some(h) => {
+            // baseline.context_hash is hex; encode the raw [u8; 32]
+            // the same way for an apples-to-apples comparison.
+            // An empty baseline.context_hash means the cached
+            // baseline predates context tracking — treat as
+            // unchanged so we don't false-positive on legacy data.
+            !baseline.context_hash.is_empty() && hex_encode_32(h) != baseline.context_hash
+        }
+        None => false,
+    };
+    let state = if source_changed || context_changed {
         DivergenceState::BothChanged
     } else {
         DivergenceState::OutputChanged
@@ -417,6 +443,7 @@ pub fn preprocess_pack(
                     &pack.name,
                     &virtual_relative,
                     &entry.absolute_path,
+                    expanded.context_hash.as_ref(),
                 )? {
                     DivergenceCheck::Proceed => {}
                     DivergenceCheck::Skip {
@@ -2649,6 +2676,90 @@ mod tests {
         let _ = run_template_preprocess(&env, "app", false);
         let second = run_template_preprocess(&env, "app", false);
         assert!(second.skipped.is_empty());
+    }
+
+    #[test]
+    fn divergence_guard_reports_both_changed_when_only_context_changed() {
+        // Review feedback: a config-only change to `[preprocessor.
+        // template.vars]` shifts the context hash without touching
+        // source bytes. Combined with a deployed-file edit, the guard
+        // must report `BothChanged` (input + output diverged), not
+        // `OutputChanged`. The warning text and any downstream tooling
+        // that reads `state` need an accurate signal that the input
+        // side moved.
+        use std::collections::HashMap;
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = {{ name }}")
+            .done()
+            .build();
+
+        // First render with name="Alice".
+        let mut vars1 = HashMap::new();
+        vars1.insert("name".to_string(), "Alice".to_string());
+        let pp1 = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars1,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry1 = PreprocessorRegistry::new();
+        registry1.register(Box::new(pp1));
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+        let entries = vec![PackEntry {
+            relative_path: "config.toml.tmpl".into(),
+            absolute_path: env.dotfiles_root.join("app/config.toml.tmpl"),
+            is_dir: false,
+        }];
+        let first = preprocess_pack(
+            entries.clone(),
+            &registry1,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        let deployed_path = first.virtual_entries[0].absolute_path.clone();
+
+        // Edit the deployed file; source bytes still match the baseline.
+        env.fs
+            .write_file(&deployed_path, b"name = USER EDITED")
+            .unwrap();
+
+        // Re-run with a different `name` user_var (context has changed,
+        // source has not).
+        let mut vars2 = HashMap::new();
+        vars2.insert("name".to_string(), "Bob".to_string());
+        let pp2 = crate::preprocessing::template::TemplatePreprocessor::new(
+            vec!["tmpl".into()],
+            vars2,
+            env.paths.as_ref(),
+        )
+        .unwrap();
+        let mut registry2 = PreprocessorRegistry::new();
+        registry2.register(Box::new(pp2));
+
+        let second = preprocess_pack(
+            entries,
+            &registry2,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(second.skipped.len(), 1);
+        assert_eq!(
+            second.skipped[0].state,
+            DivergenceState::BothChanged,
+            "context-only input change must report BothChanged when paired with a deployed-file edit"
+        );
     }
 
     #[test]

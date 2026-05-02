@@ -5363,7 +5363,7 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         config: pack_config.to_handler_config(),
     };
 
-    let plan = orchestration::plan_pack(&pack, &ctx).unwrap();
+    let plan = orchestration::plan_pack(&pack, &ctx, true).unwrap();
     let hint = plan.warnings.iter().find(|w| w.contains("Code"));
     assert!(
         hint.is_some(),
