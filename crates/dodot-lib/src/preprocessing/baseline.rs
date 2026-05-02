@@ -151,11 +151,26 @@ impl Baseline {
 
         // Migration cleanup: drop the legacy basename-only cache
         // file if one exists AND it represents the same source as
-        // what we're writing now. The source_path comparison is the
-        // disambiguation: a legitimate same-basename entry for a
-        // *different* file (e.g. the pack's top-level `config.toml`
-        // when we're writing `subdir/config.toml`) carries a
-        // different source_path and must be left alone.
+        // what we're writing now.
+        //
+        // Disambiguation rules:
+        // - Strict match: legacy `source_path` equals `self.source_path`
+        //   → definitely ours, delete.
+        // - Best-effort match: legacy entry has empty `source_path`
+        //   (very old v1 baseline that predates the field). We can't
+        //   confirm it's ours, but leaving it behind produces a
+        //   permanent stale `MissingSource` row in `transform status`
+        //   and the orphan would persist forever. Treat as ours so
+        //   the migration completes.
+        //
+        // The trade-off mirrors the load-side decision: on the
+        // narrow false-positive path (empty-source_path legacy entry
+        // that actually belongs to a different same-basename file),
+        // we may delete an entry that should have stayed. The next
+        // `up` for that file will rebaseline it from scratch, so the
+        // cost is a one-time loss of divergence-detection state for
+        // a file that already had ambiguous cache data — not data
+        // loss in the source or deployed file.
         if let Some(basename) = legacy_basename_for(filename) {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
             if legacy_path != path && fs.exists(&legacy_path) {
@@ -163,8 +178,8 @@ impl Baseline {
                     .ok()
                     .flatten()
                     .map(|legacy| {
-                        !legacy.source_path.as_os_str().is_empty()
-                            && legacy.source_path == self.source_path
+                        legacy.source_path.as_os_str().is_empty()
+                            || legacy.source_path == self.source_path
                     })
                     .unwrap_or(false);
                 if is_our_legacy {
@@ -229,21 +244,33 @@ impl Baseline {
 /// (rather than to a different file that happens to share the same
 /// basename).
 ///
-/// Strategy: take `legacy_source_path`'s components, strip a single
-/// trailing preprocessor extension from the leaf (e.g. `.tmpl`,
-/// `.identity`), and check that the resulting path **ends** with
-/// `filename` at a `/` boundary. The boundary check rules out the
-/// false positive where a path component happens to contain
-/// `filename` as a substring.
-///
-/// Empty `source_path` (legacy v1 baselines written before the
-/// `source_path` field existed; serde-default fills with empty)
-/// can't be confirmed, so we conservatively treat them as "not
-/// ours" — the guard then falls back to the safe fail-closed path
-/// for the unreadable / unknown case.
+/// Strategy:
+/// - When `legacy_source_path` is **populated**: take its components,
+///   strip a single trailing preprocessor extension from the leaf
+///   (e.g. `.tmpl`, `.identity`), and check that the resulting path
+///   **ends** with `filename` at a `/` boundary. The boundary check
+///   rules out the false positive where a path component happens to
+///   contain `filename` as a substring.
+/// - When `legacy_source_path` is **empty** (very old v1 baseline
+///   that predates the `source_path` field; serde-default fills
+///   empty): we can't disambiguate, so we accept the entry as
+///   "best-effort ours." The trade-off:
+///   * Reject (older behavior): risk of data loss for upgraded
+///     users with a nested-file baseline from before the field
+///     existed — the guard would treat the next `up` as a fresh
+///     deploy and could overwrite a user-edited deployed file.
+///   * Accept (current behavior): risk of false-positive preservation
+///     when the legacy entry actually belongs to a different
+///     same-basename file. In that case the divergence guard
+///     compares against the wrong `rendered_hash`, which all but
+///     guarantees a hash mismatch → preserve. The user sees a
+///     warning and can resolve via `--force`. **Preserve > overwrite.**
 fn legacy_baseline_belongs_to_filename(legacy_source_path: &Path, filename: &str) -> bool {
     if legacy_source_path.as_os_str().is_empty() {
-        return false;
+        // Empty source_path → very old v1 baseline. Accept as
+        // best-effort ours so the guard's fail-safe (preserve)
+        // covers upgraded users who would otherwise lose edits.
+        return true;
     }
     let mut components: Vec<String> = legacy_source_path
         .components()
@@ -782,10 +809,16 @@ mod tests {
     }
 
     #[test]
-    fn legacy_baseline_belongs_to_filename_rejects_empty_source() {
-        // v1 baselines written before source_path existed serde-default
-        // to empty PathBuf. Must conservatively report not-ours.
-        assert!(!legacy_baseline_belongs_to_filename(
+    fn legacy_baseline_belongs_to_filename_accepts_empty_source_as_best_effort() {
+        // PR #118 9th-pass (Comment O): v1 baselines that predate the
+        // `source_path` field serde-default to empty PathBuf. We
+        // accept them as best-effort ours so the divergence guard
+        // protects upgraded users with old nested-file caches —
+        // rejecting would leave the next `up` to overwrite a
+        // user-edited deployed file. The trade-off (false-positive
+        // preservation if the legacy entry actually belongs to a
+        // different same-basename file) is documented at the helper.
+        assert!(legacy_baseline_belongs_to_filename(
             Path::new(""),
             "subdir/config.toml"
         ));
@@ -940,6 +973,101 @@ mod tests {
         assert!(
             !env.fs.exists(&legacy_path),
             "legacy entry whose source_path matches must be removed during migration"
+        );
+    }
+
+    // ── Empty source_path migration (PR #118 9th-pass O+P) ──────────
+
+    #[test]
+    fn load_falls_back_to_legacy_with_empty_source_path() {
+        // PR #118 9th-pass Comment O: a v1 baseline written before
+        // the `source_path` field existed deserializes to empty
+        // PathBuf. For an upgraded user with a previously-deployed
+        // nested template, the baseline lives at the legacy
+        // basename-only cache path and has empty `source_path`.
+        // `Baseline::load` for the nested key MUST return it (rather
+        // than None) so the divergence guard can preserve any
+        // user-edited deployed file. Rejecting would let the next
+        // `up` overwrite the user's edit.
+        let env = TempEnvironment::builder().build();
+        let legacy = Baseline::build(
+            // Empty source_path simulating pre-`source_path`-field v1.
+            Path::new(""),
+            b"rendered",
+            b"src",
+            Some(""),
+            None,
+        );
+        legacy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        // Load by the nested key: must return the legacy entry as
+        // best-effort match.
+        let result = Baseline::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "subdir/config.toml",
+        )
+        .unwrap();
+        assert!(
+            result.is_some(),
+            "load(subdir/config.toml) must accept empty-source_path legacy entry as best-effort"
+        );
+        assert_eq!(result.unwrap().rendered_content, "rendered");
+    }
+
+    #[test]
+    fn write_at_nested_path_removes_legacy_with_empty_source_path() {
+        // PR #118 9th-pass Comment P: a legacy v1 entry with empty
+        // source_path must be cleaned up when we write a nested
+        // baseline. Otherwise it lingers as a stale orphan and
+        // produces a permanent bogus `MissingSource` row in
+        // `transform status`.
+        let env = TempEnvironment::builder().build();
+        // Legacy v1 entry: empty source_path.
+        let legacy = Baseline::build(Path::new(""), b"old", b"src", Some(""), None);
+        let legacy_path = legacy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+        assert!(env.fs.exists(&legacy_path));
+
+        // Migrate by writing at the new nested path with a populated source_path.
+        let new = Baseline::build(
+            Path::new("/dotfiles/app/subdir/config.toml.tmpl"),
+            b"new",
+            b"new-src",
+            Some(""),
+            None,
+        );
+        let new_path = new
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "subdir/config.toml",
+            )
+            .unwrap();
+
+        assert!(env.fs.exists(&new_path), "new baseline written");
+        assert!(
+            !env.fs.exists(&legacy_path),
+            "legacy entry with empty source_path must be cleaned up to avoid permanent orphan"
         );
     }
 
