@@ -68,6 +68,7 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
             if let Some(registry) = crate::preprocessing::build_secret_registry(
                 &root_config.secret,
                 ctx.command_runner.clone(),
+                ctx.paths.dotfiles_root(),
             ) {
                 crate::secret::preflight(&registry)?;
             }

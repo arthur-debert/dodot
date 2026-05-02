@@ -267,7 +267,7 @@ pub fn default_registry(
     )?;
 
     let secret_registry = if secret_config.enabled {
-        build_secret_registry(secret_config, command_runner)
+        build_secret_registry(secret_config, command_runner, pather.dotfiles_root())
     } else {
         None
     };
@@ -287,12 +287,18 @@ pub fn default_registry(
 /// enabled — the secrets layer treats that case as "secrets feature
 /// fully off" and templates with `secret(...)` calls fail loudly.
 ///
+/// `dotfiles_root` is the anchor for relative paths in
+/// provider-specific references — currently used by the `sops`
+/// provider, whose `sops:secrets.yaml#k.p` references resolve
+/// `secrets.yaml` relative to this directory.
+///
 /// Public so `commands::up` can build a single registry from the root
 /// config to run [`crate::secret::preflight`] once per run, before any
 /// per-pack template rendering begins (`secrets.lex` §5.4).
 pub fn build_secret_registry(
     config: &crate::config::SecretSection,
     runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+    dotfiles_root: &std::path::Path,
 ) -> Option<std::sync::Arc<crate::secret::SecretRegistry>> {
     use std::path::PathBuf;
     use std::sync::Arc;
@@ -324,6 +330,17 @@ pub fn build_secret_registry(
 
     if config.providers.bw.enabled {
         let provider = crate::secret::BwProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.sops.enabled {
+        // sops anchors relative file paths (`sops:secrets.yaml#k`)
+        // at the dotfiles root, so `.sops.yaml` configuration in the
+        // repo root applies. Absolute paths in references bypass
+        // this anchor.
+        let provider =
+            crate::secret::SopsProvider::new(Arc::clone(&runner), dotfiles_root.to_path_buf());
         reg.register(Arc::new(provider));
         any_enabled = true;
     }
