@@ -14,7 +14,12 @@
 //! above the trait, in the `secret()` MiniJinja function.
 
 pub mod provider;
+pub mod registry;
 pub mod secret_string;
 
+#[cfg(test)]
+pub mod test_support;
+
 pub use provider::{ProbeResult, SecretProvider};
+pub use registry::{split_scheme, SecretRegistry};
 pub use secret_string::SecretString;
