@@ -772,6 +772,36 @@ fn up_dry_run_no_changes() {
     }
 }
 
+#[test]
+fn up_dry_run_does_not_write_preprocessing_baselines() {
+    // Baselines anchor "the state of the last successful `up`," so
+    // a dry run — which never executes — must not move that anchor.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let baseline_path = ctx
+        .paths
+        .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "test precondition: baseline should not exist before any up runs"
+    );
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    let _ = commands::up::up(None, &dry_ctx).unwrap();
+
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "dry-run must NOT write a baseline; the cache must remain untouched"
+    );
+}
+
 // ── up: conflict handling ──────────────────────────────────
 
 #[test]
@@ -5363,7 +5393,7 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         config: pack_config.to_handler_config(),
     };
 
-    let plan = orchestration::plan_pack(&pack, &ctx).unwrap();
+    let plan = orchestration::plan_pack(&pack, &ctx, true).unwrap();
     let hint = plan.warnings.iter().find(|w| w.contains("Code"));
     assert!(
         hint.is_some(),

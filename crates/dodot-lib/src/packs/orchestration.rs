@@ -375,13 +375,18 @@ pub struct PackPlan {
 /// Use this when surfacing per-pack warnings in user-facing output
 /// (e.g. `commands::up` populating `PackStatusResult.warnings`). Pure
 /// execution callers should keep using [`collect_pack_intents`].
-pub fn plan_pack(pack: &Pack, ctx: &ExecutionContext) -> Result<PackPlan> {
+///
+/// `write_baselines` controls whether the preprocessing pipeline
+/// writes new baseline cache entries. Active runs (`up`) pass `true`
+/// when actually deploying; passive callers (`status`, `up --dry-run`)
+/// pass `false` so the "last successful `dodot up`" anchor stays put.
+pub fn plan_pack(pack: &Pack, ctx: &ExecutionContext, write_baselines: bool) -> Result<PackPlan> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
     let registry = crate::preprocessing::default_registry(
         &pack_config.preprocessor.template,
         ctx.paths.as_ref(),
     )?;
-    plan_pack_inner(pack, ctx, &pack_config, Some(&registry))
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), write_baselines)
 }
 
 /// Shared implementation that takes a pre-loaded pack config. Both
@@ -394,7 +399,14 @@ fn collect_pack_intents_inner(
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
-    plan_pack_inner(pack, ctx, pack_config, preprocessors).map(|p| p.intents)
+    plan_pack_inner(
+        pack,
+        ctx,
+        pack_config,
+        preprocessors,
+        /* write_baselines */ true,
+    )
+    .map(|p| p.intents)
 }
 
 /// Same scan/preprocess/match/group/intents pipeline as
@@ -405,6 +417,7 @@ fn plan_pack_inner(
     ctx: &ExecutionContext,
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
+    write_baselines: bool,
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
 
@@ -423,7 +436,7 @@ fn plan_pack_inner(
                 ctx.fs.as_ref(),
                 ctx.datastore.as_ref(),
                 ctx.paths.as_ref(),
-                /* write_baselines */ true,
+                write_baselines,
                 ctx.force,
             )?
         } else {
@@ -1819,7 +1832,7 @@ mod tests {
         );
 
         // First run: clean deploy, no warnings about preserved files.
-        let first = plan_pack(&pack, &ctx).unwrap();
+        let first = plan_pack(&pack, &ctx, true).unwrap();
         assert!(
             first.warnings.iter().all(|w| !w.contains("preserved")),
             "first deploy must not produce a preservation warning: {:?}",
@@ -1835,7 +1848,7 @@ mod tests {
 
         // Second run: warning surfaces, with the documented resolution
         // hints — `transform check` and `--force`.
-        let second = plan_pack(&pack, &ctx).unwrap();
+        let second = plan_pack(&pack, &ctx, true).unwrap();
         let preserved: Vec<&String> = second
             .warnings
             .iter()
@@ -1887,7 +1900,7 @@ mod tests {
         );
 
         // Prime baseline.
-        let _ = plan_pack(&pack, &ctx).unwrap();
+        let _ = plan_pack(&pack, &ctx, true).unwrap();
         let deployed = env
             .paths
             .handler_data_dir("app", "preprocessed")
@@ -1895,7 +1908,7 @@ mod tests {
         env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
 
         ctx.force = true;
-        let plan = plan_pack(&pack, &ctx).unwrap();
+        let plan = plan_pack(&pack, &ctx, true).unwrap();
         assert!(
             plan.warnings.iter().all(|w| !w.contains("preserved")),
             "force=true must not emit preservation warnings: {:?}",
