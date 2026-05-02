@@ -62,7 +62,17 @@ impl Handler for InstallHandler<'_> {
                 continue;
             }
 
-            let checksum = file_checksum(self.fs, &m.absolute_path)?;
+            // Sentinel hashing prefers in-memory rendered bytes when
+            // they're available (preprocessor-produced files); falls
+            // back to a disk read for plain on-disk files. The
+            // in-memory path is the §7.4 enabler — `dodot status`
+            // and `up --dry-run` need a correct sentinel for
+            // templated install scripts without writing the
+            // rendered file to disk. See issue #121.
+            let checksum = match m.rendered_bytes.as_deref() {
+                Some(bytes) => file_checksum_bytes(bytes),
+                None => file_checksum(self.fs, &m.absolute_path)?,
+            };
             let filename = m
                 .relative_path
                 .file_name()
@@ -137,6 +147,16 @@ fn file_checksum(fs: &dyn Fs, path: &Path) -> Result<String> {
     Ok(hex::encode(&hash[..8]))
 }
 
+/// Same digest format as [`file_checksum`], but over an in-memory
+/// byte slice — used when the rendered content is available without
+/// a disk read.
+fn file_checksum_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let hash = hasher.finalize();
+    hex::encode(&hash[..8])
+}
+
 /// Minimal hex encoding (avoids pulling in the `hex` crate).
 mod hex {
     pub fn encode(bytes: &[u8]) -> String {
@@ -195,6 +215,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         }];
 
         let pather = crate::paths::XdgPather::builder()
@@ -261,6 +282,7 @@ mod tests {
             is_dir: false,
             options: std::collections::HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let matches = vec![
             make_match("install.sh"),

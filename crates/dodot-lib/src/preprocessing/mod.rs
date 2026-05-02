@@ -18,6 +18,8 @@ pub mod reverse_merge;
 pub mod template;
 pub mod unarchive;
 
+pub use pipeline::PreprocessMode;
+
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;

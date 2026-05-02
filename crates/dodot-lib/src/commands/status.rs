@@ -453,6 +453,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                 ctx.paths.as_ref(),
             )?;
             if !registry.is_empty() {
+                // status is a Passive command — never evaluate
+                // templates, never write rendered files or baselines.
+                // See `secrets.lex` §7.4 / issue #121.
                 match crate::preprocessing::pipeline::preprocess_pack(
                     entries,
                     &registry,
@@ -460,7 +463,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
                     ctx.fs.as_ref(),
                     ctx.datastore.as_ref(),
                     ctx.paths.as_ref(),
-                    /* write_baselines */ false,
+                    crate::preprocessing::PreprocessMode::Passive,
                     /* force */ false,
                 ) {
                     Ok(r) => r,
@@ -488,8 +491,9 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // element is the user-facing label that surfaces in any
         // resulting `DisplayConflict.claimants` entry, so it tracks
         // the pack's display name rather than its raw on-disk name.
-        // status is read-only — never write baselines.
-        match orchestration::plan_pack(&pack, ctx, /* write_baselines */ false) {
+        // status is a Passive command — same §7.4 contract as the
+        // direct preprocess_pack call above.
+        match orchestration::plan_pack(&pack, ctx, crate::preprocessing::PreprocessMode::Passive) {
             Ok(plan) => {
                 warnings.extend(plan.warnings);
                 pack_intents.push((pack.display_name.clone(), plan.intents));
