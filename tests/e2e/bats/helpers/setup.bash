@@ -118,10 +118,13 @@ SHIM
     export HOMEBREW_NO_INSTALL_FROM_API=1
 }
 
-# Restore the pre-strip PATH so a single test can exercise the real
-# `brew` probe code path. Most tests should NOT call this — see the
-# block comment above. `tests/e2e/bats/test_brew_probe.bats` is the
-# canonical example and the regression guard for the probe code.
+# Restore the pre-muzzle PATH so a single test can exercise the real
+# `brew` probe code path. The muzzle (set up in `hide_brew_from_path`)
+# prepends a non-zero `brew` shim to PATH; this helper drops that
+# prepended shim by reverting to the snapshotted original. Most tests
+# should NOT call this — see the block comment above.
+# `tests/e2e/bats/test_brew_probe.bats` is the canonical example and
+# the regression guard for the probe code.
 #
 # This explicit opt-in lives at the helper level (not inline in tests)
 # so the "I want real brew here" intent is grep-able and reviewers

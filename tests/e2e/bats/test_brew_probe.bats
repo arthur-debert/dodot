@@ -55,8 +55,10 @@ host_has_brew() {
 # probe match is deterministic without hardcoding what's installed
 # on any single dev machine.
 #
-# Calls real brew via its host-PATH location explicitly — the sandbox
-# strip means `brew` isn't on $PATH yet at this point.
+# Calls real brew via its host-PATH location explicitly. The sandbox
+# muzzle (`hide_brew_from_path` in helpers/setup.bash) prepends a
+# non-zero `brew` shim to $PATH; resolving via $DODOT_E2E_ORIGINAL_PATH
+# bypasses that shim and finds the real binary directly.
 host_brew_bin() {
     local IFS=':'
     local entry
