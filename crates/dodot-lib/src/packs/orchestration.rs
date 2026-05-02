@@ -436,7 +436,17 @@ fn collect_pack_intents_inner(
         pack_config,
         preprocessors,
         /* write_baselines */ true,
-        /* force */ ctx.force,
+        // Always `false`: this helper feeds read-only callers like
+        // `adopt::check_deploy_conflicts`. Propagating `ctx.force`
+        // here would let `dodot adopt --force` bypass the §6.4
+        // divergence guard during inspection-only conflict
+        // scanning — overwriting user-edited deployed files in
+        // *other* packs before adopt has even started. The actual
+        // `dodot up` flow uses `plan_pack` directly (which threads
+        // its own `force`), so the hardcoded `false` here doesn't
+        // affect the intended `--force` semantics.
+        /* force */
+        false,
     )
     .map(|p| p.intents)
 }

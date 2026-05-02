@@ -153,31 +153,33 @@ impl Baseline {
         // file if one exists AND it represents the same source as
         // what we're writing now.
         //
-        // Disambiguation rules:
-        // - Strict match: legacy `source_path` equals `self.source_path`
-        //   → definitely ours, delete.
-        // - Best-effort match: legacy entry has empty `source_path`
-        //   (very old v1 baseline that predates the field). We can't
-        //   confirm it's ours, but leaving it behind produces a
-        //   permanent stale `MissingSource` row in `transform status`
-        //   and the orphan would persist forever. Treat as ours so
-        //   the migration completes.
+        // Strict match only: legacy `source_path` equals
+        // `self.source_path` → definitely ours, delete.
         //
-        // The trade-off mirrors the load-side decision: on the
-        // narrow false-positive path (empty-source_path legacy entry
-        // that actually belongs to a different same-basename file),
-        // we may delete an entry that should have stayed. The next
-        // `up` for that file will rebaseline it from scratch, so the
-        // cost is a one-time loss of divergence-detection state for
-        // a file that already had ambiguous cache data — not data
-        // loss in the source or deployed file.
+        // Empty `source_path` (v1 baselines that predate the field)
+        // is **not** a sufficient signal for ownership during write
+        // cleanup. The legacy entry could belong to a legitimate
+        // *different* same-basename file — e.g. the pack's
+        // top-level `config.toml` when we're writing
+        // `subdir/config.toml`. Deleting it would clobber that
+        // file's baseline and let the next plain `dodot up` for it
+        // fall back to "no baseline" → overwrite user edits.
+        //
+        // The cost of conservative-keep: the orphan persists. But
+        // the next time the *real* owner is re-baselined, that
+        // write naturally overwrites the orphan at the same path
+        // — so the orphan is self-cleaning in normal usage. The
+        // load-side fallback continues to accept empty-source_path
+        // entries (best-effort, fail-safe to preserve), which gives
+        // upgraded users divergence protection for nested files
+        // even when their cache predates `source_path`.
         if let Some(basename) = legacy_basename_for(filename) {
             let legacy_path = paths.preprocessor_baseline_path(pack, handler, &basename);
             if legacy_path != path && fs.exists(&legacy_path) {
                 let should_delete = match read_baseline_at(fs, &legacy_path) {
                     Ok(Some(legacy)) => {
-                        legacy.source_path.as_os_str().is_empty()
-                            || legacy.source_path == self.source_path
+                        !legacy.source_path.as_os_str().is_empty()
+                            && legacy.source_path == self.source_path
                     }
                     Ok(None) => {
                         // File vanished between the `exists` check
@@ -1047,14 +1049,23 @@ mod tests {
     }
 
     #[test]
-    fn write_at_nested_path_removes_legacy_with_empty_source_path() {
-        // PR #118 9th-pass Comment P: a legacy v1 entry with empty
-        // source_path must be cleaned up when we write a nested
-        // baseline. Otherwise it lingers as a stale orphan and
-        // produces a permanent bogus `MissingSource` row in
-        // `transform status`.
+    fn write_at_nested_path_keeps_legacy_with_empty_source_path() {
+        // PR #118 12th-pass Comment X: an empty-source_path legacy
+        // entry could belong to a *different* same-basename file
+        // (e.g. the pack's top-level `config.toml` if its v1
+        // baseline predates the field). Deleting it during a
+        // nested write would clobber that file's baseline and let
+        // the next plain `dodot up` for it overwrite user edits.
+        //
+        // Strict source_path equality is the only safe ownership
+        // signal during write cleanup. Empty source_path → keep
+        // the legacy entry. The orphan is self-cleaning: when the
+        // real owner is re-baselined next, that write overwrites
+        // the orphan at the same path. The load-side fallback
+        // continues to accept empty-source_path entries
+        // (best-effort fail-safe), so upgraded users still get
+        // divergence protection for nested files.
         let env = TempEnvironment::builder().build();
-        // Legacy v1 entry: empty source_path.
         let legacy = Baseline::build(Path::new(""), b"old", b"src", Some(""), None);
         let legacy_path = legacy
             .write(
@@ -1067,7 +1078,6 @@ mod tests {
             .unwrap();
         assert!(env.fs.exists(&legacy_path));
 
-        // Migrate by writing at the new nested path with a populated source_path.
         let new = Baseline::build(
             Path::new("/dotfiles/app/subdir/config.toml.tmpl"),
             b"new",
@@ -1087,8 +1097,8 @@ mod tests {
 
         assert!(env.fs.exists(&new_path), "new baseline written");
         assert!(
-            !env.fs.exists(&legacy_path),
-            "legacy entry with empty source_path must be cleaned up to avoid permanent orphan"
+            env.fs.exists(&legacy_path),
+            "legacy entry with empty source_path must NOT be deleted — could belong to a different same-basename file"
         );
     }
 

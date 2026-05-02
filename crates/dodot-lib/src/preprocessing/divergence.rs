@@ -75,6 +75,26 @@ pub struct DivergenceReport {
     pub state: DivergenceState,
 }
 
+/// One unreadable cache entry surfaced by the walker. A corrupt or
+/// version-mismatched baseline can't be loaded into a `Baseline`,
+/// but silently dropping it from the report would let `dodot
+/// transform check` succeed with an incomplete scan and miss real
+/// divergence. We surface these alongside the successful entries so
+/// callers can decide how to react: `transform check` flags them
+/// as findings (non-zero exit), `transform status` displays them as
+/// "cache_error" rows, `refresh` ignores them.
+#[derive(Debug, Clone, Serialize)]
+pub struct UnreadableBaseline {
+    pub pack: String,
+    pub handler: String,
+    pub filename: String,
+    /// Absolute path of the corrupt cache file on disk.
+    pub cache_path: PathBuf,
+    /// Human-readable description of what went wrong (parse error
+    /// message, schema-version mismatch, etc.).
+    pub error: String,
+}
+
 /// Walk the per-pack baseline cache directory and load every record.
 ///
 /// Returns `(pack, handler, filename, baseline)` tuples where
@@ -88,19 +108,45 @@ pub struct DivergenceReport {
 /// subdirectories are skipped silently — the cache is rederivable,
 /// and we never want a transient permission glitch to crash a check
 /// run.
+///
+/// Unreadable baseline JSON files (corrupt content, schema mismatch)
+/// are silently skipped here. Callers that need to surface those
+/// errors to the user (e.g. `dodot transform check`) should use
+/// [`collect_baselines_and_errors`] instead.
 pub fn collect_baselines(
     fs: &dyn Fs,
     paths: &dyn Pather,
 ) -> Result<Vec<(String, String, String, Baseline)>> {
+    collect_baselines_and_errors(fs, paths).map(|(entries, _)| entries)
+}
+
+/// Like [`collect_baselines`], but also returns any unreadable cache
+/// entries encountered during the walk (corrupt JSON, schema-
+/// version mismatch). Callers that participate in pre-commit /
+/// pre-deployment correctness (`dodot transform check`,
+/// `transform status`) use this so they can surface the broken
+/// entries to the user instead of silently dropping them — a
+/// silently-dropped corrupt entry would let `transform check`
+/// "succeed" with an incomplete scan and let the pre-commit hook
+/// miss real divergence.
+#[allow(clippy::type_complexity)] // tuple return mirrors collect_baselines + adds error list
+pub fn collect_baselines_and_errors(
+    fs: &dyn Fs,
+    paths: &dyn Pather,
+) -> Result<(
+    Vec<(String, String, String, Baseline)>,
+    Vec<UnreadableBaseline>,
+)> {
     let root = paths.cache_dir().join("preprocessor");
     if !fs.is_dir(&root) {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
 
     let mut out = Vec::new();
+    let mut errors: Vec<UnreadableBaseline> = Vec::new();
     let mut packs = match fs.read_dir(&root) {
         Ok(v) => v,
-        Err(_) => return Ok(Vec::new()),
+        Err(_) => return Ok((Vec::new(), Vec::new())),
     };
     packs.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -198,25 +244,31 @@ pub fn collect_baselines(
                     }
                     Ok(None) => {} // race with cache eviction; tolerate
                     Err(err) => {
-                        // Soft-fail on parse / schema-version
-                        // errors. The cache is rederivable; a
-                        // single damaged entry must NOT break the
-                        // entire walk. `transform check` /
-                        // `status` / `refresh` continue past the
-                        // skipped entry, and `Baseline::write`
-                        // (during the next `up`) cannot delete the
-                        // corrupt file blindly because doing so
-                        // could clobber a same-basename file's
-                        // baseline. Surface a warning so the user
-                        // knows where to look if the orphan
-                        // persists.
+                        // Record the unreadable entry so callers
+                        // (specifically `transform check`) can
+                        // surface it as a finding rather than
+                        // silently completing with an incomplete
+                        // scan. The walk continues — a single
+                        // damaged entry must not break operations
+                        // for unrelated entries — but the error is
+                        // preserved in the parallel return list
+                        // for the caller to react to.
+                        let cache_path =
+                            paths.preprocessor_baseline_path(&pack.name, &handler.name, &filename);
                         tracing::warn!(
                             pack = %pack.name,
                             handler = %handler.name,
                             file = %filename,
                             error = %err,
-                            "skipping unreadable baseline cache entry"
+                            "unreadable baseline cache entry"
                         );
+                        errors.push(UnreadableBaseline {
+                            pack: pack.name.clone(),
+                            handler: handler.name.clone(),
+                            filename: filename.clone(),
+                            cache_path,
+                            error: err.to_string(),
+                        });
                     }
                 }
             }
@@ -228,8 +280,11 @@ pub fn collect_baselines(
     // Re-sort the full output so the final list is stable across
     // legacy / migrated state.
     out.sort_by(|a, b| (&a.0, &a.1, &a.2).cmp(&(&b.0, &b.1, &b.2)));
+    errors.sort_by(|a, b| {
+        (&a.pack, &a.handler, &a.filename).cmp(&(&b.pack, &b.handler, &b.filename))
+    });
 
-    Ok(out)
+    Ok((out, errors))
 }
 
 /// Derive a virtual_relative cache key from a baseline's
@@ -864,11 +919,59 @@ mod tests {
         env.fs.write_file(&bad_path, b"{not json").unwrap();
 
         // Walker must succeed with the healthy entry; corrupt entry
-        // is skipped silently (a tracing warning is emitted but not
-        // visible in this test).
+        // is skipped from the success list. The legacy soft-fail
+        // (collect_baselines) returns just the healthy entry.
         let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
         assert_eq!(baselines.len(), 1);
         assert_eq!(baselines[0].2, "good.toml");
+    }
+
+    #[test]
+    fn collect_baselines_and_errors_surfaces_corrupt_entries() {
+        // PR #118 12th-pass Comment W: callers that participate in
+        // pre-commit / pre-deployment correctness need to see the
+        // corrupt entries — silently dropping them lets
+        // `transform check` succeed with an incomplete scan.
+        // `collect_baselines_and_errors` returns both lists so
+        // callers can react.
+        let env = TempEnvironment::builder().build();
+        write_pack_template(&env, "app", "good.toml.tmpl", "src");
+        write_deployed(&env, "app", "preprocessed", "good.toml", "rendered");
+        let src_path = env.dotfiles_root.join("app/good.toml.tmpl");
+        let healthy = baseline_for(&src_path, b"rendered", b"src");
+        healthy
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "good.toml",
+            )
+            .unwrap();
+
+        let bad_path = env
+            .paths
+            .preprocessor_baseline_path("app", "preprocessed", "bad.toml");
+        env.fs.write_file(&bad_path, b"{not json").unwrap();
+
+        let (baselines, errors) =
+            collect_baselines_and_errors(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        assert_eq!(baselines.len(), 1);
+        assert_eq!(baselines[0].2, "good.toml");
+        assert_eq!(
+            errors.len(),
+            1,
+            "corrupt entry must be surfaced via the errors list"
+        );
+        assert_eq!(errors[0].pack, "app");
+        assert_eq!(errors[0].handler, "preprocessed");
+        assert_eq!(errors[0].filename, "bad.toml");
+        assert_eq!(errors[0].cache_path, bad_path);
+        assert!(
+            errors[0].error.contains("failed to parse"),
+            "error string should describe the parse failure, got: {:?}",
+            errors[0].error
+        );
     }
 
     #[test]
