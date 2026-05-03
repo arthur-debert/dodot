@@ -234,6 +234,7 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
         render::TEMPLATE_GIT_INSTALL_ALIAS,
     ),
     ("secret-probe.jinja", render::TEMPLATE_SECRET_PROBE),
+    ("secret-list.jinja", render::TEMPLATE_SECRET_LIST),
 ];
 
 fn build_app() -> App {
@@ -344,6 +345,8 @@ fn build_app() -> App {
             "secret-probe",
         )
         .expect("register secret.probe")
+        .command("secret.list", handlers::secret_list_handler, "secret-list")
+        .expect("register secret.list")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -752,6 +755,13 @@ fn build_clap_command() -> ClapCommand {
                         "Run probe() on every configured provider and report each \
                          outcome. Read-only. Always exits 0 — even a failing provider \
                          lineup isn't an error here, just information.",
+                    ),
+                )
+                .subcommand(
+                    ClapCommand::new("list").about(
+                        "Enumerate every `secret(...)` call across the repo's \
+                         templates. Read-only. Useful before the first `dodot up` \
+                         to inventory which providers a repo needs.",
                     ),
                 ),
         )

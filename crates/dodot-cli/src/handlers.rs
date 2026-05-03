@@ -325,6 +325,17 @@ pub fn secret_probe_handler(
     Ok(Output::Render(commands::secret::probe(&ctx)?))
 }
 
+/// `dodot secret list` — read-only enumeration of every
+/// `secret(...)` reference in the repo's templates. Always
+/// exits 0; this is an inventory command, not a gate.
+pub fn secret_list_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::secret::ListResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    Ok(Output::Render(commands::secret::list(&ctx)?))
+}
+
 /// `dodot git-show-alias [--shell <shell>]` — print the Tier 2
 /// shell alias for copy-paste. No filesystem mutation.
 pub fn git_show_alias_handler(

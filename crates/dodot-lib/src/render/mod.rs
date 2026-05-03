@@ -180,6 +180,13 @@ pub const TEMPLATE_GIT_INSTALL_ALIAS: &str = include_str!("../templates/git-inst
 /// as a separate render branch.
 pub const TEMPLATE_SECRET_PROBE: &str = include_str!("../templates/secret-probe.jinja");
 
+/// `dodot secret list` per-reference enumeration. Lists every
+/// `secret(...)` call across the repo's templates with a
+/// per-row warning when the referenced scheme has no provider
+/// enabled in the current config. Independent rollup at the
+/// bottom names schemes with refs but no provider.
+pub const TEMPLATE_SECRET_LIST: &str = include_str!("../templates/secret-list.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders
