@@ -8,6 +8,7 @@
 //!
 //! See `docs/proposals/preprocessing-pipeline.lex` for the full design.
 
+pub mod age;
 pub mod baseline;
 pub mod conflict;
 pub mod divergence;
