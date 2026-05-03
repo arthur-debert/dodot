@@ -17,7 +17,7 @@
 //! plumbing change required).
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::secret::provider::{ProbeResult, SecretProvider};
 use crate::secret::secret_string::SecretString;
@@ -30,9 +30,25 @@ use crate::{DodotError, Result};
 /// and threaded into the `secret()` MiniJinja function. `Arc<dyn>`
 /// because providers are held behind a trait object and the registry
 /// is shared with the template engine across rendering passes.
+///
+/// Resolved values are cached in `cache` so a reference that appears
+/// in N templates only fires the underlying provider once. The cache
+/// is shared between [`Clone`]s of the registry (it lives behind an
+/// `Arc<Mutex>`); two registries built from the same config but via
+/// independent constructor calls have independent caches. This
+/// satisfies `secrets.lex` §7.4's "user authenticates once per run"
+/// for the common case of a single registry threaded through every
+/// pack rendered in one `dodot up` invocation.
+///
+/// Cache values are stored as `Arc<SecretString>` so the cached
+/// bytes are zeroized when the registry (and its last Arc holder)
+/// drops. Callers that need a plain `&str` go through
+/// [`SecretString::expose`] at the substitution boundary; the cache
+/// itself never holds an unsealed `String` copy.
 #[derive(Default, Clone)]
 pub struct SecretRegistry {
     providers: HashMap<String, Arc<dyn SecretProvider>>,
+    cache: Arc<Mutex<HashMap<String, Arc<SecretString>>>>,
 }
 
 impl SecretRegistry {
@@ -75,7 +91,12 @@ impl SecretRegistry {
     }
 
     /// Resolve a full reference (with scheme prefix) by dispatching
-    /// to the right provider.
+    /// to the right provider. **Bypasses the within-run cache** —
+    /// every call shells out to the provider. Most callers want the
+    /// [`Self::cache_get`] / [`Self::cache_put`] surface (used by
+    /// the `secret()` MiniJinja function); this entry point exists
+    /// for tests that want to count provider invocations and for
+    /// `dodot secret probe` paths that intentionally hit the wire.
     ///
     /// Returns `DodotError::Other` with an actionable message when:
     ///
@@ -100,6 +121,60 @@ impl SecretRegistry {
             ))
         })?;
         provider.resolve(suffix)
+    }
+
+    /// Look up a previously-resolved reference in the within-run
+    /// cache. Returns `None` on cache miss; the caller (the
+    /// `secret()` MiniJinja function) is expected to call
+    /// [`Self::resolve`] and then [`Self::cache_put`] to populate
+    /// the cache for future calls.
+    ///
+    /// Returns `Arc<SecretString>` so the cached bytes stay zeroize-
+    /// on-drop — callers go through `SecretString::expose` at the
+    /// substitution boundary, never an unsealed `String` copy in
+    /// the cache itself. Cloning the Arc is a cheap pointer bump;
+    /// the inner buffer is dropped (and zeroized) when the last
+    /// holder is gone.
+    ///
+    /// Splitting cache access from resolution lets the caller
+    /// validate values (multi-line refusal, UTF-8) with rich error
+    /// messages co-located with the rendering surface, while still
+    /// avoiding repeat shell-outs for the cache-hit path.
+    pub fn cache_get(&self, full_reference: &str) -> Option<Arc<SecretString>> {
+        self.cache.lock().unwrap().get(full_reference).cloned()
+    }
+
+    /// Store a resolved (and validated) value in the within-run
+    /// cache. Takes `Arc<SecretString>` directly so the caller
+    /// keeps the same handle for the substitution path —
+    /// constructing a fresh `SecretString` here would lose the
+    /// zeroize lineage on the original. The caller is responsible
+    /// for ensuring the value is genuine (no markers, no UTF-8
+    /// violations, not a multi-line value); the cache is dumb
+    /// storage.
+    pub fn cache_put(&self, full_reference: &str, value: Arc<SecretString>) {
+        self.cache
+            .lock()
+            .unwrap()
+            .insert(full_reference.to_string(), value);
+    }
+
+    /// Number of entries currently held in the within-run cache.
+    /// Useful for batching assertions in tests; not a public surface
+    /// for production code, which has no reason to inspect cache
+    /// size at runtime.
+    #[cfg(test)]
+    pub fn cache_len(&self) -> usize {
+        self.cache.lock().unwrap().len()
+    }
+
+    /// Drop every entry from the within-run cache. Tests use this to
+    /// re-exercise the provider path; production code should never
+    /// need to call it (the cache is per-registry-instance and the
+    /// instance is per-run).
+    #[cfg(test)]
+    pub fn clear_cache(&self) {
+        self.cache.lock().unwrap().clear();
     }
 
     /// Probe every registered provider. Used by `dodot secret probe`
@@ -234,6 +309,62 @@ mod tests {
             MockSecretProvider::new("pass").with("k", "second"),
         ));
         assert_eq!(reg.resolve("pass:k").unwrap().expose().unwrap(), "second");
+    }
+
+    fn put(reg: &SecretRegistry, reference: &str, value: &str) {
+        reg.cache_put(reference, Arc::new(SecretString::new(value.to_string())));
+    }
+
+    #[test]
+    fn cache_get_returns_none_until_cache_put_populates_it() {
+        let reg = SecretRegistry::new();
+        assert!(reg.cache_get("op://V/I/F").is_none());
+        put(&reg, "op://V/I/F", "secret-value");
+        let hit = reg.cache_get("op://V/I/F").unwrap();
+        assert_eq!(hit.expose().unwrap(), "secret-value");
+    }
+
+    #[test]
+    fn cache_is_shared_between_clones_of_the_same_registry() {
+        // Clone semantics: the cache lives behind an Arc<Mutex>, so
+        // two clones of one registry observe the same cache. This
+        // is what lets `commands::up` build the registry once and
+        // pass it to N pack-rendering passes that all share auth.
+        let reg = SecretRegistry::new();
+        let clone = reg.clone();
+        put(&clone, "pass:k", "v");
+        let hit = reg.cache_get("pass:k").unwrap();
+        assert_eq!(hit.expose().unwrap(), "v");
+    }
+
+    #[test]
+    fn cache_is_independent_between_separate_registry_constructions() {
+        // Two `SecretRegistry::new()` calls produce independent
+        // caches even when the same providers are registered. This
+        // pins the "per-instance, not process-global" contract — a
+        // later refactor that changes the cache to a static
+        // singleton would silently break the test isolation
+        // contract every other test in this module relies on.
+        let a = SecretRegistry::new();
+        let b = SecretRegistry::new();
+        put(&a, "pass:k", "from-a");
+        assert!(b.cache_get("pass:k").is_none());
+    }
+
+    #[test]
+    fn registry_resolve_does_not_consult_or_populate_cache() {
+        // resolve() bypasses the cache by design — it's the
+        // wire-hitting entry point that callers use to count
+        // provider invocations. cache_get and cache_put are the
+        // cache-aware surface. Pin the contract.
+        let mut reg = SecretRegistry::new();
+        reg.register(Arc::new(MockSecretProvider::new("pass").with("k", "v")));
+        let _ = reg.resolve("pass:k").unwrap();
+        assert_eq!(reg.cache_len(), 0, "resolve() must not populate the cache");
+        assert!(
+            reg.cache_get("pass:k").is_none(),
+            "cache_get must miss when only resolve() ran"
+        );
     }
 
     #[test]

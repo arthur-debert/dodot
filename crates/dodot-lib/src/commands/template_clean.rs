@@ -37,14 +37,15 @@
 //! sees the unmodified template through git than their entire repo
 //! becomes unreadable.
 
-use burgertocow::{generate_diff_with_markers, ConflictMarkers, TrackedRender};
+use burgertocow::{generate_diff_with_markers_opts, ConflictMarkers, DiffOptions, TrackedRender};
 use diffy::Patch;
 use std::io::{Read, Write};
+use std::ops::Range;
 use std::path::Path;
 
 use crate::fs::Fs;
 use crate::paths::Pather;
-use crate::preprocessing::baseline::hex_sha256;
+use crate::preprocessing::baseline::{hex_sha256, SecretsSidecar};
 use crate::preprocessing::conflict::{MARKER_END, MARKER_MID, MARKER_START};
 use crate::preprocessing::divergence::find_baseline_for_source;
 use crate::preprocessing::no_reverse::is_no_reverse;
@@ -130,7 +131,20 @@ pub fn template_clean(
     let mid = format!("\n{MARKER_MID}\n");
     let end = format!("\n{MARKER_END}\n");
     let markers = ConflictMarkers::new(&start, &mid, &end);
-    let diff = generate_diff_with_markers(template_src, &tracked, &deployed_str, &markers);
+    // Per-render secrets sidecar: lines whose source-of-truth is a
+    // vault must not participate in the clean filter's reverse-diff.
+    // Without this, a rotated `{{ secret(...) }}` value in the
+    // deployed file would land as a diff that rewrites the template
+    // expression to the literal new value — defeating the
+    // `secret(...)` abstraction. See `secrets.lex` §3.3 +
+    // burgertocow#13. Absent sidecar = empty mask = byte-identical
+    // to pre-Phase-S2 behavior.
+    let secret_ranges = SecretsSidecar::load(fs, paths, &pack, &handler, &filename)?
+        .map(|s| s.secret_line_ranges)
+        .unwrap_or_default();
+    let mask: Vec<Range<usize>> = secret_ranges.iter().map(|r| r.start..r.end).collect();
+    let opts = DiffOptions::new(&markers).with_mask(&mask);
+    let diff = generate_diff_with_markers_opts(template_src, &tracked, &deployed_str, &opts);
 
     if diff.is_empty() {
         // Pure-data edit (only variable values changed) — no

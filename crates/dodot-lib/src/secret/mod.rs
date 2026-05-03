@@ -13,19 +13,23 @@
 //! provider invocations, mode gating per `secrets.lex` §7.4 — live
 //! above the trait, in the `secret()` MiniJinja function.
 
+pub mod bw;
 pub mod error_render;
 pub mod op;
 pub mod pass;
 pub mod provider;
 pub mod registry;
 pub mod secret_string;
+pub mod sops;
 
 #[cfg(test)]
 pub mod test_support;
 
+pub use bw::BwProvider;
 pub use error_render::{preflight, render_probe_outcome};
 pub use op::OpProvider;
 pub use pass::PassProvider;
 pub use provider::{ProbeResult, SecretProvider};
 pub use registry::{split_scheme, SecretRegistry};
 pub use secret_string::SecretString;
+pub use sops::SopsProvider;

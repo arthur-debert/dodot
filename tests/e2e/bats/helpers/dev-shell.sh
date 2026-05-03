@@ -10,15 +10,15 @@
 # Usage:
 #   ./tests/e2e/bats/helpers/dev-shell.sh [fixture-name]
 #
-# Available fixtures (Phase S1):
-#   secrets-pass         pass stub on PATH + initialised store + 4 entries
+# Available fixtures:
+#   secrets-pass         pass stub on PATH + initialised store + 4 entries  (Phase S1)
+#   secrets-bw-stub      bw stub binary on PATH + 4 seeded items            (Phase S2)
 #
 # Future fixtures (will be added by their respective phases):
-#   secrets-sops         sops + age (Phase S1 once sops provider lands)
-#   secrets-age          age whole-file (Phase S2)
-#   secrets-gpg          gpg whole-file (Phase S2)
+#   secrets-sops         sops + age (Phase S2 tier-1 hermetic)
+#   secrets-age          age whole-file (Phase S3)
+#   secrets-gpg          gpg whole-file (Phase S3)
 #   secrets-op-stub      op stub binary on PATH
-#   secrets-bw-stub      bw stub binary on PATH
 #   secrets-op-real      real `op` CLI; needs OP_SERVICE_ACCOUNT_TOKEN
 #   secrets-bw-real      real `bw` CLI; needs BW_CLIENT_ID + BW_CLIENT_SECRET
 #
@@ -64,9 +64,36 @@ Try:
   dodot status
 EOF
         ;;
+    secrets-bw-stub)
+        secrets_bw_stub_setup
+        seed_bw_secret 'gh-token'    'password' 'ghp_fixture_token'
+        seed_bw_secret 'gh-token'    'username' 'debert+dodot'
+        seed_bw_secret 'db'          'password' 'hunter2-from-fixture'
+        seed_bw_secret 'api-key'     'password' 'fixture-api-key'
+        seed_bw_secret 'tls-cert'    'notes'    'fixture-cert-blob'
+        secrets_enable_bw_in_root_config
+        cat <<EOF
+[sandbox: $SANDBOX]
+[fixture: $fixture]
+[bw items seeded:
+  gh-token (password, username),
+  db (password),
+  api-key (password),
+  tls-cert (notes)]
+[\$DOTFILES_ROOT: $DOTFILES_ROOT]
+[\$HOME: $HOME]
+
+Try:
+  bw status
+  bw get password gh-token
+  bw get username gh-token
+  dodot up
+  dodot status
+EOF
+        ;;
     *)
         echo "dev-shell: unknown fixture '$fixture'" >&2
-        echo "Available: secrets-pass" >&2
+        echo "Available: secrets-pass, secrets-bw-stub" >&2
         exit 2
         ;;
 esac

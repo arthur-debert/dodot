@@ -313,9 +313,9 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
 name = "burgertocow-lib"
-version = "0.3.1"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "173222fdaef545c0b3bc3740e5dff2dcc3930187f7909e586ca98001844900d7"
+checksum = "146460cd9e01a70e6193db646d2120a04b2199d86391a0b7b6006ecaf2ecbb8c"
 dependencies = [
  "minijinja",
  "serde",

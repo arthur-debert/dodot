@@ -2,15 +2,13 @@
 # Secrets E2E test helpers — stub provider binaries on PATH plus
 # fixture catalog seeding.
 #
-# Phase S1 ships the `pass` provider as the canonical reference impl
-# (the real `pass` binary is hermetically testable in tier 1 — see
-# `docs/proposals/secrets-testing.lex` §4). The stubs here cover the
-# narrow command shape `crates/dodot-lib/src/secret/pass.rs` calls
-# (`pass version`, `pass show <ref>`) so e2e tests exercise the full
-# `dodot up` integration without requiring `gpg` / a real password
-# store on the host. Same precedent as the brew muzzle pattern (PR
-# dodot#120) — a stub script on PATH, prepended in setup, scrubbed at
-# teardown alongside the rest of $SANDBOX.
+# Phase S1 shipped `pass` (canonical reference impl). Phase S2 adds
+# `bw` (Bitwarden CLI). The stubs cover the narrow command shape
+# each `crates/dodot-lib/src/secret/<provider>.rs` calls so e2e
+# tests exercise the full `dodot up` integration without requiring
+# real CLIs / accounts on the host. Same precedent as the brew
+# muzzle pattern (PR dodot#120) — a stub script on PATH, prepended
+# in setup, scrubbed at teardown alongside the rest of $SANDBOX.
 
 # Set up a stub `pass` binary on PATH plus an initialised
 # `$PASSWORD_STORE_DIR`. The store gets a `.gpg-id` file so the
@@ -118,5 +116,95 @@ enabled = true
 [secret.providers.pass]
 enabled = true
 store_dir = "$PASSWORD_STORE_DIR"
+TOML
+}
+
+# ── bw stub ─────────────────────────────────────────────────────
+
+# Set up a stub `bw` binary on PATH that mimics the surface
+# `crates/dodot-lib/src/secret/bw.rs` calls:
+#   - `bw --version`            → exit 0 with version banner
+#   - `bw status`               → JSON with `status` field
+#   - `bw get <field> <item>`   → resolves from a per-field catalog
+#
+# Each field has its own catalog file under
+# `$SANDBOX/.secrets-stubs/bw-<field>` so the stub doesn't need a
+# multi-column data shape. Tests append entries with
+# `seed_bw_secret <item> <field> <value>`.
+secrets_bw_stub_setup() {
+    local stub_dir="$SANDBOX/.secrets-stubs"
+    mkdir -p "$stub_dir"
+    : > "$stub_dir/bw-status"
+    # Default to "unlocked" — tests that want to exercise the
+    # locked / unauthenticated probe paths overwrite this file.
+    echo 'unlocked' > "$stub_dir/bw-status"
+
+    cat > "$stub_dir/bw" <<'STUB'
+#!/usr/bin/env bash
+# Stub `bw` for dodot e2e tests. Reads catalog files and the
+# sidecar-style status file written by helpers in
+# secrets_stubs.bash.
+DIR="$(dirname "$0")"
+
+case "$1" in
+    --version)
+        echo "2026.4.1-stub"
+        exit 0
+        ;;
+    status)
+        status="$(cat "$DIR/bw-status" 2>/dev/null || echo unlocked)"
+        printf '{"serverUrl":null,"status":"%s"}\n' "$status"
+        exit 0
+        ;;
+    get)
+        field="$2"
+        item="$3"
+        catalog="$DIR/bw-$field"
+        if [[ ! -f "$catalog" ]]; then
+            echo "Not found." >&2
+            exit 1
+        fi
+        line="$(awk -F '\t' -v r="$item" '$1 == r { print $2; found=1; exit } END { exit !found }' "$catalog")"
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+            echo "Not found." >&2
+            exit 1
+        fi
+        printf '%s\n' "$line"
+        exit 0
+        ;;
+    *)
+        echo "bw stub: unsupported command: $1" >&2
+        exit 2
+        ;;
+esac
+STUB
+    chmod +x "$stub_dir/bw"
+    export PATH="$stub_dir:$PATH"
+}
+
+# Append (item, field, value) to the bw stub catalog.
+# Usage: seed_bw_secret "gh-token" "password" "ghp_xyz"
+seed_bw_secret() {
+    local item="$1"
+    local field="$2"
+    local value="$3"
+    printf '%s\t%s\n' "$item" "$value" >> "$SANDBOX/.secrets-stubs/bw-$field"
+}
+
+# Override the bw status the stub reports. Valid: unlocked, locked,
+# unauthenticated. Default is unlocked.
+set_bw_stub_status() {
+    echo "$1" > "$SANDBOX/.secrets-stubs/bw-status"
+}
+
+# Flip the bw provider on in the root .dodot.toml.
+secrets_enable_bw_in_root_config() {
+    cat > "$DOTFILES_ROOT/.dodot.toml" <<TOML
+[secret]
+enabled = true
+
+[secret.providers.bw]
+enabled = true
 TOML
 }
