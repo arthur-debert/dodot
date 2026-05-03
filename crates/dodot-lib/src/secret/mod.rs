@@ -21,6 +21,7 @@ pub mod pass;
 pub mod provider;
 pub mod registry;
 pub mod secret_string;
+pub mod secret_tool;
 pub mod sops;
 
 #[cfg(test)]
@@ -34,4 +35,5 @@ pub use pass::PassProvider;
 pub use provider::{ProbeResult, SecretProvider};
 pub use registry::{split_scheme, SecretRegistry};
 pub use secret_string::SecretString;
+pub use secret_tool::SecretToolProvider;
 pub use sops::SopsProvider;
