@@ -336,6 +336,19 @@ pub struct SecretProvidersSection {
 
     #[config(nested)]
     pub sops: SecretProviderSops,
+
+    #[config(nested)]
+    pub keychain: SecretProviderKeychain,
+
+    /// Note the TOML key here is `secret_tool` (underscore), even
+    /// though the scheme prefix in `secret(...)` references is
+    /// `secret-tool:` (hyphen, matching the binary name). The
+    /// hyphen would be a TOML quoting trap — `[secret.providers.
+    /// secret-tool]` is technically valid TOML but every config
+    /// example would need to quote the key. Underscore in the
+    /// config tree, hyphen in the reference syntax.
+    #[config(nested)]
+    pub secret_tool: SecretProviderSecretTool,
 }
 
 /// `pass` (password-store) provider config.
@@ -377,6 +390,32 @@ pub struct SecretProviderBw {
 pub struct SecretProviderSops {
     /// Whether the `sops:` scheme is registered. Default false —
     /// same opt-in posture as the other providers.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `keychain` (macOS Keychain via `security`) provider config.
+///
+/// macOS-only; on other platforms the provider's `probe()`
+/// surfaces `NotInstalled` with a "use secret-tool instead"
+/// pointer. Default `enabled = false` matches the rest of the
+/// secret providers — opt-in posture.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderKeychain {
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `secret-tool` (freedesktop Secret Service via `secret-tool`)
+/// provider config.
+///
+/// Linux-first; on macOS the provider's `probe()` redirects users
+/// to the `keychain` provider. Default `enabled = false`. The
+/// scheme prefix in references is `secret-tool:` (hyphen) — see
+/// the comment on `SecretProvidersSection::secret_tool` for the
+/// reason the config field uses the underscore form instead.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderSecretTool {
     #[config(default = false)]
     pub enabled: bool,
 }
