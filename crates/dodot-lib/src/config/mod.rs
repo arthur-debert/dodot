@@ -172,6 +172,12 @@ pub struct PreprocessorSection {
 
     #[config(nested)]
     pub template: PreprocessorTemplateSection,
+
+    #[config(nested)]
+    pub age: PreprocessorAgeSection,
+
+    #[config(nested)]
+    pub gpg: PreprocessorGpgSection,
 }
 
 /// Template preprocessor settings.
@@ -202,6 +208,56 @@ pub struct PreprocessorTemplateSection {
     /// (e.g. `"complex-config.toml.tmpl"`, `"*.gen.tmpl"`).
     #[config(default = [])]
     pub no_reverse: Vec<String>,
+}
+
+/// `age` whole-file decryption preprocessor settings
+/// (`docs/proposals/secrets.lex` §4).
+///
+/// Default-disabled so a fresh dodot install never shells out to
+/// `age` against random files; users opt in by flipping `enabled =
+/// true` in their root `.dodot.toml`. The identity path defaults to
+/// `~/.config/age/identity.txt` (the conventional `age-keygen`
+/// destination); set explicitly when storing keys elsewhere or
+/// rotating identities per-pack.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorAgeSection {
+    /// Whether `*.age` files are matched and decrypted on `dodot
+    /// up`. Default false — opt-in posture mirrors the
+    /// `[secret.providers.*]` blocks.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// File extensions that trigger age decryption. Same shape as
+    /// `template.extensions`; multi-extension config is mostly
+    /// useful for users whose conventions diverge (e.g. `.age.txt`).
+    #[config(default = ["age"])]
+    pub extensions: Vec<String>,
+
+    /// Path to the age identity file. Empty (the default) defers to
+    /// the runtime: `$AGE_IDENTITY` env var, then
+    /// `~/.config/age/identity.txt`.
+    #[config(default = "")]
+    pub identity: String,
+}
+
+/// `gpg` whole-file decryption preprocessor settings
+/// (`docs/proposals/secrets.lex` §4).
+///
+/// Same opt-in posture as `age`. gpg picks up its identity from
+/// gpg-agent so there's no `identity` field — auth is the user's
+/// existing gpg setup, not dodot's job to configure.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorGpgSection {
+    /// Whether `*.gpg` / `*.asc` files are matched and decrypted on
+    /// `dodot up`. Default false — opt-in.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// File extensions that trigger gpg decryption. Default covers
+    /// both binary-armored (`.gpg`) and ASCII-armored (`.asc`)
+    /// forms; the same `gpg --decrypt` call handles both.
+    #[config(default = ["gpg", "asc"])]
+    pub extensions: Vec<String>,
 }
 
 /// Shell-init profiling settings. Root-only — per-pack overrides are

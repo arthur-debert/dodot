@@ -258,7 +258,7 @@ impl Default for PreprocessorRegistry {
 /// registry and `secret(...)` calls in templates surface a config-
 /// pointing render error.
 pub fn default_registry(
-    template_config: &crate::config::PreprocessorTemplateSection,
+    preprocessor_config: &crate::config::PreprocessorSection,
     secret_config: &crate::config::SecretSection,
     pather: &dyn crate::paths::Pather,
     command_runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
@@ -271,6 +271,7 @@ pub fn default_registry(
     let mut registry = PreprocessorRegistry::new();
     registry.register(Box::new(unarchive::UnarchivePreprocessor::new()));
 
+    let template_config = &preprocessor_config.template;
     let mut tpl = template::TemplatePreprocessor::new(
         template_config.extensions.clone(),
         template_config.vars.clone(),
@@ -278,7 +279,11 @@ pub fn default_registry(
     )?;
 
     let secret_registry = if secret_config.enabled {
-        build_secret_registry(secret_config, command_runner, pather.dotfiles_root())
+        build_secret_registry(
+            secret_config,
+            Arc::clone(&command_runner),
+            pather.dotfiles_root(),
+        )
     } else {
         None
     };
@@ -288,6 +293,33 @@ pub fn default_registry(
     }
 
     registry.register(Box::new(tpl));
+
+    // Whole-file secret preprocessors per `secrets.lex` §4 — opt-in
+    // via `[preprocessor.age|gpg] enabled = true`. Off by default so
+    // a fresh install never shells out to `age` / `gpg` on random
+    // files. Identity for age comes from config first; an empty
+    // string defers to the runtime defaults (`from_env`).
+    if preprocessor_config.age.enabled {
+        let identity_str = preprocessor_config.age.identity.trim();
+        let pp = if identity_str.is_empty() {
+            age::AgePreprocessor::from_env(Arc::clone(&command_runner))
+        } else {
+            age::AgePreprocessor::new(
+                Arc::clone(&command_runner),
+                std::path::PathBuf::from(identity_str),
+                preprocessor_config.age.extensions.clone(),
+            )
+        };
+        registry.register(Box::new(pp));
+    }
+
+    if preprocessor_config.gpg.enabled {
+        registry.register(Box::new(gpg::GpgPreprocessor::new(
+            Arc::clone(&command_runner),
+            preprocessor_config.gpg.extensions.clone(),
+        )));
+    }
+
     Ok((registry, secret_registry))
 }
 
@@ -445,6 +477,96 @@ mod tests {
 
         // Non-preprocessor files still return None
         assert!(registry.find_for_file("regular.txt").is_none());
+    }
+
+    /// Stand-in `CommandRunner` for `default_registry` tests — the
+    /// preprocessors are constructed but never invoked, so any
+    /// runner that satisfies the trait works.
+    struct NoopRunner;
+    impl crate::datastore::CommandRunner for NoopRunner {
+        fn run(&self, _: &str, _: &[String]) -> Result<crate::datastore::CommandOutput> {
+            unreachable!("default_registry tests do not invoke runners")
+        }
+    }
+
+    fn make_default_registry(
+        preprocessor: crate::config::PreprocessorSection,
+    ) -> PreprocessorRegistry {
+        let env = crate::testing::TempEnvironment::builder().build();
+        let secret = crate::config::SecretSection {
+            enabled: false,
+            providers: crate::config::SecretProvidersSection {
+                pass: crate::config::SecretProviderPass {
+                    enabled: false,
+                    store_dir: String::new(),
+                },
+                op: crate::config::SecretProviderOp { enabled: false },
+                bw: crate::config::SecretProviderBw { enabled: false },
+                sops: crate::config::SecretProviderSops { enabled: false },
+            },
+        };
+        let runner: std::sync::Arc<dyn crate::datastore::CommandRunner> =
+            std::sync::Arc::new(NoopRunner);
+        let (reg, _) =
+            default_registry(&preprocessor, &secret, env.paths.as_ref(), runner).unwrap();
+        reg
+    }
+
+    fn empty_preprocessor_section() -> crate::config::PreprocessorSection {
+        crate::config::PreprocessorSection {
+            enabled: true,
+            template: crate::config::PreprocessorTemplateSection {
+                extensions: vec!["tmpl".into()],
+                vars: Default::default(),
+                no_reverse: Vec::new(),
+            },
+            age: crate::config::PreprocessorAgeSection {
+                enabled: false,
+                extensions: vec!["age".into()],
+                identity: String::new(),
+            },
+            gpg: crate::config::PreprocessorGpgSection {
+                enabled: false,
+                extensions: vec!["gpg".into(), "asc".into()],
+            },
+        }
+    }
+
+    #[test]
+    fn default_registry_does_not_register_age_or_gpg_when_disabled() {
+        // The opt-in posture from `secrets.lex` §4.1 — without
+        // explicit config flips, neither age nor gpg is registered
+        // and `*.age` / `*.gpg` files in a pack flow through as
+        // regular files (deployed verbatim, no decryption).
+        let reg = make_default_registry(empty_preprocessor_section());
+        assert!(reg.find_for_file("id_ed25519.age").is_none());
+        assert!(reg.find_for_file("Brewfile.gpg").is_none());
+        assert!(reg.find_for_file("notes.asc").is_none());
+        // Sanity: template + unarchive are still registered (the
+        // pre-S3 default set).
+        assert!(reg.find_for_file("config.toml.tmpl").is_some());
+        assert!(reg.find_for_file("bin.tar.gz").is_some());
+    }
+
+    #[test]
+    fn default_registry_registers_age_when_enabled() {
+        let mut pre = empty_preprocessor_section();
+        pre.age.enabled = true;
+        pre.age.identity = "/k/id.txt".into();
+        let reg = make_default_registry(pre);
+        let pp = reg.find_for_file("id_ed25519.age").unwrap();
+        assert_eq!(pp.name(), "age");
+    }
+
+    #[test]
+    fn default_registry_registers_gpg_when_enabled_for_both_extensions() {
+        let mut pre = empty_preprocessor_section();
+        pre.gpg.enabled = true;
+        let reg = make_default_registry(pre);
+        let gpg_pp = reg.find_for_file("Brewfile.gpg").unwrap();
+        assert_eq!(gpg_pp.name(), "gpg");
+        let asc_pp = reg.find_for_file("notes.txt.asc").unwrap();
+        assert_eq!(asc_pp.name(), "gpg");
     }
 
     #[test]
