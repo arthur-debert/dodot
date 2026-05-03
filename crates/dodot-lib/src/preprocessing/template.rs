@@ -405,6 +405,7 @@ impl Preprocessor for TemplatePreprocessor {
             tracked_render: Some(tracked_str),
             context_hash: Some(self.context_hash),
             secret_line_ranges,
+            deploy_mode: None,
         }])
     }
 }

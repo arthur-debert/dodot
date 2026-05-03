@@ -107,6 +107,15 @@ pub struct ExpandedFile {
     /// is wired in. The pipeline persists this as a sidecar JSON
     /// alongside the baseline.
     pub secret_line_ranges: Vec<SecretLineRange>,
+    /// Unix mode the rendered datastore file should be chmod'd to
+    /// after the pipeline writes it. `None` (the default) leaves
+    /// the file at whatever umask-derived mode `write_file` produced
+    /// — the pre-S3 behavior for templates / unarchive output.
+    /// Whole-file secret preprocessors (`age`, `gpg`) set this to
+    /// `Some(0o600)` to enforce `secrets.lex` §4.3: rendered
+    /// secrets land 0600 regardless of the source file's mode.
+    /// Ignored when `is_dir` is true.
+    pub deploy_mode: Option<u32>,
 }
 
 /// The core preprocessor abstraction.

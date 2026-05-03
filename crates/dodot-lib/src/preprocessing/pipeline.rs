@@ -531,12 +531,25 @@ pub fn preprocess_pack(
                     &virtual_relative.to_string_lossy(),
                 )?
             } else {
-                datastore.write_rendered_file(
+                let path = datastore.write_rendered_file(
                     &pack.name,
                     PREPROCESSED_HANDLER,
                     &virtual_relative.to_string_lossy(),
                     &expanded.content,
-                )?
+                )?;
+                // Whole-file secret preprocessors (age / gpg) emit
+                // `deploy_mode = Some(0o600)` per `secrets.lex`
+                // §4.3. The datastore's `write_rendered_file` lands
+                // bytes at the umask default; we tighten here so the
+                // deployed plaintext is unreadable to other users
+                // even briefly between write and chmod under the
+                // umask. Ignored for files without an explicit
+                // `deploy_mode` (templates, unarchive output) —
+                // those keep pre-S3 behavior.
+                if let Some(mode) = expanded.deploy_mode {
+                    fs.set_permissions(&path, mode)?;
+                }
+                path
             };
 
             debug!(
@@ -1699,6 +1712,72 @@ mod tests {
     }
 
     #[test]
+    fn deploy_mode_some_chmods_rendered_file_to_specified_mode() {
+        // Pin the §4.3 contract: a preprocessor that emits
+        // `deploy_mode = Some(0o600)` (the age / gpg providers do)
+        // sees the rendered datastore file land at exactly mode
+        // 0600. The default-None case is covered by every other
+        // existing pipeline test (templates / unarchive pass
+        // through with umask defaults).
+        use std::os::unix::fs::PermissionsExt;
+
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("secret.opaque", "src")
+            .done()
+            .build();
+
+        let mut registry = PreprocessorRegistry::new();
+        registry.register(Box::new(ScriptedPreprocessor {
+            name: "opaque-with-mode",
+            extension: ".opaque",
+            outputs: vec![crate::preprocessing::ExpandedFile {
+                relative_path: PathBuf::from("secret"),
+                content: b"plaintext".to_vec(),
+                is_dir: false,
+                deploy_mode: Some(0o600),
+                ..Default::default()
+            }],
+            ..Default::default()
+        }));
+
+        let datastore = make_datastore(&env);
+        let pack = make_pack("app", env.dotfiles_root.join("app"));
+
+        let entries = vec![PackEntry {
+            relative_path: "secret.opaque".into(),
+            absolute_path: env.dotfiles_root.join("app/secret.opaque"),
+            is_dir: false,
+        }];
+
+        preprocess_pack(
+            entries,
+            &registry,
+            &pack,
+            env.fs.as_ref(),
+            &datastore,
+            env.paths.as_ref(),
+            crate::preprocessing::PreprocessMode::Active,
+            false,
+        )
+        .unwrap();
+
+        // The rendered file lives at the standard preprocessed path.
+        let rendered = env
+            .paths
+            .data_dir()
+            .join("packs/app")
+            .join(PREPROCESSED_HANDLER)
+            .join("secret");
+        assert!(rendered.exists(), "rendered file should exist");
+        let mode = std::fs::metadata(&rendered).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            mode, 0o600,
+            "deploy_mode = Some(0o600) must produce a 0600 file, got {mode:o}"
+        );
+    }
+
+    #[test]
     fn rejects_parent_dir_escape_from_preprocessor() {
         let env = TempEnvironment::builder()
             .pack("app")
@@ -2062,6 +2141,7 @@ mod tests {
                 tracked_render: Some("name = \u{1e}rendered\u{1f}".into()),
                 context_hash: Some([0xab; 32]),
                 secret_line_ranges: Vec::new(),
+                deploy_mode: None,
             }],
             ..Default::default()
         }));
@@ -2134,6 +2214,7 @@ mod tests {
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
                 secret_line_ranges: Vec::new(),
+                deploy_mode: None,
             }],
             ..Default::default()
         }));
@@ -2228,6 +2309,7 @@ mod tests {
             tracked_render: Some("FIRST".into()),
             context_hash: Some([1; 32]),
             secret_line_ranges: Vec::new(),
+            deploy_mode: None,
         }];
         let outputs_second = vec![crate::preprocessing::ExpandedFile {
             relative_path: PathBuf::from("config.toml"),
@@ -2236,6 +2318,7 @@ mod tests {
             tracked_render: Some("SECOND".into()),
             context_hash: Some([2; 32]),
             secret_line_ranges: Vec::new(),
+            deploy_mode: None,
         }];
 
         let datastore = make_datastore(&env);
@@ -2541,6 +2624,7 @@ mod tests {
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
                 secret_line_ranges: Vec::new(),
+                deploy_mode: None,
             }],
             supports_reverse_merge: true,
         }));
@@ -2605,6 +2689,7 @@ mod tests {
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
                 secret_line_ranges: Vec::new(),
+                deploy_mode: None,
             }],
             supports_reverse_merge: true,
         }));
@@ -2669,6 +2754,7 @@ mod tests {
                 tracked_render: Some("x".into()),
                 context_hash: Some([0; 32]),
                 secret_line_ranges: Vec::new(),
+                deploy_mode: None,
             }],
             supports_reverse_merge: true,
         }));
