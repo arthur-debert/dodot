@@ -49,7 +49,11 @@ impl GpgPreprocessor {
     }
 
     pub fn from_env(runner: Arc<dyn CommandRunner>) -> Self {
-        Self::new(runner, vec!["gpg".into(), "asc".into()])
+        // Default to `["gpg"]` only. `.asc` is conventionally used
+        // for armored public keys / detached signatures, not
+        // encrypted payloads — opt in via config when your repo
+        // bucks that convention.
+        Self::new(runner, vec!["gpg".into()])
     }
 }
 
@@ -90,7 +94,11 @@ impl Preprocessor for GpgPreprocessor {
         // so stderr stays focused on real failures. The default
         // homedir / agent socket is used; the user's normal gpg
         // configuration applies.
-        let out = self.runner.run(
+        //
+        // `run_bytes` (not `run`) so binary plaintext (PGP-encrypted
+        // tarballs, binary key material) round-trips verbatim. See
+        // the matching note in `age.rs::expand`.
+        let out = self.runner.run_bytes(
             "gpg",
             &[
                 "--decrypt".into(),
@@ -156,7 +164,7 @@ impl Preprocessor for GpgPreprocessor {
         let stripped = self.stripped_name(&filename);
         Ok(vec![ExpandedFile {
             relative_path: PathBuf::from(stripped),
-            content: out.stdout.into_bytes(),
+            content: out.stdout,
             is_dir: false,
             tracked_render: None,
             context_hash: None,

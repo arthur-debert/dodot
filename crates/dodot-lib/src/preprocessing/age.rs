@@ -119,7 +119,12 @@ impl Preprocessor for AgePreprocessor {
     }
 
     fn expand(&self, source: &Path, _fs: &dyn Fs) -> Result<Vec<ExpandedFile>> {
-        let out = self.runner.run(
+        // `run_bytes` (not `run`) so binary plaintext (raw key
+        // blobs, X.509 DER certs) round-trips verbatim. The
+        // `String::from_utf8_lossy` decode in the line-buffered
+        // `run` path corrupts non-UTF-8 bytes — fatal for
+        // whole-file secrets.
+        let out = self.runner.run_bytes(
             "age",
             &[
                 "--decrypt".into(),
@@ -182,7 +187,7 @@ impl Preprocessor for AgePreprocessor {
         let stripped = self.stripped_name(&filename);
         Ok(vec![ExpandedFile {
             relative_path: PathBuf::from(stripped),
-            content: out.stdout.into_bytes(),
+            content: out.stdout,
             is_dir: false,
             tracked_render: None,
             context_hash: None,
@@ -256,6 +261,68 @@ mod tests {
             stderr: stderr.into(),
         })
     }
+
+    /// A scripted runner whose `run_bytes` returns canned raw-byte
+    /// responses (so binary tests can pin verbatim round-trip).
+    /// `run` is unimplemented — the only call site we exercise is
+    /// `run_bytes`.
+    type ScriptedBytesResponse = (
+        String,
+        Vec<String>,
+        std::result::Result<crate::datastore::CommandOutputBytes, String>,
+    );
+    struct ScriptedBytesRunner {
+        responses: Mutex<Vec<ScriptedBytesResponse>>,
+    }
+    impl ScriptedBytesRunner {
+        fn new() -> Self {
+            Self {
+                responses: Mutex::new(Vec::new()),
+            }
+        }
+        fn expect(
+            self,
+            exe: impl Into<String>,
+            args: Vec<String>,
+            response: std::result::Result<crate::datastore::CommandOutputBytes, String>,
+        ) -> Self {
+            self.responses
+                .lock()
+                .unwrap()
+                .push((exe.into(), args, response));
+            self
+        }
+    }
+    impl CommandRunner for ScriptedBytesRunner {
+        fn run(&self, _exe: &str, _args: &[String]) -> Result<CommandOutput> {
+            unreachable!("ScriptedBytesRunner only supports run_bytes")
+        }
+        fn run_bytes(
+            &self,
+            exe: &str,
+            args: &[String],
+        ) -> Result<crate::datastore::CommandOutputBytes> {
+            let mut r = self.responses.lock().unwrap();
+            if r.is_empty() {
+                return Err(DodotError::Other(format!(
+                    "ScriptedBytesRunner: unexpected `{exe} {args:?}`"
+                )));
+            }
+            let (e, a, out) = r.remove(0);
+            assert_eq!(exe, e);
+            assert_eq!(args, a.as_slice());
+            out.map_err(DodotError::Other)
+        }
+    }
+    fn ok_bytes(
+        stdout: &[u8],
+    ) -> std::result::Result<crate::datastore::CommandOutputBytes, String> {
+        Ok(crate::datastore::CommandOutputBytes {
+            exit_code: 0,
+            stdout: stdout.to_vec(),
+            stderr: String::new(),
+        })
+    }
     fn make_pp(runner: Arc<dyn CommandRunner>) -> AgePreprocessor {
         AgePreprocessor::new(runner, PathBuf::from("/k/id.txt"), vec!["age".into()])
     }
@@ -308,11 +375,15 @@ mod tests {
     }
 
     #[test]
-    fn expand_preserves_binary_plaintext_verbatim() {
-        // Non-UTF-8 plaintext (a binary key blob) flows through
-        // intact; the preprocessor never tries to decode the bytes.
-        let raw = vec![0u8, 1, 2, 0xff, 0xfe, b'\n'];
-        let runner = Arc::new(ScriptedRunner::new().expect(
+    fn expand_preserves_binary_plaintext_verbatim_via_run_bytes() {
+        // Non-UTF-8 plaintext (a raw binary key blob) flows
+        // through intact via `run_bytes`. The earlier `run` path
+        // would have decoded stdout via `String::from_utf8_lossy`
+        // and replaced 0xff / 0xfe with U+FFFD, corrupting
+        // round-tripped bytes. Pin that the preprocessor goes
+        // through `run_bytes` and the bytes survive verbatim.
+        let raw = vec![0u8, 1, 2, 0xff, 0xfe, b'\n', 0x80, 0xc0];
+        let runner = Arc::new(ScriptedBytesRunner::new().expect(
             "age",
             vec![
                 "--decrypt".into(),
@@ -320,18 +391,13 @@ mod tests {
                 "/k/id.txt".into(),
                 "/pack/key.age".into(),
             ],
-            Ok(CommandOutput {
-                exit_code: 0,
-                stdout: String::from_utf8_lossy(&raw).into_owned(),
-                stderr: String::new(),
-            }),
+            ok_bytes(&raw),
         ));
         let p = make_pp(runner);
         let out = p.expand(Path::new("/pack/key.age"), &null_fs()).unwrap();
-        // String::from_utf8_lossy may have replaced bytes; what
-        // matters is that the path-and-mode wiring is correct.
         assert_eq!(out[0].deploy_mode, Some(0o600));
         assert_eq!(out[0].relative_path, PathBuf::from("key"));
+        assert_eq!(out[0].content, raw, "raw bytes must round-trip verbatim");
     }
 
     #[test]

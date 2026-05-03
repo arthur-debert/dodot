@@ -248,15 +248,22 @@ pub struct PreprocessorAgeSection {
 /// existing gpg setup, not dodot's job to configure.
 #[derive(Config, Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessorGpgSection {
-    /// Whether `*.gpg` / `*.asc` files are matched and decrypted on
+    /// Whether `*.gpg` files are matched and decrypted on
     /// `dodot up`. Default false — opt-in.
     #[config(default = false)]
     pub enabled: bool,
 
-    /// File extensions that trigger gpg decryption. Default covers
-    /// both binary-armored (`.gpg`) and ASCII-armored (`.asc`)
-    /// forms; the same `gpg --decrypt` call handles both.
-    #[config(default = ["gpg", "asc"])]
+    /// File extensions that trigger gpg decryption. Default
+    /// `["gpg"]` only. **Do not include `asc` here unless your
+    /// dotfiles repo only stores ASCII-armored *encrypted*
+    /// payloads under that suffix.** `.asc` is conventionally used
+    /// for armored *public keys* and *detached signatures* (release
+    /// signatures, package-manager keys), neither of which gpg
+    /// will decrypt; routing them through `gpg --decrypt` produces
+    /// confusing failures. Users storing armored encrypted
+    /// payloads as `.asc` opt in by setting
+    /// `extensions = ["gpg", "asc"]` explicitly.
+    #[config(default = ["gpg"])]
     pub extensions: Vec<String>,
 }
 

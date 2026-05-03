@@ -100,6 +100,24 @@ pub trait DataStore: Send + Sync {
         content: &[u8],
     ) -> Result<PathBuf>;
 
+    /// Like [`write_rendered_file`], but applies `mode` atomically
+    /// at file-creation time so the rendered bytes never live on
+    /// disk under a more permissive mode (per `secrets.lex` §4.3
+    /// for whole-file `age` / `gpg` plaintext). Default impl
+    /// falls back to `write_rendered_file` followed by an
+    /// `Fs::set_permissions` chmod — semantically equivalent but
+    /// briefly leaves the file at the umask-default mode; real
+    /// impls should override with the atomic
+    /// `Fs::write_file_with_mode` path.
+    fn write_rendered_file_with_mode(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+        content: &[u8],
+        mode: u32,
+    ) -> Result<PathBuf>;
+
     /// Creates a directory (mkdir -p) inside the datastore and returns
     /// its absolute path. Used for preprocessor-expanded directory
     /// entries (e.g. directory markers from tar archives).
@@ -118,6 +136,33 @@ pub trait DataStore: Send + Sync {
 /// mock that records calls without spawning processes.
 pub trait CommandRunner: Send + Sync {
     fn run(&self, executable: &str, arguments: &[String]) -> Result<CommandOutput>;
+
+    /// Variant of [`Self::run`] that returns stdout as raw bytes.
+    /// Required for callers that decrypt binary payloads through a
+    /// subprocess (whole-file `age` / `gpg` preprocessors per
+    /// `secrets.lex` §4) — `String::from_utf8_lossy` on the
+    /// `run` path corrupts non-UTF-8 plaintext, so SSH binary
+    /// keys / X.509 DER certs / kubeconfig blobs would round-trip
+    /// to disk with replacement characters.
+    ///
+    /// Stderr stays a `String` because diagnostic text is
+    /// human-readable in every shipped provider; if a future
+    /// caller emits non-UTF-8 stderr we'll add a bytes variant
+    /// then.
+    ///
+    /// Default impl converts a `run()` result by re-encoding the
+    /// `String` stdout as bytes — that's safe (UTF-8 is a strict
+    /// subset of bytes) but does *not* recover bytes lost to
+    /// `from_utf8_lossy` upstream. Real impls (`ShellCommandRunner`)
+    /// must override and read stdout as raw bytes from the start.
+    fn run_bytes(&self, executable: &str, arguments: &[String]) -> Result<CommandOutputBytes> {
+        let out = self.run(executable, arguments)?;
+        Ok(CommandOutputBytes {
+            exit_code: out.exit_code,
+            stdout: out.stdout.into_bytes(),
+            stderr: out.stderr,
+        })
+    }
 }
 
 /// Output from a command execution.
@@ -125,6 +170,17 @@ pub trait CommandRunner: Send + Sync {
 pub struct CommandOutput {
     pub exit_code: i32,
     pub stdout: String,
+    pub stderr: String,
+}
+
+/// Output from a command execution where stdout is held as raw
+/// bytes — used by [`CommandRunner::run_bytes`] for callers that
+/// must preserve binary payloads (whole-file decryption via age /
+/// gpg, etc.).
+#[derive(Debug, Clone)]
+pub struct CommandOutputBytes {
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
     pub stderr: String,
 }
 
@@ -322,6 +378,101 @@ impl CommandRunner for ShellCommandRunner {
         }
 
         Ok(CommandOutput {
+            exit_code,
+            stdout: stdout_buf,
+            stderr: stderr_text,
+        })
+    }
+
+    /// Override of the default trait impl: reads stdout as raw
+    /// bytes (no `from_utf8_lossy` decode), so binary payloads
+    /// from age / gpg whole-file decryption survive verbatim.
+    /// Stderr is still buffered as text via the same drainer
+    /// pattern `run` uses — gpg and age both emit
+    /// human-readable diagnostics.
+    fn run_bytes(&self, executable: &str, arguments: &[String]) -> Result<CommandOutputBytes> {
+        use std::io::{Read, Write};
+        use std::process::{Command, Stdio};
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+
+        let mut child = Command::new(executable)
+            .args(arguments)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| crate::DodotError::CommandFailed {
+                command: format_command_for_display(executable, arguments),
+                exit_code: -1,
+                stderr: e.to_string(),
+            })?;
+
+        let mut stdout_pipe = child
+            .stdout
+            .take()
+            .expect("piped stdout missing after spawn");
+        let stderr_pipe = child
+            .stderr
+            .take()
+            .expect("piped stderr missing after spawn");
+
+        let stderr_buf = Arc::new(Mutex::new(String::new()));
+        let stderr_thread = {
+            let buf = stderr_buf.clone();
+            thread::spawn(move || {
+                let mut s = String::new();
+                let mut reader = std::io::BufReader::new(stderr_pipe);
+                let _ = std::io::Read::read_to_string(&mut reader, &mut s);
+                if let Ok(mut guard) = buf.lock() {
+                    guard.push_str(&s);
+                }
+            })
+        };
+
+        // Read stdout as raw bytes on the main thread. No
+        // line-by-line passthrough / status-line parsing here —
+        // those are install-script ergonomics and have no place in
+        // a binary-payload pipe.
+        let mut stdout_buf: Vec<u8> = Vec::new();
+        if let Err(e) = stdout_pipe.read_to_end(&mut stdout_buf) {
+            // Surface the IO error, but still wait for the child
+            // so we don't leak a zombie.
+            let _ = child.wait();
+            let _ = stderr_thread.join();
+            return Err(crate::DodotError::CommandFailed {
+                command: format_command_for_display(executable, arguments),
+                exit_code: -1,
+                stderr: e.to_string(),
+            });
+        }
+
+        let _ = stderr_thread.join();
+        let stderr_text = stderr_buf.lock().expect("stderr buf poisoned").clone();
+
+        let status = child.wait().map_err(|e| crate::DodotError::CommandFailed {
+            command: format_command_for_display(executable, arguments),
+            exit_code: -1,
+            stderr: e.to_string(),
+        })?;
+        let exit_code = status.code().unwrap_or(-1);
+
+        if !status.success() && !stderr_text.is_empty() && !self.verbose {
+            // Mirror `run`'s "surface stderr on failure when not
+            // verbose" pattern so a quiet failure is still
+            // debuggable.
+            let host_stderr = std::io::stderr();
+            let mut h = host_stderr.lock();
+            let _ = h.write_all(stderr_text.as_bytes());
+            if !stderr_text.ends_with('\n') {
+                let _ = writeln!(h);
+            }
+        }
+
+        // Note: unlike `run`, we don't return `Err` on non-zero
+        // exit. Whole-file preprocessors do their own exit-code
+        // mapping (see `age.rs` / `gpg.rs`) and need to inspect
+        // exit_code + stderr to surface actionable hints.
+        Ok(CommandOutputBytes {
             exit_code,
             stdout: stdout_buf,
             stderr: stderr_text,

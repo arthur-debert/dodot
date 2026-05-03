@@ -491,7 +491,19 @@ pub fn preprocess_pack(
             // up` does. Without this, status would re-render and
             // overwrite the user's edited deployed file silently.
             let mut skip_path: Option<PathBuf> = None;
-            if !force && !expanded.is_dir && expanded.tracked_render.is_some() {
+            // Divergence-guard gate: fires for any preprocessor
+            // that produces a single file we can hash against the
+            // baseline. Templates use `tracked_render` (so they
+            // also get reverse-merge); whole-file secret
+            // preprocessors (`age` / `gpg`) signal participation
+            // via `deploy_mode = Some(0o600)`. `secrets.lex` §4.4
+            // is explicit that whole-file secrets must NOT have
+            // their deployed plaintext silently overwritten on the
+            // next `dodot up` — even though there's no auto-merge
+            // path, the §6.4 preservation contract still applies.
+            let participates_in_divergence_guard =
+                expanded.tracked_render.is_some() || expanded.deploy_mode.is_some();
+            if !force && !expanded.is_dir && participates_in_divergence_guard {
                 match check_divergence(
                     fs,
                     paths,
@@ -530,26 +542,29 @@ pub fn preprocess_pack(
                     PREPROCESSED_HANDLER,
                     &virtual_relative.to_string_lossy(),
                 )?
-            } else {
-                let path = datastore.write_rendered_file(
+            } else if let Some(mode) = expanded.deploy_mode {
+                // Whole-file secret preprocessors (age / gpg) emit
+                // `deploy_mode = Some(0o600)` per `secrets.lex`
+                // §4.3. Use the atomic create-with-mode datastore
+                // path so the plaintext bytes never sit on disk
+                // under a permissive mode — closes the race window
+                // between `write_file` (lands at umask default,
+                // typically 0644) and `set_permissions` that the
+                // first cut had.
+                datastore.write_rendered_file_with_mode(
                     &pack.name,
                     PREPROCESSED_HANDLER,
                     &virtual_relative.to_string_lossy(),
                     &expanded.content,
-                )?;
-                // Whole-file secret preprocessors (age / gpg) emit
-                // `deploy_mode = Some(0o600)` per `secrets.lex`
-                // §4.3. The datastore's `write_rendered_file` lands
-                // bytes at the umask default; we tighten here so the
-                // deployed plaintext is unreadable to other users
-                // even briefly between write and chmod under the
-                // umask. Ignored for files without an explicit
-                // `deploy_mode` (templates, unarchive output) —
-                // those keep pre-S3 behavior.
-                if let Some(mode) = expanded.deploy_mode {
-                    fs.set_permissions(&path, mode)?;
-                }
-                path
+                    mode,
+                )?
+            } else {
+                datastore.write_rendered_file(
+                    &pack.name,
+                    PREPROCESSED_HANDLER,
+                    &virtual_relative.to_string_lossy(),
+                    &expanded.content,
+                )?
             };
 
             debug!(
@@ -580,18 +595,25 @@ pub fn preprocess_pack(
             // branch only runs in `PreprocessMode::Active`. Passive
             // commands take the early-return at the top of the
             // function and never reach this code.
-            if let (false, Some(tracked), false) = (
-                expanded.is_dir,
-                expanded.tracked_render.as_deref(),
-                was_skipped,
-            ) {
+            // Baseline-write gate: write whenever the divergence
+            // guard would fire next time, so the guard has data to
+            // compare against. Templates supply `tracked_render`
+            // (which both unlocks reverse-merge and seeds the
+            // baseline); whole-file secrets supply `deploy_mode`
+            // (no marker stream — `tracked_render = None` — but
+            // rendered_hash is still meaningful for divergence
+            // detection per `secrets.lex` §4.4).
+            let should_write_baseline = !expanded.is_dir
+                && !was_skipped
+                && (expanded.tracked_render.is_some() || expanded.deploy_mode.is_some());
+            if should_write_baseline {
                 let cache_filename = cache_filename_for(&virtual_relative);
                 let source_bytes = fs.read_file(&entry.absolute_path)?;
                 let baseline = Baseline::build(
                     &entry.absolute_path,
                     &expanded.content,
                     &source_bytes,
-                    Some(tracked),
+                    expanded.tracked_render.as_deref(),
                     expanded.context_hash.as_ref(),
                 );
                 if let Err(err) =

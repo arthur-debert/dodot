@@ -36,6 +36,31 @@ api_url = "https://example.invalid/v1"'
     assert_file_contains "$HOME/.config/config/secrets.toml" 'api_url'
 }
 
+@test "gpg preprocessor preserves an edited deployed file on the next dodot up" {
+    # `secrets.lex` §4.4: with the §6.4 divergence guard, a user
+    # who hand-edited the deployed plaintext (without re-encrypting
+    # the source) must NOT have that edit silently overwritten on
+    # the next `dodot up`. Phase S3's whole-file secrets opt into
+    # the guard via `deploy_mode = Some(0o600)`.
+    seed_gpg_encrypted_file "config" "secrets.toml" 'token = "ORIGINAL"'
+    secrets_enable_gpg_in_root_config
+
+    run dodot up
+    [ "$status" -eq 0 ]
+    local rendered="$XDG_DATA_HOME/dodot/packs/config/preprocessed/secrets.toml"
+    assert_file_contains "$rendered" 'token = "ORIGINAL"'
+
+    # User edits the deployed plaintext directly (forgot to
+    # re-encrypt — common rotation mistake).
+    echo 'token = "USER_EDITED"' > "$rendered"
+
+    # Next `dodot up` must preserve the edit, not clobber it.
+    run dodot up
+    [ "$status" -eq 0 ]
+    assert_file_contains "$rendered" 'USER_EDITED'
+    assert_output_contains "preserved"
+}
+
 @test "gpg preprocessor enforces mode 0600 on the rendered datastore file" {
     seed_gpg_encrypted_file "vault" "secret" "private-data"
     secrets_enable_gpg_in_root_config
@@ -60,10 +85,12 @@ api_url = "https://example.invalid/v1"'
     }
 }
 
-@test "gpg preprocessor decrypts ASCII-armored *.asc files identically" {
-    # The same `gpg --decrypt` call handles both forms — pin that
-    # the .asc extension routes to the same preprocessor and the
-    # rendered output is byte-identical to the .gpg path.
+@test "gpg preprocessor decrypts ASCII-armored *.asc files when explicitly enabled" {
+    # `.asc` is conventionally used for armored *public keys* and
+    # *detached signatures*, not encrypted payloads — so it's no
+    # longer in the default extension list. Users whose repos do
+    # store encrypted artifacts as `.asc` opt in by setting
+    # `extensions = ["gpg", "asc"]` explicitly.
     local plaintext='private notes'
     local out="$DOTFILES_ROOT/notes/secret.txt.asc"
     mkdir -p "$(dirname "$out")"
@@ -71,7 +98,11 @@ api_url = "https://example.invalid/v1"'
         gpg --encrypt --armor --recipient "$GPG_RECIPIENT" \
             --batch --trust-model always --output "$out" 2>/dev/null
 
-    secrets_enable_gpg_in_root_config
+    cat > "$DOTFILES_ROOT/.dodot.toml" <<'TOML'
+[preprocessor.gpg]
+enabled = true
+extensions = ["gpg", "asc"]
+TOML
 
     run dodot up
     [ "$status" -eq 0 ]
