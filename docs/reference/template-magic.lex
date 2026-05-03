@@ -158,7 +158,7 @@ Template Magic
 
 5. Opting Out
 
-    Three opt-out levels (in addition to the standard `[mappings] skip = [...]`):
+    Three opt-out levels (in addition to the standard `[mappings] ignore = [...]` for silent drop, or `[mappings] skip = [...]` for visible-but-undeployed):
 
     5.1. Disable preprocessing entirely
 

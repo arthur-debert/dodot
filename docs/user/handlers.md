@@ -1,6 +1,6 @@
 # Handlers
 
-A handler is the thing that decides what to do with a file in your pack. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, run install scripts once, or install Brewfiles. dodot ships with five handlers, and most users never need to think about them — the defaults match common dotfile conventions.
+A handler is the thing that decides what to do with a file in your pack. Each handler has exactly one job: link configs, source shell scripts, add directories to `$PATH`, run install scripts once, install Brewfiles, or filter files out of dispatch entirely. dodot ships with seven handlers, and most users never need to think about them — the defaults match common dotfile conventions.
 
 This document is your reference for what each handler claims by default, what it does, and how to configure it. For the conceptual overview (matching model, execution order, why handlers look the way they do), see [the reference](../reference/handlers.lex).
 
@@ -8,13 +8,15 @@ This document is your reference for what each handler claims by default, what it
 
 These are the file patterns each handler claims by default. Anything not matched here flows to `symlink`.
 
-| Handler  | Claims by default                                                                     | What happens                                            |
-| -------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| homebrew | `Brewfile`                                                                            | `brew bundle` once per content hash                     |
-| install  | `install.sh`, `install.bash`, `install.zsh`                                           | Script runs once per content hash                       |
-| path     | `bin/` (directory)                                                                    | Directory prepended to `$PATH`                          |
+| Handler  | Claims by default                                                                            | What happens                                            |
+| -------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| ignore   | (empty by default)                                                                           | Drop silently — same contract as `.gitignore`           |
+| skip     | `README*`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `AUTHORS*`, `NOTICE*`, `COPYING*`      | List in `dodot status` as `skipped`; do not deploy      |
+| homebrew | `Brewfile`                                                                                   | `brew bundle` once per content hash                     |
+| install  | `install.sh`, `install.bash`, `install.zsh`                                                  | Script runs once per content hash                       |
+| path     | `bin/` (directory)                                                                           | Directory prepended to `$PATH`                          |
 | shell    | `aliases.{sh,bash,zsh}`, `profile.{sh,bash,zsh}`, `login.{sh,bash,zsh}`, `env.{sh,bash,zsh}` | File sourced at shell login                             |
-| symlink  | Anything else (catchall)                                                              | File or directory linked to `~/.config/<pack>/` or `~/` |
+| symlink  | Anything else (catchall)                                                                     | File or directory linked to `~/.config/<pack>/` or `~/` |
 
 Override any of these in `.dodot.toml` under `[mappings]`. Handler patterns are fully replaceable; you cannot, however, add a brand-new handler from config — the handler list itself is fixed.
 
@@ -31,7 +33,16 @@ shell    = [
     "env.sh",     "env.bash",     "env.zsh",
 ]
 homebrew = "Brewfile"
-skip     = []
+ignore   = []
+skip     = [
+    "README", "README.*",
+    "LICENSE", "LICENSE.*",
+    "CHANGELOG", "CHANGELOG.*",
+    "CONTRIBUTING", "CONTRIBUTING.*",
+    "AUTHORS", "AUTHORS.*",
+    "NOTICE", "NOTICE.*",
+    "COPYING", "COPYING.*",
+]
 ```
 
 Run `dodot config gen -o .dodot.toml` to write a fully-commented starter.
@@ -40,15 +51,16 @@ Run `dodot config gen -o .dodot.toml` to write a fully-commented starter.
 
 Within a single pack, handlers run in this fixed order:
 
-1. **homebrew** — install packages first, so anything later can depend on them.
-2. **install** — run user setup scripts after `brew` is available.
-3. **path** — stage `bin/` onto `$PATH` before shell init reads it.
-4. **shell** — source shell startup files, which may reference binaries from `path`.
-5. **symlink** — catchall, runs last so precise handlers claim their files first.
+1. **ignore / skip** (filter phase) — drop matched files before any deploying handler can claim them.
+2. **homebrew** — install packages first, so anything later can depend on them.
+3. **install** — run user setup scripts after `brew` is available.
+4. **path** — stage `bin/` onto `$PATH` before shell init reads it.
+5. **shell** — source shell startup files, which may reference binaries from `path`.
+6. **symlink** — catchall, runs last so precise handlers claim their files first.
 
 Across packs, dodot processes packs in lexicographic order of their on-disk directory names. For the small handful of cases where pack ordering matters (Homebrew shellenv before anything that calls `brew`, `compinit` after completion plugins), name your directories with a numeric prefix: `010-brew`, `100-zsh`, `900-starship`. The prefix is invisible to user-facing surfaces — `010-nvim/init.lua` deploys to `~/.config/nvim/init.lua`, not `~/.config/010-nvim/`.
 
-## The Five Handlers
+## The Seven Handlers
 
 ### symlink
 
@@ -228,12 +240,47 @@ Handlers fall into two categories:
 
 This split is why `--no-provision` exists. On a daily basis you want fast `dodot up` runs that re-link configuration without re-running multi-second `brew bundle` calls; on a fresh machine you want everything to run.
 
-## Skipping Files
+## Keeping Files Out of Handler Dispatch
 
-Two ways to keep a file out of handler dispatch:
+### ignore (filter)
 
-- **`[pack] ignore`** — glob patterns excluded from pack discovery and file scanning. Matching files are invisible to every handler. The defaults (`.git`, `node_modules`, `.DS_Store`, `*.swp`, …) cover version-control noise and editor swapfiles.
-- **`[mappings] skip`** — patterns excluded only from handler dispatch. The file is still discovered (it shows up in pack listings) but no handler processes it. Useful for documentation, READMEs, scratch files in a pack.
+Claims matches and drops them silently — same contract as `.gitignore`. No entry in `dodot status`, no executable intent. Configured via `[mappings] ignore` (default empty). Useful for build artifacts, scratch files, anything you don't want dodot to know about.
+
+```toml
+[mappings]
+ignore = ["*.bak", "scratch.txt"]
+```
+
+### skip (filter)
+
+Claims matches, surfaces them in `dodot status` as `skipped`, but produces no executable intent — `dodot up` will not deploy them. Configured via `[mappings] skip`. The defaults cover the common documentation and legal files that packs ship alongside real config:
+
+```
+README, README.*, LICENSE, LICENSE.*, CHANGELOG, CHANGELOG.*,
+CONTRIBUTING, CONTRIBUTING.*, AUTHORS, AUTHORS.*, NOTICE, NOTICE.*,
+COPYING, COPYING.*
+```
+
+Matched case-insensitively against the basename. Override per-pack with `skip = []` to deploy a `README` intentionally, or replace the list to use your own conventions.
+
+```toml
+# pack-local: deploy our README, but skip TODO.md
+[mappings]
+skip = ["TODO.md"]
+```
+
+### Choosing between them
+
+| You want…                                     | Use                            |
+| --------------------------------------------- | ------------------------------ |
+| The file invisible to dodot                   | `[mappings] ignore` (or `[pack] ignore`) |
+| The file visible in `dodot status`, undeployed | `[mappings] skip`              |
+| The whole pack ignored                        | `.dodotignore` marker file     |
+| The file invisible during pack scanning       | `[pack] ignore`                |
+
+`[pack] ignore` is the broadest hammer — its glob patterns are excluded from pack discovery and file scanning entirely, so matched files never become candidates for any handler. The defaults (`.git`, `node_modules`, `.DS_Store`, `*.swp`, …) cover version-control noise and editor swapfiles. `[mappings] ignore` and `[mappings] skip` operate one layer down: the file is discovered, but a filter handler claims it before any deploying handler sees it.
+
+When both `ignore` and `skip` could match, `ignore` wins (it's higher priority) — a file the user said to drop is dropped, full stop.
 
 To skip an *entire pack*, drop a `.dodotignore` marker file in that pack's directory.
 
