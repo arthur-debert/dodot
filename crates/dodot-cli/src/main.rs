@@ -233,6 +233,8 @@ static TEMPLATE_ENTRIES: &[(&str, &str)] = &[
         "git-install-alias.jinja",
         render::TEMPLATE_GIT_INSTALL_ALIAS,
     ),
+    ("secret-probe.jinja", render::TEMPLATE_SECRET_PROBE),
+    ("secret-list.jinja", render::TEMPLATE_SECRET_LIST),
 ];
 
 fn build_app() -> App {
@@ -337,6 +339,14 @@ fn build_app() -> App {
             "git-install-alias",
         )
         .expect("register git-install-alias")
+        .command(
+            "secret.probe",
+            handlers::secret_probe_handler,
+            "secret-probe",
+        )
+        .expect("register secret.probe")
+        .command("secret.list", handlers::secret_list_handler, "secret-list")
+        .expect("register secret.list")
         .command_groups(vec![
             CommandGroup {
                 title: "Core".into(),
@@ -732,6 +742,26 @@ fn build_clap_command() -> ClapCommand {
                     ClapCommand::new("status").about(
                         "Show the current state of every cached preprocessed file (synced / \
                          output-changed / input-changed / both / missing). Read-only.",
+                    ),
+                ),
+        )
+        .subcommand(
+            ClapCommand::new("secret")
+                .about("Inspect secret providers and template references (Phase S5)")
+                .subcommand_required(true)
+                .arg_required_else_help(true)
+                .subcommand(
+                    ClapCommand::new("probe").about(
+                        "Run probe() on every configured provider and report each \
+                         outcome. Read-only. Always exits 0 — even a failing provider \
+                         lineup isn't an error here, just information.",
+                    ),
+                )
+                .subcommand(
+                    ClapCommand::new("list").about(
+                        "Enumerate every `secret(...)` call across the repo's \
+                         templates. Read-only. Useful before the first `dodot up` \
+                         to inventory which providers a repo needs.",
                     ),
                 ),
         )

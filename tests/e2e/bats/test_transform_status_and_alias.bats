@@ -36,6 +36,30 @@ name = "Alice"'
     assert_output_contains "synced"
 }
 
+@test "transform status surfaces secret references from sidecar (Phase S5)" {
+    # When a baseline has a `<baseline>.secret.json` sidecar from
+    # a prior `dodot up` that resolved `secret(...)` calls,
+    # `transform status` lists those references inline so users
+    # can see WHICH secrets each baseline depends on without
+    # re-rendering. Uses the pass stub from helpers/secrets_stubs.bash.
+    load helpers/secrets_stubs
+    secrets_pass_stub_setup
+    seed_pass_secret 'test/db_password' 'hunter2'
+    secrets_enable_pass_in_root_config
+
+    create_pack "app"
+    create_pack_file "app" "config.toml.tmpl" 'pw = "{{ secret("pass:test/db_password") }}"'
+
+    run dodot up
+    [ "$status" -eq 0 ]
+
+    run dodot transform status
+    [ "$status" -eq 0 ]
+    # The sidecar reference shows up under the parent row.
+    assert_output_contains "secret:"
+    assert_output_contains "pass:test/db_password"
+}
+
 @test "transform status reports output_changed when deployed file diverges" {
     # Edit the rendered file post-up; status surfaces output_changed
     # without running the reverse-merge engine (purely informational).

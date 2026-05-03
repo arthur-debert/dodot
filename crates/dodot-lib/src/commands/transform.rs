@@ -143,6 +143,17 @@ pub struct TransformStatusEntry {
     /// see in `transform check`.
     #[serde(rename = "state")]
     pub state: String,
+    /// References this file resolved through `secret(...)` on its
+    /// last successful render. Populated from
+    /// `<baseline>.secret.json` (per `secrets.lex` §3.3); empty
+    /// when the file has no sidecar (which is also the common
+    /// case for templates that don't use secrets, and for
+    /// pre-Phase-S1 baselines that pre-date sidecar tracking).
+    /// Phase S5 surfaces this in the rendered status so users can
+    /// see *which* secret references each baseline depends on
+    /// without re-rendering. JSON consumers see the same field.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub secret_references: Vec<String>,
 }
 
 /// Aggregate result of `dodot transform status` — one row per
@@ -197,6 +208,27 @@ pub fn status(ctx: &ExecutionContext) -> Result<TransformStatusResult> {
                     "missing_deployed"
                 }
             };
+            // Sidecar reads are best-effort: a parse error
+            // shouldn't fail the whole status report, just leave
+            // this row's secret_references empty. The user can
+            // re-render to fix the sidecar via `dodot up
+            // --force` separately.
+            let secret_references = crate::preprocessing::baseline::SecretsSidecar::load(
+                ctx.fs.as_ref(),
+                ctx.paths.as_ref(),
+                &r.pack,
+                &r.handler,
+                &r.filename,
+            )
+            .ok()
+            .flatten()
+            .map(|s| {
+                s.secret_line_ranges
+                    .into_iter()
+                    .map(|range| range.reference)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
             TransformStatusEntry {
                 pack: r.pack,
                 handler: r.handler,
@@ -204,6 +236,7 @@ pub fn status(ctx: &ExecutionContext) -> Result<TransformStatusResult> {
                 source_path: render_path(&r.source_path, ctx.paths.home_dir()),
                 deployed_path: render_path(&r.deployed_path, ctx.paths.home_dir()),
                 state: state_str.to_string(),
+                secret_references,
             }
         })
         .collect();
@@ -1134,6 +1167,77 @@ mod tests {
         assert_eq!(result.synced_count, 1);
         assert_eq!(result.diverged_count, 0);
         assert_eq!(result.missing_count, 0);
+    }
+
+    #[test]
+    fn status_surfaces_secret_references_from_sidecar() {
+        // Phase S5: a baseline with a sidecar exposes the
+        // resolved references in `transform status`. The
+        // user can see WHICH secrets each baseline depends on
+        // without re-rendering.
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        // Drop a sidecar next to the baseline. (In production
+        // the renderer writes this; tests can build it
+        // directly since the file shape is stable.)
+        let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(vec![
+            crate::preprocessing::SecretLineRange {
+                start: 0,
+                end: 1,
+                reference: "pass:test/db_password".into(),
+            },
+            crate::preprocessing::SecretLineRange {
+                start: 2,
+                end: 3,
+                reference: "op://Personal/api/token".into(),
+            },
+        ]);
+        sidecar
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        assert_eq!(result.entries.len(), 1);
+        assert_eq!(
+            result.entries[0].secret_references,
+            vec![
+                "pass:test/db_password".to_string(),
+                "op://Personal/api/token".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn status_returns_empty_secret_references_when_no_sidecar() {
+        // Default state: a template that doesn't use secrets
+        // has no sidecar, so `secret_references` is the empty
+        // vec. The serde `skip_serializing_if = "Vec::is_empty"`
+        // attribute means JSON consumers don't see the field at
+        // all in this case — pin the rust-side state too.
+        let env = TempEnvironment::builder().build();
+        deploy_template(
+            &env,
+            "app",
+            "config.toml.tmpl",
+            "name = {{ name }}\n",
+            "[preprocessor.template.vars]\nname = \"Alice\"\n",
+        );
+        let ctx = make_ctx(&env);
+        let result = status(&ctx).unwrap();
+        assert!(result.entries[0].secret_references.is_empty());
     }
 
     #[test]
