@@ -61,6 +61,26 @@ pub trait Fs: Send + Sync {
     /// Writes `contents` to `path`, creating or truncating the file.
     fn write_file(&self, path: &Path, contents: &[u8]) -> Result<()>;
 
+    /// Writes `contents` to `path`, creating or truncating the file
+    /// **with `mode` applied at creation time** (not via a follow-up
+    /// `chmod`). Used by whole-file secret preprocessors so the
+    /// rendered plaintext never lives at the umask-default mode,
+    /// even briefly — closing the race window between
+    /// `write_file` (lands at e.g. 0644 on a typical 022 umask)
+    /// and `set_permissions` (tightens to 0600). See
+    /// `secrets.lex` §4.3 + the Phase S3 chmod-race review on
+    /// PR #130.
+    ///
+    /// Default impl falls back to `write_file` then
+    /// `set_permissions` so existing `Fs` implementations stay
+    /// correct (semantics-preserving) without forcing an upgrade;
+    /// the production `OsFs` overrides to use `OpenOptions::mode`
+    /// for the atomic version.
+    fn write_file_with_mode(&self, path: &Path, contents: &[u8], mode: u32) -> Result<()> {
+        self.write_file(path, contents)?;
+        self.set_permissions(path, mode)
+    }
+
     /// Creates `path` and all parent directories.
     fn mkdir_all(&self, path: &Path) -> Result<()>;
 
@@ -96,4 +116,28 @@ pub trait Fs: Send + Sync {
 
     /// Sets file permissions (Unix mode).
     fn set_permissions(&self, path: &Path, mode: u32) -> Result<()>;
+
+    /// Returns the modification time of `path` (follows symlinks).
+    /// Used by `dodot refresh` to compare deployed-side mtimes against
+    /// source-side mtimes when deciding whether to touch the source.
+    ///
+    /// **Default implementation panics.** Override in `Fs` impls that
+    /// need mtime support (currently `OsFs`). Provided as a default
+    /// so adding mtime operations doesn't break any existing in-tree
+    /// or downstream `Fs` impl.
+    fn modified(&self, _path: &Path) -> Result<std::time::SystemTime> {
+        unimplemented!("Fs::modified is only implemented by OsFs")
+    }
+
+    /// Sets the modification time of `path` to `time`. Used by
+    /// `dodot refresh` to copy the deployed file's mtime onto the
+    /// template source so git's stat-cache invalidates and the next
+    /// `git status` re-reads the file (invoking the clean filter on
+    /// repos that have it installed).
+    ///
+    /// **Default implementation panics.** Override in `Fs` impls that
+    /// need mtime support (currently `OsFs`).
+    fn set_modified(&self, _path: &Path, _time: std::time::SystemTime) -> Result<()> {
+        unimplemented!("Fs::set_modified is only implemented by OsFs")
+    }
 }

@@ -1,5 +1,8 @@
 Proposal: The Magical Git Experience with Pre Processed Files
 
+    :: note ::
+        **Status: implemented and shipped.** Phases 1, 3, and 4 of this proposal landed in PRs #100 (R1, baseline cache + tracker swap), #101 (R2, conflict markers + safety gate), #102 (R3, `dodot transform check`), #103 (R4, install-hook), #104 (R5, `dodot refresh`), #105 (R6, template clean filter + filter installer + hook upgrade), #106 (R7, `transform status` + `git-show-alias` + `git-install-alias`), and #107 (R8, full-stack e2e). Phase 2 (plist clean/smudge) shipped earlier on its own track per [./plists.lex]. The user-facing reference for the resulting feature lives in [./../reference/template-magic.lex] and [./../reference/pre-processors.lex] §6. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation.
+
 This file is not a feature proposal per se, but the user-facing conceptual document that captures what we see as the ideal design for future dodot — one that lets us uphold our goals and principles while imposing minimal cost on users to make it all work.
 See @../proposals/template-expansion.lex and @../proposals/preprocessing-pipeline.lex for context.
 
@@ -34,7 +37,7 @@ This is a revised version of an earlier draft. Two things changed our thinking. 
     4.1. Representational Transformations
 
         For perfectly revertible transforms, clean and smudge filters are all you need. They can deterministically describe their files, and hence produce correct `git diff` and `git status` output with no ambiguity.
-        Plists are the canonical example: `plutil -convert xml1` and `plutil -convert binary1` round-trip losslessly. Git stores the XML (canonical, diffable); the working tree holds the binary (what the application actually reads). The clean filter converts binary → XML on `git add`; the smudge filter converts XML → binary on `git checkout`. The user never sees the transform happen; `git diff` shows a sensible XML diff of what is otherwise a binary file.
+        Plists are the canonical example: XML and binary round-trip losslessly via the `plist` Rust crate (with recursive dict-key sort applied for byte-stable output). Git stores the canonical XML (diffable); the working tree holds the binary (what the application actually reads). The clean filter converts binary → XML on `git add`; the smudge filter converts XML → binary on `git checkout`. The user never sees the transform happen; `git diff` shows a sensible XML diff of what is otherwise a binary file. The full design lives in [./plists.lex].
         This case is clean, low-risk, and high-value. It's also logically independent of the rest of this proposal, so we plan to ship it on its own track.
 
     4.2. Generative Transformations
@@ -162,7 +165,7 @@ The User Experience
         Ship the preprocessing pipeline, the baseline cache (including the tracked-render field), burgertocow integration, `dodot transform check`, and the pre-commit hook (tier 1 above). At this point, users who adopt preprocessors get correct template-space diffs at commit time with no filter installed. This is the minimum viable magic.
 
     Phase 2: plist clean/smudge.
-        Ship plist support as an independent track — clean/smudge filters for `plutil` conversion, with their own install flow. Doesn't depend on anything in phase 1; can ship in parallel.
+        Ship plist support as an independent track — clean/smudge filters for binary↔canonical-XML conversion (via the `plist` crate, with recursive key sorting), with their own install flow shared with phase 3. Doesn't depend on anything in phase 1; can ship in parallel. Full spec in [./plists.lex].
 
     Phase 3: the template clean filter.
         Layer the clean filter on top of the phase-1 cache. This is the thin wrapper: hash-compare, fast-path, burgertocow on the slow path. The commit-time gate from phase 1 handles conflict markers. Opt-in filter install (the Y/n prompt on first deploy).
@@ -171,3 +174,35 @@ The User Experience
         Ship `dodot git-show-alias` and the install flow for the opt-in tier-2 alias. Purely additive over phase 3.
 
     Re-opening phase 3 or 4 is always possible if the commit-tier magic from phase 1 turns out to be sufficient in practice. We don't think it will be — the pull of `git status` telling the truth is strong — but it's good to know the earlier phases stand on their own if the later ones never ship.
+
+6. Implementation Notes vs. Spec
+
+    The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth:
+
+    6.1. Phased rollout was R0–R8, not Phases 1/3/4
+
+        The phased path that actually shipped was finer-grained: R0 (burgertocow `from_tracked_string` constructor, in the burgertocow repo), R1 (baseline cache + Tracker swap), R2 (conflict markers + safety gate), R3 (`dodot transform check`), R4 (`dodot transform install-hook` + post-up prompt), R5 (`dodot refresh`), R6 (clean filter + filter installer + hook upgrade), R7 (`transform status` + `git-show-alias` + `git-install-alias`), R8 (full-stack e2e). The spec's Phase 1 corresponds roughly to R1–R4, Phase 3 to R5–R6, Phase 4 to R7. R8 was a pure-tests phase that didn't appear in the original spec; R9 was a docs-and-config phase (this update).
+
+    6.2. Hook command shape
+
+        Spec says the pre-commit hook calls `dodot refresh` (Tier 1). The shipped form is two lines: `dodot refresh --quiet || exit 1` followed by `dodot transform check --strict || exit 1`. Splitting refresh and check across two shell statements rather than a single chained command lets users diagnose failure in either step independently from the hook output. The R4 install initially shipped just the strict-check line; R6 added the refresh line and the upgrade path that rewrites stale R4-shape blocks when `install-hook` is re-run.
+
+    6.3. Tier 2 alias supports bash and zsh, errors on others
+
+        Spec proposes "your shell" generally. The shipped form supports bash and zsh; fish/nu/etc. get a clear error from `dodot git-show-alias --shell <unsupported>` pointing at the supported shells, and `Shell::detect()` returns `None` for unsupported `$SHELL` values rather than silently falling back to bash. Users on other shells run `dodot git-show-alias --shell bash` and adapt the snippet manually.
+
+    6.4. `dodot git-install-alias` shipped in R7, not deferred
+
+        Spec §"Interactive-Shell Tier" says `dodot git-show-alias` (print only). R7 shipped both `git-show-alias` and `git-install-alias` (writes to ~/.bashrc or ~/.zshrc with idempotent guard block, mirroring the hook installer's pattern). The user-confirmation step happens through the standard install Y/n/show flow on the next post-`up` prompt rather than a separate consent screen.
+
+    6.5. Per-file `no_reverse` opt-out
+
+        Not in the original spec. R9 added `[preprocessor.template] no_reverse = ["pattern", ...]` for templates whose content is mostly dynamic — burgertocow's heuristic produces more conflict markers than usable diffs on those, so the user opts the file out of reverse-merge while keeping divergence detection. Per-file glob patterns; pack-level `.dodot.toml` overrides root.
+
+    6.6. Consolidated post-`up` install ladder
+
+        The original R4 / R6 install paths shipped as three sequential post-`up` prompts (plist filter, hook, template filter), each with its own Y/n. That violated the §4 promise of "one Y/n to install the clean/smudge filters and the pre-commit hook." Issue #112 tracked the reconciliation; the shipped form is a single Y/n covering whichever rungs apply, with `show` walking each component's preview block individually and `no` dismissing every applicable component at once. Each rung still has its own catalog dismissal key (`template.install_hook`, `plist.install_filters`, `template.install_filter`) so users can resurface a single rung via `dodot prompts reset <key>` after a global "no". The umbrella prompt is `magic.install_ladder`.
+
+    6.7. cfprefsd cache-invalidation prompt
+
+        Not in the original spec. Issue #109 added a separate post-`up` prompt that fires (macOS only) when `dodot up` detects a plist file in any active pack with mtime newer than the previous successful `up`. Offers `killall cfprefsd` so running GUI apps re-read fresh plist values. The detection is mtime-based via a marker file (`<data_dir>/cfprefsd-needs-invalidation`) written by `up` and consumed by the prompt. Catalog key: `plist.cfprefsd_invalidate`. cfprefsd respawns immediately so there's no data-loss window.

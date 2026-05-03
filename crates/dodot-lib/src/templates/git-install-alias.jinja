@@ -1,0 +1,14 @@
+{%- if outcome == "created" -%}
+[message]Created {{ rc_path_display }} with the dodot git alias.[/message]
+{%- elif outcome == "appended" -%}
+[message]Appended dodot git alias to {{ rc_path_display }}[/message]
+  [muted]Existing rc content was preserved.[/muted]
+{%- elif outcome == "updated" -%}
+[message]Updated dodot git alias block in {{ rc_path_display }}[/message]
+  [muted]Existing rc content was preserved; only the managed block was rewritten.[/muted]
+{%- elif outcome == "already_installed" -%}
+[message]Dodot git alias already present in {{ rc_path_display }}[/message]
+  [muted]No change. Re-running this command is safe.[/muted]
+{%- endif %}
+  [muted]To pick it up now, run:[/muted]
+    [usage]{{ source_command }}[/usage]

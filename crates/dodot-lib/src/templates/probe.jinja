@@ -22,7 +22,11 @@
 {% endfor %}
 {%- elif kind == "shell-init" -%}
 [header]Shell-init profile[/header]
-{% if has_profile %}  [dim]run:[/dim] {{ filename }}
+{% if stale %}  [warning]warning:[/warning] this profile was captured at {{ profile_when }} — before
+           your most recent `dodot up` at {{ last_up_when }}. Open a new
+           shell to capture a fresh profile.
+
+{% endif %}{% if has_profile %}  [dim]run:[/dim] {{ filename }}
   [dim]shell:[/dim] {{ shell }}
 
 {% for g in groups %}  [pack-name]{{ g.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ g.handler }}[/handler-symbol] [dim]({{ g.group_total_label }})[/dim]
@@ -41,7 +45,11 @@
   [dim]for intra-file profiling, see `zprof` (zsh) or PS4 tracing (bash).[/dim]
 {%- elif kind == "shell-init-aggregate" -%}
 [header]Shell-init aggregate[/header]
-  [dim]runs:[/dim] {{ runs }}{% if runs != requested_runs %} [warning](requested {{ requested_runs }})[/warning]{% endif %}
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
+
+{% endif %}  [dim]runs:[/dim] {{ runs }}{% if runs != requested_runs %} [warning](requested {{ requested_runs }})[/warning]{% endif %}
 
 {% if rows %}  [dim]{{ "pack" | col(14) }} {{ "handler" | col(8) }} {{ "target" | col(28) }} {{ "p50" | col(10) }} {{ "p95" | col(10) }} {{ "max" | col(10) }} runs[/dim]
 {% for r in rows %}  [pack-name]{{ r.pack | col(14) }}[/pack-name] [handler-symbol]{{ r.handler | col(8) }}[/handler-symbol] {{ r.target | col(28) }} [deployed]{{ r.p50_label | col(10) }}[/deployed] {{ r.p95_label | col(10) }} {{ r.max_label | col(10) }} [dim]{{ r.seen_label }}[/dim]
@@ -51,9 +59,43 @@
   [dim] run `dodot up`, then start a new shell)[/dim]
 {% endif %}{% endif %}
   [dim]profiles dir:[/dim] {{ profiles_dir }}
+{%- elif kind == "shell-init-errors" -%}
+[header]Shell-init errors[/header]
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
+
+{% endif %}  [dim]examined:[/dim] {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %}
+
+{% if targets %}{% for t in targets %}  [pack-name]{{ t.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ t.handler }}[/handler-symbol] [dim]/[/dim] {{ t.display_target }} [error]({{ t.failure_count }} failed)[/error]
+  [dim]{{ t.target }}[/dim]
+{% for r in t.runs %}    {{ r.when | col(18) }} [error]{{ r.duration_label | col(10) }}[/error] [error]exit {{ r.exit_status }}[/error]
+{% for line in r.stderr_lines %}      [dim]>[/dim] [error]{{ line }}[/error]
+{% endfor %}{% endfor %}
+{% endfor %}{% else %}  [deployed](no failed sources in the last {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %})[/deployed]
+{% endif %}  [dim]profiles dir:[/dim] {{ profiles_dir }}
+{%- elif kind == "shell-init-filter" -%}
+[header]Shell-init filter[/header] [pack-name]{{ filter }}[/pack-name]
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
+
+{% endif %}  [dim]examined:[/dim] {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %}
+
+{% if targets %}{% for t in targets %}  [pack-name]{{ t.pack }}[/pack-name] [description]/[/description] [handler-symbol]{{ t.handler }}[/handler-symbol] [dim]/[/dim] {{ t.display_target }}{% if t.failure_count > 0 %} [error]({{ t.failure_count }} failed)[/error]{% endif %}
+  [dim]{{ t.target }}[/dim]
+{% for r in t.runs %}    {{ r.when | col(18) }} [{{ r.status_class }}]{{ r.duration_label | col(10) }}[/{{ r.status_class }}]{% if r.exit_status != 0 %} [error]exit {{ r.exit_status }}[/error]{% else %} [dim]exit 0[/dim]{% endif %}
+{% for line in r.stderr_lines %}      [dim]>[/dim] [error]{{ line }}[/error]
+{% endfor %}{% endfor %}
+{% endfor %}{% else %}  [dim](no entries matched `{{ filter }}` in the last {{ runs_examined }} run{% if runs_examined != 1 %}s{% endif %})[/dim]
+{% endif %}  [dim]profiles dir:[/dim] {{ profiles_dir }}
 {%- elif kind == "shell-init-history" -%}
 [header]Shell-init history[/header]
+{% if stale %}  [warning]warning:[/warning] the most recent run was captured at {{ latest_profile_when }} —
+           before your most recent `dodot up` at {{ last_up_when }}. Open
+           a new shell to capture a fresh profile.
 
+{% endif %}
 {% if rows %}  [dim]{{ "when (UTC)" | col(18) }} {{ "shell" | col(20) }} {{ "total" | col(10) }} {{ "user" | col(10) }} {{ "entries" | col(8) }} fail[/dim]
 {% for r in rows %}  {{ r.when | col(18) }} {{ r.shell | col(20) }} [deployed]{{ r.total_label | col(10) }}[/deployed] {{ r.user_total_label | col(10) }} {{ r.entry_count | string | col(8) }} {% if r.failed_entries > 0 %}[error]{{ r.failed_entries }}[/error]{% else %}[dim]0[/dim]{% endif %}
 {% endfor %}{% else %}{% if profiling_enabled %}  [dim](no profiles yet — open a shell that sources `dodot-init.sh`)[/dim]
@@ -61,4 +103,16 @@
   [dim] run `dodot up`, then start a new shell)[/dim]
 {% endif %}{% endif %}
   [dim]profiles dir:[/dim] {{ profiles_dir }}
+{%- elif kind == "app" -%}
+[header]App-support probe: [pack-name]{{ pack }}[/pack-name][/header]
+{% if not macos %}  [dim](non-macOS host — brew/Spotlight metadata not available; folder existence reflects collapsed app_support_dir)[/dim]
+{% endif %}{% if entries %}{% for e in entries %}  [filename]{{ e.folder }}[/filename] [dim]({{ e.source_rule }})[/dim] {{ e.target_path }} {% if e.target_exists %}[deployed][exists][/deployed]{% else %}[warning][missing][/warning]{% endif %}
+{% if e.cask %}    cask:   [filename]{{ e.cask }}[/filename] [dim](installed)[/dim]
+{% endif %}{% if e.app_bundle %}    app:    [dim]/Applications/{{ e.app_bundle }}[/dim]
+{% endif %}{% if e.bundle_id %}    bundle: [dim]{{ e.bundle_id }}[/dim]
+{% endif %}{% endfor %}{% else %}  [dim](pack has no `_app/`, `force_app`, or `app_aliases` entries)[/dim]
+{% endif %}{% if suggested_adoptions %}
+[header]Suggested sibling adoptions[/header] [dim](from cask zap)[/dim]
+{% for s in suggested_adoptions %}  [dim]{{ s }}[/dim]
+{% endfor %}{% endif %}
 {%- endif -%}

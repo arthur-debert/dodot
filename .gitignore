@@ -18,3 +18,8 @@ temp-images/
 .vscode/
 .claude
 docs/research
+
+# Python bytecode cache (CI / scripts under .github/ may invoke pythons)
+__pycache__/
+*.pyc
+*.pyo

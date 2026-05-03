@@ -1,0 +1,19 @@
+[header]dodot probe deployment-map[/header] — Show the source ↔ deployed-target map.
+
+[desc]Lists every symlink dodot has created: where it lives in the
+filesystem, and which file in your dotfiles repo it points back to.
+Useful when a deployed file is not behaving as expected and you want
+to confirm what is symlinked to what.
+
+Output is one row per symlink, source first, target second.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot probe deployment-map[/usage]
+
+[header]EXAMPLES[/header]
+  [example]dodot probe deployment-map               [dim]# every dodot-owned symlink[/dim]
+  dodot probe deployment-map | grep nvim   [dim]# filter to one pack[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot status[/item]                  [desc]Same data, presented per-pack with status icons[/desc]
+  [item]dodot probe show-data-dir[/item]     [desc]Inspect dodot's internal data directory[/desc]

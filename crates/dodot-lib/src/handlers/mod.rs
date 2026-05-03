@@ -197,6 +197,24 @@ pub trait Handler: Send + Sync {
         fs: &dyn Fs,
     ) -> Result<Vec<HandlerIntent>>;
 
+    /// Soft warnings produced for a set of matches — non-fatal,
+    /// human-readable strings the orchestration surfaces in
+    /// `PackStatusResult.warnings`.
+    ///
+    /// Default empty. The symlink handler overrides this to flag
+    /// `_lib/` entries on non-macOS platforms (per
+    /// `docs/proposals/macos-paths.lex` §4.2): the pack is otherwise
+    /// fine, other entries deploy normally, but the user gets a visible
+    /// "skipped on this platform" notice.
+    fn warnings_for_matches(
+        &self,
+        _matches: &[RuleMatch],
+        _config: &HandlerConfig,
+        _paths: &dyn Pather,
+    ) -> Vec<String> {
+        Vec::new()
+    }
+
     /// Check whether a file has been deployed by this handler.
     fn check_status(
         &self,
@@ -214,6 +232,20 @@ pub trait Handler: Send + Sync {
 pub struct HandlerConfig {
     /// Paths that must be forced to `$HOME` (e.g. `["ssh", "bashrc"]`).
     pub force_home: Vec<String>,
+    /// Paths that must be forced to the app-support root (e.g.
+    /// `["Code", "Cursor"]`). Curated GUI-app folder names whose first
+    /// path segment routes to `<app_support_dir>/<seg>/<rest>` without
+    /// requiring a `_app/` prefix in the pack tree. See
+    /// `docs/proposals/macos-paths.lex` §3.4.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub force_app: Vec<String>,
+    /// Pack-name → app-support folder name rewrites. When the pack
+    /// name appears as a key here, the resolver's default rule routes
+    /// through `<app_support_dir>/<alias>/<rel_path>` instead of
+    /// `$XDG_CONFIG_HOME/<pack>/<rel_path>`. See `app_aliases` in
+    /// `docs/proposals/macos-paths.lex` §3.3.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub app_aliases: std::collections::HashMap<String, String>,
     /// Paths that must not be symlinked (e.g. `[".ssh/id_rsa"]`).
     pub protected_paths: Vec<String>,
     /// Per-file custom symlink target overrides.
@@ -234,6 +266,8 @@ impl Default for HandlerConfig {
     fn default() -> Self {
         Self {
             force_home: Vec::new(),
+            force_app: Vec::new(),
+            app_aliases: std::collections::HashMap::new(),
             protected_paths: Vec::new(),
             targets: std::collections::HashMap::new(),
             auto_chmod_exec: true,
@@ -250,6 +284,25 @@ pub const HANDLER_INSTALL: &str = "install";
 pub const HANDLER_HOMEBREW: &str = "homebrew";
 pub const HANDLER_IGNORE: &str = "ignore";
 pub const HANDLER_SKIP: &str = "skip";
+
+/// Names of all configuration-category handlers in the registry.
+///
+/// Returned in no particular order. Used by `dodot up` to wipe stale
+/// per-pack state before re-applying current source: every successful
+/// `up` for these handlers is equivalent to "down (these handlers) +
+/// up", so a deleted source file no longer leaves an orphan entry.
+///
+/// Code-execution handlers (install, homebrew) are excluded — their
+/// sentinels record "did this run with this content?" and must persist
+/// across re-runs of `up` so install scripts and `brew bundle` aren't
+/// re-executed every time.
+pub fn configuration_handler_names(fs: &dyn Fs) -> Vec<String> {
+    create_registry(fs)
+        .iter()
+        .filter(|(_, h)| h.category() == HandlerCategory::Configuration)
+        .map(|(name, _)| name.clone())
+        .collect()
+}
 
 /// Create the default handler registry.
 ///

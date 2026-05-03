@@ -54,6 +54,36 @@ impl Fs for OsFs {
         fs::write(path, contents).map_err(|e| fs_err(path, e))
     }
 
+    fn write_file_with_mode(&self, path: &Path, contents: &[u8], mode: u32) -> Result<()> {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt;
+        // Open with `mode` set at creation time so the file never
+        // lives at the umask-default mode. Truncates if the file
+        // already exists; mode is applied to a freshly-created
+        // file but NOT to an existing one (POSIX `open(2)`
+        // semantics) — we set it explicitly afterward so
+        // overwriting an existing 0644 file still ends at the
+        // requested mode. The window between the truncating open
+        // and the chmod is narrower than `write_file` +
+        // `set_permissions` because no bytes have been written
+        // yet (no readable plaintext at risk).
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(mode)
+            .open(path)
+            .map_err(|e| fs_err(path, e))?;
+        // Tighten the mode regardless of whether the file already
+        // existed, so the plaintext never sits at a permissive
+        // mode while the bytes are written.
+        let perms = fs::Permissions::from_mode(mode);
+        fs::set_permissions(path, perms).map_err(|e| fs_err(path, e))?;
+        file.write_all(contents).map_err(|e| fs_err(path, e))?;
+        file.sync_all().map_err(|e| fs_err(path, e))?;
+        Ok(())
+    }
+
     fn mkdir_all(&self, path: &Path) -> Result<()> {
         fs::create_dir_all(path).map_err(|e| fs_err(path, e))
     }
@@ -121,6 +151,24 @@ impl Fs for OsFs {
     fn set_permissions(&self, path: &Path, mode: u32) -> Result<()> {
         let perms = fs::Permissions::from_mode(mode);
         fs::set_permissions(path, perms).map_err(|e| fs_err(path, e))
+    }
+
+    fn modified(&self, path: &Path) -> Result<std::time::SystemTime> {
+        fs::metadata(path)
+            .and_then(|m| m.modified())
+            .map_err(|e| fs_err(path, e))
+    }
+
+    fn set_modified(&self, path: &Path, time: std::time::SystemTime) -> Result<()> {
+        // `File::set_modified` (stable since 1.75) needs an existing
+        // file handle. We deliberately open with `.write(true)` (NOT
+        // `.create(true)`, NOT `.truncate(true)`) so we get a handle
+        // to the existing file without touching its content.
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(path)
+            .map_err(|e| fs_err(path, e))?;
+        file.set_modified(time).map_err(|e| fs_err(path, e))
     }
 }
 

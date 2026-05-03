@@ -1,11 +1,53 @@
+//! Path resolution for dodot.
+//!
+//! `Pather` is dodot's single source of truth for *every* filesystem
+//! coordinate the rest of the codebase touches: `$HOME`, the dotfiles
+//! repo root, the XDG data/config/cache directories, and per-pack and
+//! per-handler subdirectories. Two reasons it's a trait, not free
+//! functions:
+//!
+//! 1. **Testability.** Constructing a `Pather` whose roots all live
+//!    under a `tempfile::TempDir` lets every command run end-to-end
+//!    against a real filesystem without ever touching the user's
+//!    actual `$HOME`. The `testing::TempEnvironment` builder does
+//!    exactly this.
+//!
+//! 2. **Centralisation of OS-shaped policy.** The XDG fallback chain,
+//!    the `DOTFILES_ROOT` env-var lookup, and (planned, per
+//!    `docs/proposals/macos-paths.lex`) the macOS `app_support_dir`
+//!    selection all live in one place. The resolver, the symlink
+//!    handler, and `adopt`'s source-path inference all consult the
+//!    same accessors — drift between them is impossible by construction.
+//!
+//! ## Adopt source-root invariants
+//!
+//! The inference function in `commands::adopt::infer` needs *stable
+//! root strings* it can prefix-match against canonicalised source
+//! paths. The accessors exposed here meet two requirements that make
+//! that work safely:
+//!
+//! - `home_dir()` and `xdg_config_home()` return paths that
+//!   `std::fs::canonicalize` resolves to themselves on a real
+//!   filesystem (they're real directories, not synthetic constants).
+//!   This is what makes the `/var` ↔ `/private/var` macOS equivalence
+//!   collapse cleanly when both a source and a root are canonicalised
+//!   before comparison.
+//!
+//! - On the default config (no `XDG_CONFIG_HOME` set), `xdg_config_home()`
+//!   is `home_dir().join(".config")` — i.e. *nested under* `$HOME`.
+//!   Inference must check the more-specific (XDG) root before HOME so
+//!   `~/.config/nvim/init.lua` matches XDG, not "nested under HOME".
+//!   That's enforced by the inference function, not by `Pather`, but
+//!   the nesting shape originates here.
+
 use std::path::{Path, PathBuf};
 
 use crate::Result;
 
 /// Provides all path calculations for dodot.
 ///
-/// Every path that dodot uses -- XDG directories, pack locations,
-/// handler data directories -- is computed through this trait. This
+/// Every path that dodot uses — XDG directories, pack locations,
+/// handler data directories — is computed through this trait. This
 /// keeps path logic centralised and makes testing straightforward:
 /// construct a `Pather` whose directories all live under a temp dir.
 ///
@@ -29,6 +71,21 @@ pub trait Pather: Send + Sync {
     /// XDG config home (e.g. `~/.config`). Used by symlink handler
     /// for subdirectory target mapping.
     fn xdg_config_home(&self) -> &Path;
+
+    /// Application-support root, the third filesystem coordinate the
+    /// symlink resolver understands.
+    ///
+    /// On macOS this resolves to `$HOME/Library/Application Support` by
+    /// default, the canonical home for GUI app config. On Linux and
+    /// other platforms it resolves to `xdg_config_home()` so the `_app/`
+    /// prefix and `app_aliases` route through `~/.config` —
+    /// indistinguishable from `_xdg/` on those platforms but the
+    /// mechanism stays platform-agnostic.
+    ///
+    /// The OS check lives only in [`XdgPatherBuilder::build`]; the
+    /// resolver operates on textual prefixes alone. See
+    /// `docs/proposals/macos-paths.lex` §2.1.
+    fn app_support_dir(&self) -> &Path;
 
     /// Shell scripts directory (e.g. `~/.local/share/dodot/shell`).
     fn shell_dir(&self) -> &Path;
@@ -65,10 +122,95 @@ pub trait Pather: Send + Sync {
         self.data_dir().join("deployment-map.tsv")
     }
 
+    /// Path to a single-line file recording the unix timestamp of the
+    /// most recent successful `dodot up`. Used by `dodot probe
+    /// shell-init` to flag profiles captured before that `up` as stale.
+    /// Absent until the first `up` runs.
+    fn last_up_path(&self) -> PathBuf {
+        self.data_dir().join("last-up-at")
+    }
+
     /// Directory where shell-init profile reports are written, one TSV
     /// per shell start. See `docs/proposals/profiling.lex` §3.1.
     fn probes_shell_init_dir(&self) -> PathBuf {
         self.data_dir().join("probes").join("shell-init")
+    }
+
+    /// On-disk cache for homebrew-cask probe data. One JSON file per
+    /// cask token; TTL-based invalidation. See
+    /// `docs/proposals/macos-paths.lex` §8.2.
+    ///
+    /// Lives under `cache_dir` (not `data_dir`) because the contents are
+    /// rederivable — losing them is fine, the next probe re-runs `brew
+    /// info`. Co-located with future probe caches under `probes/`.
+    fn probes_brew_cache_dir(&self) -> PathBuf {
+        self.cache_dir().join("probes").join("brew")
+    }
+
+    /// Persistent record of prompts the user has dismissed (e.g.
+    /// onboarding hints, install offers). Content-agnostic: callers
+    /// pass opaque keys, the registry just tracks dismissed/active.
+    /// Lives under `data_dir` (not `cache_dir`) because losing it
+    /// would re-prompt the user — preference state, not cache.
+    fn prompts_path(&self) -> PathBuf {
+        self.data_dir().join("prompts.json")
+    }
+
+    /// Per-file baseline cache used by the preprocessing pipeline to
+    /// detect divergence and drive cache-backed reverse-merge.
+    ///
+    /// Layout: `<cache_dir>/preprocessor/<pack>/<handler>/<filename>.json`.
+    /// One JSON file per processed file, written on every successful
+    /// expansion in `dodot up`.
+    ///
+    /// Lives under `cache_dir` because the contents are rederivable —
+    /// losing them just forces the next `dodot up` to re-render and
+    /// re-baseline. See `docs/proposals/preprocessing-pipeline.lex` §5.2.
+    fn preprocessor_baseline_path(&self, pack: &str, handler: &str, filename: &str) -> PathBuf {
+        self.cache_dir()
+            .join("preprocessor")
+            .join(pack)
+            .join(handler)
+            .join(format!("{filename}.json"))
+    }
+
+    /// Per-file secrets sidecar that lives next to the baseline JSON.
+    ///
+    /// Layout: `<cache_dir>/preprocessor/<pack>/<handler>/<filename>.secret.json`.
+    /// Empty / absent when the file's last render contained no
+    /// `secret(...)` calls; populated otherwise. The sidecar carries
+    /// `secret_line_ranges` (start, end, reference) per the schema in
+    /// `docs/proposals/secrets.lex` §3.3 — burgertocow's mask
+    /// (issue arthur-debert/burgertocow#13) reads the line ranges,
+    /// the dry-run preview reads them to render `[SECRET: <ref>]`
+    /// placeholders.
+    ///
+    /// Same lifecycle as the baseline file: rederivable, lives under
+    /// `cache_dir`. The "no migration" guardrail in §3.3 applies —
+    /// pre-secrets baselines simply have no sidecar (treated as
+    /// empty mask), and adding the file is additive.
+    fn preprocessor_secrets_sidecar_path(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+    ) -> PathBuf {
+        self.cache_dir()
+            .join("preprocessor")
+            .join(pack)
+            .join(handler)
+            .join(format!("{filename}.secret.json"))
+    }
+
+    /// Root of the preprocessor baseline cache for a given pack and
+    /// handler — mostly useful for cache-cleanup operations like
+    /// `dodot down` and tests that want to scan an entire handler's
+    /// baselines.
+    fn preprocessor_baseline_dir(&self, pack: &str, handler: &str) -> PathBuf {
+        self.cache_dir()
+            .join("preprocessor")
+            .join(pack)
+            .join(handler)
     }
 }
 
@@ -85,6 +227,7 @@ pub struct XdgPather {
     config_dir: PathBuf,
     cache_dir: PathBuf,
     xdg_config_home: PathBuf,
+    app_support_dir: PathBuf,
     shell_dir: PathBuf,
 }
 
@@ -100,6 +243,7 @@ pub struct XdgPatherBuilder {
     config_dir: Option<PathBuf>,
     cache_dir: Option<PathBuf>,
     xdg_config_home: Option<PathBuf>,
+    app_support_dir: Option<PathBuf>,
 }
 
 impl XdgPatherBuilder {
@@ -130,6 +274,18 @@ impl XdgPatherBuilder {
 
     pub fn xdg_config_home(mut self, path: impl Into<PathBuf>) -> Self {
         self.xdg_config_home = Some(path.into());
+        self
+    }
+
+    /// Override the application-support root.
+    ///
+    /// Tests pin this to a non-default location so prefix matches are
+    /// deterministic across platforms. End users may also flip this
+    /// (typically via the `app_uses_library` config key, which is
+    /// ultimately what wires through here) to opt into Linux-style
+    /// `~/.config` placement on macOS.
+    pub fn app_support_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.app_support_dir = Some(path.into());
         self
     }
 
@@ -166,6 +322,17 @@ impl XdgPatherBuilder {
 
         let shell_dir = data_dir.join("shell");
 
+        // Application-support root: macOS routes to `~/Library/Application Support`,
+        // every other platform falls through to `xdg_config_home`. The OS
+        // branch lives here exclusively; the resolver only sees a path.
+        let app_support_dir = self.app_support_dir.unwrap_or_else(|| {
+            if cfg!(target_os = "macos") {
+                home.join("Library").join("Application Support")
+            } else {
+                xdg_config_home.clone()
+            }
+        });
+
         Ok(XdgPather {
             home,
             dotfiles_root,
@@ -173,6 +340,7 @@ impl XdgPatherBuilder {
             config_dir,
             cache_dir,
             xdg_config_home,
+            app_support_dir,
             shell_dir,
         })
     }
@@ -213,6 +381,10 @@ impl Pather for XdgPather {
 
     fn xdg_config_home(&self) -> &Path {
         &self.xdg_config_home
+    }
+
+    fn app_support_dir(&self) -> &Path {
+        &self.app_support_dir
     }
 
     fn shell_dir(&self) -> &Path {
@@ -372,6 +544,129 @@ mod tests {
             PathBuf::from("/absolute/path")
         );
         assert_eq!(expand_tilde("relative", home), PathBuf::from("relative"));
+    }
+
+    /// Default-XDG nesting: with no explicit `xdg_config_home`, the
+    /// builder defaults to `$HOME/.config`. Adopt's inference relies on
+    /// XDG being checked *before* HOME (longest-prefix wins) precisely
+    /// because of this nesting; pin the layout so a future change that
+    /// flips the default to `$HOME/Library/...` (macOS) or somewhere
+    /// outside HOME forces a deliberate update to the inference rules.
+    #[test]
+    fn default_xdg_config_home_is_nested_under_home() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .data_dir("/u/.local/share/dodot")
+            .config_dir("/u/.config/dodot")
+            .cache_dir("/u/.cache/dodot")
+            // No xdg_config_home set; falls back to env or `$HOME/.config`.
+            .build()
+            .unwrap();
+        // The default fallback (no `XDG_CONFIG_HOME` env) is `$HOME/.config`.
+        // The assertion has to tolerate a user-set `XDG_CONFIG_HOME` since
+        // tests inherit the ambient env — `cargo test` from a developer
+        // shell with the env set would otherwise fail spuriously. The
+        // disjunct below means: either XDG nests under HOME (the default
+        // case the invariant talks about), OR the env override is set
+        // (the user opted out of the default; adopt's inference handles
+        // that case via root canonicalization, separate code path).
+        let xdg = pather.xdg_config_home();
+        let home = pather.home_dir();
+        assert!(
+            xdg.starts_with(home) || std::env::var("XDG_CONFIG_HOME").is_ok(),
+            "default xdg_config_home `{}` is not nested under home `{}` \
+             — adopt's inference assumes XDG ⊆ HOME on the default config; \
+             update both if this changes",
+            xdg.display(),
+            home.display()
+        );
+    }
+
+    /// Explicit `xdg_config_home(...)` takes precedence over env / defaults.
+    /// Critical for the test environment, where adopt-inference tests pin
+    /// XDG to a non-default location so prefix matches are unambiguous.
+    #[test]
+    fn explicit_xdg_config_home_overrides_default() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .xdg_config_home("/somewhere/else/.config")
+            .build()
+            .unwrap();
+        assert_eq!(
+            pather.xdg_config_home(),
+            Path::new("/somewhere/else/.config")
+        );
+    }
+
+    /// Each accessor returns a stable, distinct subdir layout. Adopt's
+    /// auto-create path lands the new pack at `dotfiles_root/<pack>`,
+    /// and the data layer keeps state at `data_dir/packs/<pack>/...`;
+    /// these must not alias.
+    #[test]
+    fn dotfiles_root_and_data_dir_are_distinct_namespaces() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .data_dir("/u/.local/share/dodot")
+            .build()
+            .unwrap();
+        let pack_dir = pather.pack_path("nvim");
+        let pack_data = pather.pack_data_dir("nvim");
+        assert!(
+            !pack_dir.starts_with(&pack_data) && !pack_data.starts_with(&pack_dir),
+            "pack_path `{}` and pack_data_dir `{}` overlap",
+            pack_dir.display(),
+            pack_data.display(),
+        );
+    }
+
+    /// Explicit `app_support_dir(...)` overrides the platform default.
+    /// Tests rely on this to pin the third coordinate at a known
+    /// non-XDG, non-HOME location so the resolver's `_app/` rule has
+    /// somewhere unambiguous to land.
+    #[test]
+    fn explicit_app_support_dir_overrides_default() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .xdg_config_home("/u/.config")
+            .app_support_dir("/u/Library/Application Support")
+            .build()
+            .unwrap();
+        assert_eq!(
+            pather.app_support_dir(),
+            Path::new("/u/Library/Application Support")
+        );
+    }
+
+    /// Default app_support_dir on Linux/non-macOS collapses to xdg_config_home.
+    /// On macOS it points under `$HOME/Library/Application Support`.
+    /// We don't `cfg!` the assertion here because the explicit-builder
+    /// test above pins the override path; this test exercises the
+    /// implicit default and the platform branch together.
+    #[test]
+    fn default_app_support_dir_is_platform_aware() {
+        let pather = XdgPather::builder()
+            .home("/u")
+            .dotfiles_root("/u/dotfiles")
+            .xdg_config_home("/u/.config")
+            .build()
+            .unwrap();
+        if cfg!(target_os = "macos") {
+            assert_eq!(
+                pather.app_support_dir(),
+                Path::new("/u/Library/Application Support"),
+                "macOS default should route under $HOME/Library/Application Support"
+            );
+        } else {
+            assert_eq!(
+                pather.app_support_dir(),
+                pather.xdg_config_home(),
+                "non-macOS default should collapse to xdg_config_home"
+            );
+        }
     }
 
     // Compile-time check: Pather must be object-safe

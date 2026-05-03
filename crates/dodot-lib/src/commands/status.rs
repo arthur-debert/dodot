@@ -289,7 +289,7 @@ fn verify_staged(
         //     if any has been collected. Returns None when profiling is
         //     off, when no profiles exist yet, or when this source has
         //     run cleanly in every recent shell.
-        if let Some((label, reason)) = recent_runtime_failures(source, ctx) {
+        if let Some((label, reason)) = recent_runtime_failures(source, pack, &filename_str, ctx) {
             return Health::DeployedWithError { label, reason };
         }
     }
@@ -303,12 +303,26 @@ fn verify_staged(
 /// `dodot probe shell-init --history`.
 const RUNTIME_FAILURE_WINDOW: usize = 5;
 
+/// Maximum number of stderr characters to inline into the status
+/// footnote. Long stderr (stack traces, dumps) is truncated with an
+/// ellipsis; the user can run `dodot probe shell-init <pack>/<file>`
+/// for the full text.
+const STATUS_STDERR_BUDGET: usize = 240;
+
 /// Look at the last few shell-init profiles for any non-zero exit
 /// status from `source`. Returns `Some((short_label, footnote_body))`
 /// if at least one failure was seen; `None` otherwise (including when
 /// profiling is off, so no profiles exist).
+///
+/// When the most recent failing run also has stderr captured (in its
+/// sibling `errors.log`), the footnote inlines a trimmed excerpt so
+/// the user sees the actual error message without having to chase
+/// down a separate command. The pointer at the bottom of the footnote
+/// directs them to the per-file probe view for the full picture.
 fn recent_runtime_failures(
     source: &std::path::Path,
+    pack: &str,
+    filename: &str,
     ctx: &ExecutionContext,
 ) -> Option<(String, String)> {
     let profiles = crate::probe::shell_init::read_recent_profiles(
@@ -329,6 +343,7 @@ fn recent_runtime_failures(
     let mut runs_seen = 0;
     let mut runs_failed = 0;
     let mut last_failure_exit: Option<i32> = None;
+    let mut last_failure_stderr: Option<String> = None;
     for profile in &profiles {
         if let Some(entry) = profile
             .entries
@@ -340,6 +355,15 @@ fn recent_runtime_failures(
                 runs_failed += 1;
                 if last_failure_exit.is_none() {
                     last_failure_exit = Some(entry.exit_status);
+                    // Pull the matching stderr record, if the run has
+                    // an errors.log sibling. Pre-stderr-capture profiles
+                    // and clean-stderr failures both yield None here.
+                    last_failure_stderr = profile
+                        .errors
+                        .iter()
+                        .find(|er| er.target == target_str)
+                        .map(|er| er.message.trim_end().to_string())
+                        .filter(|s| !s.is_empty());
                 }
             }
         }
@@ -350,11 +374,29 @@ fn recent_runtime_failures(
     }
 
     let label = format!("exited {last_exit} ({runs_failed}/{runs_seen})");
-    let reason = format!(
-        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last failure: exit {last_exit}). \
-         See `dodot probe shell-init --history` for details."
+    let mut reason = format!(
+        "non-zero exit in {runs_failed} of {runs_seen} recent shell startups (last failure: exit {last_exit})."
     );
+    if let Some(stderr) = last_failure_stderr {
+        reason.push_str(" stderr: ");
+        reason.push_str(&truncate_for_footnote(&stderr, STATUS_STDERR_BUDGET));
+    }
+    reason.push_str(&format!(
+        " Run `dodot probe shell-init {pack}/{filename}` for per-run history and full stderr."
+    ));
     Some((label, reason))
+}
+
+/// Trim multi-line stderr to a single-line excerpt that fits the
+/// footnote budget. Newlines become `↵` so the user sees a hint that
+/// more lines exist; over-long messages get an ellipsis.
+fn truncate_for_footnote(stderr: &str, budget: usize) -> String {
+    let one_line = stderr.replace('\n', " ↵ ");
+    if one_line.chars().count() <= budget {
+        return one_line;
+    }
+    let truncated: String = one_line.chars().take(budget).collect();
+    format!("{truncated}…")
 }
 
 /// Run the `status` command: scan packs and verify deployment chain per file.
@@ -412,17 +454,27 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // path (`~/.config.toml.tmpl`) doesn't exist.
         let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
         let preprocess_result = if pack_config.preprocessor.enabled {
-            let registry = crate::preprocessing::default_registry(
-                &pack_config.preprocessor.template,
+            // [secret] is intentionally root-only — see SecretSection docs.
+            let root_config = ctx.config_manager.root_config()?;
+            let (registry, _secret_registry) = crate::preprocessing::default_registry(
+                &pack_config.preprocessor,
+                &root_config.secret,
                 ctx.paths.as_ref(),
+                ctx.command_runner.clone(),
             )?;
             if !registry.is_empty() {
+                // status is a Passive command — never evaluate
+                // templates, never write rendered files or baselines.
+                // See `secrets.lex` §7.4 / issue #121.
                 match crate::preprocessing::pipeline::preprocess_pack(
                     entries,
                     &registry,
                     &pack,
                     ctx.fs.as_ref(),
                     ctx.datastore.as_ref(),
+                    ctx.paths.as_ref(),
+                    crate::preprocessing::PreprocessMode::Passive,
+                    /* force */ false,
                 ) {
                     Ok(r) => r,
                     Err(err) => {
@@ -449,9 +501,12 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // element is the user-facing label that surfaces in any
         // resulting `DisplayConflict.claimants` entry, so it tracks
         // the pack's display name rather than its raw on-disk name.
-        match orchestration::collect_pack_intents(&pack, ctx) {
-            Ok(intents) => {
-                pack_intents.push((pack.display_name.clone(), intents));
+        // status is a Passive command — same §7.4 contract as the
+        // direct preprocess_pack call above.
+        match orchestration::plan_pack(&pack, ctx, crate::preprocessing::PreprocessMode::Passive) {
+            Ok(plan) => {
+                warnings.extend(plan.warnings);
+                pack_intents.push((pack.display_name.clone(), plan.intents));
             }
             Err(err) => {
                 warnings.push(format!(
@@ -471,6 +526,26 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             }
 
             let rel_str = m.relative_path.to_string_lossy().into_owned();
+
+            // Skip rows for `_lib/` entries on non-macOS. Two cases
+            // need to be handled:
+            //
+            // - `_lib/<rest>` files — the resolver returns
+            //   `Resolution::Skip` and the planner drops the intent.
+            // - the top-level `_lib` directory itself — its match
+            //   reaches status but `dir_intents` forces per-file mode
+            //   and every nested file resolves to Skip, so nothing
+            //   under the directory is ever deployed.
+            //
+            // Either way, rendering a "pending symlink" row alongside
+            // the planner's "skipping on this platform" warning would
+            // contradict the warning and mislead users.
+            if m.handler == HANDLER_SYMLINK
+                && !cfg!(target_os = "macos")
+                && (rel_str == "_lib" || rel_str.starts_with("_lib/"))
+            {
+                continue;
+            }
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {

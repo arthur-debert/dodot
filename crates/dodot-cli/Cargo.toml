@@ -1,6 +1,6 @@
 [package]
 name = "dodot"
-version = "0.22.0"
+version = "3.0.0"
 edition = "2021"
 license = "MIT"
 description = "A dotfiles manager that uses symlinks for live editing"
@@ -14,14 +14,49 @@ path = "src/main.rs"
 anyhow = "1"
 clapfig = "0.16"
 clap = { version = "4", features = ["derive"] }
-dodot-lib = { version = "0.22.0", path = "../dodot-lib" }
+dodot-lib = { version = "3.0.0", path = "../dodot-lib" }
 serde = { version = "1", features = ["derive"] }
 inquire = "0.7"
-standout = "7.5"
+# 7.6.2 introduced `RunResult::Error` — required for non-zero exit on
+# handler errors (see arthur-debert/standout#141, arthur-debert/dodot#86).
+standout = "7.6.2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-dodot-lib = { version = "0.22.0", path = "../dodot-lib", features = ["test-utils"] }
+dodot-lib = { version = "3.0.0", path = "../dodot-lib", features = ["test-utils"] }
 tempfile = "3"
+
+# cargo-deb configuration. Driven by `cargo deb -p dodot` in CI.
+# No maintainer scripts (debian/postinst, debian/prerm) — dodot has no
+# `completion --shell X print` CLI to register completions on configure,
+# and no other post-install state to manage. When that lands, add
+# `maintainer-scripts = "debian/"` and the corresponding scripts.
+[package.metadata.deb]
+maintainer = "Arthur Debert <debert@gmail.com>"
+copyright = "2026, Arthur Debert <debert@gmail.com>"
+license-file = ["../../LICENSE", "0"]
+extended-description = """
+dodot is a dotfiles manager that uses symlinks for live editing. Files
+tracked in a dotfiles repo are symlinked into the home directory, so
+edits in either location propagate immediately. Supports shell init
+sourcing, package-list installation, and idempotent up/down operations.
+"""
+section = "utility"
+priority = "optional"
+depends = "$auto"
+assets = [
+    # cargo-deb rewrites `target/release/` to `target/<triple>/release/`
+    # automatically when `--target` is passed (as CI does), so this path
+    # works for both native and cross-compiled builds.
+    ["target/release/dodot", "usr/bin/", "755"],
+    ["../../README.md", "usr/share/doc/dodot/README.md", "644"],
+    ["../../CHANGELOG.md", "usr/share/doc/dodot/CHANGELOG.md", "644"],
+]
+
+# CI builds each architecture separately with --target, so cargo-deb
+# picks up the binary from target/<triple>/release/. The variants exist
+# so cargo-deb tags the .deb with the right `Architecture:` field.
+[package.metadata.deb.variants.amd64]
+[package.metadata.deb.variants.arm64]

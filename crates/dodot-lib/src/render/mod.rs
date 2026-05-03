@@ -109,6 +109,21 @@ group-banner-ignored:
 # to change the look.
 tutorial-prompt:
   italic: true
+
+# CLI help tags. The hand-written --help text in `dodot-cli/src/help/`
+# uses these alongside the semantic tags above. Mirror standout's
+# default help theme so the look matches the rest of dodot's output:
+#   item    — bold (command names, option flags)
+#   desc    — plain (descriptions next to items)
+#   usage   — plain (the usage line)
+#   example — plain (example blocks)
+#   about   — plain (intro / about text)
+item:
+  bold: true
+desc: {}
+usage: {}
+example: {}
+about: {}
 "#;
 
 // ── Templates ───────────────────────────────────────────────────
@@ -130,6 +145,50 @@ pub const TEMPLATE_MESSAGE: &str = include_str!("../templates/message.jinja");
 /// Probe — deployment map, data-dir tree, summary. Branches on the
 /// `kind` field of the serialized result.
 pub const TEMPLATE_PROBE: &str = include_str!("../templates/probe.jinja");
+
+/// Git filter installation snippets (`dodot git-show-filters`).
+pub const TEMPLATE_GIT_FILTERS: &str = include_str!("../templates/git-filters.jinja");
+
+/// Dismissed-prompt registry listing (`dodot prompts list`).
+pub const TEMPLATE_PROMPTS_LIST: &str = include_str!("../templates/prompts-list.jinja");
+
+/// `dodot transform check` per-file action list + optional unresolved-
+/// marker section. See `commands::transform`.
+pub const TEMPLATE_TRANSFORM_CHECK: &str = include_str!("../templates/transform-check.jinja");
+
+/// `dodot transform install-hook` outcome message (created /
+/// appended / already_installed).
+pub const TEMPLATE_TRANSFORM_INSTALL_HOOK: &str =
+    include_str!("../templates/transform-install-hook.jinja");
+
+/// `dodot refresh` per-mode output (default report / quiet / list-paths).
+pub const TEMPLATE_REFRESH: &str = include_str!("../templates/refresh.jinja");
+
+/// `dodot template install-filter` outcome message.
+pub const TEMPLATE_TEMPLATE_INSTALL_FILTER: &str =
+    include_str!("../templates/template-install-filter.jinja");
+
+/// `dodot transform status` per-file state list.
+pub const TEMPLATE_TRANSFORM_STATUS: &str = include_str!("../templates/transform-status.jinja");
+
+/// `dodot git-show-alias` print-for-paste output.
+pub const TEMPLATE_GIT_SHOW_ALIAS: &str = include_str!("../templates/git-show-alias.jinja");
+
+/// `dodot git-install-alias` outcome message.
+pub const TEMPLATE_GIT_INSTALL_ALIAS: &str = include_str!("../templates/git-install-alias.jinja");
+
+/// `dodot secret probe` per-provider state list. Surfaces each
+/// configured provider's `probe()` outcome with the rendered
+/// hint; treats "no providers configured" / "secrets disabled"
+/// as a separate render branch.
+pub const TEMPLATE_SECRET_PROBE: &str = include_str!("../templates/secret-probe.jinja");
+
+/// `dodot secret list` per-reference enumeration. Lists every
+/// `secret(...)` call across the repo's templates with a
+/// per-row warning when the referenced scheme has no provider
+/// enabled in the current config. Independent rollup at the
+/// bottom names schemes with refs but no provider.
+pub const TEMPLATE_SECRET_LIST: &str = include_str!("../templates/secret-list.jinja");
 
 // ── Tutorial step templates ─────────────────────────────────────
 //
@@ -216,6 +275,12 @@ pub fn create_renderer() -> Renderer {
     renderer.add_template("message", TEMPLATE_MESSAGE).unwrap();
     renderer.add_template("probe", TEMPLATE_PROBE).unwrap();
     renderer
+        .add_template("git-filters", TEMPLATE_GIT_FILTERS)
+        .unwrap();
+    renderer
+        .add_template("prompts-list", TEMPLATE_PROMPTS_LIST)
+        .unwrap();
+    renderer
 }
 
 /// Render a template with the given data and output mode.
@@ -238,6 +303,8 @@ pub fn render<T: serde::Serialize>(
         "list" => TEMPLATE_LIST,
         "message" => TEMPLATE_MESSAGE,
         "probe" => TEMPLATE_PROBE,
+        "git-filters" => TEMPLATE_GIT_FILTERS,
+        "prompts-list" => TEMPLATE_PROMPTS_LIST,
         other => {
             return Err(crate::DodotError::Other(format!(
                 "unknown template: {other}"

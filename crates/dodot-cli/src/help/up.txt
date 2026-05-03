@@ -1,0 +1,46 @@
+[header]dodot up[/header] — Deploy packs.
+
+[desc]Reads each pack, claims files according to the handler conventions, and
+materializes the result on disk: symlinks for configs, [item]source[/item] lines
+queued for the shell init script, [item]bin/[/item] directories registered on [item]$PATH[/item],
+and one-shot [item]install[/item] / [item]Brewfile[/item] scripts run when their content has changed.
+
+The pack you deployed yesterday will skip its install script today —
+[item]up[/item] tracks each install / Brewfile by content hash and only re-runs when
+the script changes. Use [item]--provision-rerun[/item] to force a re-run, or
+[item]--no-provision[/item] to skip them entirely on a given run.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot up [OPTIONS] [PACKS...][/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<PACKS>...[/item]   [desc]Packs to deploy. Empty means every discovered pack.[/desc]
+
+[header]OPTIONS[/header]
+  [item]--dry-run[/item]              [desc]Preview the run without making changes[/desc]
+  [item]--no-provision[/item]         [desc]Skip install scripts and Brewfile (still does symlink/shell/path)[/desc]
+  [item]--provision-rerun[/item]      [desc]Force re-run of install / Brewfile even if their content hash matches[/desc]
+  [item]--force[/item]                [desc]Overwrite pre-existing files at target locations[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot up                       [dim]# deploy every discovered pack[/dim]
+  dodot up git nvim              [dim]# deploy specific packs[/dim]
+  dodot up --dry-run             [dim]# show what would change[/dim]
+  dodot up --no-provision        [dim]# skip install scripts and brew[/dim]
+  dodot up --provision-rerun     [dim]# force install / brew to re-run[/dim]
+  dodot up --force git           [dim]# overwrite conflicting target files[/dim][/example]
+
+[header]NOTES[/header]
+  [desc]Configuration handlers ([item]symlink[/item], [item]shell[/item], [item]path[/item]) are idempotent and
+  always run in full. Code-execution handlers ([item]install[/item], [item]homebrew[/item]) are
+  tracked by content-hash sentinels and skip on re-run unless their
+  content has changed.
+
+  After [item]up[/item], shell snippets and PATH additions take effect in shells
+  that re-source the init script. Open a new shell, or source it
+  manually. See [item]dodot init-sh[/item] for the integration line.[/desc]
+
+[header]SEE ALSO[/header]
+  [item]dodot tutorial[/item]   [desc]Walks you through a real [item]dodot up[/item] step by step[/desc]
+  [item]dodot status[/item]     [desc]Inspect what is currently deployed and pending[/desc]
+  [item]dodot down[/item]       [desc]Reverse the deployment for one or more packs[/desc]

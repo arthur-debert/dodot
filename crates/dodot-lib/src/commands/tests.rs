@@ -24,12 +24,53 @@ impl CommandRunner for MockCommandRunner {
     }
 }
 
+/// CommandRunner test double that returns canned outputs per `(exe,
+/// args...)` key. Used by probe::app integration tests so the brew /
+/// mdls / mdfind subprocesses don't actually run.
+struct CannedRunner {
+    responses: std::sync::Mutex<std::collections::HashMap<Vec<String>, CommandOutput>>,
+}
+
+impl CannedRunner {
+    fn new() -> Self {
+        Self {
+            responses: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+    fn respond(&self, args: &[&str], stdout: &str, exit_code: i32) {
+        let key: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        self.responses.lock().unwrap().insert(
+            key,
+            CommandOutput {
+                exit_code,
+                stdout: stdout.into(),
+                stderr: String::new(),
+            },
+        );
+    }
+}
+
+impl CommandRunner for CannedRunner {
+    fn run(&self, exe: &str, args: &[String]) -> Result<CommandOutput> {
+        let mut full = vec![exe.to_string()];
+        full.extend(args.iter().cloned());
+        self.responses
+            .lock()
+            .unwrap()
+            .get(&full)
+            .cloned()
+            .ok_or_else(|| {
+                crate::DodotError::Other(format!("CannedRunner: no canned response for {full:?}"))
+            })
+    }
+}
+
 fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
-    let runner = Arc::new(MockCommandRunner);
+    let runner: Arc<dyn CommandRunner> = Arc::new(MockCommandRunner);
     let datastore = Arc::new(FilesystemDataStore::new(
         env.fs.clone(),
         env.paths.clone(),
-        runner,
+        runner.clone(),
     ));
     let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -39,12 +80,41 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         paths: env.paths.clone() as Arc<dyn Pather>,
         config_manager,
         syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+        command_runner: runner,
         dry_run: false,
         no_provision: true,
         provision_rerun: false,
         force: false,
         view_mode: crate::commands::ViewMode::Full,
         group_mode: crate::commands::GroupMode::Name,
+        verbose: false,
+    }
+}
+
+/// Variant of make_ctx that swaps in a [`CannedRunner`] so probe
+/// tests can exercise the brew/mdls/mdfind enrichment paths without
+/// spawning processes.
+fn make_ctx_with_runner(env: &TempEnvironment, runner: Arc<dyn CommandRunner>) -> ExecutionContext {
+    let datastore = Arc::new(FilesystemDataStore::new(
+        env.fs.clone(),
+        env.paths.clone(),
+        runner.clone(),
+    ));
+    let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
+    ExecutionContext {
+        fs: env.fs.clone() as Arc<dyn Fs>,
+        datastore,
+        paths: env.paths.clone() as Arc<dyn Pather>,
+        config_manager,
+        syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+        command_runner: runner,
+        dry_run: false,
+        no_provision: true,
+        provision_rerun: false,
+        force: false,
+        view_mode: crate::commands::ViewMode::Full,
+        group_mode: crate::commands::GroupMode::Name,
+        verbose: false,
     }
 }
 
@@ -71,6 +141,72 @@ fn status_shows_pending_before_up() {
             file.status, "pending",
             "file {} should be pending",
             file.name
+        );
+    }
+}
+
+/// On non-macOS, `_lib/<rest>` entries resolve to `Resolution::Skip`
+/// in the planner. Status must suppress the corresponding row and
+/// only surface the warning — otherwise the user sees a confusing
+/// "pending symlink" row alongside a "skipping on this platform"
+/// warning. Regression for review feedback on PR #90.
+#[test]
+fn status_suppresses_lib_prefix_rows_when_skipped() {
+    let env = TempEnvironment::builder()
+        .pack("macapps")
+        .file("_lib/LaunchAgents/com.example.foo.plist", "x")
+        .file("regular.toml", "y")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    // The pack is present either way; what we're pinning is the
+    // *file rows*: on non-macOS the `_lib/...` row is suppressed,
+    // on macOS it appears like any other pending symlink.
+    let pack = result
+        .packs
+        .iter()
+        .find(|p| p.name == "macapps")
+        .expect("macapps pack must appear");
+
+    let lib_row = pack
+        .files
+        .iter()
+        .find(|f| f.name.starts_with("_lib/") || f.name == "_lib");
+    let regular_row = pack.files.iter().find(|f| f.name == "regular.toml");
+
+    assert!(
+        regular_row.is_some(),
+        "non-_lib entry must always render; got files {:?}",
+        pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
+
+    if cfg!(target_os = "macos") {
+        assert!(
+            lib_row.is_some(),
+            "on macOS `_lib/` entries should render normally; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+    } else {
+        assert!(
+            lib_row.is_none(),
+            "on non-macOS `_lib/` rows must be suppressed; got files {:?}",
+            pack.files.iter().map(|f| &f.name).collect::<Vec<_>>()
+        );
+        // The warning channel still carries the explanation. The
+        // exact form depends on whether the catchall scanner matched
+        // the top-level `_lib` directory or a nested `_lib/<rest>`
+        // file — either way, the warning mentions `_lib` and the
+        // macOS-only constraint.
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| w.contains("_lib") && w.contains("macOS-only")),
+            "expected a `_lib` macOS-only warning; got {:?}",
+            result.warnings
         );
     }
 }
@@ -537,6 +673,76 @@ fn status_surfaces_runtime_failures_from_recent_profiles() {
         "note should mention most recent failure exit code: {}",
         note.body
     );
+    // The footnote should point users at the per-file probe view (not
+    // `--history`, which only shows aggregate counts).
+    assert!(
+        note.body.contains("dodot probe shell-init vim/aliases.sh"),
+        "note should point at the filtered probe view: {}",
+        note.body
+    );
+}
+
+#[test]
+fn status_inlines_captured_stderr_into_runtime_failure_footnote() {
+    // When a recent failing run also has a sibling errors.log entry,
+    // the status footnote should inline a snippet of the stderr so the
+    // user sees the actual error inline, not just the exit code.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("aliases.sh", "alias vi=vim")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let source_path = env.dotfiles_root.join("vim/aliases.sh");
+    let target = source_path.display().to_string();
+    let probes_dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&probes_dir).unwrap();
+    let prof_name = "profile-1714000003-100-1.tsv";
+    let body = format!(
+        "# dodot shell-init profile v1\n\
+         # shell\tbash 5.0\n\
+         # start_t\t1714000003.000000\n\
+         source\tvim\tshell\t{target}\t1714000003.000100\t1714000003.000900\t1\n\
+         # end_t\t1714000003.001000\n",
+    );
+    env.fs
+        .write_file(&probes_dir.join(prof_name), body.as_bytes())
+        .unwrap();
+    let err_log = format!(
+        "# dodot shell-init errors v1\n@@\t{target}\t1\nzsh: command not found: gpg-agent\n"
+    );
+    env.fs
+        .write_file(
+            &probes_dir.join("profile-1714000003-100-1.errors.log"),
+            err_log.as_bytes(),
+        )
+        .unwrap();
+
+    let result = commands::status::status(None, &ctx).unwrap();
+    let row = result.packs[0]
+        .files
+        .iter()
+        .find(|f| f.name == "aliases.sh")
+        .expect("aliases.sh row missing");
+    let note_idx = row.note_ref.expect("expected note ref") as usize;
+    let note = &result.notes[note_idx - 1];
+    assert!(
+        note.body.contains("stderr:"),
+        "footnote should label the stderr excerpt: {}",
+        note.body
+    );
+    assert!(
+        note.body.contains("zsh: command not found: gpg-agent"),
+        "footnote should inline the captured stderr: {}",
+        note.body
+    );
+    assert!(
+        note.body.contains("dodot probe shell-init vim/aliases.sh"),
+        "footnote should point at the per-file probe view: {}",
+        note.body
+    );
 }
 
 #[test]
@@ -601,6 +807,358 @@ fn up_dry_run_no_changes() {
     for file in &status.packs[0].files {
         assert_eq!(file.status, "pending", "dry run should not deploy");
     }
+}
+
+#[test]
+fn up_dry_run_does_not_write_preprocessing_baselines() {
+    // Baselines anchor "the state of the last successful `up`," so
+    // a dry run — which never executes — must not move that anchor.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let baseline_path = ctx
+        .paths
+        .preprocessor_baseline_path("app", "preprocessed", "config.toml");
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "test precondition: baseline should not exist before any up runs"
+    );
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    let _ = commands::up::up(None, &dry_ctx).unwrap();
+
+    assert!(
+        !ctx.fs.exists(&baseline_path),
+        "dry-run must NOT write a baseline; the cache must remain untouched"
+    );
+}
+
+// ── cfprefsd drift marker (#109) ────────────────────────────
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_writes_cfprefsd_marker_on_first_run_with_plists() {
+    // First-ever `up`: no previous last-up marker, so any plist
+    // file in an active pack counts as "drifted." The marker
+    // must land for the post-up prompt to fire.
+    let env = TempEnvironment::builder()
+        .pack("mac-defaults")
+        .file("com.example.app.plist", "<?xml?><plist></plist>")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        ctx.fs.exists(&marker),
+        "marker should land on the first up that deploys a plist"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_does_not_write_cfprefsd_marker_when_pack_has_no_plists() {
+    // Pack contains no plist files → the cfprefsd prompt has
+    // nothing to invalidate; the marker must stay absent.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        !ctx.fs.exists(&marker),
+        "marker must not appear when no plists are present"
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn up_with_pack_filter_does_not_write_cfprefsd_marker_for_unrelated_pack_plists() {
+    // Pack A contains a plist; pack B has only non-plist files.
+    // Running `dodot up` filtered to pack B must NOT drop the
+    // cfprefsd marker — the user's command didn't touch any plist.
+    let env = TempEnvironment::builder()
+        .pack("mac-defaults")
+        .file("com.example.app.plist", "<?xml?><plist></plist>")
+        .done()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    let filter = vec!["vim".to_string()];
+    commands::up::up(Some(&filter), &ctx).unwrap();
+
+    let marker = ctx.paths.data_dir().join("cfprefsd-needs-invalidation");
+    assert!(
+        !ctx.fs.exists(&marker),
+        "drift detection must respect the pack filter — \
+         a plist in an unrelated pack should not trigger the marker"
+    );
+}
+
+// ── §7.4 passive-command contract (#121) ───────────────────
+
+#[test]
+fn status_does_not_write_to_datastore() {
+    // §7.4: passive commands MUST NOT mutate the datastore.
+    // Running `up` once primes the data dir; running `status`
+    // afterwards must leave that state byte-identical.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
+
+    // Two consecutive status runs must leave data_dir unchanged.
+    commands::status::status(None, &ctx).unwrap();
+    commands::status::status(None, &ctx).unwrap();
+
+    let after = snapshot_dir_contents(&env, env.paths.data_dir());
+    assert_eq!(
+        snapshot, after,
+        "status must be byte-identical to the post-up snapshot — \
+         no datastore writes allowed"
+    );
+}
+
+#[test]
+fn up_dry_run_does_not_write_to_datastore() {
+    // Pin the same §7.4 contract for `up --dry-run`.
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("config.toml.tmpl", "name = {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+    let snapshot = snapshot_dir_contents(&env, env.paths.data_dir());
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.dry_run = true;
+    commands::up::up(None, &dry_ctx).unwrap();
+
+    let after = snapshot_dir_contents(&env, env.paths.data_dir());
+    assert_eq!(
+        snapshot, after,
+        "dry-run must be byte-identical to the post-up snapshot"
+    );
+}
+
+#[test]
+fn install_template_dry_run_emits_correct_sentinel_without_writing_rendered_file() {
+    // The §7.4 unblocker: in Passive mode the rendered file isn't
+    // on disk, so the install handler used to fail to compute its
+    // sentinel. With `rendered_bytes` threaded through, dry-run now
+    // emits a Run intent with the same sentinel as the active path
+    // would — without ever writing the rendered file. (#121)
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    // First up establishes the baseline so Passive mode has
+    // something to read. no_provision = false so the install
+    // handler actually plans Run intents (the default test ctx
+    // suppresses code-execution handlers).
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+    commands::up::up(None, &ctx).unwrap();
+
+    // Capture the active sentinel (it lives in the executed
+    // RunCommand operation).
+    let active_intents = crate::packs::orchestration::collect_pack_intents(
+        &crate::packs::Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        ),
+        &ctx,
+    )
+    .unwrap();
+    let active_sentinel = active_intents
+        .iter()
+        .find_map(|i| match i {
+            crate::operations::HandlerIntent::Run { sentinel, .. } => Some(sentinel.clone()),
+            _ => None,
+        })
+        .expect("active path must produce a Run intent for install.sh");
+
+    // Snapshot the rendered datastore file's existence — Passive
+    // must not modify it, but it should already exist from the
+    // earlier active up.
+    let rendered_path = env
+        .paths
+        .handler_data_dir("app", "preprocessed")
+        .join("install.sh");
+    assert!(
+        ctx.fs.exists(&rendered_path),
+        "active up must have written the rendered file"
+    );
+    let rendered_before = ctx.fs.read_file(&rendered_path).unwrap();
+
+    // Now plan via dry-run; the install handler must produce the
+    // same sentinel from in-memory bytes. Same no_provision = false
+    // so the handler actually emits intents.
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+    let plan = crate::packs::orchestration::plan_pack(
+        &crate::packs::Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            dry_ctx
+                .config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        ),
+        &dry_ctx,
+        crate::preprocessing::PreprocessMode::Passive,
+    )
+    .unwrap();
+    let dry_sentinel = plan
+        .intents
+        .iter()
+        .find_map(|i| match i {
+            crate::operations::HandlerIntent::Run { sentinel, .. } => Some(sentinel.clone()),
+            _ => None,
+        })
+        .expect("passive path must produce a Run intent for install.sh");
+
+    assert_eq!(
+        active_sentinel, dry_sentinel,
+        "passive sentinel must match active — same rendered bytes either way"
+    );
+    let rendered_after = ctx.fs.read_file(&rendered_path).unwrap();
+    assert_eq!(
+        rendered_before, rendered_after,
+        "passive must not rewrite the rendered file"
+    );
+}
+
+#[test]
+fn up_dry_run_first_time_pack_with_install_template_does_not_error() {
+    // Regression for Copilot review on PR #126: a first-time pack
+    // containing `install.sh.tmpl` (no baseline yet, no rendered
+    // file on disk) must not crash dry-run intent collection. The
+    // install handler used to read `m.absolute_path` unconditionally
+    // and propagate an Fs error; now it skips intent generation for
+    // the placeholder match instead. Same shape for `Brewfile.tmpl`
+    // / homebrew handler.
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh.tmpl", "#!/bin/sh\necho hello {{ name }}")
+        .file("Brewfile.tmpl", "brew '{{ pkg }}'")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\npkg = \"jq\"\n")
+        .done()
+        .build();
+
+    let mut dry_ctx = make_ctx(&env);
+    dry_ctx.no_provision = false;
+    dry_ctx.dry_run = true;
+
+    // The fix: this returns Ok and emits zero Run intents (the
+    // placeholders skip intent generation cleanly). Pre-fix, the
+    // install/homebrew handlers tried to read missing rendered
+    // files and propagated an Fs error.
+    let result = commands::up::up(None, &dry_ctx).unwrap();
+    assert!(result.dry_run);
+}
+
+#[test]
+fn passive_first_time_pack_surfaces_pending_placeholder() {
+    // §7.4 acceptance: a passive command on a brand-new pack with
+    // no baseline cache yet must surface a coherent placeholder
+    // (template stripped name, status pending), never panic, never
+    // fall through to template evaluation. (#121)
+    let env = TempEnvironment::builder()
+        .pack("app")
+        .file("greet.tmpl", "hello {{ name }}")
+        .config("[preprocessor.template.vars]\nname = \"Alice\"\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1, "should surface the templated entry");
+    assert_eq!(
+        files[0].name, "greet",
+        "stripped name (not source filename)"
+    );
+    assert_eq!(
+        files[0].status, "pending",
+        "first-time template before any up: pending"
+    );
+}
+
+/// Snapshot a directory tree (file contents + directory paths) to a
+/// stable signature for the §7.4 no-mutation contract tests. Each
+/// entry is keyed by absolute path; files map to `Some(contents)`,
+/// directories to `None`. Comparing two snapshots for equality is
+/// equivalent to "directory tree is byte-identical, including empty
+/// directories." Including dir paths catches mutations like
+/// `mkdir <data_dir>/<pack>/preprocessed` that would silently slip
+/// past a contents-only check.
+///
+/// Unreadable entries / read errors propagate as panics rather than
+/// silent skips — a passive command that produces an unreadable
+/// entry under `<data_dir>` is itself a §7.4 violation worth
+/// failing the test on.
+fn snapshot_dir_contents(
+    env: &crate::testing::TempEnvironment,
+    root: &std::path::Path,
+) -> std::collections::BTreeMap<std::path::PathBuf, Option<Vec<u8>>> {
+    use std::collections::BTreeMap;
+    let mut out = BTreeMap::new();
+    if !env.fs.exists(root) {
+        return out;
+    }
+    let mut stack: Vec<std::path::PathBuf> = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = env
+            .fs
+            .read_dir(&dir)
+            .unwrap_or_else(|e| panic!("snapshot_dir_contents: read_dir({dir:?}): {e}"));
+        for entry in entries {
+            if entry.is_dir {
+                out.insert(entry.path.clone(), None);
+                stack.push(entry.path);
+            } else {
+                let bytes = env.fs.read_file(&entry.path).unwrap_or_else(|e| {
+                    panic!("snapshot_dir_contents: read_file({:?}): {e}", entry.path)
+                });
+                out.insert(entry.path, Some(bytes));
+            }
+        }
+    }
+    out
 }
 
 // ── up: conflict handling ──────────────────────────────────
@@ -723,6 +1281,188 @@ fn up_force_overwrites_existing_files() {
     assert_eq!(content, "[user]\n  name = new");
 }
 
+// ── up: reconcile non-provisioning state (#58) ─────────────
+
+/// `dodot up` was additive only: a deleted source file would leave its
+/// datastore entry behind, so the regenerated init script kept sourcing
+/// a now-missing path. The fix wipes configuration-handler state per
+/// pack at the start of `up` and re-applies from current source.
+#[test]
+fn up_reconciles_deleted_shell_source() {
+    let env = TempEnvironment::builder()
+        .pack("gh")
+        .file("aliases.sh", "alias g=git")
+        .file("profile.sh", "export GH=true")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let shell_dir = env.paths.handler_data_dir("gh", "shell");
+    let mut before = env.list_dir_names(&shell_dir);
+    before.sort();
+    assert_eq!(before, vec!["aliases.sh", "profile.sh"]);
+
+    // Delete one source from the pack and re-run up.
+    env.fs
+        .remove_file(&env.dotfiles_root.join("gh/profile.sh"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let after = env.list_dir_names(&shell_dir);
+    assert_eq!(
+        after,
+        vec!["aliases.sh"],
+        "orphan datastore entry persisted after re-up"
+    );
+
+    let init = env
+        .fs
+        .read_to_string(&env.paths.init_script_path())
+        .unwrap();
+    assert!(
+        !init.contains("profile.sh"),
+        "regenerated init still references deleted file:\n{init}"
+    );
+    assert!(init.contains("aliases.sh"), "init: {init}");
+}
+
+#[test]
+fn up_reconciles_deleted_symlink_source() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "set nocompatible")
+        .file("gvimrc", "set guifont=Mono")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let symlink_dir = env.paths.handler_data_dir("vim", "symlink");
+    let mut before = env.list_dir_names(&symlink_dir);
+    before.sort();
+    assert_eq!(before, vec!["gvimrc", "vimrc"]);
+
+    env.fs
+        .remove_file(&env.dotfiles_root.join("vim/gvimrc"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let after = env.list_dir_names(&symlink_dir);
+    assert_eq!(
+        after,
+        vec!["vimrc"],
+        "orphan datastore symlink persisted after re-up"
+    );
+}
+
+#[test]
+fn up_reconciles_deleted_path_dir() {
+    let env = TempEnvironment::builder()
+        .pack("tools")
+        .file("bin/foo", "#!/bin/sh\necho foo")
+        .file("vimrc", "set nocompatible")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    let path_dir = env.paths.handler_data_dir("tools", "path");
+    assert_eq!(env.list_dir_names(&path_dir), vec!["bin"]);
+
+    // Drop the bin/ directory entirely.
+    env.fs
+        .remove_dir_all(&env.dotfiles_root.join("tools/bin"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let after = env.list_dir_names(&path_dir);
+    assert!(
+        after.is_empty(),
+        "path datastore should be empty after source dir removed, got: {after:?}"
+    );
+
+    let init = env
+        .fs
+        .read_to_string(&env.paths.init_script_path())
+        .unwrap();
+    assert!(
+        !init.contains("tools/bin"),
+        "init script still exports deleted PATH entry:\n{init}"
+    );
+}
+
+/// Provisioning handlers (install, homebrew) must NOT be wiped — their
+/// sentinels record "did this run with this content?" and re-running
+/// would defeat the point of sentinels (reinstall on every up).
+#[test]
+fn up_preserves_install_sentinel_when_source_persists() {
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh", "#!/bin/sh\necho hi")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    commands::up::up(None, &ctx).unwrap();
+
+    let install_dir = env.paths.handler_data_dir("setup", "install");
+    let sentinels_before = env.list_dir_names(&install_dir);
+    assert_eq!(
+        sentinels_before.len(),
+        1,
+        "expected one sentinel, got {sentinels_before:?}"
+    );
+    let original = sentinels_before.into_iter().next().unwrap();
+
+    // Re-run up with no source change. The sentinel must persist —
+    // wiping it would force the script to re-execute every time.
+    commands::up::up(None, &ctx).unwrap();
+    let sentinels_after = env.list_dir_names(&install_dir);
+    assert_eq!(
+        sentinels_after,
+        vec![original],
+        "install sentinel should persist across re-up"
+    );
+}
+
+#[test]
+fn up_preserves_install_sentinel_when_source_deleted() {
+    let env = TempEnvironment::builder()
+        .pack("setup")
+        .file("install.sh", "#!/bin/sh\necho hi")
+        .done()
+        .build();
+
+    let mut ctx = make_ctx(&env);
+    ctx.no_provision = false;
+
+    commands::up::up(None, &ctx).unwrap();
+    let install_dir = env.paths.handler_data_dir("setup", "install");
+    let sentinels_before = env.list_dir_names(&install_dir);
+    assert_eq!(sentinels_before.len(), 1);
+
+    // Source vanishes — but the sentinel still records that *some*
+    // version of this script has run, and we don't want the wipe to
+    // erase that history just because the source is no longer in the
+    // pack right now.
+    env.fs
+        .remove_file(&env.dotfiles_root.join("setup/install.sh"))
+        .unwrap();
+    commands::up::up(None, &ctx).unwrap();
+
+    let sentinels_after = env.list_dir_names(&install_dir);
+    assert_eq!(
+        sentinels_after, sentinels_before,
+        "deleting an install source must not wipe its sentinel"
+    );
+}
+
 // ── down ────────────────────────────────────────────────────
 
 #[test]
@@ -841,7 +1581,7 @@ fn adopt_moves_file_and_creates_symlink() {
     let source = env.home.join(".vimrc");
 
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -887,7 +1627,7 @@ fn adopt_preserves_executable_permissions() {
 
     let ctx = make_ctx(&env);
     commands::adopt::adopt(
-        "tools",
+        Some("tools"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -920,7 +1660,7 @@ fn adopt_refuses_non_dotted_home_entry() {
     let ctx = make_ctx(&env);
     let source = env.home.join("script.sh");
     let err = commands::adopt::adopt(
-        "tools",
+        Some("tools"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -959,7 +1699,7 @@ fn adopt_destination_conflict_refused_without_force() {
     let source = env.home.join(".vimrc");
 
     let err = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -993,7 +1733,7 @@ fn adopt_destination_conflict_resolved_with_force() {
     let source = env.home.join(".vimrc");
 
     commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         true, // --force
         false,
@@ -1008,19 +1748,25 @@ fn adopt_destination_conflict_resolved_with_force() {
 
 #[test]
 fn adopt_directory_creates_symlink_and_preserves_contents() {
+    // Dotted-directory adoption from $HOME directly: contents move to
+    // pack/_home/<stripped>/, which round-trips back via the `_home/`
+    // subtree-escape (Priority 2) on `dodot up`. We use a non-XDG
+    // dotted dir so the test stays decoupled from the XDG-source
+    // inference rules — adopting `~/.config/` itself is now refused
+    // explicitly (see `adopt_xdg_root_itself_refused`).
     let env = TempEnvironment::builder()
-        .pack("nvim")
+        .pack("editor")
         .file("placeholder", "")
         .done()
-        .home_file(".config/nvim/init.lua", "-- config")
-        .home_file(".config/nvim/lua/mod.lua", "-- module")
+        .home_file(".vim/vimrc", "set nocompatible")
+        .home_file(".vim/colors/scheme.vim", "\" colors")
         .build();
 
     let ctx = make_ctx(&env);
-    let source = env.home.join(".config");
+    let source = env.home.join(".vim");
 
     commands::adopt::adopt(
-        "nvim",
+        Some("editor"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1029,14 +1775,10 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
     )
     .unwrap();
 
-    // The directory is moved under pack/_home/<stripped> (post-#48
-    // adopt rename for dotted directories — the `_home/` per-subtree
-    // escape hatch routes deploys back to ~/.config when `dodot up`
-    // runs, preserving the round-trip).
-    let pack_dir = env.dotfiles_root.join("nvim/_home/config");
+    let pack_dir = env.dotfiles_root.join("editor/_home/vim");
     env.assert_dir_exists(&pack_dir);
-    env.assert_regular_file(&pack_dir.join("nvim/init.lua"), "-- config");
-    env.assert_regular_file(&pack_dir.join("nvim/lua/mod.lua"), "-- module");
+    env.assert_regular_file(&pack_dir.join("vimrc"), "set nocompatible");
+    env.assert_regular_file(&pack_dir.join("colors/scheme.vim"), "\" colors");
 
     // Original path is now a symlink to the pack copy.
     assert!(env.fs.is_symlink(&source));
@@ -1061,7 +1803,7 @@ fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
     let source = env.home.join(".weechat");
 
     commands::adopt::adopt(
-        "chats",
+        Some("chats"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1229,7 +1971,7 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".mydir");
     commands::adopt::adopt(
-        "shell",
+        Some("shell"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1246,8 +1988,14 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
     );
 }
 
+/// `~/.config/<X>/<rest>` is now a recognized adopt source: the first
+/// segment under `$XDG_CONFIG_HOME` is the inferred pack name, and the
+/// remainder is the in-pack path. Round-trip is the resolver's default
+/// rule — pack `nvim` containing `init.lua` deploys to
+/// `$XDG_CONFIG_HOME/nvim/init.lua` on `dodot up`. (Pre-inference, this
+/// case was refused as a nested source.)
 #[test]
-fn adopt_nested_source_refused() {
+fn adopt_xdg_nested_file_lands_at_pack_root() {
     let env = TempEnvironment::builder()
         .pack("nvim")
         .file("placeholder", "")
@@ -1258,8 +2006,108 @@ fn adopt_nested_source_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".config/nvim/init.lua");
 
+    commands::adopt::adopt(
+        Some("nvim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // No prefix gymnastics: pack `nvim`'s default deploy rule (Priority
+    // 4 — `$XDG/<pack>/<rel>`) lands `init.lua` back at the original
+    // `~/.config/nvim/init.lua`. So the in-pack name is just `init.lua`.
+    let pack_file = env.dotfiles_root.join("nvim/init.lua");
+    env.assert_regular_file(&pack_file, "-- config");
+    assert!(env.fs.is_symlink(&source));
+    let target = env.fs.readlink(&source).unwrap();
+    assert_eq!(target, pack_file);
+}
+
+/// Pack name can be omitted when the source carries pack structure
+/// under `$XDG_CONFIG_HOME`: `dodot adopt ~/.config/nvim/init.lua` (no
+/// `--into`) auto-detects pack `nvim` and creates it if missing.
+#[test]
+fn adopt_xdg_source_infers_pack_and_auto_creates() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/ghostty/config", "theme = dark")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/ghostty/config");
+
+    commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Pack auto-created at `<dotfiles>/ghostty/`, file landed at root.
+    let pack_dir = env.dotfiles_root.join("ghostty");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("config"), "theme = dark");
+    assert!(env.fs.is_symlink(&source));
+}
+
+/// Adopting `~/.config/<X>/` (the pack-root directory itself) expands
+/// into per-child plans rather than making the directory one big
+/// symlink-to-pack-root. Each top-level entry becomes a top-level pack
+/// member, so `dodot up` deploys per-entry like any other pack.
+#[test]
+fn adopt_xdg_pack_root_directory_expands_to_children() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/helix/config.toml", "theme = \"onedark\"")
+        .home_file(".config/helix/themes/extra.toml", "fg = \"white\"")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/helix");
+
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Each top-level child of `~/.config/helix/` became its own pack
+    // entry — `config.toml` (file) and `themes/` (dir) — both at pack
+    // root, not nested under another `helix/`.
+    let pack_dir = env.dotfiles_root.join("helix");
+    env.assert_regular_file(&pack_dir.join("config.toml"), "theme = \"onedark\"");
+    env.assert_regular_file(&pack_dir.join("themes/extra.toml"), "fg = \"white\"");
+    // Original entries are now symlinks at their original paths
+    // (one per top-level child, not one for the whole helix/ dir).
+    assert!(env
+        .fs
+        .is_symlink(&env.home.join(".config/helix/config.toml")));
+    assert!(env.fs.is_symlink(&env.home.join(".config/helix/themes")));
+    // Parent directory `~/.config/helix/` itself stays a real directory
+    // — only its children became symlinks.
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// `~/.config/` itself is too broad to adopt as a single unit; refuse
+/// explicitly so the user adopts an app subdirectory instead.
+#[test]
+fn adopt_xdg_root_itself_refused() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- config")
+        .build();
+    let ctx = make_ctx(&env);
+    let source = env.config_home.clone();
+
     let err = commands::adopt::adopt(
-        "nvim",
+        None,
         std::slice::from_ref(&source),
         false,
         false,
@@ -1269,13 +2117,448 @@ fn adopt_nested_source_refused() {
     .unwrap_err();
     let msg = format!("{err}");
     assert!(
-        msg.contains("nested"),
-        "expected 'nested' in error message, got: {msg}"
+        msg.contains("$XDG_CONFIG_HOME"),
+        "expected XDG-root refusal, got: {msg}"
     );
+}
 
-    // Nothing mutated.
-    env.assert_regular_file(&source, "-- config");
-    env.assert_not_exists(&env.dotfiles_root.join("nvim/init.lua"));
+/// Pack-root directory expansion under `--into` reroute keeps the
+/// `_xdg/<X>/` prefix on each child so the round-trip survives the
+/// pack-name change. Without this, expanded children would land at
+/// pack root and `dodot up` would deploy them to `$XDG/<override>/...`
+/// instead of the original `$XDG/<X>/...`. (Regression for Copilot
+/// review on PR #85.)
+#[test]
+fn adopt_xdg_pack_root_expansion_with_override_uses_xdg_prefix() {
+    let env = TempEnvironment::builder()
+        .pack("toolbox")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/lazygit/config.yml", "gui:\n  theme: dark")
+        .home_file(".config/lazygit/themes/x.yml", "fg: white")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/lazygit");
+
+    commands::adopt::adopt(
+        Some("toolbox"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Each expanded child lives under `toolbox/_xdg/lazygit/...` so the
+    // resolver's Priority 2 `_xdg/` prefix routes back to
+    // `~/.config/lazygit/<child>` regardless of the override pack name.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml"),
+        "gui:\n  theme: dark",
+    );
+    env.assert_regular_file(
+        &env.dotfiles_root.join("toolbox/_xdg/lazygit/themes/x.yml"),
+        "fg: white",
+    );
+    // Each original child is now a symlink (per-child expansion); the
+    // pack-root dir itself stays a real directory.
+    assert!(env
+        .fs
+        .is_symlink(&env.home.join(".config/lazygit/config.yml")));
+    assert!(env.fs.is_symlink(&env.home.join(".config/lazygit/themes")));
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// `--into <pack>` for an XDG source where the override differs from
+/// the inferred pack name uses `_xdg/<X>/<rest>` so round-trip via
+/// Priority 2 still lands the deployed file at the original location.
+#[test]
+fn adopt_xdg_with_into_override_uses_xdg_prefix() {
+    let env = TempEnvironment::builder()
+        .pack("toolbox")
+        .file("placeholder", "")
+        .done()
+        .home_file(".config/lazygit/config.yml", "gui:\n  theme: dark")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/lazygit/config.yml");
+
+    commands::adopt::adopt(
+        Some("toolbox"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Round-trip via `_xdg/lazygit/config.yml`: the `_xdg/` prefix
+    // bypasses pack-namespacing so the deployed path is still
+    // `~/.config/lazygit/config.yml` despite the file living in
+    // pack `toolbox`.
+    let pack_file = env.dotfiles_root.join("toolbox/_xdg/lazygit/config.yml");
+    env.assert_regular_file(&pack_file, "gui:\n  theme: dark");
+    assert!(env.fs.is_symlink(&source));
+}
+
+/// Adopting a file under `~/Library/Application Support/<X>/` infers
+/// pack `<X>`, places the file at `_app/<X>/<rest>` in the pack tree,
+/// and round-trips via the resolver's Priority 2c `_app/` prefix back
+/// to the original AppSupport location. The `TempEnvironment` pins
+/// `app_support_dir` under the temp HOME on every platform so this
+/// test runs identically on Linux and macOS.
+#[test]
+fn adopt_app_support_source_round_trips_through_app_prefix() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/Code/User/settings.json",
+            "{\"editor.fontSize\": 14}",
+        )
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // Pack auto-created at `<dotfiles>/Code/`. The file lives at
+    // `_app/Code/User/settings.json` — the prefix is mandatory at
+    // natural pack name because the default rule routes through XDG,
+    // not app_support_dir.
+    let pack_file = env.dotfiles_root.join("Code/_app/Code/User/settings.json");
+    env.assert_regular_file(&pack_file, "{\"editor.fontSize\": 14}");
+
+    // Original deploy location is now a symlink — and the symlink
+    // chain points (eventually) back at the pack copy. Resolve via
+    // resolve_target_full to confirm round-trip.
+    assert!(env.fs.is_symlink(&source));
+
+    use crate::handlers::symlink::{resolve_target_full, Resolution};
+    let resolution = resolve_target_full(
+        "Code",
+        "_app/Code/User/settings.json",
+        &Default::default(),
+        env.paths.as_ref(),
+    );
+    match resolution {
+        Resolution::Path(p) => assert_eq!(p, source),
+        Resolution::Skip { reason } => panic!("expected Path, got Skip({reason})"),
+    }
+}
+
+/// Adopting `~/Library/Application Support/<X>/` (the directory
+/// itself) expands into per-child plans, mirroring the XDG pack-root
+/// expansion. Each top-level entry under the AppSupport folder
+/// becomes a top-level pack entry, prefixed with `_app/<X>/`.
+#[test]
+fn adopt_app_support_pack_root_directory_expands_to_children() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/Cursor/User/settings.json",
+            "{}",
+        )
+        .home_file(
+            "Library/Application Support/Cursor/User/keybindings.json",
+            "[]",
+        )
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Cursor");
+
+    commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    // The pack-root directory expanded: the single child of `Cursor/`
+    // is `User/`, so the pack contains `_app/Cursor/User/` (a
+    // directory whose contents come along).
+    let pack_dir = env.dotfiles_root.join("Cursor");
+    env.assert_dir_exists(&pack_dir);
+    env.assert_regular_file(&pack_dir.join("_app/Cursor/User/settings.json"), "{}");
+    env.assert_regular_file(&pack_dir.join("_app/Cursor/User/keybindings.json"), "[]");
+    // The expanded child (`User/`) at the original AppSupport
+    // location is now a symlink, but the parent `Cursor/` itself
+    // stays a real directory.
+    assert!(env.fs.is_symlink(&env.app_support.join("Cursor/User")));
+    assert!(!env.fs.is_symlink(&source));
+}
+
+/// M5 capitalization-heuristic advisory: when a user adopts an
+/// AppSupport source whose folder name passes the GUI-app heuristic
+/// (`Code`, uppercase), adopt emits a tip pointing at the
+/// `app_aliases` ergonomic. The pack tree itself is unaffected — the
+/// hint is purely advisory.
+#[test]
+fn adopt_app_support_emits_capitalization_hint() {
+    let env = TempEnvironment::builder()
+        .home_file("Library/Application Support/Code/User/settings.json", "{}")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    let result = commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        result
+            .warnings
+            .iter()
+            .any(|w| w.contains("app_aliases") && w.contains("Code")),
+        "expected an `app_aliases` tip in warnings, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Reverse-DNS bundle-ID folders (`com.colliderli.iina`,
+/// `dev.warp.Warp-Stable`) get a much better rename suggestion when
+/// the M6 brew probe identifies a matching cask: prefer the cask
+/// token (`iina`) over the awful whitespace-strip-lowercase fallback
+/// (`comcolliderliiina`). Real IINA case from user testing on PR #91.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn adopt_app_support_reverse_dns_uses_cask_token_in_tip() {
+    let env = TempEnvironment::builder()
+        .home_file(
+            "Library/Application Support/com.colliderli.iina/input_conf/mine.conf",
+            "x",
+        )
+        .build();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(&["brew", "list", "--cask", "--versions"], "iina 1.4.0\n", 0);
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "iina"],
+        r#"{"casks": [{
+            "token": "iina",
+            "artifacts": [
+                {"app": ["IINA.app"]},
+                {"zap": [{"trash": ["~/Library/Application Support/com.colliderli.iina"]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+    let source = env
+        .app_support
+        .join("com.colliderli.iina/input_conf/mine.conf");
+
+    let result = commands::adopt::adopt(
+        /*pack_override=*/ None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let tip = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("app_aliases"))
+        .unwrap_or_else(|| panic!("expected an app_aliases tip, got: {:?}", result.warnings));
+
+    // The good outcome: tip suggests `iina` as the rename target.
+    assert!(
+        tip.contains("renaming the pack to `iina`"),
+        "expected cask-token-based rename suggestion (`iina`), got: {tip}"
+    );
+    // And explicitly NOT the whitespace-strip-lowercase fallback,
+    // which would be `comcolliderliiina` for this folder.
+    assert!(
+        !tip.contains("comcolliderliiina"),
+        "rename suggestion fell back to lowercase mangling instead of cask token: {tip}"
+    );
+    // The tip credits the cask so the user knows where the
+    // recommendation came from.
+    assert!(
+        tip.contains("matches homebrew cask"),
+        "tip should credit the cask source, got: {tip}"
+    );
+}
+
+/// When no installed cask matches the folder, the tip falls back to
+/// the original whitespace-strip-lowercase suggestion. Pins the
+/// fallback so a refactor doesn't accidentally regress the no-cask
+/// path (the heuristic still triggers on uppercase folders even when
+/// brew has nothing to say).
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn adopt_app_support_falls_back_to_lowercase_when_no_cask_match() {
+    // `Tinkerbell` — uppercase enough to trigger the heuristic, but
+    // no real cask owns it, so the brew probe returns empty and the
+    // tip falls back to the lowercase suggestion.
+    let env = TempEnvironment::builder()
+        .home_file("Library/Application Support/Tinkerbell/settings.json", "{}")
+        .build();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(&["brew", "list", "--cask", "--versions"], "", 0);
+    let ctx = make_ctx_with_runner(&env, runner);
+    let source = env.app_support.join("Tinkerbell/settings.json");
+
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    let tip = result
+        .warnings
+        .iter()
+        .find(|w| w.contains("app_aliases"))
+        .unwrap_or_else(|| panic!("expected an app_aliases tip, got: {:?}", result.warnings));
+
+    // Fallback suggestion: lowercased pack name (no spaces here, but
+    // the casing transformation still applies).
+    assert!(
+        tip.contains("renaming the pack to `tinkerbell`"),
+        "expected fallback rename suggestion, got: {tip}"
+    );
+    assert!(
+        !tip.contains("matches homebrew cask"),
+        "tip should not claim a cask match when none exists: {tip}"
+    );
+}
+
+/// The advisory is suppressed when the user passed `--into <pack>`:
+/// they already chose their pack name, so suggesting another one
+/// would be noise. The pack used here (`Code`) only exists to satisfy
+/// `--into`'s typo-guard requirement.
+#[test]
+fn adopt_app_support_into_override_suppresses_hint() {
+    let env = TempEnvironment::builder()
+        .pack("Code")
+        .file("placeholder", "")
+        .done()
+        .home_file("Library/Application Support/Code/User/settings.json", "{}")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.app_support.join("Code/User/settings.json");
+
+    let result = commands::adopt::adopt(
+        Some("Code"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("app_aliases")),
+        "expected no app_aliases tip with --into, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Lowercase CLI-tool-style folder names (`nvim`, `helix`, …) don't
+/// trigger the heuristic. An XDG adopt of a typical CLI tool stays
+/// hint-free.
+#[test]
+fn adopt_xdg_lowercase_pack_emits_no_hint() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- nvim")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".config/nvim/init.lua");
+
+    let result = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap();
+
+    assert!(
+        !result.warnings.iter().any(|w| w.contains("app_aliases")),
+        "expected no app_aliases tip for plain XDG adopt, got: {:?}",
+        result.warnings
+    );
+}
+
+/// Multiple sources whose inference picks different packs is refused
+/// (without `--into`); the message names the conflicting candidates.
+#[test]
+fn adopt_disagreeing_inferred_packs_refused() {
+    let env = TempEnvironment::builder()
+        .home_file(".config/nvim/init.lua", "-- nvim")
+        .home_file(".config/helix/config.toml", "# helix")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let sources = vec![
+        env.home.join(".config/nvim/init.lua"),
+        env.home.join(".config/helix/config.toml"),
+    ];
+
+    let err = commands::adopt::adopt(None, &sources, false, false, false, &ctx).unwrap_err();
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("different packs"),
+        "expected disagreement message, got: {msg}"
+    );
+    assert!(msg.contains("nvim") && msg.contains("helix"));
+}
+
+/// Without `--into`, a HOME source can't infer a pack and adopt fails
+/// with a hint pointing at `--into`.
+#[test]
+fn adopt_home_source_without_into_requires_pack() {
+    let env = TempEnvironment::builder()
+        .home_file(".vimrc", "set nocompatible")
+        .build();
+
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+    let err = commands::adopt::adopt(
+        None,
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        &ctx,
+    )
+    .unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("--into"), "expected '--into' hint, got: {msg}");
 }
 
 #[test]
@@ -1295,7 +2578,7 @@ fn adopt_already_adopted_source_is_skipped() {
 
     let ctx = make_ctx(&env);
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1342,7 +2625,7 @@ fn adopt_fully_managed_source_keeps_original_skip_message() {
     assert!(env.fs.is_symlink(&source));
 
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1478,7 +2761,7 @@ fn adopt_relative_path_with_curdir_normalizes() {
     std::env::set_current_dir(&env.home).unwrap();
     let ctx = make_ctx(&env);
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         &[std::path::PathBuf::from("./.vimrc")],
         false,
         false,
@@ -1505,7 +2788,7 @@ fn adopt_ignored_pack_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
     let err = commands::adopt::adopt(
-        "disabled",
+        Some("disabled"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1532,7 +2815,7 @@ fn adopt_filename_matching_pack_ignore_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc.bak");
     let err = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1565,7 +2848,7 @@ fn adopt_broken_pack_blocks_conflict_check() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
     let err = commands::adopt::adopt(
-        "target",
+        Some("target"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1604,7 +2887,7 @@ fn adopt_deploy_conflict_refused() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".bashrc");
     let err = commands::adopt::adopt(
-        "work",
+        Some("work"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1638,7 +2921,7 @@ fn adopt_deploy_conflict_not_bypassed_by_force() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".bashrc");
     let err = commands::adopt::adopt(
-        "work",
+        Some("work"),
         std::slice::from_ref(&source),
         true, // --force should NOT bypass deploy conflicts
         false,
@@ -1665,7 +2948,7 @@ fn adopt_dry_run_makes_no_changes() {
     let source = env.home.join(".vimrc");
 
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1698,7 +2981,7 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
 
     let ctx = make_ctx(&env);
     commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         true, // --no-follow
@@ -1739,7 +3022,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
 
     let ctx = make_ctx(&env);
     let result = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         true, // --force
         false,
@@ -1789,7 +3072,7 @@ fn adopt_no_follow_on_dangling_symlink_succeeds() {
 
     let ctx = make_ctx(&env);
     commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         true, // --no-follow
@@ -1817,7 +3100,7 @@ fn adopt_nonexistent_source_errors() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".does-not-exist");
     let err = commands::adopt::adopt(
-        "vim",
+        Some("vim"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -1836,7 +3119,7 @@ fn adopt_empty_sources_errors() {
         .done()
         .build();
     let ctx = make_ctx(&env);
-    let err = commands::adopt::adopt("vim", &[], false, false, false, &ctx).unwrap_err();
+    let err = commands::adopt::adopt(Some("vim"), &[], false, false, false, &ctx).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("no files"), "got: {msg}");
 }
@@ -1967,7 +3250,7 @@ fn adopt_nonexistent_pack_returns_pack_not_found() {
     let ctx = make_ctx(&env);
     let source = env.home.join(".vimrc");
     let err = commands::adopt::adopt(
-        "newpack",
+        Some("newpack"),
         std::slice::from_ref(&source),
         false,
         false,
@@ -3507,7 +4790,7 @@ fn probe_shell_init_aggregate_empty_state_shows_hint() {
 }
 
 #[test]
-fn probe_shell_init_history_renders_one_row_per_run_oldest_first() {
+fn probe_shell_init_history_renders_one_row_per_run_newest_first() {
     let env = TempEnvironment::builder().build();
     let ctx = make_ctx(&env);
     // Three profiles with distinct timestamps in their filenames.
@@ -3540,12 +4823,12 @@ fn probe_shell_init_history_renders_one_row_per_run_oldest_first() {
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     let rows = parsed["rows"].as_array().unwrap();
     assert_eq!(rows.len(), 3);
-    // Oldest unix_ts first, newest last.
+    // Newest unix_ts first, oldest last (descending).
     let timestamps: Vec<u64> = rows
         .iter()
         .map(|r| r["unix_ts"].as_u64().unwrap_or(0))
         .collect();
-    assert_eq!(timestamps, vec![1714000000, 1714003600, 1714007200]);
+    assert_eq!(timestamps, vec![1714007200, 1714003600, 1714000000]);
     // Middle row had a non-zero exit_status.
     assert_eq!(rows[1]["failed_entries"].as_u64().unwrap(), 1);
     assert_eq!(rows[0]["failed_entries"].as_u64().unwrap(), 0);
@@ -3585,6 +4868,573 @@ fn probe_shell_init_history_json_is_kind_tagged() {
     let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(parsed["kind"], "shell-init-history");
     assert!(parsed["rows"].is_array());
+}
+
+#[test]
+fn probe_shell_init_filter_json_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_filter(&ctx, "vim", 5).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "shell-init-filter");
+    assert!(parsed["targets"].is_array());
+    assert_eq!(parsed["filter_pack"], "vim");
+}
+
+#[test]
+fn probe_shell_init_errors_json_is_kind_tagged() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    let result = commands::probe::shell_init_errors(&ctx, 5).unwrap();
+    let output = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(parsed["kind"], "shell-init-errors");
+    assert!(parsed["targets"].is_array());
+}
+
+// ── probe shell-init: staleness banner (#59) ────────────────
+
+/// Plant a `last-up-at` marker at the given unix timestamp so tests
+/// don't depend on real wall-clock writes.
+fn write_last_up_marker_at(env: &TempEnvironment, ts: u64) {
+    env.fs.mkdir_all(env.paths.data_dir()).unwrap();
+    env.fs
+        .write_file(&env.paths.last_up_path(), ts.to_string().as_bytes())
+        .unwrap();
+}
+
+/// Profile filenames encode the unix timestamp. Profile pre-dates the
+/// last `up`, so the staleness banner must fire.
+#[test]
+fn probe_shell_init_banner_when_profile_predates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+    // Up happened one hour after the profile.
+    write_last_up_marker_at(&env, 1714003600);
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("warning:"),
+        "expected staleness banner, got:\n{text}"
+    );
+    // Banner mentions both timestamps so the user can verify the comparison.
+    assert!(
+        text.contains("2024-04-24") && text.contains("2024-04-25"),
+        "banner should reference both capture and up timestamps, got:\n{text}"
+    );
+    assert!(
+        text.contains("capture a fresh profile"),
+        "banner should explain the remediation, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_no_banner_when_profile_postdates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    // Up first, profile after — the user already opened a shell, so
+    // the displayed profile reflects the post-up state. No banner.
+    write_last_up_marker_at(&env, 1714000000);
+    write_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], false);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("warning:"),
+        "no banner expected when profile is fresh, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_no_banner_when_no_last_up_marker() {
+    // Profile exists but `up` has never run on this machine — we have
+    // nothing to compare against, so the safe default is "no banner".
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x/aliases.sh\t1.000000\t1.000100\t0"],
+    );
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("warning:"),
+        "no banner without an up marker, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_no_banner_when_no_profile() {
+    // Marker exists, but there's no profile yet (e.g. user just ran
+    // first `up`). The empty-state hint is enough; no warning.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_last_up_marker_at(&env, 1714000000);
+
+    let result = commands::probe::shell_init(&ctx).unwrap();
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        !text.contains("warning:"),
+        "no banner when there's no profile to flag, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_aggregate_banner_when_newest_predates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000100\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000002-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000200\t0"],
+    );
+    // Up happened after the newest profile.
+    write_last_up_marker_at(&env, 1714000003);
+
+    let result = commands::probe::shell_init_aggregate(&ctx, 5).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("warning:"),
+        "aggregate view should show banner, got:\n{text}"
+    );
+}
+
+#[test]
+fn probe_shell_init_history_banner_when_newest_predates_last_up() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+
+    write_fake_profile(
+        &env,
+        "profile-1714000000-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000100\t0"],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714003600-1-1.tsv",
+        &["source\tvim\tshell\t/x.sh\t1.000000\t1.000200\t0"],
+    );
+    // Up after the newest history row.
+    write_last_up_marker_at(&env, 1714007200);
+
+    let result = commands::probe::shell_init_history(&ctx, 50).unwrap();
+    let json = render::render("probe", &result, OutputMode::Json).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed["stale"], true);
+
+    let text = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        text.contains("warning:"),
+        "history view should show banner, got:\n{text}"
+    );
+}
+
+// ── shell-init filter (positional pack[/file] drill-down) ──
+
+fn write_fake_errors_log(env: &TempEnvironment, profile_name: &str, body: &str) {
+    let dir = env.paths.probes_shell_init_dir();
+    env.fs.mkdir_all(&dir).unwrap();
+    let stem = profile_name.trim_end_matches(".tsv");
+    let path = dir.join(format!("{stem}.errors.log"));
+    let mut content = String::from("# dodot shell-init errors v1\n");
+    content.push_str(body);
+    env.fs.write_file(&path, content.as_bytes()).unwrap();
+}
+
+#[test]
+fn probe_shell_init_filter_pack_only_lists_each_target_in_pack() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1",
+            "source\tgpg\tshell\t/p/gpg/aliases.sh\t1.0\t1.001\t0",
+            "source\tvim\tshell\t/p/vim/aliases.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result =
+        commands::probe::shell_init_filter(&ctx, "gpg", commands::probe::DEFAULT_FILTER_RUNS)
+            .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.filter_pack, "gpg");
+    assert!(view.filter_filename.is_none());
+    assert_eq!(view.targets.len(), 2, "expected both gpg targets");
+    let names: Vec<&str> = view
+        .targets
+        .iter()
+        .map(|t| t.display_target.as_str())
+        .collect();
+    assert!(names.contains(&"env.sh"));
+    assert!(names.contains(&"aliases.sh"));
+}
+
+#[test]
+fn probe_shell_init_filter_with_filename_narrows_to_single_target() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1",
+            "source\tgpg\tshell\t/p/gpg/aliases.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.filter_pack, "gpg");
+    assert_eq!(view.filter_filename.as_deref(), Some("env.sh"));
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].display_target, "env.sh");
+    assert_eq!(view.targets[0].failure_count, 1);
+}
+
+#[test]
+fn probe_shell_init_filter_attaches_captured_stderr_to_matching_run() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1"],
+    );
+    write_fake_errors_log(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        "@@\t/p/gpg/env.sh\t1\nfirst error line\nsecond error line\n",
+    );
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].runs.len(), 1);
+    assert_eq!(
+        view.targets[0].runs[0].stderr_lines,
+        vec!["first error line", "second error line"]
+    );
+}
+
+#[test]
+fn probe_shell_init_filter_runs_are_newest_first() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    // Three runs with monotonically increasing timestamps in the
+    // filename — the filter view should display them newest first
+    // (most recent run at the top of the per-target block).
+    for ts in [1714000001u64, 1714000002, 1714000003] {
+        write_fake_profile(
+            &env,
+            &format!("profile-{ts}-1-1.tsv"),
+            &["source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t0"],
+        );
+    }
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    let runs = &view.targets[0].runs;
+    assert_eq!(runs.len(), 3);
+    assert_eq!(runs[0].profile_filename, "profile-1714000003-1-1.tsv");
+    assert_eq!(runs[2].profile_filename, "profile-1714000001-1-1.tsv");
+}
+
+#[test]
+fn probe_shell_init_filter_renders_with_template() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1"],
+    );
+    write_fake_errors_log(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        "@@\t/p/gpg/env.sh\t1\nboom\n",
+    );
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("Shell-init filter"),
+        "header missing:\n{output}"
+    );
+    assert!(output.contains("env.sh"), "target missing:\n{output}");
+    assert!(output.contains("exit 1"), "exit code missing:\n{output}");
+    assert!(
+        output.contains("boom"),
+        "captured stderr missing:\n{output}"
+    );
+}
+
+#[test]
+fn probe_shell_init_filter_supports_nested_subpaths() {
+    // A target deployed under a subdirectory (e.g. `pack/sub/dir/x.sh`)
+    // should be matchable both by basename (`x.sh`) and by subpath
+    // (`sub/dir/x.sh`). The latter is the disambiguator when two files
+    // share a basename.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/sub/dir/env.sh\t1.0\t1.001\t1",
+            "source\tgpg\tshell\t/p/gpg/other/env.sh\t1.0\t1.001\t0",
+        ],
+    );
+
+    // Subpath filter narrows to the matching nested file only.
+    let result = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/sub/dir/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].target, "/p/gpg/sub/dir/env.sh");
+
+    // Bare basename still matches both nested files.
+    let result_basename = commands::probe::shell_init_filter(
+        &ctx,
+        "gpg/env.sh",
+        commands::probe::DEFAULT_FILTER_RUNS,
+    )
+    .unwrap();
+    let view_basename = match result_basename {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view_basename.targets.len(), 2);
+}
+
+#[test]
+fn probe_shell_init_filter_basename_does_not_partial_match() {
+    // Boundary check: `env.sh` filter must not match `nvenv.sh`.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tnv\tshell\t/p/nv/nvenv.sh\t1.0\t1.001\t0",
+            "source\tnv\tshell\t/p/nv/env.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result =
+        commands::probe::shell_init_filter(&ctx, "nv/env.sh", commands::probe::DEFAULT_FILTER_RUNS)
+            .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].target, "/p/nv/env.sh");
+}
+
+#[test]
+fn probe_shell_init_filter_empty_when_no_match() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/p/vim/aliases.sh\t1.0\t1.001\t0"],
+    );
+    let result =
+        commands::probe::shell_init_filter(&ctx, "missing", commands::probe::DEFAULT_FILTER_RUNS)
+            .unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitFilter(v) => v,
+        other => panic!("expected ShellInitFilter, got {other:?}"),
+    };
+    assert!(view.targets.is_empty());
+    assert_eq!(view.runs_examined, 1);
+}
+
+// ── shell-init --errors-only ─────────────────────────────────────
+
+#[test]
+fn probe_shell_init_errors_only_keeps_only_failed_runs() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\tgpg\tshell\t/p/gpg/env.sh\t1.0\t1.001\t1",
+            "source\tvim\tshell\t/p/vim/aliases.sh\t1.0\t1.001\t0",
+        ],
+    );
+    let result =
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitErrors(v) => v,
+        other => panic!("expected ShellInitErrors, got {other:?}"),
+    };
+    // vim/aliases.sh succeeded — must not appear. Only gpg/env.sh.
+    assert_eq!(view.targets.len(), 1);
+    assert_eq!(view.targets[0].display_target, "env.sh");
+    assert_eq!(view.targets[0].failure_count, 1);
+}
+
+#[test]
+fn probe_shell_init_errors_only_sorts_by_failure_count_desc() {
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    // Three profiles: target A fails twice, B fails once.
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &[
+            "source\ta\tshell\t/p/a.sh\t1.0\t1.001\t1",
+            "source\tb\tshell\t/p/b.sh\t1.0\t1.001\t1",
+        ],
+    );
+    write_fake_profile(
+        &env,
+        "profile-1714000002-1-1.tsv",
+        &["source\ta\tshell\t/p/a.sh\t1.0\t1.001\t1"],
+    );
+    let result =
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::ShellInitErrors(v) => v,
+        other => panic!("expected ShellInitErrors, got {other:?}"),
+    };
+    assert_eq!(view.targets.len(), 2);
+    assert_eq!(
+        view.targets[0].pack, "a",
+        "most-broken target must come first"
+    );
+    assert_eq!(view.targets[0].failure_count, 2);
+    assert_eq!(view.targets[1].pack, "b");
+    assert_eq!(view.targets[1].failure_count, 1);
+}
+
+#[test]
+fn probe_shell_init_errors_only_clean_window_says_so() {
+    // Only successful runs in the window — view shows 0 targets and
+    // the renderer surfaces a cheerful "no failed sources" line.
+    let env = TempEnvironment::builder().build();
+    let ctx = make_ctx(&env);
+    write_fake_profile(
+        &env,
+        "profile-1714000001-1-1.tsv",
+        &["source\tvim\tshell\t/p/aliases.sh\t1.0\t1.001\t0"],
+    );
+    let result =
+        commands::probe::shell_init_errors(&ctx, commands::probe::DEFAULT_FILTER_RUNS).unwrap();
+    match &result {
+        commands::probe::ProbeResult::ShellInitErrors(v) => {
+            assert!(v.targets.is_empty());
+            assert_eq!(v.runs_examined, 1);
+        }
+        other => panic!("expected ShellInitErrors, got {other:?}"),
+    }
+
+    let output = render::render("probe", &result, OutputMode::Text).unwrap();
+    assert!(
+        output.contains("no failed sources"),
+        "clean-window message missing:\n{output}"
+    );
+}
+
+// ── up command misc ─────────────────────────────────────────────
+
+#[test]
+fn up_writes_last_up_marker() {
+    // The marker is what the staleness check compares against, so the
+    // up command must always leave one behind on a successful run.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    assert!(
+        !env.fs.exists(&env.paths.last_up_path()),
+        "marker should not exist before first up"
+    );
+    commands::up::up(None, &ctx).unwrap();
+    assert!(
+        env.fs.exists(&env.paths.last_up_path()),
+        "marker should be written by up"
+    );
+
+    let raw = env.fs.read_to_string(&env.paths.last_up_path()).unwrap();
+    let parsed: u64 = raw.trim().parse().expect("marker should be a unix ts");
+    // Sanity: post-2023.
+    assert!(parsed > 1_700_000_000, "ts should look recent: {parsed}");
 }
 
 // ── deployment map (written on up/down alongside the init script) ──
@@ -3685,4 +5535,240 @@ fn by_status_folds_ignored_packs_into_ignored_group() {
     assert!(output.contains("Ignored Packs"), "output: {output}");
     assert!(output.contains("disabled"), "output: {output}");
     assert!(output.contains("Pending Packs"), "output: {output}");
+}
+
+// ── M6: probe::app + advisory probes ─────────────────────────
+
+/// `dodot probe app <pack>` collects every folder this pack would
+/// route to (alias, force_app, _app/), checks each against the
+/// app-support root, and (with mocked brew + mdls) enriches the
+/// matching cask token, .app bundle, and bundle ID. The probe is
+/// advisory — resolver state is unchanged.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only enrichment paths")]
+fn probe_app_collects_alias_force_and_underscore_entries() {
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("settings.json", "{}")
+        .file("_app/Cursor/User/keys.json", "[]")
+        .file("Code/User/extra.json", "{}")
+        .config("[symlink.app_aliases]\nvscode = \"VSCodeAliased\"\n")
+        .done()
+        .build();
+    // Pre-create one of the target folders so `target_exists` differs
+    // across rows and the test pins the existence column.
+    env.fs.mkdir_all(&env.app_support.join("Cursor")).unwrap();
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(
+        &["brew", "list", "--cask", "--versions"],
+        "cursor 0.42.0\n",
+        0,
+    );
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "cursor"],
+        r#"{"casks": [{
+            "token": "cursor",
+            "installed": "0.42.0",
+            "artifacts": [
+                {"app": ["Cursor.app"]},
+                {"zap": [{"trash": [
+                    "~/Library/Application Support/Cursor",
+                    "~/Library/Preferences/com.todesktop.Cursor.plist"
+                ]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    runner.respond(
+        &[
+            "mdls",
+            "-name",
+            "kMDItemCFBundleIdentifier",
+            "/Applications/Cursor.app",
+        ],
+        "kMDItemCFBundleIdentifier = \"com.todesktop.Cursor\"\n",
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    let result = commands::probe::app("vscode", false, &ctx).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::App(v) => v,
+        other => panic!("expected App variant, got {other:?}"),
+    };
+    assert_eq!(view.pack, "vscode");
+    assert!(view.macos);
+
+    // Three folders: VSCodeAliased (alias), Code (force_app default
+    // includes Code), Cursor (_app/ subtree).
+    let folders: Vec<&str> = view.entries.iter().map(|e| e.folder.as_str()).collect();
+    assert!(folders.contains(&"VSCodeAliased"), "folders: {folders:?}");
+    assert!(folders.contains(&"Code"), "folders: {folders:?}");
+    assert!(folders.contains(&"Cursor"), "folders: {folders:?}");
+
+    // Cursor is the only pre-created folder → exists; others missing.
+    let cursor_row = view.entries.iter().find(|e| e.folder == "Cursor").unwrap();
+    assert!(cursor_row.target_exists);
+    // `cask` is always an *installed* token (matching iterates only
+    // `brew list --cask --versions`), so a `Some` value implies
+    // installed — there's no separate field for it any more.
+    assert_eq!(cursor_row.cask.as_deref(), Some("cursor"));
+    assert_eq!(cursor_row.app_bundle.as_deref(), Some("Cursor.app"));
+    assert_eq!(
+        cursor_row.bundle_id.as_deref(),
+        Some("com.todesktop.Cursor")
+    );
+
+    // Sibling-adoption suggestions surfaced from cask zap.
+    assert!(
+        view.suggested_adoptions
+            .iter()
+            .any(|s| s.contains("Cursor.plist")),
+        "suggested adoptions: {:?}",
+        view.suggested_adoptions
+    );
+}
+
+/// `dodot probe app ..` (or any other path-traversing input) must
+/// not let `pack_path` traversal escape the dotfiles root. Probe
+/// validates that `pack_name` is a single-component path before
+/// passing it to `Pather::pack_path`. Regression for review feedback
+/// on PR #91.
+#[test]
+fn probe_app_rejects_path_traversal_input() {
+    let env = TempEnvironment::builder().build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    for evil in ["..", "foo/../bar", "../sibling", "/abs/path"] {
+        let result = commands::probe::app(evil, false, &ctx).unwrap();
+        let view = match result {
+            commands::probe::ProbeResult::App(v) => v,
+            other => panic!("expected App variant, got {other:?}"),
+        };
+        // Empty-but-named view: the pack name echoes back, but no
+        // entries are surfaced (filesystem traversal was skipped).
+        assert_eq!(view.pack, evil, "input echoed back unchanged");
+        assert!(
+            view.entries.is_empty(),
+            "path-traversing input must not produce entries: got {:?}",
+            view.entries
+        );
+    }
+}
+
+/// On non-macOS, probe::app still produces a useful view (folder
+/// existence under the collapsed app-support root) but skips brew /
+/// Spotlight enrichment entirely. `macos` is `false`.
+#[test]
+fn probe_app_non_macos_returns_minimal_view() {
+    if cfg!(target_os = "macos") {
+        // The cfg! gate inside probe::app keys off the host. On macOS
+        // hosts we can't simulate the Linux path; skip rather than
+        // contort the test fixture.
+        return;
+    }
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("Code/User/foo", "{}")
+        .done()
+        .build();
+    let runner = Arc::new(CannedRunner::new());
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    let result = commands::probe::app("vscode", false, &ctx).unwrap();
+    let view = match result {
+        commands::probe::ProbeResult::App(v) => v,
+        other => panic!("expected App variant, got {other:?}"),
+    };
+    assert!(!view.macos);
+    // No brew enrichment.
+    for entry in &view.entries {
+        assert!(entry.cask.is_none(), "row: {entry:?}");
+        assert!(entry.app_bundle.is_none(), "row: {entry:?}");
+        assert!(entry.bundle_id.is_none(), "row: {entry:?}");
+    }
+}
+
+/// `up` / `status` emit a missing-target hint when an app-support
+/// folder doesn't exist on disk and a brew cask matches. macOS-only
+/// — the orchestration gate is the same `cfg!(target_os = "macos")`.
+#[test]
+#[cfg_attr(not(target_os = "macos"), ignore = "macOS-only behavior")]
+fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
+    use crate::packs::orchestration;
+    use crate::packs::Pack;
+
+    let env = TempEnvironment::builder()
+        .pack("vscode")
+        .file("settings.json", "{}")
+        .config("[symlink.app_aliases]\nvscode = \"Code\"\n")
+        .done()
+        .build();
+    // `Code` folder is intentionally absent — the hint should fire.
+    assert!(!env.app_support.join("Code").exists());
+
+    let runner = Arc::new(CannedRunner::new());
+    runner.respond(
+        &["brew", "list", "--cask", "--versions"],
+        "visual-studio-code 1.95.0\n",
+        0,
+    );
+    runner.respond(
+        &["brew", "info", "--json=v2", "--cask", "visual-studio-code"],
+        r#"{"casks": [{
+            "token": "visual-studio-code",
+            "artifacts": [
+                {"app": ["Visual Studio Code.app"]},
+                {"zap": [{"trash": ["~/Library/Application Support/Code"]}]}
+            ]
+        }]}"#,
+        0,
+    );
+    let ctx = make_ctx_with_runner(&env, runner);
+
+    // The planner uses cache_only=true to keep `up`/`status` fast —
+    // an empty cache produces the unenriched message. Pre-warm the
+    // cache by calling info_cask once (the on-demand path that may
+    // spawn brew). Production users get the same warm cache via
+    // `dodot probe app` or `dodot adopt`.
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let _ = crate::probe::brew::info_cask(
+        "visual-studio-code",
+        &cache_dir,
+        crate::probe::brew::now_secs_unix(),
+        ctx.fs.as_ref(),
+        ctx.command_runner.as_ref(),
+    );
+
+    // Synthesize a Pack matching the on-disk pack we built.
+    let pack_path = env.dotfiles_root.join("vscode");
+    let pack_config = ctx.config_manager.config_for_pack(&pack_path).unwrap();
+    let pack = Pack {
+        name: "vscode".into(),
+        display_name: "vscode".into(),
+        path: pack_path,
+        config: pack_config.to_handler_config(),
+    };
+
+    let plan = orchestration::plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active)
+        .unwrap();
+    let hint = plan.warnings.iter().find(|w| w.contains("Code"));
+    assert!(
+        hint.is_some(),
+        "expected missing-target hint mentioning `Code`; got {:?}",
+        plan.warnings
+    );
+    let hint_text = hint.unwrap();
+    assert!(
+        hint_text.contains("visual-studio-code"),
+        "expected cask-enriched hint, got: {hint_text}"
+    );
+    // Per review feedback: the cask is installed (we read it from
+    // `brew list`), so the message must NOT claim it isn't installed.
+    assert!(
+        !hint_text.contains("isn't installed"),
+        "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
+    );
 }

@@ -9,10 +9,18 @@ pub mod addignore;
 pub mod adopt;
 pub mod down;
 pub mod fill;
+pub mod git_alias;
+pub mod git_filters;
 pub mod init;
 pub mod list;
 pub mod probe;
+pub mod prompts;
+pub mod refresh;
+pub mod secret;
 pub mod status;
+pub mod template_clean;
+pub mod template_install_filter;
+pub mod transform;
 pub mod tutorial;
 pub mod up;
 
@@ -20,6 +28,18 @@ pub mod up;
 mod tests;
 
 use serde::Serialize;
+
+/// Shared `{message, details}` result for commands whose output is a
+/// short headline plus a list of secondary lines. Renders through the
+/// `message` template. Per-command result types (e.g. `InitResult`,
+/// `AddIgnoreResult`) exist for backwards compatibility and where
+/// commands grow additional fields; use [`MessageResult`] for new
+/// commands that need only headline + lines.
+#[derive(Debug, Clone, Serialize)]
+pub struct MessageResult {
+    pub message: String,
+    pub details: Vec<String>,
+}
 
 // ── Shared display types ────────────────────────────────────────
 

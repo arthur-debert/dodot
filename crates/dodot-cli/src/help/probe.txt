@@ -1,0 +1,27 @@
+[header]dodot probe[/header] — Introspect deployed state.
+
+[desc]Lower-level inspection of what dodot has on disk: the source ↔
+deployed map, the contents of dodot's data directory, and per-source
+timings from your most recent shell startup.
+
+Use [item]probe[/item] when [item]status[/item] is not enough — when something appears
+deployed but isn't sourcing, when shell startup feels slow, or when
+you want to see exactly what dodot wrote where.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot probe [COMMAND][/usage]
+
+[header]SUBCOMMANDS[/header]
+  [item]deployment-map[/item]    [desc]Show the source ↔ deployed-target map[/desc]
+  [item]show-data-dir[/item]     [desc]Tree view of dodot's data directory[/desc]
+  [item]shell-init[/item]        [desc]Per-source timings for the most recent shell startup[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot probe deployment-map     [dim]# every symlink dodot owns[/dim]
+  dodot probe show-data-dir      [dim]# tree of $XDG_DATA_HOME/dodot[/dim]
+  dodot probe shell-init         [dim]# timings + errors from the last shell startup[/dim]
+  dodot probe shell-init gpg     [dim]# drill into one pack's sources[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot status[/item]                  [desc]Higher-level pack-by-pack view[/desc]
+  [item]docs/dev/storage.lex[/item]          [desc]How the data directory is laid out[/desc]

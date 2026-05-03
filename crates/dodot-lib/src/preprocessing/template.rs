@@ -1,4 +1,5 @@
-//! Template preprocessor — renders Jinja2-style templates via MiniJinja.
+//! Template preprocessor — renders Jinja2-style templates via MiniJinja
+//! through burgertocow's [`Tracker`].
 //!
 //! Matches files with configurable extensions (default: `.tmpl`,
 //! `.template`), renders them against a variable context with three
@@ -12,17 +13,35 @@
 //!
 //! Uses MiniJinja strict undefined-behaviour: references to missing vars
 //! raise a render error rather than silently producing empty strings.
+//!
+//! # Tracked render
+//!
+//! Rendering goes through [`burgertocow::Tracker`] rather than a raw
+//! `minijinja::Environment`. The tracker installs a custom formatter that
+//! wraps every variable emission in marker bytes, producing a
+//! [`TrackedRender`] alongside the visible output. The visible output is
+//! identical to the plain-MiniJinja path (modulo the
+//! `keep_trailing_newline` setting that Tracker also applies). The
+//! marker-annotated string is persisted in the baseline cache so the
+//! reverse-merge pipeline (`dodot transform check`, the clean filter)
+//! can compute template-space diffs without re-rendering — re-rendering
+//! at clean-filter time would re-trigger any secret-provider auth
+//! prompts on every `git status`.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
+use burgertocow::Tracker;
 use minijinja::value::{Enumerator, Object, ObjectRepr, Value};
-use minijinja::{Environment, UndefinedBehavior};
+use minijinja::{Error as MjError, ErrorKind as MjErrorKind, UndefinedBehavior};
+use sha2::{Digest, Sha256};
 
 use crate::fs::Fs;
 use crate::paths::Pather;
-use crate::preprocessing::{ExpandedFile, Preprocessor, TransformType};
+use crate::preprocessing::{ExpandedFile, Preprocessor, SecretLineRange, TransformType};
+use crate::secret::SecretRegistry;
 use crate::{DodotError, Result};
 
 /// Reserved top-level variable names.
@@ -54,9 +73,39 @@ impl Object for EnvLookup {
 }
 
 /// Template rendering preprocessor. Generative (one-way) transform.
+///
+/// Holds the resolved `dodot.*` map, the user-defined variables, and a
+/// pre-computed context hash. Each `expand` call constructs a fresh
+/// [`Tracker`], installs the namespaces, registers the source file as a
+/// named template, and renders. We don't share the `Tracker` across
+/// renders because `add_template` requires `&mut` while `Preprocessor::
+/// expand` runs through a `&self` trait method — a per-call tracker is
+/// the simplest way to keep the pipeline's existing concurrency shape.
 pub struct TemplatePreprocessor {
     extensions: Vec<String>,
-    env: Environment<'static>,
+    dodot_ns: BTreeMap<String, String>,
+    user_vars: BTreeMap<String, String>,
+    /// SHA-256 of the deterministic projection of `dodot_ns` and
+    /// `user_vars` (sorted keys, length-prefixed). Reused as the
+    /// `context_hash` for every render this preprocessor performs.
+    ///
+    /// `env.*` references are intentionally **not** part of the
+    /// context hash and tracking them is out of scope by design — see
+    /// `preprocessing-pipeline.lex` §6.4. The cache contract is
+    /// "same source bytes + same `dodot.*` namespace + same
+    /// `user_vars` → same output." The `env.*` namespace is the
+    /// explicitly live-read zone; rotating a referenced env var does
+    /// not invalidate the cache, and users pick up the new value via
+    /// `dodot up --force`. Stable values that should participate in
+    /// invalidation belong in `[preprocessor.template.vars]`
+    /// (`user_vars`), not `env.*`.
+    context_hash: [u8; 32],
+    /// Optional secret-resolution registry. Populated via
+    /// [`Self::with_secret_registry`] when secrets are configured.
+    /// `None` means `secret(...)` is unavailable in templates and a
+    /// `secret(...)` call surfaces as a render error pointing the
+    /// user at `[secret] enabled = true`. See `secrets.lex` §5.
+    secret_registry: Option<Arc<SecretRegistry>>,
 }
 
 impl std::fmt::Debug for TemplatePreprocessor {
@@ -71,9 +120,9 @@ impl TemplatePreprocessor {
     /// Construct a new template preprocessor.
     ///
     /// Validates that no user-defined variable uses a reserved name
-    /// (`dodot` or `env`). Populates the MiniJinja environment with
-    /// the `dodot.*` builtins from `pather` + system info, an `env.*`
-    /// dynamic lookup, and each user variable as a bare global.
+    /// (`dodot` or `env`). Resolves the `dodot.*` builtins from
+    /// `pather` + system info and computes the context hash now so
+    /// every subsequent `expand` reuses the same value.
     ///
     /// Extensions are normalized at construction: a leading dot (e.g.
     /// `".tmpl"`) is stripped so both `"tmpl"` and `".tmpl"` work.
@@ -93,17 +142,170 @@ impl TemplatePreprocessor {
             .map(|e| e.trim_start_matches('.').to_string())
             .collect();
 
-        let mut env = Environment::new();
+        let dodot_ns = build_dodot_context(pather);
+        let user_vars: BTreeMap<String, String> = user_vars.into_iter().collect();
+        let context_hash = compute_context_hash(&dodot_ns, &user_vars);
+
+        Ok(Self {
+            extensions,
+            dodot_ns,
+            user_vars,
+            context_hash,
+            secret_registry: None,
+        })
+    }
+
+    /// Wire a [`SecretRegistry`] into this preprocessor. Templates
+    /// rendered through it can call `{{ secret("op://Vault/Item/Field") }}`
+    /// (and other configured schemes); calls dispatch through the
+    /// registry, populate the per-render sidecar, and refuse
+    /// multi-line values per `secrets.lex` §3.4. Without a registry
+    /// (the default), any `secret(...)` call in a template surfaces
+    /// as a render error.
+    pub fn with_secret_registry(mut self, registry: Arc<SecretRegistry>) -> Self {
+        self.secret_registry = Some(registry);
+        self
+    }
+
+    /// Build a fresh tracker with this preprocessor's namespaces
+    /// installed and `UndefinedBehavior::Strict` set. Called per render
+    /// because `Tracker::add_template` requires `&mut self`.
+    ///
+    /// `sidecar` is the per-render secret-tracking accumulator. The
+    /// `secret(...)` MiniJinja function returns a unique private-use
+    /// sentinel (rather than the raw secret value) and pushes a
+    /// [`SecretCallEntry`] into the accumulator. The caller (the
+    /// `expand` body) walks the rendered output to find each sentinel,
+    /// records its line position, then substitutes the sentinel back
+    /// to the real value. This avoids the substring-collision failure
+    /// mode where a secret value happens to also appear elsewhere in
+    /// the rendered text.
+    ///
+    /// `render_id` is a per-render monotonic counter used in the
+    /// sentinel format so two concurrent renders can't observe each
+    /// other's sentinels.
+    fn make_tracker(&self, sidecar: Arc<Mutex<Vec<SecretCallEntry>>>, render_id: u64) -> Tracker {
+        let mut tracker = Tracker::new();
+        let env = tracker.env_mut();
         env.set_undefined_behavior(UndefinedBehavior::Strict);
-
-        env.add_global("dodot", Value::from(build_dodot_context(pather)));
+        env.add_global("dodot", Value::from(self.dodot_ns.clone()));
         env.add_global("env", Value::from_object(EnvLookup));
-
-        for (name, val) in user_vars {
-            env.add_global(name, Value::from(val));
+        for (name, val) in &self.user_vars {
+            env.add_global(name.clone(), Value::from(val.clone()));
         }
 
-        Ok(Self { extensions, env })
+        // Install the `secret(...)` function. Two cases:
+        //
+        // - Registry configured: function dispatches through the
+        //   registry. Refuses multi-line values per §3.4. Records
+        //   the (reference, value) pair into `sidecar` so the
+        //   caller can compute line ranges after rendering.
+        // - No registry: function still exists, but every call
+        //   surfaces a clean render error pointing the user at
+        //   `[secret] enabled = true`. The presence-without-function
+        //   alternative would surface as MiniJinja's generic
+        //   "undefined" error which doesn't tell the user how to
+        //   fix the config.
+        match &self.secret_registry {
+            Some(registry) => {
+                let registry = registry.clone();
+                let sidecar = sidecar.clone();
+                env.add_function(
+                    "secret",
+                    move |reference: &str| -> std::result::Result<String, MjError> {
+                        // Within-run cache: first call for a given
+                        // reference goes to the provider; subsequent
+                        // calls (in this template or any other
+                        // rendered through the same registry
+                        // instance) hit the cache and never shell
+                        // out. Multi-line / non-UTF-8 are detected
+                        // up here so the rich error messages stay
+                        // co-located with the callback that surfaces
+                        // them; only validated values reach the
+                        // cache. See `secrets.lex` §7.4 / §3.4.
+                        //
+                        // The cache holds `Arc<SecretString>` so the
+                        // resolved bytes get zeroized when the
+                        // registry's last reference drops. We expose
+                        // to `&str` only at this substitution
+                        // boundary (and the resulting String is
+                        // immediately handed to MiniJinja), keeping
+                        // the unsealed plaintext window as narrow as
+                        // the rendering pipeline allows.
+                        let secret = if let Some(cached) = registry.cache_get(reference) {
+                            cached
+                        } else {
+                            let value = registry.resolve(reference).map_err(|e| {
+                                MjError::new(MjErrorKind::InvalidOperation, e.to_string())
+                            })?;
+                            if value.contains_newline() {
+                                return Err(MjError::new(
+                                    MjErrorKind::InvalidOperation,
+                                    format!(
+                                        "secret `{reference}` resolved to a multi-line value. \
+                                     Value-injection (`{{{{ secret(...) }}}}`) is single-line only. \
+                                     For multi-line secret material (TLS / SSH keys, GPG armored \
+                                     keys, service-account JSON files), use the whole-file deploy \
+                                     path: encrypt the file, drop it in a pack, reference the \
+                                     deployed path from your config. See secrets.lex §4."
+                                    ),
+                                ));
+                            }
+                            // Validate UTF-8 before caching — a
+                            // non-UTF-8 value never reaches the
+                            // cache (the call propagates the rich
+                            // error instead).
+                            value.expose().map_err(|_| {
+                                MjError::new(
+                                    MjErrorKind::InvalidOperation,
+                                    format!(
+                                        "secret `{reference}` resolved to non-UTF-8 bytes; \
+                                     value-injection requires UTF-8 strings"
+                                    ),
+                                )
+                            })?;
+                            let arc = Arc::new(value);
+                            registry.cache_put(reference, Arc::clone(&arc));
+                            arc
+                        };
+                        // expose() can only fail on non-UTF-8, which
+                        // we excluded above for cache-miss + the
+                        // cache only holds validated UTF-8.
+                        let owned = secret.expose().unwrap_or("").to_string();
+                        let mut entries = sidecar.lock().unwrap();
+                        let sentinel = make_secret_sentinel(render_id, entries.len());
+                        entries.push(SecretCallEntry {
+                            sentinel: sentinel.clone(),
+                            reference: reference.to_string(),
+                            value: owned,
+                        });
+                        // The sentinel is what flows through MiniJinja
+                        // and into the rendered output; `expand()`
+                        // computes line ranges by locating sentinels
+                        // and then substitutes them back to the value.
+                        Ok(sentinel)
+                    },
+                );
+            }
+            None => {
+                env.add_function(
+                    "secret",
+                    |reference: &str| -> std::result::Result<String, MjError> {
+                        Err(MjError::new(
+                            MjErrorKind::InvalidOperation,
+                            format!(
+                                "secret(`{reference}`) was called but no secret providers \
+                             are configured. Either set `[secret] enabled = true` and \
+                             enable a provider via `[secret.providers.<scheme>] enabled = \
+                             true` in your .dodot.toml, or remove the `secret(...)` \
+                             reference from the template."
+                            ),
+                        ))
+                    },
+                );
+            }
+        }
+        tracker
     }
 }
 
@@ -114,6 +316,13 @@ impl Preprocessor for TemplatePreprocessor {
 
     fn transform_type(&self) -> TransformType {
         TransformType::Generative
+    }
+
+    fn supports_reverse_merge(&self) -> bool {
+        // Templates emit a tracked_render and produce baselines; the
+        // reverse-merge pipeline (transform check, clean filter) reads
+        // those baselines to write template-space diffs back to source.
+        true
     }
 
     fn matches_extension(&self, filename: &str) -> bool {
@@ -148,9 +357,30 @@ impl Preprocessor for TemplatePreprocessor {
     fn expand(&self, source: &Path, fs: &dyn Fs) -> Result<Vec<ExpandedFile>> {
         let template_str = fs.read_to_string(source)?;
 
-        let rendered =
-            self.env
-                .render_str(&template_str, ())
+        // Use the source file's path as the template name. Tracker
+        // requires named templates; the path is unique per file and
+        // surfaces sensibly in any error MiniJinja produces.
+        let template_name = source.to_string_lossy().into_owned();
+
+        // Per-render sidecar accumulator. Each `secret(...)` call
+        // pushes a `SecretCallEntry { sentinel, reference, value }`;
+        // the rendered output carries the sentinel (not the value),
+        // and `finalize_secrets` below turns sentinels into line
+        // ranges and then substitutes them back to the real value.
+        let sidecar: Arc<Mutex<Vec<SecretCallEntry>>> = Arc::new(Mutex::new(Vec::new()));
+        let render_id = next_render_id();
+
+        let mut tracker = self.make_tracker(sidecar.clone(), render_id);
+        tracker
+            .add_template(&template_name, &template_str)
+            .map_err(|e| DodotError::TemplateRender {
+                source_file: source.to_path_buf(),
+                message: format_minijinja_error(&e),
+            })?;
+
+        let tracked =
+            tracker
+                .render(&template_name, ())
                 .map_err(|e| DodotError::TemplateRender {
                     source_file: source.to_path_buf(),
                     message: format_minijinja_error(&e),
@@ -163,12 +393,157 @@ impl Preprocessor for TemplatePreprocessor {
             .into_owned();
         let stripped = self.stripped_name(&filename);
 
+        let (rendered, tracked_str) = tracked.into_parts();
+        let entries = std::mem::take(&mut *sidecar.lock().unwrap());
+        let (rendered, tracked_str, secret_line_ranges) =
+            finalize_secrets(rendered, tracked_str, &entries);
+
         Ok(vec![ExpandedFile {
             relative_path: PathBuf::from(stripped),
             content: rendered.into_bytes(),
             is_dir: false,
+            tracked_render: Some(tracked_str),
+            context_hash: Some(self.context_hash),
+            secret_line_ranges,
+            deploy_mode: None,
         }])
     }
+}
+
+/// Per-call accumulator entry for `secret(...)` resolutions. Carries
+/// both the unique private-use sentinel that the MiniJinja function
+/// emitted and the real resolved value, so `finalize_secrets` can
+/// compute line ranges from the sentinel positions and then swap
+/// sentinels for values in the rendered + tracked outputs.
+struct SecretCallEntry {
+    sentinel: String,
+    reference: String,
+    value: String,
+}
+
+/// Process-wide monotonic counter used to make sentinels unique
+/// across concurrent renders. Each `expand()` call gets a fresh id
+/// before installing the `secret()` function.
+static RENDER_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+fn next_render_id() -> u64 {
+    RENDER_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Sentinel format: `\u{E000}DSEC.<render_id>.<call_idx>\u{E001}`.
+///
+/// Both bracket characters live in the Unicode Private Use Area
+/// (U+E000–U+F8FF), which by definition has no assigned meaning and
+/// does not appear in normal dotfile content. Combined with the
+/// per-render id, the resulting string is unique within and across
+/// renders, eliminating the substring-collision failure mode of the
+/// previous "search for the resolved value" approach.
+fn make_secret_sentinel(render_id: u64, call_idx: usize) -> String {
+    let mut s = String::with_capacity(20);
+    s.push('\u{E000}');
+    s.push_str("DSEC.");
+    s.push_str(&render_id.to_string());
+    s.push('.');
+    s.push_str(&call_idx.to_string());
+    s.push('\u{E001}');
+    s
+}
+
+/// Walk `rendered` to convert each sentinel into a [`SecretLineRange`]
+/// (single-line per Phase S1 / §3.4), then substitute every sentinel
+/// back to its real value in both `rendered` and `tracked` and return
+/// all three.
+///
+/// Sentinels that don't appear in the output are dropped from the
+/// range list — the `secret()` was evaluated (for resolution side
+/// effects) but the value never reached the visible output, e.g. a
+/// call inside a false `{% if %}` branch. We still substitute (a
+/// no-op in that case) so callers can rely on the post-call output
+/// containing zero sentinel characters.
+fn finalize_secrets(
+    rendered: String,
+    tracked: String,
+    entries: &[SecretCallEntry],
+) -> (String, String, Vec<SecretLineRange>) {
+    let mut ranges = Vec::with_capacity(entries.len());
+    if !entries.is_empty() {
+        let line_starts = build_line_starts(&rendered);
+        for entry in entries {
+            if let Some(byte_off) = rendered.find(entry.sentinel.as_str()) {
+                let line = byte_offset_to_line(&line_starts, byte_off);
+                ranges.push(SecretLineRange {
+                    start: line,
+                    end: line + 1,
+                    reference: entry.reference.clone(),
+                });
+            }
+        }
+    }
+
+    let mut final_rendered = rendered;
+    let mut final_tracked = tracked;
+    for entry in entries {
+        final_rendered = final_rendered.replace(entry.sentinel.as_str(), &entry.value);
+        final_tracked = final_tracked.replace(entry.sentinel.as_str(), &entry.value);
+    }
+
+    (final_rendered, final_tracked, ranges)
+}
+
+/// Byte offsets where each line begins in `s`. `line_starts[0] == 0`;
+/// `line_starts[i]` for i > 0 is the byte index just past the i-1th
+/// `\n`. Used by [`byte_offset_to_line`] for the sentinel→line lookup.
+fn build_line_starts(s: &str) -> Vec<usize> {
+    let mut v = Vec::with_capacity(s.len() / 32 + 1);
+    v.push(0);
+    for (i, b) in s.bytes().enumerate() {
+        if b == b'\n' {
+            v.push(i + 1);
+        }
+    }
+    v
+}
+
+/// Map a byte offset within the source string to its 0-indexed line
+/// number. Binary search over `line_starts`.
+fn byte_offset_to_line(line_starts: &[usize], offset: usize) -> usize {
+    match line_starts.binary_search(&offset) {
+        Ok(line) => line,
+        Err(insert_pos) => insert_pos.saturating_sub(1),
+    }
+}
+
+/// Produce a deterministic SHA-256 over the rendering context.
+///
+/// The hash is order-independent (BTreeMap iteration is sorted) and
+/// includes both the `dodot.*` namespace and the user-defined variables.
+/// Layout: each entry is encoded as `<ns>\x1F<key>\x1F<value>\x1E` so
+/// rearranging the boundaries between any two adjacent fields cannot
+/// produce a collision (`\x1E` and `\x1F` are the same control bytes
+/// burgertocow uses internally; they don't appear in normal
+/// configuration content).
+fn compute_context_hash(
+    dodot_ns: &BTreeMap<String, String>,
+    user_vars: &BTreeMap<String, String>,
+) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    for (k, v) in dodot_ns {
+        hasher.update(b"dodot");
+        hasher.update([0x1f]);
+        hasher.update(k.as_bytes());
+        hasher.update([0x1f]);
+        hasher.update(v.as_bytes());
+        hasher.update([0x1e]);
+    }
+    for (k, v) in user_vars {
+        hasher.update(b"vars");
+        hasher.update([0x1f]);
+        hasher.update(k.as_bytes());
+        hasher.update([0x1f]);
+        hasher.update(v.as_bytes());
+        hasher.update([0x1e]);
+    }
+    hasher.finalize().into()
 }
 
 /// Build the `dodot.*` namespace map.
@@ -782,5 +1157,514 @@ mod tests {
         // Optional keys: present iff the detection helper returned Some.
         assert_eq!(ctx.contains_key("username"), detect_username().is_some());
         assert_eq!(ctx.contains_key("hostname"), detect_hostname().is_some());
+    }
+
+    // ── Tracked render + context hash ────────────────────────────
+
+    #[test]
+    fn expand_emits_tracked_render_with_markers_around_each_variable() {
+        // The cache layer needs the marker-annotated render to drive
+        // burgertocow's reverse-diff. Confirm that each `{{ var }}`
+        // emission produces exactly one VAR_START / VAR_END pair in
+        // the tracked string.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("cfg.tmpl", "name={{ name }} count={{ count }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        vars.insert("count".into(), "3".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/cfg.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let tracked = result[0]
+            .tracked_render
+            .as_ref()
+            .expect("tracked render must be present for a generative preprocessor");
+        assert_eq!(
+            tracked.matches(burgertocow::VAR_START).count(),
+            2,
+            "two variable emissions should produce two start markers, got: {tracked:?}"
+        );
+        assert_eq!(
+            tracked.matches(burgertocow::VAR_END).count(),
+            2,
+            "two variable emissions should produce two end markers, got: {tracked:?}"
+        );
+    }
+
+    #[test]
+    fn expand_visible_output_matches_tracked_with_markers_stripped() {
+        // The visible content (what the symlink target sees) must equal
+        // the tracked string with marker bytes removed. Otherwise the
+        // baseline cache's `rendered_content` and the deployed file
+        // would diverge by exactly the marker characters.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("cfg.tmpl", "user={{ name }} home={{ dodot.home }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        let source = env.dotfiles_root.join("app/cfg.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let visible = String::from_utf8(result[0].content.clone()).unwrap();
+        let tracked = result[0].tracked_render.as_ref().unwrap();
+
+        let stripped: String = tracked
+            .chars()
+            .filter(|c| *c != burgertocow::VAR_START && *c != burgertocow::VAR_END)
+            .collect();
+        assert_eq!(visible, stripped);
+    }
+
+    #[test]
+    fn context_hash_is_populated_and_stable() {
+        // Same constructor inputs should produce the same context hash
+        // across runs and across `expand` calls. This is what lets the
+        // baseline cache decide "input didn't change" without re-rendering.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("a.tmpl", "x={{ name }}")
+            .done()
+            .build();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".into(), "Alice".into());
+        let pp1 = TemplatePreprocessor::new(vec!["tmpl".into()], vars.clone(), env.paths.as_ref())
+            .unwrap();
+        let pp2 = TemplatePreprocessor::new(vec!["tmpl".into()], vars, env.paths.as_ref()).unwrap();
+
+        assert_eq!(
+            pp1.context_hash, pp2.context_hash,
+            "identical inputs must yield identical context hashes"
+        );
+
+        let source = env.dotfiles_root.join("app/a.tmpl");
+        let r1 = pp1.expand(&source, env.fs.as_ref()).unwrap();
+        let r2 = pp1.expand(&source, env.fs.as_ref()).unwrap();
+        assert_eq!(r1[0].context_hash, r2[0].context_hash);
+        assert_eq!(r1[0].context_hash, Some(pp1.context_hash));
+    }
+
+    #[test]
+    fn context_hash_changes_when_user_var_changes() {
+        // A different user-var value MUST produce a different context
+        // hash. Without this, secret rotation through user vars wouldn't
+        // re-run install/homebrew sentinels (whose freshness is keyed off
+        // the context hash via §3.5 of the secrets spec).
+        let mut vars1 = HashMap::new();
+        vars1.insert("name".into(), "Alice".into());
+
+        let mut vars2 = HashMap::new();
+        vars2.insert("name".into(), "Bob".into());
+
+        let pather = make_pather();
+        let pp1 = TemplatePreprocessor::new(vec!["tmpl".into()], vars1, &pather).unwrap();
+        let pp2 = TemplatePreprocessor::new(vec!["tmpl".into()], vars2, &pather).unwrap();
+        assert_ne!(pp1.context_hash, pp2.context_hash);
+    }
+
+    #[test]
+    fn context_hash_is_order_independent_for_user_vars() {
+        // Hash inputs are gathered from a HashMap, so iteration order
+        // is non-deterministic. Sorting via BTreeMap before hashing must
+        // produce a stable hash regardless of insertion order.
+        let pather = make_pather();
+
+        let mut a = HashMap::new();
+        a.insert("alpha".into(), "1".into());
+        a.insert("zeta".into(), "26".into());
+
+        let mut b = HashMap::new();
+        b.insert("zeta".into(), "26".into());
+        b.insert("alpha".into(), "1".into());
+
+        let pp_a = TemplatePreprocessor::new(vec!["tmpl".into()], a, &pather).unwrap();
+        let pp_b = TemplatePreprocessor::new(vec!["tmpl".into()], b, &pather).unwrap();
+        assert_eq!(pp_a.context_hash, pp_b.context_hash);
+    }
+
+    #[test]
+    fn empty_template_still_emits_tracked_render() {
+        // Edge case: a template with no `{{ ... }}` emissions. The
+        // tracked string should be the same as the visible content
+        // (no markers added) and still be present, not None.
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("plain.tmpl", "no vars at all")
+            .done()
+            .build();
+
+        let pp = TemplatePreprocessor::new(vec!["tmpl".into()], HashMap::new(), env.paths.as_ref())
+            .unwrap();
+
+        let source = env.dotfiles_root.join("app/plain.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let tracked = result[0].tracked_render.as_ref().unwrap();
+        assert!(
+            !tracked.contains(burgertocow::VAR_START) && !tracked.contains(burgertocow::VAR_END),
+            "no variables → no markers, got: {tracked:?}"
+        );
+        // And still equal to the visible content.
+        assert_eq!(
+            String::from_utf8(result[0].content.clone()).unwrap(),
+            *tracked
+        );
+    }
+
+    // ── secret() integration (Phase S1) ────────────────────────
+
+    /// Build a TemplatePreprocessor wired with a registry containing
+    /// the given canned `(reference, value)` pairs under one scheme.
+    /// The scheme is used as both the URI prefix and the
+    /// MockSecretProvider's `scheme()` return.
+    fn pp_with_secrets(scheme: &str, pairs: &[(&str, &str)]) -> TemplatePreprocessor {
+        use crate::secret::test_support::MockSecretProvider;
+        use crate::secret::SecretRegistry;
+        use std::sync::Arc;
+
+        let mut mock = MockSecretProvider::new(scheme);
+        for (k, v) in pairs {
+            mock = mock.with(k.to_string(), v.to_string());
+        }
+        let mut registry = SecretRegistry::new();
+        registry.register(Arc::new(mock));
+        new_pp(HashMap::new()).with_secret_registry(Arc::new(registry))
+    }
+
+    #[test]
+    fn secret_function_resolves_via_registry() {
+        // pass:path/to/db -> "hunter2"; the registry strips the scheme
+        // and hands "path/to/db" to the provider, which returns the
+        // canned value.
+        let pp = pp_with_secrets("pass", &[("path/to/db", "hunter2")]);
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "config.toml.tmpl",
+                "password = \"{{ secret('pass:path/to/db') }}\"\n",
+            )
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/config.toml.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let rendered = String::from_utf8_lossy(&result[0].content);
+        assert_eq!(rendered, "password = \"hunter2\"\n");
+    }
+
+    #[test]
+    fn secret_function_caches_repeated_references_within_a_render() {
+        // Same `{{ secret('pass:k') }}` used three times — the
+        // provider should only be invoked once. Pin the within-run
+        // cache contract from `secrets.lex` §7.4 / Phase S2.
+        use crate::secret::test_support::MockSecretProvider;
+        use crate::secret::SecretRegistry;
+
+        let mock = Arc::new(MockSecretProvider::new("pass").with("k", "v"));
+        let mut registry = SecretRegistry::new();
+        registry.register(mock.clone());
+        let pp = new_pp(HashMap::new()).with_secret_registry(Arc::new(registry));
+
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "c.tmpl",
+                "a = {{ secret('pass:k') }}\nb = {{ secret('pass:k') }}\nc = {{ secret('pass:k') }}\n",
+            )
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let rendered = String::from_utf8_lossy(&result[0].content);
+        assert_eq!(rendered, "a = v\nb = v\nc = v\n");
+        // Cache hit on calls 2 and 3.
+        assert_eq!(
+            mock.resolve_call_count(),
+            1,
+            "within-run cache must collapse repeats"
+        );
+        // Each call still gets its own sidecar entry — sentinels
+        // are per-call, line ranges cover all three lines.
+        assert_eq!(result[0].secret_line_ranges.len(), 3);
+    }
+
+    #[test]
+    fn secret_function_caches_across_multiple_expands_on_one_registry() {
+        // Building the registry once and rendering N templates
+        // through it = one provider call per unique reference,
+        // not per template. This pins the `commands::up` flow
+        // where one preflighted registry threads through every
+        // pack rendered in the run.
+        use crate::secret::test_support::MockSecretProvider;
+        use crate::secret::SecretRegistry;
+
+        let mock = Arc::new(MockSecretProvider::new("pass").with("k", "v"));
+        let mut registry = SecretRegistry::new();
+        registry.register(mock.clone());
+        let registry = Arc::new(registry);
+
+        // Two independent TemplatePreprocessor instances both wired
+        // to the same Arc<SecretRegistry>.
+        let pp_a = new_pp(HashMap::new()).with_secret_registry(registry.clone());
+        let pp_b = new_pp(HashMap::new()).with_secret_registry(registry.clone());
+
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("a.tmpl", "{{ secret('pass:k') }}\n")
+            .file("b.tmpl", "{{ secret('pass:k') }}\n")
+            .done()
+            .build();
+        let _ = pp_a
+            .expand(&env.dotfiles_root.join("app/a.tmpl"), env.fs.as_ref())
+            .unwrap();
+        let _ = pp_b
+            .expand(&env.dotfiles_root.join("app/b.tmpl"), env.fs.as_ref())
+            .unwrap();
+        assert_eq!(
+            mock.resolve_call_count(),
+            1,
+            "shared registry should serve the second expand from cache"
+        );
+    }
+
+    #[test]
+    fn secret_function_records_sidecar_entry_with_correct_line_range() {
+        let pp = pp_with_secrets("pass", &[("k1", "v1"), ("k2", "v2")]);
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "c.tmpl",
+                "first\nsecond = {{ secret('pass:k1') }}\nthird\nfourth = {{ secret('pass:k2') }}\n",
+            )
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        // k1's value lands on line 1 (0-indexed), k2's on line 3.
+        let ranges = &result[0].secret_line_ranges;
+        assert_eq!(ranges.len(), 2);
+        assert_eq!(ranges[0].reference, "pass:k1");
+        assert_eq!(ranges[0].start, 1);
+        assert_eq!(ranges[0].end, 2);
+        assert_eq!(ranges[1].reference, "pass:k2");
+        assert_eq!(ranges[1].start, 3);
+        assert_eq!(ranges[1].end, 4);
+    }
+
+    #[test]
+    fn secret_function_refuses_multiline_value_per_section_3_4() {
+        let pp = pp_with_secrets("pass", &[("multi", "line1\nline2")]);
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("c.tmpl", "x = {{ secret('pass:multi') }}\n")
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("multi-line value"));
+        assert!(msg.contains("single-line only"));
+        // Points the user at the whole-file path, not just rejecting.
+        assert!(msg.contains("whole-file deploy"));
+    }
+
+    #[test]
+    fn secret_function_propagates_provider_resolve_failure() {
+        let pp = pp_with_secrets("pass", &[]); // no canned values
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("c.tmpl", "x = {{ secret('pass:missing') }}\n")
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
+        let msg = err.to_string();
+        // The mock's "no canned value" message comes through.
+        assert!(msg.contains("MockSecretProvider"));
+        assert!(msg.contains("missing"));
+    }
+
+    #[test]
+    fn secret_function_unknown_scheme_lists_configured_schemes() {
+        // Registry has `pass` only; template references `op://...`.
+        let pp = pp_with_secrets("pass", &[("k", "v")]);
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("c.tmpl", "x = {{ secret('op://V/I/F') }}\n")
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("no secret provider registered for scheme `op`"));
+        assert!(msg.contains("pass")); // configured-schemes listing
+    }
+
+    #[test]
+    fn secret_function_without_registry_errors_with_actionable_hint() {
+        // No `with_secret_registry` call → secret() exists but every
+        // call surfaces a config-pointing error rather than
+        // MiniJinja's generic "undefined" diagnostic.
+        let pp = new_pp(HashMap::new());
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("c.tmpl", "x = {{ secret('pass:k') }}\n")
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let err = pp.expand(&source, env.fs.as_ref()).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("no secret providers are configured"));
+        assert!(msg.contains("[secret.providers."));
+        assert!(msg.contains("pass:k"));
+    }
+
+    #[test]
+    fn secret_function_supports_multiple_schemes_in_one_template() {
+        use crate::secret::test_support::MockSecretProvider;
+        use crate::secret::SecretRegistry;
+        use std::sync::Arc;
+
+        let mut registry = SecretRegistry::new();
+        registry.register(Arc::new(
+            MockSecretProvider::new("pass").with("db", "from-pass"),
+        ));
+        registry.register(Arc::new(
+            MockSecretProvider::new("op").with("//V/I/password", "from-op"),
+        ));
+        let pp = new_pp(HashMap::new()).with_secret_registry(Arc::new(registry));
+
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file(
+                "c.tmpl",
+                "a={{ secret('pass:db') }}\nb={{ secret('op://V/I/password') }}\n",
+            )
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let rendered = String::from_utf8_lossy(&result[0].content);
+        assert_eq!(rendered, "a=from-pass\nb=from-op\n");
+        assert_eq!(result[0].secret_line_ranges.len(), 2);
+    }
+
+    #[test]
+    fn secret_function_tracks_render_into_baseline() {
+        // The secret value must appear in the visible content AND
+        // (because templates are reverse-merge-capable) in the
+        // tracked_render. Burgertocow markers wrap the variable
+        // emission; the secret value appears between markers in the
+        // tracked stream.
+        let pp = pp_with_secrets("pass", &[("k", "topsecret")]);
+        let env = crate::testing::TempEnvironment::builder()
+            .pack("app")
+            .file("c.tmpl", "x = {{ secret('pass:k') }}\n")
+            .done()
+            .build();
+        let source = env.dotfiles_root.join("app/c.tmpl");
+        let result = pp.expand(&source, env.fs.as_ref()).unwrap();
+        let rendered = String::from_utf8_lossy(&result[0].content);
+        assert_eq!(rendered, "x = topsecret\n");
+
+        let tracked = result[0]
+            .tracked_render
+            .as_ref()
+            .expect("template render produces tracked stream");
+        assert!(
+            tracked.contains("topsecret"),
+            "tracked render should contain the resolved value, got: {tracked:?}"
+        );
+    }
+
+    /// Build a `SecretCallEntry` and the rendered text it would
+    /// produce when MiniJinja substitutes the sentinel for the value.
+    /// Tests construct the rendered text with the sentinel in place
+    /// (mimicking `secret()`'s return value) so `finalize_secrets`
+    /// has something to find.
+    fn entry(idx: usize, reference: &str, value: &str) -> (SecretCallEntry, String) {
+        let sentinel = make_secret_sentinel(0, idx);
+        let entry = SecretCallEntry {
+            sentinel: sentinel.clone(),
+            reference: reference.to_string(),
+            value: value.to_string(),
+        };
+        (entry, sentinel)
+    }
+
+    #[test]
+    fn finalize_secrets_substitutes_sentinels_and_records_line_ranges() {
+        let (e, sentinel) = entry(0, "pass:k", "hunter2");
+        let rendered = format!("header\nuser = alice\npassword = {sentinel}\nfooter\n");
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e]);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!((ranges[0].start, ranges[0].end), (2, 3));
+        assert_eq!(ranges[0].reference, "pass:k");
+        assert_eq!(
+            final_rendered,
+            "header\nuser = alice\npassword = hunter2\nfooter\n"
+        );
+        assert!(!final_rendered.contains('\u{E000}'));
+    }
+
+    #[test]
+    fn finalize_secrets_does_not_match_value_substring_outside_sentinel() {
+        // The substring-based predecessor would mark line 0 (the
+        // greeting also contains "hunter2"); the sentinel approach
+        // only matches the exact secret slot.
+        let (e, sentinel) = entry(0, "pass:k", "hunter2");
+        let rendered = format!("greeting = hunter2 hi\npassword = {sentinel}\n");
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e]);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!((ranges[0].start, ranges[0].end), (1, 2));
+        assert_eq!(
+            final_rendered,
+            "greeting = hunter2 hi\npassword = hunter2\n"
+        );
+    }
+
+    #[test]
+    fn finalize_secrets_handles_two_calls_resolving_to_same_value() {
+        // Two distinct sentinels even when the values are identical;
+        // both lines are masked.
+        let (e1, s1) = entry(0, "pass:a", "shared");
+        let (e2, s2) = entry(1, "pass:b", "shared");
+        let rendered = format!("a = {s1}\nb = {s2}\n");
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e1, e2]);
+        assert_eq!(ranges.len(), 2);
+        assert_eq!((ranges[0].start, ranges[0].end), (0, 1));
+        assert_eq!((ranges[1].start, ranges[1].end), (1, 2));
+        assert_eq!(final_rendered, "a = shared\nb = shared\n");
+    }
+
+    #[test]
+    fn finalize_secrets_drops_entries_whose_sentinel_was_not_emitted() {
+        // `secret()` was evaluated (e.g. inside a false `{% if %}`)
+        // but the sentinel never reached the visible output. We
+        // don't synthesise a fake range; we still substitute (a
+        // no-op here) so callers can rely on the post-call output
+        // being sentinel-free.
+        let (e, _sentinel) = entry(0, "pass:hidden", "never-emitted");
+        let rendered = "clean output\n".to_string();
+        let (final_rendered, _, ranges) = finalize_secrets(rendered, String::new(), &[e]);
+        assert!(ranges.is_empty());
+        assert_eq!(final_rendered, "clean output\n");
+    }
+
+    #[test]
+    fn finalize_secrets_substitutes_sentinels_in_tracked_render_too() {
+        // Sentinels must not leak into the baseline cache via the
+        // tracked stream.
+        let (e, sentinel) = entry(0, "pass:k", "hunter2");
+        let tracked = format!("preamble {sentinel} epilogue");
+        let (_, final_tracked, _) = finalize_secrets(String::new(), tracked, &[e]);
+        assert_eq!(final_tracked, "preamble hunter2 epilogue");
     }
 }

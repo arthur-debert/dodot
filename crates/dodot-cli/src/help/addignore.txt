@@ -1,0 +1,31 @@
+[header]dodot addignore[/header] — Mark a directory so dodot skips it.
+
+[desc]Drops a [item].dodotignore[/item] marker file into the named directory. From
+that point, dodot ignores the directory during pack discovery — it
+will not appear in [item]list[/item], [item]status[/item], or [item]up[/item].
+
+Useful for directories that live alongside packs in your dotfiles
+root but are not meant to be deployed: notes, scratch work,
+generated artifacts, half-finished migrations.
+
+Idempotent — safe to run repeatedly. Remove the marker file by hand
+([item]rm <dir>/.dodotignore[/item]) if you change your mind.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot addignore <PACK>[/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<PACK>[/item]   [desc]The directory to ignore (relative to the dotfiles root)[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot addignore notes
+  dodot addignore work-in-progress
+  ls notes/.dodotignore           [dim]# the marker file dodot left behind[/dim][/example]
+
+[header]NOTES[/header]
+  [desc]To skip a [item]pattern[/item] within an otherwise-deployed pack (e.g. swap
+  files, README), use [item][pack] ignore[/item] in [item].dodot.toml[/item] instead.[/desc]
+
+[header]SEE ALSO[/header]
+  [item]dodot list[/item]    [desc]Confirm the directory no longer appears[/desc]
+  [item]dodot config[/item]  [desc]Inspect or adjust [item][pack] ignore[/item] patterns[/desc]

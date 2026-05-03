@@ -213,6 +213,7 @@ pub struct TutorialEnv {
     pub fs: Arc<dyn Fs>,
     pub paths: Arc<dyn Pather>,
     pub datastore: Arc<dyn DataStore>,
+    pub command_runner: Arc<dyn dodot_lib::datastore::CommandRunner>,
     pub config_manager: Arc<ConfigManager>,
     pub syntax_checker: Arc<dyn SyntaxChecker>,
     /// Where the dotfiles root came from (for the check_root step
@@ -235,16 +236,20 @@ impl TutorialEnv {
         );
         let fs: Arc<dyn Fs> = Arc::new(dodot_lib::fs::OsFs::new());
         let runner: Arc<dyn dodot_lib::datastore::CommandRunner> =
-            Arc::new(dodot_lib::datastore::ShellCommandRunner);
-        let datastore: Arc<dyn DataStore> = Arc::new(
-            dodot_lib::datastore::FilesystemDataStore::new(fs.clone(), paths.clone(), runner),
-        );
+            Arc::new(dodot_lib::datastore::ShellCommandRunner::new(false));
+        let datastore: Arc<dyn DataStore> =
+            Arc::new(dodot_lib::datastore::FilesystemDataStore::new(
+                fs.clone(),
+                paths.clone(),
+                runner.clone(),
+            ));
         let config_manager =
             Arc::new(ConfigManager::new(&root).map_err(|e| anyhow!("config: {e}"))?);
         Ok(Self {
             fs,
             paths,
             datastore,
+            command_runner: runner,
             config_manager,
             syntax_checker: Arc::new(dodot_lib::shell::SystemSyntaxChecker),
             root_origin: origin,
@@ -258,12 +263,14 @@ impl TutorialEnv {
             paths: self.paths.clone(),
             config_manager: self.config_manager.clone(),
             syntax_checker: self.syntax_checker.clone(),
+            command_runner: self.command_runner.clone(),
             dry_run,
             no_provision: false,
             provision_rerun: false,
             force: false,
             view_mode: ViewMode::Full,
             group_mode: GroupMode::Name,
+            verbose: false,
         }
     }
 }
@@ -836,13 +843,14 @@ mod tests {
         let datastore: Arc<dyn DataStore> = Arc::new(FilesystemDataStore::new(
             temp.fs.clone(),
             temp.paths.clone(),
-            runner,
+            runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&temp.dotfiles_root).unwrap());
         TutorialEnv {
             fs: temp.fs.clone() as Arc<dyn Fs>,
             paths: temp.paths.clone() as Arc<dyn Pather>,
             datastore,
+            command_runner: runner,
             config_manager,
             syntax_checker: Arc::new(NoopSyntaxChecker),
             root_origin: "test fixture".into(),

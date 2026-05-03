@@ -43,6 +43,9 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub profiling: ProfilingSection,
+
+    #[config(nested)]
+    pub secret: SecretSection,
 }
 
 /// Pack-level settings.
@@ -66,6 +69,37 @@ pub struct SymlinkSection {
     #[config(default = ["ssh", "aws", "kube", "bashrc", "zshrc", "profile", "bash_profile", "bash_login", "bash_logout", "inputrc"])]
     pub force_home: Vec<String>,
 
+    /// Whether `_app/` and `app_aliases` route through the macOS
+    /// `~/Library/Application Support` root. Defaults to `true` on
+    /// macOS, ignored on other platforms (where `app_support_dir`
+    /// always collapses to `xdg_config_home`).
+    ///
+    /// Setting this to `false` on macOS opts the user into Linux-style
+    /// `~/.config` placement for *every* `_app/` and `app_aliases`
+    /// entry. `_lib/` is unaffected — it explicitly targets
+    /// `~/Library/`.
+    ///
+    /// See `docs/proposals/macos-paths.lex` §11.2.
+    #[config(default = true)]
+    pub app_uses_library: bool,
+
+    /// Curated list of GUI-app folder names whose first path segment
+    /// routes to `<app_support_dir>/<seg>/<rest>` without requiring a
+    /// `_app/` prefix in the pack tree. Capped at 100 entries; see
+    /// `docs/proposals/macos-paths.lex` §3.4.
+    ///
+    /// Matching is case-sensitive (Library folder names are case-sensitive
+    /// on macOS) and on the first path segment only.
+    #[config(default = ["Code", "Cursor", "Zed", "Emacs"])]
+    pub force_app: Vec<String>,
+
+    /// Pack-name → GUI-app folder name rewrites. When the pack name
+    /// matches a key here, the resolver's default rule reroutes to
+    /// `<app_support_dir>/<value>/<rel_path>`. See
+    /// `docs/proposals/macos-paths.lex` §3.3.
+    #[config(default = {})]
+    pub app_aliases: std::collections::HashMap<String, String>,
+
     /// Paths that must not be symlinked for security reasons.
     #[config(default = [
         ".ssh/id_rsa", ".ssh/id_ed25519", ".ssh/id_dsa", ".ssh/id_ecdsa",
@@ -81,6 +115,19 @@ pub struct SymlinkSection {
     /// `$XDG_CONFIG_HOME`.
     #[config(default = {})]
     pub targets: std::collections::HashMap<String, String>,
+
+    /// Filename suffixes (without leading dot) that should be detected
+    /// as plists for `dodot git-install-filters` adopt hints and the
+    /// `.gitattributes` line. Defaults to `["plist"]`. Some apps store
+    /// plists with non-standard suffixes (`.binplist`, `.savedState`,
+    /// etc.); register additional extensions here to flow them through
+    /// the same clean/smudge pipeline.
+    ///
+    /// Comparison is case-insensitive, matching the existing detection
+    /// behavior. Honors the standard root → pack inheritance.
+    /// See `docs/proposals/plists.lex` §8.1.
+    #[config(default = ["plist"])]
+    pub plist_extensions: Vec<String>,
 }
 
 /// PATH handler settings.
@@ -125,6 +172,12 @@ pub struct PreprocessorSection {
 
     #[config(nested)]
     pub template: PreprocessorTemplateSection,
+
+    #[config(nested)]
+    pub age: PreprocessorAgeSection,
+
+    #[config(nested)]
+    pub gpg: PreprocessorGpgSection,
 }
 
 /// Template preprocessor settings.
@@ -142,6 +195,76 @@ pub struct PreprocessorTemplateSection {
     /// as var names raises an error at load time.
     #[config(default = {})]
     pub vars: std::collections::HashMap<String, String>,
+
+    /// Glob patterns for source files whose reverse-merge should be
+    /// skipped. Templates matching are still rendered on `dodot up` and
+    /// tracked in the divergence cache, but `dodot transform check` and
+    /// the clean filter both bypass the burgertocow reverse-merge step
+    /// (echo stdin / report-only). Useful for templates that are mostly
+    /// dynamic — the heuristic degrades there and produces more conflict
+    /// markers than usable diffs.
+    ///
+    /// Patterns are matched against the source path's filename component
+    /// (e.g. `"complex-config.toml.tmpl"`, `"*.gen.tmpl"`).
+    #[config(default = [])]
+    pub no_reverse: Vec<String>,
+}
+
+/// `age` whole-file decryption preprocessor settings
+/// (`docs/proposals/secrets.lex` §4).
+///
+/// Default-disabled so a fresh dodot install never shells out to
+/// `age` against random files; users opt in by flipping `enabled =
+/// true` in their root `.dodot.toml`. The identity path defaults to
+/// `~/.config/age/identity.txt` (the conventional `age-keygen`
+/// destination); set explicitly when storing keys elsewhere or
+/// rotating identities per-pack.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorAgeSection {
+    /// Whether `*.age` files are matched and decrypted on `dodot
+    /// up`. Default false — opt-in posture mirrors the
+    /// `[secret.providers.*]` blocks.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// File extensions that trigger age decryption. Same shape as
+    /// `template.extensions`; multi-extension config is mostly
+    /// useful for users whose conventions diverge (e.g. `.age.txt`).
+    #[config(default = ["age"])]
+    pub extensions: Vec<String>,
+
+    /// Path to the age identity file. Empty (the default) defers to
+    /// the runtime: `$AGE_IDENTITY` env var, then
+    /// `~/.config/age/identity.txt`.
+    #[config(default = "")]
+    pub identity: String,
+}
+
+/// `gpg` whole-file decryption preprocessor settings
+/// (`docs/proposals/secrets.lex` §4).
+///
+/// Same opt-in posture as `age`. gpg picks up its identity from
+/// gpg-agent so there's no `identity` field — auth is the user's
+/// existing gpg setup, not dodot's job to configure.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorGpgSection {
+    /// Whether `*.gpg` files are matched and decrypted on
+    /// `dodot up`. Default false — opt-in.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// File extensions that trigger gpg decryption. Default
+    /// `["gpg"]` only. **Do not include `asc` here unless your
+    /// dotfiles repo only stores ASCII-armored *encrypted*
+    /// payloads under that suffix.** `.asc` is conventionally used
+    /// for armored *public keys* and *detached signatures* (release
+    /// signatures, package-manager keys), neither of which gpg
+    /// will decrypt; routing them through `gpg --decrypt` produces
+    /// confusing failures. Users storing armored encrypted
+    /// payloads as `.asc` opt in by setting
+    /// `extensions = ["gpg", "asc"]` explicitly.
+    #[config(default = ["gpg"])]
+    pub extensions: Vec<String>,
 }
 
 /// Shell-init profiling settings. Root-only — per-pack overrides are
@@ -165,6 +288,142 @@ pub struct ProfilingSection {
     /// 400 KB on disk.
     #[config(default = 100)]
     pub keep_last_runs: usize,
+}
+
+/// Secret-handling settings (`docs/proposals/secrets.lex`).
+///
+/// Top-level kill switch + per-provider blocks. Disabling the
+/// section globally (`[secret] enabled = false`) is equivalent to
+/// disabling every provider; templates that call `secret(...)` then
+/// surface a "no providers configured" render error.
+///
+/// **This section is root-only.** Unlike most config sections, the
+/// `[secret]` block is always read from the root `.dodot.toml`;
+/// per-pack overrides are ignored. Secret tooling
+/// (`$PASSWORD_STORE_DIR`, `OP_SERVICE_ACCOUNT_TOKEN`, the binaries
+/// themselves) is a property of the user's environment, not of any
+/// individual pack — a pack-level override would invalidate the
+/// once-per-run preflight contract (`secrets.lex` §5.4) and would
+/// surface as confusing "secret X probed under config A but
+/// resolved under config B" failures. Treat the root section as the
+/// single source of truth.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretSection {
+    /// Master switch. Default true; flip to false to disable all
+    /// secret resolution without removing the per-provider blocks.
+    #[config(default = true)]
+    pub enabled: bool,
+
+    #[config(nested)]
+    pub providers: SecretProvidersSection,
+}
+
+/// Per-provider configuration. Each block has an `enabled` flag plus
+/// any provider-specific knobs (e.g. `pass.store_dir`). Providers
+/// disabled here are not registered in the runtime
+/// `SecretRegistry`; references to their schemes raise
+/// "no provider for scheme" at resolution time.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProvidersSection {
+    #[config(nested)]
+    pub pass: SecretProviderPass,
+
+    #[config(nested)]
+    pub op: SecretProviderOp,
+
+    #[config(nested)]
+    pub bw: SecretProviderBw,
+
+    #[config(nested)]
+    pub sops: SecretProviderSops,
+
+    #[config(nested)]
+    pub keychain: SecretProviderKeychain,
+
+    /// Note the TOML key here is `secret_tool` (underscore), even
+    /// though the scheme prefix in `secret(...)` references is
+    /// `secret-tool:` (hyphen, matching the binary name). The
+    /// reason: confique's `Config` derive (re-exported from
+    /// clapfig as `Config`) maps each TOML key 1:1 to a Rust
+    /// struct field name, and Rust identifiers can't contain
+    /// hyphens — `pub secret-tool: ...` won't compile. TOML
+    /// itself accepts bare hyphenated keys; it's the Rust-side
+    /// field-name constraint that forces the underscore form.
+    /// User-facing error messages translate via
+    /// [`crate::secret::registry::scheme_to_config_key`] so a
+    /// "no provider for scheme `secret-tool`" hint suggests the
+    /// correct `[secret.providers.secret_tool]` block.
+    #[config(nested)]
+    pub secret_tool: SecretProviderSecretTool,
+}
+
+/// `pass` (password-store) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderPass {
+    /// Whether the `pass:` scheme is registered. Default false —
+    /// users opt in explicitly so a freshly-installed dodot doesn't
+    /// shell out to `pass` on every render.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// Override `$PASSWORD_STORE_DIR`. Empty (the default) leaves
+    /// dodot reading the env var, which falls back to
+    /// `$HOME/.password-store`.
+    #[config(default = "")]
+    pub store_dir: String,
+}
+
+/// `op` (1Password CLI) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderOp {
+    /// Whether the `op://` scheme is registered. Default false —
+    /// same opt-in posture as `pass`.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `bw` (Bitwarden CLI) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderBw {
+    /// Whether the `bw:` scheme is registered. Default false —
+    /// same opt-in posture as `pass` and `op`.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `sops` (Mozilla SOPS) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderSops {
+    /// Whether the `sops:` scheme is registered. Default false —
+    /// same opt-in posture as the other providers.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `keychain` (macOS Keychain via `security`) provider config.
+///
+/// macOS-only; on other platforms the provider's `probe()`
+/// surfaces `NotInstalled` with a "use secret-tool instead"
+/// pointer. Default `enabled = false` matches the rest of the
+/// secret providers — opt-in posture.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderKeychain {
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `secret-tool` (freedesktop Secret Service via `secret-tool`)
+/// provider config.
+///
+/// Linux-first; on macOS the provider's `probe()` redirects users
+/// to the `keychain` provider. Default `enabled = false`. The
+/// scheme prefix in references is `secret-tool:` (hyphen) — see
+/// the comment on `SecretProvidersSection::secret_tool` for the
+/// reason the config field uses the underscore form instead.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderSecretTool {
+    #[config(default = false)]
+    pub enabled: bool,
 }
 
 /// File-to-handler mapping patterns.
@@ -236,6 +495,13 @@ impl DodotConfig {
     pub fn to_handler_config(&self) -> HandlerConfig {
         HandlerConfig {
             force_home: self.symlink.force_home.clone(),
+            // `force_app` and `app_aliases` always pass through to the
+            // resolver. On non-macOS (and on macOS with
+            // `app_uses_library = false`) the `app_support_dir` accessor
+            // already collapses to `xdg_config_home`, so the routing is
+            // mechanically correct without an extra branch here.
+            force_app: self.symlink.force_app.clone(),
+            app_aliases: self.symlink.app_aliases.clone(),
             protected_paths: self.symlink.protected_paths.clone(),
             targets: self.symlink.targets.clone(),
             auto_chmod_exec: self.path.auto_chmod_exec,
@@ -669,6 +935,81 @@ homebrew = "RootBrewfile"
 
         let hcfg = cfg.to_handler_config();
         assert_eq!(hcfg.force_home, cfg.symlink.force_home);
+        assert_eq!(hcfg.force_app, cfg.symlink.force_app);
+        assert_eq!(hcfg.app_aliases, cfg.symlink.app_aliases);
         assert_eq!(hcfg.protected_paths, cfg.symlink.protected_paths);
+    }
+
+    /// Hard cap on the seeded `force_app` defaults — see
+    /// `docs/proposals/macos-paths.lex` §3.4.1. Adding entry 101 is
+    /// supposed to be a forcing function to drop the weakest-justified
+    /// existing entry; this test makes that forcing function *visible*
+    /// rather than relying on review discipline alone.
+    #[test]
+    fn default_force_app_under_hundred_entry_cap() {
+        let env = TempEnvironment::builder().build();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert!(
+            cfg.symlink.force_app.len() <= 100,
+            "force_app default has {} entries; cap is 100. \
+             Drop the weakest-justified entry before adding another. \
+             See docs/proposals/macos-paths.lex §3.4.1.",
+            cfg.symlink.force_app.len()
+        );
+    }
+
+    /// Compile-time sanity on the seeded force_app entries. These ship
+    /// in the default config and must stay correctly capitalized to
+    /// match the actual macOS Application Support folder names.
+    #[test]
+    fn default_force_app_seed_contains_expected_entries() {
+        let env = TempEnvironment::builder().build();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        for expected in ["Code", "Cursor", "Zed", "Emacs"] {
+            assert!(
+                cfg.symlink.force_app.iter().any(|e| e == expected),
+                "expected default force_app to contain `{expected}`; got {:?}",
+                cfg.symlink.force_app
+            );
+        }
+    }
+
+    #[test]
+    fn app_uses_library_default_is_true() {
+        let env = TempEnvironment::builder().build();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert!(
+            cfg.symlink.app_uses_library,
+            "app_uses_library must default to true; macOS gets the Library \
+             root, Linux already collapses app_support_dir to xdg_config_home"
+        );
+    }
+
+    #[test]
+    fn app_aliases_overridable_in_root_config() {
+        let env = TempEnvironment::builder().build();
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                br#"
+[symlink.app_aliases]
+vscode = "Code"
+warp = "dev.warp.Warp-Stable"
+"#,
+            )
+            .unwrap();
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let cfg = mgr.root_config().unwrap();
+        assert_eq!(
+            cfg.symlink.app_aliases.get("vscode").map(String::as_str),
+            Some("Code")
+        );
+        assert_eq!(
+            cfg.symlink.app_aliases.get("warp").map(String::as_str),
+            Some("dev.warp.Warp-Stable")
+        );
     }
 }

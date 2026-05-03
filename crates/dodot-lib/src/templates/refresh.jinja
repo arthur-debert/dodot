@@ -1,0 +1,29 @@
+{%- if mode == "quiet" -%}
+{%- elif mode == "list_paths" -%}
+{%- for e in entries -%}
+{%- if e.action == "touched" %}{{ e.source_path }}
+{% endif -%}
+{%- endfor -%}
+{%- else -%}
+{%- if entries|length == 0 -%}
+[muted]No template baselines. Run [usage]dodot up[/usage] to deploy templates first.[/muted]
+{%- else -%}
+{%- set missing = entries|rejectattr("action", "equalto", "touched")|rejectattr("action", "equalto", "clean")|list -%}
+{%- if touched_any -%}
+[message]Touched {{ entries|selectattr("action", "equalto", "touched")|list|length }} source file(s) — `git status` will now see deployed-side edits.[/message]
+{%- elif missing|length > 0 -%}
+[message]No edits to touch, but {{ missing|length }} cache entry / entries need attention.[/message]
+{%- else -%}
+[message]All {{ entries|length }} template source(s) already in sync.[/message]
+{%- endif %}
+{% for e in entries -%}
+{%- if e.action == "touched" -%}
+  [success]·[/success] {{ e.source_path }}
+{% elif e.action == "missing_source" -%}
+  [warn]? missing source[/warn] {{ e.source_path }} [muted](baseline stale; next [usage]dodot up[/usage] will refresh)[/muted]
+{% elif e.action == "missing_deployed" -%}
+  [warn]? missing deployed[/warn] {{ e.source_path }} [muted](rendered file gone; next [usage]dodot up[/usage] will recreate)[/muted]
+{% endif -%}
+{%- endfor -%}
+{%- endif -%}
+{%- endif -%}

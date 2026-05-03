@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -83,6 +84,24 @@ pub struct RuleMatch {
     /// `None` for regular (non-preprocessed) files.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preprocessor_source: Option<PathBuf>,
+
+    /// In-memory rendered bytes for preprocessor-produced files.
+    ///
+    /// Populated by `plan_pack_inner` from
+    /// `PreprocessResult.rendered_bytes` so that handlers needing
+    /// the rendered content for sentinel hashing (`install`,
+    /// `homebrew`) can hash these bytes directly instead of reading
+    /// the rendered file from disk. That decoupling is the
+    /// structural enabler for §7.4 Passive mode (`dodot status`,
+    /// `up --dry-run`), where the rendered file is intentionally
+    /// not written to disk. See issue #121.
+    ///
+    /// `None` for regular (non-preprocessed) files; handlers
+    /// targeting those still read from `absolute_path` directly.
+    /// `Arc<[u8]>` so cloning a `RuleMatch` (e.g. during handler
+    /// grouping) doesn't duplicate the buffer.
+    #[serde(skip)]
+    pub rendered_bytes: Option<Arc<[u8]>>,
 }
 
 // ── Grouping helpers ────────────────────────────────────────────
@@ -469,6 +488,7 @@ fn match_file<'a>(
                 is_dir,
                 options: rule.options.clone(),
                 preprocessor_source: None,
+                rendered_bytes: None,
             });
         }
     }
@@ -1061,6 +1081,7 @@ mod tests {
                 is_dir: false,
                 options: HashMap::new(),
                 preprocessor_source: None,
+                rendered_bytes: None,
             },
             RuleMatch {
                 relative_path: "aliases.sh".into(),
@@ -1070,6 +1091,7 @@ mod tests {
                 is_dir: false,
                 options: HashMap::new(),
                 preprocessor_source: None,
+                rendered_bytes: None,
             },
             RuleMatch {
                 relative_path: "gvimrc".into(),
@@ -1079,6 +1101,7 @@ mod tests {
                 is_dir: false,
                 options: HashMap::new(),
                 preprocessor_source: None,
+                rendered_bytes: None,
             },
         ];
 
@@ -1135,6 +1158,7 @@ mod tests {
             is_dir: false,
             options: HashMap::new(),
             preprocessor_source: None,
+            rendered_bytes: None,
         };
         let json = serde_json::to_string(&m).unwrap();
         assert!(json.contains("vimrc"));

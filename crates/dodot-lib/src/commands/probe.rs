@@ -14,8 +14,9 @@ use serde::Serialize;
 use crate::packs::orchestration::ExecutionContext;
 use crate::probe::{
     aggregate_profiles, collect_data_dir_tree, collect_deployment_map, group_profile,
-    read_latest_profile, read_recent_profiles, summarize_history, AggregatedTarget,
-    DeploymentMapEntry, GroupedProfile, HistoryEntry, TreeNode,
+    parse_unix_ts_from_filename, read_last_up_marker, read_latest_profile, read_recent_profiles,
+    summarize_history, AggregatedTarget, DeploymentMapEntry, GroupedProfile, HistoryEntry,
+    TreeNode,
 };
 use crate::Result;
 
@@ -90,9 +91,70 @@ pub enum ProbeResult {
     /// across the last N runs.
     ShellInitAggregate(ShellInitAggregateView),
     /// `dodot probe shell-init --history` — one summary line per recent
-    /// run, oldest run first (so the latest is closest to the eye in a
-    /// terminal where output scrolls down).
+    /// run, newest first (matches every other dated listing in the tool;
+    /// the user can pipe through `tac` if they want the inverse).
     ShellInitHistory(ShellInitHistoryView),
+    /// `dodot probe shell-init <pack>[/<file>]` — drill-down view of
+    /// one target (or one pack) across recent runs. Emits per-run
+    /// duration, exit status, and captured stderr (when any) so the
+    /// user can pinpoint *what* a failing source file printed.
+    ShellInitFilter(ShellInitFilterView),
+    /// `dodot probe shell-init --errors-only` — every target with at
+    /// least one non-zero exit across the examined window, grouped by
+    /// target and sorted by failure count (most-broken first).
+    ShellInitErrors(ShellInitErrorsView),
+    /// `dodot probe app <pack>` — advisory introspection of macOS
+    /// app-support paths for a single pack: which folder names this
+    /// pack will route to, whether they exist, matching homebrew cask
+    /// metadata, and `.app` bundle / bundle-id pairs from Spotlight.
+    /// See `docs/proposals/macos-paths.lex` §8.4.
+    App(AppProbeView),
+}
+
+/// Display payload for `dodot probe app <pack>`.
+#[derive(Debug, Clone, Serialize)]
+pub struct AppProbeView {
+    pub pack: String,
+    /// Whether the host platform supports the macOS-only probes
+    /// (homebrew cask + Spotlight). On Linux this is `false` and the
+    /// `entries` list reflects only the deterministic info available
+    /// from the resolver — no cask/bundle data.
+    pub macos: bool,
+    /// One row per app-folder name this pack would route to. May be
+    /// empty for a pack with no `_app/`/`force_app`/`app_aliases`
+    /// entries.
+    pub entries: Vec<AppProbeEntry>,
+    /// Sibling-adoption suggestions surfaced from the matching cask's
+    /// zap stanza (e.g. `~/Library/Preferences/<bundle>.plist`).
+    pub suggested_adoptions: Vec<String>,
+}
+
+/// One row per app-support folder a pack will deploy to.
+#[derive(Debug, Clone, Serialize)]
+pub struct AppProbeEntry {
+    /// The destination folder name, e.g. `"Code"`.
+    pub folder: String,
+    /// `<app_support_dir>/<folder>/` path. Always populated, even when
+    /// the folder doesn't exist on disk — the renderer shortens to
+    /// `~/...` for display.
+    pub target_path: String,
+    /// Whether `target_path` exists on the local filesystem.
+    pub target_exists: bool,
+    /// Source rule that produced this folder: `"alias"`, `"force_app"`,
+    /// or `"_app/"`. Drives display.
+    pub source_rule: String,
+    /// Matching homebrew cask token, when found. Always an
+    /// *installed* cask (matching only iterates `brew list --cask
+    /// --versions`); a `Some` value implies "installed". A `None`
+    /// value means either no installed cask declared this folder in
+    /// its zap stanza, or we're not on macOS.
+    pub cask: Option<String>,
+    /// `.app` bundle name derived from cask metadata, e.g.
+    /// `"Visual Studio Code.app"`.
+    pub app_bundle: Option<String>,
+    /// `kMDItemCFBundleIdentifier` for the `.app` bundle, when
+    /// resolvable via `mdls`.
+    pub bundle_id: Option<String>,
 }
 
 /// Display payload for `--runs N`.
@@ -107,6 +169,16 @@ pub struct ShellInitAggregateView {
     pub profiling_enabled: bool,
     pub profiles_dir: String,
     pub rows: Vec<ShellInitAggregateRow>,
+    /// True when the newest aggregated profile was captured before the
+    /// most recent `dodot up`. The renderer prints a freshness banner
+    /// in that case so the user knows to open a new shell.
+    pub stale: bool,
+    /// `YYYY-MM-DD HH:MM` capture time of the newest aggregated
+    /// profile; empty when no profiles were loaded.
+    pub latest_profile_when: String,
+    /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
+    /// `up` has never run on this machine.
+    pub last_up_when: String,
 }
 
 /// One per-target aggregate row, durations pre-humanised for the
@@ -135,6 +207,16 @@ pub struct ShellInitHistoryView {
     pub profiling_enabled: bool,
     pub profiles_dir: String,
     pub rows: Vec<ShellInitHistoryRow>,
+    /// True when the newest row was captured before the most recent
+    /// `dodot up`. Older rows in the history are obviously older —
+    /// they're not flagged individually.
+    pub stale: bool,
+    /// `YYYY-MM-DD HH:MM` capture time of the newest history row;
+    /// empty when no profiles exist.
+    pub latest_profile_when: String,
+    /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
+    /// `up` has never run on this machine.
+    pub last_up_when: String,
 }
 
 /// One per-run row in `--history`.
@@ -182,6 +264,16 @@ pub struct ShellInitView {
     pub total_us: u64,
     /// Where the profiles live on disk (so the user can `ls` it).
     pub profiles_dir: String,
+    /// True when the displayed profile was captured before the most
+    /// recent `dodot up`. The renderer prints a freshness banner so
+    /// the user knows the timings reflect a pre-up shell.
+    pub stale: bool,
+    /// `YYYY-MM-DD HH:MM` capture time of the displayed profile;
+    /// empty when no profile is available.
+    pub profile_when: String,
+    /// `YYYY-MM-DD HH:MM` of the most recent `dodot up`; empty when
+    /// `up` has never run on this machine.
+    pub last_up_when: String,
 }
 
 /// Display row for one entry in a shell-init group.
@@ -206,6 +298,90 @@ pub struct ShellInitGroup {
     pub rows: Vec<ShellInitRow>,
     pub group_total_us: u64,
     pub group_total_label: String,
+}
+
+/// Display payload for the filtered drill-down view.
+///
+/// Renders per-run history of one target (when the filter narrows to a
+/// single file) or every target in a pack across recent runs. Emits the
+/// captured stderr inline so the user can see exactly what each failing
+/// source printed without leaving the terminal.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitFilterView {
+    pub profiling_enabled: bool,
+    pub profiles_dir: String,
+    /// Filter as the user typed it — echoed in the header.
+    pub filter: String,
+    /// Pack portion of the filter (always set).
+    pub filter_pack: String,
+    /// Filename portion of the filter, if any (the part after `/`).
+    pub filter_filename: Option<String>,
+    /// Number of profiles examined.
+    pub runs_examined: usize,
+    /// One block per matching target. When the filter is a specific
+    /// file, this contains at most one block. When it's a pack-only
+    /// filter, one block per target seen in the pack across the
+    /// examined runs.
+    pub targets: Vec<ShellInitFilterTarget>,
+    pub stale: bool,
+    pub latest_profile_when: String,
+    pub last_up_when: String,
+}
+
+/// One target's runs across the examined window.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitFilterTarget {
+    /// Full source path as recorded in the profile.
+    pub target: String,
+    /// Basename for header display.
+    pub display_target: String,
+    /// Pack the target belongs to.
+    pub pack: String,
+    /// Handler (`shell` for sourced files, `path` for PATH exports).
+    pub handler: String,
+    /// Per-run rows, newest first.
+    pub runs: Vec<ShellInitFilterRun>,
+    /// How many of `runs` had a non-zero exit status.
+    pub failure_count: usize,
+}
+
+/// Display payload for `--errors-only`. Same shape as the filter view
+/// minus the user-typed filter string — the implicit filter is "non-
+/// zero exit, any pack, any target".
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitErrorsView {
+    pub profiling_enabled: bool,
+    pub profiles_dir: String,
+    pub runs_examined: usize,
+    /// Targets with at least one failed run in the window, sorted by
+    /// failure count desc (then by pack/target asc as a tiebreaker so
+    /// the order is stable across runs with the same counts).
+    pub targets: Vec<ShellInitFilterTarget>,
+    pub stale: bool,
+    pub latest_profile_when: String,
+    pub last_up_when: String,
+}
+
+/// One per-run row inside a target block.
+#[derive(Debug, Clone, Serialize)]
+pub struct ShellInitFilterRun {
+    /// `YYYY-MM-DD HH:MM` of the run.
+    pub when: String,
+    /// Pre-humanised duration label (e.g. `"83 µs"`).
+    pub duration_label: String,
+    pub duration_us: u64,
+    pub exit_status: i32,
+    /// `"deployed"` (success) or `"error"` (non-zero exit) — maps to
+    /// the same theme styles used by the unfiltered view.
+    pub status_class: &'static str,
+    /// Captured stderr split into individual lines. Empty when the
+    /// source printed nothing to stderr in this run. Pre-split because
+    /// the template engine doesn't expose a `.split()` filter, and
+    /// rendering each line with its own indent is cleaner than fighting
+    /// the template language.
+    pub stderr_lines: Vec<String>,
+    /// Source TSV filename, for cross-reference.
+    pub profile_filename: String,
 }
 
 /// One entry in the `probe` summary listing.
@@ -274,10 +450,14 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
 
     let profile_opt = read_latest_profile(ctx.fs.as_ref(), ctx.paths.as_ref())?;
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
 
     let view = match profile_opt {
         Some(profile) => {
             let grouped = group_profile(&profile);
+            let profile_ts = parse_unix_ts_from_filename(&profile.filename);
+            let stale = is_stale(profile_ts, last_up_ts);
             ShellInitView {
                 filename: profile.filename.clone(),
                 shell: profile.shell.clone(),
@@ -288,6 +468,9 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
                 framing_us: grouped.framing_us,
                 total_us: grouped.total_us,
                 profiles_dir,
+                stale,
+                profile_when: format_unix_ts(profile_ts),
+                last_up_when,
             }
         }
         None => ShellInitView {
@@ -300,10 +483,20 @@ pub fn shell_init(ctx: &ExecutionContext) -> Result<ProbeResult> {
             framing_us: 0,
             total_us: 0,
             profiles_dir,
+            stale: false,
+            profile_when: String::new(),
+            last_up_when,
         },
     };
 
     Ok(ProbeResult::ShellInit(view))
+}
+
+/// Decide whether a profile timestamp predates the last `dodot up`.
+/// Returns false when either timestamp is unknown — we never warn on
+/// guesswork, only when we have both reference points.
+fn is_stale(profile_ts: u64, last_up_ts: Option<u64>) -> bool {
+    matches!(last_up_ts, Some(last) if profile_ts > 0 && profile_ts < last)
 }
 
 fn shell_init_groups(grouped: &GroupedProfile) -> Vec<ShellInitGroup> {
@@ -366,8 +559,15 @@ pub fn shell_init_aggregate(ctx: &ExecutionContext, runs: usize) -> Result<Probe
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
     let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
+    // read_recent_profiles returns newest-first, so the first entry's
+    // filename is the most recent capture.
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
     let view = aggregate_profiles(&profiles);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
 
     Ok(ProbeResult::ShellInitAggregate(ShellInitAggregateView {
         runs: view.runs,
@@ -375,6 +575,9 @@ pub fn shell_init_aggregate(ctx: &ExecutionContext, runs: usize) -> Result<Probe
         profiling_enabled,
         profiles_dir,
         rows: view.targets.into_iter().map(into_aggregate_row).collect(),
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when: last_up_ts.map(format_unix_ts).unwrap_or_default(),
     }))
 }
 
@@ -400,22 +603,270 @@ fn into_aggregate_row(t: AggregatedTarget) -> ShellInitAggregateRow {
 /// terminal.
 pub const DEFAULT_HISTORY_LIMIT: usize = 50;
 
+/// Default window for the filtered drill-down view. Wider than
+/// `RUNTIME_FAILURE_WINDOW` (used by `status`) so a user looking at
+/// `dodot probe shell-init <file>` gets enough history to see whether
+/// the failure is recurring or one-off, but bounded so the rendered
+/// output stays readable.
+pub const DEFAULT_FILTER_RUNS: usize = 20;
+
+/// Match a profile target path against a filename-or-subpath filter.
+///
+/// Returns true when:
+/// - the filter is a bare basename (`env.sh`) and `target`'s last path
+///   component equals it, or
+/// - the filter is a subpath (`subdir/env.sh`) and `target` ends with
+///   that subpath at a path boundary.
+///
+/// The boundary check (`/{filter}` suffix) prevents `env.sh` from
+/// matching `nvenv.sh` or other filenames that happen to end with the
+/// same characters.
+fn target_matches_filter(target: &str, filter: &str) -> bool {
+    if !filter.contains('/') {
+        return std::path::Path::new(target)
+            .file_name()
+            .is_some_and(|s| s == std::ffi::OsStr::new(filter));
+    }
+    // Subpath form: must end at a path boundary so `dir/env.sh` doesn't
+    // accidentally match `otherdir/env.sh`.
+    target.ends_with(&format!("/{filter}")) || target == filter
+}
+
+/// Render the filtered drill-down view for a `<pack>[/<file>]` filter.
+///
+/// `runs` controls how many recent profiles are examined; the caller
+/// passes [`DEFAULT_FILTER_RUNS`] unless it has a specific reason to
+/// look further or fewer.
+pub fn shell_init_filter(ctx: &ExecutionContext, filter: &str, runs: usize) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
+
+    // Filter parsing: `pack` or `pack/file`. Trim a leading `./` and a
+    // trailing `/` defensively so users can paste tab-completed paths.
+    let trimmed = filter.trim().trim_start_matches("./").trim_end_matches('/');
+    let (filter_pack, filter_filename) = match trimmed.split_once('/') {
+        Some((p, f)) if !p.is_empty() && !f.is_empty() => (p.to_string(), Some(f.to_string())),
+        _ => (trimmed.to_string(), None),
+    };
+
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
+
+    // Bucket per `(pack, handler, target)`. Order: targets sorted by
+    // path so output is stable; runs within each target stay newest-
+    // first (matching the input slice order).
+    use std::collections::BTreeMap;
+    let mut buckets: BTreeMap<(String, String, String), Vec<ShellInitFilterRun>> = BTreeMap::new();
+
+    for profile in &profiles {
+        let when = format_unix_ts(parse_unix_ts_from_filename(&profile.filename));
+        for entry in &profile.entries {
+            if entry.pack != filter_pack {
+                continue;
+            }
+            if let Some(name) = &filter_filename {
+                if !target_matches_filter(&entry.target, name) {
+                    continue;
+                }
+            }
+            let stderr_lines: Vec<String> = profile
+                .errors
+                .iter()
+                .find(|er| er.target == entry.target)
+                .map(|er| {
+                    er.message
+                        .trim_end()
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            buckets
+                .entry((
+                    entry.pack.clone(),
+                    entry.handler.clone(),
+                    entry.target.clone(),
+                ))
+                .or_default()
+                .push(ShellInitFilterRun {
+                    when: when.clone(),
+                    duration_us: entry.duration_us,
+                    duration_label: humanize_us(entry.duration_us),
+                    exit_status: entry.exit_status,
+                    status_class: if entry.exit_status == 0 {
+                        "deployed"
+                    } else {
+                        "error"
+                    },
+                    stderr_lines,
+                    profile_filename: profile.filename.clone(),
+                });
+        }
+    }
+
+    let targets: Vec<ShellInitFilterTarget> = buckets
+        .into_iter()
+        .map(|((pack, handler, target), runs_vec)| {
+            let display_target = std::path::Path::new(&target)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| target.clone());
+            let failure_count = runs_vec.iter().filter(|r| r.exit_status != 0).count();
+            ShellInitFilterTarget {
+                target,
+                display_target,
+                pack,
+                handler,
+                runs: runs_vec,
+                failure_count,
+            }
+        })
+        .collect();
+
+    Ok(ProbeResult::ShellInitFilter(ShellInitFilterView {
+        profiling_enabled,
+        profiles_dir,
+        filter: filter.trim().to_string(),
+        filter_pack,
+        filter_filename,
+        runs_examined: profiles.len(),
+        targets,
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when,
+    }))
+}
+
+/// Render the cross-history errors view.
+///
+/// Scans the last `runs` profiles, keeps only entries with non-zero
+/// exit status, groups them by target, and orders by failure count
+/// (most-broken first). The `runs` parameter follows the same window
+/// convention as [`shell_init_filter`].
+pub fn shell_init_errors(ctx: &ExecutionContext, runs: usize) -> Result<ProbeResult> {
+    let root_config = ctx.config_manager.root_config()?;
+    let profiling_enabled = root_config.profiling.enabled;
+    let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
+    let last_up_when = last_up_ts.map(format_unix_ts).unwrap_or_default();
+
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), runs)?;
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
+
+    use std::collections::BTreeMap;
+    let mut buckets: BTreeMap<(String, String, String), Vec<ShellInitFilterRun>> = BTreeMap::new();
+
+    for profile in &profiles {
+        let when = format_unix_ts(parse_unix_ts_from_filename(&profile.filename));
+        for entry in &profile.entries {
+            // Errors-only: skip clean runs entirely.
+            if entry.exit_status == 0 {
+                continue;
+            }
+            let stderr_lines: Vec<String> = profile
+                .errors
+                .iter()
+                .find(|er| er.target == entry.target)
+                .map(|er| {
+                    er.message
+                        .trim_end()
+                        .lines()
+                        .map(|s| s.to_string())
+                        .collect()
+                })
+                .unwrap_or_default();
+            buckets
+                .entry((
+                    entry.pack.clone(),
+                    entry.handler.clone(),
+                    entry.target.clone(),
+                ))
+                .or_default()
+                .push(ShellInitFilterRun {
+                    when: when.clone(),
+                    duration_us: entry.duration_us,
+                    duration_label: humanize_us(entry.duration_us),
+                    exit_status: entry.exit_status,
+                    status_class: "error",
+                    stderr_lines,
+                    profile_filename: profile.filename.clone(),
+                });
+        }
+    }
+
+    let mut targets: Vec<ShellInitFilterTarget> = buckets
+        .into_iter()
+        .map(|((pack, handler, target), runs_vec)| {
+            let display_target = std::path::Path::new(&target)
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| target.clone());
+            let failure_count = runs_vec.len();
+            ShellInitFilterTarget {
+                target,
+                display_target,
+                pack,
+                handler,
+                runs: runs_vec,
+                failure_count,
+            }
+        })
+        .collect();
+
+    // Sort: most-broken first, with a stable (pack, handler, target)
+    // tiebreaker so two targets with the same failure count don't swap
+    // positions across runs.
+    targets.sort_by(|a, b| {
+        b.failure_count
+            .cmp(&a.failure_count)
+            .then_with(|| a.pack.cmp(&b.pack))
+            .then_with(|| a.handler.cmp(&b.handler))
+            .then_with(|| a.target.cmp(&b.target))
+    });
+
+    Ok(ProbeResult::ShellInitErrors(ShellInitErrorsView {
+        profiling_enabled,
+        profiles_dir,
+        runs_examined: profiles.len(),
+        targets,
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when,
+    }))
+}
+
 /// Render the per-run history view (one summary line per profile).
 pub fn shell_init_history(ctx: &ExecutionContext, limit: usize) -> Result<ProbeResult> {
     let root_config = ctx.config_manager.root_config()?;
     let profiling_enabled = root_config.profiling.enabled;
-    let mut profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), limit)?;
-    // read_recent_profiles returns newest-first; reverse so output reads
-    // chronologically (oldest at top, latest at the bottom near the
-    // user's prompt).
-    profiles.reverse();
+    let profiles = read_recent_profiles(ctx.fs.as_ref(), ctx.paths.as_ref(), limit)?;
+    // `read_recent_profiles` already returns newest-first, which is the
+    // order users expect for a history listing (most recent at the top
+    // of the table). Don't reverse.
+    let latest_profile_ts = profiles
+        .first()
+        .map(|p| parse_unix_ts_from_filename(&p.filename))
+        .unwrap_or(0);
     let history = summarize_history(&profiles);
     let profiles_dir = ctx.paths.probes_shell_init_dir().display().to_string();
+    let last_up_ts = read_last_up_marker(ctx.fs.as_ref(), ctx.paths.as_ref());
 
     Ok(ProbeResult::ShellInitHistory(ShellInitHistoryView {
         profiling_enabled,
         profiles_dir,
         rows: history.into_iter().map(into_history_row).collect(),
+        stale: is_stale(latest_profile_ts, last_up_ts),
+        latest_profile_when: format_unix_ts(latest_profile_ts),
+        last_up_when: last_up_ts.map(format_unix_ts).unwrap_or_default(),
     }))
 }
 
@@ -475,6 +926,201 @@ fn civil_from_days(z: i64) -> (i32, u32, u32) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 }; // [1, 12]
     let y = if m <= 2 { y + 1 } else { y };
     (y as i32, m as u32, d as u32)
+}
+
+/// `dodot probe app <pack>` — advisory introspection of macOS
+/// app-support paths for a pack.
+///
+/// Walks the pack's `_app/<X>/...` matches, configured `force_app`
+/// hits, and `[symlink.app_aliases]` entries; checks each candidate
+/// folder against the on-disk app-support root, and (on macOS)
+/// enriches with brew cask metadata and Spotlight bundle IDs.
+///
+/// `refresh = true` invalidates the brew cache for every cask token
+/// matched against this pack, forcing a fresh `brew info` fetch.
+///
+/// Resolver state is not consulted — this is purely advisory display.
+pub fn app(pack_name: &str, refresh: bool, ctx: &ExecutionContext) -> Result<ProbeResult> {
+    use std::collections::BTreeSet;
+
+    // Resolve pack: try display name, fall back to a *validated* raw
+    // on-disk dir name. Untrusted CLI input (e.g. `dodot probe app
+    // ..` or `dodot probe app foo/bar`) must never reach
+    // `paths.pack_path`, which would let `read_dir` below traverse
+    // outside the dotfiles root.
+    let pack_dir = crate::packs::orchestration::resolve_pack_dir_name(pack_name, ctx)
+        .unwrap_or_else(|_| {
+            if is_single_normal_path_component(pack_name) {
+                pack_name.to_string()
+            } else {
+                // Invalid path-like input — produce an empty-but-named
+                // view rather than an error. `pack_dir == ""` is the
+                // sentinel the rest of the function checks to skip
+                // any filesystem traversal.
+                String::new()
+            }
+        });
+    let display_name = if pack_dir.is_empty() {
+        pack_name.to_string()
+    } else {
+        crate::packs::display_name_for(&pack_dir).to_string()
+    };
+    let pack_config = if pack_dir.is_empty() {
+        ctx.config_manager.root_config()?
+    } else {
+        match ctx
+            .config_manager
+            .config_for_pack(&ctx.paths.pack_path(&pack_dir))
+        {
+            Ok(c) => c,
+            // Pack-level config is optional; fall back to root config so
+            // alias/force_app entries declared at root still surface for
+            // a pack that hasn't been created yet.
+            Err(_) => ctx.config_manager.root_config()?,
+        }
+    };
+
+    // Collect distinct folder names this pack would route to.
+    //
+    // Three sources:
+    //   - `app_aliases[<pack>]` value
+    //   - `force_app` entries that appear at the top of the pack's tree
+    //   - `_app/<X>/` subdirectory names found by walking the pack
+    let mut folders: Vec<(String, &'static str)> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+
+    if let Some(alias) = pack_config.symlink.app_aliases.get(&display_name) {
+        if seen.insert(alias.clone()) {
+            folders.push((alias.clone(), "alias"));
+        }
+    }
+
+    let pack_path = ctx.paths.pack_path(&pack_dir);
+    if !pack_dir.is_empty() && ctx.fs.exists(&pack_path) {
+        if let Ok(entries) = ctx.fs.read_dir(&pack_path) {
+            for e in entries {
+                if e.is_dir
+                    && pack_config.symlink.force_app.iter().any(|f| f == &e.name)
+                    && seen.insert(e.name.clone())
+                {
+                    folders.push((e.name.clone(), "force_app"));
+                }
+            }
+            // _app/<X>/ subtree
+            let app_dir = pack_path.join("_app");
+            if ctx.fs.exists(&app_dir) {
+                if let Ok(children) = ctx.fs.read_dir(&app_dir) {
+                    for e in children {
+                        if e.is_dir && seen.insert(e.name.clone()) {
+                            folders.push((e.name.clone(), "_app/"));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // On non-macOS we still produce a useful (if minimal) view: just
+    // the list of folders and their existence under the *collapsed*
+    // app-support root (= xdg). Skip the brew/mdls work entirely.
+    let macos = cfg!(target_os = "macos");
+    let app_support = ctx.paths.app_support_dir();
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+
+    // `--refresh` clears the entire brew probe cache before any
+    // matching runs, so the next `brew info` call rehydrates fresh
+    // data. Per-folder invalidation can't work here because the cache
+    // is keyed by cask token (not folder name) — we don't know the
+    // tokens until matching has already populated the cache.
+    if refresh && macos {
+        crate::probe::brew::invalidate_all_cache(&cache_dir, ctx.fs.as_ref());
+    }
+
+    let now = crate::probe::brew::now_secs_unix();
+    let folder_names: Vec<String> = folders.iter().map(|(f, _)| f.clone()).collect();
+    // The on-demand `dodot probe app` subcommand is allowed to
+    // populate the cache, so cache_only=false. The matcher returns
+    // the installed-token set so we don't re-run `brew list` below.
+    let matches = if macos {
+        crate::probe::brew::match_folders_to_installed_casks(
+            &folder_names,
+            ctx.command_runner.as_ref(),
+            &cache_dir,
+            now,
+            ctx.fs.as_ref(),
+            /*cache_only=*/ false,
+        )
+    } else {
+        crate::probe::brew::InstalledCaskMatches::default()
+    };
+
+    let mut entries: Vec<AppProbeEntry> = Vec::new();
+    let mut suggested: BTreeSet<String> = BTreeSet::new();
+
+    for (folder, source_rule) in &folders {
+        let target = app_support.join(folder);
+        let target_exists = ctx.fs.exists(&target);
+        let cask = matches.folder_to_token.get(folder).cloned();
+
+        let mut app_bundle = None;
+        let mut bundle_id = None;
+        if macos {
+            if let Some(token) = &cask {
+                if let Ok(Some(info)) = crate::probe::brew::info_cask(
+                    token,
+                    &cache_dir,
+                    now,
+                    ctx.fs.as_ref(),
+                    ctx.command_runner.as_ref(),
+                ) {
+                    app_bundle = info.app_bundle_name();
+                    if let Some(bundle_name) = &app_bundle {
+                        let app_path = std::path::PathBuf::from("/Applications").join(bundle_name);
+                        bundle_id = crate::probe::macos_native::bundle_id(
+                            &app_path,
+                            ctx.command_runner.as_ref(),
+                        );
+                    }
+                    for plist in info.preferences_plists() {
+                        suggested.insert(plist);
+                    }
+                }
+            }
+        }
+
+        entries.push(AppProbeEntry {
+            folder: folder.clone(),
+            target_path: display_path(&target, ctx.paths.home_dir()),
+            target_exists,
+            source_rule: (*source_rule).into(),
+            cask,
+            app_bundle,
+            bundle_id,
+        });
+    }
+
+    Ok(ProbeResult::App(AppProbeView {
+        pack: display_name,
+        macos,
+        entries,
+        suggested_adoptions: suggested.into_iter().collect(),
+    }))
+}
+
+/// True iff `value` is a single, normal path component — no path
+/// separators, no `.`/`..` components, not empty. Used as a
+/// security guard before passing untrusted CLI input to
+/// `Pather::pack_path` (which would otherwise let traversal escape
+/// the dotfiles root via the resulting `read_dir` calls).
+fn is_single_normal_path_component(value: &str) -> bool {
+    if value.is_empty() {
+        return false;
+    }
+    let mut comps = std::path::Path::new(value).components();
+    matches!(
+        (comps.next(), comps.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    )
 }
 
 /// Render the data-dir tree.

@@ -58,6 +58,83 @@ sandbox_setup() {
 
     # Plain text output for reliable grep/assertion matching
     export NO_COLOR=1
+
+    hide_brew_from_path
+}
+
+# ── Homebrew probe muzzle ───────────────────────────────────────
+#
+# Why this lives at the *base* setup level, not in individual tests:
+#
+# dodot's macOS-side advisory probes (probe::brew::list_installed_casks
+# in `crates/dodot-lib/src/probe/brew.rs`) shell out to `brew` for
+# enrichment — cask metadata in `dodot probe app`, sibling-adoption
+# tips in `dodot adopt`, missing-folder hints in `dodot up`/`status`.
+# On any host with Homebrew installed, every `brew` invocation spawns
+# two `curl` processes that phone home to Homebrew's analytics
+# endpoint with `--max-time 3`. Across the suite this turns a sub-30s
+# CI run (no brew) into a 7-minute local run.
+#
+# The shim below makes the *default* match CI: dodot's probe finds
+# `brew` on PATH, runs it, gets a non-zero exit, and falls through to
+# its empty-set branches. The probe is documented as advisory, never
+# authoritative (see `docs/reference/symlink-paths.lex` §10), so
+# correctness assertions pass without real cask data. Tests that need
+# to exercise the real brew code path call `unhide_brew_for_test`
+# explicitly — making real brew exposure opt-in, not opt-out, so the
+# next person who touches PATH handling can't accidentally re-
+# introduce the slowdown.
+#
+# Why a shim, not a PATH strip: removing the homebrew bin dir from
+# PATH wholesale also removes everything else that lives there
+# (homebrew bash 5+, gnu-coreutils on Linux, host-specific tools
+# tests rely on). The shim hides only `brew` itself.
+#
+# The HOMEBREW_NO_* env vars are belt-and-suspenders: if a future
+# test escapes the shim via its own PATH twiddling, at least the
+# analytics phone-home stays disabled.
+hide_brew_from_path() {
+    # Snapshot the original PATH for opt-in helpers (unhide_brew_for_test).
+    if [[ -z "${DODOT_E2E_ORIGINAL_PATH:-}" ]]; then
+        export DODOT_E2E_ORIGINAL_PATH="$PATH"
+    fi
+
+    # Per-sandbox shim dir prepended to PATH. Lives under SANDBOX so
+    # sandbox_teardown wipes it; nothing leaks across tests.
+    local shim_dir="$SANDBOX/.brew-muzzle"
+    mkdir -p "$shim_dir"
+    cat > "$shim_dir/brew" <<'SHIM'
+#!/bin/sh
+# E2E sandbox brew shim — see helpers/setup.bash for the rationale.
+# Exits non-zero with no output so dodot's advisory brew probe falls
+# through to its empty-set branch, matching CI's no-brew behavior.
+exit 1
+SHIM
+    chmod +x "$shim_dir/brew"
+    export PATH="$shim_dir:$PATH"
+
+    export HOMEBREW_NO_ANALYTICS=1
+    export HOMEBREW_NO_AUTO_UPDATE=1
+    export HOMEBREW_NO_INSTALL_FROM_API=1
+}
+
+# Restore the pre-muzzle PATH so a single test can exercise the real
+# `brew` probe code path. The muzzle (set up in `hide_brew_from_path`)
+# prepends a non-zero `brew` shim to PATH; this helper drops that
+# prepended shim by reverting to the snapshotted original. Most tests
+# should NOT call this — see the block comment above.
+# `tests/e2e/bats/test_brew_probe.bats` is the canonical example and
+# the regression guard for the probe code.
+#
+# This explicit opt-in lives at the helper level (not inline in tests)
+# so the "I want real brew here" intent is grep-able and reviewers
+# can see at a glance which tests escape the muzzle.
+unhide_brew_for_test() {
+    if [[ -z "${DODOT_E2E_ORIGINAL_PATH:-}" ]]; then
+        echo "unhide_brew_for_test: DODOT_E2E_ORIGINAL_PATH not set; sandbox_setup must run first" >&2
+        return 1
+    fi
+    export PATH="$DODOT_E2E_ORIGINAL_PATH"
 }
 
 sandbox_teardown() {

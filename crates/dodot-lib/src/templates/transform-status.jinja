@@ -1,0 +1,26 @@
+{%- if entries|length == 0 -%}
+[muted]No template baselines. Run [usage]dodot up[/usage] to deploy templates first.[/muted]
+{%- else -%}
+[message]{{ synced_count }} synced, {{ diverged_count }} diverged, {{ missing_count }} missing[/message]
+
+{% for e in entries -%}
+{%- if e.state == "synced" -%}
+  [muted]·[/muted] [success]{{ e.state }}[/success] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.source_path }}
+{% elif e.state == "input_changed" -%}
+  [muted]·[/muted] [warn]{{ e.state }}[/warn] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.source_path }} [muted](source edited; next [usage]dodot up[/usage] re-renders)[/muted]
+{% elif e.state == "output_changed" -%}
+  [warn]·[/warn] [warn]{{ e.state }}[/warn] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.source_path }} [muted](deployed edited; run [usage]dodot transform check[/usage])[/muted]
+{% elif e.state == "both_changed" -%}
+  [error]·[/error] [error]{{ e.state }}[/error] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.source_path }} [muted](source AND deployed edited; conflict likely)[/muted]
+{% elif e.state == "missing_source" -%}
+  [warn]?[/warn] [warn]{{ e.state }}[/warn] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.source_path }} [muted](baseline stale)[/muted]
+{% elif e.state == "missing_deployed" -%}
+  [warn]?[/warn] [warn]{{ e.state }}[/warn] [muted]{{ e.pack }}/{{ e.filename }}[/muted] {{ e.deployed_path }} [muted](rendered file gone)[/muted]
+{% endif -%}
+{%- if e.secret_references and e.secret_references|length > 0 -%}
+{%- for ref in e.secret_references %}
+    [muted]secret:[/muted] {{ ref }}
+{%- endfor %}
+{% endif -%}
+{%- endfor -%}
+{%- endif -%}

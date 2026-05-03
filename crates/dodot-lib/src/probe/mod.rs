@@ -14,17 +14,28 @@
 //! `<data_dir>/probes/shell-init/`; that state lives in a sibling
 //! submodule when it lands.
 
+pub mod brew;
+pub mod cfprefsd_marker;
 pub mod data_dir_tree;
 pub mod deployment_map;
+pub mod last_up;
+pub mod macos_native;
 pub mod shell_init;
 
+pub use cfprefsd_marker::{
+    cfprefsd_marker_exists, cfprefsd_marker_path, clear_cfprefsd_marker, write_cfprefsd_marker,
+};
 pub use data_dir_tree::{collect_data_dir_tree, TreeNode};
 pub use deployment_map::{
     collect_deployment_map, read_deployment_map, write_deployment_map, DeploymentKind,
     DeploymentMapEntry,
 };
+pub use last_up::{read_last_up_marker, write_last_up_marker};
 pub use shell_init::{
     aggregate_profiles, group_profile, parse_profile, read_latest_profile, read_recent_profiles,
     rotate_profiles, summarize_history, AggregatedTarget, AggregatedView, GroupedProfile,
     HistoryEntry, Profile, ProfileEntry, ProfileGroup,
 };
+// Internal helper, exposed only within dodot-lib so `commands::probe`
+// can compute staleness without re-implementing filename parsing.
+pub(crate) use shell_init::parse_unix_ts_from_filename;

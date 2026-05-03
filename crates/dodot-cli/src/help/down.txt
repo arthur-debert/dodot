@@ -1,0 +1,32 @@
+[header]dodot down[/header] — Remove the deployed state for one or more packs.
+
+[desc]Deletes the symlinks dodot created, clears its [item]$PATH[/item] and shell-source
+records, and removes the install / Brewfile sentinels. The next [item]dodot
+up[/item] will treat the pack as un-deployed and re-run install scripts.
+
+Your dotfiles repo is [item]not[/item] touched. [item]down[/item] only undoes what dodot did;
+the source files in your pack stay exactly where they were.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot down [OPTIONS] [PACKS...][/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<PACKS>...[/item]   [desc]Packs to deactivate. Empty means every discovered pack.[/desc]
+
+[header]OPTIONS[/header]
+  [item]--dry-run[/item]      [desc]Preview the removals without making changes[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot down                     [dim]# tear down every pack[/dim]
+  dodot down git                 [dim]# tear down a single pack[/dim]
+  dodot down --dry-run git nvim  [dim]# preview the removals[/dim][/example]
+
+[header]NOTES[/header]
+  [desc]Code-execution side effects ([item]install.sh[/item] having created files in
+  [item]$HOME[/item], [item]brew bundle[/item] having installed packages) are not undone — those
+  changes belong to your system, not to dodot. [item]down[/item] only retracts the
+  bookkeeping so a future [item]up[/item] re-runs the install / Brewfile.[/desc]
+
+[header]SEE ALSO[/header]
+  [item]dodot up[/item]       [desc]Deploy packs[/desc]
+  [item]dodot status[/item]   [desc]See what is deployed before tearing it down[/desc]

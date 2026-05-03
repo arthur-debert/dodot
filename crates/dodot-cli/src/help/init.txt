@@ -1,0 +1,26 @@
+[header]dodot init[/header] — Create a new pack from a template.
+
+[desc]Creates a directory with the given name in your dotfiles root and
+populates it with starter files: a commented [item].dodot.toml[/item], a placeholder
+[item]install.sh[/item], an [item]aliases.sh[/item], a [item]Brewfile[/item], and an empty [item]bin/[/item] directory —
+one per default handler.
+
+The placeholders are documented; delete the ones you do not want and
+edit the rest. After [item]init[/item], [item]dodot status <pack>[/item] is the right next
+step — it shows what dodot would do with the pack as-is.[/desc]
+
+[header]USAGE[/header]
+  [usage]dodot init <PACK>[/usage]
+
+[header]ARGUMENTS[/header]
+  [item]<PACK>[/item]   [desc]Name of the new pack (becomes the directory name)[/desc]
+
+[header]EXAMPLES[/header]
+  [example]dodot init nvim
+  dodot init work-laptop
+  dodot status nvim              [dim]# see what dodot would do with the new pack[/dim][/example]
+
+[header]SEE ALSO[/header]
+  [item]dodot fill[/item]    [desc]Add missing handler files to an [item]existing[/item] pack[/desc]
+  [item]dodot adopt[/item]   [desc]Move a file from your home dir into a pack[/desc]
+  [item]dodot status[/item]  [desc]Confirm what the new pack will deploy[/desc]

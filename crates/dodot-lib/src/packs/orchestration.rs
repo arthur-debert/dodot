@@ -32,6 +32,13 @@ pub struct ExecutionContext {
     /// up [`SystemSyntaxChecker`](crate::shell::SystemSyntaxChecker)
     /// (spawns real `bash`/`zsh -n`); tests inject a mock.
     pub syntax_checker: Arc<dyn crate::shell::SyntaxChecker>,
+    /// Subprocess runner for advisory probes (homebrew-cask lookup,
+    /// macOS `mdls`/`mdfind`). Production reuses the same
+    /// [`ShellCommandRunner`](crate::datastore::ShellCommandRunner)
+    /// the datastore uses for handler-driven commands; tests inject a
+    /// mock that returns canned outputs without spawning processes.
+    /// See `docs/proposals/macos-paths.lex` §8.
+    pub command_runner: Arc<dyn crate::datastore::CommandRunner>,
     pub dry_run: bool,
     pub no_provision: bool,
     pub provision_rerun: bool,
@@ -48,6 +55,12 @@ pub struct ExecutionContext {
     /// every command that renders through the `pack-status` template;
     /// ignored by commands that emit `message` / `list` output.
     pub group_mode: crate::commands::GroupMode,
+    /// When true, install-script execution streams raw stdout/stderr
+    /// to the user's terminal. The default (`false`) keeps output
+    /// quiet — only the `# status:` progress markers and the leading
+    /// comment block of each script are surfaced. Wired from the CLI
+    /// global `--verbose`/`--debug` flag.
+    pub verbose: bool,
 }
 
 impl ExecutionContext {
@@ -55,22 +68,51 @@ impl ExecutionContext {
     ///
     /// Wires up the real filesystem, XDG paths, filesystem-backed
     /// datastore with shell command runner, and clapfig config manager.
-    /// Callers only need to override specific fields (e.g. `dry_run`).
-    pub fn production(dotfiles_root: &std::path::Path) -> crate::Result<Self> {
-        let paths = Arc::new(
-            crate::paths::XdgPather::builder()
-                .dotfiles_root(dotfiles_root)
-                .build()?,
-        );
+    /// `verbose` controls whether install-script stdout/stderr is
+    /// streamed to the terminal; the field is also stored on the
+    /// returned context for any other consumer that cares. Callers
+    /// only need to override specific fields (e.g. `dry_run`).
+    pub fn production(dotfiles_root: &std::path::Path, verbose: bool) -> crate::Result<Self> {
+        let config_manager = Arc::new(ConfigManager::new(dotfiles_root)?);
+
+        // Honor `app_uses_library = false` by collapsing app_support_dir
+        // onto xdg_config_home — that's the "Linux-style ~/.config
+        // everywhere even on macOS" escape hatch from
+        // `docs/proposals/macos-paths.lex` §6.3 / §11.2.
+        //
+        // Soft-fail by design: a config-load failure here only blocks
+        // the `app_uses_library = false` override from being applied,
+        // not context construction itself. Real config errors (parse
+        // failures, missing required fields) bubble up the next time a
+        // command calls `config_manager.root_config()` — same surface,
+        // same error path, just without preempting Pather construction.
+        // If the read fails here we leave `app_support_dir` at the
+        // platform default and let the actual command surface the error.
+        let mut paths_builder = crate::paths::XdgPather::builder().dotfiles_root(dotfiles_root);
+        if let Ok(root_config) = config_manager.root_config() {
+            if !root_config.symlink.app_uses_library {
+                // Resolve XDG the way XdgPatherBuilder will, then pin
+                // app_support_dir at the same path. We can't read the
+                // builder's resolved xdg back out before build(), so
+                // duplicate the precedence here.
+                let home = std::env::var("HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| std::path::PathBuf::from("/tmp/dodot-unknown-home"));
+                let xdg = std::env::var("XDG_CONFIG_HOME")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|_| home.join(".config"));
+                paths_builder = paths_builder.app_support_dir(xdg);
+            }
+        }
+        let paths = Arc::new(paths_builder.build()?);
         let fs: Arc<dyn Fs> = Arc::new(crate::fs::OsFs::new());
         let runner: Arc<dyn crate::datastore::CommandRunner> =
-            Arc::new(crate::datastore::ShellCommandRunner);
+            Arc::new(crate::datastore::ShellCommandRunner::new(verbose));
         let datastore: Arc<dyn DataStore> = Arc::new(crate::datastore::FilesystemDataStore::new(
             fs.clone(),
             paths.clone(),
-            runner,
+            runner.clone(),
         ));
-        let config_manager = Arc::new(ConfigManager::new(dotfiles_root)?);
 
         Ok(Self {
             fs,
@@ -78,12 +120,14 @@ impl ExecutionContext {
             paths,
             config_manager,
             syntax_checker: Arc::new(crate::shell::SystemSyntaxChecker),
+            command_runner: runner,
             dry_run: false,
             no_provision: false,
             provision_rerun: false,
             force: false,
             view_mode: crate::commands::ViewMode::default(),
             group_mode: crate::commands::GroupMode::default(),
+            verbose,
         })
     }
 }
@@ -290,9 +334,13 @@ pub fn collect_pack_intents(
     ctx: &ExecutionContext,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
     let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
-    let registry = crate::preprocessing::default_registry(
-        &pack_config.preprocessor.template,
+    // [secret] is intentionally root-only — see SecretSection docs.
+    let root_config = ctx.config_manager.root_config()?;
+    let (registry, _secret_registry) = crate::preprocessing::default_registry(
+        &pack_config.preprocessor,
+        &root_config.secret,
         ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
     )?;
     collect_pack_intents_inner(pack, ctx, &pack_config, Some(&registry))
 }
@@ -311,6 +359,50 @@ pub fn collect_pack_intents_with_preprocessors(
     collect_pack_intents_inner(pack, ctx, &pack_config, preprocessors)
 }
 
+/// Plan for a single pack — the intents the executor will run plus
+/// any soft warnings the handlers emitted during planning.
+///
+/// Warnings are non-fatal, human-readable strings (currently the
+/// `_lib/` non-macOS skip notice from
+/// `docs/proposals/macos-paths.lex` §4.2). Callers that surface
+/// `PackStatusResult.warnings` should consume them; pure-execution
+/// callers can ignore the field.
+#[derive(Debug, Default, Clone)]
+pub struct PackPlan {
+    pub intents: Vec<crate::operations::HandlerIntent>,
+    pub warnings: Vec<String>,
+}
+
+/// Like [`collect_pack_intents`], but returns both intents and any
+/// soft warnings the handlers produced during planning.
+///
+/// Use this when surfacing per-pack warnings in user-facing output
+/// (e.g. `commands::up` populating `PackStatusResult.warnings`). Pure
+/// execution callers should keep using [`collect_pack_intents`].
+///
+/// `mode` controls the preprocessing envelope. Active runs (`dodot up`
+/// with no `--dry-run`) pass [`PreprocessMode::Active`]; passive
+/// callers (`dodot status`, `dodot up --dry-run`) pass
+/// [`PreprocessMode::Passive`] so the pipeline reads from the
+/// baseline cache instead of evaluating templates and writing
+/// rendered files. See `docs/proposals/secrets.lex` §7.4.
+pub fn plan_pack(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    mode: crate::preprocessing::PreprocessMode,
+) -> Result<PackPlan> {
+    let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+    // [secret] is intentionally root-only — see SecretSection docs.
+    let root_config = ctx.config_manager.root_config()?;
+    let (registry, _secret_registry) = crate::preprocessing::default_registry(
+        &pack_config.preprocessor,
+        &root_config.secret,
+        ctx.paths.as_ref(),
+        ctx.command_runner.clone(),
+    )?;
+    plan_pack_inner(pack, ctx, &pack_config, Some(&registry), mode)
+}
+
 /// Shared implementation that takes a pre-loaded pack config. Both
 /// entrypoints load the config once and pass it through so we don't
 /// re-merge config for every pack (the ConfigManager caches by path,
@@ -321,6 +413,26 @@ fn collect_pack_intents_inner(
     pack_config: &crate::config::DodotConfig,
     preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
 ) -> Result<Vec<crate::operations::HandlerIntent>> {
+    plan_pack_inner(
+        pack,
+        ctx,
+        pack_config,
+        preprocessors,
+        crate::preprocessing::PreprocessMode::Active,
+    )
+    .map(|p| p.intents)
+}
+
+/// Same scan/preprocess/match/group/intents pipeline as
+/// [`collect_pack_intents_inner`], but additionally collects
+/// per-handler `warnings_for_matches` output.
+fn plan_pack_inner(
+    pack: &Pack,
+    ctx: &ExecutionContext,
+    pack_config: &crate::config::DodotConfig,
+    preprocessors: Option<&crate::preprocessing::PreprocessorRegistry>,
+    mode: crate::preprocessing::PreprocessMode,
+) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
 
     // Phase 1: Walk pack directory
@@ -337,6 +449,9 @@ fn collect_pack_intents_inner(
                 pack,
                 ctx.fs.as_ref(),
                 ctx.datastore.as_ref(),
+                ctx.paths.as_ref(),
+                mode,
+                ctx.force,
             )?
         } else {
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
@@ -350,10 +465,19 @@ fn collect_pack_intents_inner(
     let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name);
     debug!(pack = %pack.name, files = matches.len(), "matched rules");
 
-    // Propagate preprocessor source info into matches
+    // Propagate preprocessor source info and in-memory rendered
+    // bytes onto each match. Handlers that hash rendered content
+    // for sentinel construction (`install`, `homebrew`) read the
+    // bytes from `m.rendered_bytes` first, falling back to disk
+    // for non-template files. That decoupling is the structural
+    // enabler for §7.4 Passive mode where rendered files are
+    // intentionally not on disk. See issue #121.
     for m in &mut matches {
         if let Some(source) = preprocess_result.source_map.get(&m.absolute_path) {
             m.preprocessor_source = Some(source.clone());
+        }
+        if let Some(bytes) = preprocess_result.rendered_bytes.get(&m.absolute_path) {
+            m.rendered_bytes = Some(bytes.clone());
         }
     }
 
@@ -367,6 +491,32 @@ fn collect_pack_intents_inner(
 
     // Generate intents from each handler
     let mut all_intents = Vec::new();
+    let mut all_warnings = Vec::new();
+
+    // Surface preserved-divergent-file warnings from the preprocessing
+    // pipeline. These are the §6.4 "deployed file edited" cases: dodot
+    // refused to overwrite the user's edit and held the previous render
+    // in place. The user resolves them via `dodot transform check`
+    // (auto-merge through the clean filter) or `dodot up --force`
+    // (overwrite).
+    for skipped in &preprocess_result.skipped {
+        let display_path = display_path_relative_to_home(&skipped.deployed_path, ctx);
+        let detail = match skipped.state {
+            crate::preprocessing::divergence::DivergenceState::OutputChanged => {
+                "deployed file was edited since the last `dodot up`"
+            }
+            crate::preprocessing::divergence::DivergenceState::BothChanged => {
+                "both the source template and the deployed file were edited since the last `dodot up`"
+            }
+            _ => "deployed file diverges from the cached baseline",
+        };
+        let warning = format!(
+            "preserved {} ({}). Run `dodot transform check` to reconcile, or re-run with --force to overwrite.",
+            display_path, detail,
+        );
+        tracing::warn!(pack = %pack.name, file = %skipped.virtual_relative.display(), "{warning}");
+        all_warnings.push(warning);
+    }
     for handler_name in &order {
         let handler = match registry.get(handler_name.as_str()) {
             Some(h) => h,
@@ -396,11 +546,138 @@ fn collect_pack_intents_inner(
                 "generated intents"
             );
             all_intents.extend(intents);
+
+            let warnings =
+                handler.warnings_for_matches(handler_matches, &pack.config, ctx.paths.as_ref());
+            for w in &warnings {
+                tracing::warn!(pack = %pack.name, handler = %handler_name, "{w}");
+            }
+            all_warnings.extend(warnings);
         }
     }
 
-    info!(pack = %pack.name, intents = all_intents.len(), "collected intents");
-    Ok(all_intents)
+    // Missing-target hints (M6 §8.2) — macOS only.
+    //
+    // For each Link intent that lands under `app_support_dir`, check
+    // whether the immediate child folder exists on disk. If not, the
+    // user is about to deploy GUI-app config to a directory the app
+    // hasn't created yet — usually because the app isn't installed.
+    // Surface a soft hint, optionally enriched with a matching brew
+    // cask token. Resolver/intent state is unaffected.
+    //
+    // On Linux `app_support_dir` collapses to `xdg_config_home`, so
+    // this check would fire for *every* `~/.config/<X>/` deploy —
+    // not what we want. Gate on macOS strictly.
+    if cfg!(target_os = "macos") {
+        all_warnings.extend(missing_target_hints(&all_intents, ctx));
+    }
+
+    info!(
+        pack = %pack.name,
+        intents = all_intents.len(),
+        warnings = all_warnings.len(),
+        "collected intents"
+    );
+    Ok(PackPlan {
+        intents: all_intents,
+        warnings: all_warnings,
+    })
+}
+
+/// Render an absolute path with `$HOME` collapsed to `~` for human
+/// display. Falls back to the absolute form when the path is outside
+/// the home tree.
+fn display_path_relative_to_home(path: &std::path::Path, ctx: &ExecutionContext) -> String {
+    let home = ctx.paths.home_dir();
+    match path.strip_prefix(home) {
+        Ok(rel) => format!("~/{}", rel.display()),
+        Err(_) => path.display().to_string(),
+    }
+}
+
+/// Probe each `Link` intent that targets `app_support_dir/<X>/...` and
+/// emit a soft hint when the `<X>/` folder is missing on disk.
+///
+/// macOS-only — caller checks `cfg!(target_os = "macos")` first to
+/// avoid firing on Linux where every XDG-routed entry would otherwise
+/// hit this branch.
+fn missing_target_hints(
+    intents: &[crate::operations::HandlerIntent],
+    ctx: &ExecutionContext,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+    let app_support = ctx.paths.app_support_dir();
+    if app_support == ctx.paths.xdg_config_home() {
+        // `app_uses_library = false` collapsed the app-support root
+        // onto XDG; same Linux-style suppression applies.
+        return Vec::new();
+    }
+
+    // Distinct `<X>` folders referenced by intents — one warning per
+    // missing folder, regardless of how many files target it.
+    let mut needed: BTreeSet<String> = BTreeSet::new();
+    for intent in intents {
+        if let crate::operations::HandlerIntent::Link { user_path, .. } = intent {
+            if let Ok(rel) = user_path.strip_prefix(app_support) {
+                if let Some(first) = rel.components().find_map(|c| match c {
+                    std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+                    _ => None,
+                }) {
+                    needed.insert(first);
+                }
+            }
+        }
+    }
+    if needed.is_empty() {
+        return Vec::new();
+    }
+
+    let mut missing: Vec<String> = Vec::new();
+    for folder in &needed {
+        let target = app_support.join(folder);
+        if !ctx.fs.exists(&target) {
+            missing.push(folder.clone());
+        }
+    }
+    if missing.is_empty() {
+        return Vec::new();
+    }
+
+    // Brew enrichment: try to associate each missing folder with an
+    // *installed* cask token. Cache-only mode keeps the planner fast:
+    // a stale or missing cache entry silently degrades to the
+    // unenriched message rather than spawning a `brew info` subprocess
+    // per installed cask. The on-demand `dodot probe app` subcommand
+    // populates the cache; this hint just consumes it.
+    let cache_dir = ctx.paths.probes_brew_cache_dir();
+    let now = crate::probe::brew::now_secs_unix();
+    let matches = crate::probe::brew::match_folders_to_installed_casks(
+        &missing,
+        ctx.command_runner.as_ref(),
+        &cache_dir,
+        now,
+        ctx.fs.as_ref(),
+        /*cache_only=*/ true,
+    );
+
+    missing
+        .into_iter()
+        .map(|folder| match matches.folder_to_token.get(&folder) {
+            // The cask IS installed (we got the token from `brew list`)
+            // but the folder is empty — usually the user pre-deployed
+            // dotfiles before launching the app for the first time.
+            Some(token) => format!(
+                "cask `{token}` is installed but `{folder}/` is missing — \
+                 entries will deploy, but the app may not have created its \
+                 config directory yet (try launching it once)"
+            ),
+            None => format!(
+                "target directory `{}/{folder}` doesn't exist yet — entries will \
+                 deploy but no matching installed app appears to provide it",
+                app_support.display()
+            ),
+        })
+        .collect()
 }
 
 /// Execute a pre-collected set of intents.
@@ -548,11 +825,11 @@ mod tests {
     }
 
     fn make_context(env: &TempEnvironment) -> ExecutionContext {
-        let runner = Arc::new(MockCommandRunner::new());
+        let runner: Arc<dyn crate::datastore::CommandRunner> = Arc::new(MockCommandRunner::new());
         let datastore = Arc::new(FilesystemDataStore::new(
             env.fs.clone(),
             env.paths.clone(),
-            runner,
+            runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -562,12 +839,14 @@ mod tests {
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
             syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+            command_runner: runner,
             dry_run: false,
             no_provision: true, // skip install/homebrew in tests
             provision_rerun: false,
             force: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
+            verbose: false,
         }
     }
 
@@ -788,11 +1067,11 @@ mod tests {
             .done()
             .build();
 
-        let runner = Arc::new(MockCommandRunner::new());
+        let runner: Arc<dyn crate::datastore::CommandRunner> = Arc::new(MockCommandRunner::new());
         let datastore = Arc::new(FilesystemDataStore::new(
             env.fs.clone(),
             env.paths.clone(),
-            runner,
+            runner.clone(),
         ));
         let config_manager = Arc::new(ConfigManager::new(&env.dotfiles_root).unwrap());
 
@@ -802,12 +1081,14 @@ mod tests {
             paths: env.paths.clone() as Arc<dyn Pather>,
             config_manager,
             syntax_checker: Arc::new(crate::shell::NoopSyntaxChecker),
+            command_runner: runner,
             dry_run: true,
             no_provision: true,
             provision_rerun: false,
             force: false,
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
+            verbose: false,
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();
@@ -1548,6 +1829,118 @@ mod tests {
         assert!(
             content.contains(std::env::consts::OS),
             "rendered content should have OS substituted: {content}"
+        );
+    }
+
+    #[test]
+    fn plan_pack_surfaces_divergence_warnings() {
+        // End-to-end: a template-deployed file gets edited by the user,
+        // then `plan_pack` runs again. The pipeline preserves the edit
+        // and `PackPlan.warnings` carries a human-readable warning that
+        // mentions the deployed path, the resolution paths, and `--force`.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // First run: clean deploy, no warnings about preserved files.
+        let first = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active).unwrap();
+        assert!(
+            first.warnings.iter().all(|w| !w.contains("preserved")),
+            "first deploy must not produce a preservation warning: {:?}",
+            first.warnings
+        );
+
+        // User edits the deployed file.
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        // Second run: warning surfaces, with the documented resolution
+        // hints — `transform check` and `--force`.
+        let second = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active).unwrap();
+        let preserved: Vec<&String> = second
+            .warnings
+            .iter()
+            .filter(|w| w.contains("preserved"))
+            .collect();
+        assert_eq!(
+            preserved.len(),
+            1,
+            "expected one preservation warning, got: {:?}",
+            second.warnings
+        );
+        let w = preserved[0];
+        assert!(
+            w.contains("config.toml"),
+            "warning should name the file: {w}"
+        );
+        assert!(
+            w.contains("transform check"),
+            "warning should mention transform check: {w}"
+        );
+        assert!(w.contains("--force"), "warning should mention --force: {w}");
+        // The user's edit must still be on disk.
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = USER EDITED"
+        );
+    }
+
+    #[test]
+    fn plan_pack_force_overwrites_and_skips_warning() {
+        // With ctx.force=true (the `--force` CLI flag), the guard is
+        // bypassed: the deployed file gets re-rendered, no warning is
+        // emitted. Documented escape hatch for env-var rotations and
+        // similar out-of-band changes.
+        let env = TempEnvironment::builder()
+            .pack("app")
+            .file("config.toml.tmpl", "name = original")
+            .done()
+            .build();
+
+        let mut ctx = make_context(&env);
+        let pack = Pack::new(
+            "app".into(),
+            env.dotfiles_root.join("app"),
+            ctx.config_manager
+                .config_for_pack(&env.dotfiles_root.join("app"))
+                .unwrap()
+                .to_handler_config(),
+        );
+
+        // Prime baseline.
+        let _ = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active).unwrap();
+        let deployed = env
+            .paths
+            .handler_data_dir("app", "preprocessed")
+            .join("config.toml");
+        env.fs.write_file(&deployed, b"name = USER EDITED").unwrap();
+
+        ctx.force = true;
+        let plan = plan_pack(&pack, &ctx, crate::preprocessing::PreprocessMode::Active).unwrap();
+        assert!(
+            plan.warnings.iter().all(|w| !w.contains("preserved")),
+            "force=true must not emit preservation warnings: {:?}",
+            plan.warnings
+        );
+        assert_eq!(
+            env.fs.read_to_string(&deployed).unwrap(),
+            "name = original",
+            "force must overwrite the user's edit with the rendered content"
         );
     }
 }
