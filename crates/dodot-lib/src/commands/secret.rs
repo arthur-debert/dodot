@@ -168,10 +168,11 @@ pub struct ListResult {
 }
 
 /// Run `dodot secret list`. Walks every pack's template source
-/// files, extracts `secret(...)` calls via regex, and returns
-/// one row per occurrence. Read-only — never invokes a provider
-/// and never reads sidecars (sidecars only exist post-render;
-/// `list` is meant to be useful BEFORE the first `dodot up`).
+/// files, extracts `secret(...)` calls with the byte-wise
+/// scanner in [`scan_secret_calls`], and returns one row per
+/// occurrence. Read-only — never invokes a provider and never
+/// reads sidecars (sidecars only exist post-render; `list` is
+/// meant to be useful BEFORE the first `dodot up`).
 ///
 /// "Template" here means files whose name matches
 /// `[preprocessor.template] extensions` per the root config —
@@ -319,13 +320,15 @@ struct SecretCallOccurrence {
 /// "everything between matching quotes is the reference" rule
 /// keeps the scanner predictable.
 ///
-/// The scanner is deliberately regex-based rather than a real
-/// MiniJinja AST walk: this command runs BEFORE the first
-/// `dodot up`, so we can't rely on a baseline cache, and a
-/// false positive here just lists a string the user already
-/// typed in the template — they can verify by opening the
-/// file at the reported line. Actual rendering still goes
-/// through MiniJinja's parser.
+/// The scanner is deliberately a hand-rolled byte-wise state
+/// machine rather than a real MiniJinja AST walk: this command
+/// runs BEFORE the first `dodot up`, so we can't rely on a
+/// baseline cache, and a false positive here just lists a
+/// string the user already typed in the template — they can
+/// verify by opening the file at the reported line. Actual
+/// rendering still goes through MiniJinja's parser. Skipping
+/// the regex crate keeps this off the dependency footprint and
+/// makes the matching rule grep-able from one place.
 fn scan_secret_calls(text: &str) -> Vec<SecretCallOccurrence> {
     let mut out = Vec::new();
     let bytes = text.as_bytes();
