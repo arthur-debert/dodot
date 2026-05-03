@@ -15,12 +15,13 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   surfaces in `dodot status`. Default is empty; common build / VCS
   clutter is already covered by `[pack] ignore` (which stops discovery
   one layer earlier).
-- `Filter` execution phase, running before every deploying phase
+- New `Filter` execution phase, running before every deploying phase
   (`Provision`, `Setup`, `PathExport`, `ShellInit`, `Link`). The
   `ignore` and `skip` handlers live here; matched files are dropped
   before any deploying handler can claim them.
-- `bb88003` — symlink catchall now excludes `README`-, `LICENSE`-like
-  files at the rules layer (folded into the new `skip` handler).
+- `Rule.case_insensitive` flag, used by `skip`'s defaults so common
+  documentation casings (`README`, `Readme`, `readme`) all match the
+  same rule.
 
 ### Changed
 
@@ -36,13 +37,10 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
     per-pack with `skip = []` to deploy a `README` intentionally.
   - For the older silent-drop semantics, use `[mappings] ignore`
     instead.
+- Symlink catchall no longer claims `README`-, `LICENSE`-like files;
+  they are now claimed by the `skip` filter handler instead, which
+  surfaces them in status rather than depositing them at
+  `~/.config/<pack>/README.md`.
 - Pack-level `.dodotignore` marker is unchanged but is now referred to
   as the "pack-ignore" mechanism in docs, to disambiguate from the
   intra-pack `[mappings] ignore` filter handler.
-
-### Performance
-
-- `74ea3a5` — per-file basename-lowercase computation is now lazy: it
-  only happens when at least one rule has `case_insensitive = true`.
-  The default rule set has no such rules, so common-case scanning pays
-  nothing for the new filter-handler infrastructure.

@@ -194,7 +194,7 @@ Handlers
 
         File: `handlers/filter.rs`. Both are zero-sized structs whose `to_intents` returns `Ok(vec![])` — they claim matches but emit no work. The whole effect is positional: rules tagged with handler `"ignore"` carry priority 100 and rules tagged `"skip"` carry priority 50, so during scanning either filter rule matches before any precise mapping (10) or the catchall (0) gets a chance.
 
-        `IgnoreHandler::check_status` always returns `HandlerStatus::Ignored`; `SkipHandler::check_status` returns `HandlerStatus::Skipped`. The first is hidden from `dodot status` output, the second surfaces as "skipped". This visibility split is the entire reason for the two handlers — the matching contract is identical.
+        Both `check_status` impls return a placeholder `HandlerStatus { deployed: false, message: "", handler: "ignore"|"skip", file }` to satisfy the trait, but nothing reads them. Filter status is computed *directly from rule matches* in [`commands::status`]: matches under handler `"ignore"` are dropped from the output entirely, matches under `"skip"` are rendered with `Health::Skipped` (label `"skipped"`, style `skipped`). This visibility split is the entire reason for the two handlers — the matching contract is identical.
 
         Both are `MatchMode::Precise` and `Configuration` category. They have no datastore footprint: `dodot up` does not wipe per-pack `ignore/`/`skip/` directories because those directories never exist.
 
@@ -228,7 +228,7 @@ Handlers
     Default mappings:
 
         | Handler  | Default pattern(s)                                                                          | Priority | Case-insensitive |
-        | ignore   | each `[mappings] ignore` entry (default `[]`)                                               | 100      | yes              |
+        | ignore   | each `[mappings] ignore` entry (default `[]`)                                               | 100      | no               |
         | skip     | `README`, `README.*`, `LICENSE`, `LICENSE.*`, `CHANGELOG`, `CHANGELOG.*`, …                  | 50       | yes              |
         | path     | `bin/` (directory; trailing slash auto-added)                                               | 10       | no               |
         | install  | `install.sh`, `install.bash`, `install.zsh`                                                 | 10       | no               |
@@ -240,7 +240,7 @@ Handlers
 
     Priorities decide rule-evaluation order at the scanner: filter rules (`ignore` 100, `skip` 50) run before precise rules (10), and the symlink catchall (0) runs last. The "first match wins" rule then routes each entry to exactly one handler — so a file that hits an `ignore` pattern is dropped before any deploying handler sees it.
 
-    Case-insensitive matching is restricted to the filter rules. The lowercase comparison happens once per file per `case_insensitive` rule — `[`rules::scan_dir`]` lazily computes the basename-lowercase only when at least one such rule exists, so the common case (no filter overrides) pays nothing. See [`Rule::case_insensitive`].
+    Only `skip`'s default rules are case-insensitive (so `Readme` and `readme` hit the same rule as `README`). [`Scanner::match_entries`] checks the compiled rule set once per scan and only allocates a per-entry lowercased basename when at least one rule has `case_insensitive = true` — so a user who clears `mappings.skip = []` and adds no other CI rules pays nothing; the default config exercises the CI path because the `skip` defaults populate it. See [`Rule::case_insensitive`].
 
     User overrides come through `[mappings]` in `.dodot.toml`. The handler list is fixed (you can't add a new handler from config), but the patterns each handler claims are fully replaceable. See [./config-system.lex] for resolution layering.
 

@@ -11,7 +11,7 @@ These are the file patterns each handler claims by default. Anything not matched
 | Handler  | Claims by default                                                                            | What happens                                            |
 | -------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | ignore   | (empty by default)                                                                           | Drop silently — same contract as `.gitignore`           |
-| skip     | `README*`, `LICENSE*`, `CHANGELOG*`, `CONTRIBUTING*`, `AUTHORS*`, `NOTICE*`, `COPYING*`      | List in `dodot status` as `skipped`; do not deploy      |
+| skip     | `README`/`README.*`, `LICENSE`/`LICENSE.*`, `CHANGELOG`/`CHANGELOG.*`, etc. (case-insensitive) | List in `dodot status` as `skipped`; do not deploy      |
 | homebrew | `Brewfile`                                                                                   | `brew bundle` once per content hash                     |
 | install  | `install.sh`, `install.bash`, `install.zsh`                                                  | Script runs once per content hash                       |
 | path     | `bin/` (directory)                                                                           | Directory prepended to `$PATH`                          |
