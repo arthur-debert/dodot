@@ -15,6 +15,7 @@
 
 pub mod bw;
 pub mod error_render;
+pub mod keychain;
 pub mod op;
 pub mod pass;
 pub mod provider;
@@ -27,6 +28,7 @@ pub mod test_support;
 
 pub use bw::BwProvider;
 pub use error_render::{preflight, render_probe_outcome};
+pub use keychain::KeychainProvider;
 pub use op::OpProvider;
 pub use pass::PassProvider;
 pub use provider::{ProbeResult, SecretProvider};
