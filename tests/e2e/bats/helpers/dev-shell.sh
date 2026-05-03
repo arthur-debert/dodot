@@ -13,11 +13,11 @@
 # Available fixtures:
 #   secrets-pass         pass stub on PATH + initialised store + 4 entries  (Phase S1)
 #   secrets-bw-stub      bw stub binary on PATH + 4 seeded items            (Phase S2)
+#   secrets-age          real age binary + fresh keypair + encrypted blob   (Phase S3)
+#   secrets-gpg          real gpg binary + fresh keypair + encrypted blob   (Phase S3)
 #
 # Future fixtures (will be added by their respective phases):
 #   secrets-sops         sops + age (Phase S2 tier-1 hermetic)
-#   secrets-age          age whole-file (Phase S3)
-#   secrets-gpg          gpg whole-file (Phase S3)
 #   secrets-op-stub      op stub binary on PATH
 #   secrets-op-real      real `op` CLI; needs OP_SERVICE_ACCOUNT_TOKEN
 #   secrets-bw-real      real `bw` CLI; needs BW_CLIENT_ID + BW_CLIENT_SECRET
@@ -91,9 +91,62 @@ Try:
   dodot status
 EOF
         ;;
+    secrets-age)
+        if ! secrets_age_setup; then
+            echo "dev-shell: age / age-keygen not installed on this host" >&2
+            echo "Install with: brew install age   (or apt install age)" >&2
+            exit 2
+        fi
+        seed_age_encrypted_file 'ssh' 'id_ed25519' 'fixture-private-key-bytes'
+        seed_age_encrypted_file 'vault' 'secret.txt' 'fixture-secret-content'
+        secrets_enable_age_in_root_config
+        cat <<EOF
+[sandbox: $SANDBOX]
+[fixture: $fixture]
+[age identity: $AGE_IDENTITY]
+[age recipient: $AGE_RECIPIENT]
+[encrypted fixtures:
+  ssh/id_ed25519.age   (recipient: $AGE_RECIPIENT)
+  vault/secret.txt.age]
+[\$DOTFILES_ROOT: $DOTFILES_ROOT]
+[\$HOME: $HOME]
+
+Try:
+  age -d -i \$AGE_IDENTITY \$DOTFILES_ROOT/ssh/id_ed25519.age
+  dodot up
+  ls -la \$HOME/.config/ssh/   # → id_ed25519, mode 0600
+EOF
+        ;;
+    secrets-gpg)
+        if ! secrets_gpg_setup; then
+            echo "dev-shell: gpg not installed on this host" >&2
+            echo "Install with: brew install gnupg   (or apt install gnupg)" >&2
+            exit 2
+        fi
+        seed_gpg_encrypted_file 'shell' 'Brewfile' 'brew "ripgrep"
+brew "fd"'
+        seed_gpg_encrypted_file 'vault' 'secret.txt' 'fixture-secret-content'
+        secrets_enable_gpg_in_root_config
+        cat <<EOF
+[sandbox: $SANDBOX]
+[fixture: $fixture]
+[\$GNUPGHOME: $GNUPGHOME]
+[gpg recipient: $GPG_RECIPIENT]
+[encrypted fixtures:
+  shell/Brewfile.gpg
+  vault/secret.txt.gpg]
+[\$DOTFILES_ROOT: $DOTFILES_ROOT]
+[\$HOME: $HOME]
+
+Try:
+  gpg --decrypt \$DOTFILES_ROOT/shell/Brewfile.gpg
+  dodot up
+  ls -la \$HOME/.config/shell/   # → Brewfile, mode 0600
+EOF
+        ;;
     *)
         echo "dev-shell: unknown fixture '$fixture'" >&2
-        echo "Available: secrets-pass, secrets-bw-stub" >&2
+        echo "Available: secrets-pass, secrets-bw-stub, secrets-age, secrets-gpg" >&2
         exit 2
         ;;
 esac
