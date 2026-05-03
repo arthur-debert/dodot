@@ -21,6 +21,12 @@
 #   secrets-op-stub      op stub binary on PATH
 #   secrets-op-real      real `op` CLI; needs OP_SERVICE_ACCOUNT_TOKEN
 #   secrets-bw-real      real `bw` CLI; needs BW_CLIENT_ID + BW_CLIENT_SECRET
+#   secrets-keychain     macOS Keychain — DEFERRED, needs sandboxed
+#                        `security create-keychain` infrastructure so the
+#                        fixture can't write to the user's login keychain
+#   secrets-secret-tool  freedesktop Secret Service — DEFERRED, needs
+#                        per-fixture `gnome-keyring-daemon` + `dbus-daemon`
+#                        for the same isolation reason
 #
 # On exit (Ctrl-D / `exit`), the sandbox is removed. Nothing leaks.
 

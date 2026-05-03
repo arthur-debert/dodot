@@ -112,10 +112,11 @@ impl SecretRegistry {
     pub fn resolve(&self, full_reference: &str) -> Result<SecretString> {
         let (scheme, suffix) = split_scheme(full_reference)?;
         let provider = self.get(scheme).ok_or_else(|| {
+            let config_key = scheme_to_config_key(scheme);
             DodotError::Other(format!(
                 "no secret provider registered for scheme `{scheme}`. \
                  Configured schemes: [{}]. \
-                 Add a `[secret.providers.{scheme}] enabled = true` block \
+                 Add a `[secret.providers.{config_key}] enabled = true` block \
                  to your config, or check the reference for typos.",
                 self.sorted_schemes_for_display()
             ))
@@ -196,6 +197,29 @@ impl SecretRegistry {
     }
 }
 
+/// Map a scheme name (as it appears in a `secret(...)` reference)
+/// to the TOML config key under `[secret.providers.<key>]`.
+///
+/// Most schemes match their config key 1:1. The `secret-tool`
+/// scheme is the lone exception: the TOML field is named
+/// `secret_tool` (underscore) because confique's `Config` derive
+/// generates the TOML key from the Rust field identifier, and
+/// Rust identifiers can't contain hyphens. We keep the hyphenated
+/// scheme prefix (matching the binary name `secret-tool` and
+/// `secrets.lex` §S4) and translate at the user-facing edges.
+///
+/// Used by error messages that point users at the corresponding
+/// config block, so a "no provider for scheme `secret-tool`" hint
+/// suggests `[secret.providers.secret_tool]` (which actually
+/// maps to a struct field) rather than the syntactically-valid-
+/// but-non-loading `[secret.providers.secret-tool]`.
+pub fn scheme_to_config_key(scheme: &str) -> &str {
+    match scheme {
+        "secret-tool" => "secret_tool",
+        other => other,
+    }
+}
+
 /// Split a full reference into `(scheme, suffix)` at the first `:`.
 ///
 /// `op://Vault/Item/Field` → `("op", "//Vault/Item/Field")`
@@ -226,6 +250,44 @@ pub fn split_scheme(reference: &str) -> Result<(&str, &str)> {
 mod tests {
     use super::*;
     use crate::secret::test_support::MockSecretProvider;
+
+    #[test]
+    fn scheme_to_config_key_maps_only_secret_tool() {
+        // The hyphen-vs-underscore wart only exists for
+        // `secret-tool`. Every other scheme name is a valid Rust
+        // identifier and round-trips identically. Pin the
+        // contract so a future provider that adds another
+        // hyphenated scheme has to update both sides at once.
+        assert_eq!(scheme_to_config_key("secret-tool"), "secret_tool");
+        assert_eq!(scheme_to_config_key("pass"), "pass");
+        assert_eq!(scheme_to_config_key("op"), "op");
+        assert_eq!(scheme_to_config_key("bw"), "bw");
+        assert_eq!(scheme_to_config_key("sops"), "sops");
+        assert_eq!(scheme_to_config_key("keychain"), "keychain");
+    }
+
+    #[test]
+    fn missing_provider_error_uses_underscore_key_for_secret_tool() {
+        // The user-facing "no provider for scheme `secret-tool`"
+        // error must point at `[secret.providers.secret_tool]`
+        // (the actual TOML key that maps to a struct field), not
+        // `[secret.providers.secret-tool]` (which would be valid
+        // TOML but wouldn't load — Rust field names can't
+        // contain hyphens).
+        let mut reg = SecretRegistry::new();
+        reg.register(Arc::new(MockSecretProvider::new("pass")));
+        let err = reg.resolve("secret-tool:GitHub").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("no secret provider registered for scheme `secret-tool`"));
+        assert!(
+            msg.contains("[secret.providers.secret_tool]"),
+            "expected underscore form, got: {msg}"
+        );
+        assert!(
+            !msg.contains("[secret.providers.secret-tool]"),
+            "hyphen form must not leak through: {msg}"
+        );
+    }
 
     #[test]
     fn split_scheme_handles_op_uri_form() {

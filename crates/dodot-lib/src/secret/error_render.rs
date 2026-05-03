@@ -27,12 +27,13 @@ use crate::DodotError;
 /// - **ProbeFailed**: surfaces the diagnostic verbatim — these are
 ///   the cases where probe() couldn't reach a clean conclusion.
 pub fn render_probe_outcome(scheme: &str, outcome: &ProbeResult) -> String {
+    let config_key = crate::secret::registry::scheme_to_config_key(scheme);
     match outcome {
         ProbeResult::Ok => String::new(),
         ProbeResult::NotInstalled { hint } => format!(
             "secret provider `{scheme}` is not installed\n  \
              {hint}\n  \
-             or disable the provider: [secret.providers.{scheme}] enabled = false"
+             or disable the provider: [secret.providers.{config_key}] enabled = false"
         ),
         ProbeResult::NotAuthenticated { hint } => format!(
             "secret provider `{scheme}` is not authenticated\n  \
@@ -102,6 +103,27 @@ mod tests {
         assert!(msg.contains("`op` is not installed"));
         assert!(msg.contains("1password.com"));
         assert!(msg.contains("[secret.providers.op] enabled = false"));
+    }
+
+    #[test]
+    fn render_not_installed_uses_underscore_key_for_secret_tool() {
+        // Same hyphen-vs-underscore concern as the registry's
+        // missing-provider error. The disable-provider hint
+        // must point at the actual TOML key that maps to a
+        // struct field.
+        let outcome = ProbeResult::NotInstalled {
+            hint: "install secret-tool".into(),
+        };
+        let msg = render_probe_outcome("secret-tool", &outcome);
+        assert!(msg.contains("`secret-tool` is not installed"));
+        assert!(
+            msg.contains("[secret.providers.secret_tool] enabled = false"),
+            "expected underscore TOML key in disable hint, got: {msg}"
+        );
+        assert!(
+            !msg.contains("[secret.providers.secret-tool]"),
+            "hyphen form must not leak: {msg}"
+        );
     }
 
     #[test]

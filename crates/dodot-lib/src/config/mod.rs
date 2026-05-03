@@ -336,6 +336,25 @@ pub struct SecretProvidersSection {
 
     #[config(nested)]
     pub sops: SecretProviderSops,
+
+    #[config(nested)]
+    pub keychain: SecretProviderKeychain,
+
+    /// Note the TOML key here is `secret_tool` (underscore), even
+    /// though the scheme prefix in `secret(...)` references is
+    /// `secret-tool:` (hyphen, matching the binary name). The
+    /// reason: confique's `Config` derive (re-exported from
+    /// clapfig as `Config`) maps each TOML key 1:1 to a Rust
+    /// struct field name, and Rust identifiers can't contain
+    /// hyphens — `pub secret-tool: ...` won't compile. TOML
+    /// itself accepts bare hyphenated keys; it's the Rust-side
+    /// field-name constraint that forces the underscore form.
+    /// User-facing error messages translate via
+    /// [`crate::secret::registry::scheme_to_config_key`] so a
+    /// "no provider for scheme `secret-tool`" hint suggests the
+    /// correct `[secret.providers.secret_tool]` block.
+    #[config(nested)]
+    pub secret_tool: SecretProviderSecretTool,
 }
 
 /// `pass` (password-store) provider config.
@@ -377,6 +396,32 @@ pub struct SecretProviderBw {
 pub struct SecretProviderSops {
     /// Whether the `sops:` scheme is registered. Default false —
     /// same opt-in posture as the other providers.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `keychain` (macOS Keychain via `security`) provider config.
+///
+/// macOS-only; on other platforms the provider's `probe()`
+/// surfaces `NotInstalled` with a "use secret-tool instead"
+/// pointer. Default `enabled = false` matches the rest of the
+/// secret providers — opt-in posture.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderKeychain {
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `secret-tool` (freedesktop Secret Service via `secret-tool`)
+/// provider config.
+///
+/// Linux-first; on macOS the provider's `probe()` redirects users
+/// to the `keychain` provider. Default `enabled = false`. The
+/// scheme prefix in references is `secret-tool:` (hyphen) — see
+/// the comment on `SecretProvidersSection::secret_tool` for the
+/// reason the config field uses the underscore form instead.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderSecretTool {
     #[config(default = false)]
     pub enabled: bool,
 }

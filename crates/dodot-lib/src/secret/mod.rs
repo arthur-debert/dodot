@@ -15,11 +15,13 @@
 
 pub mod bw;
 pub mod error_render;
+pub mod keychain;
 pub mod op;
 pub mod pass;
 pub mod provider;
 pub mod registry;
 pub mod secret_string;
+pub mod secret_tool;
 pub mod sops;
 
 #[cfg(test)]
@@ -27,9 +29,11 @@ pub mod test_support;
 
 pub use bw::BwProvider;
 pub use error_render::{preflight, render_probe_outcome};
+pub use keychain::KeychainProvider;
 pub use op::OpProvider;
 pub use pass::PassProvider;
 pub use provider::{ProbeResult, SecretProvider};
 pub use registry::{split_scheme, SecretRegistry};
 pub use secret_string::SecretString;
+pub use secret_tool::SecretToolProvider;
 pub use sops::SopsProvider;

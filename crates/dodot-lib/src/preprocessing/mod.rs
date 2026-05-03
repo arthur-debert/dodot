@@ -388,6 +388,26 @@ pub fn build_secret_registry(
         any_enabled = true;
     }
 
+    if config.providers.keychain.enabled {
+        // macOS Keychain (`security` CLI). On non-macOS hosts the
+        // probe surfaces NotInstalled with a "use secret-tool"
+        // pointer; we still register the provider so users with
+        // mixed-platform dotfiles get a deterministic preflight
+        // failure rather than a silent "no provider for scheme"
+        // mismatch.
+        let provider = crate::secret::KeychainProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.secret_tool.enabled {
+        // freedesktop Secret Service (`secret-tool` CLI). Same
+        // cross-platform stance as `keychain` above.
+        let provider = crate::secret::SecretToolProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
     if any_enabled {
         Some(Arc::new(reg))
     } else {
@@ -503,6 +523,8 @@ mod tests {
                 op: crate::config::SecretProviderOp { enabled: false },
                 bw: crate::config::SecretProviderBw { enabled: false },
                 sops: crate::config::SecretProviderSops { enabled: false },
+                keychain: crate::config::SecretProviderKeychain { enabled: false },
+                secret_tool: crate::config::SecretProviderSecretTool { enabled: false },
             },
         };
         let runner: std::sync::Arc<dyn crate::datastore::CommandRunner> =

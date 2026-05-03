@@ -308,3 +308,21 @@ secrets_enable_gpg_in_root_config() {
 enabled = true
 TOML
 }
+
+# ── keychain (macOS) + secret-tool (Linux) fixtures ─────────────
+#
+# Phase S4 OS-level providers (`keychain` / `secret-tool`)
+# deliberately have NO bats / dev-shell fixtures here. Both
+# providers talk to the user's live OS keystore — macOS Keychain
+# Access prompts on first write, freedesktop Secret Service
+# leaves entries persisting across daemon restarts — and any
+# leftover state from a botched test cleanup ends up in the
+# real keystore.
+#
+# Per `secrets-testing.lex` §5.3 the e2e for these lands when
+# the dedicated CI runners arrive: macOS CI with a sandboxed
+# `security create-keychain` against an isolated keychain DB,
+# Linux CI with `dbus-daemon` + `gnome-keyring-daemon
+# --start --components=secrets` against a per-test session.
+# Until then, Phase S4 ships with tier-0 unit tests only and
+# documents the e2e gap.
