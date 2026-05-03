@@ -81,7 +81,8 @@ Secrets — Developer Guide
     `secret/secret_string.rs:45`. A wrapper around `Vec<u8>` that:
 
         - Zeroes its buffer on `Drop` (via the `zeroize` crate).
-        - Has no `Debug`, `Display`, `Serialize`, or `Clone` impl. Printing a `SecretString` through any formatting machinery produces `<redacted>`.
+        - Implements `Debug` with a redacted shape: `SecretString(<redacted>, len=N)` — the length is safe to log and lets you tell "empty value resolved" apart from "no value resolved" in traces, but the bytes themselves never reach the formatter.
+        - Has no `Display`, `Serialize`, or `Clone` impl. Printing a `SecretString` with `{value}` fails to compile rather than silently formatting the bytes; serializing it (e.g. into a baseline cache JSON, into a tracing field) is rejected at compile time.
         - Refuses to copy itself implicitly. Callers that need shared access wrap in `Arc<SecretString>` (the registry cache does exactly this).
         - Provides `expose(&self) -> Result<&str, Utf8Error>` for the value-injection path and `expose_bytes(&self) -> &[u8]` for whole-file binary payloads. These are the only ways to read the bytes; calling either is a deliberate choice the reader has to make.
         - Provides `contains_newline(&self) -> bool` for the §3.4 multi-line refusal gate without exposing the bytes.
@@ -99,7 +100,7 @@ Secrets — Developer Guide
 
     :: text ::
 
-    Both fields live behind `Arc` so cloning the registry shares state. That's load-bearing: `commands::up` builds the registry once for preflight and threads it into every per-pack `default_registry` call. A reference resolved in pack A is cache-hot for pack B.
+    Both fields live behind `Arc` so cloning the registry shares state. The cache scope today is **per-pack**, not per-run: `default_registry` (`preprocessing/mod.rs:260`) constructs a fresh `SecretRegistry` for each pack the pipeline visits, so cross-pack cache hits don't happen. Within one pack — across multiple template files in that pack — clones of the same registry instance share cache state because of the `Arc<Mutex<HashMap>>` shape. The `Arc` wrapping is what makes a future cross-pack-sharing refactor cheap (build once at `commands::up`, thread the same `Arc<SecretRegistry>` through every per-pack call); that refactor isn't shipped today and is captured as a deferred item in [./../proposals/shipped/secrets.lex] §9.1.
 
     The cache is hand-split into `cache_get` (returns `Option<Arc<SecretString>>`) and `cache_put` (takes `Arc<SecretString>`) rather than a single `resolve_cached`. The reason is co-location: the rich §3.4 multi-line / non-UTF-8 error messages live with the rendering surface (the `secret()` callback in `template.rs`), and the cache is dumb storage. The callback's flow is:
 
@@ -241,7 +242,7 @@ Secrets — Developer Guide
               - On any non-Ok outcome, `error_render::render_probe_outcome` formats each failing row and `preflight()` aggregates into a single error. `dodot up` aborts before any rendering — user sees every fix-it pointer at once.
               - Skipped on `--dry-run` per the §7.4 Passive contract.
 
-        4. For each pack, `orchestration::plan_pack` calls `default_registry()` again — separate per-pack PreprocessorRegistry, but the SecretRegistry built here shares its cache with the one preflight just exercised? No: `default_registry` builds a fresh `SecretRegistry` per call. Cache scope is "per pack" today; cross-pack cache sharing is a follow-up (see [./../proposals/shipped/secrets.lex] §9.1).
+        4. For each pack, `orchestration::plan_pack` calls `default_registry()` to build a fresh `(PreprocessorRegistry, Option<Arc<SecretRegistry>>)` pair. The `SecretRegistry` built here is independent of the one preflight just exercised — `default_registry` rebuilds from root config each call rather than threading a shared instance. Cache scope is "per pack" today (see §4 above); cross-pack cache sharing is captured as a deferred item in [./../proposals/shipped/secrets.lex] §9.1.
 
         5. The pipeline dispatches `app/config.toml.tmpl` to `TemplatePreprocessor::expand` (`preprocessing/template.rs`).
 

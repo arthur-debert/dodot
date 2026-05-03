@@ -46,10 +46,10 @@ Secrets
 
     :: shell ::
 
-    Now write a template that references it:
+    Now write a template that references it. Use single quotes inside the `secret(...)` call when the surrounding template has double-quoted strings — visually clearer, and editors / linters that treat the `.tmpl` as TOML won't choke on what looks like an early string termination:
 
         $ cat ~/dotfiles/app/config.toml.tmpl
-        db_password = "{{ secret("pass:dodot/db_password") }}"
+        db_password = "{{ secret('pass:dodot/db_password') }}"
         port = 5432
 
         $ dodot up app
@@ -61,7 +61,7 @@ Secrets
 
     :: shell ::
 
-    The committed source has `{{ secret("pass:dodot/db_password") }}` — no plaintext. The deployed file has the resolved value. `git diff` sees the source; `cat ~/.config/app/config.toml` sees the deployed.
+    The committed source has `{{ secret('pass:dodot/db_password') }}` — no plaintext. The deployed file has the resolved value. `git diff` sees the source; `cat ~/.config/app/config.toml` sees the deployed.
 
 3. The Six Providers
 
@@ -229,7 +229,7 @@ Secrets
     Worth knowing what's NOT in dodot's lane:
 
     - **dodot doesn't own encryption.** The provider tools (`age`, `gpg`, `op`, `pass`, `sops`, `bw`, the OS keystores) handle key custody, vault access, and decryption. dodot delegates and stays out.
-    - **dodot doesn't try to keep plaintext out of memory beyond best-effort.** `SecretString` zeroes its buffer on drop and refuses `Debug` / `Display` formatting, but the rendered template content lands on disk in plaintext (that's the entire point of the deploy step). Defense in depth, not a guarantee.
+    - **dodot doesn't try to keep plaintext out of memory beyond best-effort.** `SecretString` zeroes its buffer on drop, doesn't implement `Display` (so a `{value}` print fails to compile), and prints `SecretString(<redacted>, len=N)` instead of bytes via `Debug`. The rendered template content still lands on disk in plaintext (that's the entire point of the deploy step). Defense in depth, not a guarantee.
     - **dodot doesn't run editors on encrypted files.** No `dodot secret edit` — see §5 above.
     - **dodot's threat model is supply-chain control, not runtime security.** "Don't ship plaintext to git" is the property dodot upholds; "an attacker with code execution as your user can't read your secrets" is not, and never was. The `secrets.lex` §2.4 threat model is the reference.
 
