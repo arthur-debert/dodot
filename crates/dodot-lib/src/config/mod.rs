@@ -459,9 +459,32 @@ pub struct MappingsSection {
     #[config(default = "Brewfile")]
     pub homebrew: String,
 
-    /// Additional filename patterns to exclude from handler processing
-    /// within a pack. Distinct from [pack] ignore which controls discovery.
+    /// Filename patterns to drop from handler processing entirely.
+    /// Matches are silent: nothing surfaces in `dodot status`, mirroring
+    /// `.gitignore`'s mental model. Defaults are empty; common build /
+    /// VCS clutter is already covered by `[pack] ignore` (which also
+    /// stops discovery).
     #[config(default = [])]
+    pub ignore: Vec<String>,
+
+    /// Filename patterns routed to the `skip` filter handler.
+    /// Matched case-insensitively against the basename. Sits at
+    /// priority 50, above every precise mapping (priority 10) and the
+    /// catchall symlink (priority 0), so a match suppresses *all*
+    /// downstream handlers — not just the catchall. Matches surface in
+    /// `dodot status` as "skipped"; no executable intent is produced.
+    /// The defaults cover the common documentation/legal files that
+    /// packs ship alongside real config; clear the list (or override
+    /// per-pack) to deploy a README intentionally.
+    #[config(default = [
+        "README", "README.*",
+        "LICENSE", "LICENSE.*",
+        "CHANGELOG", "CHANGELOG.*",
+        "CONTRIBUTING", "CONTRIBUTING.*",
+        "AUTHORS", "AUTHORS.*",
+        "NOTICE", "NOTICE.*",
+        "COPYING", "COPYING.*",
+    ])]
     pub skip: Vec<String>,
 }
 
@@ -507,6 +530,7 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
             pattern,
             handler: "path".into(),
             priority: 10,
+            case_insensitive: false,
             options: HashMap::new(),
         });
     }
@@ -518,6 +542,7 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
                 pattern: pattern.clone(),
                 handler: "install".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             });
         }
@@ -530,6 +555,7 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
                 pattern: pattern.clone(),
                 handler: "shell".into(),
                 priority: 10,
+                case_insensitive: false,
                 options: HashMap::new(),
             });
         }
@@ -541,17 +567,40 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
             pattern: mappings.homebrew.clone(),
             handler: "homebrew".into(),
             priority: 10,
+            case_insensitive: false,
             options: HashMap::new(),
         });
     }
 
-    // Skip patterns (exclusion rules)
+    // Ignore patterns: route to the `ignore` filter handler. Priority
+    // 100 means they win over every other rule, including the catchall
+    // and the visible `skip` filter — a file the user said to drop is
+    // dropped, full stop.
+    for pattern in &mappings.ignore {
+        if !pattern.is_empty() {
+            rules.push(Rule {
+                pattern: pattern.clone(),
+                handler: crate::handlers::HANDLER_IGNORE.into(),
+                priority: 100,
+                case_insensitive: false,
+                options: HashMap::new(),
+            });
+        }
+    }
+
+    // Skip patterns: route to the `skip` filter handler. Matched
+    // case-insensitively so README/Readme/readme all hit one rule.
+    // Priority 50 sits above precise mappings (10) so README-like
+    // files cannot be accidentally claimed by `mappings.shell` or
+    // similar, but below `ignore` (100) so silent-drop wins when
+    // both apply. Files surface in `dodot status` as `skipped`.
     for pattern in &mappings.skip {
         if !pattern.is_empty() {
             rules.push(Rule {
-                pattern: format!("!{pattern}"),
-                handler: "exclude".into(),
-                priority: 100, // exclusions checked first
+                pattern: pattern.clone(),
+                handler: crate::handlers::HANDLER_SKIP.into(),
+                priority: 50,
+                case_insensitive: true,
                 options: HashMap::new(),
             });
         }
@@ -562,6 +611,7 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
         pattern: "*".into(),
         handler: "symlink".into(),
         priority: 0,
+        case_insensitive: false,
         options: HashMap::new(),
     });
 
@@ -724,7 +774,12 @@ mod tests {
                 "env.zsh",
             ]
         );
-        assert!(cfg.mappings.skip.is_empty());
+        assert!(cfg.mappings.ignore.is_empty());
+        assert!(
+            cfg.mappings.skip.iter().any(|p| p == "README"),
+            "skip defaults should include documentation/legal patterns: {:?}",
+            cfg.mappings.skip
+        );
 
         // ── profiling defaults ──────────────────────────────────
         assert!(cfg.profiling.enabled);
@@ -822,12 +877,13 @@ homebrew = "RootBrewfile"
             install: vec!["install.sh".into(), "install.zsh".into()],
             shell: vec!["aliases.sh".into(), "profile.sh".into()],
             homebrew: "Brewfile".into(),
-            skip: vec!["*.tmp".into()],
+            ignore: vec!["*.tmp".into()],
+            skip: vec![],
         };
 
         let rules = mappings_to_rules(&mappings);
 
-        // Should have: path, 2x install, 2x shell, homebrew, 1x exclude, catchall = 8
+        // Should have: path, 2x install, 2x shell, homebrew, 1x ignore, catchall = 8
         assert_eq!(rules.len(), 8, "rules: {rules:#?}");
 
         let handler_names: Vec<&str> = rules.iter().map(|r| r.handler.as_str()).collect();
@@ -835,16 +891,40 @@ homebrew = "RootBrewfile"
         assert!(handler_names.contains(&"install"));
         assert!(handler_names.contains(&"shell"));
         assert!(handler_names.contains(&"homebrew"));
-        assert!(handler_names.contains(&"exclude"));
+        assert!(handler_names.contains(&"ignore"));
         assert!(handler_names.contains(&"symlink"));
 
-        // Exclusion rule should have ! prefix
-        let exclude = rules.iter().find(|r| r.handler == "exclude").unwrap();
-        assert!(exclude.pattern.starts_with('!'));
+        // Ignore rule sits at the highest priority tier and is a plain
+        // pattern (no `!` prefix exists anymore).
+        let ignore = rules.iter().find(|r| r.handler == "ignore").unwrap();
+        assert_eq!(ignore.priority, 100);
+        assert!(!ignore.pattern.starts_with('!'));
+        assert!(!ignore.case_insensitive);
 
         // Catchall should be lowest priority
         let catchall = rules.iter().find(|r| r.pattern == "*").unwrap();
         assert_eq!(catchall.priority, 0);
+    }
+
+    #[test]
+    fn mappings_skip_emits_priority_50_skip_rules() {
+        let mappings = MappingsSection {
+            path: String::new(),
+            install: vec![],
+            shell: vec![],
+            homebrew: String::new(),
+            ignore: vec![],
+            skip: vec!["README".into(), "README.*".into(), "LICENSE".into()],
+        };
+
+        let rules = mappings_to_rules(&mappings);
+        let skip_rules: Vec<&Rule> = rules.iter().filter(|r| r.handler == "skip").collect();
+        assert_eq!(skip_rules.len(), 3);
+        for rule in &skip_rules {
+            assert_eq!(rule.priority, 50);
+            assert!(rule.case_insensitive);
+            assert!(!rule.pattern.starts_with('!'));
+        }
     }
 
     #[test]

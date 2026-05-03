@@ -71,15 +71,16 @@ Types and Structure
         Rule:
 
             pub struct Rule {
-                pub pattern: String,           // "install.sh", "*.sh", "bin/", "!*.tmp"
+                pub pattern: String,           // "install.sh", "*.sh", "bin/"
                 pub handler: String,           // handler name
                 pub priority: i32,             // higher wins
+                pub case_insensitive: bool,    // lowercase pattern + filename before match
                 pub options: HashMap<String, String>,
             }
 
         :: rust ::
 
-        Patterns with `!` prefix are exclusions and run before positive matches. Equal priority falls back to first-match order.
+        Rules are sorted once per scan by descending priority; the first matching rule wins. Equal priority falls back to first-match order. Filter handlers (`ignore`, `skip`) sit at the highest priority tier (100, 50) so they always beat the precise mappings (10) and the catchall symlink (0).
 
     4.2. `PackEntry` and `RuleMatch`
 

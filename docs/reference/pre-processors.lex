@@ -99,7 +99,7 @@ Preprocessors
 
     - Global: `[preprocessor] enabled = false` in the root `.dodot.toml`. All preprocessing is skipped; `.tmpl` files deploy verbatim.
     - Per preprocessor: `[preprocessor.template] enabled = false` disables template rendering but leaves other preprocessors active.
-    - Per file (skip rendering entirely): add the filename to `[mappings] skip` and the file is ignored entirely.
+    - Per file (drop entirely): add the filename to `[mappings] ignore` and the file is dropped silently — same contract as `.gitignore`. Use `[mappings] skip` instead if you'd like the file to remain visible in `dodot status` as `skipped`.
     - Per file (skip reverse-merge only): add a glob pattern to `[preprocessor.template] no_reverse = ["..."]`. The template still renders on `dodot up`, but `dodot transform check` and the clean filter both skip reverse-merge for matching files. Useful for templates whose content is mostly dynamic (more `{{ }}` than static text) — burgertocow's heuristic degrades on those, so the user often gets more conflict markers than usable diffs. With `no_reverse` set, divergence is still detected and surfaced; only the auto-merge step is skipped.
 
     Pack-level `.dodot.toml` overrides the root for any of these keys, so you can flip a setting on or off for a single pack.

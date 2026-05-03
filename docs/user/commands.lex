@@ -108,7 +108,7 @@ Commands
 
     2.4. addignore
 
-        Add a `.dodotignore` marker to a pack, causing dodot to skip it during discovery. Idempotent — safe to run repeatedly. Useful for directories that live in your dotfiles root but aren't meant to be deployed.
+        Add a `.dodotignore` marker to a pack — the "pack-ignore" mechanism — causing dodot to skip the directory during discovery. Idempotent: safe to run repeatedly. Useful for directories that live in your dotfiles root but aren't meant to be deployed.
 
         Usage:
 

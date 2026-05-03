@@ -6,7 +6,7 @@ Handlers
 
 1. The Built-in Handlers
 
-    dodot ships with five handlers, covering the overwhelming majority of what dotfile management needs.
+    dodot ships with seven handlers: five that deploy files (symlink, shell, path, install, homebrew) and two that drop files from processing (ignore, skip). All seven share the same `Handler` trait and run from the same registry.
 
     1.1. Symlink
 
@@ -38,6 +38,16 @@ Handlers
 
         Runs `brew bundle` against a `Brewfile`, once per content-hash. macOS-only in practice. Functionally a specialization of install, but more ergonomic for its common case.
 
+    1.6. ignore (filter)
+
+        Claims matches and drops them silently — same contract as `.gitignore`. No executable intent, no entry in `dodot status`. Configured via `[mappings] ignore` (default empty). Useful for build artifacts, scratch files, anything you don't want dodot to know about.
+
+    1.7. skip (filter)
+
+        Claims matches, surfaces them in `dodot status` as `skipped`, but produces no executable intent. Configured via `[mappings] skip`. Defaults cover the common documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally.
+
+        The two filter handlers exist because three things were previously different mechanisms — a pack-level marker, a silent skip, and a visible "excluded" — and unifying the intra-pack cases into real handlers means there's one matching model and one config grammar instead of three. Pack-level `.dodotignore` (the "pack-ignore" mechanism) stays separate at the discovery layer.
+
 2. Matching Model
 
     Handlers are classified along two axes that together decide how matches flow.
@@ -58,16 +68,20 @@ Handlers
 
     Phases, in order:
 
-        | Phase         | Handler   | Why here                                                           |
-        | `Provision`   | homebrew  | Installs packages. Anything later may depend on tools it exposes.  |
-        | `Setup`       | install   | User-authored scripts that can lean on Provision completing first. |
-        | `PathExport`  | path      | Stages `bin/` onto PATH; runs before ShellInit.                    |
-        | `ShellInit`   | shell     | Shell startup files that may reference binaries from PathExport.   |
-        | `Link`        | symlink   | Catchall; must be last so precise handlers claim their files.      |
+        | Phase         | Handler         | Why here                                                                |
+        | `Filter`      | ignore, skip    | Drop files before any deploying handler can claim them.                 |
+        | `Provision`   | homebrew        | Installs packages. Anything later may depend on tools it exposes.       |
+        | `Setup`       | install         | User-authored scripts that can lean on Provision completing first.      |
+        | `PathExport`  | path            | Stages `bin/` onto PATH; runs before ShellInit.                         |
+        | `ShellInit`   | shell           | Shell startup files that may reference binaries from PathExport.        |
+        | `Link`        | symlink         | Catchall; must be last so precise handlers claim their files.           |
 
     :: table align=lll ::
 
-    Two design invariants pin this order down.
+    Three design invariants pin this order down.
+
+    The filter phase is always first.
+        `ignore` and `skip` exist to keep matched files away from deploying handlers. If they ran later, a precise mapping (priority 10) or the catchall (priority 0) could already have claimed the file and emitted intents — so filter handlers sit at the highest priority tier (100, 50) and run before anything else has a chance.
 
     The catchall phase is always last.
         `symlink` is the only catchall handler (`MatchMode::Catchall`). Running it before any precise handler would let it claim files that belong elsewhere. `Link` sitting at the bottom of the enum is not a convention — it's the shape of "precise before catchall" written into the type.
@@ -139,6 +153,8 @@ Handlers
     Handler summary (rows in execution order):
 
         | Handler  | Phase       | Category       | Default claims                                     | Effect                              |
+        | ignore   | Filter      | Configuration  | None (user-configured via `[mappings] ignore`)     | Silently drop; no status entry      |
+        | skip     | Filter      | Configuration  | `README.*`, `LICENSE.*`, `CHANGELOG.*`, etc.       | List in status as `skipped`         |
         | homebrew | Provision   | Code Execution | `Brewfile`                                         | `brew bundle` once per content hash |
         | install  | Setup       | Code Execution | `install.{sh,bash,zsh}`                            | Run once per content hash           |
         | path     | PathExport  | Configuration  | `bin/`                                             | Prepended to `$PATH`                |

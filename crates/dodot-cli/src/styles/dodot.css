@@ -17,6 +17,7 @@
 .conflict-target      { font-weight: bold; }
 .conflict-hint        { dim: true; }
 .ignored-pack         { dim: true; font-style: italic; }
+.skipped              { dim: true; }
 .group-banner-deployed { font-weight: bold; }
 .group-banner-pending  { font-weight: bold; }
 .group-banner-error    { font-weight: bold; }

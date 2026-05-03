@@ -565,7 +565,7 @@ fn build_clap_command() -> ClapCommand {
         )
         .subcommand(
             ClapCommand::new("addignore")
-                .about("Mark a pack as ignored")
+                .about("Mark a pack as pack-ignored (drops a .dodotignore marker)")
                 .arg(Arg::new("pack").help("Pack name").required(true)),
         )
         .subcommand(

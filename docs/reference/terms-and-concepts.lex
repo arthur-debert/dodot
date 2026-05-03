@@ -79,8 +79,8 @@ Terms and Concepts
     `force_app`:
         Curated list of GUI-app folder names whose first path segment routes to `<app_support_dir>/<name>/<rest>` without requiring a `_app/` prefix. Mirror of `force_home` for the third coordinate. Case-sensitive, capped at 100 entries; ships with a small seed (Code, Cursor, Zed, Emacs).
 
-    `.dodotignore`:
-        A marker file that tells dodot to skip a pack entirely. Useful for directories that live in the dotfiles root but aren't meant to be deployed (scratch, notes, README-only packs).
+    `.dodotignore` (pack-ignore):
+        A marker file that tells dodot to skip a pack entirely — the "pack-ignore" mechanism. Pure file-presence check; the file's contents are never read. Useful for directories that live in the dotfiles root but aren't meant to be deployed (scratch, notes, README-only packs). Distinct from the intra-pack `[mappings] ignore`/`skip` keys, which drop individual files inside a known pack.
 
     `.dodot.toml`:
         Per-pack or root-level configuration. Overrides defaults for mappings, symlink targets, preprocessor settings, and more. Root config applies to all packs; pack config overrides root for that pack.
