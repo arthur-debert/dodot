@@ -1,5 +1,8 @@
 Design Specification: Secret Handling
 
+    :: note ::
+        **Status: implemented and shipped.** Phases S1–S5 of this proposal landed in PRs dodot#128 (S1: SecretProvider trait, SecretString, pass + op providers, secret() MiniJinja function, sidecar generation, probe-based preflight UX), #129 (S2: bw + sops providers, within-run cache, reverse-merge sidecar mask via burgertocow 0.4), #130 (S3: age + gpg whole-file Opaque preprocessors, deploy_mode 0o600 enforcement), #131 (S4: keychain + secret-tool OS-level providers), and #132 (S5: dodot secret probe + dodot secret list + transform status sidecar surfacing). The user-facing guide lives in [./../../user/secrets.lex]; the developer guide lives in [./../../dev/secret.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the user/dev docs disagree about behavior, those are authoritative; where they disagree with the source, the source wins. See "Implementation Notes vs. Spec" at the bottom for the deviations and deferrals accepted during implementation.
+
     This document specifies how dodot handles sensitive data — API tokens, credentials, private keys — so that the version-controlled dotfiles repository contains no plaintext secrets while the rendered configuration on disk remains functional.
 
     It builds on the Preprocessing Pipeline [./preprocessing-pipeline.lex] and extends the Template Expansion [./template-expansion.lex] preprocessor with a pluggable secret-provider layer. Secret handling is not a single feature: it is two related but distinct patterns sharing one pipeline.
@@ -430,3 +433,43 @@ Design Specification: Secret Handling
         - `dodot secret list` — enumerate references across the repo
         - `dodot secret probe` — validate all configured providers
         - `dodot transform status` enhancements for secret-bearing files
+
+9. Implementation Notes vs. Spec
+
+    The shipped feature follows the spec closely, but a handful of deliberate departures and deferrals were accepted during implementation. Listed here so future readers don't have to diff source against spec to figure out where the two diverge.
+
+    9.1. Deferred to follow-up
+
+        - **First-use install-ladder rung (§S5 first bullet).** Shipped: `dodot secret probe` and `dodot secret list` as the discovery surface — they tell the user which providers are needed and which aren't enabled. Deferred: the auto-prompt rung that nudges the user during `dodot up`. Reason: the existing `LadderRung` struct uses `&'static str` for `component_key`, but per-provider rungs need a dynamic `secret.provider.<scheme>` key — a structural refactor. The "Yes" action is also a different shape than the existing rungs (write `[secret.providers.X] enabled = true` to `.dodot.toml`, not write a hook file). Reviewable in isolation as a separate PR.
+
+        - **Per-provider batching + AST pre-walk (§5.3 last paragraph, §7.4 "Active... Pre-walks each template's AST to collect all `secret()` references before rendering, batches calls per provider").** Shipped: within-run cache only — a reference resolved through one `secret()` call is reused by every other call to the same reference within the same `dodot up`. Deferred: the AST pre-walk that gathers references upfront and submits batched calls to providers that support them (op, sops). The cache covers the user-visible §7.4 contract ("user authenticates once per run") because tools like `op` cache their auth between subprocess invocations. Adding batched-call support to the trait and providers is a measurable perf win for repos with 20+ secret references; until that exists, serial subprocesses with cache hits is the shipped behavior.
+
+        - **`dodot status --refresh-secrets` flag (§7.4).** The spec proposes an opt-in flag that probes upstream rotation (a vault value changed but nothing else did). Not shipped. The everyday workflow uses `dodot up` to re-resolve; users who want a non-mutating "did anything rotate?" check can run `dodot secret probe` to verify provider state and inspect their vault directly.
+
+        - **Dry-run `[SECRET: <reference>]` placeholder rendering (§7.4).** Doc strings in the source mention this placeholder shape, but no code emits it: `dodot up --dry-run` honors the Passive contract by reading from the baseline cache (which already contains resolved values from the last `up`), and serves the bytes verbatim. The sidecar's line ranges are written but only consumed at reverse-merge time (where they correctly mask rotation from `transform check`). A future "preview with masked secrets" command can layer on top of the sidecar without changing what the pipeline writes.
+
+        - **AST pre-walk tier-0 tests (testing-spec §3.1).** The testing spec calls out "AST pre-walk: produces the expected reference set for a given template" and "Batching: same-provider references collapse into one provider call per `dodot up`" as tier-0 coverage. Those tests don't exist because the AST pre-walk feature itself isn't shipped (above bullet). Will land alongside the batching work.
+
+    9.2. Deviations from the planned UX
+
+        - **`secret-tool` config key is `secret_tool` (underscore), not `secret-tool` (hyphen).** Confique's `Config` derive maps each TOML key 1:1 to a Rust field name, and Rust identifiers can't contain hyphens. The scheme prefix in `secret(...)` references stays hyphenated (matching the binary name `secret-tool` and the spec); only the TOML key uses the underscore. A `scheme_to_config_key` helper translates at user-facing error-message edges so a "no provider for scheme `secret-tool`" hint suggests the correct `[secret.providers.secret_tool]` block. Code: `crates/dodot-lib/src/secret/registry.rs::scheme_to_config_key`.
+
+        - **`[secret]` is root-only.** Spec §6.2 places `[secret]` under the standard 3-layer config hierarchy (compiled defaults < root `.dodot.toml` < pack `.dodot.toml`). Shipped: root-only — `default_registry`, `commands::up`, and `commands::status` all read from `root_config().secret`, never `config_for_pack().secret`. Reason: secret tooling is a property of the user's environment (`$PASSWORD_STORE_DIR`, `$OP_SERVICE_ACCOUNT_TOKEN`, the binaries themselves), not of any individual pack — a per-pack override would invalidate the once-per-run preflight contract (§5.4) and surface as confusing "secret X probed under config A but resolved under config B" failures. Documented at `crates/dodot-lib/src/config/mod.rs::SecretSection`.
+
+        - **`cache_within_run` is hard-coded behavior, not a config field.** Spec §6.1 example shows `cache_within_run = true` as a tunable. Shipped: every `secret()` call goes through `cache_get`/`cache_put` unconditionally. There's no realistic reason to disable the cache in production; the tier-0 tests have a `clear_cache()` for re-exercising the provider path.
+
+        - **`age` two-argument value-injection form silently dropped.** Spec §3.1 advertises `{{ secret("age", "secrets.age", "db_password") }}`. Not shipped — and §1.2 already justifies why (raw age is a blob cipher, not a key-value store; value-level injection against age belongs to SOPS). The `age` provider exists only as a whole-file preprocessor (§4); no `age:` scheme is registered for value injection. Spec §3.1 would benefit from a one-line "see §1.2; raw age is whole-file only" note, but the user-facing guide already steers users to `sops:` for KV-shaped age payloads.
+
+        - **`ProbeResult` has more variants than §5.4 documents.** Spec §5.4 names three outcomes (NotInstalled, NotAuthenticated, ReferenceNotFound). Shipped: NotInstalled, NotAuthenticated, Misconfigured, ProbeFailed (plus Ok). ReferenceNotFound was folded into resolve-time errors instead of probe-time — provider probes don't have a known reference to look up, so "is this reference reachable?" can't answer at probe time. Misconfigured / ProbeFailed are additive defenses for "the binary is here but not behaving" cases the spec didn't enumerate.
+
+        - **Provider-level reference shapes for bw / keychain / secret-tool.** Spec §5.2 left these as TBD ("later phases"). Shipped:
+            - `bw:<item>[#<field>]` where `<field>` ∈ {password (default), username, notes, totp, uri}
+            - `keychain:<service>[/<account>]`
+            - `secret-tool:<service>[/<account>]`
+
+    9.3. Decisions that match the spec but are worth pinning
+
+        - **Multi-line refusal (§3.4)** ships exactly as written — `secret()` resolutions containing `\n` raise a render error pointing at the whole-file deploy path. Pinned by tier-0 tests.
+        - **`dodot secret edit` permanently refused (§4.5)** — no such command exists, no plans to add one.
+        - **`PreprocessMode::Passive` contract (§7.4)** ships — `dodot status` and `dodot up --dry-run` never invoke `resolve()`. Pinned with a `PanickingProvider` test double whose `resolve()` panics; Passive flows complete without firing it.
+        - **Mode 0600 enforcement (§4.3)** ships via `Fs::write_file_with_mode` and `DataStore::write_rendered_file_with_mode` — the rendered datastore file is created at 0600 atomically (no race window between umask-default write and chmod).

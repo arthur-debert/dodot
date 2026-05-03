@@ -1,5 +1,8 @@
 Design Specification: Testing Strategy for Secret Handling
 
+    :: note ::
+        **Status: implemented and shipped alongside [./secrets.lex].** Tier 0 (unit tests with `MockSecretProvider`) and Tier 1 (hermetic real-binary tests in `tests/e2e/bats/test_secrets_*.bats` for `pass`, `age`, `gpg`) shipped across PRs dodot#128–#132. Tier 2 (op / bw stub binaries on PATH for default CI; opt-in real-provider workflow) shipped its stub side via `tests/e2e/bats/helpers/secrets_stubs.bash`; the real-provider workflow is deferred. Tier-0 tests for AST pre-walk and per-provider batching are deferred — those features didn't ship in S2 (see [./secrets.lex] §9.1). The macOS / Linux dedicated CI runners for `keychain` and `secret-tool` per §5.3 are also deferred — those providers ship with tier-0 unit tests only; see [./secrets.lex] §9.1 for the rationale (real OS keystores aren't safe to write from automated tests without infra). This proposal is preserved as historical design context — *not* a maintained spec. The user-facing testing notes live alongside the providers in [./../../dev/secret.lex] §6.
+
     This document is the testing companion to [./secrets.lex]. It specifies how the secrets work is unit-tested, how integrations with external tooling (provider CLIs, gpg, age, sops) are exercised, and how the same tests run both locally and in CI without per-developer setup. Read [./secrets.lex] first for the feature design; this document only covers verification.
 
 1. Why a Sibling Spec
