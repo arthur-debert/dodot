@@ -101,9 +101,13 @@ impl SecretProvider for KeychainProvider {
             Ok(_) => {}
             Err(_) => {
                 return ProbeResult::NotInstalled {
+                    // Note the underscore in the TOML key
+                    // (`secret_tool`) vs. the hyphen in the
+                    // scheme prefix (`secret-tool:` in
+                    // references) — see `scheme_to_config_key`.
                     hint: "the `security` command is macOS-only. \
                            On Linux / WSL, use the `secret-tool` provider instead \
-                           (`[secret.providers.secret-tool] enabled = true`)."
+                           (`[secret.providers.secret_tool] enabled = true`)."
                         .into(),
                 };
             }

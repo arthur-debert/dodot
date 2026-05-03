@@ -343,10 +343,16 @@ pub struct SecretProvidersSection {
     /// Note the TOML key here is `secret_tool` (underscore), even
     /// though the scheme prefix in `secret(...)` references is
     /// `secret-tool:` (hyphen, matching the binary name). The
-    /// hyphen would be a TOML quoting trap — `[secret.providers.
-    /// secret-tool]` is technically valid TOML but every config
-    /// example would need to quote the key. Underscore in the
-    /// config tree, hyphen in the reference syntax.
+    /// reason: confique's `Config` derive (re-exported from
+    /// clapfig as `Config`) maps each TOML key 1:1 to a Rust
+    /// struct field name, and Rust identifiers can't contain
+    /// hyphens — `pub secret-tool: ...` won't compile. TOML
+    /// itself accepts bare hyphenated keys; it's the Rust-side
+    /// field-name constraint that forces the underscore form.
+    /// User-facing error messages translate via
+    /// [`crate::secret::registry::scheme_to_config_key`] so a
+    /// "no provider for scheme `secret-tool`" hint suggests the
+    /// correct `[secret.providers.secret_tool]` block.
     #[config(nested)]
     pub secret_tool: SecretProviderSecretTool,
 }
