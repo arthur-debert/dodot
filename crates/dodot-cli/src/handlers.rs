@@ -313,6 +313,18 @@ pub fn transform_status_handler(
     Ok(Output::Render(commands::transform::status(&ctx)?))
 }
 
+/// `dodot secret probe` — read-only view of every configured
+/// secret provider's `probe()` outcome. Always exits 0; even a
+/// fully-broken provider lineup is information here, not a
+/// failure (the gating happens in `dodot up`'s preflight).
+pub fn secret_probe_handler(
+    matches: &clap::ArgMatches,
+    _ctx: &CommandContext,
+) -> HandlerResult<commands::secret::ProbeResult> {
+    let ctx = build_readonly_ctx(matches)?;
+    Ok(Output::Render(commands::secret::probe(&ctx)?))
+}
+
 /// `dodot git-show-alias [--shell <shell>]` — print the Tier 2
 /// shell alias for copy-paste. No filesystem mutation.
 pub fn git_show_alias_handler(
