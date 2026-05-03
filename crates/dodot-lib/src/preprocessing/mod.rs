@@ -12,6 +12,7 @@ pub mod age;
 pub mod baseline;
 pub mod conflict;
 pub mod divergence;
+pub mod gpg;
 pub mod identity;
 pub mod no_reverse;
 pub mod pipeline;
