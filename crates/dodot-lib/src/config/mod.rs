@@ -43,6 +43,9 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub profiling: ProfilingSection,
+
+    #[config(nested)]
+    pub secret: SecretSection,
 }
 
 /// Pack-level settings.
@@ -169,6 +172,12 @@ pub struct PreprocessorSection {
 
     #[config(nested)]
     pub template: PreprocessorTemplateSection,
+
+    #[config(nested)]
+    pub age: PreprocessorAgeSection,
+
+    #[config(nested)]
+    pub gpg: PreprocessorGpgSection,
 }
 
 /// Template preprocessor settings.
@@ -201,6 +210,63 @@ pub struct PreprocessorTemplateSection {
     pub no_reverse: Vec<String>,
 }
 
+/// `age` whole-file decryption preprocessor settings
+/// (`docs/proposals/secrets.lex` §4).
+///
+/// Default-disabled so a fresh dodot install never shells out to
+/// `age` against random files; users opt in by flipping `enabled =
+/// true` in their root `.dodot.toml`. The identity path defaults to
+/// `~/.config/age/identity.txt` (the conventional `age-keygen`
+/// destination); set explicitly when storing keys elsewhere or
+/// rotating identities per-pack.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorAgeSection {
+    /// Whether `*.age` files are matched and decrypted on `dodot
+    /// up`. Default false — opt-in posture mirrors the
+    /// `[secret.providers.*]` blocks.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// File extensions that trigger age decryption. Same shape as
+    /// `template.extensions`; multi-extension config is mostly
+    /// useful for users whose conventions diverge (e.g. `.age.txt`).
+    #[config(default = ["age"])]
+    pub extensions: Vec<String>,
+
+    /// Path to the age identity file. Empty (the default) defers to
+    /// the runtime: `$AGE_IDENTITY` env var, then
+    /// `~/.config/age/identity.txt`.
+    #[config(default = "")]
+    pub identity: String,
+}
+
+/// `gpg` whole-file decryption preprocessor settings
+/// (`docs/proposals/secrets.lex` §4).
+///
+/// Same opt-in posture as `age`. gpg picks up its identity from
+/// gpg-agent so there's no `identity` field — auth is the user's
+/// existing gpg setup, not dodot's job to configure.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct PreprocessorGpgSection {
+    /// Whether `*.gpg` files are matched and decrypted on
+    /// `dodot up`. Default false — opt-in.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// File extensions that trigger gpg decryption. Default
+    /// `["gpg"]` only. **Do not include `asc` here unless your
+    /// dotfiles repo only stores ASCII-armored *encrypted*
+    /// payloads under that suffix.** `.asc` is conventionally used
+    /// for armored *public keys* and *detached signatures* (release
+    /// signatures, package-manager keys), neither of which gpg
+    /// will decrypt; routing them through `gpg --decrypt` produces
+    /// confusing failures. Users storing armored encrypted
+    /// payloads as `.asc` opt in by setting
+    /// `extensions = ["gpg", "asc"]` explicitly.
+    #[config(default = ["gpg"])]
+    pub extensions: Vec<String>,
+}
+
 /// Shell-init profiling settings. Root-only — per-pack overrides are
 /// meaningless (the init script is one thing; you can't half-profile it).
 ///
@@ -222,6 +288,142 @@ pub struct ProfilingSection {
     /// 400 KB on disk.
     #[config(default = 100)]
     pub keep_last_runs: usize,
+}
+
+/// Secret-handling settings (`docs/proposals/secrets.lex`).
+///
+/// Top-level kill switch + per-provider blocks. Disabling the
+/// section globally (`[secret] enabled = false`) is equivalent to
+/// disabling every provider; templates that call `secret(...)` then
+/// surface a "no providers configured" render error.
+///
+/// **This section is root-only.** Unlike most config sections, the
+/// `[secret]` block is always read from the root `.dodot.toml`;
+/// per-pack overrides are ignored. Secret tooling
+/// (`$PASSWORD_STORE_DIR`, `OP_SERVICE_ACCOUNT_TOKEN`, the binaries
+/// themselves) is a property of the user's environment, not of any
+/// individual pack — a pack-level override would invalidate the
+/// once-per-run preflight contract (`secrets.lex` §5.4) and would
+/// surface as confusing "secret X probed under config A but
+/// resolved under config B" failures. Treat the root section as the
+/// single source of truth.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretSection {
+    /// Master switch. Default true; flip to false to disable all
+    /// secret resolution without removing the per-provider blocks.
+    #[config(default = true)]
+    pub enabled: bool,
+
+    #[config(nested)]
+    pub providers: SecretProvidersSection,
+}
+
+/// Per-provider configuration. Each block has an `enabled` flag plus
+/// any provider-specific knobs (e.g. `pass.store_dir`). Providers
+/// disabled here are not registered in the runtime
+/// `SecretRegistry`; references to their schemes raise
+/// "no provider for scheme" at resolution time.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProvidersSection {
+    #[config(nested)]
+    pub pass: SecretProviderPass,
+
+    #[config(nested)]
+    pub op: SecretProviderOp,
+
+    #[config(nested)]
+    pub bw: SecretProviderBw,
+
+    #[config(nested)]
+    pub sops: SecretProviderSops,
+
+    #[config(nested)]
+    pub keychain: SecretProviderKeychain,
+
+    /// Note the TOML key here is `secret_tool` (underscore), even
+    /// though the scheme prefix in `secret(...)` references is
+    /// `secret-tool:` (hyphen, matching the binary name). The
+    /// reason: confique's `Config` derive (re-exported from
+    /// clapfig as `Config`) maps each TOML key 1:1 to a Rust
+    /// struct field name, and Rust identifiers can't contain
+    /// hyphens — `pub secret-tool: ...` won't compile. TOML
+    /// itself accepts bare hyphenated keys; it's the Rust-side
+    /// field-name constraint that forces the underscore form.
+    /// User-facing error messages translate via
+    /// [`crate::secret::registry::scheme_to_config_key`] so a
+    /// "no provider for scheme `secret-tool`" hint suggests the
+    /// correct `[secret.providers.secret_tool]` block.
+    #[config(nested)]
+    pub secret_tool: SecretProviderSecretTool,
+}
+
+/// `pass` (password-store) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderPass {
+    /// Whether the `pass:` scheme is registered. Default false —
+    /// users opt in explicitly so a freshly-installed dodot doesn't
+    /// shell out to `pass` on every render.
+    #[config(default = false)]
+    pub enabled: bool,
+
+    /// Override `$PASSWORD_STORE_DIR`. Empty (the default) leaves
+    /// dodot reading the env var, which falls back to
+    /// `$HOME/.password-store`.
+    #[config(default = "")]
+    pub store_dir: String,
+}
+
+/// `op` (1Password CLI) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderOp {
+    /// Whether the `op://` scheme is registered. Default false —
+    /// same opt-in posture as `pass`.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `bw` (Bitwarden CLI) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderBw {
+    /// Whether the `bw:` scheme is registered. Default false —
+    /// same opt-in posture as `pass` and `op`.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `sops` (Mozilla SOPS) provider config.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderSops {
+    /// Whether the `sops:` scheme is registered. Default false —
+    /// same opt-in posture as the other providers.
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `keychain` (macOS Keychain via `security`) provider config.
+///
+/// macOS-only; on other platforms the provider's `probe()`
+/// surfaces `NotInstalled` with a "use secret-tool instead"
+/// pointer. Default `enabled = false` matches the rest of the
+/// secret providers — opt-in posture.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderKeychain {
+    #[config(default = false)]
+    pub enabled: bool,
+}
+
+/// `secret-tool` (freedesktop Secret Service via `secret-tool`)
+/// provider config.
+///
+/// Linux-first; on macOS the provider's `probe()` redirects users
+/// to the `keychain` provider. Default `enabled = false`. The
+/// scheme prefix in references is `secret-tool:` (hyphen) — see
+/// the comment on `SecretProvidersSection::secret_tool` for the
+/// reason the config field uses the underscore form instead.
+#[derive(Config, Debug, Clone, Serialize, Deserialize)]
+pub struct SecretProviderSecretTool {
+    #[config(default = false)]
+    pub enabled: bool,
 }
 
 /// File-to-handler mapping patterns.

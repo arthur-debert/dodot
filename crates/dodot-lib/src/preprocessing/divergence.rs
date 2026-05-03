@@ -122,8 +122,16 @@ pub fn collect_baselines(
                 if !file.is_file {
                     continue;
                 }
-                // Filenames in the cache are `<logical>.json`; strip
-                // the suffix to recover the logical name.
+                // Filenames in the cache are `<logical>.json` for
+                // baselines and `<logical>.secret.json` for sidecars
+                // (`secrets.lex` §3.3). Skip sidecars so they don't
+                // get fed into Baseline::load — they have a separate
+                // schema. Their content is loaded on demand by
+                // SecretsSidecar::load(...) keyed off the baseline's
+                // logical name.
+                if file.name.ends_with(".secret.json") {
+                    continue;
+                }
                 let Some(filename) = file.name.strip_suffix(".json").map(str::to_string) else {
                     continue;
                 };
@@ -277,6 +285,51 @@ mod tests {
         let env = TempEnvironment::builder().build();
         let reports = collect_divergences(env.fs.as_ref(), env.paths.as_ref()).unwrap();
         assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn collect_baselines_skips_secret_sidecars() {
+        // The Phase S2 sidecar (`<filename>.secret.json`) lives in
+        // the same handler dir as baselines and shares the `.json`
+        // suffix. Pin that the collector skips it instead of trying
+        // to parse it as a baseline (which fails with a confusing
+        // "missing field rendered_hash" error).
+        let env = TempEnvironment::builder().build();
+        write_pack_template(&env, "app", "config.toml.tmpl", "src");
+        write_deployed(&env, "app", "preprocessed", "config.toml", "rendered");
+        let src_path = env.dotfiles_root.join("app/config.toml.tmpl");
+        let baseline = baseline_for(&src_path, b"rendered", b"src");
+        baseline
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+        // Drop a sidecar next to it.
+        let sidecar = crate::preprocessing::baseline::SecretsSidecar::new(vec![
+            crate::preprocessing::SecretLineRange {
+                start: 0,
+                end: 1,
+                reference: "pass:k".into(),
+            },
+        ]);
+        sidecar
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap();
+
+        let baselines = collect_baselines(env.fs.as_ref(), env.paths.as_ref()).unwrap();
+        // Exactly one entry — the baseline. The sidecar is skipped.
+        assert_eq!(baselines.len(), 1);
+        assert_eq!(baselines[0].2, "config.toml");
     }
 
     #[test]

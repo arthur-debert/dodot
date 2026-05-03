@@ -284,6 +284,28 @@ impl DataStore for FilesystemDataStore {
         Ok(path)
     }
 
+    fn write_rendered_file_with_mode(
+        &self,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+        content: &[u8],
+        mode: u32,
+    ) -> Result<PathBuf> {
+        let dir = self.paths.handler_data_dir(pack, handler);
+        let relative = validate_safe_relative(filename, &dir)?;
+        let path = dir.join(&relative);
+        if let Some(parent) = path.parent() {
+            self.fs.mkdir_all(parent)?;
+        } else {
+            self.fs.mkdir_all(&dir)?;
+        }
+        // Atomic create-with-mode + chmod-empty + write — the
+        // bytes never sit on disk at a permissive mode.
+        self.fs.write_file_with_mode(&path, content, mode)?;
+        Ok(path)
+    }
+
     fn write_rendered_dir(&self, pack: &str, handler: &str, relative: &str) -> Result<PathBuf> {
         let dir = self.paths.handler_data_dir(pack, handler);
         let rel = validate_safe_relative(relative, &dir)?;

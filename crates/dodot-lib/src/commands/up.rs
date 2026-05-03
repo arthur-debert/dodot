@@ -55,6 +55,26 @@ pub fn up(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<Pack
     // Phase 1: Discover packs and collect intents
     let packs = orchestration::prepare_packs(pack_filter, ctx)?;
 
+    // Preflight secret providers once per active run. Skipped on
+    // `--dry-run` because the Passive envelope (`secrets.lex` §7.4) is
+    // exactly the contract that the secrets layer is not touched at all.
+    // We also skip when no provider is enabled (`build_secret_registry`
+    // returns `None`) — there's nothing to probe and templates that
+    // reference `secret(...)` will fail loudly at render time with a
+    // separate, more specific error.
+    if !ctx.dry_run {
+        let root_config = ctx.config_manager.root_config()?;
+        if root_config.secret.enabled {
+            if let Some(registry) = crate::preprocessing::build_secret_registry(
+                &root_config.secret,
+                ctx.command_runner.clone(),
+                ctx.paths.dotfiles_root(),
+            ) {
+                crate::secret::preflight(&registry)?;
+            }
+        }
+    }
+
     let mut pack_intents: Vec<(String, Vec<HandlerIntent>)> = Vec::with_capacity(packs.len());
     let mut intent_errors: Vec<PackResult> = Vec::new();
     let mut planning_warnings: Vec<String> = Vec::new();

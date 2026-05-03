@@ -29,10 +29,13 @@
 //! burgertocow 0.3) and feed it into `generate_diff_with_markers`
 //! directly.
 
-use burgertocow::{generate_diff_with_markers, ConflictMarkers, TrackedRender};
+use std::ops::Range;
+
+use burgertocow::{generate_diff_with_markers_opts, ConflictMarkers, DiffOptions, TrackedRender};
 use diffy::Patch;
 
 use crate::preprocessing::conflict::{MARKER_END, MARKER_MID, MARKER_START};
+use crate::preprocessing::SecretLineRange;
 use crate::{DodotError, Result};
 
 /// Result of a reverse-merge attempt.
@@ -69,10 +72,24 @@ impl ReverseMergeOutcome {
 /// clean unified diff that diffy successfully applies, and
 /// [`ReverseMergeOutcome::Unchanged`] when there's no template-space
 /// change to make.
+///
+/// `secret_ranges` is the per-render secrets sidecar
+/// (`<baseline>.secret.json`) for this file, if one was loaded.
+/// Burgertocow's mask treats each listed range as if its deployed
+/// content always matched the cached render, regardless of actual
+/// bytes — so a rotated `{{ secret(...) }}` value (or a hand-edit
+/// to a secret line) does not propagate into a template-space diff
+/// that would replace the `secret(...)` expression with the literal
+/// rotated value. See `secrets.lex` §3.3 / burgertocow#13.
+///
+/// The legacy three-arg shape is preserved as
+/// [`reverse_merge_no_mask`] for callers that don't have a sidecar
+/// loaded yet (every existing call site keeps the same behavior).
 pub fn reverse_merge(
     template_src: &str,
     cached_tracked: &str,
     deployed: &str,
+    secret_ranges: &[SecretLineRange],
 ) -> Result<ReverseMergeOutcome> {
     if cached_tracked.is_empty() {
         // No tracked render in the baseline (e.g. a v1 baseline with
@@ -92,7 +109,12 @@ pub fn reverse_merge(
     let mid = format!("\n{MARKER_MID}\n");
     let end = format!("\n{MARKER_END}\n");
     let markers = ConflictMarkers::new(&start, &mid, &end);
-    let diff = generate_diff_with_markers(template_src, &tracked, deployed, &markers);
+    // Convert `SecretLineRange { start, end, .. }` to the
+    // `Range<usize>` shape `DiffOptions` consumes. Bound to a local
+    // `Vec` because `with_mask` takes a borrowed slice.
+    let mask: Vec<Range<usize>> = secret_ranges.iter().map(|r| r.start..r.end).collect();
+    let opts = DiffOptions::new(&markers).with_mask(&mask);
+    let diff = generate_diff_with_markers_opts(template_src, &tracked, deployed, &opts);
 
     if diff.is_empty() {
         return Ok(ReverseMergeOutcome::Unchanged);
@@ -136,6 +158,19 @@ pub fn reverse_merge(
     Ok(ReverseMergeOutcome::Patched(patched))
 }
 
+/// Convenience for callers that haven't loaded a secrets sidecar
+/// for this file (or are computing reverse-merge for a file that
+/// has no `secret(...)` calls). Equivalent to
+/// [`reverse_merge`] with an empty mask — burgertocow then behaves
+/// byte-identically to the pre-0.4 single-mask-less entry point.
+pub fn reverse_merge_no_mask(
+    template_src: &str,
+    cached_tracked: &str,
+    deployed: &str,
+) -> Result<ReverseMergeOutcome> {
+    reverse_merge(template_src, cached_tracked, deployed, &[])
+}
+
 /// Hash the diff and return the first 16 hex chars — enough to tell
 /// two failure reports apart without leaking the diff body. Used by
 /// the error paths in [`reverse_merge`].
@@ -176,7 +211,7 @@ mod tests {
         // the user manually edited the value).
         let _ = rendered;
         let deployed = "name = Bob\nport = 5432\n";
-        let outcome = reverse_merge(template, &tracked, deployed).unwrap();
+        let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert_eq!(outcome, ReverseMergeOutcome::Unchanged);
     }
 
@@ -189,7 +224,7 @@ mod tests {
         let template = "name = {{ name }}\nport = 5432\n";
         let (_, tracked) = render(template, serde_json::json!({"name": "Alice"}));
         let deployed = "name = Alice\nport = 9999\n";
-        let outcome = reverse_merge(template, &tracked, deployed).unwrap();
+        let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         match outcome {
             ReverseMergeOutcome::Patched(patched) => {
                 // The static-line edit propagates back to the
@@ -218,7 +253,7 @@ mod tests {
         let (_, tracked) = render(template, serde_json::json!({"items": ["a", "b", "c"]}));
         // Inconsistent prefix edits per iteration:
         let deployed = "* a\n+ b\n- c\n";
-        let outcome = reverse_merge(template, &tracked, deployed).unwrap();
+        let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert!(
             matches!(outcome, ReverseMergeOutcome::Conflict(_)),
             "expected Conflict for inconsistent loop-iteration edits, got: {outcome:?}"
@@ -240,7 +275,7 @@ mod tests {
         let template = "{% for i in items %}- {{ i }}\n{% endfor %}";
         let (_, tracked) = render(template, serde_json::json!({"items": ["a", "b", "c"]}));
         let deployed = "* a\n* b\n* c\n";
-        let outcome = reverse_merge(template, &tracked, deployed).unwrap();
+        let outcome = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         match outcome {
             ReverseMergeOutcome::Patched(patched) => {
                 // Template's loop body now uses `*` instead of `-`.
@@ -256,7 +291,7 @@ mod tests {
         // to an empty tracked_render. Without the marker stream we
         // can't drive burgertocow — return Unchanged so the caller's
         // loop simply moves on.
-        let outcome = reverse_merge("name = {{ name }}\n", "", "name = Alice\n").unwrap();
+        let outcome = reverse_merge("name = {{ name }}\n", "", "name = Alice\n", &[]).unwrap();
         assert_eq!(outcome, ReverseMergeOutcome::Unchanged);
     }
 
@@ -268,8 +303,8 @@ mod tests {
         let template = "alpha = {{ a }}\nbeta = static\ngamma = {{ g }}\n";
         let (_, tracked) = render(template, serde_json::json!({"a": "1", "g": "2"}));
         let deployed = "alpha = 1\nbeta = changed\ngamma = 2\n";
-        let r1 = reverse_merge(template, &tracked, deployed).unwrap();
-        let r2 = reverse_merge(template, &tracked, deployed).unwrap();
+        let r1 = reverse_merge(template, &tracked, deployed, &[]).unwrap();
+        let r2 = reverse_merge(template, &tracked, deployed, &[]).unwrap();
         assert_eq!(r1, r2);
     }
 
@@ -278,5 +313,93 @@ mod tests {
         assert!(!ReverseMergeOutcome::Unchanged.is_actionable());
         assert!(ReverseMergeOutcome::Patched(String::new()).is_actionable());
         assert!(ReverseMergeOutcome::Conflict(String::new()).is_actionable());
+    }
+
+    /// Helper for the masking tests below — build a single-line
+    /// `SecretLineRange` covering the given 0-indexed line.
+    fn mask_line(line: usize, reference: &str) -> SecretLineRange {
+        SecretLineRange {
+            start: line,
+            end: line + 1,
+            reference: reference.to_string(),
+        }
+    }
+
+    #[test]
+    fn mask_makes_secret_line_rotation_invisible_to_reverse_diff() {
+        // The motivating case from `secrets.lex` §3.3: the deployed
+        // file's secret value rotated (the user re-`up`'d after
+        // their vault changed), but the *template* still says
+        // `{{ secret("...") }}` and the source-of-truth is the
+        // vault, not the deployed bytes. Without the mask, the
+        // reverse-merge would propose rewriting the secret() call
+        // to the literal new value. With the mask, the change is
+        // invisible — Unchanged.
+        //
+        // The bare burgertocow `Tracker` doesn't have `secret()`
+        // installed (that's TemplatePreprocessor's job), so we
+        // simulate by rendering a template whose line 1 is a static
+        // "password = OLD" baseline; the deployed file shows the
+        // rotated "password = NEW_ROTATED". With line 1 masked, the
+        // change is invisible.
+        let template = "user = {{ name }}\npassword = OLD\n";
+        let (rendered, tracked) = render(template, serde_json::json!({"name": "Ada"}));
+        assert_eq!(rendered, "user = Ada\npassword = OLD\n");
+        let deployed = "user = Ada\npassword = NEW_ROTATED\n";
+
+        // Without mask: a unified diff propagates the rotated value
+        // back to the template (or surfaces a conflict — either way,
+        // *not* Unchanged).
+        let unmasked = reverse_merge(template, &tracked, deployed, &[]).unwrap();
+        assert_ne!(unmasked, ReverseMergeOutcome::Unchanged);
+
+        // With the line-1 mask: byte change on the masked line is
+        // invisible → Unchanged.
+        let masked =
+            reverse_merge(template, &tracked, deployed, &[mask_line(1, "pass:db")]).unwrap();
+        assert_eq!(masked, ReverseMergeOutcome::Unchanged);
+    }
+
+    #[test]
+    fn mask_does_not_hide_unmasked_static_line_edits() {
+        // Mask one line; edit a different (unmasked) line. The
+        // unmasked edit must still surface as Patched — masking is
+        // a per-line opt-out, not a "disable reverse-merge" switch.
+        let template = "user = {{ name }}\nport = 5432\nsecret_line = OLD\n";
+        let (_, tracked) = render(template, serde_json::json!({"name": "Ada"}));
+        let deployed = "user = Ada\nport = 9999\nsecret_line = NEW\n";
+
+        let outcome = reverse_merge(
+            template,
+            &tracked,
+            deployed,
+            &[mask_line(2, "pass:secret_line")],
+        )
+        .unwrap();
+        match outcome {
+            ReverseMergeOutcome::Patched(patched) => {
+                assert!(patched.contains("port = 9999"), "patched: {patched:?}");
+                // The masked line stays at "OLD" in the source.
+                assert!(
+                    patched.contains("secret_line = OLD"),
+                    "masked line must not propagate: {patched:?}"
+                );
+            }
+            other => panic!("expected Patched, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn empty_mask_is_byte_equivalent_to_unmasked() {
+        // Pin the back-compat property burgertocow 0.4 documents:
+        // an empty mask makes the call behave byte-identical to the
+        // pre-mask entry point. `reverse_merge_no_mask` is the wrapper.
+        let template = "name = {{ name }}\nport = 5432\n";
+        let (_, tracked) = render(template, serde_json::json!({"name": "Ada"}));
+        let deployed = "name = Ada\nport = 9999\n";
+
+        let with_empty = reverse_merge(template, &tracked, deployed, &[]).unwrap();
+        let no_mask = reverse_merge_no_mask(template, &tracked, deployed).unwrap();
+        assert_eq!(with_empty, no_mask);
     }
 }

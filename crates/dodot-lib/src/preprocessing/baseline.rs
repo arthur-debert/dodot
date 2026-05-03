@@ -179,6 +179,119 @@ impl Baseline {
     }
 }
 
+/// Per-file secrets sidecar — the on-disk shape of `secret_line_ranges`.
+///
+/// Schema is intentionally minimal: a version field and the slice of
+/// `SecretLineRange` entries the preprocessor emitted on the last
+/// successful render. Stored next to the baseline as
+/// `<filename>.secret.json`. See secrets.lex §3.3.
+///
+/// **No baseline migration**: this file is purely additive. Pre-secrets
+/// renders simply have no sidecar, which the load path treats as
+/// `secret_line_ranges = []` (empty mask, byte-equivalent to legacy
+/// reverse-merge behaviour).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SecretsSidecar {
+    /// Schema version. Bumps independently of the baseline schema —
+    /// they're separate files with separate evolution paths.
+    pub version: u32,
+    /// Line ranges produced on the last successful render. Empty when
+    /// the file's template renders without secrets (an explicit
+    /// empty-array sidecar is fine; absence of the file is also
+    /// fine and means the same thing).
+    pub secret_line_ranges: Vec<crate::preprocessing::SecretLineRange>,
+}
+
+/// Current sidecar schema version.
+pub const SECRETS_SIDECAR_VERSION: u32 = 1;
+
+impl SecretsSidecar {
+    /// Build a sidecar from a slice of line ranges.
+    pub fn new(ranges: Vec<crate::preprocessing::SecretLineRange>) -> Self {
+        Self {
+            version: SECRETS_SIDECAR_VERSION,
+            secret_line_ranges: ranges,
+        }
+    }
+
+    /// Persist the sidecar next to its baseline. Path layout matches
+    /// `Pather::preprocessor_secrets_sidecar_path`. Creates parent
+    /// directories as needed (in practice the baseline write that
+    /// runs first has already created them, but write is robust to
+    /// being called in either order). Overwrites any existing file.
+    ///
+    /// When `self.secret_line_ranges` is empty, this is a no-op:
+    /// callers don't need to special-case "no secrets" — they always
+    /// call `write` with whatever the renderer emitted, and the
+    /// no-secrets case skips the disk write rather than dropping a
+    /// `{ "secret_line_ranges": [] }` file. Removes any existing
+    /// sidecar in that case so a previous render's secrets don't
+    /// linger after the user removes them from the template.
+    pub fn write(
+        &self,
+        fs: &dyn Fs,
+        paths: &dyn Pather,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+    ) -> Result<Option<PathBuf>> {
+        let path = paths.preprocessor_secrets_sidecar_path(pack, handler, filename);
+        if self.secret_line_ranges.is_empty() {
+            // No secrets in this render. Remove a stale sidecar from
+            // a prior render if one exists; otherwise no-op.
+            if fs.exists(&path) {
+                fs.remove_file(&path)?;
+            }
+            return Ok(None);
+        }
+        if let Some(parent) = path.parent() {
+            fs.mkdir_all(parent)?;
+        }
+        let body = serde_json::to_string_pretty(self).map_err(|e| {
+            DodotError::Other(format!(
+                "failed to serialise secrets sidecar for {pack}/{handler}/{filename}: {e}"
+            ))
+        })?;
+        fs.write_file(&path, body.as_bytes())?;
+        Ok(Some(path))
+    }
+
+    /// Load the sidecar for a file. Returns `Ok(None)` when no
+    /// sidecar exists — the documented "no secrets" state per §3.3.
+    /// Errors on parse failure or unsupported version so the caller
+    /// can suggest a `dodot up --force` re-render.
+    pub fn load(
+        fs: &dyn Fs,
+        paths: &dyn Pather,
+        pack: &str,
+        handler: &str,
+        filename: &str,
+    ) -> Result<Option<Self>> {
+        let path = paths.preprocessor_secrets_sidecar_path(pack, handler, filename);
+        if !fs.exists(&path) {
+            return Ok(None);
+        }
+        let raw = fs.read_to_string(&path)?;
+        let sidecar: Self = serde_json::from_str(&raw).map_err(|e| {
+            DodotError::Other(format!(
+                "failed to parse secrets sidecar at {}: {e}\n  \
+                 Run `dodot up --force` to re-render and rewrite the sidecar.",
+                path.display()
+            ))
+        })?;
+        if sidecar.version != SECRETS_SIDECAR_VERSION {
+            return Err(DodotError::Other(format!(
+                "secrets sidecar at {} has unsupported schema version {} (expected {}). \
+                 Clear the file and run `dodot up --force` to rebuild.",
+                path.display(),
+                sidecar.version,
+                SECRETS_SIDECAR_VERSION
+            )));
+        }
+        Ok(Some(sidecar))
+    }
+}
+
 /// SHA-256 → 64-char lowercase hex. Used by the baseline cache for
 /// rendered/source content hashing and by the divergence walker for
 /// the same purpose against current on-disk state. `pub(crate)` so
@@ -450,5 +563,181 @@ mod tests {
         assert!(hex_encode_32(&[0xab; 32])
             .chars()
             .all(|c| c == 'a' || c == 'b'));
+    }
+
+    // ── secrets sidecar (Phase S1) ───────────────────────────
+
+    fn range(start: usize, reference: &str) -> crate::preprocessing::SecretLineRange {
+        crate::preprocessing::SecretLineRange {
+            start,
+            end: start + 1,
+            reference: reference.into(),
+        }
+    }
+
+    #[test]
+    fn sidecar_round_trips_through_write_and_load() {
+        let env = TempEnvironment::builder().build();
+        let sidecar = SecretsSidecar::new(vec![
+            range(2, "op://Vault/db/password"),
+            range(5, "pass:api/token"),
+        ]);
+
+        let written = sidecar
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "config.toml",
+            )
+            .unwrap()
+            .expect("non-empty sidecar should write");
+        assert!(env.fs.exists(&written));
+
+        let loaded = SecretsSidecar::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap()
+        .expect("written sidecar should load");
+
+        assert_eq!(loaded, sidecar);
+        assert_eq!(loaded.version, SECRETS_SIDECAR_VERSION);
+        assert_eq!(loaded.secret_line_ranges.len(), 2);
+        assert_eq!(
+            loaded.secret_line_ranges[0].reference,
+            "op://Vault/db/password"
+        );
+    }
+
+    #[test]
+    fn sidecar_load_returns_none_when_absent() {
+        let env = TempEnvironment::builder().build();
+        let loaded = SecretsSidecar::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "config.toml",
+        )
+        .unwrap();
+        assert!(
+            loaded.is_none(),
+            "absent sidecar = None (no secrets to mask)"
+        );
+    }
+
+    #[test]
+    fn sidecar_write_with_empty_ranges_does_not_create_file() {
+        // Templates without any `secret(...)` calls should leave NO
+        // sidecar on disk — not even an empty `[]` one. Keeps the
+        // file system clean for the common case (most templates
+        // have no secrets).
+        let env = TempEnvironment::builder().build();
+        let sidecar = SecretsSidecar::new(Vec::new());
+        let written = sidecar
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "c.toml",
+            )
+            .unwrap();
+        assert!(written.is_none(), "empty sidecar should not write");
+        let path = env
+            .paths
+            .preprocessor_secrets_sidecar_path("app", "preprocessed", "c.toml");
+        assert!(!env.fs.exists(&path));
+    }
+
+    #[test]
+    fn sidecar_write_with_empty_ranges_removes_stale_file() {
+        // Previous render had secrets → sidecar on disk. New render
+        // has none → the writer must clean up the stale file so
+        // burgertocow's mask doesn't keep masking lines that
+        // legitimately surface as drift now.
+        let env = TempEnvironment::builder().build();
+        let original = SecretsSidecar::new(vec![range(1, "pass:k")]);
+        original
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "c.toml",
+            )
+            .unwrap()
+            .expect("first write");
+
+        let path = env
+            .paths
+            .preprocessor_secrets_sidecar_path("app", "preprocessed", "c.toml");
+        assert!(env.fs.exists(&path));
+
+        let empty = SecretsSidecar::new(Vec::new());
+        empty
+            .write(
+                env.fs.as_ref(),
+                env.paths.as_ref(),
+                "app",
+                "preprocessed",
+                "c.toml",
+            )
+            .unwrap();
+        assert!(
+            !env.fs.exists(&path),
+            "stale sidecar must be removed when the new render has no secrets"
+        );
+    }
+
+    #[test]
+    fn sidecar_load_rejects_unsupported_version_with_actionable_message() {
+        let env = TempEnvironment::builder().build();
+        let path = env
+            .paths
+            .preprocessor_secrets_sidecar_path("app", "preprocessed", "c.toml");
+        env.fs.mkdir_all(path.parent().unwrap()).unwrap();
+        env.fs
+            .write_file(&path, br#"{"version":99,"secret_line_ranges":[]}"#)
+            .unwrap();
+
+        let err = SecretsSidecar::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "c.toml",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("unsupported schema version 99"));
+        assert!(err.contains("dodot up --force"));
+    }
+
+    #[test]
+    fn sidecar_load_rejects_corrupt_json_with_actionable_message() {
+        let env = TempEnvironment::builder().build();
+        let path = env
+            .paths
+            .preprocessor_secrets_sidecar_path("app", "preprocessed", "c.toml");
+        env.fs.mkdir_all(path.parent().unwrap()).unwrap();
+        env.fs.write_file(&path, b"{not valid json").unwrap();
+
+        let err = SecretsSidecar::load(
+            env.fs.as_ref(),
+            env.paths.as_ref(),
+            "app",
+            "preprocessed",
+            "c.toml",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("failed to parse"));
+        assert!(err.contains("dodot up --force"));
     }
 }

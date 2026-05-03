@@ -16,6 +16,7 @@ pub mod list;
 pub mod probe;
 pub mod prompts;
 pub mod refresh;
+pub mod secret;
 pub mod status;
 pub mod template_clean;
 pub mod template_install_filter;

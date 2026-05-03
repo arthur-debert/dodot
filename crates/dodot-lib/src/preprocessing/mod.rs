@@ -8,9 +8,11 @@
 //!
 //! See `docs/proposals/preprocessing-pipeline.lex` for the full design.
 
+pub mod age;
 pub mod baseline;
 pub mod conflict;
 pub mod divergence;
+pub mod gpg;
 pub mod identity;
 pub mod no_reverse;
 pub mod pipeline;
@@ -36,6 +38,36 @@ pub enum TransformType {
     Representational,
     /// Source is decoded on deploy; no reverse path (GPG).
     Opaque,
+}
+
+/// One entry in a per-render secrets sidecar — a span of lines whose
+/// content was produced by a `secret(...)` call, paired with the
+/// reference that produced it.
+///
+/// Lines are 0-indexed and `start..end` is half-open. A single-line
+/// secret occupies line `start` and is encoded as `end == start + 1`
+/// (`start == end` would be an empty range and is never produced).
+/// For Phase S1 every entry is single-line: multi-line secrets are
+/// refused at resolution time per `secrets.lex` §3.4. The `end` field
+/// is preserved in the schema for forward-compatibility but the
+/// renderer never produces `end > start + 1`.
+///
+/// Persisted to disk under `<baseline>.secret.json` (see
+/// `secrets.lex` §3.3); consumed by the dry-run preview rendering
+/// (§7.4) to mask resolved values, and by the burgertocow mask
+/// integration (issue arthur-debert/burgertocow#13) to skip those
+/// lines from the reverse diff.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SecretLineRange {
+    /// First line, 0-indexed, inclusive.
+    pub start: usize,
+    /// One past the last line, 0-indexed, exclusive. `start + 1` for
+    /// a single-line value.
+    pub end: usize,
+    /// The original `secret(...)` argument string, e.g.
+    /// `"op://Personal/DB/password"`. Surfaces in the dry-run
+    /// `[SECRET: <reference>]` placeholder.
+    pub reference: String,
 }
 
 /// A single file produced by a preprocessor's expansion.
@@ -70,6 +102,22 @@ pub struct ExpandedFile {
     /// install/homebrew sentinels both use the context hash to decide
     /// when work is stale.
     pub context_hash: Option<[u8; 32]>,
+    /// Per-render secret-line tracking. Empty when no `secret(...)`
+    /// calls fired (the common case today; will be the common case
+    /// forever for templates that don't use secrets). Populated by
+    /// `TemplatePreprocessor` when a [`crate::secret::SecretRegistry`]
+    /// is wired in. The pipeline persists this as a sidecar JSON
+    /// alongside the baseline.
+    pub secret_line_ranges: Vec<SecretLineRange>,
+    /// Unix mode the rendered datastore file should be chmod'd to
+    /// after the pipeline writes it. `None` (the default) leaves
+    /// the file at whatever umask-derived mode `write_file` produced
+    /// — the pre-S3 behavior for templates / unarchive output.
+    /// Whole-file secret preprocessors (`age`, `gpg`) set this to
+    /// `Some(0o600)` to enforce `secrets.lex` §4.3: rendered
+    /// secrets land 0600 regardless of the source file's mode.
+    /// Ignored when `is_dir` is true.
+    pub deploy_mode: Option<u32>,
 }
 
 /// The core preprocessor abstraction.
@@ -199,18 +247,172 @@ impl Default for PreprocessorRegistry {
 /// The [`identity`] preprocessor is test-only and is intentionally *not*
 /// registered here (it would match innocuous-looking `.identity` files in
 /// user dotfiles).
+///
+/// `secret_config` controls whether the template preprocessor gets a
+/// [`SecretRegistry`] wired in. When `[secret] enabled = true` and at
+/// least one provider is enabled, this function builds the registry,
+/// wires it onto the template preprocessor, and returns it via
+/// `out_secret_registry` so the caller can run preflight checks
+/// (`crate::secret::preflight`) before any rendering begins. When
+/// secrets are disabled, the template preprocessor is built without a
+/// registry and `secret(...)` calls in templates surface a config-
+/// pointing render error.
 pub fn default_registry(
-    template_config: &crate::config::PreprocessorTemplateSection,
+    preprocessor_config: &crate::config::PreprocessorSection,
+    secret_config: &crate::config::SecretSection,
     pather: &dyn crate::paths::Pather,
-) -> Result<PreprocessorRegistry> {
+    command_runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+) -> Result<(
+    PreprocessorRegistry,
+    Option<std::sync::Arc<crate::secret::SecretRegistry>>,
+)> {
+    use std::sync::Arc;
+
     let mut registry = PreprocessorRegistry::new();
     registry.register(Box::new(unarchive::UnarchivePreprocessor::new()));
-    registry.register(Box::new(template::TemplatePreprocessor::new(
+
+    let template_config = &preprocessor_config.template;
+    let mut tpl = template::TemplatePreprocessor::new(
         template_config.extensions.clone(),
         template_config.vars.clone(),
         pather,
-    )?));
-    Ok(registry)
+    )?;
+
+    let secret_registry = if secret_config.enabled {
+        build_secret_registry(
+            secret_config,
+            Arc::clone(&command_runner),
+            pather.dotfiles_root(),
+        )
+    } else {
+        None
+    };
+
+    if let Some(sr) = &secret_registry {
+        tpl = tpl.with_secret_registry(Arc::clone(sr));
+    }
+
+    registry.register(Box::new(tpl));
+
+    // Whole-file secret preprocessors per `secrets.lex` §4 — opt-in
+    // via `[preprocessor.age|gpg] enabled = true`. Off by default so
+    // a fresh install never shells out to `age` / `gpg` on random
+    // files. Identity for age comes from config first; an empty
+    // string defers to the runtime defaults (`from_env`).
+    if preprocessor_config.age.enabled {
+        let identity_str = preprocessor_config.age.identity.trim();
+        let pp = if identity_str.is_empty() {
+            age::AgePreprocessor::from_env(Arc::clone(&command_runner))
+        } else {
+            age::AgePreprocessor::new(
+                Arc::clone(&command_runner),
+                std::path::PathBuf::from(identity_str),
+                preprocessor_config.age.extensions.clone(),
+            )
+        };
+        registry.register(Box::new(pp));
+    }
+
+    if preprocessor_config.gpg.enabled {
+        registry.register(Box::new(gpg::GpgPreprocessor::new(
+            Arc::clone(&command_runner),
+            preprocessor_config.gpg.extensions.clone(),
+        )));
+    }
+
+    Ok((registry, secret_registry))
+}
+
+/// Construct a [`crate::secret::SecretRegistry`] from the per-provider
+/// `[secret.providers.*]` config blocks. Each enabled provider is
+/// constructed with the shared `CommandRunner` (so tests can inject a
+/// mock runner) and registered. Returns `None` if no provider is
+/// enabled — the secrets layer treats that case as "secrets feature
+/// fully off" and templates with `secret(...)` calls fail loudly.
+///
+/// `dotfiles_root` is the anchor for relative paths in
+/// provider-specific references — currently used by the `sops`
+/// provider, whose `sops:secrets.yaml#k.p` references resolve
+/// `secrets.yaml` relative to this directory.
+///
+/// Public so `commands::up` can build a single registry from the root
+/// config to run [`crate::secret::preflight`] once per run, before any
+/// per-pack template rendering begins (`secrets.lex` §5.4).
+pub fn build_secret_registry(
+    config: &crate::config::SecretSection,
+    runner: std::sync::Arc<dyn crate::datastore::CommandRunner>,
+    dotfiles_root: &std::path::Path,
+) -> Option<std::sync::Arc<crate::secret::SecretRegistry>> {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    let mut reg = crate::secret::SecretRegistry::new();
+    let mut any_enabled = false;
+
+    if config.providers.pass.enabled {
+        let store_dir = if config.providers.pass.store_dir.is_empty() {
+            // Defer to env / default: PassProvider::from_env reads
+            // $PASSWORD_STORE_DIR or falls back to ~/.password-store.
+            None
+        } else {
+            Some(PathBuf::from(&config.providers.pass.store_dir))
+        };
+        let provider = match store_dir {
+            Some(dir) => crate::secret::PassProvider::new(Arc::clone(&runner), dir),
+            None => crate::secret::PassProvider::from_env(Arc::clone(&runner)),
+        };
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.op.enabled {
+        let provider = crate::secret::OpProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.bw.enabled {
+        let provider = crate::secret::BwProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.sops.enabled {
+        // sops anchors relative file paths (`sops:secrets.yaml#k`)
+        // at the dotfiles root, so `.sops.yaml` configuration in the
+        // repo root applies. Absolute paths in references bypass
+        // this anchor.
+        let provider =
+            crate::secret::SopsProvider::new(Arc::clone(&runner), dotfiles_root.to_path_buf());
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.keychain.enabled {
+        // macOS Keychain (`security` CLI). On non-macOS hosts the
+        // probe surfaces NotInstalled with a "use secret-tool"
+        // pointer; we still register the provider so users with
+        // mixed-platform dotfiles get a deterministic preflight
+        // failure rather than a silent "no provider for scheme"
+        // mismatch.
+        let provider = crate::secret::KeychainProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if config.providers.secret_tool.enabled {
+        // freedesktop Secret Service (`secret-tool` CLI). Same
+        // cross-platform stance as `keychain` above.
+        let provider = crate::secret::SecretToolProvider::from_env(Arc::clone(&runner));
+        reg.register(Arc::new(provider));
+        any_enabled = true;
+    }
+
+    if any_enabled {
+        Some(Arc::new(reg))
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -295,6 +497,98 @@ mod tests {
 
         // Non-preprocessor files still return None
         assert!(registry.find_for_file("regular.txt").is_none());
+    }
+
+    /// Stand-in `CommandRunner` for `default_registry` tests — the
+    /// preprocessors are constructed but never invoked, so any
+    /// runner that satisfies the trait works.
+    struct NoopRunner;
+    impl crate::datastore::CommandRunner for NoopRunner {
+        fn run(&self, _: &str, _: &[String]) -> Result<crate::datastore::CommandOutput> {
+            unreachable!("default_registry tests do not invoke runners")
+        }
+    }
+
+    fn make_default_registry(
+        preprocessor: crate::config::PreprocessorSection,
+    ) -> PreprocessorRegistry {
+        let env = crate::testing::TempEnvironment::builder().build();
+        let secret = crate::config::SecretSection {
+            enabled: false,
+            providers: crate::config::SecretProvidersSection {
+                pass: crate::config::SecretProviderPass {
+                    enabled: false,
+                    store_dir: String::new(),
+                },
+                op: crate::config::SecretProviderOp { enabled: false },
+                bw: crate::config::SecretProviderBw { enabled: false },
+                sops: crate::config::SecretProviderSops { enabled: false },
+                keychain: crate::config::SecretProviderKeychain { enabled: false },
+                secret_tool: crate::config::SecretProviderSecretTool { enabled: false },
+            },
+        };
+        let runner: std::sync::Arc<dyn crate::datastore::CommandRunner> =
+            std::sync::Arc::new(NoopRunner);
+        let (reg, _) =
+            default_registry(&preprocessor, &secret, env.paths.as_ref(), runner).unwrap();
+        reg
+    }
+
+    fn empty_preprocessor_section() -> crate::config::PreprocessorSection {
+        crate::config::PreprocessorSection {
+            enabled: true,
+            template: crate::config::PreprocessorTemplateSection {
+                extensions: vec!["tmpl".into()],
+                vars: Default::default(),
+                no_reverse: Vec::new(),
+            },
+            age: crate::config::PreprocessorAgeSection {
+                enabled: false,
+                extensions: vec!["age".into()],
+                identity: String::new(),
+            },
+            gpg: crate::config::PreprocessorGpgSection {
+                enabled: false,
+                extensions: vec!["gpg".into(), "asc".into()],
+            },
+        }
+    }
+
+    #[test]
+    fn default_registry_does_not_register_age_or_gpg_when_disabled() {
+        // The opt-in posture from `secrets.lex` §4.1 — without
+        // explicit config flips, neither age nor gpg is registered
+        // and `*.age` / `*.gpg` files in a pack flow through as
+        // regular files (deployed verbatim, no decryption).
+        let reg = make_default_registry(empty_preprocessor_section());
+        assert!(reg.find_for_file("id_ed25519.age").is_none());
+        assert!(reg.find_for_file("Brewfile.gpg").is_none());
+        assert!(reg.find_for_file("notes.asc").is_none());
+        // Sanity: template + unarchive are still registered (the
+        // pre-S3 default set).
+        assert!(reg.find_for_file("config.toml.tmpl").is_some());
+        assert!(reg.find_for_file("bin.tar.gz").is_some());
+    }
+
+    #[test]
+    fn default_registry_registers_age_when_enabled() {
+        let mut pre = empty_preprocessor_section();
+        pre.age.enabled = true;
+        pre.age.identity = "/k/id.txt".into();
+        let reg = make_default_registry(pre);
+        let pp = reg.find_for_file("id_ed25519.age").unwrap();
+        assert_eq!(pp.name(), "age");
+    }
+
+    #[test]
+    fn default_registry_registers_gpg_when_enabled_for_both_extensions() {
+        let mut pre = empty_preprocessor_section();
+        pre.gpg.enabled = true;
+        let reg = make_default_registry(pre);
+        let gpg_pp = reg.find_for_file("Brewfile.gpg").unwrap();
+        assert_eq!(gpg_pp.name(), "gpg");
+        let asc_pp = reg.find_for_file("notes.txt.asc").unwrap();
+        assert_eq!(asc_pp.name(), "gpg");
     }
 
     #[test]

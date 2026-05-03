@@ -174,6 +174,19 @@ pub const TEMPLATE_GIT_SHOW_ALIAS: &str = include_str!("../templates/git-show-al
 /// `dodot git-install-alias` outcome message.
 pub const TEMPLATE_GIT_INSTALL_ALIAS: &str = include_str!("../templates/git-install-alias.jinja");
 
+/// `dodot secret probe` per-provider state list. Surfaces each
+/// configured provider's `probe()` outcome with the rendered
+/// hint; treats "no providers configured" / "secrets disabled"
+/// as a separate render branch.
+pub const TEMPLATE_SECRET_PROBE: &str = include_str!("../templates/secret-probe.jinja");
+
+/// `dodot secret list` per-reference enumeration. Lists every
+/// `secret(...)` call across the repo's templates with a
+/// per-row warning when the referenced scheme has no provider
+/// enabled in the current config. Independent rollup at the
+/// bottom names schemes with refs but no provider.
+pub const TEMPLATE_SECRET_LIST: &str = include_str!("../templates/secret-list.jinja");
+
 // ── Tutorial step templates ─────────────────────────────────────
 //
 // One per step of the interactive tutorial. The CLI driver renders
