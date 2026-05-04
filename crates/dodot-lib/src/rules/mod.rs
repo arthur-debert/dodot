@@ -372,10 +372,23 @@ impl<'a> Scanner<'a> {
         sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
 
         // Compile [mappings.gates] globs once per scan. Each entry pairs
-        // a glob pattern with the gate label it carries.
-        let compiled_mapping_gates: Vec<(glob::Pattern, &str)> = mappings_gates
+        // a glob pattern with the gate label it carries. Sort by the
+        // raw pattern string (lexicographic) so iteration order is
+        // deterministic across platforms — `HashMap` iteration is not.
+        // First-match-wins on this sorted view; ties are settled by
+        // the conflict guard against filename gates further below.
+        let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> = mappings_gates
             .iter()
-            .filter_map(|(pat, label)| glob::Pattern::new(pat).ok().map(|p| (p, label.as_str())))
+            .filter_map(|(pat, label)| {
+                glob::Pattern::new(pat)
+                    .ok()
+                    .map(|p| (p, label.as_str(), pat.as_str()))
+            })
+            .collect();
+        compiled_mapping_gates.sort_by(|a, b| a.2.cmp(b.2));
+        let compiled_mapping_gates: Vec<(glob::Pattern, &str)> = compiled_mapping_gates
+            .into_iter()
+            .map(|(p, l, _)| (p, l))
             .collect();
 
         let mut matches = Vec::new();

@@ -707,10 +707,25 @@ impl ConfigManager {
     }
 
     /// Load the root-level configuration (no pack override).
+    ///
+    /// Rejects root-level `[pack] os` since gating every pack from
+    /// the root would silently neutralise the dotfiles repo for
+    /// hosts not in the list — almost always a misconfiguration.
+    /// `[pack] os` is meaningful at pack-level only.
     pub fn root_config(&self) -> Result<DodotConfig> {
-        self.resolver
+        let cfg = self
+            .resolver
             .resolve_at(&self.dotfiles_root)
-            .map_err(|e| DodotError::Config(format!("failed to load root config: {e}")))
+            .map_err(|e| DodotError::Config(format!("failed to load root config: {e}")))?;
+        if !cfg.pack.os.is_empty() {
+            return Err(DodotError::Config(format!(
+                "root-level `[pack] os` is not allowed (found `os = {:?}` in \
+                 the root .dodot.toml). `[pack] os` is a pack-level key — \
+                 move it into the specific pack's .dodot.toml.",
+                cfg.pack.os
+            )));
+        }
+        Ok(cfg)
     }
 
     /// Load merged configuration for a specific pack.
@@ -1066,5 +1081,30 @@ warp = "dev.warp.Warp-Stable"
             cfg.symlink.app_aliases.get("warp").map(String::as_str),
             Some("dev.warp.Warp-Stable")
         );
+    }
+
+    #[test]
+    fn root_config_rejects_pack_os() {
+        // `[pack] os` at root level would gate every pack against the
+        // current host — almost always a misconfiguration. The
+        // resolver refuses to load such a root config rather than
+        // silently neutralising the dotfiles repo.
+        let env = TempEnvironment::builder().build();
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                br#"
+[pack]
+os = ["darwin"]
+"#,
+            )
+            .unwrap();
+
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let err = mgr.root_config().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("root-level"), "missing reason: {msg}");
+        assert!(msg.contains("[pack] os"), "missing key: {msg}");
+        assert!(msg.contains("darwin"), "missing offending value: {msg}");
     }
 }

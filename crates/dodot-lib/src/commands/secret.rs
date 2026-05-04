@@ -224,10 +224,17 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
     let packs = prepare_packs(None, ctx)?;
     let mut rows: Vec<SecretRefRow> = Vec::new();
     let scanner = crate::rules::Scanner::new(ctx.fs.as_ref());
-    let host = crate::gates::HostFacts::detect();
+    let host = ctx.host_facts.as_ref();
 
     for pack in &packs {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
+        // Skip packs gated out by `[pack] os` on this host — same
+        // posture as `dodot status`. Without this, `secret list`
+        // surfaces references from packs that won't run on the
+        // current OS, which is misleading.
+        if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
+            continue;
+        }
         let gates = {
             let mut t = crate::gates::GateTable::with_builtins();
             if !pack_config.gates.is_empty() {
@@ -235,7 +242,7 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
             }
             t
         };
-        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, &host)?;
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
         for entry in entries {
             if entry.is_dir {
                 continue;

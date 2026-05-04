@@ -88,6 +88,7 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         view_mode: crate::commands::ViewMode::Full,
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
+        host_facts: Arc::new(crate::gates::HostFacts::detect()),
     }
 }
 
@@ -115,6 +116,7 @@ fn make_ctx_with_runner(env: &TempEnvironment, runner: Arc<dyn CommandRunner>) -
         view_mode: crate::commands::ViewMode::Full,
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
+        host_facts: Arc::new(crate::gates::HostFacts::detect()),
     }
 }
 
@@ -5997,4 +5999,55 @@ fn adopt_only_os_user_defined_label_works() {
     .unwrap();
 
     env.assert_regular_file(&env.dotfiles_root.join("vim/_laptop/home.vimrc"), "x");
+}
+
+// ── Gate-before-preprocess regression ───────────────────────────
+
+#[test]
+fn gate_failed_template_does_not_render_at_up() {
+    // Regression guard for review feedback on PR #135: a gate-failed
+    // template (e.g. `aliases._linux.sh.tmpl` on a darwin host) must
+    // NOT be expanded by the template preprocessor. Otherwise
+    // secret-provider calls and baseline-cache writes fire eagerly
+    // for entries the user explicitly opted out of via the gate.
+    //
+    // We can't fake `target_os` from a test, but we can detect: on a
+    // darwin host, `aliases._linux.sh.tmpl` is gated out; on a linux
+    // host, `aliases._darwin.sh.tmpl` is. Either way, the
+    // gate-failed template's rendered output must not appear in the
+    // datastore, and the deployed shell-init link must not exist.
+    let (gated, _passing) = if cfg!(target_os = "macos") {
+        ("linux", "darwin")
+    } else if cfg!(target_os = "linux") {
+        ("darwin", "linux")
+    } else {
+        return; // skip on unsupported hosts
+    };
+    let template_name = format!("aliases._{gated}.sh.tmpl");
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file(&template_name, "alias x={{ undefined_variable }}")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    // If the gate ran AFTER preprocessing, the template engine
+    // would attempt to render `{{ undefined_variable }}` and the
+    // strict-undefined render would fail the whole `up`. Gate
+    // first means the template never reaches the engine, and `up`
+    // succeeds (with an empty deploy for this pack).
+    commands::up::up(None, &ctx).unwrap();
+
+    // No rendered output in the datastore.
+    let preprocessed = ctx.paths.data_dir().join("packs/p/preprocessed/aliases.sh");
+    assert!(
+        !env.fs.exists(&preprocessed),
+        "gated-out template was rendered to {preprocessed:?}"
+    );
+    // No shell stage link.
+    let shell_link = ctx.paths.data_dir().join("packs/p/shell/aliases.sh");
+    assert!(
+        !env.fs.exists(&shell_link),
+        "gated-out template surfaced as a shell stage at {shell_link:?}"
+    );
 }

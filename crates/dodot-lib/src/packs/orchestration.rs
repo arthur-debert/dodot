@@ -62,6 +62,11 @@ pub struct ExecutionContext {
     /// comment block of each script are surfaced. Wired from the CLI
     /// global `--verbose`/`--debug` flag.
     pub verbose: bool,
+    /// Snapshot of the host's gate-relevant facts (os, arch, hostname,
+    /// username). Detected once per context so per-pack scanning and
+    /// matching avoid re-running `hostname(1)`/env reads. Constructed
+    /// by [`Self::production`]; tests build via `HostFacts::for_tests`.
+    pub host_facts: Arc<HostFacts>,
 }
 
 impl ExecutionContext {
@@ -129,6 +134,7 @@ impl ExecutionContext {
             view_mode: crate::commands::ViewMode::default(),
             group_mode: crate::commands::GroupMode::default(),
             verbose,
+            host_facts: Arc::new(HostFacts::detect()),
         })
     }
 }
@@ -221,7 +227,7 @@ pub fn execute(
     let mut pack_results = Vec::with_capacity(total_packs);
     let mut successful = 0;
     let mut failed = 0;
-    let host = HostFacts::detect();
+    let host = ctx.host_facts.as_ref();
 
     for mut pack in all_packs {
         info!(pack = %pack.name, "processing pack");
@@ -250,7 +256,7 @@ pub fn execute(
         // as successful (it's the configured behaviour, not a failure)
         // with no operations — same shape `.dodotignore` would have if
         // it reached this loop.
-        if !crate::gates::pack_os_active(&pack_config.pack.os, &host) {
+        if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
             debug!(
                 pack = %pack.name,
                 allowed = ?pack_config.pack.os,
@@ -441,6 +447,96 @@ fn build_gate_table(pack_config: &crate::config::DodotConfig) -> Result<GateTabl
     Ok(table)
 }
 
+/// Apply basename-gate evaluation to a freshly-walked entry list,
+/// before preprocessing runs.
+///
+/// Why this lives outside `match_entries`: preprocessing sees the
+/// pre-match entry list, and template render / secret-provider calls
+/// fire eagerly on every templated entry the registry recognises. If
+/// gate evaluation only happened in `match_entries` (post-preprocess),
+/// a gate-failed `*._linux.sh.tmpl` on a darwin host would still
+/// trigger a template render, a secret-provider call, and a baseline-
+/// cache write — even though the entry is later dropped as `gate`.
+/// Filtering basename gates here keeps gates honest about
+/// "predicate false ⇒ no work."
+///
+/// Passing gates have their `relative_path` rewritten to the stripped
+/// form (so the preprocessor sees `aliases.sh.tmpl`, not
+/// `aliases._darwin.sh.tmpl`). Failing gates flip to
+/// `gate_failure: Some(...)` so the existing match_entries path emits
+/// the gate-handler match.
+///
+/// Directory-segment gates (`_<label>/`) are already evaluated by
+/// `walk_pack` — entries inside passing-gate dirs surface stripped,
+/// failing-gate dirs already carry `gate_failure`. This helper is
+/// strictly for the basename-suffix grammar.
+fn filter_basename_gates(
+    entries: Vec<crate::rules::PackEntry>,
+    gates: &GateTable,
+    host: &HostFacts,
+    pack_name: &str,
+) -> Result<Vec<crate::rules::PackEntry>> {
+    use crate::gates::{parse_basename_gate, BasenameGate};
+    use crate::rules::GateFailure;
+
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        // Already-failed entries (from the directory-segment walk)
+        // pass through untouched.
+        if entry.gate_failure.is_some() {
+            out.push(entry);
+            continue;
+        }
+        let filename = entry
+            .relative_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        match parse_basename_gate(&filename) {
+            BasenameGate::None => out.push(entry),
+            BasenameGate::Found { label, stripped } => {
+                let pred = gates.lookup(label).ok_or_else(|| {
+                    crate::DodotError::Config(format!(
+                        "unknown gate label `{label}` in pack `{pack_name}`, file `{}`: \
+                         label is not in the built-in seed and not defined in [gates]. \
+                         Built-ins: darwin, linux, macos, arm64, aarch64, x86_64.",
+                        entry.relative_path.display()
+                    ))
+                })?;
+                if pred.matches(host) {
+                    let stripped_rel = entry.relative_path.with_file_name(&stripped);
+                    out.push(crate::rules::PackEntry {
+                        relative_path: stripped_rel,
+                        absolute_path: entry.absolute_path,
+                        is_dir: entry.is_dir,
+                        gate_failure: None,
+                    });
+                } else {
+                    let host_desc: Vec<String> = pred
+                        .matchers
+                        .iter()
+                        .map(|(dim, _)| {
+                            let actual = host.get(*dim).unwrap_or("<unset>");
+                            format!("{} = \"{}\"", dim.as_str(), actual)
+                        })
+                        .collect();
+                    out.push(crate::rules::PackEntry {
+                        relative_path: entry.relative_path,
+                        absolute_path: entry.absolute_path,
+                        is_dir: entry.is_dir,
+                        gate_failure: Some(GateFailure {
+                            label: label.to_string(),
+                            predicate: pred.describe(),
+                            host: format!("{{ {} }}", host_desc.join(", ")),
+                        }),
+                    });
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -469,12 +565,41 @@ fn plan_pack_inner(
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
     let gates = build_gate_table(pack_config)?;
-    let host = HostFacts::detect();
+    let host = ctx.host_facts.as_ref();
 
-    // Phase 1: Walk pack directory
+    // [pack] os gate — short-circuit inactive packs. Without this,
+    // intent collection still runs for packs the host doesn't deploy,
+    // which can hit cross-pack conflict detection or trigger
+    // preprocessor side-effects (template render, secret-provider
+    // calls) that the user explicitly opted out of via `[pack] os`.
+    if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
+        debug!(
+            pack = %pack.name,
+            allowed = ?pack_config.pack.os,
+            current_os = %host.os,
+            "pack inactive on this OS, returning empty plan"
+        );
+        return Ok(PackPlan {
+            intents: Vec::new(),
+            warnings: Vec::new(),
+        });
+    }
+
+    // Phase 1: Walk pack directory. The walk handles directory-segment
+    // gates (`_<label>/`) — passing gates expand transparently, failing
+    // gates surface as PackEntry { gate_failure: Some(...) }.
     let scanner = Scanner::new(ctx.fs.as_ref());
-    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, &host)?;
+    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
+
+    // Phase 1.5: Strip basename gates BEFORE preprocessing so a
+    // gate-failed `aliases._linux.sh.tmpl` never reaches the template
+    // engine on a darwin host. Without this, secret-provider calls and
+    // baseline-cache writes fire for entries the user explicitly
+    // opted out of. The same evaluation runs again in match_entries
+    // for non-preprocessed entries and to surface gate-out matches in
+    // status.
+    let entries = filter_basename_gates(entries, &gates, host, &pack.name)?;
 
     // Phase 2: Preprocessing
     let preprocess_result = if let Some(registry) = preprocessors {
@@ -498,13 +623,16 @@ fn plan_pack_inner(
 
     // Phase 3: Merge and match rules. Reuse the gate table + host
     // facts from phase 1 so basename/dir gates see the same view.
+    // (Failed basename gates were already converted to gate-handler
+    // matches in phase 1.5; match_entries sees them as gate_failure
+    // entries and re-emits them.)
     let all_entries = preprocess_result.merged_entries();
     let mut matches = scanner.match_entries(
         &all_entries,
         &rules,
         &pack.name,
         &gates,
-        &host,
+        host,
         &pack_config.mappings.gates,
     )?;
     debug!(pack = %pack.name, files = matches.len(), "matched rules");
@@ -891,6 +1019,7 @@ mod tests {
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
+            host_facts: Arc::new(crate::gates::HostFacts::detect()),
         }
     }
 
@@ -1133,6 +1262,7 @@ mod tests {
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
+            host_facts: Arc::new(crate::gates::HostFacts::detect()),
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();

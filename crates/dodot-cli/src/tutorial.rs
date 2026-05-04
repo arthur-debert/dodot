@@ -271,6 +271,7 @@ impl TutorialEnv {
             view_mode: ViewMode::Full,
             group_mode: GroupMode::Name,
             verbose: false,
+            host_facts: std::sync::Arc::new(dodot_lib::gates::HostFacts::detect()),
         }
     }
 }

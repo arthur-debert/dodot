@@ -173,12 +173,14 @@ Design Specification: Conditional Running
 
         Directory-level examples:
             | Source                                  | Gate  | Deploys to (on match)        | Behaviour              |
-            | `mac-tools/_home/_darwin/.hammerspoon/` | darwin | `~/.hammerspoon/`            | only on macOS          |
-            | `linux-only/_xdg/_linux/i3/config`      | linux  | `~/.config/i3/config`        | only on Linux          |
-            | `cross/_app/_darwin/Code/User/x.json`   | darwin | `<app_support>/Code/...`     | only on macOS          |
+            | `mac-tools/_darwin/_home/.hammerspoon/` | darwin | `~/.hammerspoon/`            | only on macOS          |
+            | `linux-only/_linux/_xdg/i3/config`      | linux  | `~/.config/i3/config`        | only on Linux          |
+            | `cross/_darwin/_app/Code/User/x.json`   | darwin | `<app_support>/Code/...`     | only on macOS          |
         :: table align=llll ::
 
-        The directory segment `_<label>/` lives *inside* a routing-prefix subtree (`_home/`, `_xdg/`, `_app/`, `_lib/`) or directly under the pack root. A standalone `_<label>/` directory at the pack root gates everything beneath it without changing the deploy root:
+        Gate dirs live at the pack root; routing-prefix subtrees (`_home/`, `_xdg/`, `_app/`, `_lib/`) live *inside* a passing-gate dir, not the other way around. The scanner expands gate dirs at scan time, so the contents surface at pack-root level on a matching host. Nesting in the opposite order (routing prefix at top, gate inside) is not supported in this iteration — the symlink handler owns recursion inside routing-prefix dirs and is intentionally gate-unaware. Putting the gate at the outer level reads more naturally too ("the darwin slice of my pack contains a `_home/` subtree").
+
+        A standalone `_<label>/` directory at the pack root gates everything beneath it without changing the deploy root:
 
             cross-platform-pack/
                 _darwin/
@@ -267,9 +269,9 @@ Design Specification: Conditional Running
         Routing prefixes (per [./../reference/symlink-paths.lex]):
 
             home.bashrc._darwin              →  ~/.bashrc on darwin only
-            _home/_darwin/.bashrc            →  ~/.bashrc on darwin only (subtree form)
+            _darwin/_home/.bashrc            →  ~/.bashrc on darwin only (subtree form, gate outside)
             _home/.bashrc._darwin            →  ~/.bashrc on darwin only (per-file inside subtree)
-            _app/Code/_darwin/User/x.json    →  <app_support>/Code/User/x.json on darwin only
+            _darwin/_app/Code/User/x.json    →  <app_support>/Code/User/x.json on darwin only
             home.bashrc._darwin + [symlink.targets] entry → routing-override conflict (per §6.6 of symlink-paths)
 
         :: text ::
@@ -306,7 +308,7 @@ Design Specification: Conditional Running
 
         A single file can be gated by both filename grammar AND `[mappings.os]` (a future addition; see §6). When that happens: hard error, refuse to deploy, point at both, ask user to pick one. Same posture as `[symlink.targets]` vs routing prefix conflict.
 
-        A file under both a directory gate and a filename gate: AND. `_home/_darwin/.bashrc._linux` is impossible (the file would have to be on darwin AND linux). Surfaces as the file never matching its own gate; deployed nowhere; visible in status as "gated out (label conflict)."
+        A file under both a directory gate and a filename gate: AND. `_darwin/.bashrc._linux` is impossible (the file would have to be on darwin AND linux). Surfaces as the file never matching its own gate; deployed nowhere; visible in status as "gated out (label conflict)."
 
         A pack with `[pack] os` set AND filename gates inside: the pack-level gate is checked first. If the pack is inactive on this OS, no file inside is even scanned. If the pack is active, file gates apply normally.
 
@@ -497,6 +499,12 @@ Design Specification: Conditional Running
     8.7. No `dodot adopt` Round-Trip Magic
 
         Adopting `~/.bashrc` from a darwin host produces `home.bashrc` (no gate). Adding a gate is a manual rename. Reason: adopt's job is "infer where this file lives"; "should this file exist only on this OS" is a design intent the user has to declare. A `--only-os <os>` flag is a minor future polish (deferred to phase C5).
+
+    8.8. No Gate Segments Inside Routing-Prefix Subtrees
+
+        `_home/_darwin/.bashrc` is *not* supported. The scanner expands gate dirs only at pack-root level; recursion inside `_home/`, `_xdg/`, `_app/`, and `_lib/` is owned by the symlink handler and is intentionally gate-unaware. Users who want OS-specific routing put the gate at the top level: `_darwin/_home/.bashrc`. This composes correctly because gate dirs strip on a matching host, leaving `_home/.bashrc` for the symlink resolver to route.
+
+        Extending the symlink handler's per-file recursion to evaluate nested gate segments is straightforward but adds dispatch logic to a code path the trait is otherwise minimal in. We defer until a real use case shows the outer-gate form is insufficient.
 
 
 9. Implementation Sketch

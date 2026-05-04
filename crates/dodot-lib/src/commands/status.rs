@@ -447,7 +447,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     }
 
     let registry = handlers::create_registry(ctx.fs.as_ref());
-    let host = crate::gates::HostFacts::detect();
+    let host = ctx.host_facts.as_ref();
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();
     let mut inactive_packs: Vec<String> = Vec::new();
@@ -463,7 +463,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // C3: pack-level OS gate. Inactive packs surface in their own
         // section ("inactive on this OS") and skip the per-file
         // walk/preprocess/match cycle entirely.
-        if !crate::gates::pack_os_active(&pack_config.pack.os, &host) {
+        if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
             inactive_packs.push(format!(
                 "{} (os={}, current={})",
                 pack.display_name,
@@ -492,7 +492,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // Without this step, status reports templates under their source
         // name and wrongly marks them "pending" because the verification
         // path (`~/.config.toml.tmpl`) doesn't exist.
-        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, &host)?;
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
         let preprocess_result = if pack_config.preprocessor.enabled {
             // [secret] is intentionally root-only — see SecretSection docs.
             let root_config = ctx.config_manager.root_config()?;
@@ -540,7 +540,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             &rules,
             &pack.name,
             &gates,
-            &host,
+            host,
             &pack_config.mappings.gates,
         )?;
 

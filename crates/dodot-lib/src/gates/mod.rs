@@ -10,19 +10,26 @@
 //! See `docs/proposals/conditional-running.lex` for the design rationale
 //! and the grammar's exact semantics.
 //!
-//! # C1 scope
+//! # What this module provides
 //!
-//! This module covers the v1 (Phase C1) surface:
+//! - **Filename gates**: `<stem>._<label>.<ext>` and extensionless
+//!   `<name>._<label>` basenames. Parser is [`parse_basename_gate`].
+//! - **Directory-segment gates**: `_<label>/` directory names, with
+//!   [`ROUTING_PREFIX_TOKENS`] (`home`/`xdg`/`app`/`lib`) excluded
+//!   because the symlink resolver owns those names. Parser is
+//!   [`parse_dir_gate_label`].
+//! - **Built-in labels**: `darwin`, `linux`, `macos`, `arm64`,
+//!   `aarch64`, `x86_64` are seeded by [`GateTable::with_builtins`].
+//! - **User-defined labels**: `[gates]` config table merges over the
+//!   built-ins via [`GateTable::merge_user`], with label-name and
+//!   dimension validation.
+//! - **Pack-level OS gating**: [`pack_os_active`] evaluates a
+//!   `[pack] os` allowlist against the current host.
+//! - **Host facts**: [`HostFacts`] snapshot, detected once per
+//!   `ExecutionContext` to avoid repeated `hostname(1)` calls.
 //!
-//! - Per-file gates: `<stem>._<label>.<ext>` and extensionless
-//!   `<name>._<label>` basename forms.
-//! - Built-in labels for `darwin`, `linux`, `macos`, `arm64`, `aarch64`,
-//!   `x86_64`.
-//! - User-defined labels via `[gates]` config (root or pack-level).
-//! - Hard error on unknown labels (typo guard).
-//!
-//! Directory-segment gates (`_<label>/`) and pack-level `[pack] os`
-//! land in subsequent phases.
+//! Unknown labels are a hard error wherever the parser meets one
+//! (typo guard).
 
 use std::collections::HashMap;
 
@@ -273,6 +280,25 @@ impl GateTable {
     /// each value is an inline table of `dimension = value` pairs.
     pub fn merge_user(&mut self, user: &HashMap<String, HashMap<String, String>>) -> Result<()> {
         for (label, dims) in user {
+            // Reject labels whose name can't be matched at runtime —
+            // either bad characters (no `[A-Za-z0-9_-]+` shape) or a
+            // reserved routing-prefix token (`home`/`xdg`/`app`/`lib`).
+            // Without this check, a user could define `[gates] foo.bar`
+            // or `[gates] home` and never see the entry fire because
+            // the filename/dirname grammar wouldn't recognise it.
+            if !is_valid_label(label) {
+                return Err(DodotError::Config(format!(
+                    "gate label `{label}` is not a valid identifier; \
+                     labels must match [A-Za-z0-9_-]+ to be parseable from \
+                     filenames and `_<label>/` directories"
+                )));
+            }
+            if ROUTING_PREFIX_TOKENS.contains(&label.as_str()) {
+                return Err(DodotError::Config(format!(
+                    "gate label `{label}` collides with a reserved routing-prefix \
+                     token (home/xdg/app/lib); pick a different name"
+                )));
+            }
             if dims.is_empty() {
                 return Err(DodotError::Config(format!(
                     "gate label `{label}` has no dimension matchers; \
@@ -585,9 +611,44 @@ mod tests {
     fn merge_user_empty_label_errors() {
         let mut t = GateTable::with_builtins();
         let mut user = HashMap::new();
-        user.insert("empty".into(), HashMap::new());
+        user.insert("nodims".into(), HashMap::new());
         let err = t.merge_user(&user).unwrap_err();
-        assert!(err.to_string().contains("empty"));
+        assert!(err.to_string().contains("nodims"));
+    }
+
+    #[test]
+    fn merge_user_invalid_label_name_errors() {
+        // Label with a dot — won't match the filename grammar, so
+        // refuse at config load.
+        let mut t = GateTable::with_builtins();
+        let mut user = HashMap::new();
+        let mut dims = HashMap::new();
+        dims.insert("os".into(), "darwin".into());
+        user.insert("foo.bar".into(), dims);
+        let err = t.merge_user(&user).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("foo.bar"), "missing label: {msg}");
+        assert!(
+            msg.contains("[A-Za-z0-9_-]+") || msg.contains("identifier"),
+            "missing grammar hint: {msg}"
+        );
+    }
+
+    #[test]
+    fn merge_user_routing_prefix_label_errors() {
+        // `home`, `xdg`, `app`, `lib` are reserved routing-prefix
+        // tokens — refuse to let users shadow them with a gate label.
+        for reserved in &["home", "xdg", "app", "lib"] {
+            let mut t = GateTable::with_builtins();
+            let mut user = HashMap::new();
+            let mut dims = HashMap::new();
+            dims.insert("os".into(), "darwin".into());
+            user.insert((*reserved).to_string(), dims);
+            let err = t.merge_user(&user).unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains(reserved), "missing token `{reserved}`: {msg}");
+            assert!(msg.contains("routing-prefix"), "missing reason: {msg}");
+        }
     }
 
     #[test]
