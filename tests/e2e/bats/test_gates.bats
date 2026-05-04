@@ -160,28 +160,56 @@ teardown() {
 
 # ── User-defined [gates] labels ─────────────────────────────────
 
-@test "user-defined compound label gates a file" {
-    # Define an `arm-mac` label — true only on darwin+aarch64. Pin
-    # the gated file to the matching OR mismatching combo by
-    # construction. We only assert that the file is consistently
-    # processed (deployed when gate matches, gated otherwise),
-    # without depending on the test host's arch.
+@test "user-defined compound label: passing predicate deploys file" {
+    # Define a compound label keyed off the current host's actual
+    # os+arch — this exercises the AND-of-equalities path with a
+    # predicate guaranteed to match. macOS `uname -m` reports
+    # `arm64` while Rust's `target_arch` is `aarch64`; map between
+    # them so the predicate aligns with what `HostFacts` carries.
+    local host_arch
+    case "$(uname -m)" in
+        arm64) host_arch="aarch64" ;;
+        *)     host_arch="$(uname -m)" ;;
+    esac
     local pack="custom"
-    create_root_config "$(printf '[gates]\n"%s-mac" = { os = "%s", arch = "%s" }\n' \
-        "${HOST_OS}" "${HOST_OS}" "$(uname -m | sed -e 's/x86_64/x86_64/' -e 's/arm64/aarch64/')")"
+    create_root_config "$(printf '[gates]\n"this-host" = { os = "%s", arch = "%s" }\n' \
+        "${HOST_OS}" "${host_arch}")"
 
-    create_pack_file "$pack" "vimrc._${HOST_OS}-mac" "x"
+    create_pack_file "$pack" "vimrc._this-host" "x"
 
-    # Active on a host matching the compound predicate; this test
-    # constructs the label off the actual host facts so it always
-    # matches (positive smoke test for compound labels). Deployed
-    # link is at the stripped XDG path; datastore link keeps the
-    # gated source filename.
     dodot up
+
+    # Predicate matches → file deploys under stripped XDG path; the
+    # datastore data-link keeps the gated source filename.
     [ -L "$XDG_CONFIG_HOME/$pack/vimrc" ]
     local target
     target="$(readlink "$XDG_CONFIG_HOME/$pack/vimrc")"
-    [[ "$target" == *"/dodot/packs/$pack/symlink/vimrc._${HOST_OS}-mac" ]]
+    [[ "$target" == *"/dodot/packs/$pack/symlink/vimrc._this-host" ]]
+}
+
+@test "user-defined compound label: failing predicate gates file out" {
+    # Compound label that can never match the live host: same os as
+    # the host, but an arch value Rust target_arch never produces.
+    # Exercises the gate-fail path for valid user-defined labels —
+    # paired with the passing-predicate test above so both sides of
+    # the predicate are covered.
+    local pack="custom"
+    create_root_config "$(printf '[gates]\n"impossible-host" = { os = "%s", arch = "imaginary-cpu" }\n' \
+        "${HOST_OS}")"
+
+    create_pack_file "$pack" "vimrc._impossible-host" "x"
+
+    dodot up
+
+    # Predicate fails → file does not deploy; surfaces in status as
+    # gated out under its original (unstripped) name.
+    assert_not_exists "$XDG_CONFIG_HOME/$pack/vimrc"
+    assert_no_handler_state "$pack" "symlink"
+
+    run dodot status
+    [ "$status" -eq 0 ]
+    assert_output_contains "vimrc._impossible-host"
+    assert_output_contains "gated out (impossible-host)"
 }
 
 @test "unknown gate label hard-errors at scan time" {
