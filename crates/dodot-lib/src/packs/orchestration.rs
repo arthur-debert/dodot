@@ -483,20 +483,11 @@ pub(crate) fn filter_pre_preprocess_gates(
     use crate::gates::{parse_basename_gate, BasenameGate};
     use crate::rules::GateFailure;
 
-    // Pre-compile [mappings.gates] glob patterns once. Same hard-error /
-    // lex-sort discipline as `match_entries` so behaviour matches
-    // across the `up` and `status` paths.
-    let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> =
-        Vec::with_capacity(mappings_gates.len());
-    for (pat, label) in mappings_gates {
-        let compiled = glob::Pattern::new(pat).map_err(|e| {
-            crate::DodotError::Config(format!(
-                "invalid `[mappings.gates]` glob `{pat}` in pack `{pack_name}`: {e}"
-            ))
-        })?;
-        compiled_mapping_gates.push((compiled, label.as_str(), pat.as_str()));
-    }
-    compiled_mapping_gates.sort_by(|a, b| a.2.cmp(b.2));
+    // Pre-compile + sort + validate `[mappings.gates]` globs via the
+    // shared helper so this path and `match_entries` can never disagree
+    // about iteration order, validation, or first-match semantics. See
+    // `gates::compile_mapping_gates`.
+    let compiled_mapping_gates = crate::gates::compile_mapping_gates(mappings_gates, pack_name)?;
 
     // Helper: build a GateFailure from a label + predicate, summarising
     // the host facts the predicate cares about. Shared between the
@@ -537,8 +528,8 @@ pub(crate) fn filter_pre_preprocess_gates(
         let rel_str = entry.relative_path.to_string_lossy();
         let mapping_match: Option<&str> = compiled_mapping_gates
             .iter()
-            .find(|(pat, _, _)| pat.matches(rel_str.as_ref()))
-            .map(|(_, label, _)| *label);
+            .find(|(pat, _)| pat.matches(rel_str.as_ref()))
+            .map(|(_, label)| *label);
 
         // Conflict guard: filename gate AND `[mappings.gates]` on the
         // same file is ambiguous — pick one.

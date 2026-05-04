@@ -578,47 +578,21 @@ fn build_dodot_context(pather: &dyn Pather) -> BTreeMap<String, String> {
 }
 
 /// Process-wide cached hostname. First call resolves and pins the
-/// result for the lifetime of the process.
+/// result for the lifetime of the process. Detection itself is shared
+/// with the gate machinery via [`crate::gates::detect_hostname`] —
+/// the cache lives here because templates render many times per
+/// process while `HostFacts` is built once per `ExecutionContext`.
 fn cached_hostname() -> Option<&'static String> {
     static CACHE: OnceLock<Option<String>> = OnceLock::new();
-    CACHE.get_or_init(detect_hostname).as_ref()
+    CACHE.get_or_init(crate::gates::detect_hostname).as_ref()
 }
 
 /// Process-wide cached username. Same caching semantics as
-/// [`cached_hostname`].
+/// [`cached_hostname`]; detection shared with
+/// [`crate::gates::detect_username`].
 fn cached_username() -> Option<&'static String> {
     static CACHE: OnceLock<Option<String>> = OnceLock::new();
-    CACHE.get_or_init(detect_username).as_ref()
-}
-
-fn detect_hostname() -> Option<String> {
-    if let Ok(h) = std::env::var("HOSTNAME") {
-        if !h.is_empty() {
-            return Some(h);
-        }
-    }
-    // Fallback: shell out. Ignore errors.
-    let output = std::process::Command::new("hostname").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
-}
-
-fn detect_username() -> Option<String> {
-    for var in ["USER", "USERNAME", "LOGNAME"] {
-        if let Ok(v) = std::env::var(var) {
-            if !v.is_empty() {
-                return Some(v);
-            }
-        }
-    }
-    None
+    CACHE.get_or_init(crate::gates::detect_username).as_ref()
 }
 
 /// Compact a MiniJinja error into a single human-readable string with
@@ -1155,8 +1129,14 @@ mod tests {
         assert!(ctx.contains_key("dotfiles_root"));
 
         // Optional keys: present iff the detection helper returned Some.
-        assert_eq!(ctx.contains_key("username"), detect_username().is_some());
-        assert_eq!(ctx.contains_key("hostname"), detect_hostname().is_some());
+        assert_eq!(
+            ctx.contains_key("username"),
+            crate::gates::detect_username().is_some()
+        );
+        assert_eq!(
+            ctx.contains_key("hostname"),
+            crate::gates::detect_hostname().is_some()
+        );
     }
 
     // ── Tracked render + context hash ────────────────────────────

@@ -371,31 +371,13 @@ impl<'a> Scanner<'a> {
         let mut sorted: Vec<&CompiledRule> = compiled.iter().collect();
         sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
 
-        // Compile [mappings.gates] globs once per scan. Each entry pairs
-        // a glob pattern with the gate label it carries. Sort by the
-        // raw pattern string (lexicographic) so iteration order is
-        // deterministic across platforms — `HashMap` iteration is not.
-        // First-match-wins on this sorted view; ties are settled by
-        // the conflict guard against filename gates further below.
-        // Invalid glob patterns are a hard error: silently dropping
-        // them turns a typo into "no gate" with no diagnostic, which
-        // is exactly the kind of debugging trap the typo-guard pattern
-        // exists to prevent.
-        let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> =
-            Vec::with_capacity(mappings_gates.len());
-        for (pat, label) in mappings_gates {
-            let compiled = glob::Pattern::new(pat).map_err(|e| {
-                DodotError::Config(format!(
-                    "invalid `[mappings.gates]` glob `{pat}` in pack `{pack_name}`: {e}"
-                ))
-            })?;
-            compiled_mapping_gates.push((compiled, label.as_str(), pat.as_str()));
-        }
-        compiled_mapping_gates.sort_by(|a, b| a.2.cmp(b.2));
-        let compiled_mapping_gates: Vec<(glob::Pattern, &str)> = compiled_mapping_gates
-            .into_iter()
-            .map(|(p, l, _)| (p, l))
-            .collect();
+        // Compile + sort + validate `[mappings.gates]` globs via the
+        // shared helper so the up-planning path
+        // (`filter_pre_preprocess_gates`) and this matcher can never
+        // disagree about iteration order, validation, or first-match
+        // semantics. See `gates::compile_mapping_gates`.
+        let compiled_mapping_gates =
+            crate::gates::compile_mapping_gates(mappings_gates, pack_name)?;
 
         let mut matches = Vec::new();
 
