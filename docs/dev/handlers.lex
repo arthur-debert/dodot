@@ -1,6 +1,6 @@
 Handlers
 
-    This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, see [./../user/handlers.md]. For the conceptual overview of how handlers fit between rules and execution, see [./../reference/handlers.lex].
+    This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, see [./../user/handlers.lex]. For the conceptual overview of how handlers fit between rules and execution, see [./../reference/handlers.lex].
 
     :: note :: See [./../reference/terms-and-concepts.lex] for terminology used throughout.
 
@@ -292,7 +292,7 @@ Handlers
     3. Register it in [`create_registry`].
     4. If the handler should claim files by default, add a pattern to [`config::MappingsSection`] and emit the corresponding rule from [`config::mappings_to_rules`]. If the handler is opt-in (user must add a rule explicitly), skip this step.
     5. Decide whether `validate_registry` still passes. Two `Catchall` + `Exclusive` handlers will trip the `debug_assert!`.
-    6. Update the user-facing handler doc ([./../user/handlers.md]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
+    6. Update the user-facing handler doc ([./../user/handlers.lex]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
 
     :: note :: The trait surface is small (two methods carry behavior, three more are classification). A new handler is typically a few dozen lines plus tests against `TempEnvironment`.
 

@@ -216,17 +216,20 @@ impl GatePredicate {
             .all(|(dim, expected)| host.get(*dim) == Some(expected.as_str()))
     }
 
-    /// Render the predicate as a human-readable string for diagnostics.
-    ///
-    /// `{ os = "darwin" }` for single-dim, `{ os = "darwin", arch = "aarch64" }`
-    /// for compound. Used by `dodot status` to render "gated out" rows.
+    /// Render the predicate as a compact human-readable string for
+    /// diagnostics: `os=darwin` (single dim) or
+    /// `os=darwin, arch=aarch64` (compound). Used by `dodot status` to
+    /// render the footnote on "gated out" rows. Drop quotes/braces
+    /// because OS, arch, hostname, and username values don't contain
+    /// shell-relevant special characters in practice — keeping the
+    /// output terse so the footnote stays scannable.
     pub fn describe(&self) -> String {
         let parts: Vec<String> = self
             .matchers
             .iter()
-            .map(|(d, v)| format!("{} = \"{}\"", d.as_str(), v))
+            .map(|(d, v)| format!("{}={}", d.as_str(), v))
             .collect();
-        format!("{{ {} }}", parts.join(", "))
+        parts.join(", ")
     }
 }
 
@@ -564,7 +567,7 @@ mod tests {
                 (Dimension::Arch, "aarch64".into()),
             ],
         };
-        assert_eq!(p.describe(), r#"{ os = "darwin", arch = "aarch64" }"#);
+        assert_eq!(p.describe(), "os=darwin, arch=aarch64");
     }
 
     // ── User merge ──────────────────────────────────────────────

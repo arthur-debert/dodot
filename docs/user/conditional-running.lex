@@ -300,22 +300,21 @@ Conditional Running
 
         $ dodot status
           mac-tools/
-            install._darwin.sh   ·  not deployed   gated out (darwin) [1]
-            install._linux.sh    ·  not deployed   gated out (linux) [2]
-            Brewfile._darwin     ⚙  brew install   not installed
+            install.sh           ×  run script     never run
+            install._linux.sh    ·  not deployed   gated out (linux) [1]
+            Brewfile             ⚙  brew install   not installed
           Inactive on this OS
             linux-tools (os=linux, current=darwin)
 
         Errors:
-          [1] predicate { os = "darwin" }; host { os = "darwin" }
-          [2] predicate { os = "linux" }; host { os = "darwin" }
+          [1] expected os=linux; got os=darwin
 
     :: shell ::
 
     The footnote shows the predicate the gate expected and what the
-    host actually has. For passing-gate files the row is rendered
+    host actually has. For *passing*-gate files the row is rendered
     under the *stripped* name (`install.sh` not `install._darwin.sh`)
-    because that's what dodot will deploy. For failing gates the
+    because that's what dodot will deploy. For *failing* gates the
     original on-disk name is shown so you can find the file.
 
 11. Limitations

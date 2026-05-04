@@ -32,7 +32,7 @@ Handlers
 
         A pack with more than one matched install file (say, both `install.sh` and `install.zsh`) runs *all* of them, each tracked by its own sentinel. There is no "pick the best one" logic — if you only want one to run, only ship one.
 
-        Output is quiet by default — start/end markers, the script's leading comment block, and any `# status: <message>` lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or `dodot up --verbose` is passed (which streams the raw output). The `# status:` convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. See [./../user/handlers.md] for the user-facing details and examples.
+        Output is quiet by default — start/end markers, the script's leading comment block, and any `# status: <message>` lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or `dodot up --verbose` is passed (which streams the raw output). The `# status:` convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. See [./../user/handlers.lex] for the user-facing details and examples.
 
     1.5. homebrew
 
