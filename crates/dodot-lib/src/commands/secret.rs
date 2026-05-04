@@ -332,10 +332,9 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
             // `dodot status`. Without this, a template that is gated
             // only through config (e.g. `"install-mac.sh" = "darwin"`)
             // would still be surfaced on a non-matching host.
-            let rel_str = entry.relative_path.to_string_lossy();
             let mapping_gate_label: Option<&str> = compiled_mapping_gates
                 .iter()
-                .find(|(pat, _)| pat.matches(rel_str.as_ref()))
+                .find(|(pat, _)| pat.matches(&rel_str_for_glob))
                 .map(|(_, label)| *label);
             if let Some(map_label) = mapping_gate_label {
                 if has_basename_gate {
