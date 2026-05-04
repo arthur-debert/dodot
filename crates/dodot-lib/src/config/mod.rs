@@ -46,6 +46,28 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub secret: SecretSection,
+
+    /// User-defined gate labels.
+    ///
+    /// Each entry maps a label name to a table of `(dimension, value)`
+    /// equality checks AND-ed together. For example:
+    ///
+    /// ```toml
+    /// [gates]
+    /// laptop  = { hostname = "mbp-arthur" }
+    /// arm-mac = { os = "darwin", arch = "aarch64" }
+    /// ```
+    ///
+    /// Labels here merge over the built-in seed (`darwin`, `linux`,
+    /// `macos`, `arm64`, `aarch64`, `x86_64`). User entries with the
+    /// same name as a built-in shadow the built-in.
+    ///
+    /// Recognised dimensions: `os`, `arch`, `hostname`, `username`.
+    /// Unknown dimensions or empty values are a hard error at config
+    /// load time. See [`crate::gates`] and the conditional-running
+    /// proposal in `docs/proposals/`.
+    #[config(default = {})]
+    pub gates: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 }
 
 /// Pack-level settings.

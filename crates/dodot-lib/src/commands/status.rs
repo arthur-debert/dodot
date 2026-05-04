@@ -17,7 +17,7 @@ use crate::commands::{
 use crate::config::mappings_to_rules;
 use crate::conflicts;
 use crate::handlers::symlink::resolve_target;
-use crate::handlers::{self, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
+use crate::handlers::{self, HANDLER_GATE, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
@@ -47,6 +47,15 @@ enum Health {
     /// No handler runs on it, but it surfaces in status so users can see
     /// the rule applied rather than wondering why the file is "missing."
     Skipped,
+    /// File carries a gate label whose predicate evaluates false on this
+    /// host (e.g. `install._linux.sh` on macOS). The file is not deployed
+    /// but is surfaced so users see the rule applied. The footnote shows
+    /// the label, what the predicate expected, and what the host has.
+    Gated {
+        label: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 impl Health {
@@ -60,6 +69,7 @@ impl Health {
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
             Health::Skipped => "skipped",
+            Health::Gated { .. } => "skipped",
         }
     }
 
@@ -86,15 +96,19 @@ impl Health {
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
             Health::Skipped => "skipped".into(),
+            Health::Gated { label, .. } => format!("gated out ({label})"),
         }
     }
 
     /// If this health carries a footnote-worthy reason (pending conflict,
     /// deployed-with-error), return it. `None` otherwise.
-    fn footnote_reason(&self) -> Option<&str> {
+    fn footnote_reason(&self) -> Option<String> {
         match self {
-            Health::PendingConflict { reason } => Some(reason.as_str()),
-            Health::DeployedWithError { reason, .. } => Some(reason.as_str()),
+            Health::PendingConflict { reason } => Some(reason.clone()),
+            Health::DeployedWithError { reason, .. } => Some(reason.clone()),
+            Health::Gated {
+                expected, actual, ..
+            } => Some(format!("predicate {expected}; host {actual}")),
             _ => None,
         }
     }
@@ -495,7 +509,15 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
         };
         let all_entries = preprocess_result.merged_entries();
-        let matches = scanner.match_entries(&all_entries, &rules, &pack.name);
+        let gates = {
+            let mut t = crate::gates::GateTable::with_builtins();
+            if !pack_config.gates.is_empty() {
+                t.merge_user(&pack_config.gates)?;
+            }
+            t
+        };
+        let host = crate::gates::HostFacts::detect();
+        let matches = scanner.match_entries(&all_entries, &rules, &pack.name, &gates, &host)?;
 
         // Collect intents for conflict detection. The first tuple
         // element is the user-facing label that surfaces in any
@@ -550,6 +572,32 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
                 h if h == HANDLER_SKIP => Health::Skipped,
+                h if h == HANDLER_GATE => {
+                    // Scanner stamped these in `options` when the gate
+                    // evaluated false: `gate_label`, `gate_predicate`,
+                    // `gate_host`. Missing values fall back to `<unknown>`
+                    // so a malformed match never crashes the renderer.
+                    let label = m
+                        .options
+                        .get("gate_label")
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".into());
+                    let expected = m
+                        .options
+                        .get("gate_predicate")
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".into());
+                    let actual = m
+                        .options
+                        .get("gate_host")
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".into());
+                    Health::Gated {
+                        label,
+                        expected,
+                        actual,
+                    }
+                }
                 "symlink" => {
                     verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
                 }
@@ -593,7 +641,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             // to it and the body appears in the notes section.
             let note_ref = health.footnote_reason().map(|reason| {
                 notes.push(DisplayNote {
-                    body: reason.to_string(),
+                    body: reason,
                     hint: None,
                 });
                 notes.len() as u32

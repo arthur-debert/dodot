@@ -13,6 +13,7 @@ use crate::config::ConfigManager;
 use crate::datastore::DataStore;
 use crate::execution::Executor;
 use crate::fs::Fs;
+use crate::gates::{GateTable, HostFacts};
 use crate::handlers;
 use crate::operations::OperationResult;
 use crate::packs::{self, Pack};
@@ -407,6 +408,16 @@ pub fn plan_pack(
 /// entrypoints load the config once and pass it through so we don't
 /// re-merge config for every pack (the ConfigManager caches by path,
 /// but passing the config explicitly makes the data flow obvious).
+/// Resolve the gate table for a pack: built-in seed plus any
+/// user-defined `[gates]` entries from config.
+fn build_gate_table(pack_config: &crate::config::DodotConfig) -> Result<GateTable> {
+    let mut table = GateTable::with_builtins();
+    if !pack_config.gates.is_empty() {
+        table.merge_user(&pack_config.gates)?;
+    }
+    Ok(table)
+}
+
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -462,7 +473,9 @@ fn plan_pack_inner(
 
     // Phase 3: Merge and match rules
     let all_entries = preprocess_result.merged_entries();
-    let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name);
+    let gates = build_gate_table(pack_config)?;
+    let host = HostFacts::detect();
+    let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name, &gates, &host)?;
     debug!(pack = %pack.name, files = matches.len(), "matched rules");
 
     // Propagate preprocessor source info and in-memory rendered

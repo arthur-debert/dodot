@@ -52,6 +52,7 @@ pub fn handler_symbol(handler: &str) -> &'static str {
         "homebrew" => "⚙",
         "install" => "×",
         "skip" => "·",
+        "gate" => "·",
         _ => "?",
     }
 }
@@ -84,6 +85,7 @@ pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&s
         "install" => "run script".into(),
         "homebrew" => "brew install".into(),
         "skip" => "not deployed".into(),
+        "gate" => "not deployed".into(),
         _ => String::new(),
     }
 }
