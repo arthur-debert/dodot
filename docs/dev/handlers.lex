@@ -1,6 +1,6 @@
 Handlers
 
-    This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, see [./../user/handlers.md]. For the conceptual overview of how handlers fit between rules and execution, see [./../reference/handlers.lex].
+    This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, see [./../user/handlers.lex]. For the conceptual overview of how handlers fit between rules and execution, see [./../reference/handlers.lex].
 
     :: note :: See [./../reference/terms-and-concepts.lex] for terminology used throughout.
 
@@ -10,6 +10,8 @@ Handlers
 
         handlers/
         +-- mod.rs           # Handler trait + classification enums + registry
+        +-- filter.rs        # IgnoreHandler, SkipHandler (Filter phase)
+        +-- gate.rs          # GateHandler (Filter phase, dynamic rules)
         +-- symlink.rs       # SymlinkHandler (catchall, Link phase)
         +-- shell.rs         # ShellHandler (ShellInit phase)
         +-- path.rs          # PathHandler (PathExport phase)
@@ -64,6 +66,7 @@ Handlers
         ExecutionPhase:
 
             pub enum ExecutionPhase {
+                Filter,       // ignore, skip (drop files before any deploying handler)
                 Provision,    // homebrew
                 Setup,        // install
                 PathExport,   // path
@@ -73,8 +76,9 @@ Handlers
 
         :: rust ::
 
-        Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers. The two invariants pinning the order:
+        Adding a handler is a deliberate design choice: which phase does it belong to? There is no alphabetical fallback between known handlers. The three invariants pinning the order:
 
+        - The filter phase is always first. `ignore` and `skip` exist to keep matched files away from deploying handlers; running them later would let a precise mapping or the catchall claim a file the user said to drop.
         - The catchall phase is always last. `symlink` is the only `MatchMode::Catchall` handler — running it before any precise handler would let it claim files that belong elsewhere.
         - Code-execution phases run before configuration phases. `Provision` and `Setup` produce filesystem state (installed binaries, formulae, generated files) that later phases may reference.
 
@@ -117,11 +121,14 @@ Handlers
 
 4. Built-in Handlers
 
-    Five handlers ship in the registry. The table below is the canonical mapping of phase → category → match mode → scope.
+    Eight handlers ship in the registry. The table below is the canonical mapping of phase → category → match mode → scope.
 
     Handler classification:
 
         | Handler  | Phase       | Category       | Match mode | Scope     | Output intent       |
+        | ignore   | Filter      | Configuration  | Precise    | Exclusive | (none)              |
+        | skip     | Filter      | Configuration  | Precise    | Exclusive | (none)              |
+        | gate     | Filter      | Configuration  | Precise    | Exclusive | (none)              |
         | homebrew | Provision   | CodeExecution  | Precise    | Exclusive | `Run`               |
         | install  | Setup       | CodeExecution  | Precise    | Exclusive | `Run`               |
         | path     | PathExport  | Configuration  | Precise    | Exclusive | `Stage`             |
@@ -129,6 +136,8 @@ Handlers
         | symlink  | Link        | Configuration  | Catchall   | Exclusive | `Link`              |
 
     :: table align=llllll ::
+
+    Filter handlers (`ignore`, `skip`, `gate`) claim matches but emit no `HandlerIntent` — `to_intents` returns `Ok(vec![])`. Their effect comes entirely from being matched first: `ignore` and `skip` use static `[mappings]` patterns surfaced as priority-100 / priority-50 rules (above precise mappings at 10 and the catchall at 0); `gate` matches are produced at scan time by `crate::gates` based on host facts (filename `._<label>`, dirname `_<label>/`, or `[mappings.gates]` glob hits) and stamped onto entries before rule matching runs. Once any of the three claims a file, no deploying handler sees it. All three are real registered handlers, not synthetic-name dispatch, so the matching model and config grammar stay uniform.
 
     4.1. `SymlinkHandler`
 
@@ -183,6 +192,22 @@ Handlers
 
         File: `handlers/homebrew.rs`. Same shape as install — holds an `&dyn Fs` for content hashing, emits `HandlerIntent::Run`. The executable is hardcoded to `"brew"` and the arguments are `["bundle", "--file", "<absolute_path>"]`. Sentinel format matches install (`<filename>-<checksum>`); editing the Brewfile re-runs `brew bundle`.
 
+    4.6. `IgnoreHandler` and `SkipHandler` (filter)
+
+        File: `handlers/filter.rs`. Both are zero-sized structs whose `to_intents` returns `Ok(vec![])` — they claim matches but emit no work. The whole effect is positional: rules tagged with handler `"ignore"` carry priority 100 and rules tagged `"skip"` carry priority 50, so during scanning either filter rule matches before any precise mapping (10) or the catchall (0) gets a chance.
+
+        Both `check_status` impls return a placeholder `HandlerStatus { deployed: false, message: "", handler: "ignore"|"skip", file }` to satisfy the trait, but nothing reads them. Filter status is computed *directly from rule matches* in [`commands::status`]: matches under handler `"ignore"` are dropped from the output entirely, matches under `"skip"` are rendered with `Health::Skipped` (label `"skipped"`, style `skipped`). This visibility split is the entire reason for the two handlers — the matching contract is identical.
+
+        Both are `MatchMode::Precise` and `Configuration` category. They have no datastore footprint: `dodot up` does not wipe per-pack `ignore/`/`skip/` directories because those directories never exist.
+
+    4.7. `GateHandler` (filter)
+
+        File: `handlers/gate.rs`. Same shape as `IgnoreHandler` / `SkipHandler`: zero-sized struct, `Filter` phase, `Configuration` category, `MatchMode::Precise`, `to_intents` returns `Ok(vec![])`. The difference is *where* matches come from: the scanner / `filter_pre_preprocess_gates` consult `crate::gates` (basename `._<label>` parsing, directory `_<label>/` segments, `[mappings.gates]` globs) against the resolved `GateTable` and `HostFacts`, and stamp `handler = "gate"` plus diagnostic options (`gate_label`, `gate_predicate`, `gate_host`) on entries whose predicate evaluated false. The handler itself never runs gate evaluation — it only exists in the registry as the dispatch target so status can render "gated out" rows uniformly with the rest of the filter family.
+
+        Status renders gate matches via `Health::Gated { label, expected, actual }` — see `commands::status::Health::footnote_reason` for the "expected …; got …" footnote that's stamped from the `options` map. Like `ignore`/`skip`, no datastore footprint: `dodot up` does not wipe per-pack `gate/` directories because they never exist.
+
+        Pack-level OS gating (`[pack] os = [...]`) is a *separate* mechanism that fires earlier — at pack discovery / orchestration — and produces no `RuleMatch` at all (the pack short-circuits before scanning). Inactive packs surface in `dodot status` via `PackStatusResult.inactive_packs`, not via the gate handler. See `crate::gates::pack_os_active`.
+
 5. The Registry
 
     [`create_registry(fs)`] builds a `HashMap<String, Box<dyn Handler>>` keyed by handler name. The `fs` reference is needed by `install` and `homebrew` for checksumming.
@@ -190,6 +215,9 @@ Handlers
     Registry construction:
 
         let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
+        registry.insert(HANDLER_IGNORE.into(),  Box::new(filter::IgnoreHandler));
+        registry.insert(HANDLER_SKIP.into(),    Box::new(filter::SkipHandler));
+        registry.insert(HANDLER_GATE.into(),    Box::new(gate::GateHandler));
         registry.insert(HANDLER_SYMLINK.into(), Box::new(symlink::SymlinkHandler));
         registry.insert(HANDLER_SHELL.into(),   Box::new(shell::ShellHandler));
         registry.insert(HANDLER_PATH.into(),    Box::new(path::PathHandler));
@@ -200,7 +228,7 @@ Handlers
 
     :: rust ::
 
-    Well-known names are exported as constants — `HANDLER_SYMLINK`, `HANDLER_SHELL`, `HANDLER_PATH`, `HANDLER_INSTALL`, `HANDLER_HOMEBREW`. Use these everywhere instead of string literals.
+    Well-known names are exported as constants — `HANDLER_IGNORE`, `HANDLER_SKIP`, `HANDLER_GATE`, `HANDLER_SYMLINK`, `HANDLER_SHELL`, `HANDLER_PATH`, `HANDLER_INSTALL`, `HANDLER_HOMEBREW`. Use these everywhere instead of string literals.
 
     The registry is hard-coded. Third-party handlers would be added via code, not user input. There is no plugin mechanism today — the trait is stable enough that writing a custom handler is straightforward, but loading them at runtime is an explicit non-goal.
 
@@ -210,17 +238,20 @@ Handlers
 
     Default mappings:
 
-        | Handler  | Default pattern(s)                                                                         | Priority |
-        | path     | `bin/` (directory; trailing slash auto-added)                                              | 10       |
-        | install  | `install.sh`, `install.bash`, `install.zsh`                                                | 10       |
-        | shell    | `aliases.{sh,bash,zsh}`, `profile.{sh,bash,zsh}`, `login.{sh,bash,zsh}`, `env.{sh,bash,zsh}` | 10       |
-        | homebrew | `Brewfile`                                                                                 | 10       |
-        | exclude  | each `[mappings] skip` entry as `!<pattern>`                                               | 100      |
-        | symlink  | `*` (catchall)                                                                             | 0        |
+        | Handler  | Default pattern(s)                                                                          | Priority | Case-insensitive |
+        | ignore   | each `[mappings] ignore` entry (default `[]`)                                               | 100      | no               |
+        | skip     | `README`, `README.*`, `LICENSE`, `LICENSE.*`, `CHANGELOG`, `CHANGELOG.*`, …                  | 50       | yes              |
+        | path     | `bin/` (directory; trailing slash auto-added)                                               | 10       | no               |
+        | install  | `install.sh`, `install.bash`, `install.zsh`                                                 | 10       | no               |
+        | shell    | `aliases.{sh,bash,zsh}`, `profile.{sh,bash,zsh}`, `login.{sh,bash,zsh}`, `env.{sh,bash,zsh}` | 10       | no               |
+        | homebrew | `Brewfile`                                                                                  | 10       | no               |
+        | symlink  | `*` (catchall)                                                                              | 0        | no               |
 
-    :: table align=lll ::
+    :: table align=llll ::
 
-    Priorities decide rule-evaluation order at the scanner: exclusions (100) run first, precise rules (10) next, the symlink catchall (0) last. The "first match wins" rule then routes each entry to exactly one handler.
+    Priorities decide rule-evaluation order at the scanner: filter rules (`ignore` 100, `skip` 50) run before precise rules (10), and the symlink catchall (0) runs last. The "first match wins" rule then routes each entry to exactly one handler — so a file that hits an `ignore` pattern is dropped before any deploying handler sees it.
+
+    Only `skip`'s default rules are case-insensitive (so `Readme` and `readme` hit the same rule as `README`). [`Scanner::match_entries`] checks the compiled rule set once per scan and only allocates a per-entry lowercased basename when at least one rule has `case_insensitive = true` — so a user who clears `mappings.skip = []` and adds no other CI rules pays nothing; the default config exercises the CI path because the `skip` defaults populate it. See [`Rule::case_insensitive`].
 
     User overrides come through `[mappings]` in `.dodot.toml`. The handler list is fixed (you can't add a new handler from config), but the patterns each handler claims are fully replaceable. See [./config-system.lex] for resolution layering.
 
@@ -261,18 +292,18 @@ Handlers
 
     :: rust ::
 
-    Only `symlink` and `path` actually read this struct today. `shell`, `install`, and `homebrew` accept it for trait uniformity but ignore the contents — their behavior is fully determined by the matched files. The narrow surface keeps handlers from coupling to config keys they don't need.
+    Only `symlink` and `path` actually read this struct today. `shell`, `install`, `homebrew`, `ignore`, and `skip` accept it for trait uniformity but ignore the contents — their behavior is fully determined by the matched files. The narrow surface keeps handlers from coupling to config keys they don't need.
 
 9. Adding a New Handler
 
     The mechanical steps:
 
-    1. Create `handlers/<name>.rs` with a struct implementing [`Handler`]. Pick a phase based on what the handler does — code execution belongs in `Provision` or `Setup`; configuration belongs in `PathExport`, `ShellInit`, or `Link`.
+    1. Create `handlers/<name>.rs` with a struct implementing [`Handler`]. Pick a phase based on what the handler does — drop-only filtering belongs in `Filter`; code execution belongs in `Provision` or `Setup`; configuration belongs in `PathExport`, `ShellInit`, or `Link`.
     2. Export a name constant in `handlers/mod.rs` (`pub const HANDLER_<NAME>: &str = "<name>";`).
     3. Register it in [`create_registry`].
     4. If the handler should claim files by default, add a pattern to [`config::MappingsSection`] and emit the corresponding rule from [`config::mappings_to_rules`]. If the handler is opt-in (user must add a rule explicitly), skip this step.
     5. Decide whether `validate_registry` still passes. Two `Catchall` + `Exclusive` handlers will trip the `debug_assert!`.
-    6. Update the user-facing handler doc ([./../user/handlers.md]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
+    6. Update the user-facing handler doc ([./../user/handlers.lex]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
 
     :: note :: The trait surface is small (two methods carry behavior, three more are classification). A new handler is typically a few dozen lines plus tests against `TempEnvironment`.
 

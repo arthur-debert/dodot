@@ -17,7 +17,7 @@ use crate::commands::{
 use crate::config::mappings_to_rules;
 use crate::conflicts;
 use crate::handlers::symlink::resolve_target;
-use crate::handlers::{self, HANDLER_SYMLINK};
+use crate::handlers::{self, HANDLER_GATE, HANDLER_IGNORE, HANDLER_SKIP, HANDLER_SYMLINK};
 use crate::packs::orchestration::{self, ExecutionContext};
 use crate::packs::{self};
 use crate::rules::Scanner;
@@ -43,6 +43,19 @@ enum Health {
     /// Data link exists and is healthy, but the user link is not at the
     /// path that current config would produce. A re-deploy would move it.
     Stale(String),
+    /// File matched the `mappings.skip` list (README, LICENSE, …).
+    /// No handler runs on it, but it surfaces in status so users can see
+    /// the rule applied rather than wondering why the file is "missing."
+    Skipped,
+    /// File carries a gate label whose predicate evaluates false on this
+    /// host (e.g. `install._linux.sh` on macOS). The file is not deployed
+    /// but is surfaced so users see the rule applied. The footnote shows
+    /// the label, what the predicate expected, and what the host has.
+    Gated {
+        label: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 impl Health {
@@ -55,6 +68,8 @@ impl Health {
             Health::DeployedWithError { .. } => "broken",
             Health::Broken(_) => "broken",
             Health::Stale(_) => "stale",
+            Health::Skipped => "skipped",
+            Health::Gated { .. } => "skipped",
         }
     }
 
@@ -80,15 +95,20 @@ impl Health {
             Health::DeployedWithError { label, .. } => label.clone(),
             Health::Broken(reason) => reason.clone(),
             Health::Stale(reason) => reason.clone(),
+            Health::Skipped => "skipped".into(),
+            Health::Gated { label, .. } => format!("gated out ({label})"),
         }
     }
 
     /// If this health carries a footnote-worthy reason (pending conflict,
     /// deployed-with-error), return it. `None` otherwise.
-    fn footnote_reason(&self) -> Option<&str> {
+    fn footnote_reason(&self) -> Option<String> {
         match self {
-            Health::PendingConflict { reason } => Some(reason.as_str()),
-            Health::DeployedWithError { reason, .. } => Some(reason.as_str()),
+            Health::PendingConflict { reason } => Some(reason.clone()),
+            Health::DeployedWithError { reason, .. } => Some(reason.clone()),
+            Health::Gated {
+                expected, actual, ..
+            } => Some(format!("expected {expected}; got {actual}")),
             _ => None,
         }
     }
@@ -427,8 +447,10 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     }
 
     let registry = handlers::create_registry(ctx.fs.as_ref());
+    let host = ctx.host_facts.as_ref();
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();
+    let mut inactive_packs: Vec<String> = Vec::new();
 
     // Collect intents across all packs for conflict detection
     let mut pack_intents = Vec::new();
@@ -437,16 +459,54 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         info!(pack = %pack.display_name, "checking pack status");
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
+
+        // C3: pack-level OS gate. Inactive packs surface in their own
+        // section ("inactive on this OS") and skip the per-file
+        // walk/preprocess/match cycle entirely.
+        if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
+            inactive_packs.push(format!(
+                "{} (os={}, current={})",
+                pack.display_name,
+                pack_config.pack.os.join(","),
+                host.os
+            ));
+            continue;
+        }
         let rules = mappings_to_rules(&pack_config.mappings);
 
         let scanner = Scanner::new(ctx.fs.as_ref());
+
+        // Build gate state once per pack — used by both the
+        // walk (directory-segment gates) and match_entries (basename
+        // gates). Reusing the value keeps the two passes consistent.
+        let gates = {
+            let mut t = crate::gates::GateTable::with_builtins();
+            if !pack_config.gates.is_empty() {
+                t.merge_user(&pack_config.gates)?;
+            }
+            t
+        };
 
         // Walk and preprocess so the status display sees *post-preprocessing*
         // filenames (e.g. `config.toml` rather than `config.toml.tmpl`).
         // Without this step, status reports templates under their source
         // name and wrongly marks them "pending" because the verification
         // path (`~/.config.toml.tmpl`) doesn't exist.
-        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
+        // Apply all gate sources BEFORE preprocessing — same posture as
+        // the `up` planning path. Without this, a gated-out template
+        // (basename suffix or `[mappings.gates]` glob) would still be
+        // partitioned as a preprocessor file, replaced by a virtual
+        // entry with the on-disk filename / absolute_path lost. status
+        // would then show that virtual entry instead of the original
+        // gate-out row, confusing the user.
+        let entries = orchestration::filter_pre_preprocess_gates(
+            entries,
+            &gates,
+            host,
+            &pack.name,
+            &pack_config.mappings.gates,
+        )?;
         let preprocess_result = if pack_config.preprocessor.enabled {
             // [secret] is intentionally root-only — see SecretSection docs.
             let root_config = ctx.config_manager.root_config()?;
@@ -489,7 +549,14 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
         };
         let all_entries = preprocess_result.merged_entries();
-        let matches = scanner.match_entries(&all_entries, &rules, &pack.name);
+        let matches = scanner.match_entries(
+            &all_entries,
+            &rules,
+            &pack.name,
+            &gates,
+            host,
+            &pack_config.mappings.gates,
+        )?;
 
         // Collect intents for conflict detection. The first tuple
         // element is the user-facing label that surfaces in any
@@ -512,6 +579,13 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
         let mut files = Vec::new();
         for m in &matches {
+            // The `ignore` filter handler claims files only to keep them
+            // off the catchall and out of status. Drop them here so the
+            // user sees nothing — same contract as `.gitignore`.
+            if m.handler == HANDLER_IGNORE {
+                continue;
+            }
+
             let rel_str = m.relative_path.to_string_lossy().into_owned();
 
             // Skip rows for `_lib/` entries on non-macOS. Two cases
@@ -536,6 +610,33 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
 
             // Per-file chain verification based on handler type
             let health = match m.handler.as_str() {
+                h if h == HANDLER_SKIP => Health::Skipped,
+                h if h == HANDLER_GATE => {
+                    // Scanner stamped these in `options` when the gate
+                    // evaluated false: `gate_label`, `gate_predicate`,
+                    // `gate_host`. Missing values fall back to `<unknown>`
+                    // so a malformed match never crashes the renderer.
+                    let label = m
+                        .options
+                        .get("gate_label")
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".into());
+                    let expected = m
+                        .options
+                        .get("gate_predicate")
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".into());
+                    let actual = m
+                        .options
+                        .get("gate_host")
+                        .cloned()
+                        .unwrap_or_else(|| "<unknown>".into());
+                    Health::Gated {
+                        label,
+                        expected,
+                        actual,
+                    }
+                }
                 "symlink" => {
                     verify_symlink(&m.absolute_path, &pack.name, &rel_str, &pack.config, ctx)
                 }
@@ -579,7 +680,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             // to it and the body appears in the notes section.
             let note_ref = health.footnote_reason().map(|reason| {
                 notes.push(DisplayNote {
-                    body: reason.to_string(),
+                    body: reason,
                     hint: None,
                 });
                 notes.len() as u32
@@ -631,6 +732,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         notes,
         conflicts: display_conflicts,
         ignored_packs: ignored_display,
+        inactive_packs,
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })

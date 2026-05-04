@@ -6,7 +6,7 @@ Handlers
 
 1. The Built-in Handlers
 
-    dodot ships with five handlers, covering the overwhelming majority of what dotfile management needs.
+    dodot ships with eight handlers: five that deploy files (symlink, shell, path, install, homebrew) and three that drop files from processing (ignore, skip, gate). All eight share the same `Handler` trait and run from the same registry.
 
     1.1. Symlink
 
@@ -32,11 +32,27 @@ Handlers
 
         A pack with more than one matched install file (say, both `install.sh` and `install.zsh`) runs *all* of them, each tracked by its own sentinel. There is no "pick the best one" logic — if you only want one to run, only ship one.
 
-        Output is quiet by default — start/end markers, the script's leading comment block, and any `# status: <message>` lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or `dodot up --verbose` is passed (which streams the raw output). The `# status:` convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. See [./../user/handlers.md] for the user-facing details and examples.
+        Output is quiet by default — start/end markers, the script's leading comment block, and any `# status: <message>` lines the script emits on stdout are surfaced live; everything else is captured and discarded unless the script fails (in which case stderr is dumped) or `dodot up --verbose` is passed (which streams the raw output). The `# status:` convention is tool-agnostic — the markers are plain shell comments when the script is run by hand. See [./../user/handlers.lex] for the user-facing details and examples.
 
     1.5. homebrew
 
         Runs `brew bundle` against a `Brewfile`, once per content-hash. macOS-only in practice. Functionally a specialization of install, but more ergonomic for its common case.
+
+    1.6. ignore (filter)
+
+        Claims matches and drops them silently — same contract as `.gitignore`. No executable intent, no entry in `dodot status`. Configured via `[mappings] ignore` (default empty). Useful for build artifacts, scratch files, anything you don't want dodot to know about.
+
+    1.7. skip (filter)
+
+        Claims matches, surfaces them in `dodot status` as `skipped`, but produces no executable intent. Configured via `[mappings] skip`. Defaults cover the common documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally.
+
+    1.8. gate (filter)
+
+        Claims matches whose host predicate evaluates false on the current host — e.g. `install._darwin.sh` on a linux box, or any file inside `_darwin/` when running on linux. Surfaces in `dodot status` as `gated out (<label>)` with a footnote showing what the predicate expected vs what the host has. Produces no executable intent; the file stays on disk and will deploy on a matching host.
+
+        Unlike `ignore` and `skip`, gate matches are *dynamic* — they depend on host facts (OS, arch, hostname, …) and on the filename grammar (`._<label>`, `_<label>/`) plus the `[mappings.gates]` config. The full surface is in [./../user/conditional-running.lex] and the design proposal at [./../proposals/conditional-running.lex] (or its shipped sibling). The matching infrastructure is shared with `ignore` and `skip`: gate evaluation runs at scan time and produces a `RuleMatch` whose `handler` is `"gate"`, with predicate / host metadata stashed in `options` for the status renderer.
+
+        The three filter handlers exist because four things were previously different mechanisms — a pack-level marker, a silent skip, a visible "excluded", and host-conditional dispatch — and unifying the intra-pack cases into real handlers means there's one matching model and one config grammar instead of four. Pack-level `.dodotignore` (the "pack-ignore" mechanism) and pack-level `[pack] os` (the conditional-running mechanism) stay separate at the discovery layer.
 
 2. Matching Model
 
@@ -58,16 +74,20 @@ Handlers
 
     Phases, in order:
 
-        | Phase         | Handler   | Why here                                                           |
-        | `Provision`   | homebrew  | Installs packages. Anything later may depend on tools it exposes.  |
-        | `Setup`       | install   | User-authored scripts that can lean on Provision completing first. |
-        | `PathExport`  | path      | Stages `bin/` onto PATH; runs before ShellInit.                    |
-        | `ShellInit`   | shell     | Shell startup files that may reference binaries from PathExport.   |
-        | `Link`        | symlink   | Catchall; must be last so precise handlers claim their files.      |
+        | Phase         | Handler             | Why here                                                                |
+        | `Filter`      | ignore, skip, gate  | Drop files before any deploying handler can claim them.                 |
+        | `Provision`   | homebrew            | Installs packages. Anything later may depend on tools it exposes.       |
+        | `Setup`       | install             | User-authored scripts that can lean on Provision completing first.      |
+        | `PathExport`  | path                | Stages `bin/` onto PATH; runs before ShellInit.                         |
+        | `ShellInit`   | shell               | Shell startup files that may reference binaries from PathExport.        |
+        | `Link`        | symlink             | Catchall; must be last so precise handlers claim their files.           |
 
     :: table align=lll ::
 
-    Two design invariants pin this order down.
+    Three design invariants pin this order down.
+
+    The filter phase is always first.
+        `ignore` and `skip` exist to keep matched files away from deploying handlers. If they ran later, a precise mapping (priority 10) or the catchall (priority 0) could already have claimed the file and emitted intents — so filter handlers sit at the highest priority tier (100, 50) and run before anything else has a chance.
 
     The catchall phase is always last.
         `symlink` is the only catchall handler (`MatchMode::Catchall`). Running it before any precise handler would let it claim files that belong elsewhere. `Link` sitting at the bottom of the enum is not a convention — it's the shape of "precise before catchall" written into the type.
@@ -139,6 +159,8 @@ Handlers
     Handler summary (rows in execution order):
 
         | Handler  | Phase       | Category       | Default claims                                     | Effect                              |
+        | ignore   | Filter      | Configuration  | None (user-configured via `[mappings] ignore`)     | Silently drop; no status entry      |
+        | skip     | Filter      | Configuration  | `README.*`, `LICENSE.*`, `CHANGELOG.*`, etc.       | List in status as `skipped`         |
         | homebrew | Provision   | Code Execution | `Brewfile`                                         | `brew bundle` once per content hash |
         | install  | Setup       | Code Execution | `install.{sh,bash,zsh}`                            | Run once per content hash           |
         | path     | PathExport  | Configuration  | `bin/`                                             | Prepended to `$PATH`                |

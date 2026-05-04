@@ -303,9 +303,9 @@ Design Specification: Preprocessing Pipeline
 
         Per-file:
             [mappings]
-            skip = ["config.toml.tmpl"]
+            ignore = ["config.toml.tmpl"]
 
-        The existing skip mechanism in [mappings] works because preprocessing files go through the scan phase where skip patterns are honored.
+        The `mappings.ignore` filter handler runs in the Filter phase, before any preprocessor — matched files are dropped from the pipeline entirely.
 
 8. Testability
 

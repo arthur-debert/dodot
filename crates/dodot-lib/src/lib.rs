@@ -6,6 +6,7 @@ pub mod equivalence;
 pub mod error;
 pub mod execution;
 pub mod fs;
+pub mod gates;
 pub mod handlers;
 pub mod operations;
 pub mod packs;

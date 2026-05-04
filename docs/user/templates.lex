@@ -112,6 +112,35 @@ Template Expansion
 
     For anything more complex than OS or hostname, define your own classifier variable (e.g. `host_role = "work"` in the per-machine pack config) and branch on that.
 
+    4.1. When Not To Use A Template
+
+        Templates are the right tool when a file always exists but its
+        *content* varies between hosts. They are the wrong tool when
+        the question is binary — does this file deploy on this host or
+        not?
+
+        For "deploy or don't" questions, use a gate instead of wrapping
+        the whole file in `{% if dodot.os == "..." %}`. Gates skip the
+        preprocessing pipeline entirely (no template render, no provider
+        calls, no baseline-cache writes for files that don't apply
+        here), and the filesystem layout shows what runs where without
+        having to read into each `.tmpl` file.
+
+        Three quick examples:
+
+        Use a gate, not a template, when:
+            | You want                                         | Gate form                       |
+            | A `Brewfile` only on macOS                       | `Brewfile._darwin`              |
+            | An `install.sh` that's macOS-only                | `install._darwin.sh`            |
+            | A whole pack of macOS GUI configs only on macOS  | `[pack] os = ["darwin"]`        |
+        :: table align=ll ::
+
+        Gates and templates compose: `aliases._darwin.sh.tmpl` is a
+        darwin-only template — the gate runs first (drops on Linux),
+        the template renders second (only on darwin). See
+        [./conditional-running.lex] for the full conditional-running
+        surface.
+
 5. Undefined Variables Are Errors; Defaults Are Explicit
 
     dodot runs templates in strict mode: referencing a variable that doesn't exist is a render error, and `dodot up` refuses to deploy that pack. This is deliberate — silently substituting an empty string on a typo is exactly how you end up with a `.gitconfig` that has `email = @example.com` and don't notice for six months.

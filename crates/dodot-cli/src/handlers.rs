@@ -213,7 +213,8 @@ pub fn adopt_handler(
     let no_follow = matches.get_flag("no-follow");
     let dry_run = matches.get_flag("dry-run");
     let into_str = into.map(|s| s.as_str());
-    let result = commands::adopt::adopt(into_str, &files, force, no_follow, dry_run, &ctx)
+    let only_os = matches.get_one::<String>("only-os").map(|s| s.as_str());
+    let result = commands::adopt::adopt(into_str, &files, force, no_follow, dry_run, only_os, &ctx)
         .map_err(|e| {
             if matches!(e, dodot_lib::DodotError::PackNotFound { .. }) {
                 let hint_pack = into_str.unwrap_or("<pack>");

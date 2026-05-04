@@ -224,24 +224,128 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
     let packs = prepare_packs(None, ctx)?;
     let mut rows: Vec<SecretRefRow> = Vec::new();
     let scanner = crate::rules::Scanner::new(ctx.fs.as_ref());
+    let host = ctx.host_facts.as_ref();
 
     for pack in &packs {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
-        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+        // Skip packs gated out by `[pack] os` on this host — same
+        // posture as `dodot status`. Without this, `secret list`
+        // surfaces references from packs that won't run on the
+        // current OS, which is misleading.
+        if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
+            continue;
+        }
+        let gates = {
+            let mut t = crate::gates::GateTable::with_builtins();
+            if !pack_config.gates.is_empty() {
+                t.merge_user(&pack_config.gates)?;
+            }
+            t
+        };
+        let compiled_mapping_gates =
+            crate::gates::compile_mapping_gates(&pack_config.mappings.gates, &pack.display_name)?;
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
         for entry in entries {
             if entry.is_dir {
                 continue;
             }
-            // Only scan template-shaped files. Other extensions
-            // can't contain `secret(...)` calls in a way the
-            // template preprocessor would resolve.
+            // Skip entries gated out by a directory-segment gate
+            // (`_<label>/`) — same posture as `dodot status`.
+            if entry.gate_failure.is_some() {
+                continue;
+            }
             let filename = entry
                 .relative_path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
+            // Apply all three gate sources in one pass — same posture
+            // as `up`/`status`, normalised path so Windows backslashes
+            // don't break globs written with `/`.
+            //
+            // Order matches the up-planning path:
+            //   1. Compute mapping match + basename gate up front.
+            //   2. If both fire, that's a config error in `up` —
+            //      skip-with-warning here (read-only diagnostic).
+            //   3. Otherwise evaluate whichever fired; skip on
+            //      predicate-false. The basename-gate `stripped`
+            //      name is used for the template-extension check
+            //      below so a gate-suffixed template like
+            //      `gitconfig.tmpl._darwin` is still recognised.
+            let rel_str_for_glob = crate::gates::rel_path_for_glob(&entry.relative_path);
+            let mapping_match = compiled_mapping_gates
+                .iter()
+                .find(|(pat, _)| pat.matches(&rel_str_for_glob))
+                .map(|(_, label)| *label);
+            let basename_gate = crate::gates::parse_basename_gate(&filename);
+
+            if let (Some(map_label), crate::gates::BasenameGate::Found { .. }) =
+                (mapping_match, &basename_gate)
+            {
+                tracing::warn!(
+                    pack = %pack.display_name,
+                    file = %entry.relative_path.display(),
+                    label = %map_label,
+                    "secret list: skipping file with conflicting gate \
+                     sources — both a filename gate (`._<label>`) and a \
+                     `[mappings.gates]` entry for label `{map_label}`; \
+                     `dodot up` will reject this as a config error"
+                );
+                continue;
+            }
+
+            let effective_name = match basename_gate {
+                crate::gates::BasenameGate::None => {
+                    if let Some(map_label) = mapping_match {
+                        let pred = match gates.lookup(map_label) {
+                            Some(p) => p,
+                            None => {
+                                tracing::warn!(
+                                    pack = %pack.display_name,
+                                    file = %entry.relative_path.display(),
+                                    label = %map_label,
+                                    "secret list: skipping file with unknown \
+                                     [mappings.gates] label `{map_label}`"
+                                );
+                                continue;
+                            }
+                        };
+                        if !pred.matches(host) {
+                            continue;
+                        }
+                    }
+                    filename.clone()
+                }
+                crate::gates::BasenameGate::Found { label, stripped } => {
+                    let pred = match gates.lookup(label) {
+                        Some(p) => p,
+                        // Unknown label is a hard error in the
+                        // up/status paths; `secret list` is a
+                        // read-only diagnostic, so warn and skip
+                        // (visible with `dodot --verbose secret list`).
+                        None => {
+                            tracing::warn!(
+                                pack = %pack.display_name,
+                                file = %entry.relative_path.display(),
+                                label = %label,
+                                "secret list: skipping file with unknown gate label \
+                                 `{label}` (built-ins: darwin, linux, macos, arm64, \
+                                 aarch64, x86_64; user labels live in [gates])"
+                            );
+                            continue;
+                        }
+                    };
+                    if !pred.matches(host) {
+                        continue;
+                    }
+                    stripped
+                }
+            };
+            // Only scan template-shaped files. Other extensions
+            // can't contain `secret(...)` calls in a way the
+            // template preprocessor would resolve.
             let is_template = template_extensions.iter().any(|ext| {
-                filename
+                effective_name
                     .strip_suffix(ext.as_str())
                     .is_some_and(|prefix| prefix.ends_with('.'))
             });
@@ -518,5 +622,92 @@ c = "{{ secret("bw:gh-token") }}""#;
         for row in &r {
             assert!(!row.reference.is_empty());
         }
+    }
+
+    #[test]
+    fn list_skips_basename_gated_template() {
+        // Round-2 review feedback: `secret list` must skip files
+        // whose filename gate evaluates false on this host. Same
+        // posture as `dodot status`.
+        let gated = if cfg!(target_os = "macos") {
+            "linux"
+        } else if cfg!(target_os = "linux") {
+            "darwin"
+        } else {
+            return;
+        };
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file(
+                &format!("config.tmpl._{gated}"),
+                r#"token = {{ secret("pass:test") }}"#,
+            )
+            .file("always.tmpl", r#"token = {{ secret("pass:other") }}"#)
+            .done()
+            .build();
+        let ctx = make_ctx(
+            &env,
+            Some(
+                r#"
+[secret]
+enabled = true
+[secret.providers.pass]
+enabled = true
+"#,
+            ),
+        );
+
+        let result = list(&ctx).unwrap();
+        // Only the unconditional template's reference should surface.
+        let refs: Vec<&str> = result.rows.iter().map(|r| r.reference.as_str()).collect();
+        assert!(
+            refs.contains(&"pass:other"),
+            "missing always-active template: {refs:?}"
+        );
+        assert!(
+            !refs.contains(&"pass:test"),
+            "gated template surfaced: {refs:?}"
+        );
+    }
+
+    #[test]
+    fn list_recognises_gate_suffixed_template_extension() {
+        // Round-2 review feedback: `gitconfig.tmpl._darwin` should be
+        // recognised as a template (after stripping the gate
+        // suffix). Without the strip, the rightmost extension would
+        // be `_darwin`, not `tmpl`, and the file would be skipped.
+        let passing = if cfg!(target_os = "macos") {
+            "darwin"
+        } else if cfg!(target_os = "linux") {
+            "linux"
+        } else {
+            return;
+        };
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file(
+                &format!("gitconfig.tmpl._{passing}"),
+                r#"token = {{ secret("pass:gh") }}"#,
+            )
+            .done()
+            .build();
+        let ctx = make_ctx(
+            &env,
+            Some(
+                r#"
+[secret]
+enabled = true
+[secret.providers.pass]
+enabled = true
+"#,
+            ),
+        );
+
+        let result = list(&ctx).unwrap();
+        let refs: Vec<&str> = result.rows.iter().map(|r| r.reference.as_str()).collect();
+        assert!(
+            refs.contains(&"pass:gh"),
+            "expected gate-suffixed template to scan as template: {refs:?}"
+        );
     }
 }

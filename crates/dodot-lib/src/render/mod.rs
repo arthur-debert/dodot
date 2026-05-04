@@ -43,6 +43,9 @@ broken:
 stale:
   fg: yellow
 
+skipped:
+  dim: true
+
 warning:
   fg: yellow
 
