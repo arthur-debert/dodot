@@ -151,10 +151,16 @@ fn detect_arch() -> String {
     std::env::consts::ARCH.into()
 }
 
-fn detect_hostname() -> Option<String> {
-    // Mirror `preprocessing::template::detect_hostname`: env first,
-    // shell out to `hostname(1)` as fallback. Keeps gates and templates
-    // honest about agreeing on `dodot.hostname`.
+/// Detect the host's hostname.
+///
+/// Reads `$HOSTNAME` first, then shells out to `hostname(1)` as
+/// fallback. Returns `None` when both fail (the host genuinely has no
+/// hostname configured, or the binary is missing on a stripped-down
+/// container).
+///
+/// Shared with `preprocessing::template`'s `dodot.hostname` resolution
+/// so the two paths can never disagree about the host's hostname.
+pub fn detect_hostname() -> Option<String> {
     if let Ok(h) = std::env::var("HOSTNAME") {
         if !h.is_empty() {
             return Some(h);
@@ -172,7 +178,12 @@ fn detect_hostname() -> Option<String> {
     }
 }
 
-fn detect_username() -> Option<String> {
+/// Detect the active username.
+///
+/// Tries `$USER`, `$USERNAME`, `$LOGNAME` in order. `None` if none are
+/// set. Shared with `preprocessing::template`'s `dodot.username`
+/// resolution.
+pub fn detect_username() -> Option<String> {
     for var in ["USER", "USERNAME", "LOGNAME"] {
         if let Ok(v) = std::env::var(var) {
             if !v.is_empty() {
@@ -343,6 +354,46 @@ impl GateTable {
     pub fn is_empty(&self) -> bool {
         self.labels.is_empty()
     }
+}
+
+// ── [mappings.gates] glob compilation ──────────────────────────
+
+/// Compile and validate the `[mappings.gates]` glob → label map for
+/// matching against pack-relative paths.
+///
+/// Produces `(compiled_pattern, label)` pairs sorted lexicographically
+/// by the raw pattern string so iteration order is deterministic across
+/// platforms (`HashMap` iteration is not). Lex-sort plus first-match
+/// semantics give predictable behaviour when multiple globs could match
+/// one entry.
+///
+/// Hard errors:
+/// - Invalid glob syntax — `glob::Pattern::new` failures bubble up as
+///   `DodotError::Config`. Silent dropping turns a typo into "no gate
+///   configured" with no diagnostic, which is exactly the trap the
+///   typo-guard pattern exists to prevent.
+///
+/// Both `Scanner::match_entries` (for the status path and any
+/// post-preprocessing matching) and `filter_pre_preprocess_gates` (for
+/// the up-planning path) call this helper so the two paths can never
+/// disagree about which globs compile, in what order, or with what
+/// failure mode.
+pub fn compile_mapping_gates<'a>(
+    mappings_gates: &'a std::collections::HashMap<String, String>,
+    pack_name: &str,
+) -> Result<Vec<(glob::Pattern, &'a str)>> {
+    let mut compiled: Vec<(glob::Pattern, &'a str, &'a str)> =
+        Vec::with_capacity(mappings_gates.len());
+    for (pat, label) in mappings_gates {
+        let pattern = glob::Pattern::new(pat).map_err(|e| {
+            DodotError::Config(format!(
+                "invalid `[mappings.gates]` glob `{pat}` in pack `{pack_name}`: {e}"
+            ))
+        })?;
+        compiled.push((pattern, label.as_str(), pat.as_str()));
+    }
+    compiled.sort_by(|a, b| a.2.cmp(b.2));
+    Ok(compiled.into_iter().map(|(p, l, _)| (p, l)).collect())
 }
 
 // ── Pack-level OS gate ──────────────────────────────────────────

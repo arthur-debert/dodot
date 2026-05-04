@@ -269,12 +269,26 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
                 crate::gates::BasenameGate::Found { label, stripped } => {
                     let pred = match gates.lookup(label) {
                         Some(p) => p,
-                        // Unknown label here is a hard error in the
-                        // up/status paths, but `secret list` is
-                        // best-effort read-only. Treat as "skip" so
-                        // the user can still inspect the rest of the
-                        // repo.
-                        None => continue,
+                        // Unknown label is a hard error in the
+                        // up/status paths, but `secret list` is a
+                        // read-only diagnostic — we'd rather show what
+                        // we can than refuse the whole repo when one
+                        // file has a typo. Surface as a tracing
+                        // warning so the row's absence is explainable
+                        // (visible with `dodot --verbose secret list`
+                        // or in any log capture); skip the row to
+                        // continue the scan.
+                        None => {
+                            tracing::warn!(
+                                pack = %pack.display_name,
+                                file = %entry.relative_path.display(),
+                                label = %label,
+                                "secret list: skipping file with unknown gate label \
+                                 `{label}` (built-ins: darwin, linux, macos, arm64, \
+                                 aarch64, x86_64; user labels live in [gates])"
+                            );
+                            continue;
+                        }
                     };
                     if !pred.matches(host) {
                         continue;
