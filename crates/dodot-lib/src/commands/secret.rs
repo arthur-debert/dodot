@@ -247,16 +247,46 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
             if entry.is_dir {
                 continue;
             }
-            // Only scan template-shaped files. Other extensions
-            // can't contain `secret(...)` calls in a way the
-            // template preprocessor would resolve.
+            // Skip entries gated out by a directory-segment gate
+            // (`_<label>/`) — same posture as `dodot status`.
+            if entry.gate_failure.is_some() {
+                continue;
+            }
             let filename = entry
                 .relative_path
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
+            // Round-2 review feedback (secret.rs:265): apply basename
+            // gate evaluation here too. Without this, gated-out files
+            // would still be scanned, AND a gate-suffixed template
+            // like `gitconfig.tmpl._darwin` wouldn't be recognised as
+            // a template (the suffix shifts the `.tmpl` extension out
+            // of the rightmost slot). Strip first, then check
+            // template-ness against the stripped name.
+            let effective_name = match crate::gates::parse_basename_gate(&filename) {
+                crate::gates::BasenameGate::None => filename.clone(),
+                crate::gates::BasenameGate::Found { label, stripped } => {
+                    let pred = match gates.lookup(label) {
+                        Some(p) => p,
+                        // Unknown label here is a hard error in the
+                        // up/status paths, but `secret list` is
+                        // best-effort read-only. Treat as "skip" so
+                        // the user can still inspect the rest of the
+                        // repo.
+                        None => continue,
+                    };
+                    if !pred.matches(host) {
+                        continue;
+                    }
+                    stripped
+                }
+            };
+            // Only scan template-shaped files. Other extensions
+            // can't contain `secret(...)` calls in a way the
+            // template preprocessor would resolve.
             let is_template = template_extensions.iter().any(|ext| {
-                filename
+                effective_name
                     .strip_suffix(ext.as_str())
                     .is_some_and(|prefix| prefix.ends_with('.'))
             });
@@ -533,5 +563,92 @@ c = "{{ secret("bw:gh-token") }}""#;
         for row in &r {
             assert!(!row.reference.is_empty());
         }
+    }
+
+    #[test]
+    fn list_skips_basename_gated_template() {
+        // Round-2 review feedback: `secret list` must skip files
+        // whose filename gate evaluates false on this host. Same
+        // posture as `dodot status`.
+        let gated = if cfg!(target_os = "macos") {
+            "linux"
+        } else if cfg!(target_os = "linux") {
+            "darwin"
+        } else {
+            return;
+        };
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file(
+                &format!("config.tmpl._{gated}"),
+                r#"token = {{ secret("pass:test") }}"#,
+            )
+            .file("always.tmpl", r#"token = {{ secret("pass:other") }}"#)
+            .done()
+            .build();
+        let ctx = make_ctx(
+            &env,
+            Some(
+                r#"
+[secret]
+enabled = true
+[secret.providers.pass]
+enabled = true
+"#,
+            ),
+        );
+
+        let result = list(&ctx).unwrap();
+        // Only the unconditional template's reference should surface.
+        let refs: Vec<&str> = result.rows.iter().map(|r| r.reference.as_str()).collect();
+        assert!(
+            refs.contains(&"pass:other"),
+            "missing always-active template: {refs:?}"
+        );
+        assert!(
+            !refs.contains(&"pass:test"),
+            "gated template surfaced: {refs:?}"
+        );
+    }
+
+    #[test]
+    fn list_recognises_gate_suffixed_template_extension() {
+        // Round-2 review feedback: `gitconfig.tmpl._darwin` should be
+        // recognised as a template (after stripping the gate
+        // suffix). Without the strip, the rightmost extension would
+        // be `_darwin`, not `tmpl`, and the file would be skipped.
+        let passing = if cfg!(target_os = "macos") {
+            "darwin"
+        } else if cfg!(target_os = "linux") {
+            "linux"
+        } else {
+            return;
+        };
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file(
+                &format!("gitconfig.tmpl._{passing}"),
+                r#"token = {{ secret("pass:gh") }}"#,
+            )
+            .done()
+            .build();
+        let ctx = make_ctx(
+            &env,
+            Some(
+                r#"
+[secret]
+enabled = true
+[secret.providers.pass]
+enabled = true
+"#,
+            ),
+        );
+
+        let result = list(&ctx).unwrap();
+        let refs: Vec<&str> = result.rows.iter().map(|r| r.reference.as_str()).collect();
+        assert!(
+            refs.contains(&"pass:gh"),
+            "expected gate-suffixed template to scan as template: {refs:?}"
+        );
     }
 }

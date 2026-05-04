@@ -475,9 +475,27 @@ fn filter_basename_gates(
     gates: &GateTable,
     host: &HostFacts,
     pack_name: &str,
+    mappings_gates: &std::collections::HashMap<String, String>,
 ) -> Result<Vec<crate::rules::PackEntry>> {
     use crate::gates::{parse_basename_gate, BasenameGate};
     use crate::rules::GateFailure;
+
+    // Pre-compile [mappings.gates] glob patterns so the per-entry
+    // conflict check is cheap. Using the same hard-error / sort
+    // discipline as `match_entries` so behaviour matches across
+    // both planning paths (`up` runs through here, `status` reaches
+    // match_entries directly).
+    let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> =
+        Vec::with_capacity(mappings_gates.len());
+    for (pat, label) in mappings_gates {
+        let compiled = glob::Pattern::new(pat).map_err(|e| {
+            crate::DodotError::Config(format!(
+                "invalid `[mappings.gates]` glob `{pat}` in pack `{pack_name}`: {e}"
+            ))
+        })?;
+        compiled_mapping_gates.push((compiled, label.as_str(), pat.as_str()));
+    }
+    compiled_mapping_gates.sort_by(|a, b| a.2.cmp(b.2));
 
     let mut out = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -495,6 +513,25 @@ fn filter_basename_gates(
         match parse_basename_gate(&filename) {
             BasenameGate::None => out.push(entry),
             BasenameGate::Found { label, stripped } => {
+                // Conflict guard: a file carrying both a filename gate
+                // (`._<label>`) and a matching `[mappings.gates]` entry
+                // is ambiguous — pick one. We check this here (before
+                // stripping) because match_entries sees the stripped
+                // name and can't reconstruct the conflict otherwise.
+                let rel_str = entry.relative_path.to_string_lossy();
+                if let Some((_, map_label, _)) = compiled_mapping_gates
+                    .iter()
+                    .find(|(pat, _, _)| pat.matches(rel_str.as_ref()))
+                {
+                    return Err(crate::DodotError::Config(format!(
+                        "gate-routing conflict in pack `{pack_name}` for `{}`: \
+                         file carries both a filename gate token (`._<label>`) \
+                         and a `[mappings.gates]` entry (`{map_label}`). \
+                         Pick one — either rename the file (drop the suffix) \
+                         or remove the `[mappings.gates]` entry.",
+                        entry.relative_path.display()
+                    )));
+                }
                 let pred = gates.lookup(label).ok_or_else(|| {
                     crate::DodotError::Config(format!(
                         "unknown gate label `{label}` in pack `{pack_name}`, file `{}`: \
@@ -599,7 +636,13 @@ fn plan_pack_inner(
     // opted out of. The same evaluation runs again in match_entries
     // for non-preprocessed entries and to surface gate-out matches in
     // status.
-    let entries = filter_basename_gates(entries, &gates, host, &pack.name)?;
+    let entries = filter_basename_gates(
+        entries,
+        &gates,
+        host,
+        &pack.name,
+        &pack_config.mappings.gates,
+    )?;
 
     // Phase 2: Preprocessing
     let preprocess_result = if let Some(registry) = preprocessors {

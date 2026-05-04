@@ -377,14 +377,20 @@ impl<'a> Scanner<'a> {
         // deterministic across platforms — `HashMap` iteration is not.
         // First-match-wins on this sorted view; ties are settled by
         // the conflict guard against filename gates further below.
-        let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> = mappings_gates
-            .iter()
-            .filter_map(|(pat, label)| {
-                glob::Pattern::new(pat)
-                    .ok()
-                    .map(|p| (p, label.as_str(), pat.as_str()))
-            })
-            .collect();
+        // Invalid glob patterns are a hard error: silently dropping
+        // them turns a typo into "no gate" with no diagnostic, which
+        // is exactly the kind of debugging trap the typo-guard pattern
+        // exists to prevent.
+        let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> =
+            Vec::with_capacity(mappings_gates.len());
+        for (pat, label) in mappings_gates {
+            let compiled = glob::Pattern::new(pat).map_err(|e| {
+                DodotError::Config(format!(
+                    "invalid `[mappings.gates]` glob `{pat}` in pack `{pack_name}`: {e}"
+                ))
+            })?;
+            compiled_mapping_gates.push((compiled, label.as_str(), pat.as_str()));
+        }
         compiled_mapping_gates.sort_by(|a, b| a.2.cmp(b.2));
         let compiled_mapping_gates: Vec<(glob::Pattern, &str)> = compiled_mapping_gates
             .into_iter()

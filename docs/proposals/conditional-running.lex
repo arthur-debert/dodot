@@ -328,14 +328,14 @@ Design Specification: Conditional Running
             laptop  = { hostname = "mbp-arthur" }
             arm-mac = { os = "darwin", arch = "aarch64" }
 
-            # Future: glob-based filename gating without renaming
-            # [mappings.gates]
-            # "install-mac.sh" = "darwin"
-            # "setup/*.sh"     = "linux"
+            # Glob-based filename gating without renaming
+            [mappings.gates]
+            "install-mac.sh" = "darwin"
+            "Brewfile"       = "darwin"
 
         :: toml ::
 
-        `[mappings.gates]` is reserved for a future phase (C4); see §9. v1 ships only `[gates]` and `[pack] os`.
+        `[mappings.gates]` patterns match the same top-level pack entries the scanner surfaces — the symlink handler's nested per-file recursion is gate-unaware, so globs containing path separators only match if a top-level entry has that shape. This matches the posture from §8.8 (gates don't reach inside routing-prefix subtrees). For per-file gating of nested files, use the filename grammar (`install._darwin.sh`) instead. Invalid glob patterns are a hard error at scan time, and matches are deterministic (lexicographic pattern order, first-match-wins).
 
     6.2. Inheritance
 

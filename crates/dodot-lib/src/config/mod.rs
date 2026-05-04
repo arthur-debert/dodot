@@ -530,13 +530,26 @@ pub struct MappingsSection {
     /// ```toml
     /// [mappings.gates]
     /// "install-mac.sh"  = "darwin"
-    /// "setup/*.sh"      = "linux"
+    /// "Brewfile"        = "darwin"
     /// ```
     ///
-    /// A file that carries both a filename gate (`._<label>`) and a
-    /// matching `[mappings.gates]` entry is a hard error — same posture
-    /// as `[symlink.targets]` vs routing prefix conflict (one source
-    /// of truth). See `docs/proposals/conditional-running.lex` §6.1.
+    /// **Scope**: glob patterns match the top-level entries the scanner
+    /// surfaces (depth-1 of the pack root) — the same shape every
+    /// other rule grammar matches against. Globs containing path
+    /// separators (`"setup/*.sh"`) match only when the corresponding
+    /// top-level dir is what the scanner returns; the symlink handler's
+    /// nested recursion is intentionally gate-unaware (same posture as
+    /// directory-segment gates inside routing prefixes — see
+    /// `docs/proposals/conditional-running.lex` §8.8).
+    ///
+    /// **Conflict guard**: a file that carries both a filename gate
+    /// (`._<label>`) and a matching `[mappings.gates]` entry is a
+    /// hard error — one source of truth. The check fires in both the
+    /// `up` and `status` paths.
+    ///
+    /// **Determinism**: when multiple globs match a single file, the
+    /// first match wins under lexicographic pattern order. Invalid
+    /// glob patterns are a hard error at scan time.
     #[config(default = {})]
     pub gates: std::collections::HashMap<String, String>,
 }

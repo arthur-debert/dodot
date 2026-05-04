@@ -6011,14 +6011,18 @@ fn gate_failed_template_does_not_render_at_up() {
     // MiniJinja would render the template and fire secret-provider calls and
     // baseline-cache writes for entries the user explicitly opted out of.
     //
-    // The "canary" template uses `{{ undefined_variable }}`. MiniJinja's
-    // strict-undefined mode turns any such reference into a render error.
-    // If the gate-failed template reaches the engine, the error propagates
-    // to the pack planner, which marks the whole pack as failed — meaning
-    // the co-located `home.profile` plain file would NOT be deployed either.
-    // So we add that plain file and assert it IS deployed. That proves:
-    //   a) pack planning succeeded (no template-render error killed it), and
-    //   b) the gated template's render output is absent from the datastore.
+    // Two independent assertions, each catching a distinct failure mode:
+    //
+    // 1. **Functional**: the template uses `{{ undefined_variable }}`,
+    //    a strict-undefined error if MiniJinja runs. If the gate-failed
+    //    template reaches the engine, pack planning fails and the
+    //    co-located `home.profile` plain file is NOT deployed. Asserting
+    //    `~/.profile` exists after `up` proves planning succeeded.
+    //
+    // 2. **Side-effect**: even if planning happened to succeed somehow,
+    //    a render would write a baseline-cache JSON under
+    //    `<cache_dir>/preprocessor/p/template/`. Its absence proves the
+    //    engine never fired.
     let gated = if cfg!(target_os = "macos") {
         "linux"
     } else if cfg!(target_os = "linux") {
@@ -6030,9 +6034,8 @@ fn gate_failed_template_does_not_render_at_up() {
     let env = TempEnvironment::builder()
         .pack("p")
         .file(&template_name, "alias x={{ undefined_variable }}")
-        // A plain file in the same pack. If pack planning failed because
-        // the gate-failed template reached the engine, this file would NOT
-        // be deployed. Its presence after `up` proves planning succeeded.
+        // Co-located plain file. Its deployment proves pack planning
+        // didn't abort because of the gated template.
         .file("home.profile", "export PATH=$PATH:~/.local/bin")
         .done()
         .build();
@@ -6040,8 +6043,7 @@ fn gate_failed_template_does_not_render_at_up() {
     let ctx = make_ctx(&env);
     commands::up::up(None, &ctx).unwrap();
 
-    // The plain file in the pack must be deployed — proving pack planning
-    // succeeded (a template-render error would have aborted the whole pack).
+    // (1) The plain file must be deployed.
     let profile_link = env.home.join(".profile");
     assert!(
         env.fs.exists(&profile_link),
@@ -6049,16 +6051,69 @@ fn gate_failed_template_does_not_render_at_up() {
          because the gated template still reached the template engine: {profile_link:?}"
     );
 
-    // No rendered output for the gated template in the datastore.
+    // (2) No baseline cache for the gated source.
+    let baseline_dir = ctx.paths.cache_dir().join("preprocessor/p/template");
+    if env.fs.exists(&baseline_dir) {
+        let baselines = env.fs.read_dir(&baseline_dir).unwrap_or_default();
+        assert!(
+            baselines.is_empty(),
+            "preprocessor wrote {} baseline file(s) for a gated-out template: {:?}",
+            baselines.len(),
+            baselines.iter().map(|e| e.name.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    // No rendered output in the preprocessed dir for the gated template.
     let preprocessed = ctx.paths.data_dir().join("packs/p/preprocessed/aliases.sh");
     assert!(
         !env.fs.exists(&preprocessed),
         "gated-out template was rendered to datastore at {preprocessed:?}"
     );
-    // No shell stage link for the gated template.
+    // And no shell stage link.
     let shell_link = ctx.paths.data_dir().join("packs/p/shell/aliases.sh");
     assert!(
         !env.fs.exists(&shell_link),
         "gated-out template surfaced as a shell-stage entry at {shell_link:?}"
+    );
+}
+
+#[test]
+fn up_catches_mappings_gates_filename_conflict() {
+    // Round-2 review feedback (orchestration.rs:637): the `up` path
+    // strips basename gates BEFORE match_entries, so the
+    // [mappings.gates] vs filename-gate conflict needs to fire in
+    // filter_basename_gates rather than match_entries. Without the
+    // fix, this combination would silently pass through `up`.
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file("install._darwin.sh", "echo x")
+        .config("[mappings.gates]\n\"install._darwin.sh\" = \"linux\"\n")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("gate-routing conflict"), "msg: {msg}");
+    assert!(msg.contains("install._darwin.sh"), "msg: {msg}");
+}
+
+#[test]
+fn up_rejects_invalid_mappings_gates_glob() {
+    // Round-2 review feedback (rules/mod.rs:387): invalid glob
+    // patterns in [mappings.gates] used to be silently dropped via
+    // `.ok()`. They now hard-error so a typo is loud, not silent.
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file("vimrc", "x")
+        .config("[mappings.gates]\n\"[unclosed\" = \"darwin\"\n")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("invalid `[mappings.gates]` glob"),
+        "msg: {msg}"
     );
 }
