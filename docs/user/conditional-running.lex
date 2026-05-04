@@ -148,9 +148,14 @@ Conditional Running
 
     :: toml ::
 
-    `os` is a list of OS values matching `dodot.os`. The `macos`
-    alias is recognised. Set to `["darwin", "linux"]` for "either."
+    `os` is a list of OS identifiers. The canonical value for macOS is
+    `"darwin"`; `"macos"` is accepted as an alias. `"linux"` is the
+    canonical value on Linux. Set to `["darwin", "linux"]` for "either."
     Empty or absent means "all OSes" (today's behaviour).
+
+    Note: template variables expose `dodot.os` as `"macos"` on macOS,
+    but gate OS matching uses `"darwin"` as the canonical form and
+    accepts `"macos"` as an alias — the two surfaces are not identical.
 
     On a non-matching host, the entire pack is short-circuited at scan
     time — no preprocessing fires, no handlers run, no symlinks land.
@@ -264,9 +269,11 @@ Conditional Running
 
     :: text ::
 
-    The label is validated against the gate table (built-ins +
-    user-defined `[gates]`) at the start of the command, so an unknown
-    label fails before any filesystem work happens.
+    The label is validated against the *root* `.dodot.toml` gate table
+    (built-ins + user-defined `[gates]` at the root level) at the start
+    of the command, so an unknown label fails before any filesystem work
+    happens. Labels defined only in a pack-level `.dodot.toml` are not
+    visible here.
 
 9. When To Use Gates Versus Templates
 

@@ -61,9 +61,12 @@ Configuration
 
         :: toml ::
 
-        Values match `dodot.os`; the alias `macos` resolves to
-        `darwin`. Empty or absent means "all OSes" (today's default).
-        See [./conditional-running.lex] §5.
+        The canonical OS value for macOS is `"darwin"`; `"macos"` is
+        accepted as an alias that resolves to `"darwin"`. On Linux the
+        canonical value is `"linux"`. Empty or absent means "all OSes"
+        (today's default). Note: template variables expose `dodot.os`
+        as `"macos"` on macOS — gate OS values and template OS values
+        are not the same surface. See [./conditional-running.lex] §5.
 
         Only meaningful at pack level — root-level `[pack] os` is a
         configuration error (it would gate every pack against the
@@ -212,15 +215,18 @@ Configuration
     (`home`/`xdg`/`app`/`lib`); both rules are hard errors at config
     load.
 
-    User entries deep-merge over the built-in seed (`darwin`, `linux`,
-    `macos`, `arm64`, `aarch64`, `x86_64`). For the full surface and
-    composition rules, see [./conditional-running.lex].
+    User entries extend the built-in seed (`darwin`, `linux`,
+    `macos`, `arm64`, `aarch64`, `x86_64`). Redefining an existing
+    built-in label (e.g. `darwin = { … }` in `[gates]`) replaces its
+    predicate entirely — it does not merge dimensions into the built-in.
+    For the full surface and composition rules, see
+    [./conditional-running.lex].
 
 6. The `[preprocessor]` Section
 
     Controls the preprocessing pipeline. For the concept, see [./../reference/pre-processors.lex].
 
-    5.1. Global kill switch
+    6.1. Global kill switch
 
         Global preprocessor toggle:
 
@@ -231,7 +237,7 @@ Configuration
 
         Set to `false` to disable _all_ preprocessors. `.tmpl` files (and other preprocessor-matched files) will deploy verbatim.
 
-    5.2. `[preprocessor.template]`
+    6.2. `[preprocessor.template]`
 
         Template engine configuration.
 
