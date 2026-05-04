@@ -276,6 +276,8 @@ impl<'a> Scanner<'a> {
     /// pack-level ignore patterns.
     ///
     /// This is a convenience wrapper over [`walk_pack`] + [`match_entries`].
+    /// `mappings_gates` is the `[mappings.gates]` glob → label map; pass
+    /// an empty `HashMap` if not used.
     pub fn scan_pack(
         &self,
         pack: &Pack,
@@ -283,9 +285,10 @@ impl<'a> Scanner<'a> {
         pack_ignore: &[String],
         gates: &GateTable,
         host: &HostFacts,
+        mappings_gates: &HashMap<String, String>,
     ) -> Result<Vec<RuleMatch>> {
         let entries = self.walk_pack(&pack.path, pack_ignore, gates, host)?;
-        self.match_entries(&entries, rules, &pack.name, gates, host)
+        self.match_entries(&entries, rules, &pack.name, gates, host, mappings_gates)
     }
 
     /// Walk a pack directory and return raw file entries.
@@ -357,6 +360,7 @@ impl<'a> Scanner<'a> {
         pack_name: &str,
         gates: &GateTable,
         host: &HostFacts,
+        mappings_gates: &HashMap<String, String>,
     ) -> Result<Vec<RuleMatch>> {
         let compiled = compile_rules(rules);
         // Compute once per scan rather than per file: when no rule
@@ -366,6 +370,13 @@ impl<'a> Scanner<'a> {
         // Sort once per scan, then reuse the ordered slice for every entry.
         let mut sorted: Vec<&CompiledRule> = compiled.iter().collect();
         sorted.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+        // Compile [mappings.gates] globs once per scan. Each entry pairs
+        // a glob pattern with the gate label it carries.
+        let compiled_mapping_gates: Vec<(glob::Pattern, &str)> = mappings_gates
+            .iter()
+            .filter_map(|(pat, label)| glob::Pattern::new(pat).ok().map(|p| (p, label.as_str())))
+            .collect();
 
         let mut matches = Vec::new();
 
@@ -397,8 +408,58 @@ impl<'a> Scanner<'a> {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
 
+            // C4: `[mappings.gates]` glob check. First-match-wins
+            // against the user-defined glob → label table. Conflicts
+            // with a filename gate on the same file are a hard error.
+            let rel_str = entry.relative_path.to_string_lossy();
+            let mapping_gate_label: Option<&str> = compiled_mapping_gates
+                .iter()
+                .find(|(pat, _)| pat.matches(&rel_str))
+                .map(|(_, label)| *label);
+
+            let basename_gate = parse_basename_gate(&filename);
+
+            if let Some(map_label) = mapping_gate_label {
+                if matches!(basename_gate, BasenameGate::Found { .. }) {
+                    return Err(DodotError::Config(format!(
+                        "gate-routing conflict in pack `{pack_name}` for `{}`: \
+                         file carries both a filename gate token (`._<label>`) \
+                         and a `[mappings.gates]` entry (`{map_label}`). \
+                         Pick one — either rename the file (drop the suffix) \
+                         or remove the `[mappings.gates]` entry.",
+                        entry.relative_path.display()
+                    )));
+                }
+                let pred = gates.lookup(map_label).ok_or_else(|| {
+                    DodotError::Config(format!(
+                        "unknown gate label `{map_label}` referenced from \
+                         `[mappings.gates]` in pack `{pack_name}`: label is \
+                         not in the built-in seed and not defined in [gates]."
+                    ))
+                })?;
+                if !pred.matches(host) {
+                    let mut options = HashMap::new();
+                    options.insert("gate_label".into(), map_label.to_string());
+                    options.insert("gate_predicate".into(), pred.describe());
+                    options.insert("gate_host".into(), describe_host_for_predicate(pred, host));
+                    matches.push(RuleMatch {
+                        relative_path: entry.relative_path.clone(),
+                        absolute_path: entry.absolute_path.clone(),
+                        pack: pack_name.to_string(),
+                        handler: HANDLER_GATE.into(),
+                        is_dir: entry.is_dir,
+                        options,
+                        preprocessor_source: None,
+                        rendered_bytes: None,
+                    });
+                    continue;
+                }
+                // Pass: fall through to normal rule matching with the
+                // unstripped filename.
+            }
+
             // Gate evaluation: parse, look up label, evaluate.
-            let (effective_filename, effective_rel_path) = match parse_basename_gate(&filename) {
+            let (effective_filename, effective_rel_path) = match basename_gate {
                 BasenameGate::None => (filename.clone(), entry.relative_path.clone()),
                 BasenameGate::Found { label, stripped } => {
                     let pred = gates.lookup(label).ok_or_else(|| {
@@ -835,7 +896,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         let handler_map: HashMap<String, Vec<String>> = {
@@ -869,7 +930,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
         let names: Vec<String> = matches
             .iter()
@@ -901,7 +962,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
         let names: Vec<String> = matches
             .iter()
@@ -929,7 +990,14 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &["*.bak".to_string()], &gates, &host)
+            .scan_pack(
+                &pack,
+                &rules,
+                &["*.bak".to_string()],
+                &gates,
+                &host,
+                &HashMap::new(),
+            )
             .unwrap();
         let names: Vec<String> = matches
             .iter()
@@ -977,7 +1045,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         let bad = matches
@@ -1031,7 +1099,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].handler, "specific-shell");
@@ -1088,7 +1156,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
         let by_handler: std::collections::HashMap<&str, Vec<&str>> =
             matches.iter().fold(Default::default(), |mut acc, m| {
@@ -1139,7 +1207,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].handler, "skip");
@@ -1185,7 +1253,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].handler, "ignore");
@@ -1206,7 +1274,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         let bin_match = matches
@@ -1234,7 +1302,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         assert!(
@@ -1261,7 +1329,7 @@ mod tests {
 
         let (gates, host) = test_gates();
         let matches = scanner
-            .scan_pack(&pack, &rules, &[], &gates, &host)
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         let relpaths: Vec<String> = matches
@@ -1396,7 +1464,7 @@ mod tests {
         let pack = make_pack("mac", env.dotfiles_root.join("mac"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1422,7 +1490,7 @@ mod tests {
         let pack = make_pack("cross", env.dotfiles_root.join("cross"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1453,7 +1521,7 @@ mod tests {
         let pack = make_pack("typo", env.dotfiles_root.join("typo"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let err = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("darwn"), "missing label: {msg}");
@@ -1502,6 +1570,7 @@ mod tests {
                 &pack.name,
                 &gates,
                 &host,
+                &HashMap::new(),
             )
             .unwrap();
         assert_eq!(matches.len(), 1);
@@ -1519,6 +1588,7 @@ mod tests {
                 &pack.name,
                 &gates,
                 &host_intel,
+                &HashMap::new(),
             )
             .unwrap();
         assert_eq!(matches.len(), 1);
@@ -1539,7 +1609,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1565,7 +1635,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1589,7 +1659,7 @@ mod tests {
         let pack = make_pack("cross", env.dotfiles_root.join("cross"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         let by_handler: HashMap<&str, Vec<String>> =
@@ -1626,7 +1696,7 @@ mod tests {
         let pack = make_pack("brew", env.dotfiles_root.join("brew"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].handler, "homebrew");
@@ -1645,7 +1715,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1669,7 +1739,7 @@ mod tests {
         let pack = make_pack("cross", env.dotfiles_root.join("cross"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         let names: Vec<String> = matches
             .iter()
@@ -1695,7 +1765,7 @@ mod tests {
         let pack = make_pack("cross", env.dotfiles_root.join("cross"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
 
         // Exactly two matches: the gate dir (failed) and `shared`.
@@ -1733,7 +1803,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1753,7 +1823,7 @@ mod tests {
         let pack = make_pack("typo", env.dotfiles_root.join("typo"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let err = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("darwn"), "missing label: {msg}");
@@ -1773,7 +1843,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1795,7 +1865,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         // One gate match for the inner _x86_64 dir; install.sh does
         // NOT surface.
@@ -1826,7 +1896,7 @@ mod tests {
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let matches = scanner
-            .scan_pack(&pack, &default_rules(), &[], &gates, &host)
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &HashMap::new())
             .unwrap();
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
@@ -1835,5 +1905,136 @@ mod tests {
         assert_eq!(m.relative_path.to_string_lossy(), "_home");
         assert!(m.is_dir);
         assert_eq!(m.handler, "symlink");
+    }
+
+    // ── C4: [mappings.gates] glob-based gating ─────────────────
+
+    #[test]
+    fn mappings_gate_failing_drops_file() {
+        // [mappings.gates] = { "install-mac.sh" = "linux" } on darwin →
+        // file is gated out.
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file("install-mac.sh", "x")
+            .done()
+            .build();
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("p", env.dotfiles_root.join("p"));
+        let (gates, host) = host_pair("darwin", "aarch64");
+        let mut mappings_gates = HashMap::new();
+        mappings_gates.insert("install-mac.sh".to_string(), "linux".to_string());
+
+        let matches = scanner
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &mappings_gates)
+            .unwrap();
+        assert_eq!(matches.len(), 1);
+        let m = &matches[0];
+        assert_eq!(m.handler, crate::handlers::HANDLER_GATE);
+        assert_eq!(m.options.get("gate_label"), Some(&"linux".to_string()));
+    }
+
+    #[test]
+    fn mappings_gate_passing_does_not_alter_dispatch() {
+        // [mappings.gates] = { "install-mac.sh" = "darwin" } on darwin →
+        // file passes; rule matching proceeds as if no gate were set.
+        // install-mac.sh isn't in default install patterns so it falls
+        // through to the catchall symlink — same as without the gate.
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file("install-mac.sh", "x")
+            .done()
+            .build();
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("p", env.dotfiles_root.join("p"));
+        let (gates, host) = host_pair("darwin", "aarch64");
+        let mut mappings_gates = HashMap::new();
+        mappings_gates.insert("install-mac.sh".to_string(), "darwin".to_string());
+
+        let matches = scanner
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &mappings_gates)
+            .unwrap();
+        assert_eq!(matches.len(), 1);
+        let m = &matches[0];
+        assert_eq!(m.handler, "symlink");
+        assert_eq!(m.relative_path.to_string_lossy(), "install-mac.sh");
+    }
+
+    #[test]
+    fn mappings_gate_glob_matches_subpath() {
+        // [mappings.gates] = { "setup/*.sh" = "linux" } on darwin →
+        // setup/foo.sh is gated out.
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file("setup/foo.sh", "x")
+            .done()
+            .build();
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("p", env.dotfiles_root.join("p"));
+        let (gates, host) = host_pair("darwin", "aarch64");
+        let mut mappings_gates = HashMap::new();
+        mappings_gates.insert("setup/*.sh".to_string(), "linux".to_string());
+
+        let matches = scanner
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &mappings_gates)
+            .unwrap();
+        // Top-level "setup" dir is what surfaces from walk_pack (per
+        // the existing depth-1 contract). The mapping pattern matches
+        // its child path "setup/foo.sh" — but the scanner only sees
+        // "setup" as a top-level dir and the mapping doesn't match
+        // that. So this test documents the C4 limit: globs are
+        // matched against the relative path the scanner surfaces, not
+        // against arbitrary nested paths the symlink handler would
+        // recurse into.
+        //
+        // For the C4 v1 surface, glob-based gating works on top-level
+        // entries. Files inside subdirectories deploy via the symlink
+        // handler's wholesale link of the parent.
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].handler, "symlink");
+        assert_eq!(matches[0].relative_path.to_string_lossy(), "setup");
+    }
+
+    #[test]
+    fn mappings_gate_conflict_with_basename_gate_errors() {
+        // File has BOTH a filename gate (`._darwin`) AND a
+        // [mappings.gates] entry → hard error.
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file("install._darwin.sh", "x")
+            .done()
+            .build();
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("p", env.dotfiles_root.join("p"));
+        let (gates, host) = host_pair("darwin", "aarch64");
+        let mut mappings_gates = HashMap::new();
+        mappings_gates.insert("install._darwin.sh".to_string(), "linux".to_string());
+
+        let err = scanner
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &mappings_gates)
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("gate-routing conflict"), "{msg}");
+        assert!(msg.contains("install._darwin.sh"), "{msg}");
+    }
+
+    #[test]
+    fn mappings_gate_unknown_label_errors() {
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file("foo.sh", "x")
+            .done()
+            .build();
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("p", env.dotfiles_root.join("p"));
+        let (gates, host) = host_pair("darwin", "aarch64");
+        let mut mappings_gates = HashMap::new();
+        mappings_gates.insert("foo.sh".to_string(), "darwn".to_string()); // typo
+
+        let err = scanner
+            .scan_pack(&pack, &default_rules(), &[], &gates, &host, &mappings_gates)
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("darwn"), "{msg}");
+        assert!(msg.contains("[mappings.gates]"), "{msg}");
     }
 }

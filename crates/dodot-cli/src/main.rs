@@ -561,6 +561,18 @@ fn build_clap_command() -> ClapCommand {
                         .long("no-follow")
                         .help("When the source is a symlink, move the link itself instead of its target")
                         .action(ArgAction::SetTrue),
+                )
+                .arg(
+                    Arg::new("only-os")
+                        .long("only-os")
+                        .value_name("LABEL")
+                        .help(
+                            "Wrap each adopted entry in a `_<label>/` gate dir so the deployed \
+                             symlink only lands on hosts matching the gate predicate. \
+                             Labels: darwin, linux, macos, arm64, aarch64, x86_64 (built-in) \
+                             plus any user-defined entry in [gates]."
+                        )
+                        .num_args(1),
                 ),
         )
         .subcommand(

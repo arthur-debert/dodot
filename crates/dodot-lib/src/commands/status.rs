@@ -535,7 +535,14 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
         };
         let all_entries = preprocess_result.merged_entries();
-        let matches = scanner.match_entries(&all_entries, &rules, &pack.name, &gates, &host)?;
+        let matches = scanner.match_entries(
+            &all_entries,
+            &rules,
+            &pack.name,
+            &gates,
+            &host,
+            &pack_config.mappings.gates,
+        )?;
 
         // Collect intents for conflict detection. The first tuple
         // element is the user-facing label that surfaces in any

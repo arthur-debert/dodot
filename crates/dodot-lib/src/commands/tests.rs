@@ -1586,6 +1586,7 @@ fn adopt_moves_file_and_creates_symlink() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1632,6 +1633,7 @@ fn adopt_preserves_executable_permissions() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1665,6 +1667,7 @@ fn adopt_refuses_non_dotted_home_entry() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -1704,6 +1707,7 @@ fn adopt_destination_conflict_refused_without_force() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -1738,6 +1742,7 @@ fn adopt_destination_conflict_resolved_with_force() {
         true, // --force
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1771,6 +1776,7 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1808,6 +1814,7 @@ fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1976,6 +1983,7 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2012,6 +2020,7 @@ fn adopt_xdg_nested_file_lands_at_pack_root() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2044,6 +2053,7 @@ fn adopt_xdg_source_infers_pack_and_auto_creates() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2075,6 +2085,7 @@ fn adopt_xdg_pack_root_directory_expands_to_children() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2112,6 +2123,7 @@ fn adopt_xdg_root_itself_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2147,6 +2159,7 @@ fn adopt_xdg_pack_root_expansion_with_override_uses_xdg_prefix() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2192,6 +2205,7 @@ fn adopt_xdg_with_into_override_uses_xdg_prefix() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2229,6 +2243,7 @@ fn adopt_app_support_source_round_trips_through_app_prefix() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2284,6 +2299,7 @@ fn adopt_app_support_pack_root_directory_expands_to_children() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2322,6 +2338,7 @@ fn adopt_app_support_emits_capitalization_hint() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2375,6 +2392,7 @@ fn adopt_app_support_reverse_dns_uses_cask_token_in_tip() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2430,6 +2448,7 @@ fn adopt_app_support_falls_back_to_lowercase_when_no_cask_match() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2474,6 +2493,7 @@ fn adopt_app_support_into_override_suppresses_hint() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2503,6 +2523,7 @@ fn adopt_xdg_lowercase_pack_emits_no_hint() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2529,7 +2550,7 @@ fn adopt_disagreeing_inferred_packs_refused() {
         env.home.join(".config/helix/config.toml"),
     ];
 
-    let err = commands::adopt::adopt(None, &sources, false, false, false, &ctx).unwrap_err();
+    let err = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap_err();
     let msg = format!("{err}");
     assert!(
         msg.contains("different packs"),
@@ -2554,6 +2575,7 @@ fn adopt_home_source_without_into_requires_pack() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2583,6 +2605,7 @@ fn adopt_already_adopted_source_is_skipped() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2630,6 +2653,7 @@ fn adopt_fully_managed_source_keeps_original_skip_message() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2766,6 +2790,7 @@ fn adopt_relative_path_with_curdir_normalizes() {
         false,
         false,
         false,
+        None,
         &ctx,
     );
     std::env::set_current_dir(prev_cwd).unwrap();
@@ -2793,6 +2818,7 @@ fn adopt_ignored_pack_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2820,6 +2846,7 @@ fn adopt_filename_matching_pack_ignore_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2853,6 +2880,7 @@ fn adopt_broken_pack_blocks_conflict_check() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2892,6 +2920,7 @@ fn adopt_deploy_conflict_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2926,6 +2955,7 @@ fn adopt_deploy_conflict_not_bypassed_by_force() {
         true, // --force should NOT bypass deploy conflicts
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2953,6 +2983,7 @@ fn adopt_dry_run_makes_no_changes() {
         false,
         false,
         true, // dry-run
+        None,
         &ctx,
     )
     .unwrap();
@@ -2986,6 +3017,7 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
         false,
         true, // --no-follow
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -3027,6 +3059,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
         true, // --force
         false,
         false,
+        None,
         &ctx,
     );
 
@@ -3077,6 +3110,7 @@ fn adopt_no_follow_on_dangling_symlink_succeeds() {
         false,
         true, // --no-follow
         false,
+        None,
         &ctx,
     )
     .expect("adopt with --no-follow on a dangling symlink should succeed");
@@ -3105,6 +3139,7 @@ fn adopt_nonexistent_source_errors() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -3119,7 +3154,8 @@ fn adopt_empty_sources_errors() {
         .done()
         .build();
     let ctx = make_ctx(&env);
-    let err = commands::adopt::adopt(Some("vim"), &[], false, false, false, &ctx).unwrap_err();
+    let err =
+        commands::adopt::adopt(Some("vim"), &[], false, false, false, None, &ctx).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("no files"), "got: {msg}");
 }
@@ -3255,6 +3291,7 @@ fn adopt_nonexistent_pack_returns_pack_not_found() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -5867,4 +5904,97 @@ fn pack_os_inactive_pack_emits_no_operations_in_up() {
     let result = commands::up::up(None, &ctx).unwrap();
     // No deployed pack rows.
     assert!(result.packs.is_empty(), "packs: {:?}", result.packs);
+}
+
+// ── C5: adopt --only-os ─────────────────────────────────────────
+
+#[test]
+fn adopt_only_os_wraps_file_in_gate_dir() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "set nocompatible")
+        .build();
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some("darwin"),
+        &ctx,
+    )
+    .unwrap();
+
+    // File is wrapped in `_darwin/` inside the pack — the in-pack
+    // path becomes `_darwin/home.vimrc`. On `dodot up`, the gate
+    // dir strips on darwin and the `home.X` prefix routes the file
+    // to ~/.vimrc.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("vim/_darwin/home.vimrc"),
+        "set nocompatible",
+    );
+    assert!(env.fs.is_symlink(&source));
+}
+
+#[test]
+fn adopt_only_os_unknown_label_errors() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "x")
+        .build();
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    let err = commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some("nonexistent-label"),
+        &ctx,
+    )
+    .unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("nonexistent-label"), "missing label: {msg}");
+    assert!(msg.contains("--only-os"), "missing flag: {msg}");
+}
+
+#[test]
+fn adopt_only_os_user_defined_label_works() {
+    // A user-defined label in root config is recognised by adopt.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "x")
+        .build();
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join(".dodot.toml"),
+            b"[gates]\nlaptop = { hostname = \"mbp\" }\n",
+        )
+        .unwrap();
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some("laptop"),
+        &ctx,
+    )
+    .unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("vim/_laptop/home.vimrc"), "x");
 }

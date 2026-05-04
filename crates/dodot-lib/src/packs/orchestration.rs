@@ -499,7 +499,14 @@ fn plan_pack_inner(
     // Phase 3: Merge and match rules. Reuse the gate table + host
     // facts from phase 1 so basename/dir gates see the same view.
     let all_entries = preprocess_result.merged_entries();
-    let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name, &gates, &host)?;
+    let mut matches = scanner.match_entries(
+        &all_entries,
+        &rules,
+        &pack.name,
+        &gates,
+        &host,
+        &pack_config.mappings.gates,
+    )?;
     debug!(pack = %pack.name, files = matches.len(), "matched rules");
 
     // Propagate preprocessor source info and in-memory rendered

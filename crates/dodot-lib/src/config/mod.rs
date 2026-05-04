@@ -521,6 +521,24 @@ pub struct MappingsSection {
         "COPYING", "COPYING.*",
     ])]
     pub skip: Vec<String>,
+
+    /// Glob-pattern → gate-label map. Each pack-relative path matched
+    /// by a glob inherits the named gate; failing predicates drop the
+    /// file the same way a filename suffix would. Useful for repos
+    /// that can't rename files.
+    ///
+    /// ```toml
+    /// [mappings.gates]
+    /// "install-mac.sh"  = "darwin"
+    /// "setup/*.sh"      = "linux"
+    /// ```
+    ///
+    /// A file that carries both a filename gate (`._<label>`) and a
+    /// matching `[mappings.gates]` entry is a hard error — same posture
+    /// as `[symlink.targets]` vs routing prefix conflict (one source
+    /// of truth). See `docs/proposals/conditional-running.lex` §6.1.
+    #[config(default = {})]
+    pub gates: std::collections::HashMap<String, String>,
 }
 
 // ── Conversions ─────────────────────────────────────────────────
@@ -914,6 +932,7 @@ homebrew = "RootBrewfile"
             homebrew: "Brewfile".into(),
             ignore: vec!["*.tmp".into()],
             skip: vec![],
+            gates: std::collections::HashMap::new(),
         };
 
         let rules = mappings_to_rules(&mappings);
@@ -950,6 +969,7 @@ homebrew = "RootBrewfile"
             homebrew: String::new(),
             ignore: vec![],
             skip: vec!["README".into(), "README.*".into(), "LICENSE".into()],
+            gates: std::collections::HashMap::new(),
         };
 
         let rules = mappings_to_rules(&mappings);
