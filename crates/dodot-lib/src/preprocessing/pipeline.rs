@@ -308,6 +308,19 @@ pub fn preprocess_pack(
 
     // Phase 1: Partition
     for entry in entries {
+        // Gate-failed entries (basename or directory-segment) must never
+        // reach the template engine. Route them straight to regular_entries
+        // so match_entries can emit the gate-handler match for status, but
+        // the preprocessor never sees them. Without this guard, a template
+        // like `aliases._linux.sh.tmpl` on a darwin host would be sent to
+        // MiniJinja, which triggers strict-undefined render failures,
+        // secret-provider calls, and baseline-cache writes — all of which
+        // the user opted out of by using a gate.
+        if entry.gate_failure.is_some() {
+            regular_entries.push(entry);
+            continue;
+        }
+
         let filename = entry
             .relative_path
             .file_name()

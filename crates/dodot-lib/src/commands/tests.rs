@@ -6005,21 +6005,24 @@ fn adopt_only_os_user_defined_label_works() {
 
 #[test]
 fn gate_failed_template_does_not_render_at_up() {
-    // Regression guard for review feedback on PR #135: a gate-failed
-    // template (e.g. `aliases._linux.sh.tmpl` on a darwin host) must
-    // NOT be expanded by the template preprocessor. Otherwise
-    // secret-provider calls and baseline-cache writes fire eagerly
-    // for entries the user explicitly opted out of via the gate.
+    // Regression guard: a gate-failed template (e.g.
+    // `aliases._linux.sh.tmpl` on a darwin host) must NOT be expanded by
+    // the template preprocessor. If the gate check ran AFTER preprocessing,
+    // MiniJinja would render the template and fire secret-provider calls and
+    // baseline-cache writes for entries the user explicitly opted out of.
     //
-    // We can't fake `target_os` from a test, but we can detect: on a
-    // darwin host, `aliases._linux.sh.tmpl` is gated out; on a linux
-    // host, `aliases._darwin.sh.tmpl` is. Either way, the
-    // gate-failed template's rendered output must not appear in the
-    // datastore, and the deployed shell-init link must not exist.
-    let (gated, _passing) = if cfg!(target_os = "macos") {
-        ("linux", "darwin")
+    // The "canary" template uses `{{ undefined_variable }}`. MiniJinja's
+    // strict-undefined mode turns any such reference into a render error.
+    // If the gate-failed template reaches the engine, the error propagates
+    // to the pack planner, which marks the whole pack as failed — meaning
+    // the co-located `home.profile` plain file would NOT be deployed either.
+    // So we add that plain file and assert it IS deployed. That proves:
+    //   a) pack planning succeeded (no template-render error killed it), and
+    //   b) the gated template's render output is absent from the datastore.
+    let gated = if cfg!(target_os = "macos") {
+        "linux"
     } else if cfg!(target_os = "linux") {
-        ("darwin", "linux")
+        "darwin"
     } else {
         return; // skip on unsupported hosts
     };
@@ -6027,27 +6030,35 @@ fn gate_failed_template_does_not_render_at_up() {
     let env = TempEnvironment::builder()
         .pack("p")
         .file(&template_name, "alias x={{ undefined_variable }}")
+        // A plain file in the same pack. If pack planning failed because
+        // the gate-failed template reached the engine, this file would NOT
+        // be deployed. Its presence after `up` proves planning succeeded.
+        .file("home.profile", "export PATH=$PATH:~/.local/bin")
         .done()
         .build();
 
     let ctx = make_ctx(&env);
-    // If the gate ran AFTER preprocessing, the template engine
-    // would attempt to render `{{ undefined_variable }}` and the
-    // strict-undefined render would fail the whole `up`. Gate
-    // first means the template never reaches the engine, and `up`
-    // succeeds (with an empty deploy for this pack).
     commands::up::up(None, &ctx).unwrap();
 
-    // No rendered output in the datastore.
+    // The plain file in the pack must be deployed — proving pack planning
+    // succeeded (a template-render error would have aborted the whole pack).
+    let profile_link = env.home.join(".profile");
+    assert!(
+        env.fs.exists(&profile_link),
+        "co-located plain file was not deployed; pack planning likely failed \
+         because the gated template still reached the template engine: {profile_link:?}"
+    );
+
+    // No rendered output for the gated template in the datastore.
     let preprocessed = ctx.paths.data_dir().join("packs/p/preprocessed/aliases.sh");
     assert!(
         !env.fs.exists(&preprocessed),
-        "gated-out template was rendered to {preprocessed:?}"
+        "gated-out template was rendered to datastore at {preprocessed:?}"
     );
-    // No shell stage link.
+    // No shell stage link for the gated template.
     let shell_link = ctx.paths.data_dir().join("packs/p/shell/aliases.sh");
     assert!(
         !env.fs.exists(&shell_link),
-        "gated-out template surfaced as a shell stage at {shell_link:?}"
+        "gated-out template surfaced as a shell-stage entry at {shell_link:?}"
     );
 }
