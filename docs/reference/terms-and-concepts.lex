@@ -84,3 +84,20 @@ Terms and Concepts
 
     `.dodot.toml`:
         Per-pack or root-level configuration. Overrides defaults for mappings, symlink targets, preprocessor settings, and more. Root config applies to all packs; pack config overrides root for that pack.
+
+7. Conditional Running
+
+    Gate:
+        A predicate that decides whether dodot deploys an entry on the current host. Five gate surfaces sit at three granularities: filename suffix `._<label>` (one file), directory segment `_<label>/` (one subtree), `[pack] os` (whole pack), `[mappings.gates]` glob (legacy escape hatch), and `dodot adopt --only-os` (round-trip). Gates that fail surface in `dodot status` as `gated out (<label>)`; gates that pass strip their suffix and proceed through normal handler dispatch.
+
+    Gate label:
+        An opaque token (e.g. `darwin`, `linux`, `arm-mac`, `laptop`) that names a host predicate. Labels resolve through a `GateTable` to a set of `(dimension, value)` equality checks AND-ed together. Built-ins ship for OS and arch; user-defined labels live under `[gates]` in `.dodot.toml`. Label names must match `[A-Za-z0-9_-]+` and must not collide with routing-prefix tokens (`home`/`xdg`/`app`/`lib`).
+
+    Gate table:
+        The resolved label → predicate map for a pack. Built-in seed (compiled defaults) layered with `[gates]` entries from root and pack `.dodot.toml`. User entries with the same name as a built-in replace the built-in's predicate wholesale (no per-dimension merging).
+
+    Gate failure:
+        A `RuleMatch` with `handler = "gate"` produced when an entry's predicate evaluates false on the current host. Carries diagnostic options (`gate_label`, `gate_predicate`, `gate_host`) that `dodot status` reads to render the "expected …; got …" footnote on the row.
+
+    Host facts:
+        Snapshot of the host's gate-relevant values (`os`, `arch`, `hostname`, `username`) — the `dodot.*` namespace's runtime view. Detected once per `ExecutionContext` and reused across all per-pack scans so `hostname(1)` doesn't fire repeatedly. The gate machinery shares its `detect_hostname` / `detect_username` with the template preprocessor so `dodot.hostname` agrees between the two paths.

@@ -13,6 +13,9 @@
 {% endif %}{% if group_mode == "status" %}{% if ignored_packs %}[group-banner-ignored]Ignored Packs[/group-banner-ignored]
 {% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
 {% endfor %}
+{% endif %}{% if inactive_packs %}[group-banner-ignored]Inactive on this OS[/group-banner-ignored]
+{% for name in inactive_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
+{% endfor %}
 {% endif %}{% set deployed_group = packs | selectattr("summary_status", "equalto", "deployed") | list %}{% if deployed_group %}[group-banner-deployed]Deployed Packs[/group-banner-deployed]
 {% for pack in deployed_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
 {% endif %}{% set pending_group = packs | selectattr("summary_status", "equalto", "pending") | list %}{% if pending_group %}[group-banner-pending]Pending Packs[/group-banner-pending]
@@ -21,6 +24,8 @@
 {% for pack in error_group %}{{ render_pack(pack, view_mode) }}{% endfor %}
 {% endif %}{% else %}{% for pack in packs %}{{ render_pack(pack, view_mode) }}{% endfor %}{% if ignored_packs %}[pack-name]Ignored Packs[/pack-name]
 {% for name in ignored_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
+{% endfor %}{% endif %}{% if inactive_packs %}[pack-name]Inactive on this OS[/pack-name]
+{% for name in inactive_packs %}  [ignored-pack]{{ name }}[/ignored-pack]
 {% endfor %}{% endif %}{% endif %}{% if notes %}
 [header]Errors:[/header]
 {% for note in notes %}  [dim][{{ loop.index }}][/dim] {{ note.body }}

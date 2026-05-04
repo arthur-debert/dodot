@@ -308,6 +308,19 @@ pub fn preprocess_pack(
 
     // Phase 1: Partition
     for entry in entries {
+        // Gate-failed entries (basename or directory-segment) must never
+        // reach the template engine. Route them straight to regular_entries
+        // so match_entries can emit the gate-handler match for status, but
+        // the preprocessor never sees them. Without this guard, a template
+        // like `aliases._linux.sh.tmpl` on a darwin host would be sent to
+        // MiniJinja, which triggers strict-undefined render failures,
+        // secret-provider calls, and baseline-cache writes — all of which
+        // the user opted out of by using a gate.
+        if entry.gate_failure.is_some() {
+            regular_entries.push(entry);
+            continue;
+        }
+
         let filename = entry
             .relative_path
             .file_name()
@@ -692,6 +705,7 @@ pub fn preprocess_pack(
                 relative_path: virtual_relative,
                 absolute_path: datastore_path,
                 is_dir: expanded.is_dir,
+                gate_failure: None,
             });
         }
     }
@@ -857,6 +871,7 @@ fn preprocess_pack_passive(
             relative_path: virtual_relative,
             absolute_path: datastore_path,
             is_dir: false,
+            gate_failure: None,
         });
     }
 
@@ -918,11 +933,13 @@ mod tests {
                 relative_path: "vimrc".into(),
                 absolute_path: env.dotfiles_root.join("vim/vimrc"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "gvimrc".into(),
                 absolute_path: env.dotfiles_root.join("vim/gvimrc"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -959,6 +976,7 @@ mod tests {
             relative_path: "config.toml.identity".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1009,11 +1027,13 @@ mod tests {
                 relative_path: "config.toml.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "readme.txt".into(),
                 absolute_path: env.dotfiles_root.join("app/readme.txt"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -1060,11 +1080,13 @@ mod tests {
                 relative_path: "config.toml.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "config.toml".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -1092,11 +1114,13 @@ mod tests {
                 relative_path: "zebra".into(),
                 absolute_path: "/z".into(),
                 is_dir: false,
+                gate_failure: None,
             }],
             virtual_entries: vec![PackEntry {
                 relative_path: "alpha".into(),
                 absolute_path: "/a".into(),
                 is_dir: false,
+                gate_failure: None,
             }],
             source_map: HashMap::new(),
             rendered_bytes: HashMap::new(),
@@ -1125,6 +1149,7 @@ mod tests {
             relative_path: "config.toml.identity".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1160,6 +1185,7 @@ mod tests {
             relative_path: "bin.identity".into(),
             absolute_path: env.dotfiles_root.join("app/bin.identity"),
             is_dir: true, // directory — should NOT be preprocessed
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1194,6 +1220,7 @@ mod tests {
             relative_path: "subdir/config.toml.identity".into(),
             absolute_path: env.dotfiles_root.join("app/subdir/config.toml.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1233,11 +1260,13 @@ mod tests {
                 relative_path: "config.toml.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "settings.json.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/settings.json.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -1284,6 +1313,7 @@ mod tests {
             relative_path: "only.conf.identity".into(),
             absolute_path: env.dotfiles_root.join("app/only.conf.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1322,16 +1352,19 @@ mod tests {
                 relative_path: "a.conf.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/a.conf.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "b.conf.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/b.conf.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "regular.txt".into(),
                 absolute_path: env.dotfiles_root.join("app/regular.txt"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -1382,6 +1415,7 @@ mod tests {
                 relative_path: "config.toml.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
                 is_dir: false,
+                gate_failure: None,
             }]
         };
 
@@ -1443,6 +1477,7 @@ mod tests {
             relative_path: "missing.conf.identity".into(),
             absolute_path: env.dotfiles_root.join("app/missing.conf.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -1487,11 +1522,13 @@ mod tests {
                 relative_path: "config.toml.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "config.toml.other".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.other"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -1530,6 +1567,7 @@ mod tests {
             relative_path: "sub/config.toml.identity".into(),
             absolute_path: env.dotfiles_root.join("app/sub/config.toml.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1586,11 +1624,13 @@ mod tests {
                 relative_path: "a/b.txt.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/a/b.txt.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
             PackEntry {
                 relative_path: "a__b.txt.identity".into(),
                 absolute_path: env.dotfiles_root.join("app/a__b.txt.identity"),
                 is_dir: false,
+                gate_failure: None,
             },
         ];
 
@@ -1712,6 +1752,7 @@ mod tests {
             relative_path: "bad.evil".into(),
             absolute_path: env.dotfiles_root.join("app/bad.evil"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -1770,6 +1811,7 @@ mod tests {
             relative_path: "secret.opaque".into(),
             absolute_path: env.dotfiles_root.join("app/secret.opaque"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         preprocess_pack(
@@ -1827,6 +1869,7 @@ mod tests {
             relative_path: "bad.evil".into(),
             absolute_path: env.dotfiles_root.join("app/bad.evil"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -1886,6 +1929,7 @@ mod tests {
             relative_path: "bundle.zz".into(),
             absolute_path: env.dotfiles_root.join("app/bundle.zz"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -1957,6 +2001,7 @@ mod tests {
             relative_path: "bad.zz".into(),
             absolute_path: env.dotfiles_root.join("app/bad.zz"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -2005,6 +2050,7 @@ mod tests {
             relative_path: "bad.zz".into(),
             absolute_path: env.dotfiles_root.join("app/bad.zz"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -2064,6 +2110,7 @@ mod tests {
             relative_path: "bundle.zz".into(),
             absolute_path: env.dotfiles_root.join("app/bundle.zz"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -2115,6 +2162,7 @@ mod tests {
             relative_path: "bundle.zz".into(),
             absolute_path: env.dotfiles_root.join("app/bundle.zz"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -2175,6 +2223,7 @@ mod tests {
             relative_path: "config.toml.tracked".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         preprocess_pack(
@@ -2247,6 +2296,7 @@ mod tests {
             relative_path: "config.toml.tracked".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         preprocess_pack(
@@ -2290,6 +2340,7 @@ mod tests {
             relative_path: "config.toml.identity".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.identity"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         preprocess_pack(
@@ -2350,6 +2401,7 @@ mod tests {
                 relative_path: "config.toml.tracked".into(),
                 absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
                 is_dir: false,
+                gate_failure: None,
             }]
         };
 
@@ -2436,6 +2488,7 @@ mod tests {
             relative_path: "greet.tmpl".into(),
             absolute_path: env.dotfiles_root.join("app/greet.tmpl"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         preprocess_pack(
@@ -2510,6 +2563,7 @@ mod tests {
             relative_path: "config.toml.tmpl".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tmpl"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -2599,6 +2653,7 @@ mod tests {
             relative_path: "data.scripted".into(),
             absolute_path: env.dotfiles_root.join("app/data.scripted"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let result = preprocess_pack(
@@ -2657,6 +2712,7 @@ mod tests {
             relative_path: "config.toml.tracked".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -2722,6 +2778,7 @@ mod tests {
             relative_path: "config.toml.tracked".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         // Should NOT error: the gate's lossy decode handles non-UTF-8
@@ -2787,6 +2844,7 @@ mod tests {
             relative_path: "config.toml.tracked".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tracked"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         let err = preprocess_pack(
@@ -2837,6 +2895,7 @@ mod tests {
             relative_path: "greet.tmpl".into(),
             absolute_path: env.dotfiles_root.join("app/greet.tmpl"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         // Round 1: clean source → success.
@@ -2928,6 +2987,7 @@ mod tests {
             relative_path: "config.toml.tmpl".into(),
             absolute_path: env.dotfiles_root.join(pack_name).join("config.toml.tmpl"),
             is_dir: false,
+            gate_failure: None,
         }];
 
         preprocess_pack(
@@ -3229,6 +3289,7 @@ mod tests {
             relative_path: "config.toml.tmpl".into(),
             absolute_path: env.dotfiles_root.join("app/config.toml.tmpl"),
             is_dir: false,
+            gate_failure: None,
         }];
         let result = preprocess_pack(
             entries,

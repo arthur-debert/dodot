@@ -88,6 +88,7 @@ fn make_ctx(env: &TempEnvironment) -> ExecutionContext {
         view_mode: crate::commands::ViewMode::Full,
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
+        host_facts: Arc::new(crate::gates::HostFacts::detect()),
     }
 }
 
@@ -115,6 +116,7 @@ fn make_ctx_with_runner(env: &TempEnvironment, runner: Arc<dyn CommandRunner>) -
         view_mode: crate::commands::ViewMode::Full,
         group_mode: crate::commands::GroupMode::Name,
         verbose: false,
+        host_facts: Arc::new(crate::gates::HostFacts::detect()),
     }
 }
 
@@ -1586,6 +1588,7 @@ fn adopt_moves_file_and_creates_symlink() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1632,6 +1635,7 @@ fn adopt_preserves_executable_permissions() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1665,6 +1669,7 @@ fn adopt_refuses_non_dotted_home_entry() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -1704,6 +1709,7 @@ fn adopt_destination_conflict_refused_without_force() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -1738,6 +1744,7 @@ fn adopt_destination_conflict_resolved_with_force() {
         true, // --force
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1771,6 +1778,7 @@ fn adopt_directory_creates_symlink_and_preserves_contents() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1808,6 +1816,7 @@ fn adopt_dotted_dir_from_home_round_trips_via_home_escape() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -1976,6 +1985,7 @@ fn adopt_preserves_inner_symlinks_as_symlinks() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2012,6 +2022,7 @@ fn adopt_xdg_nested_file_lands_at_pack_root() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2044,6 +2055,7 @@ fn adopt_xdg_source_infers_pack_and_auto_creates() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2075,6 +2087,7 @@ fn adopt_xdg_pack_root_directory_expands_to_children() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2112,6 +2125,7 @@ fn adopt_xdg_root_itself_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2147,6 +2161,7 @@ fn adopt_xdg_pack_root_expansion_with_override_uses_xdg_prefix() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2192,6 +2207,7 @@ fn adopt_xdg_with_into_override_uses_xdg_prefix() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2229,6 +2245,7 @@ fn adopt_app_support_source_round_trips_through_app_prefix() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2284,6 +2301,7 @@ fn adopt_app_support_pack_root_directory_expands_to_children() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2322,6 +2340,7 @@ fn adopt_app_support_emits_capitalization_hint() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2375,6 +2394,7 @@ fn adopt_app_support_reverse_dns_uses_cask_token_in_tip() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2430,6 +2450,7 @@ fn adopt_app_support_falls_back_to_lowercase_when_no_cask_match() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2474,6 +2495,7 @@ fn adopt_app_support_into_override_suppresses_hint() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2503,6 +2525,7 @@ fn adopt_xdg_lowercase_pack_emits_no_hint() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2529,7 +2552,7 @@ fn adopt_disagreeing_inferred_packs_refused() {
         env.home.join(".config/helix/config.toml"),
     ];
 
-    let err = commands::adopt::adopt(None, &sources, false, false, false, &ctx).unwrap_err();
+    let err = commands::adopt::adopt(None, &sources, false, false, false, None, &ctx).unwrap_err();
     let msg = format!("{err}");
     assert!(
         msg.contains("different packs"),
@@ -2554,6 +2577,7 @@ fn adopt_home_source_without_into_requires_pack() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2583,6 +2607,7 @@ fn adopt_already_adopted_source_is_skipped() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2630,6 +2655,7 @@ fn adopt_fully_managed_source_keeps_original_skip_message() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -2766,6 +2792,7 @@ fn adopt_relative_path_with_curdir_normalizes() {
         false,
         false,
         false,
+        None,
         &ctx,
     );
     std::env::set_current_dir(prev_cwd).unwrap();
@@ -2793,6 +2820,7 @@ fn adopt_ignored_pack_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2820,6 +2848,7 @@ fn adopt_filename_matching_pack_ignore_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2853,6 +2882,7 @@ fn adopt_broken_pack_blocks_conflict_check() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2892,6 +2922,7 @@ fn adopt_deploy_conflict_refused() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2926,6 +2957,7 @@ fn adopt_deploy_conflict_not_bypassed_by_force() {
         true, // --force should NOT bypass deploy conflicts
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -2953,6 +2985,7 @@ fn adopt_dry_run_makes_no_changes() {
         false,
         false,
         true, // dry-run
+        None,
         &ctx,
     )
     .unwrap();
@@ -2986,6 +3019,7 @@ fn adopt_no_follow_keeps_source_symlink_as_symlink() {
         false,
         true, // --no-follow
         false,
+        None,
         &ctx,
     )
     .unwrap();
@@ -3027,6 +3061,7 @@ fn adopt_force_preserves_old_content_when_copy_fails() {
         true, // --force
         false,
         false,
+        None,
         &ctx,
     );
 
@@ -3077,6 +3112,7 @@ fn adopt_no_follow_on_dangling_symlink_succeeds() {
         false,
         true, // --no-follow
         false,
+        None,
         &ctx,
     )
     .expect("adopt with --no-follow on a dangling symlink should succeed");
@@ -3105,6 +3141,7 @@ fn adopt_nonexistent_source_errors() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -3119,7 +3156,8 @@ fn adopt_empty_sources_errors() {
         .done()
         .build();
     let ctx = make_ctx(&env);
-    let err = commands::adopt::adopt(Some("vim"), &[], false, false, false, &ctx).unwrap_err();
+    let err =
+        commands::adopt::adopt(Some("vim"), &[], false, false, false, None, &ctx).unwrap_err();
     let msg = format!("{err}");
     assert!(msg.contains("no files"), "got: {msg}");
 }
@@ -3255,6 +3293,7 @@ fn adopt_nonexistent_pack_returns_pack_not_found() {
         false,
         false,
         false,
+        None,
         &ctx,
     )
     .unwrap_err();
@@ -5771,4 +5810,398 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         !hint_text.contains("isn't installed"),
         "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
     );
+}
+
+// ── C3: pack-level [pack] os ────────────────────────────────────
+
+#[test]
+fn pack_os_inactive_pack_surfaces_in_status() {
+    // Use an OS value that no real host reports as `dodot.os` so the
+    // test is portable across darwin and linux CI.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("mac-only")
+        .file("install.sh", "#!/bin/sh\necho mac")
+        .config("[pack]\nos = [\"nonexistent-os\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let active_pack_names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(active_pack_names, vec!["vim"]);
+
+    assert_eq!(
+        result.inactive_packs.len(),
+        1,
+        "{:?}",
+        result.inactive_packs
+    );
+    let entry = &result.inactive_packs[0];
+    assert!(entry.starts_with("mac-only"), "{entry}");
+    assert!(entry.contains("os=nonexistent-os"), "{entry}");
+    assert!(entry.contains("current="), "{entry}");
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("Inactive on this OS"), "output: {output}");
+    assert!(output.contains("mac-only"), "output: {output}");
+}
+
+#[test]
+fn pack_os_active_pack_runs_normally() {
+    // List several OSes including the current target_os values for
+    // both darwin and linux so this passes on either host.
+    let env = TempEnvironment::builder()
+        .pack("portable")
+        .file("vimrc", "x")
+        .config("[pack]\nos = [\"darwin\", \"linux\", \"windows\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let active_pack_names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(active_pack_names, vec!["portable"]);
+    assert!(result.inactive_packs.is_empty());
+}
+
+#[test]
+fn pack_os_macos_alias_matches_darwin_target() {
+    // On a darwin host, [pack] os = ["macos"] should match.
+    // Skip on non-darwin hosts since we can't fake target_os here.
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let env = TempEnvironment::builder()
+        .pack("mac")
+        .file("vimrc", "x")
+        .config("[pack]\nos = [\"macos\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+    let names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, vec!["mac"]);
+    assert!(result.inactive_packs.is_empty());
+}
+
+#[test]
+fn pack_os_inactive_pack_emits_no_operations_in_up() {
+    // `dodot up` on an inactive pack should produce a successful, empty
+    // PackResult — same shape `.dodotignore` would have if it reached
+    // the execute() loop.
+    let env = TempEnvironment::builder()
+        .pack("mac-only")
+        .file("Brewfile", "brew \"ripgrep\"")
+        .config("[pack]\nos = [\"nonexistent-os\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    // No deployed pack rows.
+    assert!(result.packs.is_empty(), "packs: {:?}", result.packs);
+}
+
+// ── C5: adopt --only-os ─────────────────────────────────────────
+
+#[test]
+fn adopt_only_os_wraps_file_in_gate_dir() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "set nocompatible")
+        .build();
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some("darwin"),
+        &ctx,
+    )
+    .unwrap();
+
+    // File is wrapped in `_darwin/` inside the pack — the in-pack
+    // path becomes `_darwin/home.vimrc`. On `dodot up`, the gate
+    // dir strips on darwin and the `home.X` prefix routes the file
+    // to ~/.vimrc.
+    env.assert_regular_file(
+        &env.dotfiles_root.join("vim/_darwin/home.vimrc"),
+        "set nocompatible",
+    );
+    assert!(env.fs.is_symlink(&source));
+}
+
+#[test]
+fn adopt_only_os_unknown_label_errors() {
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "x")
+        .build();
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    let err = commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some("nonexistent-label"),
+        &ctx,
+    )
+    .unwrap_err();
+    let msg = format!("{err}");
+    assert!(msg.contains("nonexistent-label"), "missing label: {msg}");
+    assert!(msg.contains("--only-os"), "missing flag: {msg}");
+}
+
+#[test]
+fn adopt_only_os_user_defined_label_works() {
+    // A user-defined label in root config is recognised by adopt.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("placeholder", "")
+        .done()
+        .home_file(".vimrc", "x")
+        .build();
+    env.fs
+        .write_file(
+            &env.dotfiles_root.join(".dodot.toml"),
+            b"[gates]\nlaptop = { hostname = \"mbp\" }\n",
+        )
+        .unwrap();
+    let ctx = make_ctx(&env);
+    let source = env.home.join(".vimrc");
+
+    commands::adopt::adopt(
+        Some("vim"),
+        std::slice::from_ref(&source),
+        false,
+        false,
+        false,
+        Some("laptop"),
+        &ctx,
+    )
+    .unwrap();
+
+    env.assert_regular_file(&env.dotfiles_root.join("vim/_laptop/home.vimrc"), "x");
+}
+
+// ── Gate-before-preprocess regression ───────────────────────────
+
+#[test]
+fn gate_failed_template_does_not_render_at_up() {
+    // Regression guard: a gate-failed template (e.g.
+    // `aliases._linux.sh.tmpl` on a darwin host) must NOT be expanded by
+    // the template preprocessor. If the gate check ran AFTER preprocessing,
+    // MiniJinja would render the template and fire secret-provider calls and
+    // baseline-cache writes for entries the user explicitly opted out of.
+    //
+    // Two independent assertions, each catching a distinct failure mode:
+    //
+    // 1. **Functional**: the template uses `{{ undefined_variable }}`,
+    //    a strict-undefined error if MiniJinja runs. If the gate-failed
+    //    template reaches the engine, pack planning fails and the
+    //    co-located `home.profile` plain file is NOT deployed. Asserting
+    //    `~/.profile` exists after `up` proves planning succeeded.
+    //
+    // 2. **Side-effect**: even if planning happened to succeed somehow,
+    //    a render would write a baseline-cache JSON under
+    //    `<cache_dir>/preprocessor/p/template/`. Its absence proves the
+    //    engine never fired.
+    let gated = if cfg!(target_os = "macos") {
+        "linux"
+    } else if cfg!(target_os = "linux") {
+        "darwin"
+    } else {
+        return; // skip on unsupported hosts
+    };
+    let template_name = format!("aliases._{gated}.sh.tmpl");
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file(&template_name, "alias x={{ undefined_variable }}")
+        // Co-located plain file. Its deployment proves pack planning
+        // didn't abort because of the gated template.
+        .file("home.profile", "export PATH=$PATH:~/.local/bin")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // (1) The plain file must be deployed.
+    let profile_link = env.home.join(".profile");
+    assert!(
+        env.fs.exists(&profile_link),
+        "co-located plain file was not deployed; pack planning likely failed \
+         because the gated template still reached the template engine: {profile_link:?}"
+    );
+
+    // (2) No baseline cache for the gated source.
+    let baseline_dir = ctx.paths.cache_dir().join("preprocessor/p/template");
+    if env.fs.exists(&baseline_dir) {
+        let baselines = env.fs.read_dir(&baseline_dir).unwrap_or_default();
+        assert!(
+            baselines.is_empty(),
+            "preprocessor wrote {} baseline file(s) for a gated-out template: {:?}",
+            baselines.len(),
+            baselines.iter().map(|e| e.name.clone()).collect::<Vec<_>>()
+        );
+    }
+
+    // No rendered output in the preprocessed dir for the gated template.
+    let preprocessed = ctx.paths.data_dir().join("packs/p/preprocessed/aliases.sh");
+    assert!(
+        !env.fs.exists(&preprocessed),
+        "gated-out template was rendered to datastore at {preprocessed:?}"
+    );
+    // And no shell stage link.
+    let shell_link = ctx.paths.data_dir().join("packs/p/shell/aliases.sh");
+    assert!(
+        !env.fs.exists(&shell_link),
+        "gated-out template surfaced as a shell-stage entry at {shell_link:?}"
+    );
+}
+
+#[test]
+fn up_catches_mappings_gates_filename_conflict() {
+    // Round-2 review feedback (orchestration.rs:637): the `up` path
+    // strips basename gates BEFORE match_entries, so the
+    // [mappings.gates] vs filename-gate conflict needs to fire in
+    // filter_basename_gates rather than match_entries. Without the
+    // fix, this combination would silently pass through `up`.
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file("install._darwin.sh", "echo x")
+        .config("[mappings.gates]\n\"install._darwin.sh\" = \"linux\"\n")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("gate-routing conflict"), "msg: {msg}");
+    assert!(msg.contains("install._darwin.sh"), "msg: {msg}");
+}
+
+#[test]
+fn up_rejects_invalid_mappings_gates_glob() {
+    // Round-2 review feedback (rules/mod.rs:387): invalid glob
+    // patterns in [mappings.gates] used to be silently dropped via
+    // `.ok()`. They now hard-error so a typo is loud, not silent.
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file("vimrc", "x")
+        .config("[mappings.gates]\n\"[unclosed\" = \"darwin\"\n")
+        .done()
+        .build();
+    let ctx = make_ctx(&env);
+    let err = commands::up::up(None, &ctx).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("invalid `[mappings.gates]` glob"),
+        "msg: {msg}"
+    );
+}
+
+#[test]
+fn status_surfaces_gated_template_under_original_name() {
+    // Round-3 review feedback (status.rs:545): without pre-preprocess
+    // gate filtering in the status path, a gated template would get
+    // partitioned by `preprocess_pack` and replaced by a virtual
+    // entry whose path is the *stripped* virtual name (e.g.
+    // `aliases.sh`), losing the on-disk source name (`aliases._linux.sh.tmpl`).
+    // status would then show the virtual name with no indication it
+    // was gated.
+    let gated = if cfg!(target_os = "macos") {
+        "linux"
+    } else if cfg!(target_os = "linux") {
+        "darwin"
+    } else {
+        return;
+    };
+    let template_name = format!("aliases._{gated}.sh.tmpl");
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file(&template_name, "alias x=y\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+    assert_eq!(result.packs.len(), 1);
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1, "files: {files:?}");
+    let row = &files[0];
+    // The status row must surface under the *source* filename so the
+    // user can find the file and the gate that dropped it. If
+    // preprocessing fired, the row would name the rendered virtual
+    // path instead.
+    assert_eq!(
+        row.name, template_name,
+        "expected source filename in row, not a preprocessed virtual name"
+    );
+    assert_eq!(row.handler, "gate", "row.handler: {}", row.handler);
+}
+
+#[test]
+fn up_skips_mappings_gated_template() {
+    // Round-3 review feedback (orchestration.rs:645): a
+    // `[mappings.gates]`-gated template must not reach the
+    // preprocessor. Like the basename-gate regression, we use a
+    // template that would error if rendered to prove the engine
+    // never fired.
+    let gated = if cfg!(target_os = "macos") {
+        "linux"
+    } else if cfg!(target_os = "linux") {
+        "darwin"
+    } else {
+        return;
+    };
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file("aliases.sh.tmpl", "alias x={{ undefined_variable }}")
+        .file("home.profile", "export PATH=$PATH:~/.local/bin")
+        .config(&format!(
+            "[mappings.gates]\n\"aliases.sh.tmpl\" = \"{gated}\"\n"
+        ))
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Plain co-located file deployed → pack planning succeeded.
+    let profile_link = env.home.join(".profile");
+    assert!(
+        env.fs.exists(&profile_link),
+        "co-located plain file was not deployed; mapping-gated template \
+         likely reached the engine: {profile_link:?}"
+    );
+
+    // No baseline cache for the gated template.
+    let baseline_dir = ctx.paths.cache_dir().join("preprocessor/p/template");
+    if env.fs.exists(&baseline_dir) {
+        let baselines = env.fs.read_dir(&baseline_dir).unwrap_or_default();
+        assert!(
+            baselines.is_empty(),
+            "preprocessor wrote {} baseline file(s) for a mapping-gated template: {:?}",
+            baselines.len(),
+            baselines.iter().map(|e| e.name.clone()).collect::<Vec<_>>()
+        );
+    }
 }

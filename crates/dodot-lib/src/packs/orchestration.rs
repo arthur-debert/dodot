@@ -13,6 +13,7 @@ use crate::config::ConfigManager;
 use crate::datastore::DataStore;
 use crate::execution::Executor;
 use crate::fs::Fs;
+use crate::gates::{GateTable, HostFacts};
 use crate::handlers;
 use crate::operations::OperationResult;
 use crate::packs::{self, Pack};
@@ -61,6 +62,11 @@ pub struct ExecutionContext {
     /// comment block of each script are surfaced. Wired from the CLI
     /// global `--verbose`/`--debug` flag.
     pub verbose: bool,
+    /// Snapshot of the host's gate-relevant facts (os, arch, hostname,
+    /// username). Detected once per context so per-pack scanning and
+    /// matching avoid re-running `hostname(1)`/env reads. Constructed
+    /// by [`Self::production`]; tests build via `HostFacts::for_tests`.
+    pub host_facts: Arc<HostFacts>,
 }
 
 impl ExecutionContext {
@@ -128,6 +134,7 @@ impl ExecutionContext {
             view_mode: crate::commands::ViewMode::default(),
             group_mode: crate::commands::GroupMode::default(),
             verbose,
+            host_facts: Arc::new(HostFacts::detect()),
         })
     }
 }
@@ -220,15 +227,17 @@ pub fn execute(
     let mut pack_results = Vec::with_capacity(total_packs);
     let mut successful = 0;
     let mut failed = 0;
+    let host = ctx.host_facts.as_ref();
 
     for mut pack in all_packs {
         info!(pack = %pack.name, "processing pack");
 
         // Load pack-specific merged config
-        match ctx.config_manager.config_for_pack(&pack.path) {
+        let pack_config = match ctx.config_manager.config_for_pack(&pack.path) {
             Ok(pack_config) => {
                 debug!(pack = %pack.name, "loaded pack config");
                 pack.config = pack_config.to_handler_config();
+                pack_config
             }
             Err(e) => {
                 info!(pack = %pack.name, error = %e, "pack config error, skipping");
@@ -241,6 +250,27 @@ pub fn execute(
                 });
                 continue;
             }
+        };
+
+        // C3: skip packs gated out by `[pack] os` on this host. Counted
+        // as successful (it's the configured behaviour, not a failure)
+        // with no operations — same shape `.dodotignore` would have if
+        // it reached this loop.
+        if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
+            debug!(
+                pack = %pack.name,
+                allowed = ?pack_config.pack.os,
+                current_os = %host.os,
+                "pack inactive on this OS, skipping"
+            );
+            successful += 1;
+            pack_results.push(PackResult {
+                pack_name: pack.name.clone(),
+                success: true,
+                operations: Vec::new(),
+                error: None,
+            });
+            continue;
         }
 
         match command.execute_for_pack(&pack, ctx) {
@@ -407,6 +437,170 @@ pub fn plan_pack(
 /// entrypoints load the config once and pass it through so we don't
 /// re-merge config for every pack (the ConfigManager caches by path,
 /// but passing the config explicitly makes the data flow obvious).
+/// Resolve the gate table for a pack: built-in seed plus any
+/// user-defined `[gates]` entries from config.
+fn build_gate_table(pack_config: &crate::config::DodotConfig) -> Result<GateTable> {
+    let mut table = GateTable::with_builtins();
+    if !pack_config.gates.is_empty() {
+        table.merge_user(&pack_config.gates)?;
+    }
+    Ok(table)
+}
+
+/// Apply pre-preprocess gate evaluation to a freshly-walked entry list.
+///
+/// Three gate sources are evaluated here, all *before* `preprocess_pack`
+/// runs:
+///
+/// - **Directory-segment gates** (`_<label>/`) — already done by
+///   `walk_pack`; entries arriving with `gate_failure: Some(...)` pass
+///   through untouched.
+/// - **Basename gates** (`<stem>._<label>.<ext>`) — parsed here,
+///   passing-suffixed entries get their `relative_path` rewritten to
+///   the stripped form so the preprocessor sees `aliases.sh.tmpl` (not
+///   `aliases._darwin.sh.tmpl`); failing entries flip to
+///   `gate_failure: Some(...)`.
+/// - **`[mappings.gates]` glob → label** — globs evaluated here so a
+///   mapping-gated template/secret-bearing file never reaches the
+///   preprocessor either. Same flag-as-`gate_failure` flow.
+///
+/// Why all three at this layer: preprocessing fires render +
+/// secret-provider + baseline-cache work on every preprocessor-shaped
+/// file. If any gate evaluation only happened post-preprocess, a
+/// gated-out template still triggers all of that for an entry the
+/// user explicitly opted out of. Putting all three here keeps gates
+/// honest about "predicate false ⇒ no work."
+///
+/// A file carrying both a filename gate AND a matching
+/// `[mappings.gates]` entry is a hard error (one source of truth).
+pub(crate) fn filter_pre_preprocess_gates(
+    entries: Vec<crate::rules::PackEntry>,
+    gates: &GateTable,
+    host: &HostFacts,
+    pack_name: &str,
+    mappings_gates: &std::collections::HashMap<String, String>,
+) -> Result<Vec<crate::rules::PackEntry>> {
+    use crate::gates::{parse_basename_gate, BasenameGate};
+    use crate::rules::GateFailure;
+
+    // Pre-compile + sort + validate `[mappings.gates]` globs via the
+    // shared helper so this path and `match_entries` can never disagree
+    // about iteration order, validation, or first-match semantics. See
+    // `gates::compile_mapping_gates`.
+    let compiled_mapping_gates = crate::gates::compile_mapping_gates(mappings_gates, pack_name)?;
+
+    // Helper: build a GateFailure from a label + predicate, summarising
+    // the host facts the predicate cares about. Shared between the
+    // basename-fail and mapping-fail branches. Same compact shape as
+    // `GatePredicate::describe` so the status footnote can render
+    // both sides uniformly.
+    let make_failure = |label: &str, pred: &crate::gates::GatePredicate| -> GateFailure {
+        let host_desc: Vec<String> = pred
+            .matchers
+            .iter()
+            .map(|(dim, _)| {
+                let actual = host.get(*dim).unwrap_or("<unset>");
+                format!("{}={}", dim.as_str(), actual)
+            })
+            .collect();
+        GateFailure {
+            label: label.to_string(),
+            predicate: pred.describe(),
+            host: host_desc.join(", "),
+        }
+    };
+
+    let mut out = Vec::with_capacity(entries.len());
+    for entry in entries {
+        // Already-failed entries (from the directory-segment walk)
+        // pass through untouched.
+        if entry.gate_failure.is_some() {
+            out.push(entry);
+            continue;
+        }
+
+        let filename = entry
+            .relative_path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let basename_gate = parse_basename_gate(&filename);
+        // Forward-slash-normalised path so Windows backslashes
+        // don't break globs written with `/` in config and docs.
+        let rel_str = crate::gates::rel_path_for_glob(&entry.relative_path);
+        let mapping_match: Option<&str> = compiled_mapping_gates
+            .iter()
+            .find(|(pat, _)| pat.matches(&rel_str))
+            .map(|(_, label)| *label);
+
+        // Conflict guard: filename gate AND `[mappings.gates]` on the
+        // same file is ambiguous — pick one.
+        if let (BasenameGate::Found { .. }, Some(map_label)) = (&basename_gate, mapping_match) {
+            return Err(crate::DodotError::Config(format!(
+                "gate-routing conflict in pack `{pack_name}` for `{}`: \
+                 file carries both a filename gate token (`._<label>`) \
+                 and a `[mappings.gates]` entry (`{map_label}`). \
+                 Pick one — either rename the file (drop the suffix) \
+                 or remove the `[mappings.gates]` entry.",
+                entry.relative_path.display()
+            )));
+        }
+
+        match basename_gate {
+            BasenameGate::Found { label, stripped } => {
+                let pred = gates.lookup(label).ok_or_else(|| {
+                    crate::DodotError::Config(format!(
+                        "unknown gate label `{label}` in pack `{pack_name}`, file `{}`: \
+                         label is not in the built-in seed and not defined in [gates]. \
+                         Built-ins: darwin, linux, macos, arm64, aarch64, x86_64.",
+                        entry.relative_path.display()
+                    ))
+                })?;
+                if pred.matches(host) {
+                    let stripped_rel = entry.relative_path.with_file_name(&stripped);
+                    out.push(crate::rules::PackEntry {
+                        relative_path: stripped_rel,
+                        absolute_path: entry.absolute_path,
+                        is_dir: entry.is_dir,
+                        gate_failure: None,
+                    });
+                } else {
+                    out.push(crate::rules::PackEntry {
+                        relative_path: entry.relative_path,
+                        absolute_path: entry.absolute_path,
+                        is_dir: entry.is_dir,
+                        gate_failure: Some(make_failure(label, pred)),
+                    });
+                }
+            }
+            BasenameGate::None => {
+                if let Some(map_label) = mapping_match {
+                    let pred = gates.lookup(map_label).ok_or_else(|| {
+                        crate::DodotError::Config(format!(
+                            "unknown gate label `{map_label}` referenced from \
+                             `[mappings.gates]` in pack `{pack_name}`: label is \
+                             not in the built-in seed and not defined in [gates]."
+                        ))
+                    })?;
+                    if pred.matches(host) {
+                        out.push(entry);
+                    } else {
+                        out.push(crate::rules::PackEntry {
+                            relative_path: entry.relative_path,
+                            absolute_path: entry.absolute_path,
+                            is_dir: entry.is_dir,
+                            gate_failure: Some(make_failure(map_label, pred)),
+                        });
+                    }
+                } else {
+                    out.push(entry);
+                }
+            }
+        }
+    }
+    Ok(out)
+}
+
 fn collect_pack_intents_inner(
     pack: &Pack,
     ctx: &ExecutionContext,
@@ -434,11 +628,48 @@ fn plan_pack_inner(
     mode: crate::preprocessing::PreprocessMode,
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
+    let gates = build_gate_table(pack_config)?;
+    let host = ctx.host_facts.as_ref();
 
-    // Phase 1: Walk pack directory
+    // [pack] os gate — short-circuit inactive packs. Without this,
+    // intent collection still runs for packs the host doesn't deploy,
+    // which can hit cross-pack conflict detection or trigger
+    // preprocessor side-effects (template render, secret-provider
+    // calls) that the user explicitly opted out of via `[pack] os`.
+    if !crate::gates::pack_os_active(&pack_config.pack.os, host) {
+        debug!(
+            pack = %pack.name,
+            allowed = ?pack_config.pack.os,
+            current_os = %host.os,
+            "pack inactive on this OS, returning empty plan"
+        );
+        return Ok(PackPlan {
+            intents: Vec::new(),
+            warnings: Vec::new(),
+        });
+    }
+
+    // Phase 1: Walk pack directory. The walk handles directory-segment
+    // gates (`_<label>/`) — passing gates expand transparently, failing
+    // gates surface as PackEntry { gate_failure: Some(...) }.
     let scanner = Scanner::new(ctx.fs.as_ref());
-    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
+
+    // Phase 1.5: Apply all gate sources (basename `._<label>` AND
+    // `[mappings.gates]` glob hits) BEFORE preprocessing. Otherwise a
+    // gate-failed `aliases._linux.sh.tmpl` (or a mapping-gated
+    // `Brewfile`) on a non-matching host still triggers template
+    // render / secret-provider / baseline-cache work for an entry the
+    // user explicitly opted out of. match_entries re-evaluates these
+    // gates so the failure also surfaces as a `gate`-handler match.
+    let entries = filter_pre_preprocess_gates(
+        entries,
+        &gates,
+        host,
+        &pack.name,
+        &pack_config.mappings.gates,
+    )?;
 
     // Phase 2: Preprocessing
     let preprocess_result = if let Some(registry) = preprocessors {
@@ -460,9 +691,20 @@ fn plan_pack_inner(
         crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
     };
 
-    // Phase 3: Merge and match rules
+    // Phase 3: Merge and match rules. Reuse the gate table + host
+    // facts from phase 1 so basename/dir gates see the same view.
+    // (Failed basename gates were already converted to gate-handler
+    // matches in phase 1.5; match_entries sees them as gate_failure
+    // entries and re-emits them.)
     let all_entries = preprocess_result.merged_entries();
-    let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name);
+    let mut matches = scanner.match_entries(
+        &all_entries,
+        &rules,
+        &pack.name,
+        &gates,
+        host,
+        &pack_config.mappings.gates,
+    )?;
     debug!(pack = %pack.name, files = matches.len(), "matched rules");
 
     // Propagate preprocessor source info and in-memory rendered
@@ -847,6 +1089,7 @@ mod tests {
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
+            host_facts: Arc::new(crate::gates::HostFacts::detect()),
         }
     }
 
@@ -1089,6 +1332,7 @@ mod tests {
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
+            host_facts: Arc::new(crate::gates::HostFacts::detect()),
         };
 
         let result = execute(&TestUpCommand, None, &ctx).unwrap();

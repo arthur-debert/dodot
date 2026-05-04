@@ -52,6 +52,7 @@ pub fn handler_symbol(handler: &str) -> &'static str {
         "homebrew" => "⚙",
         "install" => "×",
         "skip" => "·",
+        "gate" => "·",
         _ => "?",
     }
 }
@@ -84,6 +85,7 @@ pub fn handler_description(handler: &str, rel_path: &str, user_target: Option<&s
         "install" => "run script".into(),
         "homebrew" => "brew install".into(),
         "skip" => "not deployed".into(),
+        "gate" => "not deployed".into(),
         _ => String::new(),
     }
 }
@@ -281,6 +283,13 @@ pub struct PackStatusResult {
     /// baffled when a directory they expected doesn't appear.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ignored_packs: Vec<String>,
+    /// Packs gated out by `[pack] os` on the current host. Each entry
+    /// is a pre-formatted display string (e.g. `"mac-tools (os=darwin,
+    /// current=linux)"`) so the template renders them under their own
+    /// heading without needing a typed structure. See
+    /// `docs/proposals/conditional-running.lex` §5.3.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub inactive_packs: Vec<String>,
     /// `"full"` (default) shows per-file listing; `"short"` collapses
     /// each pack to a single summary line.
     pub view_mode: String,

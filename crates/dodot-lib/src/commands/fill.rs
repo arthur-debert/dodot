@@ -165,6 +165,7 @@ mod tests {
             view_mode: crate::commands::ViewMode::Full,
             group_mode: crate::commands::GroupMode::Name,
             verbose: false,
+            host_facts: Arc::new(crate::gates::HostFacts::detect()),
         }
     }
 

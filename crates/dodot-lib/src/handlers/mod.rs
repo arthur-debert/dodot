@@ -11,6 +11,7 @@
 //! job. This keeps planning idempotent and safe to re-run.
 
 pub mod filter;
+pub mod gate;
 pub mod homebrew;
 pub mod install;
 pub mod path;
@@ -284,6 +285,7 @@ pub const HANDLER_INSTALL: &str = "install";
 pub const HANDLER_HOMEBREW: &str = "homebrew";
 pub const HANDLER_IGNORE: &str = "ignore";
 pub const HANDLER_SKIP: &str = "skip";
+pub const HANDLER_GATE: &str = "gate";
 
 /// Names of all configuration-category handlers in the registry.
 ///
@@ -313,6 +315,7 @@ pub fn create_registry(fs: &dyn Fs) -> HashMap<String, Box<dyn Handler + '_>> {
     let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
     registry.insert(HANDLER_IGNORE.into(), Box::new(filter::IgnoreHandler));
     registry.insert(HANDLER_SKIP.into(), Box::new(filter::SkipHandler));
+    registry.insert(HANDLER_GATE.into(), Box::new(gate::GateHandler));
     registry.insert(HANDLER_SYMLINK.into(), Box::new(symlink::SymlinkHandler));
     registry.insert(HANDLER_SHELL.into(), Box::new(shell::ShellHandler));
     registry.insert(HANDLER_PATH.into(), Box::new(path::PathHandler));
@@ -417,6 +420,7 @@ mod tests {
         let registry = create_registry(&fs);
         assert_eq!(registry[HANDLER_IGNORE].phase(), ExecutionPhase::Filter);
         assert_eq!(registry[HANDLER_SKIP].phase(), ExecutionPhase::Filter);
+        assert_eq!(registry[HANDLER_GATE].phase(), ExecutionPhase::Filter);
         assert_eq!(
             registry[HANDLER_HOMEBREW].phase(),
             ExecutionPhase::Provision

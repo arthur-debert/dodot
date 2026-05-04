@@ -46,6 +46,28 @@ pub struct DodotConfig {
 
     #[config(nested)]
     pub secret: SecretSection,
+
+    /// User-defined gate labels.
+    ///
+    /// Each entry maps a label name to a table of `(dimension, value)`
+    /// equality checks AND-ed together. For example:
+    ///
+    /// ```toml
+    /// [gates]
+    /// laptop  = { hostname = "mbp-arthur" }
+    /// arm-mac = { os = "darwin", arch = "aarch64" }
+    /// ```
+    ///
+    /// Labels here merge over the built-in seed (`darwin`, `linux`,
+    /// `macos`, `arm64`, `aarch64`, `x86_64`). User entries with the
+    /// same name as a built-in shadow the built-in.
+    ///
+    /// Recognised dimensions: `os`, `arch`, `hostname`, `username`.
+    /// Unknown dimensions or empty values are a hard error at config
+    /// load time. See [`crate::gates`] and the conditional-running
+    /// proposal in `docs/proposals/`.
+    #[config(default = {})]
+    pub gates: std::collections::HashMap<String, std::collections::HashMap<String, String>>,
 }
 
 /// Pack-level settings.
@@ -58,6 +80,19 @@ pub struct PackSection {
         "*.swp", "*~", "#*#", ".env*", ".terraform"
     ])]
     pub ignore: Vec<String>,
+
+    /// Operating systems on which this pack should run. Empty list (the
+    /// default) means "all OSes" — today's behaviour. When set, the
+    /// pack is short-circuited at scan time on hosts whose OS is not
+    /// in the list, surfacing in `dodot status` as `inactive (os=...)`.
+    ///
+    /// Values are compared against `dodot.os`, with the alias
+    /// `macos = darwin`. Other values pass through unchanged. Only
+    /// meaningful at the pack level — root-level `[pack] os` would
+    /// gate every pack, so the resolver rejects it (see
+    /// `docs/proposals/conditional-running.lex` §5.3).
+    #[config(default = [])]
+    pub os: Vec<String>,
 }
 
 /// Symlink handler settings.
@@ -486,6 +521,37 @@ pub struct MappingsSection {
         "COPYING", "COPYING.*",
     ])]
     pub skip: Vec<String>,
+
+    /// Glob-pattern → gate-label map. Each pack-relative path matched
+    /// by a glob inherits the named gate; failing predicates drop the
+    /// file the same way a filename suffix would. Useful for repos
+    /// that can't rename files.
+    ///
+    /// ```toml
+    /// [mappings.gates]
+    /// "install-mac.sh"  = "darwin"
+    /// "Brewfile"        = "darwin"
+    /// ```
+    ///
+    /// **Scope**: glob patterns match the top-level entries the scanner
+    /// surfaces (depth-1 of the pack root) — the same shape every
+    /// other rule grammar matches against. Globs containing path
+    /// separators (`"setup/*.sh"`) match only when the corresponding
+    /// top-level dir is what the scanner returns; the symlink handler's
+    /// nested recursion is intentionally gate-unaware (same posture as
+    /// directory-segment gates inside routing prefixes — see
+    /// `docs/proposals/conditional-running.lex` §8.8).
+    ///
+    /// **Conflict guard**: a file that carries both a filename gate
+    /// (`._<label>`) and a matching `[mappings.gates]` entry is a
+    /// hard error — one source of truth. The check fires in both the
+    /// `up` and `status` paths.
+    ///
+    /// **Determinism**: when multiple globs match a single file, the
+    /// first match wins under lexicographic pattern order. Invalid
+    /// glob patterns are a hard error at scan time.
+    #[config(default = {})]
+    pub gates: std::collections::HashMap<String, String>,
 }
 
 // ── Conversions ─────────────────────────────────────────────────
@@ -654,10 +720,25 @@ impl ConfigManager {
     }
 
     /// Load the root-level configuration (no pack override).
+    ///
+    /// Rejects root-level `[pack] os` since gating every pack from
+    /// the root would silently neutralise the dotfiles repo for
+    /// hosts not in the list — almost always a misconfiguration.
+    /// `[pack] os` is meaningful at pack-level only.
     pub fn root_config(&self) -> Result<DodotConfig> {
-        self.resolver
+        let cfg = self
+            .resolver
             .resolve_at(&self.dotfiles_root)
-            .map_err(|e| DodotError::Config(format!("failed to load root config: {e}")))
+            .map_err(|e| DodotError::Config(format!("failed to load root config: {e}")))?;
+        if !cfg.pack.os.is_empty() {
+            return Err(DodotError::Config(format!(
+                "root-level `[pack] os` is not allowed (found `os = {:?}` in \
+                 the root .dodot.toml). `[pack] os` is a pack-level key — \
+                 move it into the specific pack's .dodot.toml.",
+                cfg.pack.os
+            )));
+        }
+        Ok(cfg)
     }
 
     /// Load merged configuration for a specific pack.
@@ -879,6 +960,7 @@ homebrew = "RootBrewfile"
             homebrew: "Brewfile".into(),
             ignore: vec!["*.tmp".into()],
             skip: vec![],
+            gates: std::collections::HashMap::new(),
         };
 
         let rules = mappings_to_rules(&mappings);
@@ -915,6 +997,7 @@ homebrew = "RootBrewfile"
             homebrew: String::new(),
             ignore: vec![],
             skip: vec!["README".into(), "README.*".into(), "LICENSE".into()],
+            gates: std::collections::HashMap::new(),
         };
 
         let rules = mappings_to_rules(&mappings);
@@ -1011,5 +1094,30 @@ warp = "dev.warp.Warp-Stable"
             cfg.symlink.app_aliases.get("warp").map(String::as_str),
             Some("dev.warp.Warp-Stable")
         );
+    }
+
+    #[test]
+    fn root_config_rejects_pack_os() {
+        // `[pack] os` at root level would gate every pack against the
+        // current host — almost always a misconfiguration. The
+        // resolver refuses to load such a root config rather than
+        // silently neutralising the dotfiles repo.
+        let env = TempEnvironment::builder().build();
+        env.fs
+            .write_file(
+                &env.dotfiles_root.join(".dodot.toml"),
+                br#"
+[pack]
+os = ["darwin"]
+"#,
+            )
+            .unwrap();
+
+        let mgr = ConfigManager::new(&env.dotfiles_root).unwrap();
+        let err = mgr.root_config().unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("root-level"), "missing reason: {msg}");
+        assert!(msg.contains("[pack] os"), "missing key: {msg}");
+        assert!(msg.contains("darwin"), "missing offending value: {msg}");
     }
 }

@@ -1,6 +1,6 @@
 Handlers
 
-    This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, see [./../user/handlers.md]. For the conceptual overview of how handlers fit between rules and execution, see [./../reference/handlers.lex].
+    This document is the contributor reference for the handler subsystem: the trait, the classification axes, the execution-order machinery, the data layout each handler writes to the datastore, and the registry. For the user-facing summary of which handler claims what, see [./../user/handlers.lex]. For the conceptual overview of how handlers fit between rules and execution, see [./../reference/handlers.lex].
 
     :: note :: See [./../reference/terms-and-concepts.lex] for terminology used throughout.
 
@@ -11,6 +11,7 @@ Handlers
         handlers/
         +-- mod.rs           # Handler trait + classification enums + registry
         +-- filter.rs        # IgnoreHandler, SkipHandler (Filter phase)
+        +-- gate.rs          # GateHandler (Filter phase, dynamic rules)
         +-- symlink.rs       # SymlinkHandler (catchall, Link phase)
         +-- shell.rs         # ShellHandler (ShellInit phase)
         +-- path.rs          # PathHandler (PathExport phase)
@@ -120,13 +121,14 @@ Handlers
 
 4. Built-in Handlers
 
-    Seven handlers ship in the registry. The table below is the canonical mapping of phase → category → match mode → scope.
+    Eight handlers ship in the registry. The table below is the canonical mapping of phase → category → match mode → scope.
 
     Handler classification:
 
         | Handler  | Phase       | Category       | Match mode | Scope     | Output intent       |
         | ignore   | Filter      | Configuration  | Precise    | Exclusive | (none)              |
         | skip     | Filter      | Configuration  | Precise    | Exclusive | (none)              |
+        | gate     | Filter      | Configuration  | Precise    | Exclusive | (none)              |
         | homebrew | Provision   | CodeExecution  | Precise    | Exclusive | `Run`               |
         | install  | Setup       | CodeExecution  | Precise    | Exclusive | `Run`               |
         | path     | PathExport  | Configuration  | Precise    | Exclusive | `Stage`             |
@@ -135,7 +137,7 @@ Handlers
 
     :: table align=llllll ::
 
-    Filter handlers (`ignore`, `skip`) claim matches but emit no `HandlerIntent` — `to_intents` returns `Ok(vec![])`. Their effect comes entirely from being matched first by the rules layer (priority 100 / 50, above precise mappings at 10 and the catchall at 0): once a filter handler claims a file, no other handler sees it. They're real registered handlers (not synthetic-name dispatch), so the matching model and config grammar stay uniform.
+    Filter handlers (`ignore`, `skip`, `gate`) claim matches but emit no `HandlerIntent` — `to_intents` returns `Ok(vec![])`. Their effect comes entirely from being matched first: `ignore` and `skip` use static `[mappings]` patterns surfaced as priority-100 / priority-50 rules (above precise mappings at 10 and the catchall at 0); `gate` matches are produced at scan time by `crate::gates` based on host facts (filename `._<label>`, dirname `_<label>/`, or `[mappings.gates]` glob hits) and stamped onto entries before rule matching runs. Once any of the three claims a file, no deploying handler sees it. All three are real registered handlers, not synthetic-name dispatch, so the matching model and config grammar stay uniform.
 
     4.1. `SymlinkHandler`
 
@@ -198,6 +200,14 @@ Handlers
 
         Both are `MatchMode::Precise` and `Configuration` category. They have no datastore footprint: `dodot up` does not wipe per-pack `ignore/`/`skip/` directories because those directories never exist.
 
+    4.7. `GateHandler` (filter)
+
+        File: `handlers/gate.rs`. Same shape as `IgnoreHandler` / `SkipHandler`: zero-sized struct, `Filter` phase, `Configuration` category, `MatchMode::Precise`, `to_intents` returns `Ok(vec![])`. The difference is *where* matches come from: the scanner / `filter_pre_preprocess_gates` consult `crate::gates` (basename `._<label>` parsing, directory `_<label>/` segments, `[mappings.gates]` globs) against the resolved `GateTable` and `HostFacts`, and stamp `handler = "gate"` plus diagnostic options (`gate_label`, `gate_predicate`, `gate_host`) on entries whose predicate evaluated false. The handler itself never runs gate evaluation — it only exists in the registry as the dispatch target so status can render "gated out" rows uniformly with the rest of the filter family.
+
+        Status renders gate matches via `Health::Gated { label, expected, actual }` — see `commands::status::Health::footnote_reason` for the "expected …; got …" footnote that's stamped from the `options` map. Like `ignore`/`skip`, no datastore footprint: `dodot up` does not wipe per-pack `gate/` directories because they never exist.
+
+        Pack-level OS gating (`[pack] os = [...]`) is a *separate* mechanism that fires earlier — at pack discovery / orchestration — and produces no `RuleMatch` at all (the pack short-circuits before scanning). Inactive packs surface in `dodot status` via `PackStatusResult.inactive_packs`, not via the gate handler. See `crate::gates::pack_os_active`.
+
 5. The Registry
 
     [`create_registry(fs)`] builds a `HashMap<String, Box<dyn Handler>>` keyed by handler name. The `fs` reference is needed by `install` and `homebrew` for checksumming.
@@ -207,6 +217,7 @@ Handlers
         let mut registry: HashMap<String, Box<dyn Handler>> = HashMap::new();
         registry.insert(HANDLER_IGNORE.into(),  Box::new(filter::IgnoreHandler));
         registry.insert(HANDLER_SKIP.into(),    Box::new(filter::SkipHandler));
+        registry.insert(HANDLER_GATE.into(),    Box::new(gate::GateHandler));
         registry.insert(HANDLER_SYMLINK.into(), Box::new(symlink::SymlinkHandler));
         registry.insert(HANDLER_SHELL.into(),   Box::new(shell::ShellHandler));
         registry.insert(HANDLER_PATH.into(),    Box::new(path::PathHandler));
@@ -217,7 +228,7 @@ Handlers
 
     :: rust ::
 
-    Well-known names are exported as constants — `HANDLER_IGNORE`, `HANDLER_SKIP`, `HANDLER_SYMLINK`, `HANDLER_SHELL`, `HANDLER_PATH`, `HANDLER_INSTALL`, `HANDLER_HOMEBREW`. Use these everywhere instead of string literals.
+    Well-known names are exported as constants — `HANDLER_IGNORE`, `HANDLER_SKIP`, `HANDLER_GATE`, `HANDLER_SYMLINK`, `HANDLER_SHELL`, `HANDLER_PATH`, `HANDLER_INSTALL`, `HANDLER_HOMEBREW`. Use these everywhere instead of string literals.
 
     The registry is hard-coded. Third-party handlers would be added via code, not user input. There is no plugin mechanism today — the trait is stable enough that writing a custom handler is straightforward, but loading them at runtime is an explicit non-goal.
 
@@ -292,7 +303,7 @@ Handlers
     3. Register it in [`create_registry`].
     4. If the handler should claim files by default, add a pattern to [`config::MappingsSection`] and emit the corresponding rule from [`config::mappings_to_rules`]. If the handler is opt-in (user must add a rule explicitly), skip this step.
     5. Decide whether `validate_registry` still passes. Two `Catchall` + `Exclusive` handlers will trip the `debug_assert!`.
-    6. Update the user-facing handler doc ([./../user/handlers.md]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
+    6. Update the user-facing handler doc ([./../user/handlers.lex]) and the reference ([./../reference/handlers.lex]) — the phase enum is contributor-visible, but the handler itself surfaces in user docs as soon as it ships.
 
     :: note :: The trait surface is small (two methods carry behavior, three more are classification). A new handler is typically a few dozen lines plus tests against `TempEnvironment`.
 

@@ -97,14 +97,39 @@ struct AdoptPlan {
 /// `pack_override` is `Some(name)` when the user passed `--into <name>`;
 /// `None` lets per-source inference decide. See the module-level docs
 /// for the inference rules and two-phase failure semantics.
+///
+/// `only_os` is `Some(label)` when the user passed `--only-os <label>`
+/// (Phase C5 of the conditional-running proposal). Each source's
+/// in-pack path is prepended with a `_<label>/` gate-dir segment so
+/// re-deploying via `dodot up` will only land the symlink on hosts
+/// matching the gate predicate. The label is validated against the
+/// gate table (built-ins + user `[gates]`) at the root level.
 pub fn adopt(
     pack_override: Option<&str>,
     sources: &[PathBuf],
     force: bool,
     no_follow: bool,
     dry_run: bool,
+    only_os: Option<&str>,
     ctx: &ExecutionContext,
 ) -> Result<PackStatusResult> {
+    // Validate `--only-os` label up front against the resolved root
+    // gate table. Failing here gives the user a clear error before any
+    // filesystem work happens.
+    if let Some(label) = only_os {
+        let root_config = ctx.config_manager.root_config()?;
+        let mut gates = crate::gates::GateTable::with_builtins();
+        if !root_config.gates.is_empty() {
+            gates.merge_user(&root_config.gates)?;
+        }
+        if !gates.contains(label) {
+            return Err(DodotError::Config(format!(
+                "unknown gate label `{label}` for --only-os: \
+                 not in the built-in seed and not defined in [gates]. \
+                 Built-ins: darwin, linux, macos, arm64, aarch64, x86_64."
+            )));
+        }
+    }
     if sources.is_empty() {
         return Err(DodotError::Other("no files specified".into()));
     }
@@ -154,6 +179,7 @@ pub fn adopt(
         pack_override,
         force,
         no_follow,
+        only_os,
         ctx,
     )?;
 
@@ -489,6 +515,7 @@ fn resolve_pack_for_sources(
 
 // ── Pre-flight ───────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn preflight(
     pack_name: &str,
     pack_path: &Path,
@@ -496,6 +523,7 @@ fn preflight(
     pack_override: Option<&str>,
     force: bool,
     no_follow: bool,
+    only_os: Option<&str>,
     ctx: &ExecutionContext,
 ) -> Result<(Vec<AdoptPlan>, Vec<String>)> {
     let fs = ctx.fs.as_ref();
@@ -600,6 +628,16 @@ fn preflight(
             (Some(natural), Some(over)) if natural != over => inferred.in_pack_override.clone(),
             _ => inferred.in_pack_natural.clone(),
         };
+        // C5: `--only-os <label>` wraps the entry in a `_<label>/`
+        // gate dir so the deployed symlink only lands on matching
+        // hosts. The wrap composes with routing prefixes (`_home/`,
+        // `_xdg/`, ...) — those still work after the gate dir strips
+        // on a matching host.
+        let in_pack = if let Some(label) = only_os {
+            std::path::PathBuf::from(format!("_{label}")).join(&in_pack)
+        } else {
+            in_pack
+        };
 
         if inferred.expand_children {
             // Source IS a pack-root directory under XDG (or AppSupport
@@ -620,6 +658,12 @@ fn preflight(
             let entries = fs.read_dir(&abs)?;
             for entry in entries {
                 let child_in_pack = expand_child_in_pack(&inferred, &entry.name, override_differs);
+                // C5: same gate-dir wrap as the single-source path.
+                let child_in_pack = if let Some(label) = only_os {
+                    std::path::PathBuf::from(format!("_{label}")).join(&child_in_pack)
+                } else {
+                    child_in_pack
+                };
                 push_plan(
                     &mut plans,
                     fs,
