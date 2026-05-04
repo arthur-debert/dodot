@@ -1,10 +1,13 @@
 Design Specification: Conditional Running
 
+    :: note ::
+        **Status: implemented and shipped.** Phases C1–C5 landed in PR #135 (with follow-up doc PR #136 merged into it). The user-facing reference lives in [./../../user/conditional-running.lex] (full guide), [./../../user/configuration.lex] §2.1 / §4.1 / §5 (config schema), and [./../../user/handlers.lex] §5.3 (the `gate` filter handler). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the user/reference docs disagree about behavior, those docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation.
+
     This document specifies how dodot routes pack files based on runtime properties of the host — primarily operating system, with the architecture left open for arch and user-defined predicates. The current state has one mechanism for this case (templates with `{% if dodot.os == "macos" %}`), and that mechanism is the wrong shape for the file-level and pack-level needs that prompted this proposal.
 
     The proposal is small on purpose. It introduces a single grammar — `_<label>` as a filename infix or directory segment — that gates whether dodot deploys/runs an entry, plus a `[pack] os` config key for whole-pack gating, plus a small extension to the existing Filter-phase handler family. The grammar is generic over a label table; OS labels (`darwin`, `linux`, etc.) ship as built-ins, and the architecture accommodates user-defined labels as a future extension without changing the parser.
 
-    :: note :: See [./../reference/terms-and-concepts.lex] for terminology used throughout.
+    :: note :: See [./../../reference/terms-and-concepts.lex] for terminology used throughout.
 
 
 1. Motivation
@@ -150,7 +153,7 @@ Design Specification: Conditional Running
             L2 (whole file/dir):        yadm `##cond.value`, chezmoi empty-render
             L3 (lines within a file):   templates everywhere
 
-        dodot already has L3. dodot's philosophy (§7 in [./../reference/philosophy.lex]) explicitly rules out L1's "profile" framing. The unaddressed gap is L2: file/subtree/pack-level gating.
+        dodot already has L3. dodot's philosophy (§7 in [./../../reference/philosophy.lex]) explicitly rules out L1's "profile" framing. The unaddressed gap is L2: file/subtree/pack-level gating.
 
         The cleanest L2 mechanisms in the survey share a property: a recognised filename or directory grammar with a config counterpart. That is exactly the pattern dodot already uses for routing prefixes (`home.X` ↔ `force_home`, `_app/` ↔ `app_aliases`). This proposal mirrors that pattern.
 
@@ -268,7 +271,7 @@ Design Specification: Conditional Running
 
     5.4. Composition with Existing Mechanisms
 
-        Routing prefixes (per [./../reference/symlink-paths.lex]):
+        Routing prefixes (per [./../../reference/symlink-paths.lex]):
 
             home.bashrc._darwin              →  ~/.bashrc on darwin only
             _darwin/_home/.bashrc            →  ~/.bashrc on darwin only (subtree form, gate outside)
@@ -488,7 +491,7 @@ Design Specification: Conditional Running
 
     8.4. No Profiles
 
-        Per [./../reference/philosophy.lex] §7. dodot is single-config-per-machine. No `dodot up --profile work`. Hostname-based gates and user-defined labels cover the practical "work vs home" cases without introducing a profile concept.
+        Per [./../../reference/philosophy.lex] §7. dodot is single-config-per-machine. No `dodot up --profile work`. Hostname-based gates and user-defined labels cover the practical "work vs home" cases without introducing a profile concept.
 
     8.5. No Hostname-Suffix Surface in v1 Docs
 
@@ -692,3 +695,40 @@ Design Specification: Conditional Running
     13.6. `dodot config gen` Output
 
         `dodot config gen` emits a starter `.dodot.toml` with all keys commented out. Should it include the entire built-in `[gates]` table commented? Recommend: just `# [gates]` with a one-line example, since the built-ins are not user-overridable in practice (and the docs cover them). Keeps the generated file from ballooning.
+
+
+14. Implementation Notes vs. Spec
+
+    The implementation deviates from the spec above in a few places. Listed here so future readers don't mistake the spec for the source of truth:
+
+    14.1. Rightmost-wins Filename Parser, Not "At Most One"
+
+        Spec §2.3 / §8.2 originally claimed "a file may carry at most one filename gate token." The shipped parser (`gates::parse_basename_gate`) instead uses rightmost-wins: given multiple `._<token>` segments in a basename (`foo._bar._darwin.sh`), only the rightmost (`_darwin`) is treated as a gate; everything to its left stays in the stem (`foo._bar.sh`). This is a friendlier behaviour — it lets users have legitimate name components like `foo._bar.…` that aren't gates without forcing a hard error — and the spec was updated post-review to describe the rightmost-wins rule explicitly. Cross-reference: §2.3 paragraph "Implementation note" and §8.2 second paragraph.
+
+    14.2. `darwin` vs `macos` Naming Disagrees with Templates
+
+        Spec §5.2 and §6.1 implicitly assume the gate `dimension = value` checks compare against the same OS values templates expose as `dodot.os`. They don't. Templates pass through `std::env::consts::OS` as `"macos"` on macOS hosts; the gate machinery normalises the host OS to `"darwin"` (the Rust `target_os` name) and accepts `"macos"` only as an alias. The two surfaces disagree on the canonical macOS string. Documented in [./../../user/configuration.lex] §2.1 and [./../../user/conditional-running.lex] §5; the gate side ships with the alias bridge so `[pack] os = ["macos"]` Just Works, but the asymmetry is a real wart for users mixing both surfaces.
+
+    14.3. Helper Renamed to `filter_pre_preprocess_gates`
+
+        Spec §9.2 sketched a `gate_rules_for(...)` helper for dynamic rule generation. The shipped form is `filter_pre_preprocess_gates` (in `crates/dodot-lib/src/packs/orchestration.rs`), which evaluates all three gate sources (basename suffix, directory segment, `[mappings.gates]` glob) before preprocessing runs. Same role in the pipeline (filter-phase gate evaluation) but a different name and a broader scope than the spec suggested — the spec assumed only basename gates would need pre-preprocess handling, but mapping-gates also reach the preprocessor and needed the same treatment.
+
+    14.4. Gates Inside Routing-Prefix Subtrees Are Not Supported
+
+        Spec §5.1 implied gate dirs could nest inside routing-prefix subtrees (`_home/_darwin/.bashrc`). The shipped scanner only evaluates gate dirs at the pack root; the symlink handler's per-file recursion inside `_home/`, `_xdg/`, `_app/`, `_lib/` is intentionally gate-unaware. The supported nesting is the *opposite* — gate at the outer level: `_darwin/_home/.bashrc`. Spec was updated post-review (§5.1 example table, §8.8 deferral note) to describe the supported shape and document the inverse case as future work. The reverse case (gate inside routing prefix) is straightforward to implement — extend the symlink handler's recursion to consult the gate table per directory segment — but adds dispatch logic to a code path the trait is otherwise minimal in. Deferred until a real use case shows the outer-gate form is insufficient.
+
+    14.5. `--only-os` Validates Against Root Config Only
+
+        Spec §11 (phase C5) said `--only-os` validates the label against the resolved gate table. The shipped form validates against the *root* `.dodot.toml`'s `[gates]` only — labels defined exclusively in a pack-level `.dodot.toml` are not visible because adopt validates before it knows which pack the source maps into (and pack inference can require `--into`, which adopts validates *after*). Documented in [./../../user/conditional-running.lex] §8. Users who want a custom label for `--only-os` define it in the root config; the label is still referenceable from any pack via filename grammar or `[mappings.gates]`.
+
+    14.6. `[mappings.gates]` Glob Scope Is Top-Level
+
+        Spec §6.1 / §7 example showed `[mappings.gates] "setup/*.sh" = "linux"` suggesting nested-path globs work. They don't, in the shipped implementation: the scanner surfaces top-level entries and `[mappings.gates]` matches against *that* shape — globs containing path separators only fire when a top-level entry has the matching shape. The symlink handler's nested per-file recursion is intentionally gate-unaware (mirroring §14.4's directory-gate limitation). Spec was updated post-review (§6.1) to remove the misleading nested example and describe the depth-1 scope explicitly. Same future-work note as §14.4 — extending nested matching is straightforward but waits for real demand.
+
+    14.7. Status Footnote Format
+
+        Spec §7.2 sketched a status row reading `gated out (label=X, current=Y)`. The shipped renderer uses two parts: the row label is `gated out (X)` (just the label name) and a footnote stamps `expected os=darwin; got os=linux` (test-failure idiom) — see [./../../user/conditional-running.lex] §10. The spec's combined form was rejected during implementation as harder to scan when many rows share the same gate; splitting label-on-row from predicate-in-footnote keeps the per-row column alignment stable.
+
+    14.8. `HostFacts` Caching on `ExecutionContext`
+
+        Spec §7.1 / §9.1 didn't specify when host facts get detected. The shipped form caches them once per `ExecutionContext` (`HostFacts::detect()` runs in `production()`); per-pack scanning then borrows `&HostFacts` from the context instead of re-detecting. Without this, the `hostname(1)` shell-out fired per pack — a measurable per-run cost on repos with many packs, and a correctness concern when system state changes mid-run. The detection helpers (`detect_hostname` / `detect_username`) are also shared with the template preprocessor's `dodot.hostname` / `dodot.username` resolution so the two paths can never disagree.
