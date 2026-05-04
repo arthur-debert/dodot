@@ -416,8 +416,9 @@ Handlers
 
             install._darwin.sh                # filename suffix
             _darwin/foo.sh                    # directory segment
-            [pack] os = ["darwin"]            # whole-pack
-            [mappings.gates] = { ... }        # glob escape hatch
+            [pack] os = ["darwin"]            # whole-pack (pack .dodot.toml)
+            [mappings.gates]                  # glob escape hatch
+              "install-mac.sh" = "darwin"
 
         :: text ::
 

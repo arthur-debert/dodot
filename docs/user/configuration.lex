@@ -218,9 +218,10 @@ Configuration
     User entries extend the built-in seed (`darwin`, `linux`,
     `macos`, `arm64`, `aarch64`, `x86_64`). Redefining an existing
     built-in label (e.g. `darwin = { … }` in `[gates]`) replaces its
-    predicate entirely — it does not merge dimensions into the built-in.
-    For the full surface and composition rules, see
-    [./conditional-running.lex].
+    predicate entirely — it does not merge dimensions into the
+    built-in. Shadowing a built-in is allowed but unusual; most user
+    labels use names the seed doesn't claim. For the full surface and
+    composition rules, see [./conditional-running.lex].
 
 6. The `[preprocessor]` Section
 

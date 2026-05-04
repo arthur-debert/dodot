@@ -269,11 +269,14 @@ Conditional Running
 
     :: text ::
 
-    The label is validated against the *root* `.dodot.toml` gate table
-    (built-ins + user-defined `[gates]` at the root level) at the start
-    of the command, so an unknown label fails before any filesystem work
-    happens. Labels defined only in a pack-level `.dodot.toml` are not
-    visible here.
+    The label is validated against the gate table at the start of the
+    command, so an unknown label fails before any filesystem work
+    happens. The validation reads the *root* `.dodot.toml`'s `[gates]`
+    only (plus the built-in seed); labels defined exclusively in a
+    pack's `.dodot.toml` are not visible here. If you need a custom
+    label for `--only-os`, define it in the root config — it can still
+    be referenced from any pack via filename grammar or
+    `[mappings.gates]` afterwards.
 
 9. When To Use Gates Versus Templates
 
@@ -353,5 +356,6 @@ Conditional Running
       `[gates]` table after merging. Useful when a label appears not
       to fire.
     - Unknown gate labels are a *scan-time error*, not a silent skip.
-      A typo in `_darwn.sh` or `[mappings.gates] = { foo = "darwn" }`
+      A typo in `_darwn.sh` or in a `[mappings.gates]` entry like
+      `"foo.sh" = "darwn"`
       stops `dodot up` with a clear "unknown gate label" diagnostic.
