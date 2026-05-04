@@ -319,6 +319,60 @@ impl GateTable {
     }
 }
 
+// ── Pack-level OS gate ──────────────────────────────────────────
+
+/// Evaluate a `[pack] os` allowlist against the current host.
+///
+/// Returns true when the allowlist is empty (meaning "all OSes") or
+/// when the host's `os` matches at least one entry. Aliases recognised
+/// in the OS labels apply: `macos` → `darwin`.
+///
+/// This is the entire mechanism behind the C3 surface — pack-level OS
+/// gating sits beside the filename grammar without sharing machinery
+/// because the granularity (whole pack) and the data flow (config field
+/// vs filename) are different.
+pub fn pack_os_active(allowed: &[String], host: &HostFacts) -> bool {
+    if allowed.is_empty() {
+        return true;
+    }
+    allowed.iter().any(|os| {
+        let normalized = match os.as_str() {
+            "macos" => "darwin",
+            other => other,
+        };
+        normalized == host.os
+    })
+}
+
+// ── Directory-segment gates ─────────────────────────────────────
+
+/// Routing-prefix tokens reserved by the symlink resolver
+/// (`docs/reference/symlink-paths.lex` §5/§6). When a directory is named
+/// `_<token>` and `<token>` matches one of these, it is a *routing
+/// prefix*, not a gate. Other `_<token>` directory names are gate
+/// candidates and resolve through the [`GateTable`].
+pub const ROUTING_PREFIX_TOKENS: &[&str] = &["home", "xdg", "app", "lib"];
+
+/// Inspect a single directory-name segment for a gate token.
+///
+/// Returns `Some(label)` when the segment matches `_<label>` *and*
+/// `<label>` is not a routing-prefix token (`home`/`xdg`/`app`/`lib`).
+/// Returns `None` for routing prefixes, regular directory names, or
+/// segments with invalid label characters.
+///
+/// Routing-prefix segments are not gates: the symlink resolver owns
+/// them, and the gate machinery must stay clear of routing decisions.
+pub fn parse_dir_gate_label(segment: &str) -> Option<&str> {
+    let label = segment.strip_prefix('_')?;
+    if !is_valid_label(label) {
+        return None;
+    }
+    if ROUTING_PREFIX_TOKENS.contains(&label) {
+        return None;
+    }
+    Some(label)
+}
+
 // ── Filename gate parsing ───────────────────────────────────────
 
 /// Result of inspecting a basename for a gate token.
@@ -659,6 +713,71 @@ mod tests {
             }
             _ => panic!("expected Found"),
         }
+    }
+
+    // ── Pack-level OS gate ──────────────────────────────────────
+
+    #[test]
+    fn pack_os_empty_allowlist_is_active_everywhere() {
+        let allowed: Vec<String> = vec![];
+        assert!(pack_os_active(&allowed, &host("darwin", "aarch64")));
+        assert!(pack_os_active(&allowed, &host("linux", "x86_64")));
+    }
+
+    #[test]
+    fn pack_os_matches_listed_os() {
+        let allowed = vec!["darwin".to_string()];
+        assert!(pack_os_active(&allowed, &host("darwin", "aarch64")));
+        assert!(!pack_os_active(&allowed, &host("linux", "x86_64")));
+    }
+
+    #[test]
+    fn pack_os_macos_alias_matches_darwin() {
+        let allowed = vec!["macos".to_string()];
+        assert!(pack_os_active(&allowed, &host("darwin", "aarch64")));
+    }
+
+    #[test]
+    fn pack_os_multiple_oses_is_or() {
+        let allowed = vec!["darwin".into(), "linux".into()];
+        assert!(pack_os_active(&allowed, &host("darwin", "aarch64")));
+        assert!(pack_os_active(&allowed, &host("linux", "x86_64")));
+        assert!(!pack_os_active(&allowed, &host("windows", "x86_64")));
+    }
+
+    // ── Directory-segment gate parsing ──────────────────────────
+
+    #[test]
+    fn dir_gate_recognised_for_underscore_label() {
+        assert_eq!(parse_dir_gate_label("_darwin"), Some("darwin"));
+        assert_eq!(parse_dir_gate_label("_arm64"), Some("arm64"));
+        assert_eq!(parse_dir_gate_label("_arm-mac"), Some("arm-mac"));
+    }
+
+    #[test]
+    fn dir_gate_routing_prefix_not_a_gate() {
+        // home/xdg/app/lib are routing prefixes — the symlink resolver
+        // owns them, so the gate machinery must not claim them.
+        assert_eq!(parse_dir_gate_label("_home"), None);
+        assert_eq!(parse_dir_gate_label("_xdg"), None);
+        assert_eq!(parse_dir_gate_label("_app"), None);
+        assert_eq!(parse_dir_gate_label("_lib"), None);
+    }
+
+    #[test]
+    fn dir_gate_no_underscore_is_not_a_gate() {
+        assert_eq!(parse_dir_gate_label("darwin"), None);
+        assert_eq!(parse_dir_gate_label("nvim"), None);
+    }
+
+    #[test]
+    fn dir_gate_invalid_chars_not_a_gate() {
+        // empty label
+        assert_eq!(parse_dir_gate_label("_"), None);
+        // dot in label (would be a basename gate, not a dir gate)
+        assert_eq!(parse_dir_gate_label("_da.rwin"), None);
+        // space
+        assert_eq!(parse_dir_gate_label("_dar win"), None);
     }
 
     // ── HostFacts ───────────────────────────────────────────────

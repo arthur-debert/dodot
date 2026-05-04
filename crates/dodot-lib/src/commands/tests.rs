@@ -5772,3 +5772,99 @@ fn plan_pack_emits_missing_target_hint_with_cask_enrichment() {
         "hint should not falsely claim the cask is uninstalled, got: {hint_text}"
     );
 }
+
+// ── C3: pack-level [pack] os ────────────────────────────────────
+
+#[test]
+fn pack_os_inactive_pack_surfaces_in_status() {
+    // Use an OS value that no real host reports as `dodot.os` so the
+    // test is portable across darwin and linux CI.
+    let env = TempEnvironment::builder()
+        .pack("vim")
+        .file("vimrc", "x")
+        .done()
+        .pack("mac-only")
+        .file("install.sh", "#!/bin/sh\necho mac")
+        .config("[pack]\nos = [\"nonexistent-os\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let active_pack_names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(active_pack_names, vec!["vim"]);
+
+    assert_eq!(
+        result.inactive_packs.len(),
+        1,
+        "{:?}",
+        result.inactive_packs
+    );
+    let entry = &result.inactive_packs[0];
+    assert!(entry.starts_with("mac-only"), "{entry}");
+    assert!(entry.contains("os=nonexistent-os"), "{entry}");
+    assert!(entry.contains("current="), "{entry}");
+
+    let output = render::render("pack-status", &result, OutputMode::Text).unwrap();
+    assert!(output.contains("Inactive on this OS"), "output: {output}");
+    assert!(output.contains("mac-only"), "output: {output}");
+}
+
+#[test]
+fn pack_os_active_pack_runs_normally() {
+    // List several OSes including the current target_os values for
+    // both darwin and linux so this passes on either host.
+    let env = TempEnvironment::builder()
+        .pack("portable")
+        .file("vimrc", "x")
+        .config("[pack]\nos = [\"darwin\", \"linux\", \"windows\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+
+    let active_pack_names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(active_pack_names, vec!["portable"]);
+    assert!(result.inactive_packs.is_empty());
+}
+
+#[test]
+fn pack_os_macos_alias_matches_darwin_target() {
+    // On a darwin host, [pack] os = ["macos"] should match.
+    // Skip on non-darwin hosts since we can't fake target_os here.
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let env = TempEnvironment::builder()
+        .pack("mac")
+        .file("vimrc", "x")
+        .config("[pack]\nos = [\"macos\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+    let names: Vec<&str> = result.packs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, vec!["mac"]);
+    assert!(result.inactive_packs.is_empty());
+}
+
+#[test]
+fn pack_os_inactive_pack_emits_no_operations_in_up() {
+    // `dodot up` on an inactive pack should produce a successful, empty
+    // PackResult — same shape `.dodotignore` would have if it reached
+    // the execute() loop.
+    let env = TempEnvironment::builder()
+        .pack("mac-only")
+        .file("Brewfile", "brew \"ripgrep\"")
+        .config("[pack]\nos = [\"nonexistent-os\"]")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::up::up(None, &ctx).unwrap();
+    // No deployed pack rows.
+    assert!(result.packs.is_empty(), "packs: {:?}", result.packs);
+}

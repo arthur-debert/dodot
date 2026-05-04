@@ -221,15 +221,17 @@ pub fn execute(
     let mut pack_results = Vec::with_capacity(total_packs);
     let mut successful = 0;
     let mut failed = 0;
+    let host = HostFacts::detect();
 
     for mut pack in all_packs {
         info!(pack = %pack.name, "processing pack");
 
         // Load pack-specific merged config
-        match ctx.config_manager.config_for_pack(&pack.path) {
+        let pack_config = match ctx.config_manager.config_for_pack(&pack.path) {
             Ok(pack_config) => {
                 debug!(pack = %pack.name, "loaded pack config");
                 pack.config = pack_config.to_handler_config();
+                pack_config
             }
             Err(e) => {
                 info!(pack = %pack.name, error = %e, "pack config error, skipping");
@@ -242,6 +244,27 @@ pub fn execute(
                 });
                 continue;
             }
+        };
+
+        // C3: skip packs gated out by `[pack] os` on this host. Counted
+        // as successful (it's the configured behaviour, not a failure)
+        // with no operations — same shape `.dodotignore` would have if
+        // it reached this loop.
+        if !crate::gates::pack_os_active(&pack_config.pack.os, &host) {
+            debug!(
+                pack = %pack.name,
+                allowed = ?pack_config.pack.os,
+                current_os = %host.os,
+                "pack inactive on this OS, skipping"
+            );
+            successful += 1;
+            pack_results.push(PackResult {
+                pack_name: pack.name.clone(),
+                success: true,
+                operations: Vec::new(),
+                error: None,
+            });
+            continue;
         }
 
         match command.execute_for_pack(&pack, ctx) {
@@ -445,10 +468,12 @@ fn plan_pack_inner(
     mode: crate::preprocessing::PreprocessMode,
 ) -> Result<PackPlan> {
     let rules = crate::config::mappings_to_rules(&pack_config.mappings);
+    let gates = build_gate_table(pack_config)?;
+    let host = HostFacts::detect();
 
     // Phase 1: Walk pack directory
     let scanner = Scanner::new(ctx.fs.as_ref());
-    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+    let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, &host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
 
     // Phase 2: Preprocessing
@@ -471,10 +496,9 @@ fn plan_pack_inner(
         crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
     };
 
-    // Phase 3: Merge and match rules
+    // Phase 3: Merge and match rules. Reuse the gate table + host
+    // facts from phase 1 so basename/dir gates see the same view.
     let all_entries = preprocess_result.merged_entries();
-    let gates = build_gate_table(pack_config)?;
-    let host = HostFacts::detect();
     let mut matches = scanner.match_entries(&all_entries, &rules, &pack.name, &gates, &host)?;
     debug!(pack = %pack.name, files = matches.len(), "matched rules");
 

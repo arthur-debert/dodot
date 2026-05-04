@@ -80,6 +80,19 @@ pub struct PackSection {
         "*.swp", "*~", "#*#", ".env*", ".terraform"
     ])]
     pub ignore: Vec<String>,
+
+    /// Operating systems on which this pack should run. Empty list (the
+    /// default) means "all OSes" — today's behaviour. When set, the
+    /// pack is short-circuited at scan time on hosts whose OS is not
+    /// in the list, surfacing in `dodot status` as `inactive (os=...)`.
+    ///
+    /// Values are compared against `dodot.os`, with the alias
+    /// `macos = darwin`. Other values pass through unchanged. Only
+    /// meaningful at the pack level — root-level `[pack] os` would
+    /// gate every pack, so the resolver rejects it (see
+    /// `docs/proposals/conditional-running.lex` §5.3).
+    #[config(default = [])]
+    pub os: Vec<String>,
 }
 
 /// Symlink handler settings.

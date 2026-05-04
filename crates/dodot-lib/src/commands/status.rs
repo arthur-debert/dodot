@@ -447,8 +447,10 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
     }
 
     let registry = handlers::create_registry(ctx.fs.as_ref());
+    let host = crate::gates::HostFacts::detect();
     let mut display_packs = Vec::new();
     let mut notes: Vec<DisplayNote> = Vec::new();
+    let mut inactive_packs: Vec<String> = Vec::new();
 
     // Collect intents across all packs for conflict detection
     let mut pack_intents = Vec::new();
@@ -457,16 +459,40 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         info!(pack = %pack.display_name, "checking pack status");
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
         pack.config = pack_config.to_handler_config();
+
+        // C3: pack-level OS gate. Inactive packs surface in their own
+        // section ("inactive on this OS") and skip the per-file
+        // walk/preprocess/match cycle entirely.
+        if !crate::gates::pack_os_active(&pack_config.pack.os, &host) {
+            inactive_packs.push(format!(
+                "{} (os={}, current={})",
+                pack.display_name,
+                pack_config.pack.os.join(","),
+                host.os
+            ));
+            continue;
+        }
         let rules = mappings_to_rules(&pack_config.mappings);
 
         let scanner = Scanner::new(ctx.fs.as_ref());
+
+        // Build gate state once per pack — used by both the
+        // walk (directory-segment gates) and match_entries (basename
+        // gates). Reusing the value keeps the two passes consistent.
+        let gates = {
+            let mut t = crate::gates::GateTable::with_builtins();
+            if !pack_config.gates.is_empty() {
+                t.merge_user(&pack_config.gates)?;
+            }
+            t
+        };
 
         // Walk and preprocess so the status display sees *post-preprocessing*
         // filenames (e.g. `config.toml` rather than `config.toml.tmpl`).
         // Without this step, status reports templates under their source
         // name and wrongly marks them "pending" because the verification
         // path (`~/.config.toml.tmpl`) doesn't exist.
-        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, &host)?;
         let preprocess_result = if pack_config.preprocessor.enabled {
             // [secret] is intentionally root-only — see SecretSection docs.
             let root_config = ctx.config_manager.root_config()?;
@@ -509,14 +535,6 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
             crate::preprocessing::pipeline::PreprocessResult::passthrough(entries)
         };
         let all_entries = preprocess_result.merged_entries();
-        let gates = {
-            let mut t = crate::gates::GateTable::with_builtins();
-            if !pack_config.gates.is_empty() {
-                t.merge_user(&pack_config.gates)?;
-            }
-            t
-        };
-        let host = crate::gates::HostFacts::detect();
         let matches = scanner.match_entries(&all_entries, &rules, &pack.name, &gates, &host)?;
 
         // Collect intents for conflict detection. The first tuple
@@ -693,6 +711,7 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         notes,
         conflicts: display_conflicts,
         ignored_packs: ignored_display,
+        inactive_packs,
         view_mode: ctx.view_mode.as_str().into(),
         group_mode: ctx.group_mode.as_str().into(),
     })

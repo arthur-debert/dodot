@@ -224,10 +224,18 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
     let packs = prepare_packs(None, ctx)?;
     let mut rows: Vec<SecretRefRow> = Vec::new();
     let scanner = crate::rules::Scanner::new(ctx.fs.as_ref());
+    let host = crate::gates::HostFacts::detect();
 
     for pack in &packs {
         let pack_config = ctx.config_manager.config_for_pack(&pack.path)?;
-        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore)?;
+        let gates = {
+            let mut t = crate::gates::GateTable::with_builtins();
+            if !pack_config.gates.is_empty() {
+                t.merge_user(&pack_config.gates)?;
+            }
+            t
+        };
+        let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, &host)?;
         for entry in entries {
             if entry.is_dir {
                 continue;
