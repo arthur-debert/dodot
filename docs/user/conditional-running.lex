@@ -214,10 +214,11 @@ Conditional Running
     collide with routing-prefix tokens (`home`/`xdg`/`app`/`lib`).
     Both are hard errors at config load.
 
-    Labels deep-merge across the standard config layers (compiled
-    defaults < root `.dodot.toml` < pack `.dodot.toml`), so a pack can
-    add labels without restating root labels. Shadowing a built-in is
-    allowed but unusual.
+    Labels stack across the standard config layers (compiled defaults
+    < root `.dodot.toml` < pack `.dodot.toml`): a pack can introduce
+    new labels without repeating root labels. A pack that redefines a
+    label from root or the built-in seed replaces that predicate
+    entirely — dimensions are not merged across layers.
 
 7. Glob Escape Hatch: `[mappings.gates]`
 
