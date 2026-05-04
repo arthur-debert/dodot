@@ -59,12 +59,14 @@ Design Specification: Conditional Running
 
     2.3. No Predicate Composition in the Filename
 
-        A file may carry at most one gate token. `install._darwin._arm64.sh` is *not* the path to AND-stacking; instead, AND-stacking lives inside the label table:
+        Filename gates do not AND-stack. `install._darwin._arm64.sh` is *not* the path to "darwin AND arm64"; AND-stacking lives inside the label table:
 
             [gates]
             arm-mac = { os = "darwin", arch = "aarch64" }
 
         Then the file is `install._arm-mac.sh`. One name → one label → one resolved predicate. The grammar stays a single slot; combinatorial cases route through user-defined labels.
+
+        Implementation note: the parser scans for the rightmost `._<token>` boundary in the basename. If a filename happens to contain multiple `._<token>` patterns (`install._bar._baz.sh`), only the rightmost (`_baz`) is treated as a gate; everything to its left is part of the stem. This is rightmost-wins, not "hard error on more than one." That keeps filenames like `foo._bar._darwin.sh` workable when `_bar` is just a name component the user wants in the file's stem.
 
         This is exactly the pack-ordering posture: "one mechanism, not three" — and combinatorics live in user-controlled config rather than in filename parsers.
 
@@ -474,9 +476,11 @@ Design Specification: Conditional Running
 
     8.2. No Stacking Filename Gates
 
-        `install._darwin._arm64.sh` is not parsed as "darwin AND arm64." A file carries at most one filename gate token. Compound predicates use a user-defined label (`arm-mac`).
+        `install._darwin._arm64.sh` is not parsed as "darwin AND arm64." Compound predicates use a user-defined label (`arm-mac`).
 
-        Reason: parsing precedence becomes a user-visible concern (which token wins?), and the AND-stack of dimensions is the same expression already supported by user-defined labels. One way to do it.
+        The parser uses rightmost-wins semantics — given multiple `._<token>` segments, only the rightmost is treated as a gate, the rest stay in the stem (see §2.3). It does not hard-error on multiple segments because that would forbid filenames like `foo._bar._darwin.sh` where `_bar` is a legitimate name component (e.g. a tool's pack-internal naming convention).
+
+        Reason: AND-stacking of dimensions is the same expression already supported by user-defined labels. One way to do it.
 
     8.3. No Negation
 

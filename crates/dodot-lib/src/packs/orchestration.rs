@@ -525,10 +525,12 @@ pub(crate) fn filter_pre_preprocess_gates(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
         let basename_gate = parse_basename_gate(&filename);
-        let rel_str = entry.relative_path.to_string_lossy();
+        // Forward-slash-normalised path so Windows backslashes
+        // don't break globs written with `/` in config and docs.
+        let rel_str = crate::gates::rel_path_for_glob(&entry.relative_path);
         let mapping_match: Option<&str> = compiled_mapping_gates
             .iter()
-            .find(|(pat, _)| pat.matches(rel_str.as_ref()))
+            .find(|(pat, _)| pat.matches(&rel_str))
             .map(|(_, label)| *label);
 
         // Conflict guard: filename gate AND `[mappings.gates]` on the

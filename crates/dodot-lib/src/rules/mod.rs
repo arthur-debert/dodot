@@ -412,7 +412,9 @@ impl<'a> Scanner<'a> {
             // C4: `[mappings.gates]` glob check. First-match-wins
             // against the user-defined glob → label table. Conflicts
             // with a filename gate on the same file are a hard error.
-            let rel_str = entry.relative_path.to_string_lossy();
+            // Forward-slash-normalised path so Windows backslashes
+            // don't break globs written with `/` in config and docs.
+            let rel_str = crate::gates::rel_path_for_glob(&entry.relative_path);
             let mapping_gate_label: Option<&str> = compiled_mapping_gates
                 .iter()
                 .find(|(pat, _)| pat.matches(&rel_str))

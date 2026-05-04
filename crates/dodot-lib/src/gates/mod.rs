@@ -361,6 +361,22 @@ impl GateTable {
 
 // ── [mappings.gates] glob compilation ──────────────────────────
 
+/// Render a pack-relative path as a forward-slash string suitable for
+/// `glob::Pattern::matches`.
+///
+/// On Windows, `Path::to_string_lossy()` produces `\`-separated
+/// strings, but every other surface in dodot — config docs, tests,
+/// the conditional-running guide — uses `/` in glob patterns
+/// (matching the POSIX convention every other dotfiles tool uses).
+/// Without this normalisation, a `[mappings.gates]` entry like
+/// `"setup/foo.sh"` would never match on Windows even when the file
+/// is at the documented location. Pack-relative paths are
+/// well-formed by construction (no `..`, no root prefix), so a
+/// blanket separator swap is safe.
+pub fn rel_path_for_glob(rel_path: &std::path::Path) -> String {
+    rel_path.to_string_lossy().replace('\\', "/")
+}
+
 /// Compile and validate the `[mappings.gates]` glob → label map for
 /// matching against pack-relative paths.
 ///

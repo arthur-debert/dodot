@@ -242,10 +242,8 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
             }
             t
         };
-        let compiled_mapping_gates = crate::gates::compile_mapping_gates(
-            &pack_config.mappings.gates,
-            &pack.display_name,
-        )?;
+        let compiled_mapping_gates =
+            crate::gates::compile_mapping_gates(&pack_config.mappings.gates, &pack.display_name)?;
         let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
         for entry in entries {
             if entry.is_dir {
@@ -261,6 +259,33 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
+            // Apply `[mappings.gates]` first — same posture as the
+            // up/status paths. A mapping-gated template that's
+            // inactive on this host should not contribute its
+            // `secret(...)` references to the listing.
+            let rel_str_for_glob = crate::gates::rel_path_for_glob(&entry.relative_path);
+            let mapping_match = compiled_mapping_gates
+                .iter()
+                .find(|(pat, _)| pat.matches(&rel_str_for_glob))
+                .map(|(_, label)| *label);
+            if let Some(map_label) = mapping_match {
+                let pred = match gates.lookup(map_label) {
+                    Some(p) => p,
+                    None => {
+                        tracing::warn!(
+                            pack = %pack.display_name,
+                            file = %entry.relative_path.display(),
+                            label = %map_label,
+                            "secret list: skipping file with unknown \
+                             [mappings.gates] label `{map_label}`"
+                        );
+                        continue;
+                    }
+                };
+                if !pred.matches(host) {
+                    continue;
+                }
+            }
             // Round-2 review feedback (secret.rs:265): apply basename
             // gate evaluation here too. Without this, gated-out files
             // would still be scanned, AND a gate-suffixed template
