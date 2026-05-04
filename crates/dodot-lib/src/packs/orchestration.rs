@@ -491,20 +491,22 @@ pub(crate) fn filter_pre_preprocess_gates(
 
     // Helper: build a GateFailure from a label + predicate, summarising
     // the host facts the predicate cares about. Shared between the
-    // basename-fail and mapping-fail branches.
+    // basename-fail and mapping-fail branches. Same compact shape as
+    // `GatePredicate::describe` so the status footnote can render
+    // both sides uniformly.
     let make_failure = |label: &str, pred: &crate::gates::GatePredicate| -> GateFailure {
         let host_desc: Vec<String> = pred
             .matchers
             .iter()
             .map(|(dim, _)| {
                 let actual = host.get(*dim).unwrap_or("<unset>");
-                format!("{} = \"{}\"", dim.as_str(), actual)
+                format!("{}={}", dim.as_str(), actual)
             })
             .collect();
         GateFailure {
             label: label.to_string(),
             predicate: pred.describe(),
-            host: format!("{{ {} }}", host_desc.join(", ")),
+            host: host_desc.join(", "),
         }
     };
 

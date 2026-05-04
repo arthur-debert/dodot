@@ -108,7 +108,7 @@ impl Health {
             Health::DeployedWithError { reason, .. } => Some(reason.clone()),
             Health::Gated {
                 expected, actual, ..
-            } => Some(format!("predicate {expected}; host {actual}")),
+            } => Some(format!("expected {expected}; got {actual}")),
             _ => None,
         }
     }

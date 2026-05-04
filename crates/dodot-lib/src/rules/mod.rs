@@ -712,17 +712,18 @@ fn match_file<'a>(
 
 /// Render the host's actual values for the dimensions a predicate
 /// cares about, so the status renderer can show "expected vs actual"
-/// without re-walking the predicate.
+/// without re-walking the predicate. Same compact shape as
+/// `GatePredicate::describe`.
 fn describe_host_for_predicate(pred: &crate::gates::GatePredicate, host: &HostFacts) -> String {
     let parts: Vec<String> = pred
         .matchers
         .iter()
         .map(|(dim, _)| {
             let actual = host.get(*dim).unwrap_or("<unset>");
-            format!("{} = \"{}\"", dim.as_str(), actual)
+            format!("{}={}", dim.as_str(), actual)
         })
         .collect();
-    format!("{{ {} }}", parts.join(", "))
+    parts.join(", ")
 }
 
 fn is_ignored(name: &str, patterns: &[String]) -> bool {
@@ -1503,12 +1504,9 @@ mod tests {
         assert_eq!(m.options.get("gate_label"), Some(&"linux".to_string()));
         assert_eq!(
             m.options.get("gate_predicate"),
-            Some(&r#"{ os = "linux" }"#.to_string())
+            Some(&"os=linux".to_string())
         );
-        assert_eq!(
-            m.options.get("gate_host"),
-            Some(&r#"{ os = "darwin" }"#.to_string())
-        );
+        assert_eq!(m.options.get("gate_host"), Some(&"os=darwin".to_string()));
     }
 
     #[test]
