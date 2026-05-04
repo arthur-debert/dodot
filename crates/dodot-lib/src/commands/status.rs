@@ -493,6 +493,20 @@ pub fn status(pack_filter: Option<&[String]>, ctx: &ExecutionContext) -> Result<
         // name and wrongly marks them "pending" because the verification
         // path (`~/.config.toml.tmpl`) doesn't exist.
         let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
+        // Apply all gate sources BEFORE preprocessing — same posture as
+        // the `up` planning path. Without this, a gated-out template
+        // (basename suffix or `[mappings.gates]` glob) would still be
+        // partitioned as a preprocessor file, replaced by a virtual
+        // entry with the on-disk filename / absolute_path lost. status
+        // would then show that virtual entry instead of the original
+        // gate-out row, confusing the user.
+        let entries = orchestration::filter_pre_preprocess_gates(
+            entries,
+            &gates,
+            host,
+            &pack.name,
+            &pack_config.mappings.gates,
+        )?;
         let preprocess_result = if pack_config.preprocessor.enabled {
             // [secret] is intentionally root-only — see SecretSection docs.
             let root_config = ctx.config_manager.root_config()?;

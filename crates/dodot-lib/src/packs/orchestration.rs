@@ -447,30 +447,33 @@ fn build_gate_table(pack_config: &crate::config::DodotConfig) -> Result<GateTabl
     Ok(table)
 }
 
-/// Apply basename-gate evaluation to a freshly-walked entry list,
-/// before preprocessing runs.
+/// Apply pre-preprocess gate evaluation to a freshly-walked entry list.
 ///
-/// Why this lives outside `match_entries`: preprocessing sees the
-/// pre-match entry list, and template render / secret-provider calls
-/// fire eagerly on every templated entry the registry recognises. If
-/// gate evaluation only happened in `match_entries` (post-preprocess),
-/// a gate-failed `*._linux.sh.tmpl` on a darwin host would still
-/// trigger a template render, a secret-provider call, and a baseline-
-/// cache write — even though the entry is later dropped as `gate`.
-/// Filtering basename gates here keeps gates honest about
-/// "predicate false ⇒ no work."
+/// Three gate sources are evaluated here, all *before* `preprocess_pack`
+/// runs:
 ///
-/// Passing gates have their `relative_path` rewritten to the stripped
-/// form (so the preprocessor sees `aliases.sh.tmpl`, not
-/// `aliases._darwin.sh.tmpl`). Failing gates flip to
-/// `gate_failure: Some(...)` so the existing match_entries path emits
-/// the gate-handler match.
+/// - **Directory-segment gates** (`_<label>/`) — already done by
+///   `walk_pack`; entries arriving with `gate_failure: Some(...)` pass
+///   through untouched.
+/// - **Basename gates** (`<stem>._<label>.<ext>`) — parsed here,
+///   passing-suffixed entries get their `relative_path` rewritten to
+///   the stripped form so the preprocessor sees `aliases.sh.tmpl` (not
+///   `aliases._darwin.sh.tmpl`); failing entries flip to
+///   `gate_failure: Some(...)`.
+/// - **`[mappings.gates]` glob → label** — globs evaluated here so a
+///   mapping-gated template/secret-bearing file never reaches the
+///   preprocessor either. Same flag-as-`gate_failure` flow.
 ///
-/// Directory-segment gates (`_<label>/`) are already evaluated by
-/// `walk_pack` — entries inside passing-gate dirs surface stripped,
-/// failing-gate dirs already carry `gate_failure`. This helper is
-/// strictly for the basename-suffix grammar.
-fn filter_basename_gates(
+/// Why all three at this layer: preprocessing fires render +
+/// secret-provider + baseline-cache work on every preprocessor-shaped
+/// file. If any gate evaluation only happened post-preprocess, a
+/// gated-out template still triggers all of that for an entry the
+/// user explicitly opted out of. Putting all three here keeps gates
+/// honest about "predicate false ⇒ no work."
+///
+/// A file carrying both a filename gate AND a matching
+/// `[mappings.gates]` entry is a hard error (one source of truth).
+pub(crate) fn filter_pre_preprocess_gates(
     entries: Vec<crate::rules::PackEntry>,
     gates: &GateTable,
     host: &HostFacts,
@@ -480,11 +483,9 @@ fn filter_basename_gates(
     use crate::gates::{parse_basename_gate, BasenameGate};
     use crate::rules::GateFailure;
 
-    // Pre-compile [mappings.gates] glob patterns so the per-entry
-    // conflict check is cheap. Using the same hard-error / sort
-    // discipline as `match_entries` so behaviour matches across
-    // both planning paths (`up` runs through here, `status` reaches
-    // match_entries directly).
+    // Pre-compile [mappings.gates] glob patterns once. Same hard-error /
+    // lex-sort discipline as `match_entries` so behaviour matches
+    // across the `up` and `status` paths.
     let mut compiled_mapping_gates: Vec<(glob::Pattern, &str, &str)> =
         Vec::with_capacity(mappings_gates.len());
     for (pat, label) in mappings_gates {
@@ -497,6 +498,25 @@ fn filter_basename_gates(
     }
     compiled_mapping_gates.sort_by(|a, b| a.2.cmp(b.2));
 
+    // Helper: build a GateFailure from a label + predicate, summarising
+    // the host facts the predicate cares about. Shared between the
+    // basename-fail and mapping-fail branches.
+    let make_failure = |label: &str, pred: &crate::gates::GatePredicate| -> GateFailure {
+        let host_desc: Vec<String> = pred
+            .matchers
+            .iter()
+            .map(|(dim, _)| {
+                let actual = host.get(*dim).unwrap_or("<unset>");
+                format!("{} = \"{}\"", dim.as_str(), actual)
+            })
+            .collect();
+        GateFailure {
+            label: label.to_string(),
+            predicate: pred.describe(),
+            host: format!("{{ {} }}", host_desc.join(", ")),
+        }
+    };
+
     let mut out = Vec::with_capacity(entries.len());
     for entry in entries {
         // Already-failed entries (from the directory-segment walk)
@@ -505,33 +525,34 @@ fn filter_basename_gates(
             out.push(entry);
             continue;
         }
+
         let filename = entry
             .relative_path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
-        match parse_basename_gate(&filename) {
-            BasenameGate::None => out.push(entry),
+        let basename_gate = parse_basename_gate(&filename);
+        let rel_str = entry.relative_path.to_string_lossy();
+        let mapping_match: Option<&str> = compiled_mapping_gates
+            .iter()
+            .find(|(pat, _, _)| pat.matches(rel_str.as_ref()))
+            .map(|(_, label, _)| *label);
+
+        // Conflict guard: filename gate AND `[mappings.gates]` on the
+        // same file is ambiguous — pick one.
+        if let (BasenameGate::Found { .. }, Some(map_label)) = (&basename_gate, mapping_match) {
+            return Err(crate::DodotError::Config(format!(
+                "gate-routing conflict in pack `{pack_name}` for `{}`: \
+                 file carries both a filename gate token (`._<label>`) \
+                 and a `[mappings.gates]` entry (`{map_label}`). \
+                 Pick one — either rename the file (drop the suffix) \
+                 or remove the `[mappings.gates]` entry.",
+                entry.relative_path.display()
+            )));
+        }
+
+        match basename_gate {
             BasenameGate::Found { label, stripped } => {
-                // Conflict guard: a file carrying both a filename gate
-                // (`._<label>`) and a matching `[mappings.gates]` entry
-                // is ambiguous — pick one. We check this here (before
-                // stripping) because match_entries sees the stripped
-                // name and can't reconstruct the conflict otherwise.
-                let rel_str = entry.relative_path.to_string_lossy();
-                if let Some((_, map_label, _)) = compiled_mapping_gates
-                    .iter()
-                    .find(|(pat, _, _)| pat.matches(rel_str.as_ref()))
-                {
-                    return Err(crate::DodotError::Config(format!(
-                        "gate-routing conflict in pack `{pack_name}` for `{}`: \
-                         file carries both a filename gate token (`._<label>`) \
-                         and a `[mappings.gates]` entry (`{map_label}`). \
-                         Pick one — either rename the file (drop the suffix) \
-                         or remove the `[mappings.gates]` entry.",
-                        entry.relative_path.display()
-                    )));
-                }
                 let pred = gates.lookup(label).ok_or_else(|| {
                     crate::DodotError::Config(format!(
                         "unknown gate label `{label}` in pack `{pack_name}`, file `{}`: \
@@ -549,24 +570,35 @@ fn filter_basename_gates(
                         gate_failure: None,
                     });
                 } else {
-                    let host_desc: Vec<String> = pred
-                        .matchers
-                        .iter()
-                        .map(|(dim, _)| {
-                            let actual = host.get(*dim).unwrap_or("<unset>");
-                            format!("{} = \"{}\"", dim.as_str(), actual)
-                        })
-                        .collect();
                     out.push(crate::rules::PackEntry {
                         relative_path: entry.relative_path,
                         absolute_path: entry.absolute_path,
                         is_dir: entry.is_dir,
-                        gate_failure: Some(GateFailure {
-                            label: label.to_string(),
-                            predicate: pred.describe(),
-                            host: format!("{{ {} }}", host_desc.join(", ")),
-                        }),
+                        gate_failure: Some(make_failure(label, pred)),
                     });
+                }
+            }
+            BasenameGate::None => {
+                if let Some(map_label) = mapping_match {
+                    let pred = gates.lookup(map_label).ok_or_else(|| {
+                        crate::DodotError::Config(format!(
+                            "unknown gate label `{map_label}` referenced from \
+                             `[mappings.gates]` in pack `{pack_name}`: label is \
+                             not in the built-in seed and not defined in [gates]."
+                        ))
+                    })?;
+                    if pred.matches(host) {
+                        out.push(entry);
+                    } else {
+                        out.push(crate::rules::PackEntry {
+                            relative_path: entry.relative_path,
+                            absolute_path: entry.absolute_path,
+                            is_dir: entry.is_dir,
+                            gate_failure: Some(make_failure(map_label, pred)),
+                        });
+                    }
+                } else {
+                    out.push(entry);
                 }
             }
         }
@@ -629,14 +661,14 @@ fn plan_pack_inner(
     let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
     debug!(pack = %pack.name, entries = entries.len(), "walked pack directory");
 
-    // Phase 1.5: Strip basename gates BEFORE preprocessing so a
-    // gate-failed `aliases._linux.sh.tmpl` never reaches the template
-    // engine on a darwin host. Without this, secret-provider calls and
-    // baseline-cache writes fire for entries the user explicitly
-    // opted out of. The same evaluation runs again in match_entries
-    // for non-preprocessed entries and to surface gate-out matches in
-    // status.
-    let entries = filter_basename_gates(
+    // Phase 1.5: Apply all gate sources (basename `._<label>` AND
+    // `[mappings.gates]` glob hits) BEFORE preprocessing. Otherwise a
+    // gate-failed `aliases._linux.sh.tmpl` (or a mapping-gated
+    // `Brewfile`) on a non-matching host still triggers template
+    // render / secret-provider / baseline-cache work for an entry the
+    // user explicitly opted out of. match_entries re-evaluates these
+    // gates so the failure also surfaces as a `gate`-handler match.
+    let entries = filter_pre_preprocess_gates(
         entries,
         &gates,
         host,

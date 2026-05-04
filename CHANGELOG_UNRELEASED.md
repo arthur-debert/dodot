@@ -10,6 +10,35 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Added
 
+- **Conditional running (gates)** — files, directories, and packs can
+  be gated against host facts (OS, arch, hostname, username) so the
+  same dotfiles repo deploys differently on different machines without
+  templating every file. Five surfaces:
+  - **Filename suffix**: `install._darwin.sh`, `Brewfile._darwin`,
+    `home.bashrc._darwin` — the `._<label>` token sits before the
+    extension (or as a trailing segment for extensionless files) and
+    strips at deploy time.
+  - **Directory segment**: `_darwin/_home/.bashrc`, `_arm-mac/setup.sh`
+    — gate dirs at the pack root expand transparently on a matching
+    host; on a mismatch they surface in `dodot status` as `gated out
+    (label=...)`. Routing-prefix tokens (`home`/`xdg`/`app`/`lib`) are
+    excluded from gate parsing.
+  - **Pack-level**: `[pack] os = ["darwin"]` short-circuits a whole
+    pack on the wrong OS. Inactive packs render under their own
+    "Inactive on this OS" section in `dodot status`.
+  - **Glob escape hatch**: `[mappings.gates] "install-mac.sh" =
+    "darwin"` for legacy repos that can't rename. Conflicts with
+    filename gates on the same file are a hard error.
+  - **`dodot adopt --only-os <label>`** — wraps the adopted entry in a
+    `_<label>/` gate dir so the deployed symlink only lands on
+    matching hosts.
+  - User-defined labels via `[gates]`: `[gates] arm-mac = { os =
+    "darwin", arch = "aarch64" }` — built-ins ship for OS and arch
+    (`darwin`, `linux`, `macos`, `arm64`, `aarch64`, `x86_64`).
+  - Gate evaluation runs before preprocessing, so secret-provider
+    calls and template renders never fire for entries the user opted
+    out of. See `docs/proposals/conditional-running.lex` for the full
+    design and §8.8 for documented limitations.
 - `[mappings] ignore` config list. Files matching any glob in this list
   are dropped silently — same contract as `.gitignore`, nothing
   surfaces in `dodot status`. Default is empty; common build / VCS

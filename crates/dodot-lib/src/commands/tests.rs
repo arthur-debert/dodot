@@ -6117,3 +6117,91 @@ fn up_rejects_invalid_mappings_gates_glob() {
         "msg: {msg}"
     );
 }
+
+#[test]
+fn status_surfaces_gated_template_under_original_name() {
+    // Round-3 review feedback (status.rs:545): without pre-preprocess
+    // gate filtering in the status path, a gated template would get
+    // partitioned by `preprocess_pack` and replaced by a virtual
+    // entry whose path is the *stripped* virtual name (e.g.
+    // `aliases.sh`), losing the on-disk source name (`aliases._linux.sh.tmpl`).
+    // status would then show the virtual name with no indication it
+    // was gated.
+    let gated = if cfg!(target_os = "macos") {
+        "linux"
+    } else if cfg!(target_os = "linux") {
+        "darwin"
+    } else {
+        return;
+    };
+    let template_name = format!("aliases._{gated}.sh.tmpl");
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file(&template_name, "alias x=y\n")
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    let result = commands::status::status(None, &ctx).unwrap();
+    assert_eq!(result.packs.len(), 1);
+    let files = &result.packs[0].files;
+    assert_eq!(files.len(), 1, "files: {files:?}");
+    let row = &files[0];
+    // The status row must surface under the *source* filename so the
+    // user can find the file and the gate that dropped it. If
+    // preprocessing fired, the row would name the rendered virtual
+    // path instead.
+    assert_eq!(
+        row.name, template_name,
+        "expected source filename in row, not a preprocessed virtual name"
+    );
+    assert_eq!(row.handler, "gate", "row.handler: {}", row.handler);
+}
+
+#[test]
+fn up_skips_mappings_gated_template() {
+    // Round-3 review feedback (orchestration.rs:645): a
+    // `[mappings.gates]`-gated template must not reach the
+    // preprocessor. Like the basename-gate regression, we use a
+    // template that would error if rendered to prove the engine
+    // never fired.
+    let gated = if cfg!(target_os = "macos") {
+        "linux"
+    } else if cfg!(target_os = "linux") {
+        "darwin"
+    } else {
+        return;
+    };
+    let env = TempEnvironment::builder()
+        .pack("p")
+        .file("aliases.sh.tmpl", "alias x={{ undefined_variable }}")
+        .file("home.profile", "export PATH=$PATH:~/.local/bin")
+        .config(&format!(
+            "[mappings.gates]\n\"aliases.sh.tmpl\" = \"{gated}\"\n"
+        ))
+        .done()
+        .build();
+
+    let ctx = make_ctx(&env);
+    commands::up::up(None, &ctx).unwrap();
+
+    // Plain co-located file deployed → pack planning succeeded.
+    let profile_link = env.home.join(".profile");
+    assert!(
+        env.fs.exists(&profile_link),
+        "co-located plain file was not deployed; mapping-gated template \
+         likely reached the engine: {profile_link:?}"
+    );
+
+    // No baseline cache for the gated template.
+    let baseline_dir = ctx.paths.cache_dir().join("preprocessor/p/template");
+    if env.fs.exists(&baseline_dir) {
+        let baselines = env.fs.read_dir(&baseline_dir).unwrap_or_default();
+        assert!(
+            baselines.is_empty(),
+            "preprocessor wrote {} baseline file(s) for a mapping-gated template: {:?}",
+            baselines.len(),
+            baselines.iter().map(|e| e.name.clone()).collect::<Vec<_>>()
+        );
+    }
+}
