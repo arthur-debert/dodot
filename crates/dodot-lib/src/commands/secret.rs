@@ -259,57 +259,70 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            // Apply `[mappings.gates]` first — same posture as the
-            // up/status paths. A mapping-gated template that's
-            // inactive on this host should not contribute its
-            // `secret(...)` references to the listing.
+            // Apply all three gate sources in one pass — same posture
+            // as `up`/`status`, normalised path so Windows backslashes
+            // don't break globs written with `/`.
+            //
+            // Order matches the up-planning path:
+            //   1. Compute mapping match + basename gate up front.
+            //   2. If both fire, that's a config error in `up` —
+            //      skip-with-warning here (read-only diagnostic).
+            //   3. Otherwise evaluate whichever fired; skip on
+            //      predicate-false. The basename-gate `stripped`
+            //      name is used for the template-extension check
+            //      below so a gate-suffixed template like
+            //      `gitconfig.tmpl._darwin` is still recognised.
             let rel_str_for_glob = crate::gates::rel_path_for_glob(&entry.relative_path);
             let mapping_match = compiled_mapping_gates
                 .iter()
                 .find(|(pat, _)| pat.matches(&rel_str_for_glob))
                 .map(|(_, label)| *label);
-            if let Some(map_label) = mapping_match {
-                let pred = match gates.lookup(map_label) {
-                    Some(p) => p,
-                    None => {
-                        tracing::warn!(
-                            pack = %pack.display_name,
-                            file = %entry.relative_path.display(),
-                            label = %map_label,
-                            "secret list: skipping file with unknown \
-                             [mappings.gates] label `{map_label}`"
-                        );
-                        continue;
-                    }
-                };
-                if !pred.matches(host) {
-                    continue;
-                }
-            }
-            // Round-2 review feedback (secret.rs:265): apply basename
-            // gate evaluation here too. Without this, gated-out files
-            // would still be scanned, AND a gate-suffixed template
-            // like `gitconfig.tmpl._darwin` wouldn't be recognised as
-            // a template (the suffix shifts the `.tmpl` extension out
-            // of the rightmost slot). Strip first, then check
-            // template-ness against the stripped name.
             let basename_gate = crate::gates::parse_basename_gate(&filename);
-            let has_basename_gate =
-                matches!(basename_gate, crate::gates::BasenameGate::Found { .. });
+
+            if let (Some(map_label), crate::gates::BasenameGate::Found { .. }) =
+                (mapping_match, &basename_gate)
+            {
+                tracing::warn!(
+                    pack = %pack.display_name,
+                    file = %entry.relative_path.display(),
+                    label = %map_label,
+                    "secret list: skipping file with conflicting gate \
+                     sources — both a filename gate (`._<label>`) and a \
+                     `[mappings.gates]` entry for label `{map_label}`; \
+                     `dodot up` will reject this as a config error"
+                );
+                continue;
+            }
+
             let effective_name = match basename_gate {
-                crate::gates::BasenameGate::None => filename.clone(),
+                crate::gates::BasenameGate::None => {
+                    if let Some(map_label) = mapping_match {
+                        let pred = match gates.lookup(map_label) {
+                            Some(p) => p,
+                            None => {
+                                tracing::warn!(
+                                    pack = %pack.display_name,
+                                    file = %entry.relative_path.display(),
+                                    label = %map_label,
+                                    "secret list: skipping file with unknown \
+                                     [mappings.gates] label `{map_label}`"
+                                );
+                                continue;
+                            }
+                        };
+                        if !pred.matches(host) {
+                            continue;
+                        }
+                    }
+                    filename.clone()
+                }
                 crate::gates::BasenameGate::Found { label, stripped } => {
                     let pred = match gates.lookup(label) {
                         Some(p) => p,
                         // Unknown label is a hard error in the
-                        // up/status paths, but `secret list` is a
-                        // read-only diagnostic — we'd rather show what
-                        // we can than refuse the whole repo when one
-                        // file has a typo. Surface as a tracing
-                        // warning so the row's absence is explainable
-                        // (visible with `dodot --verbose secret list`
-                        // or in any log capture); skip the row to
-                        // continue the scan.
+                        // up/status paths; `secret list` is a
+                        // read-only diagnostic, so warn and skip
+                        // (visible with `dodot --verbose secret list`).
                         None => {
                             tracing::warn!(
                                 pack = %pack.display_name,
@@ -328,47 +341,6 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
                     stripped
                 }
             };
-            // C4: [mappings.gates] glob-based gating — same posture as
-            // `dodot status`. Without this, a template that is gated
-            // only through config (e.g. `"install-mac.sh" = "darwin"`)
-            // would still be surfaced on a non-matching host.
-            let mapping_gate_label: Option<&str> = compiled_mapping_gates
-                .iter()
-                .find(|(pat, _)| pat.matches(&rel_str_for_glob))
-                .map(|(_, label)| *label);
-            if let Some(map_label) = mapping_gate_label {
-                if has_basename_gate {
-                    // Both a filename gate and a [mappings.gates] entry
-                    // is a hard config error in `dodot up`; skip here so
-                    // we don't surface the file on either host.
-                    tracing::warn!(
-                        pack = %pack.display_name,
-                        file = %entry.relative_path.display(),
-                        label = %map_label,
-                        "secret list: skipping file with conflicting gate \
-                         sources — both a filename gate (`._<label>`) and a \
-                         `[mappings.gates]` entry for label `{map_label}`; \
-                         `dodot up` will reject this as a config error"
-                    );
-                    continue;
-                }
-                let pred = match gates.lookup(map_label) {
-                    Some(p) => p,
-                    None => {
-                        tracing::warn!(
-                            pack = %pack.display_name,
-                            file = %entry.relative_path.display(),
-                            label = %map_label,
-                            "secret list: skipping file with unknown gate label \
-                             `{map_label}` in [mappings.gates]"
-                        );
-                        continue;
-                    }
-                };
-                if !pred.matches(host) {
-                    continue;
-                }
-            }
             // Only scan template-shaped files. Other extensions
             // can't contain `secret(...)` calls in a way the
             // template preprocessor would resolve.

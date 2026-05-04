@@ -91,11 +91,20 @@ pub struct HostFacts {
 impl HostFacts {
     /// Detect host facts from the current process environment.
     ///
-    /// `os` and `arch` come from compile-time `target_os`/`target_arch`,
-    /// matching the values exposed to templates as `dodot.os`/`dodot.arch`.
-    /// `hostname` and `username` are best-effort — `None` if detection
-    /// fails (consistent with how templates omit those keys when they
-    /// can't be detected).
+    /// `os` is normalised to the gate canonical names (`darwin`,
+    /// `linux`, `windows`) — *not* the raw `std::env::consts::OS`
+    /// string, which differs on macOS (`"macos"`). Templates expose
+    /// the raw value as `dodot.os` for back-compat, so the two
+    /// surfaces can disagree on macOS hosts; the gate machinery
+    /// accepts `"macos"` as an alias for `"darwin"` to bridge the
+    /// gap. `arch` is a passthrough of `target_arch` and matches
+    /// `dodot.arch` exactly.
+    ///
+    /// `hostname` and `username` are best-effort — `None` if
+    /// detection fails (consistent with how templates omit those
+    /// keys when they can't be detected). Both are shared with the
+    /// template preprocessor's `dodot.hostname` / `dodot.username`
+    /// resolution via [`detect_hostname`] / [`detect_username`].
     pub fn detect() -> Self {
         Self {
             os: detect_os(),
