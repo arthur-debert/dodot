@@ -196,7 +196,9 @@ Conditional Running
     `arch`, `hostname`, `username` — same set templates expose under
     `dodot.*`.
 
-    Once defined, labels work in every gate surface:
+    Once defined, labels work in the filename-grammar and glob-table
+    surfaces — filename suffix (`._<label>`), directory segment
+    (`_<label>/`), and `[mappings.gates]`:
 
     Using a custom label:
 
@@ -208,6 +210,12 @@ Conditional Running
                     install.sh            # only on darwin + aarch64
 
     :: text ::
+
+    Note: `[pack] os` accepts OS identifier strings only (`"darwin"`,
+    `"linux"`, …), not custom gate labels. `dodot adopt --only-os`
+    accepts custom labels but validates them against the *root* config's
+    gate table only — a label defined solely in a pack `.dodot.toml` is
+    not visible there (see §8 for the workaround).
 
     Constraints on label names: they must match `[A-Za-z0-9_-]+` (so
     they can be parsed from filenames and directories) and must not

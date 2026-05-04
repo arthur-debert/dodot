@@ -242,6 +242,10 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
             }
             t
         };
+        let compiled_mapping_gates = crate::gates::compile_mapping_gates(
+            &pack_config.mappings.gates,
+            &pack.display_name,
+        )?;
         let entries = scanner.walk_pack(&pack.path, &pack_config.pack.ignore, &gates, host)?;
         for entry in entries {
             if entry.is_dir {
@@ -264,7 +268,10 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
             // a template (the suffix shifts the `.tmpl` extension out
             // of the rightmost slot). Strip first, then check
             // template-ness against the stripped name.
-            let effective_name = match crate::gates::parse_basename_gate(&filename) {
+            let basename_gate = crate::gates::parse_basename_gate(&filename);
+            let has_basename_gate =
+                matches!(basename_gate, crate::gates::BasenameGate::Found { .. });
+            let effective_name = match basename_gate {
                 crate::gates::BasenameGate::None => filename.clone(),
                 crate::gates::BasenameGate::Found { label, stripped } => {
                     let pred = match gates.lookup(label) {
@@ -296,6 +303,48 @@ pub fn list(ctx: &ExecutionContext) -> Result<ListResult> {
                     stripped
                 }
             };
+            // C4: [mappings.gates] glob-based gating — same posture as
+            // `dodot status`. Without this, a template that is gated
+            // only through config (e.g. `"install-mac.sh" = "darwin"`)
+            // would still be surfaced on a non-matching host.
+            let rel_str = entry.relative_path.to_string_lossy();
+            let mapping_gate_label: Option<&str> = compiled_mapping_gates
+                .iter()
+                .find(|(pat, _)| pat.matches(rel_str.as_ref()))
+                .map(|(_, label)| *label);
+            if let Some(map_label) = mapping_gate_label {
+                if has_basename_gate {
+                    // Both a filename gate and a [mappings.gates] entry
+                    // is a hard config error in `dodot up`; skip here so
+                    // we don't surface the file on either host.
+                    tracing::warn!(
+                        pack = %pack.display_name,
+                        file = %entry.relative_path.display(),
+                        label = %map_label,
+                        "secret list: skipping file with conflicting gate \
+                         sources — both a filename gate (`._<label>`) and a \
+                         `[mappings.gates]` entry for label `{map_label}`; \
+                         `dodot up` will reject this as a config error"
+                    );
+                    continue;
+                }
+                let pred = match gates.lookup(map_label) {
+                    Some(p) => p,
+                    None => {
+                        tracing::warn!(
+                            pack = %pack.display_name,
+                            file = %entry.relative_path.display(),
+                            label = %map_label,
+                            "secret list: skipping file with unknown gate label \
+                             `{map_label}` in [mappings.gates]"
+                        );
+                        continue;
+                    }
+                };
+                if !pred.matches(host) {
+                    continue;
+                }
+            }
             // Only scan template-shaped files. Other extensions
             // can't contain `secret(...)` calls in a way the
             // template preprocessor would resolve.
