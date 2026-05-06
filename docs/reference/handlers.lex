@@ -59,7 +59,7 @@ Handlers
     Handlers are classified along two axes that together decide how matches flow.
 
     Match mode:
-        _Precise_ handlers claim specific names or patterns: `install.sh`, `Brewfile`, `bin/`, `*.sh`. _Catchall_ handlers claim anything precise handlers didn't touch. Precise handlers run first and consume their matches; the catchall sees only what's left.
+        _Precise_ handlers claim specific names or patterns: `install.sh`, `aliases.sh`, `Brewfile`, `bin/`. _Catchall_ handlers claim anything precise handlers didn't touch. Precise handlers run first and consume their matches; the catchall sees only what's left.
 
         At most one handler may be catchall in a given pack. Today that role is played by `symlink`. This isn't a rule of the matching system so much as a practical consequence: two catchalls would race for every unclaimed file.
 

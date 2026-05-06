@@ -14,7 +14,7 @@ Terms and Concepts
         A named transformer that decides what to do with a file during deployment. Each handler has one job: `symlink` creates links, `shell` sources scripts at login, `path` adds directories to `$PATH`, `install` runs setup scripts once, `homebrew` installs Brewfiles. See [./handlers.lex].
 
     Rule:
-        A pattern-to-handler mapping with a priority. Rules are how dodot decides which handler claims which file — e.g. `install.sh` → install, `*.sh` → shell, `*` → symlink. Rules are declarative; matching is in priority order, first match wins.
+        A pattern-to-handler mapping with a priority. Rules are how dodot decides which handler claims which file — e.g. `install.sh` → install, `aliases.sh` → shell, `*` → symlink. Rules are declarative; matching is in priority order, first match wins.
 
 2. Handler Taxonomy
 

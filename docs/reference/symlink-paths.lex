@@ -6,7 +6,7 @@ Symlink Deployment Paths
 
 0. The Scenario
 
-    After decades crowding user's ~ with dotfiles, the XDG spec tackles the issue. It fixes it, and fixes it well. It has actually succeeded, but between the many years it took the ecosystem to react and some compromises on the spirit of interoperability, public perception is often on the contrary.  This matters (hence the inclusion) because it sets the tone right: paths in dodot are XDG paths.
+    After decades crowding user's home dirs with dotfiles, the XDG spec tackles the issue. It fixes it, and fixes it well. It has actually succeeded, but between the many years it took the ecosystem to react and some compromises on the spirit of interoperability, public perception is often on the contrary.  This matters (hence the inclusion) because it sets the tone right: paths in dodot are XDG paths.
     This sets the tone better. There are two exceptions to this rule: 
 
         1. The holdouts: some unix old timer's files (.ssh, .zshrc, .gpg ) have decades of deployment *and* tooling is built on top. This will expect the files to be under home. So breaking this would break lots of other things in the ecosystem. Note that there are about 10 of these only. Dodot handles this (more on it bellow). 
