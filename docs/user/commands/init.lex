@@ -21,12 +21,10 @@ Bare-bones by design — `init` only scaffolds the pack shell. To add starter ha
     That's it. No `install.sh`, no `aliases.sh`, no `Brewfile`, no `bin/` directory. If you want any of those, `dodot fill <pack>` adds them in a second step.
 
 3. After init: typical next steps
-
         dodot init nvim                # pack directory + .dodot.toml
         cp ~/.config/nvim/init.lua nvim/
         dodot status nvim              # confirm dispatch matches your expectation
         dodot up nvim                  # deploy
-
     :: shell ::
 
     Or, if you want the handler-template starter files immediately:
