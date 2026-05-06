@@ -1,7 +1,7 @@
 Design Specification: Conditional Running
 
     :: note ::
-        **Status: implemented and shipped.** Phases C1–C5 landed in PR #135 (with follow-up doc PR #136 merged into it). The user-facing reference lives in [./../../user/conditional-running.lex] (full guide), [./../../user/configuration.lex] §2.1 / §4.1 / §5 (config schema), and [./../../user/handlers.lex] §5.3 (the `gate` filter handler). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the user/reference docs disagree about behavior, those docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation.
+        *Status: implemented and shipped.* Phases C1–C5 landed in PR #135 (with follow-up doc PR #136 merged into it). The user-facing reference lives in [./../../user/conditional-running.lex] (full guide), [./../../user/configuration.lex] §2.1 / §4.1 / §5 (config schema), and [./../../user/handlers.lex] §5.3 (the `gate` filter handler). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the user/reference docs disagree about behavior, those docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom for the deviations that were accepted during implementation.
 
     This document specifies how dodot routes pack files based on runtime properties of the host — primarily operating system, with the architecture left open for arch and user-defined predicates. The current state has one mechanism for this case (templates with `{% if dodot.os == "macos" %}`), and that mechanism is the wrong shape for the file-level and pack-level needs that prompted this proposal.
 
@@ -563,7 +563,7 @@ Design Specification: Conditional Running
                         });
                         rules.push(Rule {
                             handler: HANDLER_GATE.into(),
-                            pattern: format!("**/_{}/**", label),
+                            pattern: format!("*/_{}/*", label),
                             priority: 75,
                             case_sensitive: true,
                         });

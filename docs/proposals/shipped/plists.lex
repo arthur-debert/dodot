@@ -1,7 +1,7 @@
 Design Specification: macOS Plist Support
 
     :: note ::
-        **Status: implemented and shipped.** Phases P1–P4 landed in PRs #95, #96, and #97. The user-facing reference for the resulting feature lives in [./../reference/plists.lex] (filter setup, adopt flow, day-to-day workflow) and [./../reference/pre-processors.lex] §3 (Representational transform shape). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom of this document for the deviations that were accepted during implementation.
+        *Status: implemented and shipped.* Phases P1–P4 landed in PRs #95, #96, and #97. The user-facing reference for the resulting feature lives in [./../reference/plists.lex] (filter setup, adopt flow, day-to-day workflow) and [./../reference/pre-processors.lex] §3 (Representational transform shape). This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree about behavior, the reference docs are authoritative; where this document and the source disagree, the source is authoritative. See "Implementation Notes vs. Spec" at the bottom of this document for the deviations that were accepted during implementation.
 
     This document specifies how dodot manages macOS property list (plist) files. Plist support is implemented as a pair of git clean/smudge filters — the architecture sketched as Phase 2 of the Magical Git Experience [./magic.lex]. It is *not* a preprocessor in the sense of [./preprocessing-pipeline.lex], and intentionally so: the trade-offs that make the pipeline-and-pre-commit-hook approach right for templates make it the wrong shape for plists. The reasoning is in §2.
 
@@ -80,9 +80,9 @@ Design Specification: macOS Plist Support
 
         An earlier draft of this document specified plist support as a Representational preprocessor under [./preprocessing-pipeline.lex], with reverse conversion driven by `dodot transform check` invoked from a pre-commit hook. That approach was sound for uniformity with templates, but wrong for plists in three ways:
 
-            1. **Drift visibility lag.** A pre-commit hook only fires when the user runs `git commit`. Between commits, `git status` says clean even when the deployed binary has been rewritten by the app. Given §1.3, this gap can stretch to days. Clean/smudge closes it.
-            2. **Architectural overkill.** The pipeline's reverse-merge framework exists to handle generative transforms with ambiguous reversal (templates with conflict markers, secret-line sidecars). Plists need none of that — the reverse is exact. Routing them through the pipeline imports machinery they will never exercise.
-            3. **Extra files for no benefit.** The pipeline model puts the rendered binary in the datastore (`<state>/dodot/packs/<pack>/symlink/<x>.plist`) and the source XML in the pack. That is three on-disk artefacts per plist. The clean/smudge model has two: pack working-tree binary and the deployed symlink. The datastore is unused.
+            1. *Drift visibility lag.* A pre-commit hook only fires when the user runs `git commit`. Between commits, `git status` says clean even when the deployed binary has been rewritten by the app. Given §1.3, this gap can stretch to days. Clean/smudge closes it.
+            2. *Architectural overkill.* The pipeline's reverse-merge framework exists to handle generative transforms with ambiguous reversal (templates with conflict markers, secret-line sidecars). Plists need none of that — the reverse is exact. Routing them through the pipeline imports machinery they will never exercise.
+            3. *Extra files for no benefit.* The pipeline model puts the rendered binary in the datastore (`<state>/dodot/packs/<pack>/symlink/<x>.plist`) and the source XML in the pack. That is three on-disk artefacts per plist. The clean/smudge model has two: pack working-tree binary and the deployed symlink. The datastore is unused.
 
         Templates still belong in the pipeline. Their reverse is generative, their rendering can touch secret-providers (auth-fatigue under clean/smudge would be hostile), and their reverse-merge needs human review. Plists have none of those properties; they're the textbook clean/smudge case.
 
@@ -132,9 +132,9 @@ Design Specification: macOS Plist Support
 
         Three things can shuffle on round-trip if not actively controlled:
 
-            - **Top-level dictionary key order.** Binary plists store dict keys in encoder-defined order. macOS rewrites can shuffle keys with no semantic change.
-            - **Nested dictionary key order.** Same problem, recursively.
-            - **Whitespace and serialiser quirks.** Indent width, trailing newlines, attribute ordering on tags.
+            - *Top-level dictionary key order.* Binary plists store dict keys in encoder-defined order. macOS rewrites can shuffle keys with no semantic change.
+            - *Nested dictionary key order.* Same problem, recursively.
+            - *Whitespace and serialiser quirks.* Indent width, trailing newlines, attribute ordering on tags.
 
         Arrays are *not* a source of non-determinism. Array order is semantically meaningful in plists — `LSHandlers`, ordered toolbar items, recent-files lists — and must be preserved verbatim.
 

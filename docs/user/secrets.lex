@@ -2,8 +2,8 @@ Secrets
 
     Some of your config has values that don't belong in git. API tokens, database passwords, private keys, certificate blobs. dodot has two shapes for keeping those out of source while letting the deployed file Just Work:
 
-    - **Value injection.** A template references a single secret value via `{{ secret("scheme:reference") }}`. dodot resolves it at deploy time through a configured provider (your password manager, vault CLI, OS keystore) and substitutes it into the rendered output. Source stays committable; deployed file has the real value.
-    - **Whole-file decryption.** A pack file ending in `.age` or `.gpg` is encrypted at rest in the repo. dodot decrypts it at deploy time, writes the plaintext to the datastore at mode 0600, and the symlink handler links it to the home destination. No template expansion involved — the entire bytestream is the secret.
+    - *Value injection.* A template references a single secret value via `{{ secret("scheme:reference") }}`. dodot resolves it at deploy time through a configured provider (your password manager, vault CLI, OS keystore) and substitutes it into the rendered output. Source stays committable; deployed file has the real value.
+    - *Whole-file decryption.* A pack file ending in `.age` or `.gpg` is encrypted at rest in the repo. dodot decrypts it at deploy time, writes the plaintext to the datastore at mode 0600, and the symlink handler links it to the home destination. No template expansion involved — the entire bytestream is the secret.
 
     Both shapes share the same trust posture: dodot does not own encryption or vault custody. It delegates to the provider tools you already use (`pass`, `op`, `bw`, `sops`, `gpg`, `age`, the macOS Keychain, freedesktop Secret Service) and stays out of the credential-handling business. dodot's job is keeping plaintext out of git and out of cleartext-on-disk longer than necessary.
 
@@ -11,14 +11,14 @@ Secrets
 
 1. The Two Shapes — Which One Do I Want?
 
-    Pick **value injection** when:
+    Pick *value injection* when:
         - The secret is a single line: an API token, a password, a connection string fragment.
         - The surrounding config has many non-secret fields you want to keep readable in `git diff`.
         - You want the secret to live in your existing password manager / vault / keychain, not as a separate file in your repo.
 
         Example: a `.netrc` template with one `password` line, or a `kubeconfig` with a `token:` field.
 
-    Pick **whole-file decryption** when:
+    Pick *whole-file decryption* when:
         - The secret IS the file: an SSH private key, a TLS cert bundle, a service-account JSON.
         - There are no static fields worth preserving for `git diff` — the bytestream is opaque to you anyway.
         - You're OK with the existing decrypt → edit → re-encrypt → commit loop for changes (no auto-merge from the deployed side).
@@ -101,12 +101,12 @@ Secrets
 
     Each provider has its own quirks worth knowing:
 
-        - **`pass`**: `pass:foo/bar` returns the first line of the entry at `~/.password-store/foo/bar.gpg`. Set `[secret.providers.pass] store_dir = "/custom/path"` to override the default.
-        - **`op`**: requires `OP_SERVICE_ACCOUNT_TOKEN` to be set in your environment. dodot deliberately doesn't fall back to the desktop-app integration — that path can pop a biometric prompt mid-render, which violates the §7.4 Passive contract.
-        - **`bw`**: needs an unlocked vault. Run `bw unlock`, export the printed `BW_SESSION` value, then run dodot. `bw:gh-token` resolves the password field by default; `bw:gh-token#username` picks a different first-class field (password / username / notes / totp / uri).
-        - **`sops`**: file paths are anchored at the dotfiles root by default — `sops:secrets.yaml#db.password` decrypts `<dotfiles>/secrets.yaml`. Absolute paths bypass the anchor. The dot path translates to SOPS's bracket-notation `--extract` argument.
-        - **`keychain`** (macOS): `keychain:GitHub` finds the first item whose service is `GitHub`; `keychain:GitHub/alice` matches a specific (service, account) pair. Probes via `security default-keychain`; never calls `unlock-keychain` itself.
-        - **`secret-tool`** (Linux): `secret-tool:GitHub[/alice]` does a libsecret lookup against the user's session keyring (gnome-keyring, keepassxc with the SecretService plugin, KDE Wallet). The session daemon handles unlocking.
+        - *`pass`*: `pass:foo/bar` returns the first line of the entry at `~/.password-store/foo/bar.gpg`. Set `[secret.providers.pass] store_dir = "/custom/path"` to override the default.
+        - *`op`*: requires `OP_SERVICE_ACCOUNT_TOKEN` to be set in your environment. dodot deliberately doesn't fall back to the desktop-app integration — that path can pop a biometric prompt mid-render, which violates the §7.4 Passive contract.
+        - *`bw`*: needs an unlocked vault. Run `bw unlock`, export the printed `BW_SESSION` value, then run dodot. `bw:gh-token` resolves the password field by default; `bw:gh-token#username` picks a different first-class field (password / username / notes / totp / uri).
+        - *`sops`*: file paths are anchored at the dotfiles root by default — `sops:secrets.yaml#db.password` decrypts `<dotfiles>/secrets.yaml`. Absolute paths bypass the anchor. The dot path translates to SOPS's bracket-notation `--extract` argument.
+        - *`keychain`* (macOS): `keychain:GitHub` finds the first item whose service is `GitHub`; `keychain:GitHub/alice` matches a specific (service, account) pair. Probes via `security default-keychain`; never calls `unlock-keychain` itself.
+        - *`secret-tool`* (Linux): `secret-tool:GitHub[/alice]` does a libsecret lookup against the user's session keyring (gnome-keyring, keepassxc with the SecretService plugin, KDE Wallet). The session daemon handles unlocking.
 
 4. Whole-File: `*.age` and `*.gpg`
 
@@ -137,7 +137,7 @@ Secrets
         [preprocessor.gpg]
         enabled = true
 
-    `*.asc` (ASCII-armored) is **not** in the default extension list because `.asc` is conventionally used for armored public keys and detached signatures — neither of which `gpg --decrypt` handles. Opt in explicitly only if your repo stores armored encrypted payloads as `.asc`:
+    `*.asc` (ASCII-armored) is *not* in the default extension list because `.asc` is conventionally used for armored public keys and detached signatures — neither of which `gpg --decrypt` handles. Opt in explicitly only if your repo stores armored encrypted payloads as `.asc`:
 
         [preprocessor.gpg]
         enabled = true
@@ -228,10 +228,10 @@ Secrets
 
     Worth knowing what's NOT in dodot's lane:
 
-    - **dodot doesn't own encryption.** The provider tools (`age`, `gpg`, `op`, `pass`, `sops`, `bw`, the OS keystores) handle key custody, vault access, and decryption. dodot delegates and stays out.
-    - **dodot doesn't try to keep plaintext out of memory beyond best-effort.** `SecretString` zeroes its buffer on drop, doesn't implement `Display` (so a `{value}` print fails to compile), and prints `SecretString(<redacted>, len=N)` instead of bytes via `Debug`. The rendered template content still lands on disk in plaintext (that's the entire point of the deploy step). Defense in depth, not a guarantee.
-    - **dodot doesn't run editors on encrypted files.** No `dodot secret edit` — see §5 above.
-    - **dodot's threat model is supply-chain control, not runtime security.** "Don't ship plaintext to git" is the property dodot upholds; "an attacker with code execution as your user can't read your secrets" is not, and never was. The `secrets.lex` §2.4 threat model is the reference.
+    - *dodot doesn't own encryption.* The provider tools (`age`, `gpg`, `op`, `pass`, `sops`, `bw`, the OS keystores) handle key custody, vault access, and decryption. dodot delegates and stays out.
+    - *dodot doesn't try to keep plaintext out of memory beyond best-effort.* `SecretString` zeroes its buffer on drop, doesn't implement `Display` (so a `{value}` print fails to compile), and prints `SecretString(<redacted>, len=N)` instead of bytes via `Debug`. The rendered template content still lands on disk in plaintext (that's the entire point of the deploy step). Defense in depth, not a guarantee.
+    - *dodot doesn't run editors on encrypted files.* No `dodot secret edit` — see §5 above.
+    - *dodot's threat model is supply-chain control, not runtime security.* "Don't ship plaintext to git" is the property dodot upholds; "an attacker with code execution as your user can't read your secrets" is not, and never was. The `secrets.lex` §2.4 threat model is the reference.
 
 9. Troubleshooting
 

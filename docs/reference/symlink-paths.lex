@@ -142,7 +142,7 @@ Symlink Deployment Paths
 
 5. Explicit `$HOME` or `XDG_CONFIG_HOME` via Directory Prefix
 
-    For a whole subtree of files, the `_home/` and `_xdg/` directory prefixes route every file under them to a fixed root, **skipping the pack-name namespace**:
+    For a whole subtree of files, the `_home/` and `_xdg/` directory prefixes route every file under them to a fixed root, *skipping the pack-name namespace*:
 
         <pack>/_home/a-conf.ini   →  $HOME/.a-conf.ini
         <pack>/_xdg/a-config.ini  →  $XDG_CONFIG_HOME/a-config.ini
@@ -382,8 +382,8 @@ Symlink Deployment Paths
 
         `--into <pack>` forces a destination pack regardless of inference. Two cases:
 
-            - **Override matches inferred pack** (or no inference happened, e.g. HOME source): the natural in-pack path is used.
-            - **Override differs from inferred pack** (XDG sources only): the in-pack path switches to `_xdg/<X>/<rest>` so the explicit `_xdg/` prefix from §5 bypasses pack-namespacing and lands the deployed file at the same place.
+            - *Override matches inferred pack* (or no inference happened, e.g. HOME source): the natural in-pack path is used.
+            - *Override differs from inferred pack* (XDG sources only): the in-pack path switches to `_xdg/<X>/<rest>` so the explicit `_xdg/` prefix from §5 bypasses pack-namespacing and lands the deployed file at the same place.
 
         Concrete: `dodot adopt ~/.config/lazygit/config.yml --into toolbox` lands the file at `toolbox/_xdg/lazygit/config.yml`. Re-deploying still lands the symlink at `~/.config/lazygit/config.yml` even though the pack is `toolbox`.
 

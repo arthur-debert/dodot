@@ -1,7 +1,7 @@
 Design Specification: Template Expansion
 
     :: note ::
-        **Status: implemented and shipped.** The template preprocessor (Phase T1), reverse-merge framework (Phase T2 via burgertocow + diffy), and configuration / status surface (Phase T3) all landed across PRs #100–#107. The user-facing reference is at [./../reference/pre-processors.lex] §6 and [./../reference/template-magic.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree, the reference docs are authoritative.
+        *Status: implemented and shipped.* The template preprocessor (Phase T1), reverse-merge framework (Phase T2 via burgertocow + diffy), and configuration / status surface (Phase T3) all landed across PRs #100–#107. The user-facing reference is at [./../reference/pre-processors.lex] §6 and [./../reference/template-magic.lex]. This proposal is preserved as historical design context — *not* a maintained spec. Where this document and the reference docs disagree, the reference docs are authoritative.
 
     This document specifies the template expansion preprocessor for dodot. It is a concrete implementation of a Generative (One-Way) transformation as defined in the Preprocessing Pipeline design [./preprocessing-pipeline.lex].
 

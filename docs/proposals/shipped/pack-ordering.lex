@@ -267,7 +267,7 @@ Design Specification: Pack Ordering
 
 9. Phased Implementation
 
-    Phase 1: Documentation. **(Independent of all code.)**
+    Phase 1: Documentation. *(Independent of all code.)*
         Land §8.1 and §8.2 immediately. Resolves the original feedback's items 2 and 3 with zero code risk. Optional: §8.3 with the canonical example, even before the prefix grammar is recognised by the code — the example works today via plain lex order.
 
     Phase 2: Prefix grammar.

@@ -340,10 +340,10 @@ Conditional Running
 
     Things gates intentionally do not do:
 
-    - **No predicate language**. Labels are equality-only AND conjunctions. For OR, define multiple labels and use multiple filenames.
-    - **No filename stacking**. `install._darwin._arm64.sh` is *not* parsed as "darwin AND arm64." Use a compound user-defined label (`arm-mac = { os = "darwin", arch = "aarch64" }`) and write `install._arm-mac.sh`.
-    - **No negation**. There's no `_!darwin` syntax. Write the positive form for the OSes you do want.  - **No nested gates inside routing-prefix subtrees**.  `_home/_darwin/...` is *not* recognised — the symlink handler owns recursion inside routing prefixes. Put the gate at the outer level: `_darwin/_home/...`.  
-    - **No profile selection**. dodot is single-config-per-machine; hostname-based gates are the closest analog. See [./../reference/philosophy.lex] §7.
+    - *No predicate language*. Labels are equality-only AND conjunctions. For OR, define multiple labels and use multiple filenames.
+    - *No filename stacking*. `install._darwin._arm64.sh` is *not* parsed as "darwin AND arm64." Use a compound user-defined label (`arm-mac = { os = "darwin", arch = "aarch64" }`) and write `install._arm-mac.sh`.
+    - *No negation*. There's no `_!darwin` syntax. Write the positive form for the OSes you do want.  - *No nested gates inside routing-prefix subtrees*.  `_home/_darwin/...` is *not* recognised — the symlink handler owns recursion inside routing prefixes. Put the gate at the outer level: `_darwin/_home/...`.  
+    - *No profile selection*. dodot is single-config-per-machine; hostname-based gates are the closest analog. See [./../reference/philosophy.lex] §7.
 
 12. Diagnostic Tips
 
