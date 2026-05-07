@@ -7,12 +7,17 @@ For terminology, see [./glossary/handler.lex].
 
 1. The eight handlers
 
+    Five deploy handlers, one per snippet:
+
     - [./handlers/symlink.lex] — link source files into deployed locations. The catch-all.
     - [./handlers/shell.lex] — source shell scripts at login.
     - [./handlers/path.lex] — add a source `bin/` directory to `$PATH`.
     - [./handlers/install.lex] — run a one-shot setup script, content-hashed.
     - [./handlers/homebrew.lex] — run `brew bundle` against a source `Brewfile`, content-hashed.
-    - [./handlers/controlling-activation.lex] — `ignore`, `skip`, and `gate` filters, plus pack-level `[pack] ignore` and `.dodotignore`.
+
+    Three filter handlers, bundled in one snippet because they share a usage story:
+
+    - [./handlers/controlling-activation.lex] — `ignore` (silent drop), `skip` (visible drop), `gate` (host-conditional drop), plus pack-level `[pack] ignore` and `.dodotignore`.
 
 2. The dispatch model
 
