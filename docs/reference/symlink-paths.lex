@@ -6,20 +6,6 @@ Symlink Deployment Paths
 
 0. The Scenario
 
-    After decades crowding user's home dirs with dotfiles, the XDG spec tackles the issue. It fixes it, and fixes it well. It has actually succeeded, but between the many years it took the ecosystem to react and some compromises on the spirit of interoperability, public perception is often on the contrary.  This matters (hence the inclusion) because it sets the tone right: paths in dodot are XDG paths.
-    This sets the tone better. There are two exceptions to this rule: 
-
-        1. The holdouts: some unix old timer's files (.ssh, .zshrc, .gpg ) have decades of deployment *and* tooling is built on top. This will expect the files to be under home. So breaking this would break lots of other things in the ecosystem. Note that there are about 10 of these only. Dodot handles this (more on it bellow). 
-        2. MacOs GUI Apps: a schism has surface, with the xdg paths pointing to the "correct" ~/Library directories (i.g. Application Support) being used by GUI Apps, and most cli software either both or ~/.config. If not on darwin, or not using dodot to handle GUI configs, this is immaterial.
-
-
-    In a nutshell: 
-        dodot uses XDG fully, except for unix cannons. Additionally, since there are always exceptions this is fully controllable: 
-        - config: resolve to home  (unix cannons)
-        - file/dir names: 
-            - prefixing files with home. (i.e. home.some-config -> ~/.some-config)
-            - enclosing links under a _home directory or _xdg do the expect thing.
-        That is, if a you need to break convention, you get a simple, explicit mechanism for doing so. 
     After decades of dotfiles crowding `$HOME`, the XDG spec tackled the issue — and it has succeeded. Adoption took years and the ecosystem still has rough edges, so public perception of XDG is more skeptical than the actual state warrants. Calling that out matters because it sets the tone for this document: paths in dodot are XDG paths by default.
 
     There are two exceptions to that rule:
@@ -34,9 +20,6 @@ Symlink Deployment Paths
             - per-file: `home.X`, `app.X`, `xdg.X`, `lib.X` (e.g. `home.bashrc` → `~/.bashrc`, `app.settings.json` → `<app_support>/settings.json`)
             - per-subtree: `_home/`, `_xdg/`, `_app/`, `_lib/` directories (e.g. `_home/vim/vimrc` → `~/.vim/vimrc`)
         Mixing both — a `[symlink.targets]` config entry *and* a routing prefix on the same file — raises a hard error so the source of truth is unambiguous.
-
-
-
 
 
     :: note :: See [./terms-and-concepts.lex] for terminology used throughout.
