@@ -185,16 +185,16 @@ Design Specification: Profiling and the Probe Command
 
 7. Phased Implementation
 
-    Phase 1: deployment map and `probe show-data-dir`. **(Shipped.)**
+    Phase 1: deployment map and `probe show-data-dir`. *(Shipped.)*
         No init-script changes. Wire `deployment-map.tsv` writing into the tail of `commands::up` and `commands::down` alongside `shell::write_init_script`. Ship `probe`, `probe show-data-dir`, and `probe deployment-map`. This alone unblocks `dodot refresh` from @./magic.lex.
 
-    Phase 2: shell-init timing. **(Shipped.)**
+    Phase 2: shell-init timing. *(Shipped.)*
         Extend `shell::generate_init_script` to emit the per-file timing wrapper and the preamble writer. Wire `probe shell-init` reader and the default (single-run) view. Add the `profiling` config section. Rotation also lands here (cheaper to ship together than to defer): the writer side has no rotation logic, but `dodot up` prunes `<data_dir>/probes/shell-init/` to `keep_last_runs` at the end of every run.
 
-    Phase 3: aggregation. **(Shipped.)**
+    Phase 3: aggregation. *(Shipped.)*
         `--runs N` and `--history` flags on `probe shell-init` for cross-run views — p50/p95/max per target (nearest-rank, no interpolation) and a per-run trend table. Rotation already ran in Phase 2, so this phase was purely additive on the reader side. The history row's `failed_entries` column also subsumes part of what regression-hints (now phase 5) would have done: silent source failures across runs are visible at a glance.
 
-    Phase 4: error visibility. **(Shipped.)**
+    Phase 4: error visibility. *(Shipped.)*
         The exit-status column from Phase 2 turned silent failures into a visible counter, but a count without context still leaves the user reaching for a separate tool. This phase closes that loop:
 
         - The shell wrapper now redirects each `. file` stderr into a per-shell scratch, re-emits live to the user's TTY (preserving the existing breadcrumb), and on non-empty stderr appends a record to a sibling `*.errors.log` next to the TSV (§3.1). Empty-stderr sources still take the fast path — one `[ -s ]` test of overhead.

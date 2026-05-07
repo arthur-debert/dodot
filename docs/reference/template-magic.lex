@@ -154,7 +154,7 @@ Template Magic
 
         - `dodot up --force` — overwrites the deployed file with the rendered output, discarding the in-place edit. The escape hatch when a user knows they want the freshly-rendered output (most commonly: an env var that a template references has rotated, and the user wants the new value to land).
 
-        Staleness is defined from file content, not from the runtime environment. Env vars referenced via `{{ env.X }}` are read live at render time and are intentionally **not** part of the cache-invalidation signal — see [./../proposals/preprocessing-pipeline.lex] §6.4. Stable values that should participate in invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace), not `env.*`.
+        Staleness is defined from file content, not from the runtime environment. Env vars referenced via `{{ env.X }}` are read live at render time and are intentionally *not* part of the cache-invalidation signal — see [./../proposals/preprocessing-pipeline.lex] §6.4. Stable values that should participate in invalidation belong in `[preprocessor.template.vars]` (the `user_vars` namespace), not `env.*`.
 
 5. Opting Out
 

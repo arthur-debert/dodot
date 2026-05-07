@@ -1,6 +1,6 @@
 CLI Output
 
-    This document covers how dodot renders its CLI output: the standout-based pipeline, the MiniJinja templates that format each command's result, and the integration with command result types. For the user-facing `--output` flag reference, see [./../user/commands.lex] §4.
+    This document covers how dodot renders its CLI output: the standout-based pipeline, the MiniJinja templates that format each command's result, and the integration with command result types. The `--output` flag is a global flag described per-command under [./../user/commands/].
 
     :: note :: See [./../reference/terms-and-concepts.lex] for terminology used throughout.
 

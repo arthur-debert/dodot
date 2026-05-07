@@ -74,9 +74,9 @@ macOS Plists
 
         :: text ::
 
-        - **Y** (or empty input): runs `dodot git-install-filters` and dismisses the prompt for this machine.
-        - **n**: skips. The prompt fires again on the next `up` until you install (or your filter setup is complete via some other path).
-        - **show**: prints the config without installing. Doesn't dismiss the prompt.
+        - *Y* (or empty input): runs `dodot git-install-filters` and dismisses the prompt for this machine.
+        - *n*: skips. The prompt fires again on the next `up` until you install (or your filter setup is complete via some other path).
+        - *show*: prints the config without installing. Doesn't dismiss the prompt.
 
         The prompt fires only on a TTY — non-interactive invocations (CI, shell scripts) skip it silently. To re-enable a dismissed prompt, run `dodot prompts reset plist.install_filters`.
 

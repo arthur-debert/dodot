@@ -100,7 +100,7 @@ Secrets — Developer Guide
 
     :: text ::
 
-    Both fields live behind `Arc` so cloning the registry shares state. The cache scope today is **per-pack**, not per-run: `default_registry` (`preprocessing/mod.rs:260`) constructs a fresh `SecretRegistry` for each pack the pipeline visits, so cross-pack cache hits don't happen. Within one pack — across multiple template files in that pack — clones of the same registry instance share cache state because of the `Arc<Mutex<HashMap>>` shape. The `Arc` wrapping is what makes a future cross-pack-sharing refactor cheap (build once at `commands::up`, thread the same `Arc<SecretRegistry>` through every per-pack call); that refactor isn't shipped today and is captured as a deferred item in [./../proposals/shipped/secrets.lex] §9.1.
+    Both fields live behind `Arc` so cloning the registry shares state. The cache scope today is *per-pack*, not per-run: `default_registry` (`preprocessing/mod.rs:260`) constructs a fresh `SecretRegistry` for each pack the pipeline visits, so cross-pack cache hits don't happen. Within one pack — across multiple template files in that pack — clones of the same registry instance share cache state because of the `Arc<Mutex<HashMap>>` shape. The `Arc` wrapping is what makes a future cross-pack-sharing refactor cheap (build once at `commands::up`, thread the same `Arc<SecretRegistry>` through every per-pack call); that refactor isn't shipped today and is captured as a deferred item in [./../proposals/shipped/secrets.lex] §9.1.
 
     The cache is hand-split into `cache_get` (returns `Option<Arc<SecretString>>`) and `cache_put` (takes `Arc<SecretString>`) rather than a single `resolve_cached`. The reason is co-location: the rich §3.4 multi-line / non-UTF-8 error messages live with the rendering surface (the `secret()` callback in `template.rs`), and the cache is dumb storage. The callback's flow is:
 
@@ -139,7 +139,7 @@ Secrets — Developer Guide
 
     `build_secret_registry` (`mod.rs:341`) is the inner helper. Public because `commands::up::up()` calls it directly to build a registry for run-level preflight without going through `default_registry` (it doesn't want a preprocessor registry, just the secret one).
 
-    The `[secret]` block is read from the **root** config, never from per-pack config. See `SecretSection` doc at `config/mod.rs::SecretSection` for the rationale.
+    The `[secret]` block is read from the *root* config, never from per-pack config. See `SecretSection` doc at `config/mod.rs::SecretSection` for the rationale.
 
 6. The `secret()` MiniJinja Function
 
@@ -221,8 +221,8 @@ Secrets — Developer Guide
     Lives at `<cache_dir>/preprocessor/<pack>/<handler>/<filename>.secret.json` — same dir as the baseline JSON, suffix differs. `SecretsSidecar::write` is a no-op + remove-stale when `secret_line_ranges` is empty (templates without secrets don't drop empty files). `SecretsSidecar::load` returns `Ok(None)` when no file exists — that's the documented "no secrets to mask" state.
 
     The sidecar is consumed in two places:
-        - **Reverse-merge** (`preprocessing/reverse_merge.rs`, search for `secret_ranges`): the line ranges become the `mask_deployed_lines` argument to `burgertocow::generate_diff_with_markers_opts`. Lines listed in the mask are treated as already-matching the cached render regardless of actual content, so a rotated secret value in the deployed file doesn't propagate back to the template source as a literal.
-        - **`dodot transform status`** (`commands/transform.rs`, search for `secret_references`): each entry's `secret_references: Vec<String>` is populated from the sidecar so the rendered status surfaces which secrets each baseline depends on without re-rendering.
+        - *Reverse-merge* (`preprocessing/reverse_merge.rs`, search for `secret_ranges`): the line ranges become the `mask_deployed_lines` argument to `burgertocow::generate_diff_with_markers_opts`. Lines listed in the mask are treated as already-matching the cached render regardless of actual content, so a rotated secret value in the deployed file doesn't propagate back to the template source as a literal.
+        - *`dodot transform status`* (`commands/transform.rs`, search for `secret_references`): each entry's `secret_references: Vec<String>` is populated from the sidecar so the rendered status surfaces which secrets each baseline depends on without re-rendering.
 
 9. Linear Code Walk: `dodot up` With a `secret()` Call
 
@@ -282,7 +282,7 @@ Secrets — Developer Guide
 
         2. The pipeline dispatches `ssh/id_ed25519.age` to `AgePreprocessor::expand` (`preprocessing/age.rs`).
 
-        3. `expand()` calls `runner.run_bytes("age", &["--decrypt", "--identity", <path>, <source>])`. **`run_bytes`, not `run`** — preserves binary plaintext byte-for-byte.
+        3. `expand()` calls `runner.run_bytes("age", &["--decrypt", "--identity", <path>, <source>])`. *`run_bytes`, not `run`* — preserves binary plaintext byte-for-byte.
 
         4. On non-zero exit, `expand()` maps documented stderr shapes ("no identity matched", "identity does not exist") to actionable hints; surfaces unrecognized stderr verbatim with `exit N` context.
 
@@ -290,7 +290,7 @@ Secrets — Developer Guide
               - `relative_path`: source filename with `.age` stripped (`id_ed25519`).
               - `content`: raw plaintext bytes from `out.stdout` (Vec<u8>, no decode).
               - `tracked_render: None`, `context_hash: None`, `secret_line_ranges: vec![]`.
-              - **`deploy_mode: Some(0o600)`** — the §4.3 contract.
+              - *`deploy_mode: Some(0o600)`* — the §4.3 contract.
 
         6. The pipeline:
               - Divergence-guard gate fires for whole-file secrets too (gate: `tracked_render.is_some() || deploy_mode.is_some()`).
@@ -325,11 +325,11 @@ Secrets — Developer Guide
 
     Three tiers per [./../proposals/shipped/secrets-testing.lex] §3-§5:
 
-    - **Tier 0 (unit, `cargo test`).** Pure dodot logic. `MockSecretProvider` (`secret/test_support.rs`) returns canned values from a `HashMap`; `PanickingProvider` (same file) panics on `resolve()` to pin the §7.4 Passive contract. Provider impls have their own `ScriptedRunner` mock per file (`pass.rs`, `op.rs`, etc.) for command-shape and stderr-mapping coverage. Roughly 1059 lib tests at the time of writing.
+    - *Tier 0 (unit, `cargo test`).* Pure dodot logic. `MockSecretProvider` (`secret/test_support.rs`) returns canned values from a `HashMap`; `PanickingProvider` (same file) panics on `resolve()` to pin the §7.4 Passive contract. Provider impls have their own `ScriptedRunner` mock per file (`pass.rs`, `op.rs`, etc.) for command-shape and stderr-mapping coverage. Roughly 1059 lib tests at the time of writing.
 
-    - **Tier 1 (hermetic real-binary, `bats` on every PR).** Each `tests/e2e/bats/test_secrets_*.bats` file builds a fresh sandbox and exercises the real binary against fixture data. `pass`, `age`, `gpg` fixtures generate keypairs in `$SANDBOX` and seed catalog entries; `bw` uses a stub binary on PATH (real bw needs an account); `op` doesn't have a tier-1 yet because it always needs an account. Tests skip when the binary isn't on the host.
+    - *Tier 1 (hermetic real-binary, `bats` on every PR).* Each `tests/e2e/bats/test_secrets_*.bats` file builds a fresh sandbox and exercises the real binary against fixture data. `pass`, `age`, `gpg` fixtures generate keypairs in `$SANDBOX` and seed catalog entries; `bw` uses a stub binary on PATH (real bw needs an account); `op` doesn't have a tier-1 yet because it always needs an account. Tests skip when the binary isn't on the host.
 
-    - **Tier 2 (real cloud / OS keystore).** Deferred. The op / bw real-provider workflow lands separately when the dedicated CI runners exist. The `keychain` and `secret-tool` providers are tier-0-only because writing to the user's real OS keystore from automated tests is unsafe — see [./../proposals/shipped/secrets-testing.lex] §5.3.
+    - *Tier 2 (real cloud / OS keystore).* Deferred. The op / bw real-provider workflow lands separately when the dedicated CI runners exist. The `keychain` and `secret-tool` providers are tier-0-only because writing to the user's real OS keystore from automated tests is unsafe — see [./../proposals/shipped/secrets-testing.lex] §5.3.
 
     Tier-0 test patterns to copy when adding a new provider:
         - Reference parsing: every shape, every rejection (empty, malformed, etc.).
@@ -351,7 +351,7 @@ Secrets — Developer Guide
 
         5. Wire into the module root: `secret/mod.rs` `pub mod <name>; pub use <name>::<Name>Provider;`.
 
-        6. Add a config block to `config/mod.rs`: `pub struct SecretProvider<Name> { pub enabled: bool, ... }`, default `enabled = false`. Add a `<name>: SecretProvider<Name>` field on `SecretProvidersSection`. **If the scheme has a hyphen, see §4 above for the underscore TOML key wart.**
+        6. Add a config block to `config/mod.rs`: `pub struct SecretProvider<Name> { pub enabled: bool, ... }`, default `enabled = false`. Add a `<name>: SecretProvider<Name>` field on `SecretProvidersSection`. *If the scheme has a hyphen, see §4 above for the underscore TOML key wart.*
 
         7. Wire into `build_secret_registry` (`preprocessing/mod.rs:341`): `if config.providers.<name>.enabled { reg.register(Arc::new(<Name>Provider::from_env(runner.clone()))); any_enabled = true; }`.
 

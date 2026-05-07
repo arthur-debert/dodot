@@ -73,3 +73,16 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 - Pack-level `.dodotignore` marker is unchanged but is now referred to
   as the "pack-ignore" mechanism in docs, to disambiguate from the
   intra-pack `[mappings] ignore` filter handler.
+- **User-facing documentation rewritten as a snippet library.** The
+  former monolithic `docs/user/handlers.lex` and `docs/user/commands.lex`
+  are split into a per-topic library under `docs/user/glossary/`,
+  `docs/user/handlers/`, and `docs/user/commands/` (38 files total),
+  each carrying a `:: verified ::` stamp confirming claims were checked
+  against source. The two original files are now thin index pages
+  (option *a*) that point at the per-topic snippets. New
+  `docs/user/commands/git-augmentation.lex` is the conceptual overview
+  for the install-ladder + three rungs (pre-commit hook, plist filter,
+  template filter) + Tier-2 alias. Cross-references in `getting-started`,
+  `dev/handlers`, `reference/handlers`, `dev/cli-output`, and
+  `proposals/shipped/conditional-running` updated to point at the new
+  per-topic homes.
