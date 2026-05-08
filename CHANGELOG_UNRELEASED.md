@@ -86,3 +86,5 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   `dev/handlers`, `reference/handlers`, `dev/cli-output`, and
   `proposals/shipped/conditional-running` updated to point at the new
   per-topic homes.
+
+<!-- audit-smoke-test 2026-05-08T21:00:16Z -->
