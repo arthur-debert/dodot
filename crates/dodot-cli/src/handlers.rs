@@ -500,13 +500,21 @@ pub fn probe_shell_init_handler(
 
 // ── Passthrough handlers (bypass standout rendering) ────────────
 
+/// Configured `ConfigCommand` shared by registration and parsing.
+///
+/// `--out` (renamed from clapfig's default `--output`) avoids a clap
+/// collision with standout's global `--output` (output-mode selector).
+/// Both `main::build_clap_command` and `config_passthrough` go through
+/// this helper so the registered surface and the parser stay in lockstep.
+pub(crate) fn config_command() -> clapfig::ConfigCommand {
+    clapfig::ConfigCommand::new().output_long("out")
+}
+
 /// `dodot config` — delegates to clapfig's config subcommands.
 /// Uses `handle_to_string` (clapfig 0.16) for programmatic output.
 pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
-    // Must match the `ConfigCommand` configured in main::build_clap_command.
-    let config_cmd = clapfig::ConfigCommand::new().output_long("out");
-    let action = config_cmd.parse(matches)?;
+    let action = config_command().parse(matches)?;
 
     let output = clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()
         .app_name("dodot")

@@ -156,10 +156,22 @@ Configuration
 
         :: toml ::
 
-        Capped at 100 entries. On Linux (or on macOS with
-        `app_uses_library = false`) `force_app` collapses to plain
-        XDG routing — the list is mechanically inert there. Equivalent
-        per-file: prefix with `app.` or place under `_app/`.
+        On Linux (or on macOS with `app_uses_library = false`),
+        `app_support_dir` collapses to `$XDG_CONFIG_HOME` — but
+        `force_app` is still applied. So `force_app = ["Code"]` on
+        Linux routes `Code/init.json` to
+        `$XDG_CONFIG_HOME/Code/init.json` (skipping the per-pack
+        namespace), not to the macOS Application Support root. If
+        you don't want that behavior on Linux, drop the entry from
+        the list there (or override per-pack).
+
+        The shipped defaults stay under a 100-entry budget — that's
+        a build-time invariant on `force_app`'s seed, not a user
+        validation. You can set a longer list yourself; it just
+        won't be a sane thing to do.
+
+        Equivalent per-file: prefix with `app.` or place under
+        `_app/`.
 
     3.3. `app_aliases`
 
