@@ -86,3 +86,25 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   `dev/handlers`, `reference/handlers`, `dev/cli-output`, and
   `proposals/shipped/conditional-running` updated to point at the new
   per-topic homes.
+- **`docs/user/configuration.lex` brought into sync with the schema.**
+  The doc now covers every key in `DodotConfig`: added `[symlink]
+  force_app` / `app_aliases` / `app_uses_library` / `plist_extensions`,
+  the `[path]` section (`auto_chmod_exec`), `[preprocessor.template]
+  no_reverse`, `[preprocessor.age]`, `[preprocessor.gpg]`,
+  `[profiling]` (root-only), and `[secret]` (root-only) with all six
+  providers. The intro is reframed around the convention vs.
+  customization choice and the per-file (`_home/`, `home.X`, `_app/`,
+  …) vs. per-pack/repo (`.dodot.toml`) scope axes, and surfaces the
+  CLI helpers (`config list` / `get` / `set` / `unset` / `gen`).
+  Stock values cross-checked against `dodot config list` output.
+
+### Fixed
+
+- `dodot config gen` and `dodot config schema` panicked at startup
+  with `Long option names must be unique for each argument, but
+  '--output' is in use by both 'output' and '_output_mode'`. The
+  collision was between standout's global `--output` (output-mode
+  selector) and clapfig's gen/schema output-file flag. Renamed the
+  latter to `--out`; short `-o` is preserved, so `dodot config gen
+  -o .dodot.toml` keeps working and `--out` replaces `--output` as
+  the long form.

@@ -404,7 +404,11 @@ fn build_app() -> App {
 }
 
 fn build_clap_command() -> ClapCommand {
-    let config_cmd = clapfig::ConfigCommand::new();
+    // `handlers::config_command` is the single source of truth for the
+    // configured `ConfigCommand` — both this registration site and the
+    // `config_passthrough` parser route through it. See its docstring
+    // for why `--output` is renamed to `--out`.
+    let config_cmd = handlers::config_command();
 
     ClapCommand::new("dodot")
         .about("A dotfiles manager that uses symlinks for live editing")
