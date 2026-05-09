@@ -7,12 +7,15 @@ Sources your version-controlled shell scripts into your interactive shell at log
 
     Source filenames matched by the `[mappings] shell` default:
 
-    - `aliases.{sh,bash,zsh}`
-    - `profile.{sh,bash,zsh}`
-    - `login.{sh,bash,zsh}`
-    - `env.{sh,bash,zsh}`
+    - `*.sh`
+    - `*.bash`
+    - `*.zsh`
 
-    Twelve patterns covering four conventional names × three extensions.
+    Any file at a pack's root with one of these extensions gets sourced. The convention in hand-curated dotfile repos is that loose shell files at the top of a pack — `aliases.sh`, `path.zsh`, `functions.bash`, `50_prompt.sh` — are there to be sourced into the interactive shell, so dodot routes the whole shape rather than a fixed allowlist of names.
+
+    `install.sh` (handled by the install handler) is the carve-out: it runs once instead of being sourced.
+
+    The rule is depth-1 only. A `.sh` file inside a subdirectory of the pack — for example `hypr/scripts/foo.sh` — is not pulled in by this rule; it flows through the symlink handler the same way every other nested file does. That's the right behaviour for window-manager and tmux helper scripts that live at `~/.config/<app>/scripts/*.sh` and are invoked by another tool, not the shell.
 
 2. The extension is the contract
 
@@ -33,7 +36,7 @@ Sources your version-controlled shell scripts into your interactive shell at log
 
     :: toml ::
 
-    The list fully replaces the defaults. If you set `shell`, the twelve-pattern default goes away — re-list any defaults you still want alongside your additions.
+    The list fully replaces the defaults. If you set `shell`, the wildcard default goes away — re-list `*.sh`/`*.bash`/`*.zsh` alongside your additions if you still want catchall coverage.
 
 4. Live edits
 

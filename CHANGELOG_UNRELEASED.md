@@ -54,6 +54,33 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Changed
 
+- **`[mappings] shell` default is now `["*.sh", "*.bash", "*.zsh"]`** —
+  any file at a pack's root with a shell extension gets sourced,
+  replacing the older fixed allowlist (`aliases`/`profile`/`login`/`env`
+  × three extensions). The wildcard matches the convention in
+  hand-curated dotfile repos (holman, mathiasbynens, paulirish, …),
+  where loose shell files at the top of a pack — `aliases.sh`,
+  `path.zsh`, `functions.bash`, `50_prompt.sh` — are uniformly meant
+  to be sourced into the interactive shell. Pack authors no longer
+  have to rename files to a fixed set of names. Three companion
+  guarantees:
+  - **Recursion safety**: scanning is depth-1, so a nested
+    `hypr/scripts/foo.sh` (a window-manager helper invoked by another
+    tool, not the shell) is *not* sourced — it flows through the
+    symlink handler unchanged. Tiling-WM and tmux helper scripts
+    keep working.
+  - **`install.sh` is preserved**: the install rule sits at priority
+    20, above the priority-10 shell wildcard, so an install hook
+    never gets accidentally sourced regardless of mapping order.
+  - **`README.sh` and friends still get skipped**: the `skip` filter
+    at priority 50 also outranks the shell wildcard.
+
+  Migration: users who relied on a non-`aliases`/`profile`/`login`/`env`
+  `.sh` file at a pack root being symlinked rather than sourced should
+  set `[mappings] shell = ["aliases.sh", "profile.sh", …]` (the old
+  default) per-pack. Users with `.sh` files inside subdirectories
+  (`bin/foo.sh`, `scripts/bar.sh`) need no migration — those have
+  always flowed through the symlink handler and continue to do so.
 - `[mappings] skip` is now a real registered filter handler instead of
   an `!<pattern>` exclusion rule. Three user-visible consequences:
   - Files matched by `skip` surface in `dodot status` as `skipped`

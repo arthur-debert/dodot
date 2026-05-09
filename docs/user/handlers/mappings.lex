@@ -16,27 +16,24 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
         | Priority | Handler  | Default claims                                                                                                          |
         | 100      | ignore   | (empty by default)                                                                                                      |
         | 50       | skip     | `README`/`README.*`, `LICENSE`/`LICENSE.*`, `CHANGELOG`/`CHANGELOG.*`, `CONTRIBUTING`/`CONTRIBUTING.*`, `AUTHORS`/`AUTHORS.*`, `NOTICE`/`NOTICE.*`, `COPYING`/`COPYING.*` (case-insensitive) |
+        | 20       | install  | `install.sh`, `install.bash`, `install.zsh`                                                                             |
         | 10       | homebrew | `Brewfile`                                                                                                              |
-        | 10       | install  | `install.sh`, `install.bash`, `install.zsh`                                                                             |
         | 10       | path     | `bin/`                                                                                                                  |
-        | 10       | shell    | `aliases.{sh,bash,zsh}`, `profile.{sh,bash,zsh}`, `login.{sh,bash,zsh}`, `env.{sh,bash,zsh}`                             |
+        | 10       | shell    | `*.sh`, `*.bash`, `*.zsh` (any shell-extension file at the pack's root)                                                 |
         | 0        | symlink  | `*` (catch-all)                                                                                                         |
 
     :: table align=rll ::
 
     The `gate` handler is not in the priority ladder. Gate matching runs at *scan time*, before the rule matcher — gate predicates strip the `._<label>` suffix from a source filename if the host matches, or surface a "gated out" entry if it doesn't. See [./controlling-activation.lex] for the full story.
 
+    `install` sits at priority 20 — above the priority-10 shell wildcard — so an `install.sh` filename always routes to the install handler. Without the gap, the install hook would be silently sourced by every shell session.
+
     Default mappings as raw TOML (the form `dodot config gen` emits):
 
         [mappings]
         path     = "bin"
         install  = ["install.sh", "install.bash", "install.zsh"]
-        shell    = [
-            "aliases.sh", "aliases.bash", "aliases.zsh",
-            "profile.sh", "profile.bash", "profile.zsh",
-            "login.sh",   "login.bash",   "login.zsh",
-            "env.sh",     "env.bash",     "env.zsh",
-        ]
+        shell    = ["*.sh", "*.bash", "*.zsh"]
         homebrew = "Brewfile"
         ignore   = []
         skip     = [
@@ -67,7 +64,7 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
 
 4. Override rules
 
-    Each key in `[mappings]` *replaces* its default wholesale; values are not merged. If you set `[mappings] shell`, the twelve-pattern default goes away — re-list any defaults you still want alongside your additions.
+    Each key in `[mappings]` *replaces* its default wholesale; values are not merged. If you set `[mappings] shell`, the wildcard default goes away — re-list `*.sh`/`*.bash`/`*.zsh` alongside your additions if you still want catchall coverage.
 
     Pack-level mappings are merged with root-level only at the *key* level, not within values. A pack `.dodot.toml` setting `[mappings] shell = [...]` replaces a root `[mappings] shell` in full for that pack; keys the pack doesn't set inherit from root (or the built-in defaults if root doesn't set them either).
 
@@ -79,17 +76,17 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
 
     :: toml ::
 
-    Adding new patterns without losing the default — for shell, re-list the defaults plus your additions:
+    Restricting the shell handler to a fixed allowlist of names (opting out of the wildcard) — useful when a pack has loose `.sh` scripts that you'd rather symlink than source:
 
         [mappings]
-        shell = [
-            "aliases.sh", "aliases.bash", "aliases.zsh",
-            "profile.sh", "profile.bash", "profile.zsh",
-            "login.sh",   "login.bash",   "login.zsh",
-            "env.sh",     "env.bash",     "env.zsh",
-            "myextras.zsh",
-            "work.bash",
-        ]
+        shell = ["aliases.sh", "profile.sh", "myextras.zsh"]
+
+    :: toml ::
+
+    Keeping the wildcard but adding extra extensions:
+
+        [mappings]
+        shell = ["*.sh", "*.bash", "*.zsh", "*.fish"]
 
     :: toml ::
 

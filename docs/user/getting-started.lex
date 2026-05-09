@@ -57,8 +57,8 @@ dodot: Up and Running in 5 Minutes
         $ cat nvim/.dodot.toml
         [mappings]
         # path = "bin"
-        # install = "install.sh"
-        # shell = ["aliases.sh", "profile.sh", "login.sh"]
+        # install = ["install.sh", "install.bash", "install.zsh"]
+        # shell = ["*.sh", "*.bash", "*.zsh"]        # any shell-extension file at pack root
         # homebrew = "Brewfile"
         # ignore = []                                 # silent drop
         # skip   = ["README.*", "LICENSE.*", ...]    # listed in status as `skipped`
