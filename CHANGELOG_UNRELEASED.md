@@ -113,6 +113,23 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
   `dev/handlers`, `reference/handlers`, `dev/cli-output`, and
   `proposals/shipped/conditional-running` updated to point at the new
   per-topic homes.
+- **Top-level user docs as a narrative layer over the snippet library.**
+  Adds `paths.lex`, `adopting.lex`, `shell-integration.lex`,
+  `filters.lex`, `plists.lex`, `troubleshooting.lex`, and rewrites
+  `getting-started.lex` to a shared skeleton (intro / when you reach
+  for this / mental model / walkthrough / watch-out-for / see-also).
+  Each cross-links into the existing per-topic snippets under
+  `docs/user/{glossary,handlers,commands}/` and carries `::
+  verified ::` after cross-checking against source. The README is
+  rewritten with corrected install instructions (Homebrew tap is
+  `arthur-debert/tools/dodot`), the actual release-artifact list
+  (macOS arm64, Linux x86_64+arm64, .deb amd64+arm64 — no
+  fictitious macOS Intel build), a minimal-vs-advanced two-tier
+  capability framing, and right-aligned status/up output blocks.
+  Stale references to the old `{aliases,profile,login,env}`
+  shell-handler allowlist cleaned up across
+  `docs/reference/handlers.lex`, `docs/dev/handlers.lex`, and
+  `docs/user/glossary/rule.lex`.
 - **`docs/user/configuration.lex` brought into sync with the schema.**
   The doc now covers every key in `DodotConfig`: added `[symlink]
   force_app` / `app_aliases` / `app_uses_library` / `plist_extensions`,
@@ -127,6 +144,13 @@ Use **level-3** section headings (`### Added`, `### Changed`, `### Deprecated`,
 
 ### Fixed
 
+- `dodot tutorial`'s pack-kind classification (`is_shell_filename`)
+  recognized only the legacy `aliases`/`profile`/`login`/`env`
+  stems × shell extensions, so a pack containing only `path.sh`,
+  `functions.zsh`, or `50_prompt.bash` mis-classified as
+  `ConfigOnly` despite those files being sourced by the shell
+  handler under the `*.{sh,bash,zsh}` wildcard default. Now
+  classifies any shell-extension file at pack root as a shell file.
 - `dodot config gen` and `dodot config schema` panicked at startup
   with `Long option names must be unique for each argument, but
   '--output' is in use by both 'output' and '_output_mode'`. The
