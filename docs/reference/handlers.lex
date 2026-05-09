@@ -16,7 +16,7 @@ Handlers
 
     1.2. Shell
 
-        Arranges for shell scripts to be sourced at login. Matches `{aliases,profile,login,env}.{sh,bash,zsh}` by default; add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore (see [./data-layer.lex]) and emits `source` lines for every matched shell file.
+        Arranges for shell scripts to be sourced at login. Matches `*.{sh,bash,zsh}` at the pack root by default — any shell-extension file at the top of a pack gets sourced. (`install.{sh,bash,zsh}` is claimed by the install handler first, at a higher priority, so install scripts are never accidentally sourced.) Add more patterns via `[mappings] shell` in `.dodot.toml`. The mechanism is a single `eval "$(dodot init-sh)"` line in your shell rc; the generated init script walks the datastore (see [./data-layer.lex]) and emits `source` lines for every matched shell file.
 
         The extension convention is load-bearing: sourced files run in *your* shell, so `.zsh` files only parse cleanly in zsh sessions and `.bash` files in bash sessions. `.sh` is the portable bucket — use it for snippets that work in either. In practice most users run one shell, and the mismatch simply doesn't come up; users who switch shells occasionally can split their shell config by extension.
 
@@ -164,7 +164,7 @@ Handlers
         | homebrew | Provision   | Code Execution | `Brewfile`                                         | `brew bundle` once per content hash |
         | install  | Setup       | Code Execution | `install.{sh,bash,zsh}`                            | Run once per content hash           |
         | path     | PathExport  | Configuration  | `bin/`                                             | Prepended to `$PATH`                |
-        | shell    | ShellInit   | Configuration  | `{aliases,profile,login,env}.{sh,bash,zsh}`        | Sourced at shell login              |
+        | shell    | ShellInit   | Configuration  | `*.{sh,bash,zsh}` at pack root                     | Sourced at shell login              |
         | symlink  | Link        | Configuration  | Anything else (catchall)                           | Link to `~` or `~/.config/`         |
 
     :: table align=lllll ::

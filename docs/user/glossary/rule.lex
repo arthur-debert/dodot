@@ -5,7 +5,7 @@ Rule:
     - `bin/` → path
     - `install.{sh,bash,zsh}` → install
     - `Brewfile` → homebrew
-    - `{aliases,profile,login,env}.{sh,bash,zsh}` → shell
+    - `*.{sh,bash,zsh}` at pack root → shell
     - `README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, … → skip
     - `*` → symlink (catch-all for anything no precise rule claimed)
 

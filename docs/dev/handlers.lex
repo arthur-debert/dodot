@@ -242,8 +242,8 @@ Handlers
         | ignore   | each `[mappings] ignore` entry (default `[]`)                                               | 100      | no               |
         | skip     | `README`, `README.*`, `LICENSE`, `LICENSE.*`, `CHANGELOG`, `CHANGELOG.*`, …                  | 50       | yes              |
         | path     | `bin/` (directory; trailing slash auto-added)                                               | 10       | no               |
-        | install  | `install.sh`, `install.bash`, `install.zsh`                                                 | 10       | no               |
-        | shell    | `aliases.{sh,bash,zsh}`, `profile.{sh,bash,zsh}`, `login.{sh,bash,zsh}`, `env.{sh,bash,zsh}` | 10       | no               |
+        | install  | `install.sh`, `install.bash`, `install.zsh`                                                 | 20       | no               |
+        | shell    | `*.sh`, `*.bash`, `*.zsh` (any shell-extension file at pack root)                            | 10       | no               |
         | homebrew | `Brewfile`                                                                                  | 10       | no               |
         | symlink  | `*` (catchall)                                                                              | 0        | no               |
 
