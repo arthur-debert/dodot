@@ -26,7 +26,7 @@ A *mapping* is the rule that says "files matching this pattern go to that handle
 
     The `gate` handler is not in the priority ladder. Gate matching runs at *scan time*, before the rule matcher — gate predicates strip the `._<label>` suffix from a source filename if the host matches, or surface a "gated out" entry if it doesn't. See [./controlling-activation.lex] for the full story.
 
-    `install` sits at priority 20 — above the priority-10 shell wildcard — so an `install.sh` filename always routes to the install handler. Without the gap, the install hook would be silently sourced by every shell session.
+    `install` sits at priority 20 — above the priority-10 shell wildcard — so as long as `install.sh` is in `mappings.install` (the default), it routes to the install handler rather than being claimed by the shell glob. Without the gap, the install hook would be silently sourced by every shell session. If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.
 
     Default mappings as raw TOML (the form `dodot config gen` emits):
 

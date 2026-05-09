@@ -764,9 +764,13 @@ mod tests {
     }
 
     fn default_rules() -> Vec<Rule> {
-        // Mirrors the production defaults emitted by
-        // `config::mappings_to_rules` so scanner tests exercise the same
-        // priority ladder users get out of the box.
+        // Representative subset of the production rules emitted by
+        // `config::mappings_to_rules`. Covers the priority ladder
+        // (install=20, shell glob=10, catchall=0) so scanner tests
+        // exercise the relative ordering, but intentionally omits
+        // multiple install/shell extensions, the gates map, and the
+        // ignore/skip defaults — those have their own dedicated
+        // tests in `config::tests`.
         vec![
             Rule {
                 pattern: "bin/".into(),
