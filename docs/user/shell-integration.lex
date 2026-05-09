@@ -81,7 +81,7 @@ Shell integration
 
     :: shell ::
 
-    The probe surfaces stale data with a flag if the report predates the most recent `dodot up` — staleness is detected via `~/.local/share/dodot/last-up-at`, written on every successful `up`.
+    The probe surfaces stale data with a flag if the report predates the most recent `dodot up` — staleness is detected via `$XDG_DATA_HOME/dodot/last-up-at` (typically `~/.local/share/dodot/last-up-at`), written on every successful `up`.
 
 7. Watch out for
 
