@@ -764,6 +764,13 @@ mod tests {
     }
 
     fn default_rules() -> Vec<Rule> {
+        // Representative subset of the production rules emitted by
+        // `config::mappings_to_rules`. Covers the priority ladder
+        // (install=20, shell glob=10, catchall=0) so scanner tests
+        // exercise the relative ordering, but intentionally omits
+        // multiple install/shell extensions, the gates map, and the
+        // ignore/skip defaults — those have their own dedicated
+        // tests in `config::tests`.
         vec![
             Rule {
                 pattern: "bin/".into(),
@@ -775,19 +782,26 @@ mod tests {
             Rule {
                 pattern: "install.sh".into(),
                 handler: "install".into(),
-                priority: 10,
+                priority: 20,
                 case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
-                pattern: "aliases.sh".into(),
+                pattern: "*.sh".into(),
                 handler: "shell".into(),
                 priority: 10,
                 case_insensitive: false,
                 options: HashMap::new(),
             },
             Rule {
-                pattern: "profile.sh".into(),
+                pattern: "*.bash".into(),
+                handler: "shell".into(),
+                priority: 10,
+                case_insensitive: false,
+                options: HashMap::new(),
+            },
+            Rule {
+                pattern: "*.zsh".into(),
                 handler: "shell".into(),
                 priority: 10,
                 case_insensitive: false,
@@ -1312,6 +1326,172 @@ mod tests {
         assert!(
             !matches.iter().any(|m| m.handler == "install"),
             "nested install.sh should not route to install handler: {matches:?}"
+        );
+    }
+
+    /// Wildcard shell defaults: any `*.{sh,bash,zsh}` at the pack
+    /// root routes to the shell handler, not just the legacy
+    /// `aliases`/`profile`/`login`/`env` allowlist. Pack authors don't
+    /// have to rename `path.sh`, `functions.zsh`, or `50_prompt.bash`
+    /// to a fixed allowlist to get them sourced.
+    #[test]
+    fn shell_glob_defaults_source_arbitrary_names_at_pack_root() {
+        let env = TempEnvironment::builder()
+            .pack("shell")
+            .file("path.sh", "export PATH=...")
+            .file("functions.zsh", "function f() {}")
+            .file("50_prompt.bash", "PS1='>'")
+            .file("aliases.sh", "alias x=y")
+            .done()
+            .build();
+
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("shell", env.dotfiles_root.join("shell"));
+        let rules = default_rules();
+
+        let (gates, host) = test_gates();
+        let matches = scanner
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
+            .unwrap();
+
+        let mut shell_files: Vec<String> = matches
+            .iter()
+            .filter(|m| m.handler == "shell")
+            .map(|m| m.relative_path.to_string_lossy().to_string())
+            .collect();
+        shell_files.sort();
+        assert_eq!(
+            shell_files,
+            vec!["50_prompt.bash", "aliases.sh", "functions.zsh", "path.sh",],
+            "all *.{{sh,bash,zsh}} at pack root should source: {matches:?}"
+        );
+    }
+
+    /// install.sh wins over the priority-10 `*.sh` shell glob — the
+    /// install rule sits at priority 20 specifically so the install
+    /// hook never gets accidentally sourced. Without this, dodot would
+    /// silently turn the user's one-shot install script into something
+    /// that runs every shell startup.
+    #[test]
+    fn shell_glob_defaults_dont_steal_install_sh() {
+        let env = TempEnvironment::builder()
+            .pack("toolchain")
+            .file("install.sh", "#!/bin/sh\necho setup")
+            .done()
+            .build();
+
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("toolchain", env.dotfiles_root.join("toolchain"));
+        let rules = default_rules();
+
+        let (gates, host) = test_gates();
+        let matches = scanner
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].handler, "install");
+        assert_eq!(matches[0].relative_path.to_string_lossy(), "install.sh");
+    }
+
+    /// Skip rules sit at priority 50, above the priority-10 shell
+    /// glob — a `README.sh` (unlikely but possible) is still skipped
+    /// rather than sourced as a shell file. Defaults ship with the
+    /// `README.*` skip pattern, so this is the realistic configuration.
+    #[test]
+    fn shell_glob_defaults_dont_override_skip_rules() {
+        let env = TempEnvironment::builder()
+            .pack("docs")
+            .file("README.sh", "this should be skipped, not sourced")
+            .done()
+            .build();
+
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("docs", env.dotfiles_root.join("docs"));
+        let mut rules = default_rules();
+        rules.push(Rule {
+            pattern: "README.*".into(),
+            handler: crate::handlers::HANDLER_SKIP.into(),
+            priority: 50,
+            case_insensitive: true,
+            options: HashMap::new(),
+        });
+
+        let (gates, host) = test_gates();
+        let matches = scanner
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].handler, crate::handlers::HANDLER_SKIP);
+    }
+
+    /// `*.sh.tmpl` (a template file) does NOT match `*.sh` — the glob
+    /// only matches names ending in `.sh`. Templates pass through to
+    /// the catchall, where the preprocessor picks them up and rewrites
+    /// the rendered match before dispatch.
+    #[test]
+    fn shell_glob_does_not_match_template_extension() {
+        let env = TempEnvironment::builder()
+            .pack("p")
+            .file("aliases.sh.tmpl", "alias x={{.var}}")
+            .done()
+            .build();
+
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("p", env.dotfiles_root.join("p"));
+        let rules = default_rules();
+
+        let (gates, host) = test_gates();
+        let matches = scanner
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].handler, "symlink");
+        assert_eq!(
+            matches[0].relative_path.to_string_lossy(),
+            "aliases.sh.tmpl"
+        );
+    }
+
+    /// Recursion safety: a nested `~/.config/<wm>/scripts/foo.sh`
+    /// (window-manager helper script invoked by another tool, not
+    /// sourced into the shell) must NOT route to the shell handler.
+    /// The depth-1 invariant ensures only the top-level `wmconf/`
+    /// directory is matched; the nested .sh stays inside the
+    /// directory tree the symlink handler manages.
+    #[test]
+    fn shell_glob_does_not_recurse_into_subdirectories() {
+        let env = TempEnvironment::builder()
+            .pack("hypr")
+            .file("hypr.conf", "# config")
+            .file("scripts/workspace-switch.sh", "#!/bin/sh\nhyprctl ...")
+            .file("scripts/launcher.sh", "#!/bin/sh\nrofi -show drun")
+            .done()
+            .build();
+
+        let scanner = Scanner::new(env.fs.as_ref());
+        let pack = make_pack("hypr", env.dotfiles_root.join("hypr"));
+        let rules = default_rules();
+
+        let (gates, host) = test_gates();
+        let matches = scanner
+            .scan_pack(&pack, &rules, &[], &gates, &host, &HashMap::new())
+            .unwrap();
+
+        // No nested entry should surface — the scanner is depth-1.
+        assert!(
+            !matches
+                .iter()
+                .any(|m| m.relative_path.to_string_lossy().contains('/')),
+            "no nested matches expected: {matches:?}"
+        );
+        // No shell-handler match should exist at all — the `scripts/`
+        // dir is matched as a dir and falls to the symlink catchall.
+        assert!(
+            !matches.iter().any(|m| m.handler == "shell"),
+            "nested scripts must not route to shell: {matches:?}"
         );
     }
 
@@ -1936,20 +2116,23 @@ mod tests {
 
     #[test]
     fn mappings_gate_passing_does_not_alter_dispatch() {
-        // [mappings.gates] = { "install-mac.sh" = "darwin" } on darwin →
+        // [mappings.gates] = { "config-mac.toml" = "darwin" } on darwin →
         // file passes; rule matching proceeds as if no gate were set.
-        // install-mac.sh isn't in default install patterns so it falls
+        // config-mac.toml isn't in any default mapping so it falls
         // through to the catchall symlink — same as without the gate.
+        // (We use a non-shell extension here so the wildcard `*.sh`
+        // shell default doesn't claim the file; this test is about
+        // gate semantics, not handler routing.)
         let env = TempEnvironment::builder()
             .pack("p")
-            .file("install-mac.sh", "x")
+            .file("config-mac.toml", "x")
             .done()
             .build();
         let scanner = Scanner::new(env.fs.as_ref());
         let pack = make_pack("p", env.dotfiles_root.join("p"));
         let (gates, host) = host_pair("darwin", "aarch64");
         let mut mappings_gates = HashMap::new();
-        mappings_gates.insert("install-mac.sh".to_string(), "darwin".to_string());
+        mappings_gates.insert("config-mac.toml".to_string(), "darwin".to_string());
 
         let matches = scanner
             .scan_pack(&pack, &default_rules(), &[], &gates, &host, &mappings_gates)
@@ -1957,7 +2140,7 @@ mod tests {
         assert_eq!(matches.len(), 1);
         let m = &matches[0];
         assert_eq!(m.handler, "symlink");
-        assert_eq!(m.relative_path.to_string_lossy(), "install-mac.sh");
+        assert_eq!(m.relative_path.to_string_lossy(), "config-mac.toml");
     }
 
     #[test]

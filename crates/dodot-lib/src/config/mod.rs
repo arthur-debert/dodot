@@ -478,16 +478,31 @@ pub struct MappingsSection {
 
     /// Filename patterns for shell scripts to source at login.
     ///
+    /// Default: any `*.sh`/`*.bash`/`*.zsh` file at a pack's root is
+    /// sourced. The convention in hand-curated dotfile repos
+    /// (holman, mathiasbynens, paulirish, …) is that loose shell
+    /// files at the top of a pack — `aliases.sh`, `path.zsh`,
+    /// `functions.bash`, `50_prompt.sh` — exist to be sourced into
+    /// the interactive shell. The wildcard captures every name that
+    /// follows that convention without forcing the pack author to
+    /// rename files to a fixed allowlist.
+    ///
+    /// Recursion safety: pack scanning is depth-1, so a nested
+    /// `hypr/scripts/foo.sh` (a window-manager helper invoked by
+    /// another tool, not the shell) is not pulled in by this rule —
+    /// it falls through to the symlink handler the same way every
+    /// other nested file does.
+    ///
+    /// Precedence: `install.sh` (handled by the install handler at
+    /// priority 20) wins over this rule (priority 10) regardless of
+    /// list order, so the install hook is never accidentally
+    /// sourced.
+    ///
     /// Sourced files run *in the user's shell* (whichever shell reads
     /// `dodot-init.sh`), so `.zsh` files will only parse cleanly in zsh
     /// sessions and `.bash` files in bash sessions. `.sh` is the
     /// portable bucket for snippets that work in either.
-    #[config(default = [
-        "aliases.sh", "aliases.bash", "aliases.zsh",
-        "profile.sh", "profile.bash", "profile.zsh",
-        "login.sh", "login.bash", "login.zsh",
-        "env.sh", "env.bash", "env.zsh",
-    ])]
+    #[config(default = ["*.sh", "*.bash", "*.zsh"])]
     pub shell: Vec<String>,
 
     /// Filename pattern for Homebrew Brewfile.
@@ -601,13 +616,18 @@ pub fn mappings_to_rules(mappings: &MappingsSection) -> Vec<Rule> {
         });
     }
 
-    // Install handler
+    // Install handler — priority 20 so the exact-name install hook
+    // wins over the priority-10 `*.sh|*.zsh|*.bash` shell glob,
+    // regardless of rule insertion order. Without this, a user who
+    // overrides `mappings.shell` to include a literal pattern that
+    // happens to also match an install filename could silently turn
+    // their install hook into a sourced shell script.
     for pattern in &mappings.install {
         if !pattern.is_empty() {
             rules.push(Rule {
                 pattern: pattern.clone(),
                 handler: "install".into(),
-                priority: 10,
+                priority: 20,
                 case_insensitive: false,
                 options: HashMap::new(),
             });
@@ -838,23 +858,7 @@ mod tests {
             vec!["install.sh", "install.bash", "install.zsh"]
         );
         assert_eq!(cfg.mappings.homebrew, "Brewfile");
-        assert_eq!(
-            cfg.mappings.shell,
-            vec![
-                "aliases.sh",
-                "aliases.bash",
-                "aliases.zsh",
-                "profile.sh",
-                "profile.bash",
-                "profile.zsh",
-                "login.sh",
-                "login.bash",
-                "login.zsh",
-                "env.sh",
-                "env.bash",
-                "env.zsh",
-            ]
-        );
+        assert_eq!(cfg.mappings.shell, vec!["*.sh", "*.bash", "*.zsh"]);
         assert!(cfg.mappings.ignore.is_empty());
         assert!(
             cfg.mappings.skip.iter().any(|p| p == "README"),
@@ -986,6 +990,35 @@ homebrew = "RootBrewfile"
         // Catchall should be lowest priority
         let catchall = rules.iter().find(|r| r.pattern == "*").unwrap();
         assert_eq!(catchall.priority, 0);
+    }
+
+    /// Install rules sit at priority 20 — above the priority-10
+    /// `*.sh|*.zsh|*.bash` shell glob — so an `install.sh` filename
+    /// always routes to the install handler regardless of rule order.
+    /// Without this, a defaulted shell `*.sh` would silently source the
+    /// install hook instead of running it.
+    #[test]
+    fn install_rules_outrank_shell_glob() {
+        let mappings = MappingsSection {
+            path: "bin".into(),
+            install: vec!["install.sh".into()],
+            shell: vec!["*.sh".into()],
+            homebrew: String::new(),
+            ignore: vec![],
+            skip: vec![],
+            gates: std::collections::HashMap::new(),
+        };
+
+        let rules = mappings_to_rules(&mappings);
+        let install = rules.iter().find(|r| r.handler == "install").unwrap();
+        let shell = rules.iter().find(|r| r.handler == "shell").unwrap();
+        assert!(
+            install.priority > shell.priority,
+            "install priority ({}) must exceed shell priority ({}) so \
+             install.sh wins over the *.sh shell glob.",
+            install.priority,
+            shell.priority,
+        );
     }
 
     #[test]

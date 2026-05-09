@@ -304,17 +304,14 @@ Configuration
         [mappings]
         path = "bin"
         install = ["install.sh", "install.bash", "install.zsh"]
-        shell = [
-            "aliases.sh", "aliases.bash", "aliases.zsh",
-            "profile.sh", "profile.bash", "profile.zsh",
-            "login.sh",   "login.bash",   "login.zsh",
-            "env.sh",     "env.bash",     "env.zsh",
-        ]
+        shell = ["*.sh", "*.bash", "*.zsh"]
         homebrew = "Brewfile"
         ignore = []
         skip = ["README", "README.*", "LICENSE", "LICENSE.*", "CHANGELOG", "CHANGELOG.*", "CONTRIBUTING", "CONTRIBUTING.*", "AUTHORS", "AUTHORS.*", "NOTICE", "NOTICE.*", "COPYING", "COPYING.*"]
 
     :: toml ::
+
+    The shell wildcards match at depth-1 only — any `.sh`/`.bash`/`.zsh` file at the *pack's root* is sourced. A `.sh` script tucked inside a subdirectory of the pack (for example `hypr/scripts/foo.sh`) is not pulled in; nested files flow through the symlink handler the same way every other nested file does. That carve-out is what keeps window-manager and tmux helper scripts (which live at `~/.config/<app>/scripts/*.sh` and are invoked by other tools, not the shell) from being silently sourced into your login shell.
 
     Shell extensions (`.sh`, `.bash`, `.zsh`) carry real meaning in dodot. For `install`, the extension selects the interpreter that runs the script: `.sh` and `.bash` run under `bash`, `.zsh` runs under `zsh`. For `shell`, the files are sourced into whatever shell reads `dodot-init.sh` — put zsh-only syntax in `.zsh`, bash-only syntax in `.bash`, and portable snippets in `.sh`. The user's login shell does not affect which `install.*` interpreter is picked; the extension is the contract.
 
@@ -325,7 +322,7 @@ Configuration
     - `ignore` — claims matches and drops them silently, mirroring `.gitignore`. Nothing surfaces in `dodot status`. Priority 100.
     - `skip` — claims matches and surfaces them in `dodot status` as `skipped`, but does not deploy them. Defaults cover the documentation/legal files (`README`, `LICENSE`, `CHANGELOG`, `CONTRIBUTING`, `AUTHORS`, `NOTICE`, `COPYING` and their `.*` variants), matched case-insensitively. Override per-pack with `skip = []` to deploy a README intentionally. Priority 50.
 
-    Precise mappings (`shell`, `install`, `path`, `homebrew`) sit at priority 10; the catchall symlink at priority 0. So a file the user said to drop is dropped, full stop — `ignore` over `skip` over precise mappings over catchall.
+    `install` sits at priority 20, above the priority-10 shell wildcard, so as long as `install.sh` is in `mappings.install` (the default) it routes to the install handler rather than being claimed by the shell glob — the install hook never gets accidentally sourced. The other precise mappings (`shell`, `path`, `homebrew`) sit at priority 10; the catchall symlink at priority 0. So a file the user said to drop is dropped, full stop — `ignore` over `skip` over `install` over the rest of the precise mappings over catchall. (If you override `mappings.install` to drop `install.sh`, the shell wildcard *will* claim it — that's the user's choice.)
 
     Distinct from `[pack] ignore`: `[mappings] ignore`/`skip` apply only to handler dispatch within a known pack, while `[pack] ignore` affects pack discovery and scanning. To skip an entire pack, drop a `.dodotignore` marker file (the "pack-ignore" mechanism).
 

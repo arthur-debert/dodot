@@ -224,16 +224,19 @@ teardown() {
 # ── [mappings.gates] glob escape hatch ──────────────────────────
 
 @test "[mappings.gates] passing glob deploys file" {
-    create_pack_file   "legacy" "install-host.sh" "echo run"
-    create_pack_config "legacy" "$(printf '[mappings.gates]\n"install-host.sh" = "%s"\n' "${HOST_OS}")"
+    # Fixture uses a non-shell extension so the default `*.sh|*.bash|*.zsh`
+    # shell wildcard doesn't claim the file — this test is about gate
+    # routing, not shell sourcing.
+    create_pack_file   "legacy" "host-config.toml" "key = 'value'"
+    create_pack_config "legacy" "$(printf '[mappings.gates]\n"host-config.toml" = "%s"\n' "${HOST_OS}")"
 
     dodot up
 
-    # Filename doesn't match install handler's default patterns, so
-    # the catchall symlink claims it. Existence proves the gate
-    # passed and dispatch reached the catchall.
-    assert_symlink "$XDG_CONFIG_HOME/legacy/install-host.sh" \
-        "$XDG_DATA_HOME/dodot/packs/legacy/symlink/install-host.sh"
+    # Filename doesn't match any precise mapping, so the catchall
+    # symlink claims it. Existence proves the gate passed and
+    # dispatch reached the catchall.
+    assert_symlink "$XDG_CONFIG_HOME/legacy/host-config.toml" \
+        "$XDG_DATA_HOME/dodot/packs/legacy/symlink/host-config.toml"
 }
 
 @test "[mappings.gates] failing glob skips file" {
