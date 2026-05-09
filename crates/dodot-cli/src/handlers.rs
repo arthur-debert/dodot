@@ -504,7 +504,8 @@ pub fn probe_shell_init_handler(
 /// Uses `handle_to_string` (clapfig 0.16) for programmatic output.
 pub fn config_passthrough(matches: &clap::ArgMatches) -> Result<(), anyhow::Error> {
     let dotfiles_root = discover_dotfiles_root()?;
-    let config_cmd = clapfig::ConfigCommand::new();
+    // Must match the `ConfigCommand` configured in main::build_clap_command.
+    let config_cmd = clapfig::ConfigCommand::new().output_long("out");
     let action = config_cmd.parse(matches)?;
 
     let output = clapfig::Clapfig::builder::<dodot_lib::config::DodotConfig>()

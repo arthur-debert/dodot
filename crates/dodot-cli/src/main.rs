@@ -404,7 +404,12 @@ fn build_app() -> App {
 }
 
 fn build_clap_command() -> ClapCommand {
-    let config_cmd = clapfig::ConfigCommand::new();
+    // Rename clapfig's `gen` / `schema` `--output` flag to `--out`. standout
+    // already registers a global `--output` (output mode: auto/json/yaml/…),
+    // and clap rejects a child arg with the same long as a parent global.
+    // The short `-o` is preserved. `handlers::config_passthrough` builds an
+    // identically-configured `ConfigCommand` to parse — keep these two in sync.
+    let config_cmd = clapfig::ConfigCommand::new().output_long("out");
 
     ClapCommand::new("dodot")
         .about("A dotfiles manager that uses symlinks for live editing")
