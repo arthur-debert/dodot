@@ -114,17 +114,11 @@ pub fn classify_pack(pack: &packs::Pack) -> PackKind {
     }
 }
 
+// Mirrors the default `[mappings] shell = ["*.sh", "*.bash", "*.zsh"]`.
+// `install.{sh,bash,zsh}` is filtered by the caller before reaching this check
+// (priority-20 install rule vs priority-10 shell wildcard).
 fn is_shell_filename(name: &str) -> bool {
-    let stems = ["aliases", "profile", "login", "env"];
-    let exts = [".sh", ".bash", ".zsh"];
-    for stem in stems {
-        for ext in exts {
-            if name == format!("{stem}{ext}") {
-                return true;
-            }
-        }
-    }
-    false
+    name.ends_with(".sh") || name.ends_with(".bash") || name.ends_with(".zsh")
 }
 
 // ── Discover & recommend ────────────────────────────────────────
@@ -357,6 +351,25 @@ mod tests {
         write(&pack_path.join("aliases.sh"), "alias ll='ls -l'");
         let pack = packs::Pack::new(
             "zsh".into(),
+            pack_path,
+            crate::handlers::HandlerConfig::default(),
+        );
+        assert_eq!(classify_pack(&pack), PackKind::ConfigPlusShell);
+    }
+
+    #[test]
+    fn classify_pack_with_arbitrary_shell_extension_filenames() {
+        // Per the wildcard `*.{sh,bash,zsh}` shell default, names beyond
+        // the legacy `aliases`/`profile`/`login`/`env` allowlist must
+        // also classify as ConfigPlusShell.
+        let dir = tempfile::tempdir().unwrap();
+        let pack_path = dir.path().join("shell");
+        std::fs::create_dir_all(&pack_path).unwrap();
+        write(&pack_path.join("path.sh"), "export PATH=...");
+        write(&pack_path.join("functions.zsh"), "function f() {}");
+        write(&pack_path.join("50_prompt.bash"), "PS1='>'");
+        let pack = packs::Pack::new(
+            "shell".into(),
             pack_path,
             crate::handlers::HandlerConfig::default(),
         );
