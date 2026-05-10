@@ -412,9 +412,11 @@ struct SecretCallOccurrence {
 /// Find every `secret(...)` call in a template source. Matches
 /// the canonical MiniJinja shapes:
 ///
-///     {{ secret("op://Vault/Item/Field") }}
-///     {{ secret('pass:path/to/secret') }}
-///     {%- if secret("op://...") -%} ... {%- endif -%}
+/// ```text
+/// {{ secret("op://Vault/Item/Field") }}
+/// {{ secret('pass:path/to/secret') }}
+/// {%- if secret("op://...") -%} ... {%- endif -%}
+/// ```
 ///
 /// Whitespace between `secret`, the parens, and the string is
 /// allowed. Both single- and double-quoted strings work; the
