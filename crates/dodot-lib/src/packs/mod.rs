@@ -47,7 +47,9 @@
 //! A pack with a missing dependency is the user's problem, not the
 //! framework's.
 
+pub mod context;
 pub mod orchestration;
+pub mod types;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
